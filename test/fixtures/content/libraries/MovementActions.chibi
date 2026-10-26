@@ -1,6 +1,6 @@
 // Shared movement intent in project units per second.
 MovementActions :: library {
-    Movement_Velocity :: (direction: CF_V2 = null, speed: Movement = null) -> (Velocity: CF_V2 = null) {
+    Movement_Velocity :: (direction: vec2 = null, speed: Movement = null) -> (Velocity: vec2 = null) {
         return direction * Unwrap_Movement(speed)
     }
 }

@@ -39,7 +39,7 @@ Weapon :: behavior {
             elapsed = float(min(elapsed, double(self.Weapon.Cooldown)))
         }
     }
-    position_offset :: (position: CF_V2 = null, offset: CF_V2 = null) -> (Result: CF_V2 = null) {
+    position_offset :: (position: vec2 = null, offset: vec2 = null) -> (Result: vec2 = null) {
         return add(position, offset)
     }
 }

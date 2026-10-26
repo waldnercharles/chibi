@@ -482,7 +482,7 @@ static bool event_value(
         }
     }
     if (v->type.type == PIN_STRUCT && v->type.type_name &&
-        !strcmp(v->type.type_name, "CF_V2") && !strcmp(v->name, "Pointer")) {
+        !strcmp(v->type.type_name, "vec2") && !strcmp(v->name, "Pointer")) {
         pointer[0] = a->x;
         pointer[1] = a->y;
         value->ptr = pointer;

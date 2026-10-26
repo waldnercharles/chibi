@@ -2159,7 +2159,7 @@ static int queue_contact(physics *physics, host_event event, contact_pair pair)
     for (int i = 0; i < 2; i++) {
         pin_value values[] = {
             { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = targets[1 - i] },
-            { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &position },
+            { .type = PIN_STRUCT, .type_name = "vec2", .ptr = &position },
         };
         int queued = entities_request_event(
             physics->entities,

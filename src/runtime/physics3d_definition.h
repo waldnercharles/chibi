@@ -24,21 +24,21 @@
       false,                                                                   \
       ((pin_value){ 0 }))
 #define PHYSICS3D_RAY_INPUTS(X)                                                    \
-    PHYSICS3D_PORT(X, "Start", PIN_STRUCT, "CF_V3", PIN_CONTAINER_SINGLE)          \
-    PHYSICS3D_PORT(X, "End", PIN_STRUCT, "CF_V3", PIN_CONTAINER_SINGLE)            \
+    PHYSICS3D_PORT(X, "Start", PIN_STRUCT, "vec3", PIN_CONTAINER_SINGLE)           \
+    PHYSICS3D_PORT(X, "End", PIN_STRUCT, "vec3", PIN_CONTAINER_SINGLE)             \
     PHYSICS3D_PORT(X, "Categories", PIN_U32, "unsigned int", PIN_CONTAINER_SINGLE) \
     PHYSICS3D_PORT(X, "Exclude", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE)   \
     PHYSICS3D_PORT(X, "Include Sensors", PIN_BOOL, NULL, PIN_CONTAINER_SINGLE)
 #define PHYSICS3D_CAST_INPUTS(X)                                                   \
     PHYSICS3D_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE)    \
-    PHYSICS3D_PORT(X, "Translation", PIN_STRUCT, "CF_V3", PIN_CONTAINER_SINGLE)    \
+    PHYSICS3D_PORT(X, "Translation", PIN_STRUCT, "vec3", PIN_CONTAINER_SINGLE)     \
     PHYSICS3D_PORT(X, "Categories", PIN_U32, "unsigned int", PIN_CONTAINER_SINGLE) \
     PHYSICS3D_PORT(X, "Include Sensors", PIN_BOOL, NULL, PIN_CONTAINER_SINGLE)
 #define PHYSICS3D_HIT_OUTPUTS(X)                                                \
     PHYSICS3D_PORT(X, "Found", PIN_BOOL, NULL, PIN_CONTAINER_SINGLE)            \
     PHYSICS3D_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE) \
-    PHYSICS3D_PORT(X, "Point", PIN_STRUCT, "CF_V3", PIN_CONTAINER_SINGLE)       \
-    PHYSICS3D_PORT(X, "Normal", PIN_STRUCT, "CF_V3", PIN_CONTAINER_SINGLE)      \
+    PHYSICS3D_PORT(X, "Point", PIN_STRUCT, "vec3", PIN_CONTAINER_SINGLE)        \
+    PHYSICS3D_PORT(X, "Normal", PIN_STRUCT, "vec3", PIN_CONTAINER_SINGLE)       \
     PHYSICS3D_PORT(X, "Distance", PIN_F32, NULL, PIN_CONTAINER_SINGLE)
 #define PHYSICS3D_CONTACT_INPUTS(X)                                             \
     PHYSICS3D_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE) \
@@ -59,7 +59,7 @@
 #define PHYSICS3D_PUSH_INPUTS(X, AMOUNT)                                        \
     PHYSICS3D_EXEC(X, "Exec")                                                   \
     PHYSICS3D_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE) \
-    PHYSICS3D_PORT(X, AMOUNT, PIN_STRUCT, "CF_V3", PIN_CONTAINER_SINGLE)
+    PHYSICS3D_PORT(X, AMOUNT, PIN_STRUCT, "vec3", PIN_CONTAINER_SINGLE)
 #define PHYSICS3D_PUSH_OUTPUTS(X) PHYSICS3D_EXEC(X, "Then")
 extern const native_definition_pack PHYSICS3D_DEFINITION_PACK;
 

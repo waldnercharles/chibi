@@ -45,7 +45,7 @@ bool component_field_settable(const field_info *field)
     }
     for (int i = 0; i < acount(g_collection->structs); i++) {
         const struct_info *type = &g_collection->structs[i];
-        if (strcmp(type->name, field->spelling)) {
+        if (strcmp(struct_c_name(type), field->spelling)) {
             continue;
         }
         for (int j = 0; j < acount(type->fields); j++) {

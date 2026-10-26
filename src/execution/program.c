@@ -180,7 +180,8 @@ bool program_same_type(pin_value a, pin_value b)
 {
     /* A native record frozen into one side matches the catalog layout the
      * other names. */
-    return a.type == b.type && a.container == b.container && pin_value_layout_same(&a, &b) &&
+    return a.type == b.type && a.container == b.container &&
+           pin_value_layout_same(&a, &b) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }

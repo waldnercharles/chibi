@@ -496,7 +496,8 @@ static int behavior_asset_add_call_pin(graph *caller, node *call, int output, co
     }
     pin_value input = pin.default_value;
     if (((pin.container >= PIN_CONTAINER_ARRAY && input.ptr) ||
-         (pin.container == PIN_CONTAINER_SINGLE && (pin.type == PIN_STR || pin.type == PIN_NAME))) &&
+         (pin.container == PIN_CONTAINER_SINGLE &&
+          (pin.type == PIN_STR || pin.type == PIN_NAME))) &&
         pin_value_copy_to_graph(caller, &pin.default_value, &input)) {
         return -1;
     }

@@ -207,7 +207,9 @@ static bool check_array(const pin_value *value, int count, const char *shared_te
     for (int i = 0; i < count; i++) {
         REQUIRE(pin_array_get(a, i).record == a->record);
         pin_value item = pin_array_get(a, i);
-        REQUIRE(check_row(&item, i, shared_text, arena_contains(&storage, a) ? &storage : &heap.storage));
+        REQUIRE(
+            check_row(&item, i, shared_text, arena_contains(&storage, a) ? &storage : &heap.storage)
+        );
     }
     return true;
 }

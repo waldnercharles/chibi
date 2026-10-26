@@ -411,7 +411,7 @@ static bool analyze_source(const char *source, const script_catalog *catalog)
     }
     return analysis->valid;
 }
-TEST_CASE(operations_reject_direct_catalog_state_rewrites)
+TEST_CASE(operations_reject_state_access_calls)
 {
     REQUIRE(core());
     script_catalog_capability capabilities[] = {
@@ -425,24 +425,21 @@ TEST_CASE(operations_reject_direct_catalog_state_rewrites)
                                      .entity_type = script_catalog_id("type", "ecs.entity") };
     const char *source[] = {
         "Probe :: behavior { value: entity = 0; on Run :: () { saved := "
-        "ReadOwner<value>(); } }",
+        "ReadOwner(); } }",
         "Probe :: behavior { value: entity = 0; on Run :: () { "
-        "ReadOwner<value>(self); } }"
+        "ReadOwner(self); } }"
     };
     const script_state_access access[] = { SCRIPT_STATE_ACCESS_READ,
                                            SCRIPT_STATE_ACCESS_WRITE };
     for (int i = 0; i < NATIVE_COUNT(source); i++) {
         capabilities[0].state_access = access[i];
-        REQUIRE(analyze_source(source[i], &catalog));
-        /* These calls become SYMBOL/STORE expressions, bypassing call lowering. */
-        const script_lower_bindings bindings = { 0 };
-        plan = script_lower(analysis, &catalog, &bindings);
-        REQUIRE(plan && !plan->valid && plan->diagnostic_count == 1);
-        REQUIRE(strstr(plan->diagnostics[0].message, "Invalid engine operation declaration"));
-        execution_module_plan_free(plan);
+        /* A state is read or assigned by its name, never through a call. */
+        syntax = script_parse(source[i]);
+        analysis = script_analyze(syntax, &catalog);
+        REQUIRE(!analysis->valid && analysis->diagnostic_count >= 1);
+        REQUIRE(strstr(analysis->diagnostics[0].message, "Read or assign the state by name"));
         script_analysis_free(analysis);
         script_syntax_free(syntax);
-        plan = NULL;
         analysis = NULL;
         syntax = NULL;
     }
@@ -622,7 +619,7 @@ void test_language_operations()
     RUN_TEST_CASE(operations_reject_dormant_raw_metadata);
     RUN_TEST_CASE(operations_reject_binding_mismatch_and_distinguish_opaque_abi);
     RUN_TEST_CASE(operation_identity_invalidates_source_reuse);
-    RUN_TEST_CASE(operations_reject_direct_catalog_state_rewrites);
+    RUN_TEST_CASE(operations_reject_state_access_calls);
     RUN_TEST_CASE(operations_reject_custom_lowerer_binding_mismatch);
     RUN_TEST_CASE(owner_alias_preserves_invocation_effects);
     RUN_TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends);

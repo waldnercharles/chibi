@@ -216,8 +216,6 @@ static bool tight_before(token t)
              kind(p, "reduce_statement") || kind(p, "prototype_bases") ||
              (kind(p, "argument_list") && !kind(ts_node_parent(p), "return_statement")))) ||
            (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression"))) ||
-           ((kind(n, "<") || kind(n, ">")) &&
-            (kind(p, "type_argument_list") || kind(p, "type_parameter_list"))) ||
            (kind(n, "?") && kind(p, "type")) ||
            (kind(n, "^") && kind(p, "dereference_expression")) ||
            (kind(n, "(") && kind(p, "parenthesized_type")) || unit_operator(n);
@@ -233,9 +231,7 @@ static bool tight_after(token t)
            (kind(n, "^") && kind(p, "pointer_type")) ||
            (kind(n, "&") && kind(p, "address_expression")) ||
            (kind(p, "unary_expression") && !kind(n, "not") &&
-            ts_node_start_byte(p) == (uint32_t)t.start) ||
-           (kind(n, "<") &&
-            (kind(p, "type_argument_list") || kind(p, "type_parameter_list")));
+            ts_node_start_byte(p) == (uint32_t)t.start);
 }
 
 static bool space_between(token previous, token current)

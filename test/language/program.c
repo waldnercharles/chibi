@@ -2755,9 +2755,9 @@ TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced)
     const char
         *source = "Handles :: behavior { seen: double = 0;Result :: () -> "
                   "(value: double) { yield; return 7; }Use :: (jobs: ref "
-                  "task<double>[]) { yield; jobs = jobs; yield;answer := await "
+                  "task(double)[]) { yield; jobs = jobs; yield;answer := await "
                   "jobs[0]; if answer is double n { seen = n; }jobs = []; "
-                  "yield; }on Impulse :: () { jobs: task<double>[] "
+                  "yield; }on Impulse :: () { jobs: task(double)[] "
                   "= [Result()]; Use(ref jobs); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -4495,7 +4495,7 @@ TEST_CASE(program_task_handle_survives_in_a_detached_capture)
     const char
         *source = "Capture :: behavior { got: double = 0;Work :: () -> "
                   "(value: double) { yield; return 7 }Start :: () { "
-                  "held := Work(); Observe :: (held: ref task<double>) "
+                  "held := Work(); Observe :: (held: ref task(double)) "
                   "{ await Delay(10); result := await held; if result "
                   "is double value { got = value; } } Observe(ref held); "
                   "}on Impulse :: () { Start(); } }";
@@ -4523,10 +4523,10 @@ TEST_CASE(program_task_handles_survive_in_suspended_array_values)
 {
     const char
         *source = "Arrays :: behavior { got: double = 0;Work :: () -> double { "
-                  "yield; return 7; }Pack :: () -> task<double>[] { held: "
-                  "task<double>[] = [Work()]; return held; }on Impulse :: "
+                  "yield; return 7; }Pack :: () -> task(double)[] { held: "
+                  "task(double)[] = [Work()]; return held; }on Impulse :: "
                   "(amount: double, "
-                  "enabled: bool) { first: task<double>[] = []; i := 0;while i "
+                  "enabled: bool) { first: task(double)[] = []; i := 0;while i "
                   "< 2 { "
                   "row := Pack(); if i == 0 { first = row; } i += 1; }copy := "
                   "first; first = [];yield; await Delay(10); result := await "
@@ -4588,7 +4588,7 @@ TEST_CASE(program_task_handles_survive_in_suspended_array_values)
 
 TEST_CASE(program_native_nested_collections_retain_task_handles)
 {
-    const char *source = "Nested :: behavior { pulse: task<double>; held: "
+    const char *source = "Nested :: behavior { pulse: task(double); held: "
                          "uint64[] = []; "
                          "Work :: () -> double { yield; return 7; } "
                          "on Impulse :: () { pulse = Work(); } }";
@@ -4666,9 +4666,9 @@ TEST_CASE(program_task_scope_exits_drop_only_unobserved_handles)
 {
     const char *source =
         "Scope :: behavior { got: double = 0;Work :: () -> double { yield; "
-        "return 7; }Pack :: () -> (number: double, discarded: task<double>) "
+        "return 7; }Pack :: () -> (number: double, discarded: task(double)) "
         "{return(number: 1, discarded: Work()); }Observe :: (held: ref "
-        "task<double>) { await Delay(10);result := await held; if result is "
+        "task(double)) { await Delay(10);result := await held; if result is "
         "double value { got = value; } }on Impulse :: () {Pack(); "
         "unused := Pack().number;if true { held := Work(); Observe(ref held); "
         "}i "
@@ -4742,7 +4742,7 @@ TEST_CASE(program_task_cancellation_is_distinct_from_zero_false_and_empty_text)
 TEST_CASE(program_task_waiters_receive_independent_success_snapshots)
 {
     const char
-        *source = "Waiters :: behavior { worker: task<double[]>; total: double "
+        *source = "Waiters :: behavior { worker: task; total: double "
                   "= 0;Work :: () -> double[] { yield; return [7]; }Observe :: "
                   "(offset: double) { result := await worker; if result is not "
                   "Cancelled {values := result; values[0] += offset; total += "
@@ -4809,7 +4809,7 @@ TEST_CASE(program_task_await_copies_large_payload_once)
     };
     const char
         *source = "Delivery :: behavior { input: double[] = []; worker: "
-                  "task<double[]>;Work :: () -> double[] { yield; return "
+                  "task;Work :: () -> double[] { yield; return "
                   "input; }on Impulse :: (enabled: bool) { if enabled { worker "
                   "= "
                   "Work(); }else { await worker; } } }";
@@ -7456,6 +7456,12 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
         free(current_expected);
         current_expected = current;
     }
+    current = NULL;
+    REQUIRE(!chibi_migrate_angle_forms(current_expected, &current, error, sizeof error));
+    if (current) {
+        free(current_expected);
+        current_expected = current;
+    }
     char root[] = "/tmp/chibi-prefix-migrate-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
@@ -8608,9 +8614,137 @@ TEST_CASE(program_version_31_array_calls_take_their_new_names)
     }
     return true;
 }
+/* Version 33 spells no type arguments in angle brackets; a state-setting
+ * action is inlined where it runs, with its after body. */
+TEST_CASE(program_version_32_angle_forms_take_version_33_spellings)
+{
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "L :: library { F :: (a: struct<CF_V2>, b: handle<ecs.entity>[], c: "
+          "array<int>, d: task<double>) -> enum<Mode> { return Mode.A } }",
+          "L :: library { F :: (a: CF_V2, b: entity[], c: int[], d: "
+          "task(double)) -> Mode { return Mode.A } }" },
+        { "B :: behavior { n: int = 0\n"
+          "    on Tick :: (dt: float s) {\n"
+          "        x := convert<To_Real>(n) + 1.0\n"
+          "        await set_variable<n>(Value: int = get_variable<n>() + 1)\n"
+          "        await send_event<Damage>(self, 3, Source: self)\n"
+          "        send_event<Hit>(Amount: 2, Entity: self.Target.other)\n"
+          "        aim := direction_to<Direction_To>(self.Transform, x)\n"
+          "    }\n"
+          "}",
+          "B :: behavior { n: int = 0\n"
+          "    on Tick :: (dt: float s) {\n"
+          "        x := To_Real(n) + 1.0\n"
+          "        n = n + 1\n"
+          "        await emit self.Damage(3, Source: self)\n"
+          "        emit self.Target.other.Hit(Amount: 2)\n"
+          "        aim := direction_to(self.Transform, x)\n"
+          "    }\n"
+          "}" },
+        { "B :: behavior {\n"
+          "    Age: float = 0.0\n"
+          "    action age_2 = set_variable<Age>(Age + 1.0)\n"
+          "    on Tick :: (dt: float s) {\n"
+          "        if dt > 0.0 {\n"
+          "            age_2()\n"
+          "        }\n"
+          "    }\n"
+          "    after age_2 {\n"
+          "        if age_2.Value > 2.0 {\n"
+          "            destroy_entity(self)\n"
+          "        }\n"
+          "        log(age_2.Value)\n"
+          "    }\n"
+          "}",
+          "B :: behavior {\n"
+          "    Age: float = 0.0\n"
+          "    on Tick :: (dt: float s) {\n"
+          "        if dt > 0.0 {\n"
+          "            Age = Age + 1.0\n"
+          "            if Age > 2.0 {\n"
+          "                destroy_entity(self)\n"
+          "            }\n"
+          "            log(Age)\n"
+          "        }\n"
+          "    }\n"
+          "}" },
+        { "L :: library { F :: (a: CF_V2) -> int { return 1 } }", NULL },
+        /* A read before an await keeps the value the action set. */
+        { "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+          "on Tick :: (dt: float s) { set_n() } after set_n { await "
+          "log(set_n.Value) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n = 1\n"
+          " await log(n) } }" },
+        /* A local that shadows the state keeps the state qualified. */
+        { "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n := 5; "
+          "set_variable<n>(get_variable<n>() + n) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { n := 5; "
+          "state.n = state.n + n } }" },
+        /* So does one declared in a parameterless after handler. */
+        { "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+          "on Tick :: (dt: float s) { set_n() } after set_n { n := 5; "
+          "set_variable<n>(get_variable<n>() + n) } }",
+          "B :: behavior { n: int = 0; on Tick :: (dt: float s) { state.n = 1\n"
+          " n := 5;\n state.n = state.n + n } }" },
+        /* A rerun finds the version 33 spelling and leaves it. */
+        { "B :: behavior { on Tick :: (dt: float s) { emit self.Damage(3) } }", NULL },
+    };
+    char error[256], *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_angle_forms(cases[i].source, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        bool same = cases[i].expected
+                      ? migrated && !strcmp(migrated, cases[i].expected)
+                      : !migrated;
+        if (!same) {
+            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(same);
+        free(migrated);
+        migrated = NULL;
+    }
+    const char *refused[] = {
+        "L :: library { F :: (a: handle<Row>) {} }",
+        "L :: library { F :: (a: task<int[]>) {} }",
+        "L :: library { F :: (a: set<int>) {} }",
+        "L :: library { F :: () -> int { return pick<Other>(1) } }",
+        "B :: behavior { n: int = 0; on Tick :: (dt: float s) { "
+        "log(set_variable<n>(1)) } }",
+        "B :: behavior { on Tick :: (dt: float s) { send_event<Damage>(Amount: "
+        "1) } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); on "
+        "Tick :: (dt: float s) { set_n(2) } }",
+        "L :: library { F :: (a: array<int | string>) {} }",
+        "B :: behavior { on Tick :: (dt: float s) { "
+        "send_event<game.Damage>(self, 1) } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+        "on Tick :: (dt: float s) { set_n() } after set_n { set_n() } }",
+        "B :: behavior { a: int = 0; b: int = 0; action update = "
+        "set_variable<a>(1); "
+        "action update = set_variable<b>(2); on Tick :: (dt: float s) { "
+        "update() } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+        "on Tick :: (dt: float s) { set_n() } after set_n { n = 2; "
+        "log(set_n.Value) } }",
+        "B :: behavior { n: int = 0; action set_n = set_variable<n>(1); "
+        "on Tick :: (dt: float s) { set_n(); log(set_n.Value) } }",
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        REQUIRE(chibi_migrate_angle_forms(refused[i], &migrated, error, sizeof error) < 0);
+        if (!strstr(error, "has no version 33 spelling")) {
+            fprintf(stderr, "refusal %zu: %s\n", i, error);
+        }
+        REQUIRE(!migrated && strstr(error, "has no version 33 spelling"));
+    }
+    return true;
+}
 /* Three fixed documents, six ref arguments and one second pass, plus one
  * unknown-call document. No compiler child or runtime invocation. */
-TEST_CASE(program_version_32_ref_calls_mark_resolved_arguments)
+TEST_CASE(program_version_33_ref_calls_mark_resolved_arguments)
 {
     const char *sources[] = {
         "Tools :: library { Bump :: (value: ref int, amount: int) { value += "
@@ -8669,7 +8803,7 @@ TEST_CASE(program_version_32_ref_calls_mark_resolved_arguments)
     REQUIRE(!migrated && strstr(error, "Ambiguous callable"));
     const char *invalid[] = { "Demo :: behavior { Run :: (" };
     migrated = chibi_migrate_ref_calls(invalid, 1, error, sizeof error);
-    REQUIRE(!migrated && strstr(error, "invalid version 32"));
+    REQUIRE(!migrated && strstr(error, "invalid version 33"));
     return true;
 }
 static int fail_first_finalization(const char *, const char *, int, void *user, char *error, size_t size)
@@ -10579,7 +10713,8 @@ void test_language_program()
     RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
     RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
     RUN_TEST_CASE(program_version_31_array_calls_take_their_new_names);
-    RUN_TEST_CASE(program_version_32_ref_calls_mark_resolved_arguments);
+    RUN_TEST_CASE(program_version_32_angle_forms_take_version_33_spellings);
+    RUN_TEST_CASE(program_version_33_ref_calls_mark_resolved_arguments);
     RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);

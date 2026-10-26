@@ -6,6 +6,7 @@
 #include "project_migrate29.h"
 #include "project_migrate30.h"
 #include "project_migrate31.h"
+#include "project_migrate32.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -68,8 +69,8 @@ void tree_sitter_chibi_project24_external_scanner_deserialize(void *scanner, con
 
 script_syntax *chibi_migrate_parse(const char *text, int version)
 {
-    /* Version 33 adds argument markers without removing version 32 syntax. */
-    if (version >= 32) {
+    /* Version 34 adds argument markers without removing version 33 syntax. */
+    if (version >= 33) {
         return script_parse(text);
     }
     script_syntax *syntax = xcalloc(1, sizeof *syntax);
@@ -85,6 +86,7 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         : version == 28 ? tree_sitter_chibi_project28()
         : version == 29 ? tree_sitter_chibi_project29()
         : version == 30 ? tree_sitter_chibi_project30()
+                        /* Version 32 kept version 31's grammar. */
                         : tree_sitter_chibi_project31()
     );
     assert(compatible);
@@ -158,6 +160,10 @@ static script_syntax *parse30(const char *text)
 static script_syntax *parse31(const char *text)
 {
     return chibi_migrate_parse(text, 31);
+}
+static script_syntax *parse32(const char *text)
+{
+    return chibi_migrate_parse(text, 32);
 }
 /* Whether text parses with the grammar of project `version`, from 23 on. */
 static bool valid_at(const char *text, int version)
@@ -5106,6 +5112,7 @@ static int accept_migrated(
                          : version == 29 ? parse29(text)
                          : version == 30 ? parse30(text)
                          : version == 31 ? parse31(text)
+                         : version == 32 ? parse32(text)
                                          : script_parse(text);
     if (check->diagnostic_count) {
         const script_diagnostic *diagnostic = &check->diagnostics[0];
@@ -6048,6 +6055,36 @@ static char **migrate_array_calls(char **sources, char **paths, int count, char 
     return migrated;
 }
 
+int chibi_migrate_angle_forms(const char *source, char **migrated, char *error, size_t size)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    /* A rerun after an interrupted step finds sources already migrated, which
+     * only the version 33 grammar reads. */
+    if (!valid_at(source, 32) && valid_at(source, 33)) {
+        return 0;
+    }
+    if (chibi_migrate32_angle_forms(source, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Angle form", 33, migrated, error, size)
+             : 0;
+}
+static char **migrate_angle_forms(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate_angle_forms(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
 /* The declaration collector is shared with the task-call migration. Unlike
  * that older step, this step rejects ambiguous library matches and only exposes
  * declarations directly inside a library through its qualifier. */
@@ -6232,7 +6269,7 @@ char **chibi_migrate_ref_calls(const char *const *sources, int count, char *erro
     for (int i = 0; i < count && valid; i++) {
         syntax[i] = script_parse(sources[i]);
         if (syntax[i]->diagnostic_count) {
-            snprintf(error, size, "Cannot migrate invalid version 32 source %d", i + 1);
+            snprintf(error, size, "Cannot migrate invalid version 33 source %d", i + 1);
             valid = false;
         } else {
             collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, true, &c.functions);
@@ -6243,7 +6280,7 @@ char **chibi_migrate_ref_calls(const char *const *sources, int count, char *erro
         valid = ref_call_rewrite(&c, i, ts_tree_root_node(syntax[i]->tree), &edits, error, size);
         if (valid && acount(edits)) {
             char *result = text_edits_apply(sources[i], edits, acount(edits));
-            valid = !accept_migrated(sources[i], result, "Ref call", 33, &migrated[i], error, size);
+            valid = !accept_migrated(sources[i], result, "Ref call", 34, &migrated[i], error, size);
         }
         afree(edits);
     }
@@ -6472,6 +6509,11 @@ int chibi_project_migrate_content(
                 status = error[0] ? -1 : 0;
                 break;
             case 32:
+                error[0] = '\0';
+                migrated = migrate_angle_forms(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 33:
                 error[0] = '\0';
                 migrated = chibi_migrate_ref_calls((const char *const *)sources, count, error, error_size);
                 status = migrated ? 0 : -1;

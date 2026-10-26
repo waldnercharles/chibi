@@ -50,7 +50,7 @@ static const char *const sources[SOURCE_CASES] = {
     "Choice::union{Payload(first:int|string,second:int|string)} }",
     "Facts :: library { A::union{Next(value:B)} B::union{Next(value:A)} }",
     "Facts :: library { Choice::union{Next(values:Choice[])} }",
-    "Facts :: library { Choice::union{Next(value:task<Choice>)} }",
+    "Facts :: library { Choice::union{Next(value:task(Choice))} }",
     "Facts :: library { Choice::union{Ready} }",
     "Facts :: library { Choice::union{Ready} }",
     "Facts :: library { Choice::union{\"\\u0000\"} }",

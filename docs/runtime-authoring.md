@@ -735,8 +735,8 @@ Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `Gravity3D` sets it. 2D bodies
 fall only when one entity's `Gravity` sets an `acceleration` in units
 per second squared, which also moves material liquids and gas. Behaviors
-handle `on ContactBegin3D :: (Other: handle<ecs.entity>, Point: struct<CF_V3>)`
-and `on ContactEnd3D :: (Other: handle<ecs.entity>)`, as 2D colliders report
+handle `on ContactBegin3D :: (Other: entity, Point: CF_V3)`
+and `on ContactEnd3D :: (Other: entity)`, as 2D colliders report
 `on ContactBegin` and `on ContactEnd`. A sensor collider reports both without pushing. The 3D
 renderer draws a body's `Geometry3D` at its Transform3D pose (see
 `docs/rendering-3d.md`).

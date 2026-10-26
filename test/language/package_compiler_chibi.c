@@ -273,7 +273,7 @@ typedef struct
 static action_record action_records[8];
 static int action_trace[32], action_record_count, action_trace_count;
 static int action_kind_calls[5];
-static int action_number_calls[2];
+static int action_number_calls[2], action_default_calls[2];
 static const pin_string ACTION_TEXT = { .bytes = "a\0\xff"
                                                  "b",
                                         .length = 4 },
@@ -409,6 +409,24 @@ static const char *action_real(void *, const pin_value *arguments, pin_value *re
     results[0].i = (int)arguments[0].f;
     return NULL;
 }
+/* default_pair's overloads: an int then an f64 that defaults to 5, and the
+ * reverse. Each reports which one ran. */
+static const char *action_default_first(void *, const pin_value *arguments, pin_value *results)
+{
+    if (arguments[0].type != PIN_I32 || arguments[1].type != PIN_F64 ||
+        arguments[1].d != 5) {
+        return "default pair's first overload value or header differs";
+    }
+    action_default_calls[0]++;
+    results[0].i = 1;
+    return NULL;
+}
+static const char *action_default_second(void *, const pin_value *, pin_value *results)
+{
+    action_default_calls[1]++;
+    results[0].i = 2;
+    return NULL;
+}
 static const char *action_ambiguous(void *, const pin_value *arguments, pin_value *)
 {
     assert(action_trace_count < NATIVE_COUNT(action_trace));
@@ -451,6 +469,8 @@ static const node_host_call ACTION_CALL = { .invoke = action_probe },
                             ACTION_ASSERT = { .invoke = action_assert },
                             ACTION_TINY = { .invoke = action_tiny },
                             ACTION_REAL = { .invoke = action_real },
+                            ACTION_DEFAULT_FIRST = { .invoke = action_default_first },
+                            ACTION_DEFAULT_SECOND = { .invoke = action_default_second },
                             ACTION_AMBIGUOUS = { .invoke = action_ambiguous },
                             ACTION_AGGREGATE = { .invoke = action_aggregate },
                             ACTION_FAIL = { .context = action_fail };
@@ -587,6 +607,22 @@ static const native_parameter_definition ACTION_EXEC[] = { CORE_EXEC_INPUTS(NATI
     { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I8, .type_name = "i8" },
 }, ACTION_REAL_INPUT[] = {
     { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
+}, ACTION_DEFAULT_FIRST_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "second",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_F64,
+      .type_name = "f64",
+      .has_default = true,
+      .default_value = { .type = PIN_F64, .d = 5 } },
+}, ACTION_DEFAULT_SECOND_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+    { .name = "second",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_I32,
+      .type_name = "int",
+      .has_default = true,
+      .default_value = { .type = PIN_I32, .i = 5 } },
 };
 static const native_capability_definition ACTION_DEFINITIONS[] = {
     { .canonical_name = "Fixture Synchronous Action",
@@ -744,6 +780,24 @@ static const native_capability_definition ACTION_DEFINITIONS[] = {
       .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
       .completion_output = -1,
       .effects = SCRIPT_EFFECT_HOST },
+    { .canonical_name = "fixture.default_first",
+      .source_name = "default_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = ACTION_DEFAULT_FIRST_INPUT,
+      .input_count = NATIVE_COUNT(ACTION_DEFAULT_FIRST_INPUT),
+      .outputs = CSTRING_OUTPUT,
+      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_HOST },
+    { .canonical_name = "fixture.default_second",
+      .source_name = "default_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = ACTION_DEFAULT_SECOND_INPUT,
+      .input_count = NATIVE_COUNT(ACTION_DEFAULT_SECOND_INPUT),
+      .outputs = CSTRING_OUTPUT,
+      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_HOST },
 };
 static const native_definition_binding ACTION_BINDINGS[] = {
     { .canonical_name = "Fixture Synchronous Action",
@@ -780,6 +834,10 @@ static const native_definition_binding ACTION_BINDINGS[] = {
       .implementation = { .call = &ACTION_TINY, .access = &HOST_ACCESS } },
     { .canonical_name = "fixture.numeric_real",
       .implementation = { .call = &ACTION_REAL, .access = &HOST_ACCESS } },
+    { .canonical_name = "fixture.default_first",
+      .implementation = { .call = &ACTION_DEFAULT_FIRST, .access = &HOST_ACCESS } },
+    { .canonical_name = "fixture.default_second",
+      .implementation = { .call = &ACTION_DEFAULT_SECOND, .access = &HOST_ACCESS } },
 };
 static const native_global_definition ACTION_GLOBALS[] = {
     { .canonical_name = "Fixture Action Self", .source_name = "self", .type = ACTION_ENTITY },
@@ -9139,6 +9197,79 @@ TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected
     REQUIRE(alike);
     return true;
 }
+/* The watches of default_pair(2)'s omitted f64 default, 5: as the call's
+ * ordinal-1 input and as the default's output. */
+typedef struct
+{
+    int call, input, output;
+} default_watches;
+static void default_capture(
+    void *user,
+    behavior_function_context *,
+    const behavior_source_watch *watch,
+    const pin_value *value
+)
+{
+    default_watches *watches = user;
+    if (!value || value->type != PIN_F64 || value->d != 5) {
+        return;
+    }
+    watches->input += watch->origin.start == watches->call && !watch->output &&
+                      watch->ordinal == 1;
+    watches->output += watch->output;
+}
+static bool action_default_play(execution_module *module, const char *source, bool compiled)
+{
+    const behavior_function *body = module->plan.functions[0].body;
+    default_watches watched = { .call = (int)(strstr(source, "default_pair") - source) };
+    arena storage = { 0 };
+    behavior_function_activation activation = { 0 };
+    behavior_function_activation_init(body, &activation);
+    pin_value *variables = xcalloc((size_t)body->variable_count + 1, sizeof *variables);
+    behavior_function_context context = { .activation = &activation,
+                                          .variables = variables,
+                                          .budget = 1000,
+                                          .source_debug_user = &watched,
+                                          .source_capture = default_capture };
+    behavior_function_bind_storage(&context, &storage);
+    REQUIRE(behavior_function_bind(body, &context, NULL, UINT64_C(0x1234567800000042)));
+    action_record_count = action_trace_count = 0;
+    memset(action_default_calls, 0, sizeof action_default_calls);
+    int status = behavior_function_run(body, &context, compiled);
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    free(variables);
+    REQUIRE(status == FLOW_OK && action_record_count == 1 && action_records[0].first == 1);
+    REQUIRE(action_default_calls[0] == 1 && !action_default_calls[1]);
+    REQUIRE(watched.input == 1 && watched.output == 1);
+    return true;
+}
+TEST_CASE(package_compiler_watches_overloaded_native_defaults)
+{
+    REQUIRE(action_table());
+    const char *source = "NativeDefault :: behavior { on Tick :: () { "
+                         "sync_probe(First: default_pair(2)); } }";
+    execution_module *expected[2] = { 0 };
+    for (int b = 0; b < 2; b++) {
+        expected[b] = action_oracle(source, b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
+        REQUIRE(expected[b] && action_default_play(expected[b], source, b));
+    }
+    REQUIRE(prepare());
+    bool alike = true;
+    for (int b = 0; b < 2; b++) {
+        execution_module *actual = NULL;
+        REQUIRE(action_module(b, "NativeDefault", source, &actual));
+        REQUIRE(action_default_play(actual, source, b));
+        alike &= same_declarations(expected[b], actual) &&
+                 same_points(expected[b], actual) &&
+                 same_watches(expected[b], actual);
+        execution_module_free(actual);
+        execution_module_free(expected[b]);
+    }
+    REQUIRE(alike);
+    return true;
+}
 typedef struct
 {
     const char *call, *oracle, *first, *second;
@@ -11909,6 +12040,7 @@ void test_language_package_compiler_chibi_actions()
     RUN_TEST_CASE(package_compiler_rejects_nonzero_handle_defaults);
     RUN_TEST_CASE(package_compiler_calls_native_actions);
     RUN_TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected);
+    RUN_TEST_CASE(package_compiler_watches_overloaded_native_defaults);
     RUN_TEST_CASE(package_compiler_rejects_native_action_arguments);
     RUN_TEST_CASE(package_compiler_rejects_native_name_collisions);
     RUN_TEST_CASE(package_compiler_watches_native_owner_arguments);

@@ -2431,12 +2431,14 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     // The given arguments, then the defaults of those the call omits.
     arguments: Value[] = slice(values, first, count);
+    given: NativeArgument[] = [];
     if (linked) {
         switch BindNative(forest, text, item.node, NativeSources(forest, item.node, item.c == 7),
                           natives[chosen], ports) {
             case .Failed(problem, message):
                 return Fail(forest, problem, document, message);
             case .Bound(supplied, total):
+                given = supplied;
                 switch NativeBoundValues(forest, text, document, item.node, constants, callables, types, names,
                                          package, natives[chosen], ports, supplied, total, values, first,
                                          ops, at) {
@@ -2603,14 +2605,15 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     while (index < total) {
         argument := arguments[index];
         // Each argument is watched as the call's input; a ref argument as the
-        // value it reaches. EmitBody watches an overloaded native's where it
-        // is written (OverloadArguments).
+        // value it reaches. EmitBody watches an overloaded native's supplied
+        // arguments where they are written (OverloadArguments), so only its
+        // omitted defaults are watched here.
         written := SlotStorage(argument.storage, argument.container, target);
         if (argument.storage == ReferenceStorage) {
             written = target.pointer_storage;
             code.append(ReferenceWatch(ops, params[callables[item.a].first + index], index, argument.slot,
                                        node, target));
-        } else if (!ops.debug || item.c != 4) {
+        } else if (!ops.debug || item.c != 4 || NativeProvided(given, index) < 0) {
             code.append(WatchCode(ops, argument.slot, argument.storage, argument.container, argument.record,
                                   index, false, node, target));
         }

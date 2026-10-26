@@ -2262,9 +2262,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                      host: length(hosts), call: length(calls)};
         step := Fail(forest, item.node, document, "");
-        if (item.phase == CopyValuePhase && item.a == 1) {
-            step = LendValueStep(values[value_top - 1], 1, ops, target, at, node);
-        } else if (item.phase == CopyValuePhase) {
+        if (item.phase == CopyValuePhase) {
             step = CopyValueStep(values[value_top - 1], 1, ops, target, at, node);
         } else if (item.phase == MapDeletePlacePhase || item.phase == MapDeleteDonePhase) {
             step = MapPlaceDeleteStep(forest, document, types, values, value_top, item, ops, target, at);

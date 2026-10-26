@@ -349,7 +349,7 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, names, next, popped, result, retained, marks):
             emitted := Step.Emitted(extend(watches, code), extend([ValueLocal(IntStorage)], slots),
                                     locals, cells, hosts, roots, calls, names, next, popped, result, retained, marks);
-            return CleanupSequenceValues(emitted, arguments, ops, target, at, node);
+            return CleanupSequenceValues(emitted, Held(types, members, arguments), ops, target, at, node);
     }
 }
 
@@ -469,26 +469,16 @@ ReferenceKeyIntrinsic: int : 35;
 ReferenceUnionIntrinsic: int : 60;
 PlaceComponentPhase: int : 49;
 
+// A record, union or collection its consumer keeps: a temporary passes as it
+// is, since nothing else holds it, and anything else is copied.
 CopyValueStep :: (value: Value, popped: int, ops: Ops, target: Target, at: Bases,
                   node: snapshot.SnapshotNode) -> Step {
-    if (value.place || value.storage <= 0 ||
+    if (value.owned || value.place || value.storage <= 0 ||
         (value.container == 0 && value.storage != StructStorage && value.storage != UnionStorage)) {
         return Step.Emitted([], [], [], [], [], [], [], [], [], popped, value, NoValue(), []);
     }
-    copied := SequenceCallStep([value], ValueCopyIntrinsic,
-                              Typed(-1, value.storage, value.container, value.record), uint64(0), false,
-                              popped, ops, target, at, node);
-    return CleanupSequenceValues(copied, [value], ops, target, at, node);
-}
-
-// A call lends its caller's values: a temporary passes as it is, and the
-// call drops it once it returns. Anything else is copied for the call.
-LendValueStep :: (value: Value, popped: int, ops: Ops, target: Target, at: Bases,
-                  node: snapshot.SnapshotNode) -> Step {
-    if (value.owned) {
-        return Step.Emitted([], [], [], [], [], [], [], [], [], popped, value, NoValue(), []);
-    }
-    return CopyValueStep(value, popped, ops, target, at, node);
+    return SequenceCallStep([value], ValueCopyIntrinsic, Typed(-1, value.storage, value.container, value.record),
+                            uint64(0), false, popped, ops, target, at, node);
 }
 
 PlaceVisit :: (node: int) -> Work {
@@ -768,9 +758,58 @@ SequenceJoined :: (prefix: Step, suffix: Step) -> Step {
             }
     }
 }
+// Whether a value of record or union type `record` can hold a collection,
+// which is all a drop releases. A record reaches one only through a union
+// field. A type met again on the way may hold one.
+HoldsCollection :: (types: TypeDecl[], members: TypeMember[], record: int, visiting: int[]) -> bool {
+    for (seen in visiting) {
+        if (seen == record) {
+            return true;
+        }
+    }
+    declared := types[record];
+    within := extend(visiting, [record]);
+    if (declared.kind == UnionDecl) {
+        variant := declared.first;
+        while (variant < declared.first + declared.count) {
+            if (HoldsCollection(types, members, variant, within)) {
+                return true;
+            }
+            variant += 1;
+        }
+        return false;
+    }
+    if (declared.kind != RecordDecl && declared.kind != VariantDecl) {
+        return true;
+    }
+    index := declared.first;
+    while (index < declared.first + declared.count) {
+        field := members[index];
+        if (field.container != 0 ||
+            ((field.storage == StructStorage || field.storage == UnionStorage) &&
+             HoldsCollection(types, members, field.record, within))) {
+            return true;
+        }
+        index += 1;
+    }
+    return false;
+}
+// The values a drop could release anything from: collections, and records
+// and unions that can hold one. Dropping any other value does nothing.
+Held :: (types: TypeDecl[], members: TypeMember[], values: Value[]) -> Value[] {
+    held: Value[] = [];
+    for (value in values) {
+        if (value.container != 0 || value.record < 0 || value.record >= length(types) ||
+            (value.storage != StructStorage && value.storage != UnionStorage) ||
+            HoldsCollection(types, members, value.record, [])) {
+            held.append(value);
+        }
+    }
+    return held;
+}
 // Release only values whose producer handed ownership to this expression.
 // Plain reads and logical places never own the value they temporarily expose.
-DropSequenceValues :: (values: Value[], ops: Ops, target: Target, at: Bases,
+DropSequenceValues ::(values: Value[], ops: Ops, target: Target, at: Bases,
                        node: snapshot.SnapshotNode) -> Step {
     result := Step.Emitted([], [], [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
     shifted := at;

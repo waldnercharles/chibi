@@ -522,7 +522,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             return PointerPopped(DropNativeResultsStep(result, natives, ports, ops, target, at, node), 1);
         }
         if (kind == "expression_statement") {
-            return PointerPopped(DropSequenceValues([result], ops, target, at, node), 1);
+            return PointerPopped(DropSequenceValues(Held(types, members, [result]), ops, target, at, node), 1);
         }
         if (kind == "local_declaration") {
             declared := Field(forest, item.node, "type");
@@ -810,7 +810,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             code.append(write);
             emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
                                     popped, NoValue(), NoValue(), marks);
-            return CleanupSequenceValues(emitted, [old], ops, target, at, node);
+            return CleanupSequenceValues(emitted, Held(types, members, [old]), ops, target, at, node);
         } else {
             // Copy the cell's whole header, type name and layout included,
             // into result zero.
@@ -1714,7 +1714,8 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
     result.owned = true;
     emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, item.a,
                             result, NoValue(), marks);
-    return CleanupSequenceValues(emitted, slice(values, top - item.a, item.a), ops, target, at, node);
+    return CleanupSequenceValues(emitted, Held(types, members, slice(values, top - item.a, item.a)), ops, target, at,
+                                 node);
 }
 
 // `node` without the parentheses around it.
@@ -2507,7 +2508,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 next.extend(NativeArgumentWork(forest, text, names, item.node, argument));
             } else if (found >= 0 && count < expected_count && !params[callables[found].first + count].reference &&
                        !LentArgument(forest, text, names, argument)) {
-                next.append(Resume(argument, CopyValuePhase, 1, 0));
+                next.append(Resume(argument, CopyValuePhase, 0, 0));
             }
             count += 1;
             argument = NextMember(forest, argument);
@@ -2683,7 +2684,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         result.owned = true;
         emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count,
                                 result, NoValue(), marks);
-        return CleanupSequenceValues(emitted, slice(values, first, count), ops, target, at, node);
+        return CleanupSequenceValues(emitted, Held(types, members, slice(values, first, count)), ops, target, at, node);
     }
     chosen := item.a;
     if (item.c == 4) {
@@ -2753,7 +2754,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                                               arguments, 0, length(arguments), item.node, ops, target, shifted, node),
                                      count);
             // A make copies its arguments into the record; the caller drops those it owns.
-            return CleanupSequenceValues(made, slice(values, first, count), ops, target, at, node);
+            return CleanupSequenceValues(made, Held(types, members, slice(values, first, count)), ops, target, at, node);
         }
     } else {
         called := callables[item.a];
@@ -2972,7 +2973,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, result, NoValue(),
                             marks);
     // The call lent its arguments; the caller drops those it owns.
-    return CleanupSequenceValues(emitted, slice(values, first, count), ops, target, at, node);
+    return CleanupSequenceValues(emitted, Held(types, members, slice(values, first, count)), ops, target, at, node);
 }
 
 // Unary operators and the binary operators other than logic.
@@ -4945,7 +4946,7 @@ NativeArgumentWork :: (forest: snapshot.SnapshotNode[], text: string, names: Nam
         !ReferencesName(forest, text, Field(forest, call, "arguments"), Text(forest, text, root))) {
         return [];
     }
-    return [Resume(argument, CopyValuePhase, 1, 0)];
+    return [Resume(argument, CopyValuePhase, 0, 0)];
 }
 // An address for each of `count` arguments and the result's, then the result.
 CallSlots :: (count: int, result: Slot, target: Target) -> Slot[] {

@@ -111,14 +111,16 @@ typedef enum
  * Copied function, which assigns its array, does not. A `lends` sample's Lent
  * functions pass locals to natives and keep or return natives' results
  * without a copy,
- * and its Copied function copies the element it passes. A `debug_metadata`
+ * and its Copied function copies the element it passes. A `drops` sample's
+ * Plain functions pass temporaries that hold no collection and drop none, and
+ * its Held functions drop the temporary arrays they pass. A `debug_metadata`
  * sample compares source points and watches with stage zero on both compiler
  * backends. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built, lends,
+    bool core, updates, boxed, game, moves, aliases, variants, built, lends, drops,
         same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
     /* Its calls run with the probe natives linked, take no arguments and
      * return one int. */
@@ -1369,6 +1371,30 @@ static const sample samples[] = {
                  { .function = "LentSlice", .arguments = "[[1,2,3]]", .expected = "[337]" },
                  { .function = "LentReturn", .arguments = "[[1,2,3]]", .expected = "[[2]]" },
                  { .function = "CopiedElement", .arguments = "[]", .expected = "[2]" } } },
+    { .name = "plain drops",
+      .group = IMPORT_SAMPLES,
+      .drops = true,
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Shape :: union { Dot(at: Point) | Line(a: int, b: int) }\n"
+                "Bag :: union { Items(xs: int[]) | Size(n: int) }\n"
+                "Make :: (x: int) -> Point { return {x: x, y: x + 1}; }\n"
+                "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
+                "Width :: (s: Shape) -> int {\n"
+                "    switch s { case .Dot(at): return at.x; case .Line(a, b): return b - a; }\n}\n"
+                "Count :: (b: Bag) -> int {\n"
+                "    switch b { case .Items(xs): return length(xs); case .Size(n): return n; }\n}\n"
+                "PlainPoint :: (x: int) -> int { return Sum(Make(x)); }\n"
+                "PlainLine :: (x: int) -> int { return Width(Shape.Line(x, x * 3)); }\n"
+                "PlainDot :: (x: int) -> int { return Width(Shape.Dot(Make(x))); }\n"
+                "HeldBag :: (n: int) -> int { return Count(Bag.Items([n, n])); }\n"
+                "HeldArray :: (n: int) -> int { return length(Counted(n)); }\n"
+                "Counted :: (n: int) -> int[] { xs: int[] = []; xs.append(n); return xs; }",
+      .calls = { { .function = "PlainPoint", .arguments = "[3]", .expected = "[7]" },
+                 { .function = "PlainLine", .arguments = "[2]", .expected = "[4]" },
+                 { .function = "PlainDot", .arguments = "[2]", .expected = "[2]" },
+                 { .function = "HeldBag", .arguments = "[4]", .expected = "[2]" },
+                 { .function = "HeldArray", .arguments = "[4]", .expected = "[1]" } } },
     { .name = "array methods",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -4729,6 +4755,34 @@ static bool lends_native_values(const unsigned char *bytes, size_t length)
     REQUIRE(lent == 3 && copied == 1 && !wrong);
     return true;
 }
+/* A drop releases only collections, so a temporary that holds none is not
+ * dropped. */
+static bool drops_only_collections(const unsigned char *bytes, size_t length)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int plain = 0, held = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool keep = !strncmp(f.entry, "Plain", 5),
+                 drop = !strncmp(f.entry, "Held", 4);
+            int drops = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_DROP);
+            plain += keep;
+            held += drop;
+            if ((keep && drops) || (drop && !drops)) {
+                fprintf(stderr, "package compiler %s drops %d values\n", f.entry, drops);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(plain == 3 && held == 2 && !wrong);
+    return true;
+}
 /* Runs a call with the probe natives: the compiler host links only its own,
  * so the closure is read with them and its function run directly. */
 static bool run_probe(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
@@ -5239,6 +5293,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
                    (!s->lends || lends_native_values(bytes, length)) &&
+                   (!s->drops || drops_only_collections(bytes, length)) &&
                    ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));

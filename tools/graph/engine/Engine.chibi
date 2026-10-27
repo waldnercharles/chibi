@@ -297,8 +297,13 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
             for (substitution in Substitutions(target)) {
                 placeholder := Join(["@", build.before(substitution, "="), "@"]);
                 if (build.before(template, placeholder) != template) {
-                    text = build.replace(text, placeholder,
-                                         Substitute(source_root, build_dir, profile, build.after(substitution, "=")));
+                    value := build.after(substitution, "=");
+                    replacement := Substitute(source_root, build_dir, profile, value);
+                    kind := build.before(value, ":");
+                    if ((kind == "test-sources" || kind == "test-inputs") && replacement == "") {
+                        return false;
+                    }
+                    text = build.replace(text, placeholder, replacement);
                 }
             }
         }
@@ -513,12 +518,57 @@ Configured :: (target: string) -> string[] {
     return headers;
 }
 
+// A test package's direct source files, in CMake glob order. Directories
+// named .chibi and nested packages are not members of this package.
+TestSources :: (directory: string) -> string[] {
+    names: string[] = [];
+    for (name in build.list_directory(directory)) {
+        if (strings.HasSuffix(name, ".chibi") &&
+            build.file_kind(Join([directory, "/", name])) != "directory") {
+            names.append(name);
+        }
+    }
+    return Sorted(names);
+}
+// PREFIX:PACKAGE:DIR declares each source's byte array or its package input,
+// exactly as package_compiler_chibi.cmake configures the shared template.
+TestSubstitution :: (source_root: string, value: string) -> string {
+    kind := build.before(value, ":");
+    rest := build.after(value, ":");
+    prefix := build.before(rest, ":");
+    rest = build.after(rest, ":");
+    identity := build.before(rest, ":");
+    directory := Join([source_root, "/", build.after(rest, ":")]);
+    names := TestSources(directory);
+    if (length(names) == 0) {
+        build.report(Join(["graph: authored test package is empty: ", directory]));
+        return "";
+    }
+    lines: string[] = [];
+    for (index in 0..<length(names)) {
+        symbol := format_text("{}_{}", prefix, index);
+        if (kind == "test-sources") {
+            lines.append(Join(["static const char ", symbol, "[] = { ",
+                               build.byte_list(Join([directory, "/", names[index]])), " 0 };\n"]));
+        } else {
+            lines.append(Join(["    PACKAGE_COMPILER_SOURCE(\"", identity, "/", names[index],
+                               "\", ", symbol, "), \\\n"]));
+        }
+    }
+    return build.join(lines, "");
+}
+
 // A substitution's value: `bytes:PATH` as the C initializer CMake writes from
 // file(READ ... HEX), `cstring:PATH` as the lines of a C string literal, or
 // `compiler:ARGUMENT` as an escaped initializer line for each of the
 // profile's C compiler, its C flags and ARGUMENT, if any, as
-// test/tools/CMakeLists.txt writes them.
+// test/tools/CMakeLists.txt writes them. Test package substitutions take
+// `test-sources:PREFIX:PACKAGE:DIR` or `test-inputs:PREFIX:PACKAGE:DIR`.
 Substitute :: (source_root: string, build_dir: string, profile: Profile, value: string) -> string {
+    kind := build.before(value, ":");
+    if (kind == "test-sources" || kind == "test-inputs") {
+        return TestSubstitution(source_root, value);
+    }
     if (build.before(value, ":") == "compiler") {
         arguments := [profile.compiler];
         arguments.extend(DebugDirectoryFlags(profile, build_dir));

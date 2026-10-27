@@ -1935,6 +1935,26 @@ TEST_CASE(language_delivery_registrations_match)
         snprintf(source, sizeof source, "test/language/%s", sources[i]);
         REQUIRE(registration("tools/graph/engine/Targets.chibi", source));
     }
+    const char *emitter_substitutions[] = {
+        "CHIBI_EMITTER_TEST_SOURCES=test-sources:EMITTER_TEST_SOURCE:llvm_"
+        "native_calls:test/native_aot/emitter_calls",
+        "CHIBI_EMITTER_TEST_INPUTS=test-inputs:EMITTER_TEST_SOURCE:llvm_native_"
+        "calls:test/native_aot/emitter_calls"
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(
+            graph_target_registration("Substitutions", "chibi_language_testing", emitter_substitutions[i])
+        );
+    }
+    REQUIRE(
+        registration("test/language/package_compiler_chibi_source.h.in", "@CHIBI_EMITTER_TEST_SOURCES@")
+    );
+    REQUIRE(
+        registration("test/language/package_compiler_chibi_source.h.in", "@CHIBI_EMITTER_TEST_INPUTS@")
+    );
+    REQUIRE(
+        registration("test/language/package_compiler_chibi.cmake", "list(FILTER test_sources INCLUDE REGEX \"\\\\.chibi$\")")
+    );
     REQUIRE(registration("test/language/main.c", "test_language_parallel"));
     REQUIRE(registration("test/language/CMakeLists.txt", "test/parallel.c"));
     REQUIRE(registration("test/language/CMakeLists.txt", "parallel.c)"));

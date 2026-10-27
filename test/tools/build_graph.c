@@ -1902,8 +1902,27 @@ static bool graph_target_registration(const char *section, const char *target, c
     REQUIRE(found);
     return true;
 }
+static bool graph_function_registration(const char *name, const char *needle)
+{
+    char filename[GRAPH_PATH], declaration[128];
+    snprintf(filename, sizeof filename, "%s/tools/graph/engine/Targets.chibi", CHIBI_SOURCE_ROOT);
+    snprintf(declaration, sizeof declaration, "\n%s ::", name);
+    char *text = tool_read(filename);
+    REQUIRE(text);
+    const char *function = strstr(text, declaration);
+    const char *end = function ? strstr(function, "\n}") : NULL;
+    const char *match = function ? strstr(function, needle) : NULL;
+    bool found = end && match && match < end;
+    free(text);
+    REQUIRE(found);
+    return true;
+}
 TEST_CASE(language_delivery_registrations_match)
 {
+    REQUIRE(
+        registration("test/language/CMakeLists.txt", "set_source_files_properties(effects.c generic.c PROPERTIES INCLUDE_DIRECTORIES \"${CHIBI_LANGUAGE_TEST_ROOT}/src\")")
+    );
+    REQUIRE(graph_function_registration("LanguageTestsOverSource", "\"test/language/effects.c\""));
     const char *calls[] = { "test_language_execution_scope",
                             "test_language_asset_packaging_chibi",
                             "test_language_shader_source_chibi" };

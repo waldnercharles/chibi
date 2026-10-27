@@ -46,10 +46,9 @@ enum
     DECL_CONSTANT
 };
 static const char PACKAGE[] = "project:package_compiler";
-/* The producer's own rejections, its size limits among them, and the
- * ordinary compiler's rejection of a call it cannot resolve. */
+/* The producer's own rejections and the ordinary compiler's rejection of a
+ * call it cannot resolve. */
 static const char PRODUCER[] = "scalar proof ";
-static const char LIMIT[] = "scalar proof admits at most ";
 static const char UNKNOWN[] = "Unknown function '";
 enum
 {
@@ -115,7 +114,6 @@ enum
     CENSUS_RESULTS,
     CENSUS_NO_RESULT,
     CENSUS_MANAGED_FIELDS,
-    CENSUS_LIMITS,
     CENSUS_TEXT_NATIVES,
     CENSUS_FORMAT,
     CENSUS_NATIVES,
@@ -134,7 +132,6 @@ static const struct
     [CENSUS_RESULTS] = { "W2", "multiple and named results" },
     [CENSUS_NO_RESULT] = { "W2", "functions without a result" },
     [CENSUS_MANAGED_FIELDS] = { "W9", "strings and arrays in records and unions" },
-    [CENSUS_LIMITS] = { "W27", "the producer's size limits" },
     [CENSUS_TEXT_NATIVES] = { "W4", "text natives" },
     [CENSUS_FORMAT] = { "W6", "`format_text`" },
     [CENSUS_NATIVES] = { "W14", "other native catalog calls" },
@@ -156,7 +153,6 @@ static const char *const ARRAY_NATIVES[] = { "make_array",     "get",
 enum
 {
     SPAN_TYPE, /* A record or union the function names. */
-    SPAN_PARAMETERS,
     SPAN_PARAMETER,
     SPAN_RESULTS,
     SPAN_FUNCTION,
@@ -166,7 +162,6 @@ typedef struct
 {
     const char *function, *path, *callee;
     char *message, *excerpt;
-    const char *rejection; /* The message, or what a parameter list exceeds. */
     int category;
     bool imports, constants;
 } census_row;
@@ -794,9 +789,6 @@ static int category(const char *message, const char *text, int start, int end, i
         snprintf(name, sizeof name, "%.*s", end - start, text + start);
         return native_category(name);
     }
-    if (starts(message, LIMIT)) {
-        return CENSUS_LIMITS;
-    }
     if (strstr(message, "record fields") || strstr(message, "union payloads")) {
         return CENSUS_MANAGED_FIELDS;
     }
@@ -804,7 +796,6 @@ static int category(const char *message, const char *text, int start, int end, i
         return CENSUS_OTHER;
     }
     switch (span) {
-        case SPAN_PARAMETERS: return CENSUS_LIMITS;
         case SPAN_FUNCTION: return CENSUS_NO_RESULT;
         case SPAN_RESULTS:
             return text[start] == '(' ? CENSUS_RESULTS
@@ -822,9 +813,6 @@ static int span_of(const census_place *place, int at)
 {
     if (!place) {
         return SPAN_TYPE;
-    }
-    if (at == (int)place->parameters) {
-        return SPAN_PARAMETERS;
     }
     if (at > (int)place->parameters && at < (int)place->results) {
         return SPAN_PARAMETER;
@@ -905,9 +893,6 @@ static bool census_function(int function)
         row.callee = in > 0 ? decls[place->decl].name : NULL;
         int span = span_of(place, start);
         row.category = category(message, build.text, start, end, span);
-        row.rejection = span == SPAN_PARAMETERS && row.category == CENSUS_LIMITS
-                          ? "more parameters than the producer admits"
-                          : message;
     }
     apush(rows, row);
     build_free(&build);
@@ -1004,18 +989,18 @@ static void write_summary(FILE *out)
     for (int c = 0; c < CENSUS_CATEGORIES; c++) {
         for (int i = 0; i < acount(rows); i++) {
             const census_row *r = &rows[i];
-            bool first = r->category == order[c] && r->rejection;
+            bool first = r->category == order[c] && r->message;
             for (int j = 0; first && j < i; j++) {
                 first = rows[j].category != r->category ||
-                        strcmp(rows[j].rejection, r->rejection);
+                        strcmp(rows[j].message, r->message);
             }
             int count = 0;
             for (int j = i; first && j < acount(rows); j++) {
                 count += rows[j].category == r->category &&
-                         !strcmp(rows[j].rejection, r->rejection);
+                         !strcmp(rows[j].message, r->message);
             }
             if (first) {
-                fprintf(out, "| %s | %s | %d |\n", CATEGORIES[r->category].package, r->rejection, count);
+                fprintf(out, "| %s | %s | %d |\n", CATEGORIES[r->category].package, r->message, count);
             }
         }
     }
@@ -1053,9 +1038,7 @@ static void write_report(FILE *out)
         "`Driver.Object` also take it. The producer checks every signature "
         "before any body, so most\n"
         "functions stop at a parameter or result, and the next blocker shows\n"
-        "once that package lands. Size limits count the flattened source, so "
-        "records and unions from\n"
-        "other packages count toward them as they would in one package.\n\n"
+        "once that package lands.\n\n"
         "## Summary\n\n"
     );
     write_summary(out);
@@ -1132,14 +1115,14 @@ static const char APP_SOURCE
          "import lib \"project:lib\"\n"
          "Twice :: (x: int) -> int { return lib.Sum({a: x, b: x}); }\n"
          "Wrap :: (x: int) -> int {\n"
-         "    return Many(x, x, x, x, x, x, x, x, x);\n"
+         "    return Many(x, x, x, x, x, x, x, x, [x]);\n"
          "}\n"
          "Alias :: (v: lib.Value) -> int {\n"
          "    if v is .Yes(lib) { return lib; }\n"
          "    return lib.Sum({a: 1, b: 2});\n"
          "}\n"
          "Many :: (a: int, b: int, c: int, d: int, e: int,\n"
-         "         f: int, g: int, h: int, i: int) -> int {\n"
+         "         f: int, g: int, h: int, i: int[]) -> int {\n"
          "    return a;\n"
          "}\n";
 static const source_package_input SAMPLE[] = {
@@ -1238,11 +1221,10 @@ TEST_CASE(native_census_follows_calls_into_their_blockers)
     }
     REQUIRE(rows[0].category == CENSUS_NATIVE && rows[0].imports && rows[0].constants);
     REQUIRE(
-        rows[1].category == CENSUS_LIMITS && rows[1].callee &&
-        !strcmp(rows[1].callee, "Many")
+        rows[1].category == CENSUS_ARRAYS && rows[1].callee &&
+        !strcmp(rows[1].callee, "Many") && !strcmp(rows[1].excerpt, "i: int[]")
     );
-    REQUIRE(!strcmp(rows[1].rejection, "more parameters than the producer admits"));
-    REQUIRE(rows[2].category == CENSUS_LIMITS && !rows[2].callee && !rows[2].imports);
+    REQUIRE(rows[2].category == CENSUS_ARRAYS && !rows[2].callee && !rows[2].imports);
     forget_rows();
     return true;
 }

@@ -101,7 +101,8 @@ static bool link_library(const char *object, const bundle_call *calls, int count
     snprintf(runtime, sizeof runtime, "%s/runtime.o", directory);
     argv[n++] = output;
     argv[n++] = object;
-    /* The _fltused that objects using floating point reference. */
+    /* The _fltused that objects using floating point reference and the
+     * __chkstk that frames larger than a page call. */
     argv[n++] = runtime;
     for (int i = 0; i < count; i++) {
         bool listed = false;

@@ -171,6 +171,12 @@ static const char driver_ci_build
     [] = "if sys.argv[2] == 'ci-initial-build':\n"
          "    import shlex\n"
          "    root = Path(sys.argv[4])\n"
+         "    sanitizer, request = sys.argv[5].split(':', 1)\n"
+         "    if request == 'alias':\n"
+         "        alias = root / 'logical-root'\n"
+         "        alias.unlink(missing_ok=True)\n"
+         "        alias.symlink_to(root, target_is_directory=True)\n"
+         "        root = alias\n"
          "    trace = root / 'ci-build-trace'\n"
          "    recorder = root / 'ci-build-record.py'\n"
          "    recorder.write_text('import json, os, sys\\n'\n"
@@ -179,8 +185,8 @@ static const char driver_ci_build
          "        'sys.exit(1 if sys.argv[1] == os.environ[\"CI_FAIL\"] else "
          "0)\\n')\n"
          "    host = root / 'ci-build-host'\n"
-         "    cold = sys.argv[5].startswith('cold:')\n"
-         "    failure = sys.argv[5].removeprefix('cold:')\n"
+         "    cold = request.startswith('cold:')\n"
+         "    failure = request.removeprefix('cold:')\n"
          "    if cold:\n"
          "        host.unlink(missing_ok=True)\n"
          "    else:\n"
@@ -191,73 +197,128 @@ static const char driver_ci_build
          "    env = dict(os.environ, CI_TRACE=str(trace), CI_FAIL=failure, "
          "MAKEFLAGS='', MFLAGS='')\n"
          "    jobs = {'native': [], 'native-macos': []}\n"
-         "    profiles = {}\n"
+         "    configured = set()\n"
+         "    pipefail = set()\n"
+         "    profile_file = root / 'ci-profile-env'\n"
+         "    profile_file.write_text('')\n"
+         "    subprocess.run([sys.executable, '.github/native-profile.py'], "
+         "check=True,\n"
+         "        env=dict(env, CHIBI_CI_SANITIZERS=sanitizer, "
+         "GITHUB_ENV=str(profile_file)),\n"
+         "        stdout=subprocess.DEVNULL)\n"
+         "    profile = dict(line.split('=', 1) for line in "
+         "profile_file.read_text().splitlines())\n"
+         "    env.update(profile)\n";
+static const char driver_ci_build_workflow
+    [] = "    release = {}\n"
+         "    release_first = {}\n"
+         "    test_hosts = {}\n"
          "    job = None\n"
          "    for line in "
          "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
          "        if line.startswith('  ') and not line.startswith('   '):\n"
          "            job = line.strip().removesuffix(':')\n"
-         "        if job in jobs and "
-         "line.strip().startswith('SANITIZER_CMAKE_FLAGS:'):\n"
-         "            profiles[job] = line.split(':', 1)[1].strip()\n"
          "        command = line.strip().removeprefix('run: ')\n"
+         "        if job in jobs and command == 'python3 "
+         ".github/native-profile.py':\n"
+         "            configured.add(job)\n"
+         "        if job in jobs and command == 'set -o pipefail':\n"
+         "            pipefail.add(job)\n"
          "        if job in jobs and command.startswith('make '):\n"
          "            words = shlex.split(command)\n"
-         "            if words[1] in ('test-build', 'build'): "
-         "jobs[job].append(words)\n"
-         "    for job, commands in jobs.items():\n"
-         "        env.pop('SANITIZER_CMAKE_FLAGS', None)\n"
-         "        if job in profiles: env['SANITIZER_CMAKE_FLAGS'] = "
-         "profiles[job]\n"
-         "        if failure == 'o0' and job in profiles:\n"
-         "            commands = [c + ['SANITIZER_CMAKE_FLAGS=' + "
-         "profiles[job].replace('-O1', '-O0')] for c in commands]\n"
-         "        trace.write_text('')\n"
-         "        status = 0\n"
-         "        for command in commands:\n"
-         "            result = subprocess.run([command[0], '-C', str(root),\n"
-         "                *command[1:], 'BUILD_HOST=' + str(host),\n"
-         "                'QUIET=' + sys.executable + ' ' + str(recorder), "
-         "'JOBS=2',\n"
-         "                'GRAPH_BUILD=' + ('Darwin' if job == 'native-macos' "
-         "else '')],\n"
-         "                env=env, stdout=subprocess.DEVNULL, "
-         "stderr=subprocess.DEVNULL)\n"
-         "            status = result.returncode\n"
-         "            if status: break\n"
-         "        print(job, 'failed' if status else 'continued')\n"
-         "        for line in trace.read_text().splitlines():\n"
-         "            arguments = json.loads(line)\n"
-         "            step = arguments[0]\n"
-         "            print(step)\n"
-         "            if step == 'graph':\n"
-         "                print('targets=' + ','.join(arguments[i + 1] for i, "
-         "arg in enumerate(arguments) if arg == '--target'))\n"
-         "                print('profile=' + "
-         "arguments[arguments.index('--profile') + 1])\n"
-         "                print('jobs=' + arguments[arguments.index('--jobs') "
-         "+ 1])\n"
-         "            if step == 'configure-native':\n"
-         "                print('flags=' + ','.join(arg for arg in arguments "
-         "if arg.startswith(('-DCMAKE_BUILD_TYPE=', "
-         "'-DCHIBI_ENABLE_SANITIZERS=', '-DCHIBI_SANITIZERS=', "
-         "'-DCMAKE_C_FLAGS_DEBUG=', '-DCMAKE_CXX_FLAGS_DEBUG='))))\n"
-         "            if step == 'build':\n"
-         "                print('targets=' + "
-         "','.join(arguments[arguments.index('--target') + "
-         "1:arguments.index('--parallel')]))\n"
-         "                print('jobs=' + "
-         "arguments[arguments.index('--parallel') + 1])\n"
-         "            if step == 'native-toolchain':\n"
-         "                print('targets=' + ','.join(arguments[i + 1] for i, "
-         "arg in enumerate(arguments) if arg == '--target'))\n"
-         "                print('flags=' + ','.join(arg for arg in arguments "
-         "if arg.startswith(('-DCMAKE_BUILD_TYPE=', "
-         "'-DCHIBI_ENABLE_SANITIZERS=', '-DCHIBI_SANITIZERS=', "
-         "'-DCMAKE_C_FLAGS_DEBUG=', '-DCMAKE_CXX_FLAGS_DEBUG='))))\n"
-         "                print('jobs=' + arguments[arguments.index('--jobs') "
-         "+ 1])\n"
-         "    sys.exit(0)\n";
+         "            if words[1] == 'build-release':\n"
+         "                release[job] = next((w.split('=', 1)[1] for w in "
+         "words if w.startswith('BUILD_TARGET=')), '')\n"
+         "                release_first[job] = not jobs[job]\n"
+         "            if 'test-native' in words:\n"
+         "                test_hosts[job] = next((w.split('=', 1)[1] for w in "
+         "words if w.startswith('ASSET_GENERATOR_HOSTS=')), '')\n"
+         "            if words[1] in ('test-build', 'build'):\n"
+         "                if words[-4:] != ['2>&1', '|', 'tee', "
+         "'$RUNNER_TEMP/native-build.log']:\n"
+         "                    raise RuntimeError('initial build must retain "
+         "its evidence pipeline')\n"
+         "                jobs[job].append(words[:-4])\n"
+         "    if configured != set(jobs) or pipefail != set(jobs):\n"
+         "        raise RuntimeError('native CI jobs must select their shared "
+         "profile')\n";
+static const char driver_ci_build_run[] =
+    "    for job, commands in jobs.items():\n"
+    "        print('release-first=' + str(release_first.get(job, False)))\n"
+    "        print('release-targets=' + release.get(job, ''))\n"
+    "        print('test-generators=' + test_hosts.get(job, ''))\n"
+    "        if failure == 'o0':\n"
+    "            commands = [c + ['SANITIZER_CMAKE_FLAGS=' +\n"
+    "                profile['SANITIZER_CMAKE_FLAGS'].replace('-O1', '-O0'),\n"
+    "                'BUILD_DEBUG_OPTIMIZATION=0'] for c in commands]\n"
+    "        trace.write_text('')\n"
+    "        status = 0\n"
+    "        for command in commands:\n"
+    "            arguments = [command[0], '-C', str(root),\n"
+    "                *command[1:], 'BUILD_HOST=' + str(host),\n"
+    "                'QUIET=' + sys.executable + ' ' + str(recorder), "
+    "'JOBS=2',\n"
+    "                'GRAPH_BUILD=' + ('Darwin' if job == 'native-macos' else "
+    "'')]\n"
+    "            pipeline = shlex.join(arguments) + ' 2>&1 | tee ' + "
+    "shlex.quote(str(root / 'build.log'))\n"
+    "            result = subprocess.run(['bash', '-o', 'pipefail', '-c', "
+    "pipeline],\n"
+    "                env=env, stdout=subprocess.DEVNULL, "
+    "stderr=subprocess.DEVNULL)\n"
+    "            status = result.returncode\n"
+    "            if status: break\n"
+    "        print(job, 'failed' if status else 'continued')\n"
+    "        for line in trace.read_text().splitlines():\n"
+    "            arguments = json.loads(line)\n"
+    "            step = arguments[0]\n"
+    "            print(step)\n"
+    "            if step in ('graph', 'native-toolchain', "
+    "'configure-native'):\n"
+    "                generator = next((a.split('=', 1)[1] for a in arguments "
+    "if a.startswith('-DCHIBI_ASSET_GENERATOR_HOSTS=')), '')\n"
+    "                if '--asset-generator-hosts' in arguments:\n"
+    "                    generator = "
+    "arguments[arguments.index('--asset-generator-hosts') + 1]\n"
+    "                if generator and not Path(generator).is_absolute():\n"
+    "                    raise ValueError('generator hosts must be absolute')\n"
+    "                print('generators=' + "
+    "(str(Path(generator).resolve().relative_to(root.resolve())) if generator "
+    "else ''))\n"
+    "            if step == 'graph':\n"
+    "                print('targets=' + ','.join(arguments[i + 1] for i, arg "
+    "in enumerate(arguments) if arg == '--target'))\n"
+    "                print('profile=' + arguments[arguments.index('--profile') "
+    "+ 1])\n"
+    "                print('optimization=' + "
+    "arguments[arguments.index('--debug-optimization') + 1])\n"
+    "                print('frames=' + "
+    "(arguments[arguments.index('--debug-frame-pointers') + 1]\n"
+    "                    if '--debug-frame-pointers' in arguments else "
+    "'off'))\n"
+    "                print('jobs=' + arguments[arguments.index('--jobs') + "
+    "1])\n"
+    "            if step == 'configure-native':\n"
+    "                print('flags=' + ','.join(arg for arg in arguments if "
+    "arg.startswith(('-DCMAKE_BUILD_TYPE=', '-DCHIBI_ENABLE_SANITIZERS=', "
+    "'-DCHIBI_SANITIZERS=', '-DCMAKE_C_FLAGS_DEBUG=', "
+    "'-DCMAKE_CXX_FLAGS_DEBUG=', '-DCMAKE_OBJC_FLAGS_DEBUG='))))\n"
+    "            if step == 'build':\n"
+    "                print('targets=' + "
+    "','.join(arguments[arguments.index('--target') + "
+    "1:arguments.index('--parallel')]))\n"
+    "                print('jobs=' + arguments[arguments.index('--parallel') + "
+    "1])\n"
+    "            if step == 'native-toolchain':\n"
+    "                print('targets=' + ','.join(arguments[i + 1] for i, arg "
+    "in enumerate(arguments) if arg == '--target'))\n"
+    "                print('flags=' + ','.join(arg for arg in arguments if "
+    "arg.startswith(('-DCMAKE_BUILD_TYPE=', '-DCHIBI_ENABLE_SANITIZERS=', "
+    "'-DCHIBI_SANITIZERS=', '-DCMAKE_C_FLAGS_DEBUG=', "
+    "'-DCMAKE_CXX_FLAGS_DEBUG=', '-DCMAKE_OBJC_FLAGS_DEBUG='))))\n"
+    "                print('jobs=' + arguments[arguments.index('--jobs') + "
+    "1])\n"
+    "    sys.exit(0)\n";
 /* Inject only the expensive workload; exercise the experiment's real CLI
  * handlers and policy supervisor over the existing native worker. */
 static const char driver_experiment[] =
@@ -973,45 +1034,64 @@ TEST_CASE(ci_groups_share_one_build_and_stop_on_failure)
     return true;
 }
 
-TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
+static bool ci_initial_build_profile(bool instrumented)
 {
     const char *targets = "targets=chibi,chibi-compile,chibi-player,chibi_ctl,"
                           "test_tools,test_language";
-    const char *flags = "flags=-DCMAKE_BUILD_TYPE=Debug,-DCHIBI_ENABLE_"
-                        "SANITIZERS=ON,-DCHIBI_SANITIZERS=address,undefined\n";
-    const char
-        *linux_flags = "flags=-DCMAKE_BUILD_TYPE=Debug,-DCHIBI_ENABLE_"
-                       "SANITIZERS=ON,-DCHIBI_SANITIZERS=address,undefined,"
-                       "-DCMAKE_C_FLAGS_DEBUG=-g "
-                       "-O1,-DCMAKE_CXX_FLAGS_DEBUG=-g -O1\n";
+    const char *profile = instrumented ? "sanitizer" : "debug";
+    const char *sanitizer = instrumented ? "ON" : "OFF";
+    const char *debug = instrumented ? "-g -O1" : "-g -O1 -fno-omit-frame-pointer";
+    char flags[512];
+    snprintf(
+        flags,
+        sizeof flags,
+        "flags=-DCMAKE_BUILD_TYPE=Debug,-DCHIBI_ENABLE_SANITIZERS=%s,"
+        "-DCHIBI_SANITIZERS=address,undefined,-DCMAKE_C_FLAGS_DEBUG=%s,"
+        "-DCMAKE_CXX_FLAGS_DEBUG=%s,-DCMAKE_OBJC_FLAGS_DEBUG=%s\n",
+        sanitizer,
+        debug,
+        debug,
+        debug
+    );
     const char *failures[] = { "-",           "native-toolchain",
                                "third-party", "graph",
                                "cold:-",      "cold:configure-native",
                                "cold:build",  "cold:third-party",
                                "cold:graph" };
     for (int fail = 0; fail < 9; fail++) {
-        REQUIRE(run("ci-initial-build", failures[fail]) == 0);
+        char argument[64];
+        snprintf(argument, sizeof argument, "%s:%s", sanitizer, failures[fail]);
+        REQUIRE(run("ci-initial-build", argument) == 0);
         bool cold = fail >= 4;
-        char expected[2048] = "";
+        char expected[3072] = "release-first=True\n"
+                              "release-targets=chibi_ctl chibi "
+                              "chibi-build-host chibi-compiler-host\n"
+                              "test-generators=build-release/sdk\n";
         strcat(expected, fail == 1 || fail == 5 || fail == 6 ? "native failed\n" : "native continued\n");
         if (cold) {
-            strcat(expected, "configure-native\n");
-            strcat(expected, linux_flags);
+            strcat(expected, "configure-native\ngenerators=build-release/sdk\n");
+            strcat(expected, flags);
             if (fail != 5) {
                 strcat(expected, "build\n");
                 strcat(expected, targets);
                 strcat(expected, ",chibi-build-host\njobs=2\n");
             }
         } else {
-            strcat(expected, "native-toolchain\n");
+            strcat(expected, "native-toolchain\ngenerators=build-release/sdk\n");
             strcat(expected, targets);
             strcat(expected, "\n");
-            strcat(expected, linux_flags);
+            strcat(expected, flags);
             strcat(expected, "jobs=2\n");
         }
+        strcat(
+            expected,
+            "release-first=True\n"
+            "release-targets=chibi_ctl chibi chibi-compiler-host\n"
+            "test-generators=build-release/sdk\n"
+        );
         strcat(expected, fail == 2 || fail == 3 || fail >= 5 ? "native-macos failed\n" : "native-macos continued\n");
         if (cold) {
-            strcat(expected, "configure-native\n");
+            strcat(expected, "configure-native\ngenerators=\n");
             strcat(expected, flags);
             if (fail != 5) {
                 strcat(expected, "build\ntargets=chibi-build-host\njobs=2\n");
@@ -1020,9 +1100,13 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
         if (fail != 5 && fail != 6) {
             strcat(expected, "third-party\n");
             if (fail != 2 && fail != 7) {
-                strcat(expected, "graph\n");
+                strcat(expected, "graph\ngenerators=build-release/sdk\n");
                 strcat(expected, targets);
-                strcat(expected, ",chibi-build-host\nprofile=sanitizer\njobs=2\n");
+                strcat(expected, ",chibi-build-host\nprofile=");
+                strcat(expected, profile);
+                strcat(expected, "\noptimization=1\nframes=");
+                strcat(expected, instrumented ? "off" : "on");
+                strcat(expected, "\njobs=2\n");
             }
         }
         char *output = tool_read(logpath);
@@ -1033,15 +1117,50 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
     return true;
 }
 
+TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
+{
+    REQUIRE(ci_initial_build_profile(false));
+    REQUIRE(ci_initial_build_profile(true));
+    return true;
+}
+
+TEST_CASE(ci_generator_hosts_resolve_symlink_root)
+{
+    const char *profiles[] = { "OFF", "ON" };
+    for (int i = 0; i < 2; i++) {
+        char argument[32];
+        snprintf(argument, sizeof argument, "%s:-", profiles[i]);
+        REQUIRE(run("ci-initial-build", argument) == 0);
+        char *physical = tool_read(logpath);
+        REQUIRE(physical);
+        snprintf(argument, sizeof argument, "%s:alias", profiles[i]);
+        int status = run("ci-initial-build", argument);
+        char *logical = tool_read(logpath);
+        bool equal = status == 0 && logical && !strcmp(physical, logical);
+        free(physical);
+        free(logical);
+        REQUIRE(equal);
+    }
+    return true;
+}
+
 TEST_CASE(ci_linux_optimization_preserves_explicit_o0)
 {
-    REQUIRE(run("ci-initial-build", "o0") == 0);
-    char *output = tool_read(logpath);
-    REQUIRE(output);
-    bool correct = strstr(output, "-DCMAKE_C_FLAGS_DEBUG=-g -O0,-DCMAKE_CXX_FLAGS_DEBUG=-g -O0\n") &&
-                   !strstr(output, "-O1") && strstr(output, "profile=sanitizer\n");
-    free(output);
-    REQUIRE(correct);
+    const char *profiles[] = { "OFF:o0", "ON:o0" };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(run("ci-initial-build", profiles[i]) == 0);
+        char *output = tool_read(logpath);
+        REQUIRE(output);
+        const char *debug = i ? "-g -O0" : "-g -O0 -fno-omit-frame-pointer";
+        char flags[256];
+        snprintf(flags, sizeof flags, "-DCMAKE_C_FLAGS_DEBUG=%s,-DCMAKE_CXX_FLAGS_DEBUG=%s,-DCMAKE_OBJC_FLAGS_DEBUG=%s\n", debug, debug, debug);
+        bool correct = strstr(output, flags) && !strstr(output, "-O1") &&
+                       strstr(output, i ? "profile=sanitizer\n" : "profile=debug\n") &&
+                       strstr(output, i ? "optimization=0\nframes=off\n" : "optimization=0\nframes=on\n") &&
+                       !strstr(output, " failed\n");
+        free(output);
+        REQUIRE(correct);
+    }
     return true;
 }
 
@@ -2148,6 +2267,8 @@ static void set_up()
     assert(fputs(driver_integer_parallel, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
+    assert(fputs(driver_ci_build_workflow, script) >= 0);
+    assert(fputs(driver_ci_build_run, script) >= 0);
     assert(fputs(driver_experiment, script) >= 0);
     for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
         assert(fputs(driver_parallel[i], script) >= 0);
@@ -2171,6 +2292,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
+    RUN_TEST_CASE(ci_generator_hosts_resolve_symlink_root);
     RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);
     RUN_TEST_CASE(ci_preserves_failed_macos_graph_stage_log);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);

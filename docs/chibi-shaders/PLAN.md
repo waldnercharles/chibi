@@ -1,8 +1,7 @@
 # Shaders and materials in Chibi
 
 This plan moves materials, shapes and shader libraries from KDL graph assets to
-ordinary `.chibi` source, and lays out when the engine's own GLSL shaders could
-follow. It is written in the style of the [native LLVM
+ordinary `.chibi` source, and then ports the engine's own GLSL shaders. It is written in the style of the [native LLVM
 ledger](../native-llvm-ledger.md): each work package names what it delivers,
 what it depends on, and the decision it waits for.
 
@@ -105,8 +104,10 @@ gap.
 | C. LLVM to SPIR-V | Lower through the native lane's LLVM IR and LLVM's SPIR-V backend | Reuses the LLVM lowering. | LLVM's SPIR-V backend is aimed at compute kernels; graphics stages are still maturing. Studio would need LLVM to preview an edit, while the native lane uses it ahead of time only. Metal, D3D12 and web still need cross-compiling. No CPU preview. |
 | D. Direct SPIR-V | An authored emitter writes SPIR-V, as Naga and Slang do, and hands it to SDL_GPU | Removes the GLSL text step and glslang from the runtime; faster compiles. | Large. Needs reflection and cross-compiling for other backends, and web GLES still wants GLSL. |
 
-Recommendation: A for materials now, B when pipeline shaders or loops need it,
-and D only if measured compile times justify it. C is not recommended.
+Recommendation: A for materials now, and B for pipeline shaders, which P1
+commits to. Design B's IR for pipeline shaders from the start, so that
+materials move onto it rather than A and B living side by side. D only if
+measured compile times justify it. C is not recommended.
 
 ## Work packages
 
@@ -119,8 +120,8 @@ and D only if measured compile times justify it. C is not recommended.
 | S4 | Material and shape functions | The shader pass recognizes `-> Surface` and `-> Shape` functions, and ordinary libraries replace `shader-libraries/`. In the same package, glTF import writes `.chibi` materials instead of KDL graphs, and a project migration rewrites the 13 KDL graph assets in this repository. Then the KDL graph format and `shader_adapter.c` are removed, and the graph becomes a derived view. | S3 | not started |
 | S5 | Studio | Materials open in the code editor with diagnostics and a live preview; the graph view and parameter overrides keep working; CPU watches come from `source_debug`. Shared navigation in SDK authoring modules. | S4 | not started |
 | S6 | Texture parameters and instances | Image-typed parameters bound per draw (R4d). glTF import switches from one generated material function per glTF material to instances of one shared standard material. | S4, R4d | not started |
-| S7 | Control flow, matrices, integers | Option B's IR: `if`, bounded loops, matrices and integers with D1 semantics, on the CPU evaluator and in GLSL. | S3, S2 | not started |
-| S8 | Pipeline shaders in Chibi | Vertex, fragment and compute entry points with declared bindings; port the 102 engine shader files one family at a time with GPU image checks. | S7, decision P1 | decision |
+| S7 | Control flow, matrices, integers | Option B's IR, designed for pipeline shaders: `if`, bounded loops, matrices, integers with D1 semantics, textures and stage inputs and outputs, on the CPU evaluator and in GLSL. Materials move from `shader_graph` onto it. | S3, S2 | not started |
+| S8 | Pipeline shaders in Chibi | Vertex, fragment and compute entry points with declared bindings. Port the 102 engine shader files one family at a time (post, sky, shadows, 3D surface, SSAO, GI, HRC), each with GPU image checks against the GLSL it replaces, and delete the GLSL as each family lands. | S7 | not started |
 | S9 | Direct SPIR-V | Option D, only if S8's measurements show GLSL compilation is the bottleneck. | S8 | not planned |
 
 ### Relation to the LLVM lanes
@@ -139,10 +140,10 @@ the LLVM lane also lowers from. The overlaps are:
 
 | ID | Question | Recommendation | State |
 | --- | --- | --- | --- |
-| P1 | Do the engine's pipeline shaders move to Chibi too, or only authored materials and shapes? | Materials and shapes first (S1-S6). Decide on pipeline shaders once S7 lands. | open |
+| P1 | Do the engine's pipeline shaders move to Chibi too, or only authored materials and shapes? | Both: materials first (S1-S6), then the engine's pipeline shaders (S7-S8). (Owner, 27 October 2026.) | decided |
 | P2 | Is a material an ordinary function with a `Surface` result, or a new `:: material` declaration kind? | An ordinary function: it needs no new syntax. Add a declaration kind only if the function form hits a concrete gap. | open |
 | P3 | Do shader libraries stay a separate kind? | No. One library kind; the shader pass checks what a material reaches. | open |
-| P4 | Which backend? | A now, B when needed (see above). | open |
+| P4 | Which backend? | A now, then B designed for pipeline shaders (see above). | open |
 | D2 (stdlib) | Built-in vector types or library records? | Built-in, as the stdlib inventory recommends. | open |
 
 ## CPU and GPU equivalence limits

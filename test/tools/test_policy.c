@@ -225,7 +225,8 @@ static const char driver_ci_build[] =
     "                jobs[job].append(words[:-4])\n"
     "    if configured != set(jobs) or pipefail != set(jobs):\n"
     "        raise RuntimeError('native CI jobs must select their shared "
-    "profile')\n"
+    "profile')\n";
+static const char driver_ci_build_run[] =
     "    for job, commands in jobs.items():\n"
     "        if failure == 'o0':\n"
     "            commands = [c + ['SANITIZER_CMAKE_FLAGS=' +\n"
@@ -2072,6 +2073,7 @@ static void set_up()
     assert(fputs(driver_integer_parallel, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
+    assert(fputs(driver_ci_build_run, script) >= 0);
     assert(fputs(driver_experiment, script) >= 0);
     for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
         assert(fputs(driver_parallel[i], script) >= 0);

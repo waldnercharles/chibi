@@ -43,6 +43,7 @@ BUILD_TIMEOUT_MS ?= 1800000
 BUILD_PROFILE ?= sanitizer
 # Opt-in Graph experiment; pair with matching CMAKE_<LANG>_FLAGS_DEBUG.
 BUILD_DEBUG_OPTIMIZATION ?=
+BUILD_DEBUG_FRAME_POINTERS ?=
 GRAPH_BUILD = $(filter Darwin,$(shell uname -s))
 GRAPH_PROGRAM ?= tools/toolchain/Graph.chibi
 GRAPH_TIMEOUT_MS ?= 3600000
@@ -131,7 +132,7 @@ build:
 ifneq ($(GRAPH_BUILD),)
 toolchain-build:
 	@$(QUIET) third-party -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
-	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_PATH),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_PATH)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
+	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_PATH),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_PATH)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
 	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
 
 # Recovery builds the first build host with CMake beside the build directory;
@@ -251,7 +252,7 @@ install:
 # The Release build generates its asset compiler with its own hosts, even when
 # a sanitized build in the same make borrows them.
 build-release:
-	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_PROFILE=release BUILD_TARGET="$(BUILD_TARGET)" ASSET_GENERATOR_HOSTS=
+	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION= BUILD_DEBUG_FRAME_POINTERS= BUILD_TARGET="$(BUILD_TARGET)" ASSET_GENERATOR_HOSTS=
 
 package-player:
 	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
@@ -335,8 +336,8 @@ test-materials: test-build
 # Project commands repeatedly load the authoring catalog. Use Release products
 # for these integrations; the native driver retains its sanitizer coverage.
 test-projects: test-build
-	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi'
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" python3 tools/test_policy.py group projects
+	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host'
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group projects
 
 # Stage one compiling itself, and stage two compiling the same sources to the
 # same bytes, take about two minutes each under sanitizers, so the bootstrap

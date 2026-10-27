@@ -1296,6 +1296,45 @@ static int run(const char *action, const char *argument)
     return tool_run(args, tool_root(), logpath);
 }
 
+static const char driver_scalar_batch[] =
+    "if sys.argv[2] == 'scalar-batch':\n"
+    "    import shutil\n"
+    "    source = "
+    "Path('test/native_aot/scalar/Run.ps1').read_text(encoding='utf-8')\n"
+    "    root = Path(sys.argv[4])\n"
+    "    pwsh = shutil.which('pwsh')\n"
+    "    if not pwsh:\n"
+    "        print('PowerShell transport fixture unrun: pwsh unavailable')\n"
+    "        sys.exit(0)\n"
+    "    helpers = source.split('function Digest', 1)[1].split(\"\\ntry {\\n   "
+    " $suffix\", 1)[0]\n"
+    "    loop = source.split('    $priorChecked = @{}', 1)[1].split('    if "
+    "($priorChecked.Count -ne 4)', 1)[0]\n"
+    "    (root / 'loop.ps1').write_text('$priorChecked = @{}\\n' + loop, "
+    "encoding='utf-8')\n"
+    "    script = root / 'scalar-fixture.ps1'\n"
+    "    fixture = "
+    "Path('test/native_aot/scalar/"
+    "TransportFixture.ps1').read_text(encoding='utf-8')\n"
+    "    script.write_text('function Digest' + helpers + '\\n' + fixture, "
+    "encoding='utf-8')\n"
+    "    subprocess.run([pwsh, '-NoProfile', '-File', str(script), str(root)], "
+    "check=True)\n"
+    "    for i in range(3):\n"
+    "        print('member:' + (root / "
+    "f'member-{i}.stdout').read_bytes().hex())\n"
+    "    members = json.loads((root / "
+    "'members.json').read_text(encoding='utf-8-sig'))\n"
+    "    original = fixture.split(\"$text = '\", 1)[1].split(\"'\\n\", "
+    "1)[0].encode()\n"
+    "    # Print evidence-derived byte ranges; C asserts exact member "
+    "identity.\n"
+    "    for member in members:\n"
+    "        print('range:' + "
+    "original[member['offset']:member['offset']+member['bytes']].hex())\n"
+    "    print('joined:' + (root / 'joined.json').read_bytes().hex())\n"
+    "    sys.exit(0)\n";
+
 static void reset_markers()
 {
     const char *names[] = { "started",         "escaped",
@@ -1324,6 +1363,63 @@ static int benchmark(const char *const arguments[])
         argv[count++] = *arguments++;
     }
     return tool_run(argv, tool_root(), logpath);
+}
+
+TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
+{
+    REQUIRE(run("scalar-batch", NULL) == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output);
+    /* Normalize fixture log line endings only, never the hex-encoded bytes. */
+    char *read = output, *write = output;
+    while (*read) {
+        if (*read != '\r' || read[1] != '\n') {
+            *write++ = *read;
+        }
+        read++;
+    }
+    *write = 0;
+
+    if (strstr(output, "PowerShell transport fixture unrun")) {
+        fprintf(stderr, "%s", output);
+        free(output);
+        REQUIRE(!getenv("GITHUB_ACTIONS"));
+        return true;
+    }
+    REQUIRE(strstr(output, "singleton=1\nsingleton-identical=True\n"));
+    REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-9 rejected\n"));
+    REQUIRE(
+        strstr(output, "empty rejected\nnine rejected\njson rejected\njson rejected\njson rejected\nutf8 rejected\n")
+    );
+    REQUIRE(
+        strstr(output, "Compiler invocation 16-sljit-produce-batch failed: compiler batch item 2: compiler argument count mismatch\n")
+    );
+    REQUIRE(
+        strstr(output, "Authored source/consumer check failed at 1-sljit-bytecode (batch item 1): -5\n")
+    );
+    REQUIRE(
+        strstr(output, "published=0-bytecode-bytecode-raw,0-bytecode-sljit-raw,0-sljit-bytecode-raw,0-sljit-sljit-raw,1-bytecode-bytecode-raw,1-bytecode-sljit-raw\ncrossings=6\nnext-batch=False\n")
+    );
+    REQUIRE(!strstr(output, "bad counters accepted"));
+    REQUIRE(strstr(output, "bytecode counters accepted\nbytecode counters rejected\n"));
+    REQUIRE(strstr(output, "sljit counters accepted\nsljit counters rejected\n"));
+    const char *members[] = { ("5b207b2274657874223a22e298835c5c6e5c5c5c225b5d2"
+                               "22c2276616c7565223a3138"
+                               "3434363734343037333730393535313631357d205d"),
+                              "5b747275652c31652d33305d",
+                              "5b5d" };
+    for (int i = 0; i < 3; i++) {
+        char expected[512];
+        snprintf(expected, sizeof expected, "member:%s\n", members[i]);
+        REQUIRE(strstr(output, expected));
+        snprintf(expected, sizeof expected, "range:%s\n", members[i]);
+        REQUIRE(strstr(output, expected));
+    }
+    char joined[1024];
+    snprintf(joined, sizeof joined, "joined:5b%s2c%s2c%s5d\n", members[0], members[1], members[2]);
+    REQUIRE(strstr(output, joined));
+    free(output);
+    return true;
 }
 
 TEST_CASE(benchmark_runner_timeout_is_optional)
@@ -1717,6 +1813,30 @@ TEST_CASE(ci_groups_share_one_build_and_stop_on_failure)
         free(output);
         REQUIRE(exact);
     }
+    return true;
+}
+
+TEST_CASE(ci_build_timings_use_ready_drivers_and_bounded_selector)
+{
+    char *workflow = tool_read(CHIBI_SOURCE_ROOT "/.github/workflows/ci.yml");
+    REQUIRE(workflow);
+    const char
+        *step = "      - name: Build timing host regressions (ready drivers)\n"
+                "        env:\n"
+                "          CHIBI_TOOLS_BUILD_DIR: build/test/tools\n"
+                "          CHIBI_BUILD_HOST: "
+                "build-release/sdk/chibi-build-host\n"
+                "        run: python3 tools/test_policy.py --timeout 180 tool "
+                "build-timings\n";
+    const char *first = strstr(workflow, step);
+    REQUIRE(first);
+    const char *second = strstr(first + strlen(step), step);
+    REQUIRE(second && !strstr(second + strlen(step), step));
+    free(workflow);
+    char *policy = tool_read(CHIBI_SOURCE_ROOT "/tools/test_policy.py");
+    REQUIRE(policy);
+    REQUIRE(strstr(policy, "'build-timings':") && strstr(policy, "'--build-timings'"));
+    free(policy);
     return true;
 }
 
@@ -3081,6 +3201,7 @@ static void set_up()
     FILE *script = fopen(driver, "wb");
     assert(script);
     assert(fputs(driver_imports, script) >= 0);
+    assert(fputs(driver_scalar_batch, script) >= 0);
     assert(fputs(driver_setup, script) >= 0);
     assert(fputs(driver_routes, script) >= 0);
     assert(fputs(driver_shards, script) >= 0);
@@ -3109,6 +3230,7 @@ static void set_up()
 void test_tool_test_policy()
 {
     set_up();
+    RUN_TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order);
     RUN_TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets);
     RUN_TEST_CASE(runtime_seed_reuse_checks_published_provenance);
     RUN_TEST_CASE(runtime_seed_pin_resumes_only_its_own_commit);
@@ -3133,6 +3255,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(language_artifact_cli_requires_exact_argument_counts);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
     RUN_TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage);
+    RUN_TEST_CASE(ci_build_timings_use_ready_drivers_and_bounded_selector);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
     RUN_TEST_CASE(ci_generator_hosts_resolve_symlink_root);
     RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);

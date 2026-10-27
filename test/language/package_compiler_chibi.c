@@ -10160,6 +10160,8 @@ enum
     SCALAR_WORD = 9,
     SCALAR_FLOAT = 10,
     SCALAR_DOUBLE = 11,
+    SCALAR_STRING = 12,
+    SCALAR_MAX_SOURCE = 16384,
     SCALAR_RECORD = 32
 };
 /* The kind of each of GUARD_SOURCE's rows, and the rows edited. */
@@ -10410,6 +10412,39 @@ enum
     UNION_MAKE = 41,
     UNION_ROWS = (int)(sizeof UNION_KINDS / sizeof *UNION_KINDS)
 };
+/* Main passes Name a string and compares its result with an equal literal,
+ * so the module's one text serves both: Main returns 1. */
+static const char
+    STRING_ROWS_SOURCE[] = "package scalar\n"
+                           "Main :: () -> int {\n"
+                           "    s := Name(\"one\");\n"
+                           "    if (s != \"one\") { return 0; }\n"
+                           "    return 1;\n"
+                           "}\n"
+                           "Name :: (n: string) -> string { return n; }\n";
+/* The kind of each of STRING_ROWS_SOURCE's rows, and the rows edited. */
+static const int STRING_KINDS[] = {
+    SCALAR_SOURCE_ROW,   SCALAR_DOCUMENT_ROW,  SCALAR_FUNCTION_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_LITERAL_ROW,   SCALAR_CALL_ROW,
+    SCALAR_IF_ROW,       SCALAR_READ_ROW,      SCALAR_LITERAL_ROW,
+    SCALAR_COMPARE_ROW,  SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,
+    SCALAR_END_ROW,      SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,
+    SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW, SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,
+};
+enum
+{
+    STRING_LOCAL = 3,
+    STRING_ARGUMENT = 4,
+    STRING_READ = 7,
+    STRING_LITERAL = 8,
+    STRING_COMPARE = 9,
+    STRING_ZERO = 11,
+    STRING_NAME = 15,
+    STRING_PARAMETER = 16,
+    STRING_PARAMETER_READ = 18,
+    STRING_ROWS = (int)(sizeof STRING_KINDS / sizeof *STRING_KINDS)
+};
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
 typedef struct row_edit
@@ -10636,6 +10671,7 @@ static const malformed_guard MALFORMED_RECORDS[] = {
     /* A member of a record type, out of order, named as another, or
      * outside its record. */
     { { EDIT(RECORD_Y, "type", SCALAR_RECORD) }, MEMBER_ROW },
+    { { EDIT(RECORD_Y, "type", SCALAR_STRING) }, MEMBER_ROW },
     { { EDIT(RECORD_X, "value", 1) }, MEMBER_ROW },
     { { { .row = RECORD_Y, .field = "name", .text = "x", .from = -1 } }, MEMBER_ROW },
     { { COPY(RECORD_Y, "end", RECORD_MAKE) }, MEMBER_ROW },
@@ -10687,6 +10723,7 @@ static const malformed_guard MALFORMED_UNIONS[] = {
      * its variant, or outside its variant. */
     { { EDIT(UNION_H, "value", 0) }, PAYLOAD_ROW },
     { { EDIT(UNION_H, "type", SCALAR_RECORD) }, PAYLOAD_ROW },
+    { { EDIT(UNION_H, "type", SCALAR_STRING) }, PAYLOAD_ROW },
     { { { .row = UNION_H, .field = "name", .text = "w", .from = -1 } }, PAYLOAD_ROW },
     { { COPY(UNION_H, "end", UNION_MAIN) }, PAYLOAD_ROW },
     /* A variant made with another's payloads, too few of them or as a
@@ -10711,6 +10748,27 @@ static const malformed_guard MALFORMED_UNIONS[] = {
     { { EDIT(UNION_IS_VARIANT, "type", SCALAR_BOOL),
         EDIT(UNION_IS_VARIANT, "literal", 0) },
       "scalar comparison differs from its operands" },
+};
+static const char OPERAND_ROW[] = "invalid scalar operand row",
+                  NONCANONICAL[] = "noncanonical scalar literal";
+static const malformed_guard MALFORMED_STRINGS[] = {
+    /* Text on an int literal or a read, and a string literal whose
+     * `literal` is not 0. */
+    { { { .row = STRING_ZERO, .field = "text", .text = "x", .from = -1 } }, OPERAND_ROW },
+    { { { .row = STRING_READ, .field = "text", .text = "one", .from = -1 } }, OPERAND_ROW },
+    { { EDIT(STRING_LITERAL, "literal", 1) }, NONCANONICAL },
+    /* Strings ordered, and a string compared with an int. */
+    { { EDIT(STRING_COMPARE, "value", 1) }, COMPARISON },
+    { { EDIT(STRING_COMPARE, "value", 4) }, COMPARISON },
+    { { EDIT(STRING_LITERAL, "type", SCALAR_INT),
+        { .row = STRING_LITERAL, .field = "text", .text = "", .from = -1 } },
+      COMPARISON },
+    /* A string local or read of another type, and a call whose string
+     * argument meets an int parameter. */
+    { { EDIT(STRING_LOCAL, "type", SCALAR_INT) }, "scalar value differs from its variable" },
+    { { EDIT(STRING_PARAMETER_READ, "type", SCALAR_BOOL) }, READ },
+    { { EDIT(STRING_PARAMETER, "type", SCALAR_INT) },
+      "scalar call argument differs from its parameter" },
 };
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
@@ -10956,6 +11014,52 @@ static bool recorded_rows(const pin_value *rows)
     REQUIRE(scalar_field(guard_row(rows, RECORD_FIELD), "type").i == SCALAR_INT);
     return true;
 }
+/* STRING_ROWS_SOURCE's strings: each literal holds its decoded bytes and
+ * literal 0, its variables, Name's result and its read are strings, and its
+ * comparison gives a bool. Its IR holds one text, which both literals name.
+ * A literal longer than any source is noncanonical. */
+static bool stringed_rows(int b, pin_value *rows)
+{
+    static const int STRING_TYPED[] = { STRING_LOCAL,         STRING_ARGUMENT,
+                                        STRING_READ,          STRING_LITERAL,
+                                        STRING_NAME,          STRING_PARAMETER,
+                                        STRING_PARAMETER_READ };
+    for (int i = 0; i < (int)(sizeof STRING_TYPED / sizeof *STRING_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, STRING_TYPED[i]), "type").i == SCALAR_STRING);
+    }
+    static const int STRING_LITERALS[] = { STRING_ARGUMENT, STRING_LITERAL };
+    for (int i = 0; i < 2; i++) {
+        pin_value *row = guard_row(rows, STRING_LITERALS[i]);
+        REQUIRE(
+            retained_text(row, "text", "one") && scalar_field(row, "literal").i64 == 0
+        );
+    }
+    REQUIRE(scalar_field(guard_row(rows, STRING_COMPARE), "type").i == SCALAR_BOOL);
+    pin_value emitted;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
+    );
+    const pin_array *bytes = emitted.ptr;
+    char *ir = xmalloc((size_t)bytes->count + 1);
+    for (int i = 0; i < bytes->count; i++) {
+        ir[i] = (char)bytes->items[i].u8;
+    }
+    ir[bytes->count] = 0;
+    bool shared = strstr(ir, "@chibi_scalar.text.0 = private unnamed_addr constant [4 x i8] c\"one\\00\"") &&
+                  !strstr(ir, "@chibi_scalar.text.1");
+    free(ir);
+    REQUIRE(shared);
+    pin_value *literal = guard_row(rows, STRING_LITERAL);
+    pin_value saved = scalar_field(literal, "text");
+    char *long_text = xmalloc(SCALAR_MAX_SOURCE + 2);
+    memset(long_text, 'a', SCALAR_MAX_SOURCE + 1);
+    long_text[SCALAR_MAX_SOURCE + 1] = 0;
+    write_row(rows, STRING_LITERAL, "text", text(long_text));
+    free(long_text);
+    REQUIRE(validated(b, rows, NONCANONICAL));
+    write_row(rows, STRING_LITERAL, "text", saved);
+    return true;
+}
 /* UNION_ROWS_SOURCE's union, its variants and their payloads numbered across
  * it, the union type of Make's result, Main's local and the rows that read or
  * make one, the Tag and variant ordinals its `is` and arms test, its last
@@ -11012,7 +11116,7 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
-        looped[2], switched[2], recorded[2], unioned[2];
+        looped[2], switched[2], recorded[2], unioned[2], stringed[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -11062,6 +11166,10 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         args[2] = text(UNION_ROWS_SOURCE);
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &unioned[b])
+        );
+        args[2] = text(STRING_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &stringed[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -11162,6 +11270,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             MALFORMED_UNIONS,
             (int)(sizeof MALFORMED_UNIONS / sizeof *MALFORMED_UNIONS)
         ));
+        REQUIRE(rejects_malformed(
+            b,
+            &stringed[b],
+            STRING_KINDS,
+            STRING_ROWS,
+            MALFORMED_STRINGS,
+            (int)(sizeof MALFORMED_STRINGS / sizeof *MALFORMED_STRINGS)
+        ));
+        REQUIRE(stringed_rows(b, &stringed[b]));
     }
     return true;
 }
@@ -11188,6 +11305,7 @@ enum
     NATIVE_CONVERT = 29,
     NATIVE_INSERT = 30,
     NATIVE_EXTRACT = 31,
+    NATIVE_TEXT = 13,
     NATIVE_RECORD = 32
 };
 typedef struct native_code
@@ -11220,6 +11338,8 @@ typedef struct native_module
     int record_count;
     const int *fields;
     int field_count;
+    const char *const *texts;
+    int text_count;
 } native_module;
 static const char NATIVE_PACKAGE[] = "project:llvm_native";
 static pin_value native_ints(const int *values, int count)
@@ -11322,7 +11442,7 @@ static bool native_record_table(int b, const native_record *records, int count, 
  * functions under budget 1. */
 static bool native_target_emit(int b, const char *function, const native_module *m, const pin_union **out)
 {
-    pin_value args[11];
+    pin_value args[12];
     REQUIRE(native_target(b, function, &args[0]));
     REQUIRE(native_functions(b, m->functions, m->function_count, &args[1]));
     args[2] = native_ints(m->parameters, m->parameter_count);
@@ -11332,11 +11452,12 @@ static bool native_target_emit(int b, const char *function, const native_module 
     args[6] = native_ints(m->arguments, m->argument_count);
     REQUIRE(native_record_table(b, m->records, m->record_count, &args[7]));
     args[8] = native_ints(m->fields, m->field_count);
-    args[9] = (pin_value){ .type = PIN_BOOL, .b = false };
-    args[10] = (pin_value){ .type = PIN_I32, .i = 1 };
+    args[9] = strings(m->texts, m->text_count);
+    args[10] = (pin_value){ .type = PIN_BOOL, .b = false };
+    args[11] = (pin_value){ .type = PIN_I32, .i = 1 };
     pin_value result;
     REQUIRE(
-        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 11, COMPILE_BUDGET, &input, &result)
+        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 12, COMPILE_BUDGET, &input, &result)
     );
     REQUIRE(result.type == PIN_UNION && result.ptr);
     *out = result.ptr;
@@ -11679,6 +11800,150 @@ static bool native_records_emit(int b)
     REQUIRE(native_rejects(b, &m, layout));
     return true;
 }
+/* A string is `native_abi.TextType()`, the layout of the runtime's
+ * pin_string: its bytes, then its length. */
+_Static_assert(
+    offsetof(pin_string, bytes) == 0 && offsetof(pin_string, length) == 8 &&
+        sizeof(pin_string) == 16 && sizeof(((pin_string *)0)->length) == 4,
+    "pin_string is { ptr, i32 }"
+);
+/* Main returns whether its two texts differ: each constant is a private
+ * global of its bytes and a NUL, named by its index in the text table, and
+ * `!=` negates the module's one byte comparison. */
+static const native_code TEXT_CODE[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT, .output = 1, .literal = 1 },
+    { .op = NATIVE_NE, .type = NATIVE_TEXT, .output = 2, .right = 1 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_BOOL, .left = 2 },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    TEXT_CODE_COUNT = (int)(sizeof TEXT_CODE / sizeof *TEXT_CODE)
+};
+static const native_function TEXT_FUNCTIONS[] = {
+    { NATIVE_BOOL, 0, 0, 0, 3, 0, TEXT_CODE_COUNT, 0, 0 }
+};
+static const int TEXT_SLOTS[] = { NATIVE_TEXT, NATIVE_TEXT, NATIVE_BOOL };
+static const char *const TEXTS[] = { "a\"\\\n\xc3\xa9", "" };
+static native_module text_module(const native_code *code)
+{
+    return (native_module){ .functions = TEXT_FUNCTIONS,
+                            .function_count = 1,
+                            .slots = TEXT_SLOTS,
+                            .slot_count = 3,
+                            .code = code,
+                            .code_count = TEXT_CODE_COUNT,
+                            .texts = TEXTS,
+                            .text_count = 2 };
+}
+/* The text module with one instruction field changed. */
+static bool native_rejects_text_change(int b, native_change change, const char *message)
+{
+    native_code code[TEXT_CODE_COUNT];
+    memcpy(code, TEXT_CODE, sizeof code);
+    change_code(code, change);
+    native_module m = text_module(code);
+    return native_rejects(b, &m, message);
+}
+static bool native_strings_emit(int b)
+{
+    pin_value type;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:native_abi", "TextType", NULL, 0, COMPILE_BUDGET, &input, &type)
+    );
+    REQUIRE(pin_text_equal(pin_text(type), (pin_string){ "{ ptr, i32 }", 12 }));
+    native_module m = text_module(TEXT_CODE);
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(contains(
+        ir,
+        "@chibi_scalar.text.0 = private unnamed_addr constant [7 x i8] "
+        "c\"a\\22\\5C\\0A\\C3\\A9\\00\"\n"
+    ));
+    REQUIRE(contains(ir, "@chibi_scalar.text.1 = private unnamed_addr constant [1 x i8] c\"\\00\"\n"));
+    REQUIRE(contains(ir, "store { ptr, i32 } { ptr @chibi_scalar.text.0, i32 6 }, ptr %s0"));
+    REQUIRE(contains(ir, "store { ptr, i32 } { ptr @chibi_scalar.text.1, i32 0 }, ptr %s1"));
+    REQUIRE(contains(ir, "call i1 @chibi_scalar.text_equal({ ptr, i32 } %a3, { ptr, i32 } %b3)"));
+    REQUIRE(contains(ir, "xor i1 %e3, true"));
+    REQUIRE(
+        contains(ir, "define internal i1 @chibi_scalar.text_equal({ ptr, i32 } %a, { ptr, i32 } %b) #0 {")
+    );
+    static const char outside[] = "native constant is outside its type",
+                      operands[] = "native scalar operand type mismatch";
+    static const struct
+    {
+        native_change change;
+        const char *message;
+    } changes[] = {
+        /* A text past the table, or before it. */
+        { { 2, offsetof(native_code, literal), 2 }, outside },
+        { { 2, offsetof(native_code, literal), -1 }, outside },
+        /* Strings ordered, a sum of strings, which no bool slot holds, and a
+         * string compared with a bool. */
+        { { 3, offsetof(native_code, op), 19 }, operands },
+        { { 3, offsetof(native_code, op), 7 }, OUTPUT },
+        { { 3, offsetof(native_code, right), 2 }, operands },
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
+        REQUIRE(native_rejects_text_change(b, changes[i].change, changes[i].message));
+    }
+    /* No string crosses the exported entry, and a table holds at most
+     * 32,768 texts. */
+    static const native_code returned[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_TEXT },
+        { .op = NATIVE_RETURN },
+    };
+    static const native_function exported[] = { { NATIVE_TEXT, 0, 0, 0, 1, 0, 4, 0, 0 } },
+                                 taking[] = { { NATIVE_BOOL, 0, 1, 0, 1, 0, 4, 0, 0 } };
+    static const int text_parameter[] = { NATIVE_TEXT };
+    native_module alone = { .functions = exported,
+                            .function_count = 1,
+                            .slots = TEXT_SLOTS,
+                            .slot_count = 1,
+                            .code = returned,
+                            .code_count = 4,
+                            .texts = TEXTS,
+                            .text_count = 1 };
+    REQUIRE(native_rejects(b, &alone, TABLES));
+    static const native_code published[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_BOOL },
+        { .op = NATIVE_RETURN },
+    };
+    alone.functions = taking;
+    alone.parameters = text_parameter;
+    alone.parameter_count = 1;
+    alone.slots = TEXT_SLOTS + 2;
+    alone.code = published;
+    REQUIRE(native_rejects(b, &alone, "unsupported native scalar parameter"));
+    enum
+    {
+        TOO_MANY_TEXTS = 32769
+    };
+    const char **many = xmalloc(sizeof *many * TOO_MANY_TEXTS);
+    for (int i = 0; i < TOO_MANY_TEXTS; i++) {
+        many[i] = "";
+    }
+    m = text_module(TEXT_CODE);
+    m.texts = many;
+    m.text_count = TOO_MANY_TEXTS;
+    bool bounded = native_rejects(b, &m, "native module holds more than 32768 texts");
+    free(many);
+    REQUIRE(bounded);
+    /* A module that compares no strings defines no comparison. */
+    native_code equal[TEXT_CODE_COUNT];
+    memcpy(equal, TEXT_CODE, sizeof equal);
+    equal[3] = (native_code){ .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .output = 2 };
+    m = text_module(equal);
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(!contains(ir, "text_equal"));
+    return true;
+}
 /* A loop whose back edge skips the entry CHECK is emitted: native loops run
  * unchecked, as Odin's do. */
 static bool native_cycles_run_unchecked(int b)
@@ -11826,6 +12091,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_rejects_malformed_calls(b));
         REQUIRE(native_recursion_probes_the_stack(b));
         REQUIRE(native_records_emit(b));
+        REQUIRE(native_strings_emit(b));
         REQUIRE(native_cycles_run_unchecked(b));
         REQUIRE(native_floats_emit(b));
         REQUIRE(native_rejects_floats(b));
@@ -11974,7 +12240,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 50
+    SCALAR_ACCEPTED_CASES = 51
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -13592,6 +13858,53 @@ static const struct
       "    }\n"
       "}\n",
       120 },
+    /* Strings: literals, parameters, results, locals, assignments,
+     * defaults and arguments, compared by their bytes with == and !=,
+     * including the empty string, a prefix, a last byte that differs,
+     * escapes, UTF-8 and an embedded NUL, and in a loop. Each check is one
+     * bit: Names() 61, Escapes() 127 and Loops() 3. */
+    { "strings",
+      "package scalar\n"
+      "Main :: () -> int { return Names() + Escapes() * 1000 + Loops() * "
+      "1000000; }\n"
+      "Name :: (n: int) -> string {\n"
+      "    if (n == 0) { return \"zero\"; }\n"
+      "    if (n == 1) { return \"one\"; }\n"
+      "    return \"many\";\n"
+      "}\n"
+      "Same :: (a: string, b: string) -> bool { return a == b; }\n"
+      "Greet :: (name: string = \"world\") -> string { return name; }\n"
+      "Bit :: (b: bool, weight: int) -> int {\n"
+      "    if (b) { return weight; }\n"
+      "    return 0;\n"
+      "}\n"
+      "Names :: () -> int {\n"
+      "    s := Name(1);\n"
+      "    t: string = \"\";\n"
+      "    empty := t == \"\";\n"
+      "    t = s;\n"
+      "    return Bit(s == \"one\", 1) + Bit(s != \"one\", 2) + Bit(empty, 4) "
+      "+ Bit(Same(t, s), 8) +\n"
+      "        Bit(Same(Greet(), \"world\"), 16) + Bit(Greet(\"x\") == \"x\", "
+      "32);\n"
+      "}\n"
+      "Escapes :: () -> int {\n"
+      "    quote := \"say \\\"hi\\\"\\\\\\n\";\n"
+      "    return Bit(quote == \"say \\\"hi\\\"\\\\\\n\", 1) + Bit(quote != "
+      "\"say \\\"hi\\\"\\\\\\t\", 2) +\n"
+      "        Bit(\"é\U0001F408\" == \"é\U0001F408\", 4) + Bit(\"on\" "
+      "!= \"one\", 8) + Bit(\"onf\" != \"one\", 16) +\n"
+      "        Bit(\"\" != \"a\", 32) + Bit(\"a\\u0000b\" == \"a\\u0000b\" && "
+      "\"a\\u0000b\" != \"a\", 64);\n"
+      "}\n"
+      "Loops :: () -> int {\n"
+      "    n: int = 0;\n"
+      "    for (i in 0..<5) {\n"
+      "        if (Name(i) == \"many\") { n += 1; }\n"
+      "    }\n"
+      "    return n;\n"
+      "}\n",
+      3127061 },
     /* Not constant: the sum wraps at run time. */
     { "wrapped_operand",
       "package scalar\nMain :: () -> int { return Half(2147483647); }\n"

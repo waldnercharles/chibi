@@ -38,6 +38,15 @@ interface, or the complete allocation/memory/output/free native island.
   `right` (`extractvalue`); the field's type must be the value's. The
   exported function takes and returns scalars only, so no aggregate crosses
   the C ABI.
+- A string is `native_abi.TextType()`, `{ ptr, i32 }`, the layout of the
+  runtime's `pin_string`: its bytes, then its length. Its `Constant`'s
+  `literal` indexes the module's text table, at most 32,768 texts, and each
+  text is a `private unnamed_addr` global of its bytes and a NUL. Strings
+  have only `Eq` and `Ne`, which call the module's internal
+  `@chibi_scalar.text_equal`, emitted only when some instruction compares
+  strings: equal lengths, then equal bytes, reading no byte of an empty
+  string. No allocation, copy or drop is needed, since every string is a
+  view of a constant. The exported function takes and returns no string.
 - `Call` defines a slot from another function's result. Its arguments are
   slots of the caller's own argument range, each of the callee's parameter
   type and defined on every path; they load in order, so evaluation order stays

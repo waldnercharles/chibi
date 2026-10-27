@@ -40,6 +40,7 @@ Int64Storage: int : 8;
 WordStorage: int : 9;
 pub FloatStorage: int : 10;
 pub DoubleStorage: int : 11;
+pub TextStorage: int : 13;
 
 // The bits of an integer storage, or 0 for any other.
 pub IntegerBits :: (storage: int) -> int {
@@ -86,4 +87,13 @@ pub ScalarType :: (storage: int) -> string {
         return "";
     }
     return format_text("i{}", bits);
+}
+// The LLVM type of a string: the runtime's text descriptor, `pin_string` in
+// src/types/value.h, its bytes then its unsigned length, by value. Odin's
+// and Rust's strings are a pointer and a pointer-sized length; this one
+// matches the runtime's, so native code and the VMs share strings. Its zero,
+// a null pointer and length 0, is empty text, as a null descriptor is, and
+// nothing reads its bytes. A string is immutable, so a copy shares its bytes.
+pub TextType :: () -> string {
+    return "{ ptr, i32 }";
 }

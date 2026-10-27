@@ -684,7 +684,10 @@ Files :: (target: string) -> string[] {
         return files;
     }
     if (target == "chibi-player") {
-        return ["src/host/player_main.c", "src/host/player_url.c"];
+        return [
+            "src/host/player_main.c", "src/host/player_url.c", "src/host/native_libraries.c",
+            "src/host/stack_overflow.c"
+        ];
     }
     if (target == "chibi-compile") {
         return [
@@ -1475,7 +1478,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
         ];
     }
     if (target == "chibi_player") {
-        return ["host/player_clock.h", "host/player_url.h"];
+        return ["host/player_clock.h", "host/player_url.h", "host/native_libraries.h", "host/stack_overflow.h"];
     }
     if (target == "chibi_source_catalog") {
         return [

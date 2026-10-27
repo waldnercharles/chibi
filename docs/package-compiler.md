@@ -11,8 +11,8 @@ compiler sources.
 
 `Compile(project: string, collection_names: string[], collection_paths:
 string[], paths: string[], sources: string[], debug: bool, target: Target,
-abi: uint64, names: string[], natives: Native[], ports: Port[], identities:
-uint64[]) -> Result` returns `Compiled(module, bytes)`, a CHIBICLO closure
+abi: u64, names: string[], natives: Native[], ports: Port[], identities:
+u64[]) -> Result` returns `Compiled(module, bytes)`, a CHIBICLO closure
 with a module for every package, or `Rejected(diagnostic)`. `paths` and
 `sources` hold the files of every package, those of imported collections such
 as `core` under their collection's path; the package of `paths[0]` is the
@@ -35,7 +35,7 @@ compiles the compiler. The target supplies what Chibi cannot see:
 
 `CompileClosure` takes the same arguments and returns only the closure's
 bytes, or none when `Compile` rejects the input, for a host that takes one
-`byte[]` result (`compiler_host_invoke_bytes`).
+`u8[]` result (`compiler_host_invoke_bytes`).
 
 The twelve-argument package entries require a verified pure native catalog.
 `CompileWithEffects` and `CompileClosureWithEffects` add a thirteenth argument,
@@ -47,10 +47,10 @@ process, file or state operations must supply their actual masks.
 Packages of functions, records, unions and constants, and the packages they
 import:
 
-- `int`, `bool`, `string`, `int8`, `byte`, `int16`, `uint16`, `uint`,
-  `int64`, `uint64`, `float` and `double` values, records of those, unions
-  whose variants carry any of them, and arrays of the non-floating ones, as
-  parameters, results and locals; a `float` beside a `double` becomes one, and
+- `int`, `bool`, `string`, `i8`, `u8`, `i16`, `u16`, `u32`, `i64`, `u64`,
+  `number` and `f64` values, records of those, unions whose variants carry
+  any of them, and arrays of the non-floating ones, as parameters, results
+  and locals; a `number` beside an `f64` becomes one, and
   a number stored in a floating field converts as stage zero converts it;
   string literals decode as JSON strings, as stage zero reads them;
 - parameter defaults that are integer, bool or string literals, `(name:
@@ -65,7 +65,7 @@ import:
   named `condition` and `message`; the message must be a string literal.
   `Target`'s `assert_failure` is that failure's kind. Stage zero compiles an
   assert without a condition to one that always fails; stage one refuses it;
-- named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
+- named results, `Split :: (value: number) -> (whole: int, rest: number)`: each
   is a writable binding initialized as its type requires. `return (a, b)`
   assigns each value in order, then returns them; a bare `return` returns
   their current values. A single named result also accepts `return value`
@@ -79,15 +79,20 @@ import:
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
   gives, as in `x := 5`, is an `int` in stage zero, and stage one rejects it.
-  A literal outside its type, such as `byte` 256, is rejected;
+  A literal outside its type, such as `u8` 256, is rejected. A decimal at an
+  integer type is read exactly, digit by digit, in both stages: `2.0` and
+  `1e3` are the integers they spell, `9007199254740993.0` at `i64` keeps its
+  last unit, and `2.0000000000000000001` is rejected as a fraction. Stage zero
+  used to read it as a long double first, so whether a long fraction or a
+  unit past 2^53 survived depended on the platform;
 - `T(value)`, `T(wrap: value)` and `T(clamp: value)` for the integer types,
   of an integer or a floating value: the checked form fails the call when the
   value does not fit, `wrap` keeps its low bits and `clamp` saturates. Mixed
   integer operands widen to the type that holds both, and local
   declarations, assignments to locals and returns widen implicitly; `int` or
-  `int64` with `uint64` needs a conversion. An integer operand of a floating
+  `i64` with `u64` needs a conversion. An integer operand of a floating
   one, a named result or a component field becomes floating as stage zero
-  converts it: exactly to a double, then to a `float`. A literal where a
+  converts it: exactly to an `f64`, then to a `number`. A literal where a
   floating value is expected is one;
 - local declarations, assignment and compound assignment; `if`/`else`,
   `while`, `break`, `continue` and `return`; `for` over an `int` range,
@@ -137,11 +142,11 @@ import:
   native with several results, such as `compiler_json_string`, gives a value
   whose `.name` reads one result, directly or through a local:
   `decoded := compiler_json_string(text); decoded.valid`;
-- integer constants, typed (`Mask: int64 : 1 << 40;`) or untyped, which
+- integer constants, typed (`Mask: i64 : 1 << 40;`) or untyped, which
   are `int` (`Width :: Unit * 4 + 1;`), whose value folds from literals, other
   constants of the package in any order or of an import, parentheses and the
   integer operators. Every intermediate value must fit the constant's type,
-  so stage zero's wrapping never shows, and a uint64 constant is a literal. A
+  so stage zero's wrapping never shows, and a u64 constant is a literal. A
   use is the value itself; a local hides a constant of the same name;
 - imports of `project:` and collection packages such as `core:strings`:
   `alias.F(...)` calls an imported function, `alias.C` reads an imported
@@ -176,10 +181,10 @@ a cyclic dependency there, while stage one reads the parameter.
 
 ## Behaviors and executable libraries
 
-`CompileBehavior(identity: string, source: string, target: Target, abi: uint64,
-names: string[], natives: Native[], ports: Port[], native_ids: uint64[],
+`CompileBehavior(identity: string, source: string, target: Target, abi: u64,
+names: string[], natives: Native[], ports: Port[], native_ids: u64[],
 game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
-type_fields: GameField[], entity: uint64, operators: NumericOperator[],
+type_fields: GameField[], entity: u64, operators: NumericOperator[],
 globals: GameGlobal[], makes: NativeMake[], make_fields: int[]) -> Result`
 compiles one behavior asset (`Behavior.chibi`) to `Compiled(module, bytes)`,
 whose bytes are one prepared module of the game the arguments describe, or to
@@ -271,7 +276,7 @@ an instance-owned copy after the handler returns. A
 member procedure is a function the behavior's handlers call; stage zero
 names it `symbol:<identity>:1:<Name>:callable`. A handler takes the
 event's payload, one parameter per field in payload order. As in stage zero,
-`on Move :: (y: float)` names fields in any order, matched as the catalog
+`on Move :: (y: number)` names fields in any order, matched as the catalog
 matches names; each field it leaves out gets an unnamed parameter. A name the
 payload lacks, or a field listed twice, is refused with stage zero's
 diagnostic. Written types are not checked yet. A handler body
@@ -279,19 +284,19 @@ is a function body, as above. In it, states are names that read and store as
 `VARIABLE` and `STORE`, `self` is the owner, and `self.C.f = v` writes the
 writable field `f` of the owner's component `C`. As in stage zero, the write
 makes the component and field references, then evaluates `v`, then writes
-through them. An integer converts to a `float` or `double` field exactly to a
-double first; an integer literal is a constant of the field's type.
+through them. An integer converts to a `number` or `f64` field exactly to an
+`f64` first; an integer literal is a constant of the field's type.
 
 `self.C` reads the owner's component through a reference into a record of its
 own, so `self.C.f` reads a field. When an operand of a binary operator is a
 record, the operator's native from `operators` combines it field by field,
 with a record whose fields have the same names or with a number, as stage
 zero resolves operators. The result has the type of the first record operand;
-an untyped literal operand is a double. `self.C op= v` reads the component,
+an untyped literal operand is an `f64`. `self.C op= v` reads the component,
 combines it with `v` and writes the result back through the same reference;
 `self.C.f op= v` reads the field through its reference the same way. A game
 record's record field, such as `self.Input.Move`, is the address inside it.
-`float` and `double` values add, subtract, multiply, divide, negate and
+`number` and `f64` values add, subtract, multiply, divide, negate and
 compare, and an untyped literal takes the other operand's floating type. A
 global's constant field, such as `input.Jump`, is its name, and a field a
 native reads, such as `input.Jump.pressed`, is a call of that native on the
@@ -300,7 +305,7 @@ value; a field a native reads by key, such as the scene binding
 component of the entity `e` as `self.C` reads the owner's. `self.C = v`
 writes a record whose type stands for the same one as the component's, as
 stage zero assigns `vec2` to `Transform`. Among natives sharing a name, such
-as the `float` and `double` `cos`, each argument's own type picks the one
+as the `number` and `f64` `cos`, each argument's own type picks the one
 whose parameters take them. A native that makes a record, such as
 `vec2(x, y)`, is a struct literal of the fields its arguments give. `after`
 handlers and reading a global itself are not supported yet.
@@ -410,7 +415,10 @@ function's values with. A watch is a `SOURCE_WATCH` of the slot that holds a
 value, with its expression as origin and its type's header as initial value:
 - an output watch on each value an expression produces, `self` included, and on
   each number literal once its use gives it a type, except an array of
-  literals;
+  literals. An integer constant expression, a grouped and signed literal such
+  as `-(2)` or `-(2.0)` included, folds to one constant at its outermost
+  expression, which has the one point and watch; a grouped floating literal
+  keeps a point and watch at each sign;
 - a call's inputs, one per argument with the argument's own type, defaults
   included (a default also has an output watch); a struct literal's, numbered
   by each field's place in the record; and a call with several results has
@@ -627,7 +635,7 @@ the compiler in 11.7 s of CPU time and stage two in 7.6 s, against 13.3 s,
 An earlier measurement put most of stage one's footprint in
 the `prepared_writer.Write` frame writing the package compiler's module,
 against 92 MB for stage two's build of the same function on the same module.
-Each copy of the closure is about 256 MB as a `byte[]` of 40-byte values.
+Each copy of the closure is about 256 MB as a `u8[]` of 40-byte values.
 Under Debug and the sanitizers one
 compile takes about two minutes, about 40% of it validating record
 descriptors on every snapshot, so this check runs only on the Release build.
@@ -635,5 +643,5 @@ descriptors on every snapshot, so this check runs only on the Release build.
 Stage two needs the compiler host's larger closure bounds. On 2026-10-19 the
 package compiler's module needed about 113 M units of record-layout work and decoded to
 about 80 MB with its verification scratch, past the 64 MiB defaults of every
-prepared read, and its 6.4 MB closure, as a `byte[]` of 40-byte values, was
+prepared read, and its 6.4 MB closure, as a `u8[]` of 40-byte values, was
 past the host's former 1,000,000-value byte result.

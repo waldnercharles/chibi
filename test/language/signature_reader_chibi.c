@@ -718,7 +718,7 @@ static const char *annotations[] = {
     "lib.Row",
     "u",
     "u /* gap */ / s",
-    "float charge",
+    "number charge",
     "string int/s",
     "u",
     "u",

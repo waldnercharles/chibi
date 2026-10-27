@@ -32,8 +32,11 @@ Example :: library {
 ```
 
 A numeric literal takes its type from context. Otherwise, its spelling supplies
-the type. Integer spelling gives `int`, then `int64` or `uint64` when needed.
-A decimal point or exponent gives a double-precision `number`.
+the type. Integer spelling gives `int`, then `i64` or `u64` when needed.
+A decimal point or exponent gives a `number`, a 32-bit float. In an `f64`
+context, a literal keeps all 64 bits. A literal past the `number` range needs
+that context: `x: f64 = 1e300`, `f64(1e300)` and `pow(Base: -1e300, Exponent: x)`
+with an `f64` `x` work, while `x := 1e300` and `sqrt(1e300)` fail.
 
 ```chibi
 Example :: library {
@@ -72,8 +75,10 @@ Example :: library {
 ## Values and operators
 
 Common value types include `bool`, `int`, `number`, `string`, `entity` and arrays.
-`number` uses double precision. `float`, `double`, `byte`, and fixed-width signed
-and unsigned integer types are also available.
+`number` is a 32-bit float on the CPU and the GPU, and `int` is a 32-bit signed
+integer. Code that needs other widths names them with Odin's sized types:
+`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32` and `f64`. `i32`
+is `int` and `f32` is `number`.
 
 ```chibi
 Example :: library {
@@ -91,17 +96,18 @@ Example :: library {
 Arithmetic uses `+`, `-`, `*`, `/` and `%`. Comparisons use `==`, `!=`, `<`,
 `<=`, `>` and `>=`. Boolean expressions use `&&`, `||` and `!`.
 
-An explicit conversion calls the destination type. Floating-to-integer
-conversion requires a call such as `int(value)`. Integer narrowing clamps a
-value that does not fit to the nearest bound. `wrap` keeps the low bits
-instead.
+An explicit conversion calls the destination type. Integers widen
+implicitly, and so does `number` to `f64`. Narrowing `f64` to `number` requires
+`number(value)` or `f32(value)`, and floating-to-integer conversion requires a
+call such as `int(value)`. Integer narrowing clamps a value that does not fit to
+the nearest bound. `wrap` keeps the low bits instead.
 
 ```chibi
 Example :: library {
     Run :: () {
         value: int = 300
-        limited := byte(value)        // 255
-        wrapped := byte(wrap: value)  // 44
+        limited := u8(value)        // 255
+        wrapped := u8(wrap: value)  // 44
     }
 }
 ```
@@ -893,7 +899,7 @@ Example :: library {
 ```
 
 Known unit names use `number` storage. An explicit type can precede the unit,
-such as `float u/s`. Custom single dimensions need an explicit numeric type.
+such as `f64 u/s`. Custom single dimensions need an explicit numeric type.
 Units do not change runtime storage.
 
 ## Tests and formatting

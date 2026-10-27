@@ -118,7 +118,7 @@ static node *origin_node(authoring_source_presentation *p, const source_presenta
 TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
 {
     REQUIRE(
-        project("View :: behavior { text: string = \"hello\"; Pair :: (n: double) -> (total: double, message: string) { return (n, text); } on Tick :: () { current := Pair(2); text = current.message; } }")
+        project("View :: behavior { text: string = \"hello\"; Pair :: (n: f64) -> (total: f64, message: string) { return (n, text); } on Tick :: () { current := Pair(2); text = current.message; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = literal(view);
@@ -219,7 +219,7 @@ TEST_CASE(source_views_keep_named_invalid_drafts)
 TEST_CASE(source_view_locals_stay_in_their_callable)
 {
     REQUIRE(
-        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { width := n * 8; if (n > 0) { nested := width - 1; return nested; } return width; } on Tick :: () { width := Target(count); count = width; } }")
+        project("View :: behavior { count: f64 = 0; Target :: (n: f64) -> (result: f64) { width := n * 8; if (n > 0) { nested := width - 1; return nested; } return width; } on Tick :: () { width := Target(count); count = width; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     behavior_asset *asset = authoring_source_presentation_view(view);
@@ -253,7 +253,7 @@ TEST_CASE(source_view_locals_stay_in_their_callable)
 TEST_CASE(source_view_entries_have_layout_priority)
 {
     REQUIRE(
-        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { unused := 7; return n + 1; } on Tick :: () { unused := 8; count = Target(count); } }")
+        project("View :: behavior { count: f64 = 0; Target :: (n: f64) -> (result: f64) { unused := 7; return n + 1; } on Tick :: () { unused := 8; count = Target(count); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     behavior_asset *asset = authoring_source_presentation_view(view);
@@ -282,7 +282,7 @@ TEST_CASE(source_view_entries_have_layout_priority)
 TEST_CASE(source_view_formulas_preserve_readable_source)
 {
     REQUIRE(
-        project("View :: behavior { count: double = 0; Target :: (n: double) -> (result: double) { return (n * 8 + 2) / 2; } on Tick :: () { count += (Target(count) - count) * (1 - 0.01); } }")
+        project("View :: behavior { count: f64 = 0; Target :: (n: f64) -> (result: f64) { return (n * 8 + 2) / 2; } on Tick :: () { count += (Target(count) - count) * (1 - 0.01); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const char *formulas[] = { "(n * 8 + 2) / 2",
@@ -322,7 +322,7 @@ TEST_CASE(source_view_formulas_preserve_readable_source)
     REQUIRE(found == 2 && calls == 1); /* Target remains available for source edits. */
     cleanup();
     REQUIRE(
-        project("View :: behavior { count: double = 0; Next :: () -> (result: double) { count += 1; return count; } on Tick :: () { count = Next() + 2; } }")
+        project("View :: behavior { count: f64 = 0; Next :: () -> (result: f64) { count += 1; return count; } on Tick :: () { count = Next() + 2; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     bool effectful_call = false;
@@ -402,7 +402,7 @@ static bool no_outgoing_flow(const graph *g, const node *n)
 TEST_CASE(source_view_linear_flow_follows_authored_order)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; on Tick :: () { count = 1; count += 2; count *= 3; } }")
+        project("Counter :: behavior { count: f64 = 0; on Tick :: () { count = 1; count += 2; count *= 3; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
@@ -424,7 +424,7 @@ TEST_CASE(source_view_linear_flow_follows_authored_order)
 TEST_CASE(source_view_branch_terminals_do_not_rejoin)
 {
     REQUIRE(
-        project("Inventory :: behavior { items: double = 0; Inspect :: (limit: double) -> (total: double) { if items > limit { return 1; } else { items = 2; } items = 3; return items; } on Tick :: () {} }")
+        project("Inventory :: behavior { items: f64 = 0; Inspect :: (limit: f64) -> (total: f64) { if items > limit { return 1; } else { items = 2; } items = 3; return items; } on Tick :: () {} }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Inspect");
@@ -447,7 +447,7 @@ TEST_CASE(source_view_branch_terminals_do_not_rejoin)
 TEST_CASE(source_view_loop_break_and_continue_have_distinct_paths)
 {
     REQUIRE(
-        project("Inventory :: behavior { count: double = 0; on Tick :: () { while count < 10 { count += 1; if count == 2 { continue; } if count == 5 { break; } count += 3; } count = 20; } }")
+        project("Inventory :: behavior { count: f64 = 0; on Tick :: () { while count < 10 { count += 1; if count == 2 { continue; } if count == 5 { break; } count += 3; } count = 20; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
@@ -471,7 +471,7 @@ TEST_CASE(source_view_loop_break_and_continue_have_distinct_paths)
 TEST_CASE(source_view_await_completion_precedes_following_statement)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; on Tick :: () { count = 1; await Delay(0.1); count = 2; } }")
+        project("Counter :: behavior { count: f64 = 0; on Tick :: () { count = 1; await Delay(0.1); count = 2; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
@@ -492,7 +492,7 @@ TEST_CASE(source_view_await_completion_precedes_following_statement)
 TEST_CASE(source_view_handler_exits_are_explicit_and_completion_is_natural)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; on Tick :: () { if count == 0 { return; } count = 2; } }")
+        project("Counter :: behavior { count: f64 = 0; on Tick :: () { if count == 0 { return; } count = 2; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
@@ -543,7 +543,7 @@ static int named_pin(const pin_spec *pins, int count, pin_kind kind, const char 
 TEST_CASE(source_view_set_nodes_keep_statement_and_value_origins)
 {
     REQUIRE(
-        project("Inventory :: behavior { items: double = 0; on Tick :: () { available := items + 1; items = 7; items += 3; saved := items; } }")
+        project("Inventory :: behavior { items: f64 = 0; on Tick :: () { available := items + 1; items = 7; items += 3; saved := items; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     node *declared = statement_at("available :=");
@@ -633,7 +633,7 @@ TEST_CASE(source_view_set_nodes_keep_statement_and_value_origins)
 TEST_CASE(source_view_variable_reads_capture_one_named_value)
 {
     REQUIRE(
-        project("Inventory :: behavior { items_left: double = 0; on Tick :: () { itemsValue := state.items_left; state.items_left = 9; } }")
+        project("Inventory :: behavior { items_left: f64 = 0; on Tick :: () { itemsValue := state.items_left; state.items_left = 9; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     node *read = statement_at("itemsValue :=");
@@ -662,7 +662,7 @@ TEST_CASE(source_view_variable_reads_capture_one_named_value)
 TEST_CASE(source_view_indexed_setters_keep_address_parts_editable)
 {
     REQUIRE(
-        project("Inventory :: behavior { items: double[] = [1, 2]; slot: int = 0; on Tick :: () { items[slot] = 7; } }")
+        project("Inventory :: behavior { items: f64[] = [1, 2]; slot: int = 0; on Tick :: () { items[slot] = 7; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     node *set = statement_at("items[slot] = 7");
@@ -826,7 +826,7 @@ TEST_CASE(source_view_component_setters_expose_entity_not_component_read)
 TEST_CASE(source_view_authored_calls_keep_named_typed_editable_ports)
 {
     REQUIRE(
-        project("Inventory :: behavior { count: double = 0; Pair :: (amount: double, text: string) -> (total: double, message: string) { return (amount + 1, text); } Other :: () -> (value: double) { return 3; } on Tick :: () { current := Pair(text: \"apple\", amount: 2); count = current.total; await Delay(0.1); } }")
+        project("Inventory :: behavior { count: f64 = 0; Pair :: (amount: f64, text: string) -> (total: f64, message: string) { return (amount + 1, text); } Other :: () -> (value: f64) { return 3; } on Tick :: () { current := Pair(text: \"apple\", amount: 2); count = current.total; await Delay(0.1); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "Pair(text:");
@@ -894,7 +894,7 @@ TEST_CASE(source_view_authored_calls_keep_named_typed_editable_ports)
 TEST_CASE(source_view_effectful_authored_calls_remain_explicit)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; Next :: (amount: double) -> (total: double) { count += amount; return count; } on Tick :: () { count = Next(2) + 1; } }")
+        project("Counter :: behavior { count: f64 = 0; Next :: (amount: f64) -> (total: f64) { count += amount; return count; } on Tick :: () { count = Next(2) + 1; } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "Next(2)");
@@ -918,7 +918,7 @@ TEST_CASE(source_view_effectful_authored_calls_remain_explicit)
 TEST_CASE(source_view_small_value_calls_fold_with_editable_origins)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; Double :: (amount: double) -> (total: double) { return amount * 2; } on Tick :: () { count = Double(2); } }")
+        project("Counter :: behavior { count: f64 = 0; Double :: (amount: f64) -> (total: f64) { return amount * 2; } on Tick :: () { count = Double(2); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "Double(2)");
@@ -1053,7 +1053,7 @@ TEST_CASE(source_view_namespace_fields_are_named_values)
 TEST_CASE(source_view_short_circuit_effects_are_not_eager_flow)
 {
     REQUIRE(
-        project("Counter :: behavior { count: double = 0; ready: bool = false; Check :: (amount: double) -> (ok: bool) { count += amount; return true; } on Tick :: () { ready = ready && Check(1); } }")
+        project("Counter :: behavior { count: f64 = 0; ready: bool = false; Check :: (amount: f64) -> (ok: bool) { count += amount; return true; } on Tick :: () { ready = ready && Check(1); } }")
     );
     REQUIRE(analysis->diagnostic_count == 0);
     const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "ready && Check(1)");

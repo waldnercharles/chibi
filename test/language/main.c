@@ -1,5 +1,6 @@
 #define PICO_UNIT_IMPLEMENTATION
 #include "bounded_compiler_chibi.h"
+#include "compiler_fixture.h"
 #include "effect_analysis_chibi.h"
 #include "package_compiler_chibi.h"
 #include "prepared_writer_chibi.h"
@@ -42,6 +43,8 @@ void test_language_source_assets();
 void test_language_source_prototype_edits();
 void test_language_symbol_references();
 void test_language_program();
+void test_language_migration34();
+void test_language_migration34_generic_repro();
 void test_language_retention();
 void test_language_capture();
 void test_language_query_program();
@@ -124,6 +127,9 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--package-compiler-chibi-native-call")) {
         return test_language_package_compiler_chibi_native_call(argc - 2, argv + 2);
     }
+    if (argc == 3 && !strcmp(argv[1], "--stack-overflow-child")) {
+        return test_language_stack_overflow_child(argv[2]);
+    }
     bool format = (argc == 2 || argc == 4) && !strcmp(argv[1], "--format");
     bool record_producer = argc == 3 && !strcmp(argv[1], "--record-produce");
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
@@ -160,6 +166,9 @@ int main(int argc, char **argv)
                                     !strcmp(argv[1], "--record-publication-repro");
     bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
+    bool migration34 = argc == 2 && !strcmp(argv[1], "--migration34");
+    bool migration34_generic_repro = argc == 2 &&
+                                     !strcmp(argv[1], "--migration34-generic-repro");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
@@ -189,6 +198,7 @@ int main(int argc, char **argv)
                                 !strcmp(argv[1], "--constant-proof-chibi");
     bool constant_scalar_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--constant-scalar-chibi");
+    bool compiler_fixture = argc == 2 && !strcmp(argv[1], "--compiler-fixture");
     bool bounded_compiler_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--bounded-compiler-chibi");
     bool prepared_writer_chibi = argc == 2 &&
@@ -300,7 +310,8 @@ int main(int argc, char **argv)
          !record_publication_repro && !record_values && !record_document &&
          !record_state && !record_services && !record_compatibility &&
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_array && !record_runtime && !runtime_attribution && !wasm && !program &&
+         !row_array && !record_runtime && !runtime_attribution && !wasm &&
+         !migration34 && !migration34_generic_repro && !program &&
          !query_program && !incremental && !operations && !modules && !ranges &&
          !numeric_exact_core && !integer_semantics && !integer_shift_counts &&
          !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
@@ -308,12 +319,12 @@ int main(int argc, char **argv)
          !syntax_chibi && !source_tokenizer_chibi && !package_syntax &&
          !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
          !package_snapshot_chibi && !constant_proof_chibi && !constant_scalar_chibi &&
-         !scalar_lowering_chibi && !bounded_compiler_chibi && !prepared_writer_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_libraries &&
-         !package_compiler_chibi_types && !package_compiler_chibi_imports &&
-         !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
-         !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
-         !package_compiler_chibi_collections_compiled &&
+         !scalar_lowering_chibi && !compiler_fixture && !bounded_compiler_chibi &&
+         !prepared_writer_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
+         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
+         !package_compiler_chibi_compiled && !package_compiler_chibi_types_compiled &&
+         !package_compiler_chibi_collections && !package_compiler_chibi_collections_compiled &&
          !package_compiler_chibi_imports_compiled && !package_compiler_chibi_literals &&
          !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
          !package_compiler_chibi_actions && !package_compiler_chibi_sharing &&
@@ -348,7 +359,8 @@ int main(int argc, char **argv)
             "--source-tokenizer-chibi | --package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             "--constant-proof-chibi | --constant-scalar-chibi | "
-            "--scalar-lowering-chibi | --bounded-compiler-chibi | "
+            "--scalar-lowering-chibi | --compiler-fixture | "
+            "--bounded-compiler-chibi | "
             "--prepared-writer-chibi | --package-compiler-chibi | "
             "--package-compiler-chibi-types | --package-compiler-chibi-imports "
             "| "
@@ -399,6 +411,7 @@ int main(int argc, char **argv)
             "--model-runtime | --runtime-attribution | --record-values | "
             "--record-semantic | --record-document | --record-services | "
             "--record-compatibility | --row-array | "
+            "--migration34 | --migration34-generic-repro | "
             "--outliner-projection | --record-publication | "
             "--record-publication-repro | "
             "--format [--corpus manifest] | --compiler-artifact-write "
@@ -543,6 +556,8 @@ int main(int argc, char **argv)
         test_language_constant_proof_chibi();
     } else if (constant_scalar_chibi) {
         test_language_constant_scalar_chibi();
+    } else if (compiler_fixture) {
+        test_language_compiler_fixture();
     } else if (bounded_compiler_chibi) {
         test_language_bounded_compiler_chibi();
     } else if (prepared_writer_chibi) {
@@ -662,6 +677,11 @@ int main(int argc, char **argv)
         test_language_component_write_ir();
     } else if (scalarize) {
         test_language_scalarize();
+    } else if (migration34) {
+        test_language_migration34();
+        test_language_migration34_generic_repro();
+    } else if (migration34_generic_repro) {
+        test_language_migration34_generic_repro();
     } else if (program) {
         test_language_program();
         test_language_retention();

@@ -29,10 +29,12 @@ bool behavior_function_static_name(const char **name)
         return true;
     }
     static const char *const names[] = {
-        "bool",  "byte",           "char",      "unsigned char",
-        "short", "unsigned short", "int",       "unsigned int",
-        "int64", "int64_t",        "uint64",    "uint64_t",
-        "float", "double",         "ecs.entity"
+        "bool",           "i8",     "u8",        "char",
+        "unsigned char",  "i16",    "u16",       "short",
+        "unsigned short", "int",    "i32",       "u32",
+        "unsigned int",   "i64",    "int64_t",   "u64",
+        "uint64_t",       "number", "f32",       "f64",
+        "float",          "double", "ecs.entity"
     };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         if (!strcmp(*name, names[i])) {

@@ -55,7 +55,7 @@ pub Target :: struct {
 }
 pub Request :: union {
     Tables(types: Type[], expressions: Expression[], symbols: Symbol[],
-           variables: Variable[], results: Result[], literals: Literal[], ids: uint64[],
+           variables: Variable[], results: Result[], literals: Literal[], ids: u64[],
            ranges: Range[], documents: string[], target: Target, range: int)
 }
 Slot :: struct {
@@ -93,7 +93,7 @@ Diagnostic :: struct {
 }
 pub Plan :: union {
     Rejected(diagnostics: Diagnostic[])
-    | Ready(target: Target, variable_ids: uint64[], defaults: Literal[], results: Literal[],
+    | Ready(target: Target, variable_ids: u64[], defaults: Literal[], results: Literal[],
             slots: Slot[], locals: Local[], origins: Range[], documents: string[], code: Instruction[])
 }
 Emitter :: union {
@@ -284,7 +284,7 @@ pub Lower :: (request: Request) -> Plan {
                 index += 1;
             }
             defaults: Literal[] = [];
-            variable_ids: uint64[] = [];
+            variable_ids: u64[] = [];
             index = 0;
             while (index < length(variables)) {
                 variable := variables[index];

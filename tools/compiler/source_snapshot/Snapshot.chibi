@@ -131,11 +131,11 @@ Reject :: (diagnostic: syntax.Diagnostic, documents: Document[],
 
 // Byte input is retained as a bounded prefix by the external adapter. Its exact
 // declared size stays separate so NUL detection follows routing, as in stage zero.
-FileSize :: (size: uint64) -> bool {
+FileSize :: (size: u64) -> bool {
     return (size & 0xfffffffffff80000) == 0 ||
            size == 524288;
 }
-TotalSize :: (size: uint64) -> bool {
+TotalSize :: (size: u64) -> bool {
     return (size & 0xffffffffff800000) == 0 ||
            size == 8388608;
 }
@@ -163,7 +163,7 @@ ValidUTF8 :: (text: string) -> bool {
         if (count < 0 || count > size - index) {
             return false;
         }
-        value := lead & (127 >> byte(count + 1));
+        value := lead & (127 >> u8(count + 1));
         minimum: int = 128;
         if (count == 2) {
             minimum = 2048;
@@ -263,7 +263,7 @@ GraphFailure :: (error: graph.Error, cycle: int[], documents: Document[],
 
 // The parser supplies syntax facts only. All validation, phase ordering,
 // retention, routing and graph diagnostics below are ordinary authored policy.
-pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[], sizes: uint64[]) -> Result {
+pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[], sizes: u64[]) -> Result {
     documents: Document[] = [];
     nodes: SnapshotNode[] = [];
     imports: ResolvedImport[] = [];
@@ -286,7 +286,7 @@ pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[
     pending: extract.Import[] = [];
     pendingStarts: int[] = [];
     pendingCounts: int[] = [];
-    total: uint64 = 0;
+    total: u64 = 0;
     file: int = 0;
     while (file < options.file_count) {
         input := inputs[file];
@@ -316,7 +316,7 @@ pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[
                 document.has_key = true;
         }
         documents[file] = document;
-        if (uint64(strings.ByteLength(input.text)) != size) {
+        if (u64(strings.ByteLength(input.text)) != size) {
             return Reject(Diagnostic(FileRange(file), "Package source contains NUL bytes"), documents, nodes, imports);
         }
         if (!ValidUTF8(input.text)) {

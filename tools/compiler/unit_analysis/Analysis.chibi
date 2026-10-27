@@ -104,7 +104,7 @@ pub Port :: struct {
     unit: string;
 }
 pub Environment :: union {
-    Tables(types: Type[], ids: uint64[], symbols: Symbol[], expressions: Expression[], arguments: Argument[], functions: Function[], symbol_indices: int[], capabilities: Capability[], ports: Port[], fields: Field[], catalog_types: CatalogType[], globals: Global[], statements: Statement[], bindings: Binding[], ranges: Range[])
+    Tables(types: Type[], ids: u64[], symbols: Symbol[], expressions: Expression[], arguments: Argument[], functions: Function[], symbol_indices: int[], capabilities: Capability[], ports: Port[], fields: Field[], catalog_types: CatalogType[], globals: Global[], statements: Statement[], bindings: Binding[], ranges: Range[])
 }
 State :: union {
     Cached(cache: Cache[], terms: units.Term[], visits: int[], diagnostics: syntax.Diagnostic[])
@@ -123,7 +123,7 @@ Types :: (environment: Environment) -> Type[] {
     }
 }
 
-Ids :: (environment: Environment) -> uint64[] {
+Ids :: (environment: Environment) -> u64[] {
     switch environment {
         case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
             return ids;
@@ -258,17 +258,17 @@ GenericFlag: int : 32;
 ResultsFlag: int : 8;
 NumericExcludedFlags: int : 75;
 
-IDAt :: (environment: Environment, slot: int) -> uint64 {
+IDAt :: (environment: Environment, slot: int) -> u64 {
     if (slot < 0) {
         return 0;
     }
     return Ids(environment)[slot];
 }
 // Match a full-width offset to a bounded native index without narrowing it.
-OffsetIndex :: (offset: uint64, count: int) -> int {
+OffsetIndex :: (offset: u64, count: int) -> int {
     index: int = 0;
     while (index < count) {
-        if (offset == uint64(index)) {
+        if (offset == u64(index)) {
             return index;
         }
         index += 1;
@@ -286,7 +286,7 @@ Numeric :: (type: Type, environment: Environment) -> bool {
            (IDAt(environment, type.nominal_slot) == 0 || (type.flags & GenericFlag) != 0) &&
            type.storage >= 2 && type.storage <= 11 && (type.flags & NumericExcludedFlags) == 0;
 }
-CapabilityAt :: (environment: Environment, id: uint64) -> int {
+CapabilityAt :: (environment: Environment, id: u64) -> int {
     rows := Capabilities(environment);
     index: int = 0;
     while (index < length(rows)) {

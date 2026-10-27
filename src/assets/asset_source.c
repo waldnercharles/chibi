@@ -253,7 +253,7 @@ static void validate(asset_source *s, const av_value *value, const type_desc *ty
                 "Invalid value for %s.%s (%s)",
                 type->name,
                 name,
-                field->type_name ? field->type_name : pin_type_name(field->type)
+                type_field_type_name(field)
             );
             diagnostic(s, av_get_source(child), error);
         }
@@ -804,7 +804,7 @@ char *asset_source_hover(const asset_source *s, int at)
             sizeof text,
             "%s: %s\n%s",
             name,
-            field->type_name ? field->type_name : pin_type_name(field->type),
+            type_field_type_name(field),
             field->description ? field->description : ""
         );
     } else {

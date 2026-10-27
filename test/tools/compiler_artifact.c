@@ -22,7 +22,7 @@
 #include <unistd.h>
 
 /* Thirteen supervised children: the original four plus nine binary/usage
- * children. The source producer has two bounded cases; product hosts receive
+ * children. The source producer has three bounded cases; product hosts receive
  * only prepared artifacts and requests. See docs/testing.md for exact counts. */
 enum
 {
@@ -31,9 +31,8 @@ enum
     ERROR_CAP = 4096,
     BINARY_CAP = 32 * 1024
 };
-/* Asset transports, caches and build-host compiles keep the 16 MiB default;
- * the bootstrap's compiler closures and the CLI's file outputs pass the
- * artifact bound. */
+/* Ordinary outputs keep the 16 MiB default; compiler bootstrap closures and
+ * the CLI's file outputs pass the artifact bound. */
 _Static_assert(COMPILER_HOST_MAX_OUTPUT_BYTES == 16u * 1024u * 1024u, "default byte result bound");
 _Static_assert(COMPILER_HOST_MAX_ARTIFACT_BYTES == 32u * 1024u * 1024u, "compiled closure bound");
 static const char *producer_path, *host_path;
@@ -462,6 +461,67 @@ TEST_CASE(binary_result_limit_is_atomic)
     }
     return true;
 }
+/* One native resize creates each byte array; no per-byte authored loop and
+ * no large JSON input. Ordinary invocations retain their smaller bound. */
+TEST_CASE(binary_artifact_bound_does_not_widen_ordinary_results)
+{
+    const size_t lengths[] = { COMPILER_HOST_MAX_OUTPUT_BYTES,
+                               COMPILER_HOST_MAX_OUTPUT_BYTES + 1u,
+                               COMPILER_HOST_MAX_ARTIFACT_BYTES,
+                               COMPILER_HOST_MAX_ARTIFACT_BYTES + 1u };
+    const size_t limits[] = { COMPILER_HOST_MAX_OUTPUT_BYTES,
+                              COMPILER_HOST_MAX_ARTIFACT_BYTES };
+    for (int b = 0; b < 2; b++) {
+        size_t length;
+        REQUIRE(read_bytes("sized.artifact", BINARY_CAP, &binary_artifact, &length));
+        char error[256];
+        loaded = compiler_host_load(
+            binary_artifact,
+            length,
+            b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE,
+            error,
+            sizeof error
+        );
+        free(binary_artifact);
+        binary_artifact = NULL;
+        REQUIRE(loaded);
+        for (int i = 0; i < 4; i++) {
+            char input[32];
+            int size = snprintf(input, sizeof input, "[%zu]", lengths[i]);
+            for (int j = 0; j < 2; j++) {
+                bool fits = lengths[i] <= limits[j];
+                REQUIRE(
+                    compiler_host_invoke_bytes(
+                        loaded,
+                        compiler_host_entry("project:binary_sized:1:Sized:callable"),
+                        input,
+                        (size_t)size,
+                        10000,
+                        limits[j],
+                        &byte_result
+                    ) == fits
+                );
+                REQUIRE(byte_result.flow_status == FLOW_OK);
+                REQUIRE(counts(&byte_result.counts, b, true));
+                if (fits) {
+                    REQUIRE(byte_result.bytes && byte_result.length == lengths[i]);
+                    REQUIRE(
+                        byte_result.bytes[0] == 37 &&
+                        byte_result.bytes[lengths[i] - 1] == 0
+                    );
+                } else {
+                    REQUIRE(!byte_result.bytes && !byte_result.length);
+                    REQUIRE(strstr(byte_result.diagnostic, "exceeds type, shape or storage limits"));
+                }
+                free(byte_result.bytes);
+                byte_result = (compiler_host_bytes){ 0 };
+            }
+        }
+        compiler_host_free(loaded);
+        loaded = NULL;
+    }
+    return true;
+}
 TEST_CASE(binary_signature_and_input_reject_before_execution)
 {
     REQUIRE(load_binary(0));
@@ -471,7 +531,7 @@ TEST_CASE(binary_signature_and_input_reject_before_execution)
         );
         REQUIRE(byte_failure(0, false));
         REQUIRE(
-            !strcmp(byte_result.diagnostic, "compiler byte entry must return exactly one primitive byte[]")
+            !strcmp(byte_result.diagnostic, "compiler byte entry must return exactly one primitive u8[]")
         );
     }
     const char *inputs[] = { "[", "[]" };
@@ -832,6 +892,7 @@ void test_tool_compiler_artifact(const char *producer, const char *host)
     RUN_TEST_CASE(product_rejects_reference_entry_before_decoding_pointer);
     RUN_TEST_CASE(binary_bytes_survive_all_producer_owners);
     RUN_TEST_CASE(binary_result_limit_is_atomic);
+    RUN_TEST_CASE(binary_artifact_bound_does_not_widen_ordinary_results);
     RUN_TEST_CASE(binary_signature_and_input_reject_before_execution);
     RUN_TEST_CASE(binary_reference_result_rejects_before_input_decoding);
     RUN_TEST_CASE(binary_budget_failure_has_no_output);

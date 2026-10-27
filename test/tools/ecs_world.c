@@ -21,12 +21,12 @@ static const type_field position_fields[] = {
       .type = PIN_F32,
       .offset = offsetof(position, x),
       .size = sizeof(float),
-      .type_name = "float" },
+      .type_name = "number" },
     { .name = "y",
       .type = PIN_F32,
       .offset = offsetof(position, y),
       .size = sizeof(float),
-      .type_name = "float" },
+      .type_name = "number" },
 };
 static const type_desc position_type = {
     .name = "sdk.ecs.world_position",

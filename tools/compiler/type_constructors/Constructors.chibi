@@ -28,7 +28,7 @@ pub Symbol :: struct {
     id_slot: int;
 }
 pub Environment :: union {
-    Tables(types: named.Type[], ids: uint64[], definitions: Definition[], variants: RawVariant[],
+    Tables(types: named.Type[], ids: u64[], definitions: Definition[], variants: RawVariant[],
            capabilities: Capability[], functions: Function[], symbols: Symbol[], result_symbols: int[])
 }
 pub Request :: struct {
@@ -51,7 +51,7 @@ Variant :: struct {
     nominal_slot: int;
     parameter_slot: int;
     tag_slot: int;
-    collection: uint64;
+    collection: u64;
 }
 Field :: struct {
     capability: int;
@@ -59,16 +59,16 @@ Field :: struct {
     symbol: int;
 }
 Selections :: union {
-    Selected(variants: Variant[], ids: uint64[])
+    Selected(variants: Variant[], ids: u64[])
 }
 pub Plan :: union {
-    Constructed(value: named.Value, publish: bool, id: uint64, name: string,
+    Constructed(value: named.Value, publish: bool, id: u64, name: string,
                 definition: named.Value, size: int, internal: bool,
-                variants: Variant[], fields: Field[], ids: uint64[], diagnostics: syntax.Diagnostic[],
-                element_type: named.Value, element_collection: uint64)
+                variants: Variant[], fields: Field[], ids: u64[], diagnostics: syntax.Diagnostic[],
+                element_type: named.Value, element_collection: u64)
 }
 
-Tag :: (value: named.Value, collection: uint64) -> uint64 {
+Tag :: (value: named.Value, collection: u64) -> u64 {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             if ((flags & 512) != 0) {
@@ -78,7 +78,7 @@ Tag :: (value: named.Value, collection: uint64) -> uint64 {
                 return parameter;
             }
             nominal_id := nominal;
-            result: uint64 = 0;
+            result: u64 = 0;
             if ((flags & 64) != 0) {
                 nominal_id = 0;
                 result = parameter;
@@ -89,7 +89,7 @@ Tag :: (value: named.Value, collection: uint64) -> uint64 {
             return binding.ID("union-type", format_text("{}:{}:{}:{}:{}", storage, container, nominal_id, result, flags & 74));
     }
 }
-FindDefinition :: (environment: Environment, id: uint64) -> int {
+FindDefinition :: (environment: Environment, id: u64) -> int {
     switch environment {
         case .Tables(types, ids, definitions, variants, capabilities, functions, symbols, results):
             index: int = 0;
@@ -103,7 +103,7 @@ FindDefinition :: (environment: Environment, id: uint64) -> int {
     }
 }
 Select :: (selection: Selections, value: named.Value, catalog_type: int, variant: int,
-           member: int, tag: uint64, collection: uint64) -> Selections {
+           member: int, tag: u64, collection: u64) -> Selections {
     switch selection {
         case .Selected(payload_rows, payload_ids):
             rows := payload_rows;
@@ -129,7 +129,7 @@ Select :: (selection: Selections, value: named.Value, catalog_type: int, variant
             }
     }
 }
-SelectMember :: (environment: Environment, selection: Selections, value: named.Value, member: int, collection: uint64) -> Selections {
+SelectMember :: (environment: Environment, selection: Selections, value: named.Value, member: int, collection: u64) -> Selections {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             nested: int = -1;
@@ -157,8 +157,8 @@ SelectMember :: (environment: Environment, selection: Selections, value: named.V
 }
 // Compare the first differing bit from most to least significant. This stays
 // within the bootstrap executor's supported unsigned bit operations.
-TagAfter :: (left: uint64, right: uint64) -> bool {
-    mask: uint64 = 1 << 63;
+TagAfter :: (left: u64, right: u64) -> bool {
+    mask: u64 = 1 << 63;
     while (mask != 0) {
         left_bit := left & mask;
         right_bit := right & mask;
@@ -187,7 +187,7 @@ FinishUnion :: (environment: Environment, selection: Selections, pointer_size: i
                 }
                 index += 1;
             }
-            id: uint64 = 14695981039346656037;
+            id: u64 = 14695981039346656037;
             index = 0;
             while (index < length(rows)) {
                 id = (id ^ ids[rows[index].tag_slot]) * 1099511628211;
@@ -196,7 +196,7 @@ FinishUnion :: (environment: Environment, selection: Selections, pointer_size: i
             value := named.Value.Typed(18, 0, 256, id, 0);
             if (FindDefinition(environment, id) >= 0) {
                 empty: Variant[] = [];
-                noIDs: uint64[] = [];
+                noIDs: u64[] = [];
                 return Plan.Constructed(value, false, 0, "",
                                         named.Value.Typed(0, 0, 0, 0, 0),
                                         0, false, empty, fields, noIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
@@ -207,7 +207,7 @@ FinishUnion :: (environment: Environment, selection: Selections, pointer_size: i
 }
 pub Union :: (environment: Environment, members: int[], pointer_size: int) -> Plan {
     rows: Variant[] = [];
-    ids: uint64[] = [];
+    ids: u64[] = [];
     selection := Selections.Selected(rows, ids);
     switch environment {
         case .Tables(types, sourceIDs, definitions, variants, capabilities, functions, symbols, results):
@@ -220,10 +220,10 @@ pub Union :: (environment: Environment, members: int[], pointer_size: int) -> Pl
     diagnostics: syntax.Diagnostic[] = [];
     return FinishUnion(environment, selection, pointer_size, diagnostics);
 }
-pub Task :: (environment: Environment, result: int, function: uint64) -> Plan {
+pub Task :: (environment: Environment, result: int, function: u64) -> Plan {
     fields: Field[] = [];
     variants: Variant[] = [];
-    outputIDs: uint64[] = [];
+    outputIDs: u64[] = [];
     diagnostics: syntax.Diagnostic[] = [];
     switch environment {
         case .Tables(types, ids, definitions, rawVariants, capabilities, functions, symbols, results):
@@ -278,7 +278,7 @@ pub Task :: (environment: Environment, result: int, function: uint64) -> Plan {
 pub Await :: (environment: Environment, success: int, request: Request) -> Plan {
     diagnostics: syntax.Diagnostic[] = [];
     rows: Variant[] = [];
-    outputIDs: uint64[] = [];
+    outputIDs: u64[] = [];
     selection := Selections.Selected(rows, outputIDs);
     switch environment {
         case .Tables(types, ids, definitions, variants, capabilities, functions, symbols, results):
@@ -316,7 +316,7 @@ pub Await :: (environment: Environment, success: int, request: Request) -> Plan 
 pub Pointer :: (environment: Environment, pointee: int, pointer_size: int) -> Plan {
     fields: Field[] = [];
     variants: Variant[] = [];
-    outputIDs: uint64[] = [];
+    outputIDs: u64[] = [];
     diagnostics: syntax.Diagnostic[] = [];
     switch environment {
         case .Tables(types, ids, definitions, rawVariants, capabilities, functions, symbols, results):

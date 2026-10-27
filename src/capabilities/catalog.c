@@ -153,11 +153,11 @@ const char *script_scalar_name(pin_type storage)
 {
     static const char *const names[] = {
         [PIN_FLOW] = "void",     [PIN_BOOL] = "bool",
-        [PIN_I8] = "int8",       [PIN_U8] = "byte",
-        [PIN_I16] = "int16",     [PIN_U16] = "uint16",
-        [PIN_I32] = "int",       [PIN_U32] = "uint",
-        [PIN_I64] = "int64",     [PIN_U64] = "uint64",
-        [PIN_F32] = "float",     [PIN_F64] = "double",
+        [PIN_I8] = "i8",         [PIN_U8] = "u8",
+        [PIN_I16] = "i16",       [PIN_U16] = "u16",
+        [PIN_I32] = "int",       [PIN_U32] = "u32",
+        [PIN_I64] = "i64",       [PIN_U64] = "u64",
+        [PIN_F32] = "number",    [PIN_F64] = "f64",
         [PIN_NAME] = "name",     [PIN_STR] = "string",
         [PIN_HANDLE] = "handle", [PIN_STRUCT] = "struct",
         [PIN_ENUM] = "enum",     [PIN_TASK] = "task",
@@ -231,8 +231,12 @@ script_type script_builtin_type(const char *name)
             return (script_type){ .storage = (pin_type)i };
         }
     }
-    if (!strcmp(name, "number")) {
-        return (script_type){ .storage = PIN_F64 };
+    /* Odin's sized names for the two game spellings. */
+    if (!strcmp(name, "i32")) {
+        return (script_type){ .storage = PIN_I32 };
+    }
+    if (!strcmp(name, "f32")) {
+        return (script_type){ .storage = PIN_F32 };
     }
     if (!strcmp(name, "char")) {
         return script_char_type();
@@ -301,12 +305,16 @@ bool script_type_numeric(script_type type)
            !(type.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL |
                            SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK));
 }
-/* Integers widen to integers and to floating types. Float widens to double;
- * double narrows to float, and floating values become integers, only explicitly. */
+/* Integers widen to integers and to floating types, and f32 widens to f64.
+ * f64 becomes f32, and a floating value an integer, only through an explicit
+ * conversion. */
 bool script_numeric_implicit(pin_type from, pin_type to)
 {
-    if (to > PIN_U64) {
-        return !(from == PIN_F64 && to == PIN_F32);
+    if (to == PIN_F64) {
+        return true;
+    }
+    if (to == PIN_F32) {
+        return from != PIN_F64;
     }
     return from <= PIN_U64 && behavior_scalar_integer_widens(from, to);
 }

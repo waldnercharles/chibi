@@ -152,7 +152,8 @@ Run :: (executable: bool) -> int {
         passes = "verify,default<O2>,verify";
     }
     optimize := [opt, "-S", Join(["-passes=", passes]), source, "-o", module];
-    compile := [llc, "-filetype=obj", Join(["-O=", mode]), module, "-o", object];
+    // Position independent, so a dense switch's table links into a PIE program.
+    compile := [llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", module, "-o", object];
     link := [linker, object, "-Wl,--gc-sections", "-o", program];
     status := build.run(optimize);
     if (status != 0) {

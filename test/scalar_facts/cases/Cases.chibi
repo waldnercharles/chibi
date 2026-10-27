@@ -88,103 +88,103 @@ IntOperators :: () -> string {
 }
 Cases :: () -> Case[] {
     return [
-        Accepted("forty_two", "package scalar\nMain :: () -> int { return 42; }", 42, "Main", "42"),
-        Accepted("zero", "package scalar\nMain :: () -> int { return 0; }", 0, "Main", "0"),
-        Accepted("int_max", "package scalar\nMain :: () -> int { return 2147483647; }", 2147483647, "Main", "2147483647"),
-        Accepted("hex", "package scalar\nMain :: () -> int { return 0x2a; }", 42, "Main", "0x2a"),
-        Accepted("comments", "// 雪\npackage scalar\n\npub Main :: () -> int {\n    // λ\n    return 42; // trailing\n}\n", 42, "Main", "42"),
+        Accepted("forty_two", "package scalar\nMain :: () -> int { return 42; }", 42, "Main", "return 42"),
+        Accepted("zero", "package scalar\nMain :: () -> int { return 0; }", 0, "Main", "return 0"),
+        Accepted("int_max", "package scalar\nMain :: () -> int { return 2147483647; }", 2147483647, "Main", "return 2147483647"),
+        Accepted("hex", "package scalar\nMain :: () -> int { return 0x2a; }", 42, "Main", "return 0x2a"),
+        Accepted("comments", "// 雪\npackage scalar\n\npub Main :: () -> int {\n    // λ\n    return 42; // trailing\n}\n", 42, "Main", "return 42"),
         Rejected("overflow", "package scalar\nMain :: () -> int { return 2147483648; }", "Numeric literal is outside the range of int", "2147483648"),
         Rejected("u64_overflow", "package scalar\nMain :: () -> int { return 18446744073709551616; }", "only integer literals of 64 bits are supported", "18446744073709551616"),
-        Rejected("fraction", "package scalar\nMain :: () -> int { return 42.5; }", "only integer literals of 64 bits are supported", "42.5"),
-        Rejected("exponent", "package scalar\nMain :: () -> int { return 1e2; }", "only integer literals of 64 bits are supported", "1e2"),
-        Accepted("negative", "package scalar\nMain :: () -> int { return -1; }", -1, "Main", "-1"),
-        Accepted("parentheses", "package scalar\nMain :: () -> int { return (42); }", 42, "Main", "42"),
+        Rejected("fraction", "package scalar\nMain :: () -> int { return 42.5; }", "Numeric literal has a fraction, which int cannot hold", "42.5"),
+        Accepted("exponent", "package scalar\nMain :: () -> int { return 1e2; }", 100, "Main", "return 1e2"),
+        Accepted("negative", "package scalar\nMain :: () -> int { return -1; }", -1, "Main", "return -1"),
+        Accepted("parentheses", "package scalar\nMain :: () -> int { return (42); }", 42, "Main", "return 42"),
         // The constant folds exactly, as the ordinary compiler folds it, to one
         // literal: wrapping rows would give its sum -2^31.
-        Accepted("arithmetic", "package scalar\nMain :: () -> int { return Half(2); }\nHalf :: (x: int) -> int { return x + (2147483647 + 1) / 2; }", 1073741826, "Main,Half", "2 ; Half(2) | x ; (2147483647 + 1) / 2 ; x + (2147483647 + 1) / 2"),
-        Accepted("branch", "package scalar\nMain :: () -> int { if (true) { return 42; } return 0; }", 42, "Main", "true ? 42 : 0"),
-        Rejected("local", "package scalar\nMain :: () -> int { x: int = 42; return x; }", "scalar proof requires one complete return statement", "x: int = 42;"),
-        Rejected("after_return", "package scalar\nMain :: () -> int { return 42; assert(false); }", "scalar proof does not support additional statements", "assert(false);"),
-        Rejected("extra_return", "package scalar\nMain :: () -> int { return 42; return 0; }", "scalar proof does not support additional statements", "return 0;"),
+        Accepted("arithmetic", "package scalar\nMain :: () -> int { return Half(2); }\nHalf :: (x: int) -> int { return x + (2147483647 + 1) / 2; }", 1073741826, "Main,Half", "return 2 ; Half(2) | return x ; (2147483647 + 1) / 2 ; x + (2147483647 + 1) / 2"),
+        Accepted("branch", "package scalar\nMain :: () -> int { if (true) { return 42; } return 0; }", 42, "Main", "if true return 42 end return 0"),
+        Accepted("local", "package scalar\nMain :: () -> int { x: int = 42; return x; }", 42, "Main", "x := 42 return x"),
+        Rejected("after_return", "package scalar\nMain :: () -> int { return 42; assert(false); }", "scalar proof supports only locals, assignments, if statements, switches, loops and returns", "assert(false);"),
+        Accepted("extra_return", "package scalar\nMain :: () -> int { return 42; return 0; }", 42, "Main", "return 42 return 0"),
         Rejected("unknown_call", "package scalar\nMain :: () -> int { return unknown(); }", "Unknown function 'unknown'", "unknown"),
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
-        Rejected("scoped pointer", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "x: ^int"),
+        Rejected("scoped pointer", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "x: ^int"),
         Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
-        Rejected("int64_result", "package scalar\nMain :: () -> int64 { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "int64"),
-        Rejected("array_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires int or bool parameters and one int or bool result", "int[]"),
+        Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int", "i64"),
+        Rejected("array_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "int[]"),
         Rejected("nominal_result", "package scalar\nMain :: () -> Missing { return 42; }", "result type is not supported yet", "Missing"),
-        Rejected("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", "scalar proof requires int or bool parameters and one int or bool result", "(x: int)"),
-        Rejected("struct", "package scalar\nValue :: struct { x: int; }\nMain :: () -> int { return 42; }", "scalar proof supports only ordinary function declarations", "Value :: struct { x: int; }"),
-        Rejected("constant", "package scalar\nN: int : 42;\nMain :: () -> int { return 42; }", "scalar proof supports only ordinary function declarations", "N: int : 42;"),
-        Accepted("second_function", "package scalar\nMain :: () -> int { return 42; }\nOther :: () -> int { return 0; }", 42, "Main,Other", "42 | 0"),
+        Rejected("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "(x: int)"),
+        Rejected("struct", "package scalar\nValue :: struct { x: string; }\nMain :: () -> int { return 42; }", "scalar proof requires number and bool record fields", "x: string;"),
+        Rejected("constant", "package scalar\nN: int : 42;\nMain :: () -> int { return 42; }", "scalar proof supports only ordinary function, record and union declarations", "N: int : 42;"),
+        Accepted("second_function", "package scalar\nMain :: () -> int { return 42; }\nOther :: () -> int { return 0; }", 42, "Main,Other", "return 42 | return 0"),
         Rejected("import", "package scalar\nimport missing \"project:missing\"\nMain :: () -> int { return 42; }", "Imported package is missing from the snapshot", "\"project:missing\""),
         Rejected("attribute_test", "package scalar\n@test Main :: () -> int { return 42; }", "scalar proof does not support function attributes", "@test"),
         Rejected("attribute_pure", "package scalar\n@pure Main :: () -> int { return 42; }", "scalar proof does not support function attributes", "@pure"),
-        Rejected("empty", "package scalar\nMain :: () -> int {}", "scalar proof requires one complete return statement", "{}"),
-        Rejected("bare_return", "package scalar\nMain :: () -> int { return; }", "scalar proof requires a returned value", "return;"),
-        Rejected("no_result", "package scalar\nMain :: () { return; }", "scalar proof requires int or bool parameters and one int or bool result", "Main :: () { return; }"),
+        Rejected("empty", "package scalar\nMain :: () -> int {}", "Missing return", "{}"),
+        Rejected("bare_return", "package scalar\nMain :: () -> int { return; }", "return needs a value", "return;"),
+        Rejected("no_result", "package scalar\nMain :: () { return; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "Main :: () { return; }"),
         Rejected("no_function", "package scalar\n", "scalar proof requires at least one function", "package scalar\n"),
         Rejected("malformed", "package scalar\nMain :: () -> int { return 42;", "Expected }", ""),
         Rejected("nul", "package scalar\nMain :: () -> int { return 42; }\u0000", "Package source contains NUL bytes", "\u0000"),
-        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires int or bool parameters and one int or bool result", "string"),
-        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires int or bool parameters and one int or bool result", "[int: int]"),
-        Rejected("assert_before", "package scalar\nMain :: () -> int { assert(false); return 42; }", "scalar proof requires one complete return statement", "assert(false);"),
+        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "string"),
+        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "[int: int]"),
+        Rejected("assert_before", "package scalar\nMain :: () -> int { assert(false); return 42; }", "scalar proof supports only locals, assignments, if statements, switches, loops and returns", "assert(false);"),
         Rejected("return_outcome", "package scalar\nMain :: () -> int { return .Done 42; }", "scalar proof does not support return outcomes", "Done"),
-        Rejected("float_one", "package scalar\nMain :: () -> int { return 1.0; }", "only integer literals of 64 bits are supported", "1.0"),
-        Rejected("exponent_one", "package scalar\nMain :: () -> int { return 1e0; }", "only integer literals of 64 bits are supported", "1e0"),
+        Accepted("float_one", "package scalar\nMain :: () -> int { return 1.0; }", 1, "Main", "return 1.0"),
+        Accepted("exponent_one", "package scalar\nMain :: () -> int { return 1e0; }", 1, "Main", "return 1e0"),
         Rejected("nul_comment", "// 雪\npackage scalar\n// before\u0000after\nMain :: () -> int { return 42; }", "Package source contains NUL bytes", "\u0000"),
-        Accepted("identity", "package scalar\nMain :: () -> int { return Id(7); }\nId :: (x: int) -> int { return x; }", 7, "Main,Id", "7 ; Id(7) | x"),
-        Accepted("first_argument", "package scalar\nMain :: () -> int { return Pick(5, true, 9); }\nPick :: (a: int, flag: bool, c: int) -> int { return a; }", 5, "Main,Pick", "5 ; true ; 9 ; Pick(5, true, 9) | a"),
-        Accepted("last_argument", "package scalar\nMain :: () -> int { return Pick(5, true, 9); }\nPick :: (a: int, flag: bool, c: int) -> int { return c; }", 9, "Main,Pick", "5 ; true ; 9 ; Pick(5, true, 9) | c"),
-        Accepted("bool_passthrough", "package scalar\nMain :: () -> int { return Gate(Flip(false), 8); }\nFlip :: (b: bool) -> bool { return b; }\nGate :: (flag: bool, x: int) -> int { return x; }", 8, "Main,Flip,Gate", "false ; Flip(false) ; 8 ; Gate(Flip(false), 8) | b | x"),
-        Accepted("bool_literals", "package scalar\nMain :: () -> int { return Keep(Yes(), No(), 3); }\nYes :: () -> bool { return true; }\nNo :: () -> bool { return false; }\nKeep :: (a: bool, b: bool, x: int) -> int { return x; }", 3, "Main,Yes,No,Keep", "Yes() ; No() ; 3 ; Keep(Yes(), No(), 3) | true | false | x"),
-        Accepted("chain", "package scalar\nMain :: () -> int { return A(11); }\nA :: (x: int) -> int { return B(x, 12); }\nB :: (x: int, y: int) -> int { return C(y, x); }\nC :: (p: int, q: int) -> int { return q; }", 11, "Main,A,B,C", "11 ; A(11) | x ; 12 ; B(x, 12) | y ; x ; C(y, x) | q"),
-        Accepted("earlier_callee", "package scalar\nMain :: () -> int { return B(); }\nA :: () -> int { return 4; }\nB :: () -> int { return A(); }", 4, "Main,A,B", "B() | 4 | A()"),
-        Accepted("repeated", "package scalar\nMain :: () -> int { return Second(Id(1), Id(2)); }\nId :: (x: int) -> int { return x; }\nSecond :: (a: int, b: int) -> int { return b; }", 2, "Main,Id,Second", "1 ; Id(1) ; 2 ; Id(2) ; Second(Id(1), Id(2)) | x | b"),
-        Accepted("nested", "package scalar\nMain :: () -> int { return Third(1, Second(2, 3), Third(4, 5, 6)); }\nSecond :: (a: int, b: int) -> int { return b; }\nThird :: (a: int, b: int, c: int) -> int { return c; }", 6, "Main,Second,Third", "1 ; 2 ; 3 ; Second(2, 3) ; 4 ; 5 ; 6 ; Third(4, 5, 6) ; Third(1, Second(2, 3), Third(4, 5, 6)) | b | c"),
-        Accepted("same_spelling", "package scalar\nMain :: () -> int { return Value(21); }\nValue :: (Value: int) -> int { return Value; }", 21, "Main,Value", "21 ; Value(21) | Value"),
-        Accepted("eight_parameters", "package scalar\nMain :: () -> int { return P(1, 2, 3, 4, 5, 6, 7, 8); }\nP :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int { return g; }", 7, "Main,P", "1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; P(1, 2, 3, 4, 5, 6, 7, 8) | g"),
-        Accepted("int_max_argument", "package scalar\nMain :: () -> int { return Id(2147483647); }\nId :: (x: int) -> int { return x; }", 2147483647, "Main,Id", "2147483647 ; Id(2147483647) | x"),
-        Rejected("recursion", "package scalar\nMain :: () -> int { return Main(); }", "scalar proof does not support recursive calls", "Main()"),
-        Rejected("mutual_recursion", "package scalar\nMain :: () -> int { return A(); }\nA :: () -> int { return B(); }\nB :: () -> int { return A(); }", "scalar proof does not support recursive calls", "B()"),
+        Accepted("identity", "package scalar\nMain :: () -> int { return Id(7); }\nId :: (x: int) -> int { return x; }", 7, "Main,Id", "return 7 ; Id(7) | return x"),
+        Accepted("first_argument", "package scalar\nMain :: () -> int { return Pick(5, true, 9); }\nPick :: (a: int, flag: bool, c: int) -> int { return a; }", 5, "Main,Pick", "return 5 ; true ; 9 ; Pick(5, true, 9) | return a"),
+        Accepted("last_argument", "package scalar\nMain :: () -> int { return Pick(5, true, 9); }\nPick :: (a: int, flag: bool, c: int) -> int { return c; }", 9, "Main,Pick", "return 5 ; true ; 9 ; Pick(5, true, 9) | return c"),
+        Accepted("bool_passthrough", "package scalar\nMain :: () -> int { return Gate(Flip(false), 8); }\nFlip :: (b: bool) -> bool { return b; }\nGate :: (flag: bool, x: int) -> int { return x; }", 8, "Main,Flip,Gate", "return false ; Flip(false) ; 8 ; Gate(Flip(false), 8) | return b | return x"),
+        Accepted("bool_literals", "package scalar\nMain :: () -> int { return Keep(Yes(), No(), 3); }\nYes :: () -> bool { return true; }\nNo :: () -> bool { return false; }\nKeep :: (a: bool, b: bool, x: int) -> int { return x; }", 3, "Main,Yes,No,Keep", "return Yes() ; No() ; 3 ; Keep(Yes(), No(), 3) | return true | return false | return x"),
+        Accepted("chain", "package scalar\nMain :: () -> int { return A(11); }\nA :: (x: int) -> int { return B(x, 12); }\nB :: (x: int, y: int) -> int { return C(y, x); }\nC :: (p: int, q: int) -> int { return q; }", 11, "Main,A,B,C", "return 11 ; A(11) | return x ; 12 ; B(x, 12) | return y ; x ; C(y, x) | return q"),
+        Accepted("earlier_callee", "package scalar\nMain :: () -> int { return B(); }\nA :: () -> int { return 4; }\nB :: () -> int { return A(); }", 4, "Main,A,B", "return B() | return 4 | return A()"),
+        Accepted("repeated", "package scalar\nMain :: () -> int { return Second(Id(1), Id(2)); }\nId :: (x: int) -> int { return x; }\nSecond :: (a: int, b: int) -> int { return b; }", 2, "Main,Id,Second", "return 1 ; Id(1) ; 2 ; Id(2) ; Second(Id(1), Id(2)) | return x | return b"),
+        Accepted("nested", "package scalar\nMain :: () -> int { return Third(1, Second(2, 3), Third(4, 5, 6)); }\nSecond :: (a: int, b: int) -> int { return b; }\nThird :: (a: int, b: int, c: int) -> int { return c; }", 6, "Main,Second,Third", "return 1 ; 2 ; 3 ; Second(2, 3) ; 4 ; 5 ; 6 ; Third(4, 5, 6) ; Third(1, Second(2, 3), Third(4, 5, 6)) | return b | return c"),
+        Accepted("same_spelling", "package scalar\nMain :: () -> int { return Value(21); }\nValue :: (Value: int) -> int { return Value; }", 21, "Main,Value", "return 21 ; Value(21) | return Value"),
+        Accepted("eight_parameters", "package scalar\nMain :: () -> int { return P(1, 2, 3, 4, 5, 6, 7, 8); }\nP :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int { return g; }", 7, "Main,P", "return 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; P(1, 2, 3, 4, 5, 6, 7, 8) | return g"),
+        Accepted("int_max_argument", "package scalar\nMain :: () -> int { return Id(2147483647); }\nId :: (x: int) -> int { return x; }", 2147483647, "Main,Id", "return 2147483647 ; Id(2147483647) | return x"),
+        Accepted("recursion", "package scalar\nMain :: () -> int { return Sum(4); }\nSum :: (n: int) -> int {\n    if (n > 0) { return n + Sum(n - 1); }\n    return 0;\n}\n", 10, "Main,Sum", "return 4 ; Sum(4) | if n ; 0 ; n > 0 return n ; n ; 1 ; n - 1 ; Sum(n - 1) ; n + Sum(n - 1) end return 0"),
+        Accepted("mutual_recursion", "package scalar\nMain :: () -> int { return A(3); }\nA :: (n: int) -> int {\n    if (n > 0) { return B(n - 1); }\n    return 1;\n}\nB :: (n: int) -> int {\n    if (n > 0) { return A(n - 1); }\n    return 2;\n}\n", 2, "Main,A,B", "return 3 ; A(3) | if n ; 0 ; n > 0 return n ; 1 ; n - 1 ; B(n - 1) end return 1 | if n ; 0 ; n > 0 return n ; 1 ; n - 1 ; A(n - 1) end return 2"),
         Rejected("unknown_argument", "package scalar\nMain :: () -> int { return Id(Missing()); }\nId :: (x: int) -> int { return x; }", "Unknown function 'Missing'", "Missing"),
         Rejected("too_few_arguments", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int) -> int { return x; }", "call has the wrong number of arguments", "Id()"),
         Rejected("too_many_arguments", "package scalar\nMain :: () -> int { return Id(1, 2); }\nId :: (x: int) -> int { return x; }", "call has the wrong number of arguments", "Id(1, 2)"),
         Rejected("argument_type", "package scalar\nMain :: () -> int { return Id(true); }\nId :: (x: int) -> int { return x; }", "argument differs from its parameter type", "Id(true)"),
         Rejected("call_result_type", "package scalar\nMain :: () -> int { return Yes(); }\nYes :: () -> bool { return true; }", "returned value differs from the result type", "return Yes();"),
         Rejected("function_value", "package scalar\nMain :: () -> int { return Id; }\nId :: (x: int) -> int { return x; }", "Unknown name 'Id'", "Id"),
-        Rejected("conversion", "package scalar\nMain :: () -> int { return Id(42); }\nId :: (x: int) -> int { return int(x); }", "scalar proof calls only functions of its own source", "int"),
+        Accepted("conversion", "package scalar\nMain :: () -> int { return Low(298); }\nLow :: (x: int) -> int { return int(u8(wrap: x)); }", 42, "Main,Low", "return 298 ; Low(298) | return x ; u8(wrap: x) ; int(u8(wrap: x))"),
         Rejected("named_argument", "package scalar\nMain :: () -> int { return Id(x: 1); }\nId :: (x: int) -> int { return x; }", "unsupported syntax 'named_argument'", "x: 1"),
-        Rejected("default_parameter", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int = 1) -> int { return x; }", "scalar proof requires int or bool parameters and one int or bool result", "x: int = 1"),
-        Rejected("string_parameter", "package scalar\nMain :: () -> int { return Size(\"a\"); }\nSize :: (text: string) -> int { return 1; }", "scalar proof requires int or bool parameters and one int or bool result", "text: string"),
-        Accepted("int_operators", IntOperators(), 37, "Main,Id,Add,Sub,Mul,Div,Mod,BitAnd,BitOr,BitXor,Neg,BitNot,Mix", "1 + 2 ; Id(1 + 2) ; 4 ; 5 ; Mix(Id(1 + 2), 4, 5) | x | a ; b ; a + b | a ; b ; a - b | a ; b ; a * b | a ; b ; a / b | a ; b ; a % b | a ; b ; a & b | a ; b ; a | b | a ; b ; a ^ b | a ; -a | a ; ~a | a ; b ; +a < b ? a ; b ; a + b ; c ; (a + b) * c ; c ; -c ; 3 ; -c % 3 ; (a + b) * c - -c % 3 : a"),
+        Accepted("default_parameter", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int = 7) -> int { return x; }", 7, "Main,Id", "return Id() ; Id() | return x"),
+        Rejected("string_parameter", "package scalar\nMain :: () -> int { return Size(\"a\"); }\nSize :: (text: string) -> int { return 1; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "text: string"),
+        Accepted("int_operators", IntOperators(), 37, "Main,Id,Add,Sub,Mul,Div,Mod,BitAnd,BitOr,BitXor,Neg,BitNot,Mix", "return 1 + 2 ; Id(1 + 2) ; 4 ; 5 ; Mix(Id(1 + 2), 4, 5) | return x | return a ; b ; a + b | return a ; b ; a - b | return a ; b ; a * b | return a ; b ; a / b | return a ; b ; a % b | return a ; b ; a & b | return a ; b ; a | b | return a ; b ; a ^ b | return a ; -a | return a ; ~a | if a ; b ; +a < b return a ; b ; a + b ; c ; (a + b) * c ; c ; -c ; 3 ; -c % 3 ; (a + b) * c - -c % 3 end return a"),
         Rejected("native_call", "package scalar\nMain :: () -> int { return print(1); }", "Unknown function 'print'", "print"),
         Rejected("qualified_call", "package scalar\nMain :: () -> int { return scalar.Id(1); }\nId :: (x: int) -> int { return x; }", "Unknown function 'scalar.Id'", "Id"),
         Rejected("duplicate_function", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { return x; }\nId :: (y: int) -> int { return y; }", "Duplicate declaration 'Id'", "Id :: (y: int) -> int { return y; }"),
-        Rejected("helper_statement", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { y := x; return y; }", "scalar proof requires one complete return statement", "y := x;"),
-        Rejected("nine_parameters", "package scalar\nMain :: () -> int { return 1; }\nP :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int) -> int { return a; }", "scalar proof requires int or bool parameters and one int or bool result", "(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int)"),
+        Accepted("helper_statement", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { y := x; return y; }", 1, "Main,Id", "return 1 ; Id(1) | y := x return y"),
+        Rejected("nine_parameters", "package scalar\nMain :: () -> int { return 1; }\nP :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int) -> int { return a; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int)"),
         Accepted("most_functions", Chain(32), 31, ChainNames(32), ""),
         Rejected("too_many_functions", Chain(33), "scalar proof admits at most 32 functions", "F32 :: () -> int { return 32; }"),
         Accepted("most_operands", Nest(63), 1, "Main,Id", ""),
         Rejected("too_many_operands", Nest(64), "scalar proof admits at most 64 operands per function", Nested(64)),
-        Accepted("largest_source", Padded(16384), 1, "Main", "1"),
-        Accepted("min", "package scalar\nMain :: () -> int { return Min(7, 3); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\n", 3, "Main,Min", "7 ; 3 ; Min(7, 3) | a ; b ; a < b ? a : b"),
-        Accepted("max", "package scalar\nMain :: () -> int { return Max(3, 7); }\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 7, "Main,Max", "3 ; 7 ; Max(3, 7) | a ; b ; a > b ? a : b"),
-        Accepted("clamp", "package scalar\nMain :: () -> int { return Clamp(12, 0, 10); }\nClamp :: (x: int, low: int, high: int) -> int { return Min(Max(x, low), high); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 10, "Main,Clamp,Min,Max", "12 ; 0 ; 10 ; Clamp(12, 0, 10) | x ; low ; Max(x, low) ; high ; Min(Max(x, low), high) | a ; b ; a < b ? a : b | a ; b ; a > b ? a : b"),
-        Accepted("operators", "package scalar\nMain :: () -> int { return If(Ge(2, 3), 1, 5); }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\nLt :: (a: int, b: int) -> bool { return a < b; }\nLe :: (a: int, b: int) -> bool { return a <= b; }\nGt :: (a: int, b: int) -> bool { return a > b; }\nGe :: (a: int, b: int) -> bool { return a >= b; }\nEq :: (a: int, b: int) -> bool { return a == b; }\nNe :: (a: int, b: int) -> bool { return a != b; }\n", 5, "Main,If,Lt,Le,Gt,Ge,Eq,Ne", "2 ; 3 ; Ge(2, 3) ; 1 ; 5 ; If(Ge(2, 3), 1, 5) | c ? a : b | a ; b ; a < b | a ; b ; a <= b | a ; b ; a > b | a ; b ; a >= b | a ; b ; a == b | a ; b ; a != b"),
-        Accepted("call_condition", "package scalar\nMain :: () -> int {\n    if (Small(3)) { return 1; }\n    return 2;\n}\nSmall :: (x: int) -> bool { return x < 10; }\n", 1, "Main,Small", "3 ; Small(3) ? 1 : 2 | x ; 10 ; x < 10"),
-        Accepted("lazy_arm", "package scalar\nMain :: () -> int { return Choose(false); }\nChoose :: (c: bool) -> int {\n    if (c) { return Taken(); }\n    return Skipped();\n}\nTaken :: () -> int { return 1; }\nSkipped :: () -> int { return 2; }\n", 2, "Main,Choose,Taken,Skipped", "false ; Choose(false) | c ? Taken() : Skipped() | 1 | 2"),
-        Accepted("bare_condition", "package scalar\nMain :: () -> int { return Positive(5); }\nPositive :: (x: int) -> int {\n    if x > 0 { return x; }\n    return 0;\n}\n", 5, "Main,Positive", "5 ; Positive(5) | x ; 0 ; x > 0 ? x : 0"),
+        Accepted("largest_source", Padded(16384), 1, "Main", "return 1"),
+        Accepted("min", "package scalar\nMain :: () -> int { return Min(7, 3); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\n", 3, "Main,Min", "return 7 ; 3 ; Min(7, 3) | if a ; b ; a < b return a end return b"),
+        Accepted("max", "package scalar\nMain :: () -> int { return Max(3, 7); }\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 7, "Main,Max", "return 3 ; 7 ; Max(3, 7) | if a ; b ; a > b return a end return b"),
+        Accepted("clamp", "package scalar\nMain :: () -> int { return Clamp(12, 0, 10); }\nClamp :: (x: int, low: int, high: int) -> int { return Min(Max(x, low), high); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 10, "Main,Clamp,Min,Max", "return 12 ; 0 ; 10 ; Clamp(12, 0, 10) | return x ; low ; Max(x, low) ; high ; Min(Max(x, low), high) | if a ; b ; a < b return a end return b | if a ; b ; a > b return a end return b"),
+        Accepted("operators", "package scalar\nMain :: () -> int { return If(Ge(2, 3), 1, 5); }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\nLt :: (a: int, b: int) -> bool { return a < b; }\nLe :: (a: int, b: int) -> bool { return a <= b; }\nGt :: (a: int, b: int) -> bool { return a > b; }\nGe :: (a: int, b: int) -> bool { return a >= b; }\nEq :: (a: int, b: int) -> bool { return a == b; }\nNe :: (a: int, b: int) -> bool { return a != b; }\n", 5, "Main,If,Lt,Le,Gt,Ge,Eq,Ne", "return 2 ; 3 ; Ge(2, 3) ; 1 ; 5 ; If(Ge(2, 3), 1, 5) | if c return a end return b | return a ; b ; a < b | return a ; b ; a <= b | return a ; b ; a > b | return a ; b ; a >= b | return a ; b ; a == b | return a ; b ; a != b"),
+        Accepted("call_condition", "package scalar\nMain :: () -> int {\n    if (Small(3)) { return 1; }\n    return 2;\n}\nSmall :: (x: int) -> bool { return x < 10; }\n", 1, "Main,Small", "if 3 ; Small(3) return 1 end return 2 | return x ; 10 ; x < 10"),
+        Accepted("lazy_arm", "package scalar\nMain :: () -> int { return Choose(false); }\nChoose :: (c: bool) -> int {\n    if (c) { return Taken(); }\n    return Skipped();\n}\nTaken :: () -> int { return 1; }\nSkipped :: () -> int { return 2; }\n", 2, "Main,Choose,Taken,Skipped", "return false ; Choose(false) | if c return Taken() end return Skipped() | return 1 | return 2"),
+        Accepted("bare_condition", "package scalar\nMain :: () -> int { return Positive(5); }\nPositive :: (x: int) -> int {\n    if x > 0 { return x; }\n    return 0;\n}\n", 5, "Main,Positive", "return 5 ; Positive(5) | if x ; 0 ; x > 0 return x end return 0"),
         Accepted("split_most_operands", Split(31, 29), 1, "Main,Small,Id", ""),
         Rejected("split_too_many_operands", Split(31, 30), "scalar proof admits at most 64 operands per function", "0"),
-        Rejected("else_branch", "package scalar\nMain :: () -> int {\n    if (true) { return 1; } else { return 2; }\n}\n", "scalar proof does not support else branches", "{ return 2; }"),
-        Rejected("two_guards", "package scalar\nMain :: () -> int {\n    if (true) { return 1; }\n    if (false) { return 2; }\n    return 3;\n}\n", "scalar proof admits at most 1 guard per function", "if (false) { return 2; }"),
-        Rejected("guard_without_return", "package scalar\nMain :: () -> int {\n    if (true) { assert(false); }\n    return 1;\n}\n", "scalar proof requires a guard that returns", "assert(false);"),
-        Rejected("bool_comparison", "package scalar\nMain :: () -> int { return If(Same(true, false), 1, 2); }\nSame :: (a: bool, b: bool) -> bool { return a == b; }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\n", "scalar proof compares only int operands", "a == b"),
-        Rejected("shift", "package scalar\nMain :: () -> int { return Shl(1); }\nShl :: (a: int) -> int { return a << 2; }", "scalar proof does not support shifts", "a << 2"),
-        Rejected("logical_and", "package scalar\nMain :: () -> int { return Mid(1, 2, 3); }\nMid :: (a: int, b: int, c: int) -> int {\n    if (a < b && b < c) { return b; }\n    return a;\n}\n", "scalar proof supports only literals, parameters, arithmetic, comparisons and direct calls", "a < b && b < c"),
-        Rejected("recursive_guard", "package scalar\nMain :: () -> int { return Down(3); }\nDown :: (x: int) -> int {\n    if (x > 0) { return Down(0); }\n    return x;\n}\n", "scalar proof does not support recursive calls", "Down(0)"),
-        Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "7 ; 3 ; 7 < 3 ? 1 : 2"),
+        Accepted("else_branch", "package scalar\nMain :: () -> int {\n    if (true) { return 1; } else { return 2; }\n}\n", 1, "Main", "if true return 1 else return 2 end"),
+        Accepted("two_guards", "package scalar\nMain :: () -> int {\n    if (false) { return 1; }\n    if (true) { return 2; }\n    return 3;\n}\n", 2, "Main", "if false return 1 end if true return 2 end return 3"),
+        Rejected("guard_without_return", "package scalar\nMain :: () -> int {\n    if (true) { return 1; }\n}\n", "Missing return", "{\n    if (true) { return 1; }\n}"),
+        Accepted("bool_comparison", "package scalar\nMain :: () -> int { return If(Same(true, false), 1, 2); }\nSame :: (a: bool, b: bool) -> bool { return a == b; }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\n", 2, "Main,Same,If", "return true ; false ; Same(true, false) ; 1 ; 2 ; If(Same(true, false), 1, 2) | return a ; b ; a == b | if c return a end return b"),
+        Accepted("shift", "package scalar\nMain :: () -> int { return Shl(1); }\nShl :: (a: int) -> int { return a << 2; }", 4, "Main,Shl", "return 1 ; Shl(1) | return a ; 2 ; a << 2"),
+        Accepted("logical_and", "package scalar\nMain :: () -> int { return Mid(1, 2, 3); }\nMid :: (a: int, b: int, c: int) -> int {\n    if (a < b && b < c) { return b; }\n    return a;\n}\n", 2, "Main,Mid", "return 1 ; 2 ; 3 ; Mid(1, 2, 3) | if a ; b ; a < b ; a < b && b < c ; b ; c ; b < c return b end return a"),
+        Accepted("recursive_guard", "package scalar\nMain :: () -> int { return Down(3); }\nDown :: (x: int) -> int {\n    if (x > 0) { return Down(0); }\n    return x;\n}\n", 0, "Main,Down", "return 3 ; Down(3) | if x ; 0 ; x > 0 return 0 ; Down(0) end return x"),
+        Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "if 7 ; 3 ; 7 < 3 return 1 end return 2"),
         Rejected("too_large", Padded(16385), "scalar proof admits at most 16384 source bytes", "")];
 }
 pub Count :: () -> int {
@@ -233,8 +233,42 @@ Heads :: (rows: facts.Row[]) -> int[] {
     }
     return heads;
 }
+// `value` as a value of `type`: its low bits, sign-extended when the type is
+// signed. The values are i64, which holds every type but u64, and Check
+// rejects rows of u64 rather than evaluate them.
+Wrapped :: (value: i64, type: int) -> i64 {
+    bits := facts.Bits(type);
+    if (bits == 0 || bits == 64) {
+        return value;
+    }
+    low := value & ((i64(1) << u32(bits)) - 1);
+    if (!facts.Unsigned(type) && (low >> u32(bits - 1)) == 1) {
+        return low - (i64(1) << u32(bits));
+    }
+    return low;
+}
+// `value` clamped to the range of `type`.
+Clamped :: (value: i64, type: int) -> i64 {
+    bits := facts.Bits(type);
+    if (bits == 64) {
+        return value;
+    }
+    least: i64 = 0;
+    greatest := (i64(1) << u32(bits)) - 1;
+    if (!facts.Unsigned(type)) {
+        least = 0 - (i64(1) << u32(bits - 1));
+        greatest = (i64(1) << u32(bits - 1)) - 1;
+    }
+    if (value < least) {
+        return least;
+    }
+    if (value > greatest) {
+        return greatest;
+    }
+    return value;
+}
 // The value a comparison operator gives for `left` and `right`.
-Compared :: (operator: int, left: int, right: int) -> bool {
+Compared :: (operator: int, left: i64, right: i64) -> bool {
     if (operator == facts.Less) {
         return left < right;
     }
@@ -252,10 +286,11 @@ Compared :: (operator: int, left: int, right: int) -> bool {
     }
     return left != right;
 }
-// The value an arithmetic operator gives for `left` and `right`, as the
-// integer contract defines it: nothing fails, x / 0 is 0, x % 0 is x,
-// MIN / -1 is MIN and MIN % -1 is 0.
-Computed :: (operator: int, left: int, right: int) -> int {
+// The value an arithmetic operator gives for `left` and `right`, before it
+// wraps to their type, as the integer contract defines it: nothing fails,
+// x / 0 is 0, x % 0 is x, MIN / -1 is MIN and MIN % -1 is 0, and a count at or
+// past the width shifts out every bit or gives the sign fill.
+Computed :: (operator: int, left: i64, right: i64) -> i64 {
     if (operator == facts.Add) {
         return left + right;
     }
@@ -274,6 +309,12 @@ Computed :: (operator: int, left: int, right: int) -> int {
     if (operator == facts.Xor) {
         return left ^ right;
     }
+    if (operator == facts.ShiftLeft) {
+        return left << u32(right);
+    }
+    if (operator == facts.ShiftRight) {
+        return left >> u32(right);
+    }
     if (right == 0) {
         if (operator == facts.Divide) {
             return 0;
@@ -291,26 +332,67 @@ Computed :: (operator: int, left: int, right: int) -> int {
     }
     return left % right;
 }
-// The value function `function` returns for `arguments`: the rows read as
-// the evaluation they record, operand by operand, segment by segment. The
-// first guard whose condition holds returns its arm's value, else the final
-// return gives it. Bools are 0 and 1. Only calls recurse, so the depth is the
-// call chain's.
-Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int[]) -> int {
+// The Else or End row of the if statement whose consequence or alternative
+// starts at row `at`.
+Skipped :: (rows: facts.Row[], at: int) -> int {
+    depth: int = 0;
+    index := at;
+    while (depth > 0 || (rows[index].kind != facts.ElseRow && rows[index].kind != facts.EndRow)) {
+        if (rows[index].kind == facts.IfRow) {
+            depth += 1;
+        } else if (rows[index].kind == facts.EndRow) {
+            depth -= 1;
+        }
+        index += rows[index].count + 1;
+    }
+    return index;
+}
+// The value function `function` returns for `arguments`: its statements run
+// as the rows record them, an if statement's consequence when its condition
+// is 1 and otherwise its alternative, until a return. Each statement's
+// operands are read as the evaluation they record, operand by operand, with
+// `variables` the values of the function's variables by ordinal; a logical
+// whose left operand decides it skips its right rows. Bools are 0 and 1, and
+// each integer is the i64 its type's value is. Only calls recurse, one
+// frame each, so the depth is the call chain's.
+Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: i64[]) -> i64 {
     head := heads[function];
+    variables := arguments;
     at := head + 1 + rows[head].count;
     while (true) {
-        stack: int[] = [];
-        first := at + 1;
-        for (index in first..<first + rows[at].count) {
+        row := rows[at];
+        if (row.kind == facts.EndRow) {
+            at += 1;
+            continue;
+        }
+        // The consequence ran, so its alternative does not.
+        if (row.kind == facts.ElseRow) {
+            at = Skipped(rows, at + 1);
+            continue;
+        }
+        stack: i64[] = [];
+        index := at + 1;
+        while (index < at + 1 + rows[at].count) {
             operand := rows[index];
+            index += 1;
             if (operand.kind == facts.LiteralRow) {
-                stack.append(operand.value);
+                stack.append(operand.literal);
             } else if (operand.kind == facts.ReadRow) {
-                stack.append(arguments[operand.value]);
+                stack.append(variables[operand.value]);
+            } else if (operand.kind == facts.LogicalRow) {
+                left := stack[length(stack) - 1];
+                decided := left == 0;
+                if (operand.value == facts.LogicalOr) {
+                    decided = left == 1;
+                }
+                if (decided) {
+                    index += operand.count;
+                } else {
+                    stack = slice(stack, 0, length(stack) - 1);
+                }
             } else if (operand.kind == facts.ArithmeticRow) {
                 base := length(stack) - 2;
-                computed := Computed(operand.value, stack[base], stack[base + 1]);
+                computed := Wrapped(Computed(operand.value, stack[base], stack[base + 1]), operand.type);
                 stack = slice(stack, 0, base);
                 stack.append(computed);
             } else if (operand.kind == facts.UnaryRow) {
@@ -318,12 +400,22 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int[]) -
                 computed := ~stack[base];
                 if (operand.value == facts.Negate) {
                     computed = 0 - stack[base];
+                } else if (operand.value == facts.Not) {
+                    computed = 1 - stack[base];
                 }
                 stack = slice(stack, 0, base);
-                stack.append(computed);
+                stack.append(Wrapped(computed, operand.type));
+            } else if (operand.kind == facts.ConvertRow) {
+                base := length(stack) - 1;
+                converted := Clamped(stack[base], operand.type);
+                if (operand.value == facts.Wrap) {
+                    converted = Wrapped(stack[base], operand.type);
+                }
+                stack = slice(stack, 0, base);
+                stack.append(converted);
             } else if (operand.kind == facts.CompareRow) {
                 base := length(stack) - 2;
-                compared: int = 0;
+                compared: i64 = 0;
                 if (Compared(operand.value, stack[base], stack[base + 1])) {
                     compared = 1;
                 }
@@ -331,7 +423,7 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int[]) -
                 stack.append(compared);
             } else {
                 base := length(stack) - operand.count;
-                passed: int[] = [];
+                passed: i64[] = [];
                 for (argument in base..<length(stack)) {
                     passed.append(stack[argument]);
                 }
@@ -340,13 +432,21 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int[]) -
             }
         }
         value := stack[length(stack) - 1];
-        if (rows[at].kind == facts.ReturnRow) {
+        if (row.kind == facts.ReturnRow) {
             return value;
         }
-        // A guard: its arm when it holds, else the segment after the arm.
-        at = first + rows[at].count;
-        if (value != 1) {
-            at += rows[at].count + 1;
+        at += row.count + 1;
+        if (row.kind == facts.IfRow && value != 1) {
+            at = Skipped(rows, at);
+            if (rows[at].kind == facts.ElseRow) {
+                at += 1;
+            }
+        } else if (row.kind != facts.IfRow) {
+            // A local of a branch that did not run has no value.
+            while (length(variables) <= row.value) {
+                variables.append(i64(0));
+            }
+            variables[row.value] = value;
         }
     }
 }
@@ -361,32 +461,46 @@ Names :: (rows: facts.Row[]) -> string {
     }
     return names;
 }
-// Each function's operand excerpts, separated by " ; ". A guard's condition
-// is followed by " ? " and its arm's operands by " : ".
+// Each function's statements: each a word, then its operands' excerpts
+// separated by " ; ". A return's word is `return`, a local's its name and
+// `:=`, an assignment's its variable's name and `=`, and an if statement's
+// `if`, then `else` and `end`.
 Trace :: (rows: facts.Row[]) -> string {
     trace := "";
     separator := "";
-    // 1 within a guard's condition, 2 within its arm.
-    guard: int = 0;
+    names: string[] = [];
     for (row in rows) {
+        word := "";
         if (row.kind == facts.FunctionRow) {
-            separator = "";
             if (trace != "") {
                 trace = format_text("{} |", trace);
-                separator = " ";
             }
-        } else if (row.kind == facts.GuardRow) {
-            guard = 1;
-        } else if (row.kind == facts.ReturnRow && guard == 1) {
-            separator = " ? ";
-            guard = 2;
-        } else if (row.kind == facts.ReturnRow && guard == 2) {
-            separator = " : ";
-            guard = 0;
-        } else if (row.kind == facts.LiteralRow || row.kind == facts.ReadRow || row.kind == facts.CallRow ||
-                   row.kind == facts.CompareRow || row.kind == facts.ArithmeticRow || row.kind == facts.UnaryRow) {
+            names = slice(names, 0, 0);
+        } else if (row.kind == facts.ParameterRow) {
+            names.append(row.name);
+        } else if (row.kind == facts.ReturnRow) {
+            word = "return";
+        } else if (row.kind == facts.LocalRow) {
+            names.append(row.name);
+            word = format_text("{} :=", row.name);
+        } else if (row.kind == facts.AssignRow) {
+            word = format_text("{} =", names[row.value]);
+        } else if (row.kind == facts.IfRow) {
+            word = "if";
+        } else if (row.kind == facts.ElseRow) {
+            word = "else";
+        } else if (row.kind == facts.EndRow) {
+            word = "end";
+        } else if (row.kind != facts.SourceRow && row.kind != facts.DocumentRow) {
             trace = format_text("{}{}{}", trace, separator, Excerpt(rows[0].text, row));
             separator = " ; ";
+        }
+        if (word != "") {
+            if (trace != "") {
+                separator = " ";
+            }
+            trace = format_text("{}{}{}", trace, separator, word);
+            separator = " ";
         }
     }
     return trace;
@@ -428,8 +542,13 @@ pub Check :: (rows: facts.Row[]) -> int {
     if (Names(rows) != expected.functions) {
         return -8;
     } // "functions differ"
-    empty: int[] = [];
-    if (Evaluate(rows, Heads(rows), 0, empty) != expected.value) {
+    for (row in rows) {
+        if (row.type == facts.WordType) {
+            return -12;
+        } // "the evaluation does not model u64"
+    }
+    empty: i64[] = [];
+    if (Evaluate(rows, Heads(rows), 0, empty) != i64(expected.value)) {
         return -9;
     } // "the recorded evaluation differs"
     if (expected.trace != "" && Trace(rows) != expected.trace) {

@@ -10,14 +10,12 @@
  * compiler's module holds about a million records and needs about 113 M units
  * of record-layout work. Loading allows each module, and the closure
  * together, this much storage, each module this many records and this much
- * layout work. Its closure, about 17 MB, is returned as a byte[] of that
- * length, and the bootstrap compiles and reads it back with
- * COMPILER_HOST_MAX_ARTIFACT_BYTES. The command-line host's file outputs allow
- * that bound too: --output-artifact writes a validated compiler closure, and
- * --output-bytes writes any byte[] result unvalidated, such as the asset
- * compiler's closure of about 18 MB. Every other byte result may be
- * COMPILER_HOST_MAX_OUTPUT_BYTES long. JSON invocations keep
- * COMPILER_HOST_MAX_BYTES. */
+ * layout work. Ordinary byte results may be COMPILER_HOST_MAX_OUTPUT_BYTES
+ * long. Bootstrap closure compilation and seed/artifact reads allow
+ * COMPILER_HOST_MAX_ARTIFACT_BYTES, as do the command-line host's file outputs:
+ * --output-artifact writes a validated compiler closure, and --output-bytes
+ * writes any byte[] result unvalidated, such as the asset compiler's closure
+ * of about 18 MB. JSON invocations keep COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (256u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_CLOSURE_RECORDS 4000000
 #define COMPILER_HOST_MAX_LAYOUT_WORK (256u * 1024u * 1024u)
@@ -86,11 +84,18 @@ const execution_module *compiler_host_root(const compiler_host *);
 /* The entry ID of a package symbol, such as
  * "project:package_compiler:1:Compile:callable". */
 uint64_t compiler_host_entry(const char *symbol);
+/* The yyjson read flags of the host's private transport, which every reader
+ * of its result JSON uses: it keeps invalid UTF-8 bytes and every floating
+ * value, with NaN and the infinities as NaN, Infinity and -Infinity. */
+#define COMPILER_HOST_JSON_READ_FLAGS                                          \
+    (YYJSON_READ_ALLOW_INVALID_UNICODE | YYJSON_READ_ALLOW_INF_AND_NAN)
 /* Explicit entry ID in the artifact's root module. Arguments are a JSON array,
  * packed against decoded declarations. Address/reference argument and result
- * banks reject before JSON decoding; only owned-value contracts are admitted. Invalid UTF-8 bytes are preserved by the
- * private transport, including rejected compiler inputs. Integers retain full
- * uint64 precision; union results project as {tag,values}, not source metadata.
+ * banks reject before JSON decoding; only owned-value contracts are admitted.
+ * Invalid UTF-8 bytes are preserved by the private transport, including
+ * rejected compiler inputs. Integers retain full uint64 precision, and floats
+ * their values, with NaN, Infinity and -Infinity for the non-finite ones; union
+ * results project as {tag,values}, not source metadata.
  * Each call owns its result JSON. Instruction budget is finite/nonzero; the
  * supervising parent supplies the hard wall deadline (also during load/JIT). */
 bool compiler_host_invoke(

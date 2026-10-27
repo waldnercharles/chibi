@@ -1,4 +1,4 @@
-#include "project_migrate35.h"
+#include "project_migrate36.h"
 
 #include "assets/project.h"
 #include "project_migrate26.h"
@@ -182,10 +182,10 @@ static void rewrite(pointer_rewrite *s, TSNode node)
     }
 }
 
-int chibi_migrate35_pointers(const char *source, char **migrated, char *error, size_t size)
+int chibi_migrate36_pointers(const char *source, char **migrated, char *error, size_t size)
 {
     *migrated = NULL;
-    script_syntax *syntax = chibi_migrate_parse(source, 35);
+    script_syntax *syntax = chibi_migrate_parse(source, 36);
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
         /* A retry after an interrupted upgrade reads this step's own output,
@@ -196,7 +196,7 @@ int chibi_migrate35_pointers(const char *source, char **migrated, char *error, s
         if (current) {
             return 0;
         }
-        snprintf(error, size, "Cannot migrate invalid version 35 source");
+        snprintf(error, size, "Cannot migrate invalid version 36 source");
         return -1;
     }
     pointer_rewrite s = { .text = source };
@@ -207,7 +207,7 @@ int chibi_migrate35_pointers(const char *source, char **migrated, char *error, s
         snprintf(
             error,
             size,
-            "Source at %d:%d %s, so version 36 cannot replace ref with "
+            "Source at %d:%d %s, so version 37 cannot replace ref with "
             "pointers",
             range.line,
             range.column,

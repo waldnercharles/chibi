@@ -607,8 +607,9 @@ TEST_CASE(scenarios_load_graph_assets)
 
 static const char *const
     SHAPES_LIBRARY = "Shapes :: library {\n"
-                     "    Disc :: (X: float = 0.0, Y: float = 0.0) -> (Value: "
-                     "float = 0.0) {\n"
+                     "    Disc :: (X: number = 0.0, Y: number = 0.0) -> "
+                     "(Value: "
+                     "number = 0.0) {\n"
                      "        return field_circle(X, Y, 40.0)\n"
                      "    }\n"
                      "}\n";
@@ -632,11 +633,11 @@ static const char *const
                  "                reference_name \"Disc\"\n"
                  "                reference_asset \"Shapes\"\n"
                  "                inputs {\n"
-                 "                    X id=15 type=\"float\"\n"
-                 "                    Y id=16 type=\"float\"\n"
+                 "                    X id=15 type=\"number\"\n"
+                 "                    Y id=16 type=\"number\"\n"
                  "                }\n"
                  "                outputs {\n"
-                 "                    Value id=17 type=\"float\"\n"
+                 "                    Value id=17 type=\"number\"\n"
                  "                }\n"
                  "            }\n"
                  "            - id=18 type=\"Field Output\"\n"
@@ -1518,7 +1519,7 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     );
     write_file(
         "game/content/systems/Recharge.chibi",
-        "Recharge :: system(charge: Charge) on Tick :: (dt: float s) {\n"
+        "Recharge :: system(charge: Charge) on Tick :: (dt: number s) {\n"
         "    charge.level += charge.rate * dt\n"
         "}\n"
     );
@@ -1541,7 +1542,7 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     char outside[256], link_path[256];
     path(outside, sizeof outside, "Outside.chibi");
     path(link_path, sizeof link_path, "game/content/components/Outside.chibi");
-    const char *loose = "Outside :: component{x:float}\n";
+    const char *loose = "Outside :: component{x:number}\n";
     write_file("Outside.chibi", loose);
     REQUIRE(symlink(outside, link_path) == 0);
     format(NULL);
@@ -1561,7 +1562,7 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     write_file(
         "game/content/components/Charge.chibi",
         "Charge :: component {\n"
-        "    level: float\n"
+        "    level: number\n"
         "    job: task\n"
         "}\n"
     );
@@ -1571,13 +1572,13 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     write_file(
         "game/content/components/Charge.chibi",
         "Charge :: component {\n"
-        "    level: float\n"
+        "    level: number\n"
         "}\n"
     );
     write_file(
         "game/content/components/Transform.chibi",
         "Transform :: component {\n"
-        "    x: float\n"
+        "    x: number\n"
         "}\n"
     );
     REQUIRE(validate() != 0);
@@ -1603,7 +1604,7 @@ TEST_CASE(unit_mismatches_are_errors)
     write_file(
         "game/content/systems/Measure.chibi",
         "Measure :: system(charge: Charge, movement: Movement, collider: "
-        "Collider) on Tick :: (dt: float s) {\n"
+        "Collider) on Tick :: (dt: number s) {\n"
         "    charge.level += charge.rate * dt\n"
         "    charge.level += charge.rate\n"
         "    collider.radius = movement.speed\n"
@@ -1780,7 +1781,7 @@ TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
         "game/content/behaviors/Pointer.chibi",
         "Pointer :: behavior { on Tick :: () {\n"
         " ray := get_pointer_ray()\n"
-        " x: float = -1.0\n"
+        " x: number = -1.0\n"
         " if ray.Active { x = ray.Origin.x + ray.Direction.x }\n"
         " request := await open_url(\"https://example.org/\")\n"
         " if request.Accepted { x = 10000.0 }\n"

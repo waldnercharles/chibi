@@ -21,7 +21,7 @@ static char root[128];
 static authoring_sources *collections[MAX_COLLECTIONS];
 static execution_program *program;
 static const script_catalog_parameter cells = { .name = "cells",
-                                                .type = { .storage = PIN_F64 } };
+                                                .type = { .storage = PIN_F32 } };
 static const script_catalog_capability tick = { .id = 10,
                                                 .name = "Tick",
                                                 .kind = SCRIPT_CAPABILITY_EVENT,
@@ -143,10 +143,10 @@ static bool run(
     execution_instance *instance = execution_program_attach(program, 1);
     REQUIRE(instance);
     for (int i = 0; i < count; i++) {
-        const pin_value arg = { .type = PIN_F64, .d = amounts[i] };
+        const pin_value arg = { .type = PIN_F32, .f = (float)amounts[i] };
         REQUIRE(execution_instance_dispatch(instance, tick.id, &arg, 1, i, 0, 1000) == FLOW_OK);
         const pin_value *value = execution_instance_state(instance, offset);
-        REQUIRE(value && value->type == PIN_F64 && value->d == expected[i]);
+        REQUIRE(value && value->type == PIN_F32 && value->f == (float)expected[i]);
         REQUIRE(execution_instance_pending(instance) == 0);
     }
     execution_program_free(program);
@@ -169,9 +169,9 @@ TEST_CASE(modules_scroll_update_matches_inline_local_and_qualified_helpers)
     static const input inputs[] = {
         { "libraries/z/Scroll.chibi", "Scroll :: library { " STEP " }" },
         { "libraries/a/Other.chibi", "Other :: library { Step :: (offset: number, cells: number, advance: number, most: number) -> number { return -100; } }" },
-        { "behaviors/Inline.chibi", "Inline :: behavior { offset: number = 0; on Tick :: (cells: double) { offset += cells * 2; if offset < 0 { offset = 0; } if offset > 6 { offset = 6; } } }" },
-        { "behaviors/Local.chibi", "Local :: behavior { offset: number = 0; " STEP "on Tick :: (cells: double) { offset = Step(offset, cells, 2, 6); } }" },
-        { "behaviors/Imported.chibi", "Imported :: behavior { offset: number = 0; on Tick :: (cells: double) { offset = Scroll.Step(offset, cells, 2, 6); } }" }
+        { "behaviors/Inline.chibi", "Inline :: behavior { offset: number = 0; on Tick :: (cells: number) { offset += cells * 2; if offset < 0 { offset = 0; } if offset > 6 { offset = 6; } } }" },
+        { "behaviors/Local.chibi", "Local :: behavior { offset: number = 0; " STEP "on Tick :: (cells: number) { offset = Step(offset, cells, 2, 6); } }" },
+        { "behaviors/Imported.chibi", "Imported :: behavior { offset: number = 0; on Tick :: (cells: number) { offset = Scroll.Step(offset, cells, 2, 6); } }" }
     };
     static const double amounts[] = { 1, 4, -1, -20 };
     static const double expected[] = { 2, 6, 4, 0 };
@@ -387,9 +387,9 @@ static const input generic_inputs[] = {
       "Scale :: (value: $T, $N: int) -> T { Factor :: Units.Factorial(4); "
       "return Units.Identity(value) * N + Factor } }" },
     { "behaviors/Caller.chibi",
-      "Caller :: behavior { offset: number = 0; on Tick :: (cells: double) { "
-      "speed: Units.Quantity(double, 1, -1) = {amount: 6}; "
-      "time: Units.Quantity(double, 0, 1) = {amount: 2}; "
+      "Caller :: behavior { offset: number = 0; on Tick :: (cells: number) { "
+      "speed: Units.Quantity(number, 1, -1) = {amount: 6}; "
+      "time: Units.Quantity(number, 0, 1) = {amount: 2}; "
       "distance := Operations.Multiply(speed, time); "
       "offset = distance.amount + Operations.Scale(cells, 2) } }" },
 };
@@ -406,7 +406,7 @@ TEST_CASE(modules_imported_scalar_templates_resolve_nested_calls_without_record_
           "Factor :: Numbers.Factorial(4); "
           "return Numbers.Identity(value) * N + Factor } }" },
         { "behaviors/Caller.chibi",
-          "Caller :: behavior { offset: number = 0; on Tick :: (cells: double) "
+          "Caller :: behavior { offset: number = 0; on Tick :: (cells: number) "
           "{ "
           "offset = Operations.Scale(cells, 2) } }" },
     };
@@ -427,7 +427,7 @@ TEST_CASE(modules_empty_compile_bindings_materialize)
           "Flags :: library { Enabled :: () -> bool { return true } }" },
         { "behaviors/Caller.chibi",
           "Caller :: behavior { Value :: Flags.Enabled(); offset:number=0; "
-          "on Tick :: (cells: double) { if Value { offset=cells } } }" },
+          "on Tick :: (cells: number) { if Value { offset=cells } } }" },
     };
     static const double amounts[] = { 2 }, expected[] = { 2 };
     for (int backend = 0; backend < 2; backend++) {
@@ -464,13 +464,13 @@ TEST_CASE(modules_imported_float_compile_values_survive_dedupe_and_cache_reuse)
 {
     static const input inputs[] = {
         { "libraries/Numbers.chibi",
-          "Numbers :: library { Double :: (value: double) -> double { "
+          "Numbers :: library { Double :: (value: number) -> number { "
           "return value * 2 } }" },
         { "libraries/Operations.chibi",
-          "Operations :: library { Scale :: (value: $T, $Gain: double) -> T { "
+          "Operations :: library { Scale :: (value: $T, $Gain: number) -> T { "
           "Offset :: Numbers.Double(Gain); return value * Gain + Offset } }" },
         { "behaviors/Caller.chibi",
-          "Caller :: behavior { offset: number = 0; on Tick :: (cells: double) "
+          "Caller :: behavior { offset: number = 0; on Tick :: (cells: number) "
           "{ "
           "offset = Operations.Scale(cells, 1.5) + "
           "Operations.Scale(cells, 1.5) } }" },
@@ -497,7 +497,7 @@ TEST_CASE(modules_float_specialization_metadata_compares_exact_ieee_bits)
 {
     char path[256];
     snprintf(path, sizeof path, "%s/behaviors/Caller.chibi", root);
-    const source_catalog_edit edit = { .path = path, .text = "Caller :: behavior { offset: number = 0; on Tick :: (cells: double) { offset = cells } }" };
+    const source_catalog_edit edit = { .path = path, .text = "Caller :: behavior { offset: number = 0; on Tick :: (cells: number) { offset = cells } }" };
     const uint64_t doubles[] = { UINT64_C(0),
                                  UINT64_C(0x8000000000000000),
                                  UINT64_C(0x7ff8000000000001),
@@ -576,7 +576,7 @@ TEST_CASE(modules_imported_templates_keep_owner_types_bodies_and_nested_requests
             for (int i = 0; i < view->type_count; i++) {
                 const script_catalog_type *type = &view->types[i];
                 if (type->authored_record) {
-                    REQUIRE(type->field_count == 1 && type->size == sizeof(double));
+                    REQUIRE(type->field_count == 1 && type->size == sizeof(float));
                     REQUIRE(!strcmp(type->fields[0].name, "amount"));
                     const script_catalog_type *declared = NULL;
                     for (int j = 0; j < units->analysis->type_count; j++) {
@@ -756,7 +756,7 @@ TEST_CASE(modules_retained_library_state_inherits_consuming_owner)
         execution_instance *first = execution_program_attach(program, ecs_entity_to_u64(a));
         b = ecs_world_create_entity(world);
         execution_instance *second = execution_program_attach(program, ecs_entity_to_u64(b));
-        const pin_value amount = { .type = PIN_F64 };
+        const pin_value amount = { .type = PIN_F32 };
         REQUIRE(first && second);
         REQUIRE(execution_instance_dispatch(first, tick.id, &amount, 1, 0, 0, 1000) == FLOW_OK);
         REQUIRE(execution_instance_dispatch(second, tick.id, &amount, 1, 0, 0, 1000) == FLOW_OK);

@@ -16,15 +16,15 @@ import strings "core:strings"
 // An event the game declares; its payload is event_fields[first, first + count).
 pub GameEvent :: struct {
     name: string;
-    id: uint64;
-    abi: uint64;
+    id: u64;
+    abi: u64;
     first: int;
     count: int;
 }
 pub GameEventField :: struct {
     name: string;
     storage: int;
-    nominal: uint64;
+    nominal: u64;
     has_default: bool;
     default_owner: bool;
 }
@@ -36,11 +36,11 @@ pub GameType :: struct {
     required: bool;
     underlying: int;
     name: string;
-    id: uint64;
-    layout: uint64;
+    id: u64;
+    layout: u64;
     storage: int;
     size: int;
-    component: uint64;
+    component: u64;
     first: int;
     count: int;
 }
@@ -81,10 +81,10 @@ pub NumericOperator :: struct {
 // A behavior's retained state, with its nominal type and initial value.
 StateDecl :: struct {
     name: string;
-    id: uint64;
+    id: u64;
     storage: int;
     record: int;
-    bits: uint64;
+    bits: u64;
     text: string;
     node: int;
 }
@@ -101,10 +101,10 @@ StateValue :: (kept: StateDecl, types: TypeDecl[], layouts: int[], wide: int) ->
 // operators may combine records, and its globals are names.
 Game :: union {
     Package
-    | Library(entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+    | Library(entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
               make_fields: int[])
     | Behavior(kept: StateDecl[], handled: int[], declared: GameEvent[], payloads: GameEventField[],
-               entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+               entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                make_fields: int[])
 }
 // Prepared function kinds.
@@ -143,10 +143,10 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[], owner_record:
 }
 // The component of each component reference a body makes, or, when
 // `written`, of each it writes through.
-ComponentsOf :: (cells: Cell[], hosts: Host[], written: bool) -> uint64[] {
-    found: uint64[] = [];
+ComponentsOf :: (cells: Cell[], hosts: Host[], written: bool) -> u64[] {
+    found: u64[] = [];
     for (host in hosts) {
-        if (host.intrinsic == ReferenceMakeIntrinsic && cells[host.first + 2].constant == uint64(ComponentReference) &&
+        if (host.intrinsic == ReferenceMakeIntrinsic && cells[host.first + 2].constant == u64(ComponentReference) &&
             (host.written || !written)) {
             found.append(cells[host.first + 6].constant);
         }
@@ -154,8 +154,8 @@ ComponentsOf :: (cells: Cell[], hosts: Host[], written: bool) -> uint64[] {
     return found;
 }
 // Each of `items` once, in order.
-Distinct :: (items: uint64[]) -> uint64[] {
-    kept: uint64[] = [];
+Distinct :: (items: u64[]) -> u64[] {
+    kept: u64[] = [];
     for (item in items) {
         seen := false;
         for (known in kept) {
@@ -338,7 +338,7 @@ StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: in
         while (index < strings.ByteLength(spelling)) {
             digit := strings.ByteAt(spelling, index);
             if (digit == 46 || digit == 101 || digit == 69) {
-                return DoubleStorage;
+                return FloatStorage;
             }
             index += 1;
         }
@@ -357,7 +357,7 @@ StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: in
     return WordStorage;
 }
 // The written scalar type, or a literal initializer's natural type.
-StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[], entity: uint64,
+StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[], entity: u64,
               member: int) -> ValueType {
     written := Field(forest, member, "type");
     value := Field(forest, member, "value");
@@ -379,7 +379,7 @@ StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[]
         Field(forest, written, "arguments") < 0 && !HasToken(forest, written, "?") &&
         !HasToken(forest, written, "[")) {
         if (spelled == "number") {
-            return {storage: DoubleStorage, container: 0, record: -1};
+            return {storage: FloatStorage, container: 0, record: -1};
         }
         return {storage: HandleStorage, container: 0, record: TypeWithId(types, entity)};
     }
@@ -413,7 +413,7 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
         return Default.Failed(Diagnose(forest, value, 0, "entity default requires null or zero"));
     }
     if (storage == BoolStorage && Is(forest, value, "boolean")) {
-        bits: uint64 = 0;
+        bits: u64 = 0;
         if (Text(forest, source, value) == "true") {
             bits = 1;
         }
@@ -455,20 +455,20 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
 // from it. The target, natives, events, types, entity, operators, globals and
 // record makes are the game's, as `chibi-compile --stage-one-input` exports
 // them.
-pub CompileBehavior :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
-                        natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u64, names: string[],
+                        natives: Native[], ports: Port[], native_ids: u64[], game_events: GameEvent[],
                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                        entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                        entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                         make_fields: int[]) -> Result {
     context: BodyContext = BodyContext.Unknown;
     return CompileBehaviorResolved(identity, source, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
                                    game_events, event_fields, types, type_fields, entity, operators, globals,
                                    makes, make_fields, resize([int(0)], length(natives)), context);
 }
-CompileBehaviorResolved :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
-                            natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+CompileBehaviorResolved :: (identity: string, source: string, target: Target, abi: u64, names: string[],
+                            natives: ResolvedNative[], ports: ResolvedPort[], native_ids: u64[], game_events: GameEvent[],
                             event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                            entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                            entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                             make_fields: int[], native_effects: int[], context: BodyContext) -> Result {
     return CompileSources([identity], [source], target, abi, names, natives, ports, native_ids, game_events,
                           event_fields, types, type_fields, entity, operators, globals, makes, make_fields,
@@ -536,7 +536,7 @@ SourceMembers :: union {
 }
 DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, package: int, declaration: int,
                   aliases: Name[], declared_types: TypeDecl[], callables: Callable[], params: Param[],
-                  game_events: GameEvent[], event_fields: GameEventField[], entity: uint64,
+                  game_events: GameEvent[], event_fields: GameEventField[], entity: u64,
                   operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
                   ops: Ops) -> SourceMembers {
     source := document.text;
@@ -555,7 +555,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
                 (declared.storage == HandleStorage && declared.record < 0)) {
                 return SourceMembers.Failed(Diagnose(forest, member, package, "state type is not supported yet"));
             }
-            bits: uint64 = 0;
+            bits: u64 = 0;
             initial := "";
             switch StateDefault(forest, source, name, declared.storage, Field(forest, member, "value"), ops) {
                 case .Failed(diagnostic):
@@ -626,8 +626,8 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
 // Parsed roots, signatures and catalog types share one index space. Bodies
 // establish exact imports; dependencies are assembled before their callers.
 SourceNatives :: (documents: snapshot.Document[], callables: Callable[], natives: ResolvedNative[],
-                  identities: uint64[]) -> ResolvedNative[] {
-    owned: uint64[] = [];
+                  identities: u64[]) -> ResolvedNative[] {
+    owned: u64[] = [];
     for (callable in callables) {
         owned.append(binding.ID("symbol", format_text("{}:1:{}:callable", documents[callable.document].identity,
                                                       callable.name)));
@@ -644,10 +644,10 @@ SourceNatives :: (documents: snapshot.Document[], callables: Callable[], natives
     }
     return resolved;
 }
-CompileSources :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                   natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+CompileSources :: (identities: string[], sources: string[], target: Target, abi: u64, names: string[],
+                   natives: ResolvedNative[], ports: ResolvedPort[], native_ids: u64[], game_events: GameEvent[],
                    event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                   entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                   entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                    make_fields: int[], native_effects: int[], context: BodyContext, closure: bool) -> Result {
     ops := ResolveOps(names, true);
     if (abi == 0 || !Complete(ops) || !NativeInputValid(natives, ports, native_ids, native_effects) ||
@@ -658,7 +658,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
     documents: snapshot.Document[] = [];
     roots: int[] = [];
     links: graph.Binding[] = [];
-    module_ids: uint64[] = [];
+    module_ids: u64[] = [];
     index: int = 0;
     while (index < length(sources)) {
         id := binding.ID("module", identities[index]);
@@ -818,11 +818,11 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
         pass += 1;
     }
     done := resize([false], length(documents));
-    fingerprints := resize([uint64(0)], length(documents));
+    fingerprints := resize([u64(0)], length(documents));
     starts := resize([int(0)], length(documents));
     lengths := resize([int(0)], length(documents));
     effects := resize([int(0)], length(callables));
-    data: byte[] = [];
+    data: u8[] = [];
     remaining := length(documents);
     while (remaining > 0) {
         progress := false;
@@ -863,11 +863,11 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
     }
     return Result.Compiled(module_ids[0], writer.Closure(module_ids[0], module_ids, identities, data, starts, lengths));
 }
-CompileBehaviorsResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                             natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+CompileBehaviorsResolved :: (identities: string[], sources: string[], target: Target, abi: u64, names: string[],
+                             natives: ResolvedNative[], ports: ResolvedPort[], native_ids: u64[], game_events: GameEvent[],
                              event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                             entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
-                             make_fields: int[], native_effects: int[], context: BodyContext) -> byte[] {
+                             entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                             make_fields: int[], native_effects: int[], context: BodyContext) -> u8[] {
     switch CompileSources(identities, sources, target, abi, names, natives, ports, native_ids, game_events,
                           event_fields, types, type_fields, entity, operators, globals, makes, make_fields,
                           native_effects, context, true) {
@@ -877,10 +877,10 @@ CompileBehaviorsResolved :: (identities: string[], sources: string[], target: Ta
             return bytes;
     }
 }
-BehaviorRejectionResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                              natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+BehaviorRejectionResolved :: (identities: string[], sources: string[], target: Target, abi: u64, names: string[],
+                              natives: ResolvedNative[], ports: ResolvedPort[], native_ids: u64[], game_events: GameEvent[],
                               event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                              entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                              entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                               make_fields: int[], native_effects: int[], context: BodyContext) -> string {
     switch CompileSources(identities, sources, target, abi, names, natives, ports, native_ids, game_events,
                           event_fields, types, type_fields, entity, operators, globals, makes, make_fields,
@@ -923,7 +923,7 @@ CatalogRecordValid :: (types: TypeDecl[], record: int) -> bool {
     }
     return false;
 }
-CatalogPorts :: (ports: CatalogPort[], types: TypeDecl[], entity: uint64) -> ResolvedPort[] {
+CatalogPorts :: (ports: CatalogPort[], types: TypeDecl[], entity: u64) -> ResolvedPort[] {
     resolved: ResolvedPort[] = [];
     for (port in ports) {
         record: int = -1;
@@ -991,12 +991,12 @@ CatalogMakes :: (makes: NativeMake[], natives: ResolvedNative[], ports: Resolved
 }
 // Rich game entry points carry nominal ports and the real native effects;
 // the pure package/bootstrap entry points keep their original record layouts.
-pub CompileBehaviorsWithCatalog :: (identities: string[], sources: string[], target: Target, abi: uint64,
-                                    names: string[], natives: CatalogNative[], ports: CatalogPort[], native_ids: uint64[],
+pub CompileBehaviorsWithCatalog :: (identities: string[], sources: string[], target: Target, abi: u64,
+                                    names: string[], natives: CatalogNative[], ports: CatalogPort[], native_ids: u64[],
                                     game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
-                                    type_fields: GameField[], entity: uint64, operators: NumericOperator[],
+                                    type_fields: GameField[], entity: u64, operators: NumericOperator[],
                                     globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
-                                    native_effects: int[]) -> byte[] {
+                                    native_effects: int[]) -> u8[] {
     context: BodyContext = BodyContext.Known(native_effects);
     resolved := CatalogPorts(ports, NativeTypes(types), entity);
     resolved_natives := CatalogNatives(natives);
@@ -1007,10 +1007,10 @@ pub CompileBehaviorsWithCatalog :: (identities: string[], sources: string[], tar
                                     game_events, event_fields, types, type_fields, entity, operators, globals,
                                     CatalogMakes(makes, resolved_natives, resolved), make_fields, native_effects, context);
 }
-pub BehaviorRejectionWithCatalog :: (identities: string[], sources: string[], target: Target, abi: uint64,
-                                     names: string[], natives: CatalogNative[], ports: CatalogPort[], native_ids: uint64[],
+pub BehaviorRejectionWithCatalog :: (identities: string[], sources: string[], target: Target, abi: u64,
+                                     names: string[], natives: CatalogNative[], ports: CatalogPort[], native_ids: u64[],
                                      game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
-                                     type_fields: GameField[], entity: uint64, operators: NumericOperator[],
+                                     type_fields: GameField[], entity: u64, operators: NumericOperator[],
                                      globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
                                      native_effects: int[]) -> string {
     context: BodyContext = BodyContext.Known(native_effects);

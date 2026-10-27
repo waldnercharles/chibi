@@ -136,7 +136,7 @@ TEST_CASE(language_declarations_actions_and_bindings)
         "action pending = delay(Duration: 1);\n"
         "event changed = self.Health.CurrentChanged;\n"
         "bind self.ParticleEmitter.Active = enabled;\n"
-        "on Tick :: (dt: float) { count += int(dt); }\n"
+        "on Tick :: (dt: number) { count += int(dt); }\n"
         "after pending.Completed { destroy(self); }\n"
         "events Other { on Begin :: () { pending.start(); } }\n"
         "}"
@@ -244,7 +244,7 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
         "items: Element[]; } Identity :: (value: $T) -> T => { return value; } "
         "Product :: (left: $L, right: $R) -> ProductType(L, R) { return left; "
         "} "
-        "Composed :: (value: ^(Vector(float, 2)[])) -> Vector(float, 2)? { "
+        "Composed :: (value: ^(Vector(number, 2)[])) -> Vector(number, 2)? { "
         "return nil; } "
         "Use :: () { values: [string: int] = [\"Ada\": 1, key: 2, 3: 4]; "
         "for key, value in values { consume(key, value); } "
@@ -272,11 +272,11 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
     TSNode composed_type = field(parameter, "type");
     TSNode composed_pointer = ts_node_named_child(composed_type, 0);
     REQUIRE(!strcmp(ts_node_type(composed_pointer), "pointer_type"));
-    REQUIRE(node_text(composed_type, "^(Vector(float, 2)[])"));
+    REQUIRE(node_text(composed_type, "^(Vector(number, 2)[])"));
     REQUIRE(!ts_node_is_null(
-        find_node(composed_pointer, "type_application", "Vector(float, 2)")
+        find_node(composed_pointer, "type_application", "Vector(number, 2)")
     ));
-    REQUIRE(node_text(field(composed, "results"), "Vector(float, 2)?"));
+    REQUIRE(node_text(field(composed, "results"), "Vector(number, 2)?"));
     TSNode use = ts_node_named_child(body, 4);
     TSNode statements = field(use, "body");
     TSNode value = field(ts_node_named_child(statements, 0), "value");
@@ -459,7 +459,7 @@ TEST_CASE(language_callable_types_entries_and_results)
     cleanup();
     parse(
         "Use :: library { Run :: () { result: Units.ProductType(A, B) = {}; "
-        "speed: Units.Quantity(double, 1, -1) = {}; return speed; } }"
+        "speed: Units.Quantity(f64, 1, -1) = {}; return speed; } }"
     );
     REQUIRE(!original->diagnostic_count);
     TSNode body = field(ts_node_named_child(declaration_body(), 0), "body");
@@ -473,7 +473,7 @@ TEST_CASE(language_system_queries_and_control_flow)
     parse(
         "Motion :: system(position: Transform, velocity: Velocity, damping: "
         "Igniter?) "
-        "without Collider, Body on Tick :: (dt: float s) {\n"
+        "without Collider, Body on Tick :: (dt: number s) {\n"
         "query components();\n"
         "position += velocity * dt;\n"
         "if damping { damping.heat = 0; } else if dt > 0 { position = "

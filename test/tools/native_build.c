@@ -106,17 +106,30 @@ static void reset(const char *name, const char *source)
     write_at(tools, "action", "ok\n");
 }
 
-/* Runs `chibi build --native` with an empty PATH and no CHIBI_LLVM_BIN. */
-static int build(const char *program, const char *mode, const char *llvm)
+/* Runs `chibi build --native` with up to two options, an empty PATH and no
+ * CHIBI_LLVM_BIN. */
+static int build_with(const char *program, const char *const options[2], const char *llvm)
 {
     chibi_process_output out = { .data = output, .capacity = sizeof output };
     chibi_process_output err = { .data = errors, .capacity = sizeof errors };
-    const char *argv[] = { program,  "build", "--native", mode,
-                           "--llvm", llvm,    game,       NULL };
+    const char *argv[9] = { program, "build", "--native" };
+    int at = 3;
+    for (int i = 0; i < 2 && options[i]; i++) {
+        argv[at++] = options[i];
+    }
+    argv[at++] = "--llvm";
+    argv[at++] = llvm;
+    argv[at] = game;
     const char *envp[] = { "PATH=", NULL };
     status = chibi_process_capture(program, argv, suite, envp, chibi_process_now() + 120, NULL, &out, &err);
     assert(status.error == CHIBI_PROCESS_OK);
     return status.status;
+}
+
+static int build(const char *program, const char *mode, const char *llvm)
+{
+    const char *options[] = { mode, NULL };
+    return build_with(program, options, llvm);
 }
 
 /* The one entry of game/build/native starting with `prefix` and ending with
@@ -186,6 +199,69 @@ TEST_CASE(native_build_links_a_program_and_reuses_it)
     free(before);
     REQUIRE(build(launcher, "-O2", tools) == 0 && count("O2-") == 1 && count("O0-") == 1);
     REQUIRE(count("emitter-") == 1);
+    return true;
+}
+
+/* The IR of the one O0 output whose source.ll does (`lines`) or does not
+ * hold line tables, or NULL. */
+static char *module_ir(bool lines)
+{
+    char folder[1024], source[1024];
+    path(folder, game, "build/native");
+    DIR *listing = opendir(folder);
+    char *found = NULL;
+    for (struct dirent *entry; listing && (entry = readdir(listing));) {
+        if (strncmp(entry->d_name, "O0-", 3) || strchr(entry->d_name, '.')) {
+            continue;
+        }
+        snprintf(source, sizeof source, "%s/%s/source.ll", folder, entry->d_name);
+        char *text = tool_read(source);
+        if (text && !!strstr(text, "!dbg") == lines && !found) {
+            found = text;
+            continue;
+        }
+        free(text);
+    }
+    if (listing) {
+        closedir(listing);
+    }
+    return found;
+}
+
+/* -g emits line tables, as rustc's -C debuginfo=line-tables-only: each
+ * function a subprogram under its source name, each statement at its line and
+ * column, the file in the game's folder. It is an output of its own. */
+TEST_CASE(native_build_adds_line_tables_with_g)
+{
+    reset("lines", SOURCE);
+    REQUIRE(build(launcher, "-O0", tools) == 0);
+    const char *lines[] = { "-O0", "-g" };
+    REQUIRE(build_with(launcher, lines, tools) == 0 && count("O0-") == 2);
+    REQUIRE(build_with(launcher, lines, tools) == 0 && strstr(errors, "is up to date"));
+    char *plain = module_ir(false), *ir = module_ir(true);
+    REQUIRE(plain && !strstr(plain, "!llvm") && ir);
+    char file[1200];
+    snprintf(file, sizeof file, "!1 = !DIFile(filename: \"Main.chibi\", directory: \"%s\")\n", game);
+    static const char *const expected[] = {
+        "define i32 @chibi_scalar() #0 !dbg !6 {",
+        "emissionKind: LineTablesOnly",
+        "!6 = distinct !DISubprogram(name: \"Main\", linkageName: "
+        "\"chibi_scalar\", scope: !1, file: !1, line: 2,",
+        "!7 = distinct !DISubprogram(name: \"Twice\", linkageName: "
+        "\"chibi_scalar.1\", scope: !1, file: !1, "
+        "line: 5,",
+        "!DILocation(line: 3, column: 5, scope: !6)",
+        "!DILocation(line: 6, column: 5, scope: !7)",
+    };
+    bool placed = strstr(ir, file);
+    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
+        placed = placed && strstr(ir, expected[i]);
+    }
+    free(ir);
+    free(plain);
+    REQUIRE(placed);
+    const char *twice[] = { "-g", "-g" };
+    REQUIRE(build_with(launcher, twice, tools) == 2 && strstr(errors, "Invalid build option: -g"));
     return true;
 }
 
@@ -305,8 +381,33 @@ TEST_CASE(native_build_refuses_an_incomplete_output)
     return true;
 }
 
+/* `llvm-symbolizer` in `bin` places `symbol` of `program` at `expected`. */
+static bool symbolized(const char *bin, const char *program, const char *symbol, const char *expected)
+{
+    char symbolizer[1024], object[1100];
+    path(symbolizer, bin, "llvm-symbolizer");
+    snprintf(object, sizeof object, "--obj=%s", program);
+    const char *argv[] = { symbolizer, object, symbol, NULL };
+    const char *envp[] = { NULL };
+    chibi_process_output out = { .data = output, .capacity = sizeof output },
+                         err = { 0 };
+    chibi_process_capture_result ran = chibi_process_capture(
+        symbolizer,
+        argv,
+        game,
+        envp,
+        chibi_process_now() + 30,
+        NULL,
+        &out,
+        &err
+    );
+    return ran.error == CHIBI_PROCESS_OK && ran.status == 0 &&
+           strstr(output, expected);
+}
+
 /* The build tree's launcher finds its sibling hosts; real LLVM tools link a
- * program that runs, with no C compiler on an empty PATH. */
+ * program that runs, with no C compiler on an empty PATH. With -g, its line
+ * tables place its functions in the source at O0 and O2. */
 TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
 {
     const char *bin = getenv("CHIBI_LLVM_BIN");
@@ -324,11 +425,18 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
     }
     char in_place[1024];
     path(in_place, built, "sdk/chibi");
-    for (int i = 0; i < 2; i++) {
-        REQUIRE(build(in_place, i ? "-O2" : "-O0", tools) == 0);
+    for (int i = 0; i < 4; i++) {
+        const char *options[] = { i % 2 ? "-O2" : "-O0", i >= 2 ? "-g" : NULL };
+        REQUIRE(build_with(in_place, options, tools) == 0);
+        /* The launcher prints the program's path last. */
         char program[1024];
-        REQUIRE(only(i ? "O2-" : "O0-", "", program));
-        strcat(program, "/program");
+        const char *printed = strstr(errors, "native: /");
+        REQUIRE(printed);
+        printed += strlen("native: ");
+        size_t length = strcspn(printed, "\n");
+        REQUIRE(length < sizeof program);
+        memcpy(program, printed, length);
+        program[length] = 0;
         const char *argv[] = { program, NULL };
         const char *envp[] = { NULL };
         chibi_process_output out = { 0 }, err = { 0 };
@@ -343,6 +451,16 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
             &err
         );
         REQUIRE(ran.error == CHIBI_PROCESS_OK && ran.status == 42);
+        if (i < 2) {
+            continue;
+        }
+        char source[1100], main_line[1200], twice_line[1200];
+        snprintf(source, sizeof source, "%s/Main.chibi:", game);
+        snprintf(main_line, sizeof main_line, "%s2:0\n", source);
+        snprintf(twice_line, sizeof twice_line, "%s5:0\n", source);
+        /* O2 inlines Twice, so Main is all that is left to place. */
+        REQUIRE(symbolized(bin, program, "chibi_scalar", i == 2 ? main_line : source));
+        REQUIRE(i == 3 || symbolized(bin, program, "chibi_scalar.1", twice_line));
     }
     return true;
 }
@@ -362,6 +480,7 @@ void test_native_build(const char *binary)
     assert(stage_tool);
     relocate(binary);
     RUN_TEST_CASE(native_build_links_a_program_and_reuses_it);
+    RUN_TEST_CASE(native_build_adds_line_tables_with_g);
     RUN_TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back);
     RUN_TEST_CASE(native_build_rejects_missing_and_failing_tools);
     RUN_TEST_CASE(native_build_refuses_what_an_interrupted_build_left);
@@ -371,6 +490,7 @@ void test_native_build(const char *binary)
     tool_remove_tree(suite);
 #else
     (void)binary;
-    fprintf(stderr, "native build: six Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
+    fprintf(stderr, "native build: seven Linux x86-64 cases unexecuted on this platform; the driver admits only that target
+");
 #endif
 }

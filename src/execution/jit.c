@@ -309,9 +309,9 @@ static behavior_layout layout(
 {
     bool integers = acount(f->suspensions) > 0;
     for (int i = 0; i < acount(f->slots); i++) {
-        integers |= behavior_scalar_integer(f->slots[i]) ||
-                    f->slots[i] == PIN_BOOL || f->slots[i] == PIN_HANDLE ||
-                    f->slots[i] == PIN_TASK || f->slots[i] == PIN_UNION ||
+        integers |= behavior_scalar_integer(f->slots[i]) || f->slots[i] == PIN_BOOL ||
+                    f->slots[i] == PIN_HANDLE || f->slots[i] == PIN_TASK ||
+                    f->slots[i] == PIN_UNION || f->slots[i] == PIN_POINTER ||
                     behavior_scalar_string(f->slots[i]);
     }
     int saved_float = 0;
@@ -329,7 +329,8 @@ static behavior_layout layout(
                        f->instructions[i].op == BF_TYPE_NAME ||
                        f->instructions[i].op == BF_ARRAY) &&
                       f->instructions[i].target == BF_ARGUMENT);
-        calls |= behavior_jit_call(f->instructions[i].op) ||
+        calls |= behavior_jit_pointer_comparison(f, &f->instructions[i]) ||
+                 behavior_jit_call(f->instructions[i].op) ||
                  (inspected &&
                   behavior_function_inspection_call(f->instructions[i].op));
         loop |= (f->instructions[i].op == BF_JUMP || f->instructions[i].op == BF_BRANCH) &&

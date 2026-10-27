@@ -22,6 +22,63 @@ The [package library plan](package-library-plan.md) prioritizes prerequisites
 for selected Odin-inspired packages. Add package evidence to the matching entry
 here; the plan records scheduling and package decision records own proposed APIs.
 
+## Managed pointer boundaries
+
+Language and runtime. The approved managed-pointer implementation is local to
+`codex/managed-pointers-20261022`; it is not yet merged. The
+[contract and validation ledger](managed-pointers.md) distinguish supported
+operations from remaining limits.
+
+- `&array[index]` and `&map[key]` need an identity rule when a container grows,
+  removes an entry or changes through another value copy. Address-taking
+  currently rejects these locations. A pointer to the whole container remains
+  a separate operation.
+- An invocation `ref` can name temporary frame storage. Taking its address
+  must wait for a lifetime contract; `F(ref pointer^)` can already pass a
+  managed target in the other direction.
+- A presence guard on a nullable local can be tracked. Repeated mutable field
+  reads cannot assume an alias left the field unchanged. Bind the pointer to a
+  local before checking and dereferencing it.
+- Ordinary native calls and ECS storage have no managed-heap root contract.
+  They reject pointers, including pointers hidden in aggregate values.
+- Hot replacement must retain both the old allocations and their type layouts.
+  Keeping bytes alive alone is insufficient when tracing depends on a record
+  shape that a later catalog can replace.
+- Native reflected records and inline nested record payloads currently lack
+  independently retained layout metadata. Managed cells reject them until
+  that metadata can outlive catalog replacement; flat authored records and
+  recursive links through pointer fields are supported.
+- Stage one's body emitter receives a fixed type catalog. Its address prepass
+  conservatively constructs pointer layers using the number of address
+  expressions, including unused combinations. Before pointer-heavy packages
+  grow, replace this with demand-driven constructor publication or a type
+  inference pass; measure compile time and catalog size when doing so.
+- Delayed continuations currently describe all parent local banks as captures.
+  Those banks must stay alive until action completion, when references are
+  materialized. More precise capture metadata could reduce retained memory;
+  lexical scope exit alone cannot clear these banks safely.
+- Native boundary validation scans boxed record arrays before each call. A
+  self-compilation profile on this branch spent most samples validating array
+  element headers, even after complete pointer-free packed layouts gained a
+  constant-time path. An array-index operation only needs to expose its selected
+  element, but native calls currently have no argument-access contract. A future
+  explicit validator for canonical array indexing could check only that element;
+  it must be carried through binding and ABI validation. Purity alone does not
+  prove that a native callback cannot retain an argument, and a cache cannot
+  assume external code leaves boxed element headers unchanged.
+- Action dispatch currently validates native arguments in the backend and
+  again in the public action helper, with no callback between them. A follow-up
+  can remove the duplicate walk while preserving direct-helper validation and
+  failure classification. This is separate from the measured array-index cost.
+
+Decision (2026-10-22): pointer assignment shares a target, value assignment
+copies a value, and unreachable cycles are collected automatically. Users do
+not need `move`, a `shared` creation form, or weak links to break cycles.
+Odin supplies the familiar `^T`, `&value` and `pointer^` spelling. Go's managed
+pointers provide a lifetime precedent; Nim's ORC implementation was inspected
+before choosing Chibi's existing tracing collector. These are semantic
+references, not a claim that their implementations were ported.
+
 ## Stage one rejects untyped locals
 
 Stage one. Before #558 an untyped number literal was a `number`, so
@@ -107,6 +164,17 @@ to a map step that appended to it, which took the same compile from 28 to
 local array, keep the calls free. `tool language-package-compiler-chibi-sharing`
 now fails when any function but those that run once per compile copies its
 arguments.
+
+The managed-pointer increment hit the same issue on 2026-10-22: its new
+helpers caused 17 unexpected copying functions, and a process sample during
+self-compilation showed repeated record-array/string snapshots. Fresh
+`append`/`extend` results and local bindings for reassigned parameters restore
+the existing sharing check without exemptions. Union construction now derives
+aliasing from its explicit payload headers; copied ordinary arrays stay
+independent, while pointer-bearing payloads retain their targets.
+Failure-observation callbacks also disable argument sharing at runtime, even
+when that static check passes. Keep the compiler fixture's diagnostic observer
+opt-in when measuring or validating normal compiler execution.
 
 - Odin, C, Zig and Rust type pointers apart from integers, and pass slices
   and arrays by reference or by an explicit copy, so neither their aliasing
@@ -464,16 +532,23 @@ data cell, as stage zero keeps every local. Stage one still refuses:
 - Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
   Ruby use generators.
 
-A call does not mark a reference argument either: `Nudge(v)` may write `v`,
-and only the callee's declaration says so. The version 29 migration
-collects every authored callable with a `ref` parameter to learn whether a
-call can change a parameter. C# (`ref v`), Swift (`&v`), Rust (`&mut v`),
-Odin and Zig (`&v`) all mark the call site, so readers and tools see the
-write.
+Calls now mark reference arguments: `Nudge(ref v)` may write `v`. Both
+compiler stages reject an omitted marker or a marker on a value parameter.
+This follows C#'s explicit `ref v` at the declaration and call; Swift (`&v`),
+Rust (`&mut v`), Odin and Zig (`&v`) also mark the call site. The native
+compiler accepts `Nudge(value: ref v)`; general named calls remain a
+stage-one gap.
+
+Authoring refuses to inline a callable with `ref` parameters. Its expansion
+would declare a local `ref` initialized from the argument's value, but local
+declaration lowering does not create a reference to that argument. Supporting
+local reference aliases is a prerequisite for preserving caller mutation when
+inlining these calls; the original call remains intact.
 
 Suggestion: `core:strings` gains Odin's iterators, then stage one compiles
-references to elements and entries. Consider marking reference arguments at
-the call site.
+references to elements and entries. Keep ownership transfers automatic:
+ordinary library users should never need a `move` keyword. Resource-handle
+sharing and cleanup still need their own API decisions.
 
 ### Library growth increases compiler-test execution time
 

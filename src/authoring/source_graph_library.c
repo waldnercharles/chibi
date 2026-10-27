@@ -184,7 +184,8 @@ static node *call(const lowering *l, const script_expression *e)
 static bool scalar(const script_type type)
 {
     return !type.nominal && !type.container && type.storage != PIN_STRUCT &&
-           type.storage != PIN_HANDLE && type.storage != PIN_ENUM;
+           type.storage != PIN_HANDLE && type.storage != PIN_ENUM &&
+           type.storage != PIN_POINTER;
 }
 
 static void add_pin(graph *g, node *n, int output, const script_symbol *s)

@@ -454,6 +454,7 @@ static int parse_field(
             }
             break;
         }
+        case PIN_POINTER:
         case PIN_TASK:
         case PIN_UNION:
         case PIN_FLOW: result = 1; break;
@@ -1180,6 +1181,36 @@ static int compare_strings(const void *left_ptr, const void *right_ptr)
     return strcmp(*left, *right);
 }
 
+/* Prototype documents cannot preserve managed pointer identity or ownership. */
+static bool serializable_type(const prototype_registry *registry, const type_desc *type, int depth)
+{
+    if (!type || depth == 64) {
+        return false;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type == PIN_POINTER) {
+            return false;
+        }
+        if (field->type == PIN_STRUCT) {
+            const type_desc *nested = find_type(registry, field->type_name);
+            if (nested && !serializable_type(registry, nested, depth + 1)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+static bool serializable_components(const prototype *document, const prototype_component *components)
+{
+    for (int i = 0; i < acount(components); i++) {
+        if (!serializable_type(document->registry, components[i].desc->type, 0)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* `component` is the component whose top-level fields these are, so its
  * entity paths save, or NULL for a nested value. */
 static void write_struct_fields(
@@ -1215,6 +1246,7 @@ static bool zero_field(const void *base, const type_field *field)
         case PIN_STR:
             return !*(const void *const *)((const char *)base + field->offset);
         case PIN_STRUCT: return !value.ptr;
+        case PIN_POINTER: return false;
         case PIN_HANDLE:
         case PIN_TASK:
         case PIN_UNION:
@@ -1258,6 +1290,7 @@ static av_value *write_value(av_doc *doc, const prototype *document, const void 
             }
             return object;
         }
+        case PIN_POINTER: return NULL;
         case PIN_HANDLE:
         case PIN_TASK:
         case PIN_UNION:
@@ -1370,7 +1403,8 @@ static av_value *write_components(av_doc *doc, const prototype *document, protot
 
 av_value *prototype_to_value(const prototype *document)
 {
-    if (!document) {
+    if (!document || !serializable_components(document, document->components) ||
+        !serializable_components(document, document->detached_components)) {
         return NULL;
     }
     av_doc *doc = av_doc_new();
@@ -1456,7 +1490,7 @@ char *prototype_save(const prototype *document)
 
 av_value *prototype_components_value(const prototype *document)
 {
-    if (!document) {
+    if (!document || !serializable_components(document, document->components)) {
         return NULL;
     }
     av_doc *doc = av_doc_new();
@@ -1469,6 +1503,9 @@ av_value *prototype_components_value(const prototype *document)
 av_value *prototype_component_value(const prototype *document, const char *name)
 {
     const prototype_component *component = find_component((prototype *)document, name);
+    if (component && !serializable_type(document->registry, component->desc->type, 0)) {
+        return NULL;
+    }
     prototype_component *values = NULL;
     if (component) {
         apush(values, *component);
@@ -1488,7 +1525,8 @@ av_value *prototype_entity_component_value(
     const prototype_registry *registry
 )
 {
-    if (!world || !desc || !registry || !ecs_entity_is_alive(world, entity)) {
+    if (!world || !desc || !registry || !ecs_entity_is_alive(world, entity) ||
+        !serializable_type(registry, desc->type, 0)) {
         return NULL;
     }
     const void *data = ecs_component_data_const(world, entity, desc->id);
@@ -1560,6 +1598,10 @@ static av_value *component_overrides_value(
     const prototype *current
 )
 {
+    if (!serializable_components(base, base->components) ||
+        !serializable_components(base, current_components)) {
+        return NULL;
+    }
     prototype view = { .registry = base->registry,
                        .links = current ? current->links : NULL };
     av_doc *doc = av_doc_new();
@@ -2172,7 +2214,8 @@ int prototype_write_field(prototype *document, const char *component_name, const
     const type_field *field = component
                                 ? find_field(component->desc->type, field_name)
                                 : NULL;
-    if (!field || field->type != value.type) {
+    if (!field || field->type != value.type ||
+        !serializable_type(document->registry, component->desc->type, 0)) {
         return -1;
     }
     if (field->type == PIN_HANDLE) {

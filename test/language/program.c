@@ -21,6 +21,7 @@
 #include "language/identity.h"
 #include "language/lower.h"
 #include "runtime/arithmetic_definition.h"
+#include "runtime/arrays.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
@@ -35,7 +36,9 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/text.h"
+#include "types/trace.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -598,7 +601,8 @@ static bool compile(const char *source, behavior_backend backend)
 /* Historical migration cases assert their intermediate spelling, then run
  * it through every later source step: version 23 declarations, 24
  * retention, 25 syntax, 26 conversions, 27 parameter names, 28 function
- * bodies and 29 handler payloads, with the test catalog's Impulse declared. */
+ * bodies and 29 handler payloads, with the test catalog's Impulse declared,
+ * then the version 35 number names and the version 36 ref argument markers. */
 static const char *const
     IMPULSE_DECLARATION = "version 3\nname \"Impulse\"\ndomain "
                           "\"event\"\n(array)variables {\n"
@@ -616,14 +620,23 @@ static int migrate_step(int step, const char *source, char **migrated, char *err
         case 5: return chibi_migrate_after_entry(source, migrated, error, size);
         case 6:
             return chibi_migrate_handlers(source, &IMPULSE_DECLARATION, 1, migrated, error, size);
-        default:
+        case 7:
             return chibi_migrate_number_names(source, migrated, error, size);
+        default: {
+            char **results = chibi_migrate_ref_calls(&source, 1, error, size);
+            if (!results) {
+                return -1;
+            }
+            *migrated = results[0];
+            free(results);
+            return 0;
+        }
     }
 }
 static char *current_source(const char *source)
 {
     char error[192], *current = xstrdup(source);
-    for (int step = 0; step < 8; step++) {
+    for (int step = 0; step < 9; step++) {
         char *migrated = NULL;
         if (migrate_step(step, current, &migrated, error, sizeof error)) {
             fprintf(stderr, "migration: %s\n", error);
@@ -2608,7 +2621,8 @@ static bool capture_retention_case(bool array, bool attached, int ending)
         "latest = %s; i += 1; yield; } }"
         "on Impulse :: (amount: f64, enabled: bool) { if amount == 0 { v := "
         "%s; initial = v;"
-        "writer = Write(v, v); keeper = Keep(v); if enabled { await writer; } }"
+        "writer = Write(ref v, ref v); keeper = Keep(ref v); if enabled { "
+        "await writer; } }"
         "else if amount == 1 { cancel writer; } else { cancel keeper; } } }",
         array ? "string[]" : "string = \"\"",
         array ? "string[]" : "string = \"\"",
@@ -2749,9 +2763,10 @@ TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink)
                   "string = \"\";done: f64 = 0;Child :: (value: ref string) "
                   "{ yield; value = value; before = value;yield; value = "
                   "\"small\"; observed = value;yield; value = \"\"; done = 1; "
-                  "yield; }Relay :: (value: ref string) { yield; Child(value); "
+                  "yield; }Relay :: (value: ref string) { yield; Child(ref "
+                  "value); "
                   "}on Impulse :: () { v := capture_text(); "
-                  "Relay(v); } }";
+                  "Relay(ref v); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2813,7 +2828,7 @@ TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced)
                   "task(f64)[]) { yield; jobs = jobs; yield;answer := await "
                   "jobs[0]; if answer is f64 n { seen = n; }jobs = []; "
                   "yield; }on Impulse :: () { jobs: task(f64)[] "
-                  "= [Result()]; Use(jobs); } }";
+                  "= [Result()]; Use(ref jobs); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -4548,7 +4563,7 @@ TEST_CASE(program_task_handle_survives_in_a_detached_capture)
                          "(value: f64) { yield; return 7 }Start :: () { "
                          "held := Work(); Observe :: (held: ref task(f64)) "
                          "{ await Delay(10); result := await held; if result "
-                         "is f64 value { got = value; } } Observe(held); "
+                         "is f64 value { got = value; } } Observe(ref held); "
                          "}on Impulse :: () { Start(); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -4721,7 +4736,8 @@ TEST_CASE(program_task_scope_exits_drop_only_unobserved_handles)
         "{return(number: 1, discarded: Work()); }Observe :: (held: ref "
         "task(f64)) { await Delay(10);result := await held; if result is "
         "f64 value { got = value; } }on Impulse :: () {Pack(); "
-        "unused := Pack().number;if true { held := Work(); Observe(held); }i "
+        "unused := Pack().number;if true { held := Work(); Observe(ref held); "
+        "}i "
         ":= 0; while i < 3 { dropped := Work(); i += 1; continue; }while true "
         "{ dropped := Work(); break; }if true { dropped := Work(); goto "
         "finished; } finished:yield; await Delay(20); } }";
@@ -4954,6 +4970,78 @@ TEST_CASE(program_task_collection_indexes_handles_across_many_owners)
         REQUIRE(memory.task_slots == OWNERS);
         REQUIRE(memory.retained_tasks == OWNERS);
         REQUIRE(memory.task_result_bytes > 0);
+    }
+    return true;
+}
+
+static pin_pointer *managed_cell(arena *heap, pin_value value)
+{
+    pin_pointer *cell = arena_alloc(heap, sizeof *cell);
+    *cell = (pin_pointer){ .value = value, .storage = heap };
+    pin_arena_trace_pointer(heap, cell);
+    return cell;
+}
+/* A long chain of managed cells holds the only handle to a finished task, and
+ * a long ring of cells sits beside it. Authored records with pointer fields
+ * reach a task through the same pointer steps; cells that hold cells give the
+ * longest chain this catalog can state. Collection follows every link without
+ * native recursion, visits the ring once, and releases the task once the
+ * chain is unreachable. */
+TEST_CASE(program_task_collection_follows_long_pointer_chains)
+{
+    enum
+    {
+        LINKS = 200000
+    };
+    const char *source = "Keeper :: behavior { saved: ^task?; loop: ^task?; "
+                         "held: task; "
+                         "Work :: () -> (value: f64) { yield; return 7; } "
+                         "on Impulse :: () { held = Work(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 1);
+        uint64_t saved = state_id("saved"), loop = state_id("loop"),
+                 held = state_id("held");
+        const pin_value task = *execution_instance_state(instance, held);
+        REQUIRE(task.type == PIN_TASK && task.u64);
+        /* Each state write collects, so build each structure just before
+         * the write that roots it. */
+        arena *heap = &program->managed->storage;
+        pin_pointer *first = managed_cell(heap, (pin_value){ .type = PIN_POINTER });
+        pin_pointer *ring = first;
+        for (int i = 0; i < LINKS; i++) {
+            ring = managed_cell(heap, (pin_value){ .type = PIN_POINTER, .ptr = ring });
+        }
+        first->value.ptr = ring;
+        /* A state write frees the state's previous type name, so each write
+         * starts from a fresh read. */
+        pin_value root = *execution_instance_state(instance, loop);
+        root.ptr = ring;
+        REQUIRE(execution_instance_set_state(instance, loop, root) == FLOW_OK);
+        pin_pointer *chain = managed_cell(heap, task);
+        for (int i = 0; i < LINKS; i++) {
+            chain = managed_cell(heap, (pin_value){ .type = PIN_POINTER, .ptr = chain });
+        }
+        root = *execution_instance_state(instance, saved);
+        root.ptr = chain;
+        REQUIRE(execution_instance_set_state(instance, saved, root) == FLOW_OK);
+        REQUIRE(
+            execution_instance_set_state(instance, held, (pin_value){ .type = PIN_TASK }) == FLOW_OK
+        );
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 1);
+        root = *execution_instance_state(instance, saved);
+        root.ptr = NULL;
+        REQUIRE(execution_instance_set_state(instance, saved, root) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 0);
     }
     return true;
 }
@@ -8972,6 +9060,70 @@ TEST_CASE(program_version_34_numbers_take_odin_names)
     free(asset);
     return true;
 }
+/* Three fixed documents, six ref arguments and one second pass, plus one
+ * unknown-call document. No compiler child or runtime invocation. */
+TEST_CASE(program_version_35_ref_calls_mark_resolved_arguments)
+{
+    const char *sources[] = {
+        "Tools :: library { Bump :: (value: ref int, amount: int) { value += "
+        "amount } }",
+        "Other :: library { Bump :: (value: int, amount: int) {} }",
+        "Demo :: behavior { macro Advance(value: ref int, step: int) { value "
+        "+= step } "
+        "value: int = 0; action next = Advance(value, 1); "
+        "Bump :: (value: ref int) { value += 1 } "
+        "Run :: () { Tools.Bump(amount: 1, value: /* keep */ value); "
+        "Tools.Bump(ref value, 2); Other.Bump(value, 3); Unknown(value); "
+        "Bump(value); Local :: () { Bump :: (value: int) {} Bump(value) } "
+        "Nested :: () { Bump :: (value: ref int) {} Bump(value) } "
+        "Shadow :: (Tools: int) { Tools.Bump(value, 2) } "
+        "tools.bump(value, 4); next() } }",
+    };
+    const char *expected =
+        "Demo :: behavior { macro Advance(value: ref int, step: int) { value "
+        "+= step } "
+        "value: int = 0; action next = Advance(ref value, 1); "
+        "Bump :: (value: ref int) { value += 1 } "
+        "Run :: () { Tools.Bump(amount: 1, value: /* keep */ ref value); "
+        "Tools.Bump(ref value, 2); Other.Bump(value, 3); Unknown(value); "
+        "Bump(ref value); Local :: () { Bump :: (value: int) {} Bump(value) } "
+        "Nested :: () { Bump :: (value: ref int) {} Bump(ref value) } "
+        "Shadow :: (Tools: int) { Tools.Bump(value, 2) } "
+        "tools.bump(ref value, 4); next() } }";
+    char error[256] = { 0 };
+    char **migrated = chibi_migrate_ref_calls(sources, 3, error, sizeof error);
+    if (!migrated) {
+        fprintf(stderr, "ref migration: %s\n", error);
+    }
+    REQUIRE(migrated && !migrated[0] && !migrated[1] && migrated[2]);
+    if (strcmp(migrated[2], expected)) {
+        fprintf(stderr, "ref migration produced: %s\n", migrated[2]);
+    }
+    REQUIRE(!strcmp(migrated[2], expected));
+    const char *again[] = { sources[0], sources[1], migrated[2] };
+    char **unchanged = chibi_migrate_ref_calls(again, 3, error, sizeof error);
+    REQUIRE(unchanged && !unchanged[0] && !unchanged[1] && !unchanged[2]);
+    free(unchanged);
+    free(migrated[2]);
+    free(migrated);
+    const char *unknown[] = {
+        "Demo :: behavior { Run :: () { Unknown(1); Native.Call(2) } }",
+    };
+    migrated = chibi_migrate_ref_calls(unknown, 1, error, sizeof error);
+    REQUIRE(migrated && !migrated[0]);
+    free(migrated);
+    const char *ambiguous[] = {
+        sources[0],
+        "Tools :: library { Bump :: (value: ref int, amount: int) {} }",
+        "Demo :: behavior { Run :: () { value := 0; Tools.Bump(value, 1) } }",
+    };
+    migrated = chibi_migrate_ref_calls(ambiguous, 3, error, sizeof error);
+    REQUIRE(!migrated && strstr(error, "Ambiguous callable"));
+    const char *invalid[] = { "Demo :: behavior { Run :: (" };
+    migrated = chibi_migrate_ref_calls(invalid, 1, error, sizeof error);
+    REQUIRE(!migrated && strstr(error, "invalid version 35"));
+    return true;
+}
 /* Compare the whole decoded document with an independently authored oracle;
  * serialization whitespace is not the contract, but every payload value is. */
 static bool migration34_asset_matches(const char *path, const char *expected)
@@ -9141,10 +9293,10 @@ TEST_CASE(program_version_34_invalid_asset_preserves_project_for_retry)
     }
     write_whole(paths[2], repaired);
     error[0] = 0;
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
-    REQUIRE(
-        !strcmp(read_whole(paths[0]), "version 35\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
-    );
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 34);
+    char current[80];
+    snprintf(current, sizeof current, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    REQUIRE(!strcmp(read_whole(paths[0]), current));
     REQUIRE(!strcmp(read_whole(paths[1]), expected));
     REQUIRE(!strcmp(read_whole(paths[2]), repaired));
     REQUIRE(migration34_asset_matches(paths[3], migrated_event));
@@ -9631,7 +9783,7 @@ TEST_CASE(program_version_34_ambiguous_collection_keeps_transaction_unchanged)
         REQUIRE(!strcmp(read_whole(paths[i]), originals[i]));
     }
     write_whole(paths[2], explicit);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 34);
     REQUIRE(!strcmp(read_whole(paths[2]), expected));
     REQUIRE(!strcmp(read_whole(paths[1]), "L :: library { F :: () -> f64 { return 1 } }"));
     REQUIRE(!chibi_project_migrate(root, error, sizeof error));
@@ -10116,7 +10268,7 @@ TEST_CASE(program_library_task_writes_the_callers_state)
         *library_source = "Lib :: library { count: f64 = 10;Bump :: (x: ref "
                           "f64) { yield; x += 1; count += 1 } }";
     const char *owner_source = "Owner :: behavior { n: f64 = 5;on "
-                               "Impulse :: () { library_bump(n) } }";
+                               "Impulse :: () { library_bump(ref n) } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -10142,11 +10294,11 @@ TEST_CASE(program_library_task_writes_the_callers_state)
 }
 TEST_CASE(program_task_keeps_state_and_component_references)
 {
-    const char
-        *source = "R :: behavior { n: f64 = 0;Bump :: (x: ref f64) -> () "
-                  "{ yield; x += 1; yield; x += 1; }on Impulse :: (amount: "
-                  "f64, "
-                  "enabled: bool) { Bump(n); Bump(self.Position.x); } }";
+    const char *
+        source = "R :: behavior { n: f64 = 0;Bump :: (x: ref f64) -> () "
+                 "{ yield; x += 1; yield; x += 1; }on Impulse :: (amount: "
+                 "f64, "
+                 "enabled: bool) { Bump(ref n); Bump(ref self.Position.x); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -10493,20 +10645,20 @@ TEST_CASE(program_parameters_defaults_and_contextual_words)
 }
 TEST_CASE(program_task_shares_boxed_locals)
 {
-    const char
-        *source = "B :: behavior { seen: number = 0; kept: number = 0;Bump :: "
-                  "(x: ref number) -> () { yield; x += 1; yield; x += 10; "
-                  "}Keep :: (x: ref number) -> () { yield; x += 1; yield; kept "
-                  "+= x; }Relay :: (x: ref number) -> () { Keep(x); }Pair :: "
-                  "(x: number) -> (a: number, b: number) { return(a: x * 1000 "
-                  "+ 5, b: 0) }on Impulse :: (amount: f64) {if amount == 0 "
-                  "{ v "
-                  ":= 1.0; t := Bump(v); v += 100; await t; seen = v; }else if "
-                  "amount == 1 { w := 5.0; Keep(w); }else if amount == 2 { i "
-                  ":= 0.0; while i < 2 { u := i * 10; Keep(u); i += 1; } }else "
-                  "if amount == 3 { j := 0.0; while j < 2 { z := j * 100 + 2; "
-                  "Relay(z); j += 1; } }else { k := 0.0; while k < 2 { p := "
-                  "Pair(k); Keep(p.a); k += 1; } } } }";
+    const char *source =
+        "B :: behavior { seen: number = 0; kept: number = 0;Bump :: "
+        "(x: ref number) -> () { yield; x += 1; yield; x += 10; "
+        "}Keep :: (x: ref number) -> () { yield; x += 1; yield; kept "
+        "+= x; }Relay :: (x: ref number) -> () { Keep(ref x); }Pair :: "
+        "(x: number) -> (a: number, b: number) { return(a: x * 1000 "
+        "+ 5, b: 0) }on Impulse :: (amount: f64) {if amount == 0 "
+        "{ v "
+        ":= 1.0; t := Bump(ref v); v += 100; await t; seen = v; }else if "
+        "amount == 1 { w := 5.0; Keep(ref w); }else if amount == 2 { i "
+        ":= 0.0; while i < 2 { u := i * 10; Keep(ref u); i += 1; } }else "
+        "if amount == 3 { j := 0.0; while j < 2 { z := j * 100 + 2; "
+        "Relay(ref z); j += 1; } }else { k := 0.0; while k < 2 { p := "
+        "Pair(k); Keep(ref p.a); k += 1; } } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -10536,10 +10688,11 @@ TEST_CASE(program_assignments_and_reference_writes_do_not_allocate)
 {
     /* Plain state and local writes store in place, and a reference write of
      * a number needs no scratch storage. */
-    const char *source = "R :: behavior { n: f64 = 0; m: f64 = 0;Add :: "
-                         "(x: ref f64) -> () { i := 0.0; while i < 1000 { x "
-                         "+= 1; i += 1; } }on Impulse :: () { i := "
-                         "0.0; while i < 1000 { n += 1; i += 1; } Add(m); } }";
+    const char
+        *source = "R :: behavior { n: f64 = 0; m: f64 = 0;Add :: "
+                  "(x: ref f64) -> () { i := 0.0; while i < 1000 { x "
+                  "+= 1; i += 1; } }on Impulse :: () { i := "
+                  "0.0; while i < 1000 { n += 1; i += 1; } Add(ref m); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -10596,7 +10749,8 @@ TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls)
                   "f64) -> (r: f64) {if v <= 0 { return 0 } return "
                   "Count(v - 1) + 1 }Outer :: (v: f64) -> (r: f64) { "
                   "return Count(v) + Other(v) }on Impulse :: () {n "
-                  "+= Add(m, 2); n += Add(m, -1);n += Other(3); n += Add(m, "
+                  "+= Add(ref m, 2); n += Add(ref m, -1);n += Other(3); n += "
+                  "Add(ref m, "
                   "4);n += Outer(3); n += Outer(2); n += Count(4); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -10663,8 +10817,8 @@ TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows)
     const char
         *source = "R :: behavior { Add :: (x: ref f64, y: ref f64) -> () "
                   "{ i := 0.0; while i < 1000 { x += 1; y += 1; i += 1; } }on "
-                  "Impulse :: () { Add(self.Position.x, "
-                  "self.Position.x); self.Position.y = 7; } }";
+                  "Impulse :: () { Add(ref self.Position.x, "
+                  "ref self.Position.x); self.Position.y = 7; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -11151,6 +11305,420 @@ void test_language_query_program()
     pu_clear_setup();
 }
 
+/* Two fixed detached batches, two cells and one production payload collection.
+ * The previous batch models nested dispatch without running a second scheduler. */
+TEST_CASE(program_detached_event_batches_keep_managed_arguments)
+{
+    prepare();
+    REQUIRE(compile("Keeper :: behavior { count: int = 0; }", BEHAVIOR_BYTECODE));
+    pin_value arguments[2];
+    for (int i = 0; i < 2; i++) {
+        pin_pointer *cell = arena_alloc(&program->managed->storage, sizeof *cell);
+        *cell = (pin_pointer){ .value = { .type = PIN_I32, .i = i + 7 },
+                               .storage = &program->managed->storage };
+        pin_arena_trace_pointer(&program->managed->storage, cell);
+        arguments[i] = (pin_value){ .type = PIN_POINTER, .ptr = cell };
+    }
+    queued_event *outer = NULL, *inner = NULL;
+    apush(outer, ((queued_event){ .arguments = &arguments[0], .count = 1 }));
+    apush(inner, ((queued_event){ .arguments = &arguments[1], .count = 1 }));
+    queued_event_batch previous = { .events = outer },
+                       current = { .previous = &previous, .events = inner };
+    program->dispatch_events = &current;
+    arena_alloc(&program->managed->storage, 4096);
+    program_collect_payloads(program, NULL);
+    program->dispatch_events = NULL;
+    afree(outer);
+    afree(inner);
+    REQUIRE(arena_contains(&program->managed->storage, arguments[0].ptr));
+    REQUIRE(arena_contains(&program->managed->storage, arguments[1].ptr));
+    REQUIRE(((pin_pointer *)arguments[0].ptr)->value.i == 7);
+    REQUIRE(((pin_pointer *)arguments[1].ptr)->value.i == 8);
+    behavior_managed_heap_collect(program->managed, NULL, NULL);
+    REQUIRE(!arena_contains(&program->managed->storage, arguments[0].ptr));
+    REQUIRE(!arena_contains(&program->managed->storage, arguments[1].ptr));
+    return true;
+}
+/* One pointer state, two staged replacements, and four explicit quiescent
+ * collections cover discard and commit while the original drops its root. */
+TEST_CASE(program_staged_replacement_pins_preserved_pointers)
+{
+    prepare();
+    REQUIRE(
+        compile("Keeper :: behavior { saved: ^int?; position: Position = {x: 1, y: 2}; }", BEHAVIOR_BYTECODE)
+    );
+    ecs_entity owner = ecs_world_create_entity(world);
+    uint64_t entity = ecs_entity_to_u64(owner), id = state_id("saved");
+    execution_instance *instance = execution_program_attach(program, entity);
+    REQUIRE(instance && id);
+    /* State headers borrow their current state's arena, which an overwrite
+     * may retire. Retain the nil header independently across both writes. */
+    pin_value absent;
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &absent, execution_instance_state(instance, id))
+    );
+    for (int commit = 0; commit < 2; commit++) {
+        behavior_managed_heap *heap = program->managed;
+        pin_pointer *cell = arena_alloc(&heap->storage, sizeof *cell);
+        *cell = (pin_pointer){ .value = { .type = PIN_I32, .i = 41 + commit },
+                               .storage = &heap->storage };
+        pin_arena_trace_pointer(&heap->storage, cell);
+        pin_value pointer = absent;
+        pointer.ptr = cell;
+        REQUIRE(execution_instance_set_state(instance, id, pointer) == FLOW_OK);
+        other_program = execution_program_prepare_replace(program, module, false);
+        REQUIRE(other_program);
+        REQUIRE(execution_instance_set_state(instance, id, absent) == FLOW_OK);
+        behavior_managed_heap_collect(heap, NULL, NULL);
+        REQUIRE(arena_contains(&heap->storage, cell));
+        if (!commit) {
+            execution_program_free(other_program);
+            other_program = NULL;
+            behavior_managed_heap_collect(heap, NULL, NULL);
+            REQUIRE(!arena_contains(&heap->storage, cell));
+            continue;
+        }
+        execution_program_commit_replace(program, other_program);
+        other_program = NULL;
+        /* Reacquire the preserved owner through the public API; internal
+         * row lookup requires a complete query-variable tuple even for zero
+         * declared query variables. */
+        instance = execution_program_attach(program, entity);
+        REQUIRE(instance && execution_instance_state(instance, id)->ptr == cell);
+        const pin_value *position = execution_instance_state(instance, state_id("position"));
+        REQUIRE(position && position->ptr);
+        const program_position *native = position->ptr;
+        REQUIRE(native->x == 1 && native->y == 2);
+        arena_alloc(&program->managed->storage, 4096);
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_contains(cell->storage, cell) && cell->value.i == 42);
+    }
+    return true;
+}
+/* One entity on bytecode: a pointer preserved beside a native record in a
+ * union is rooted alone while the replacement is staged, so the staging
+ * succeeds and the target survives the commit and a forced collection. */
+TEST_CASE(program_replacement_preserves_pointers_beside_inline_records)
+{
+    const char
+        *source = "Keeper :: behavior { Slot :: union { Empty | "
+                  "Full(position: Position, target: ^number) }; "
+                  "held: Slot = Slot.Empty; seen: number = 0; "
+                  "on Impulse :: (amount: f64, enabled: bool) { if enabled { "
+                  "x := 5.0; at: Position = {x: 1, y: 2}; "
+                  "held = Slot.Full(at, &x); } "
+                  "if !enabled { if held is .Full(position, target) { "
+                  "seen = target^; } } } }";
+    prepare();
+    REQUIRE(compile(source, BEHAVIOR_BYTECODE));
+    uint64_t entity = ecs_entity_to_u64(ecs_world_create_entity(world));
+    execution_instance *instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL, .b = true } };
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    other_program = execution_program_prepare_replace(program, module, false);
+    REQUIRE(other_program);
+    execution_program_commit_replace(program, other_program);
+    other_program = NULL;
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    arena_alloc(&program->managed->storage, 4096);
+    program_collect_payloads(program, NULL);
+    args[1].b = false;
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(instance, "seen", 5));
+    return true;
+}
+/* One entity on two backends. A handler suspends holding a union it read from
+ * state, then the state is overwritten. The local owns a copy of the union, so
+ * a forced collection still reaches its pointer, and a new cell allocated
+ * afterwards does not take its place. */
+TEST_CASE(program_suspended_union_reads_keep_pointer_targets)
+{
+    const char
+        *source = "Keeper :: behavior { Slot :: union { Empty | Full(p: "
+                  "^number) "
+                  "}; "
+                  "held: Slot = Slot.Empty; seen: number = 0; "
+                  "on Impulse :: (amount: f64, enabled: bool) { "
+                  "if amount == 0 { y := 3.0; held = Slot.Full(&y); } "
+                  "if amount == 1 { h := held; await Delay(1); "
+                  "if h is .Full(p) { seen = p^; } } "
+                  "if amount == 2 { held = Slot.Empty; } "
+                  "if amount == 3 { z := 7.0; held = Slot.Full(&z); } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        for (int step = 0; step < 4; step++) {
+            if (step == 3) {
+                arena_alloc(&program->managed->storage, 4096);
+                uint64_t marks = arena_collect_marks();
+                program_collect_payloads(program, NULL);
+                REQUIRE(arena_collect_marks() > marks);
+            }
+            args[0].d = step;
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(execution_instance_pending(instance) == 1);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 3));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* One moving entity on two backends. A reducing system pauses at a breakpoint
+ * while a local array holds the only pointer to a cell whose local went out of
+ * scope. The paused activation's slots and payload are listed by no
+ * collection, so a collection requested during the pause marks nothing, and
+ * the cell is still there when the system resumes. */
+TEST_CASE(program_paused_reducing_systems_keep_pointer_targets)
+{
+    const char *source = "Held :: system(p: Position, v: Velocity) { "
+                         "kept: retain number = 0; finished: retain f64 = 0; "
+                         "ps: ^number[] = []; if true { x := 3.0; ps = [&x]; } "
+                         "reduce p.x += v.x; finished += 1; kept = ps[0]^; }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        ecs_entity entity = positioned(0, true);
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_program_pump(program, 0, 0, 1000) == FLOW_OK);
+        execution_instance *instance = execution_program_instance(program, ecs_entity_to_u64(entity));
+        REQUIRE(instance);
+        debugger = execution_program_inspector(program);
+        REQUIRE(debugger);
+        uint64_t function = 0, point = 0;
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info info = execution_module_function_at(module, i);
+            if (info.kind == EXECUTION_FUNCTION_SYSTEM) {
+                function = info.id;
+            }
+        }
+        for (int i = 0; i < analysis->statement_count; i++) {
+            const script_statement *s = &analysis->statements[i];
+            if (s->kind == SCRIPT_STMT_ASSIGN && s->expression >= 0 &&
+                analysis->expressions[s->expression].symbol >= 0 &&
+                !strcmp(
+                    analysis
+                        ->symbols[analysis->expressions[s->expression].symbol]
+                        .name,
+                    "finished"
+                )) {
+                script_occurrences *occurrences = script_occurrences_new(analysis);
+                point = script_record_id(occurrences, SCRIPT_RECORD_STATEMENT, i);
+                script_occurrences_free(occurrences);
+            }
+        }
+        REQUIRE(function && point);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), function, point, true)
+        );
+        REQUIRE(execution_program_update(program, 1, .5, 1000) == FLOW_PAUSED_RESULT);
+        arena_alloc(&program->managed->storage, 4096);
+        uint64_t marks = arena_collect_marks();
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_collect_marks() == marks);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), function, point, false)
+        );
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, .5, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "finished", 1));
+        REQUIRE(number_state(instance, "kept", 3));
+    }
+    return true;
+}
+/* One entity, one addressed local and one delayed continuation on two backends;
+ * each backend dispatches once and advances exactly two scheduled steps. */
+TEST_CASE(program_captured_addressed_local_preserves_pointer_alias)
+{
+    const char *source = "P :: behavior { seen: f64 = 0; Parent :: () { "
+                         "x := 3.0; p := &x; action later = Delay(1); later(); "
+                         "after later { x += 1; seen = p^; } } "
+                         "on Impulse :: () { Parent(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 0));
+        int status = execution_program_update(program, 1, 0, 1000);
+        if (status != FLOW_OK) {
+            const execution_program_failure *failure = execution_program_error(program);
+            fprintf(
+                stderr,
+                "pointer capture backend=%d status=%d kind=%d at %d:%d: %s\n",
+                backends[b],
+                status,
+                failure ? (int)failure->kind : -1,
+                failure ? failure->line : 0,
+                failure ? failure->column : 0,
+                failure ? failure->message : "No program failure detail"
+            );
+        }
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 4));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* One entity on two backends: a helper returns a pointer array built by the
+ * borrowing append kernel, a delayed continuation holds it across one forced
+ * safe-point collection, then reads and writes both cells. */
+TEST_CASE(program_borrowed_pointer_array_results_survive_collection)
+{
+    const char
+        *source = "P :: behavior { seen: f64 = 0; "
+                  "Make :: () -> (r: ^number[]) { x := 3.0; y := 4.0; "
+                  "ps: ^number[] = [&x]; ps.append(&y); return ps } "
+                  "Parent :: () { ps := Make(); action later = Delay(1); "
+                  "later(); after later { ps[1]^ += 1; "
+                  "if length(ps) == 2 { seen = ps[0]^ * 10 + ps[1]^ } } } "
+                  "on Impulse :: () { Parent(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        arena_alloc(&program->managed->storage, 4096);
+        uint64_t marks = arena_collect_marks();
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_collect_marks() > marks);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 35));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* Emitted host calls whose descriptor carries kernel's production callback
+ * and the borrowing flag. Publication copies descriptors, so this pins the
+ * callback rather than the descriptor address. */
+static int borrowing_calls(const node_host_call *kernel)
+{
+    int count = 0;
+    for (int f = 0; f < execution_module_function_count(module); f++) {
+        const behavior_function *function = execution_module_function_at(module, f)
+                                                .body;
+        for (int pc = 0; pc < acount(function->instructions); pc++) {
+            const behavior_function_instruction *i = &function->instructions[pc];
+            if (i->op != BF_HOST_CALL) {
+                continue;
+            }
+            const node_host_call *call = function->host_calls[i->target].call;
+            count += call->value == kernel->value && call->borrows;
+        }
+    }
+    return count;
+}
+/* The escaped array is the fresh snapshot returned by the borrowing slice and
+ * reverse kernels, not one built by the intrinsic append. A delayed
+ * continuation holds it across one forced safe-point collection, then writes
+ * through one cell and reads both. */
+TEST_CASE(program_borrowing_kernel_results_survive_collection)
+{
+    const char *
+        source = "P :: behavior { seen: f64 = 0; "
+                 "Make :: () -> (r: ^number[]) { w := 1.0; x := 3.0; y := 4.0; "
+                 "ps: ^number[] = [&w, &x, &y]; return reverse(ps.slice(1, 2)) "
+                 "} "
+                 "Parent :: () { ps := Make(); action later = Delay(1); "
+                 "later(); after later { ps[1]^ += 1; "
+                 "if length(ps) == 2 { seen = ps[0]^ * 10 + ps[1]^ } } } "
+                 "on Impulse :: () { Parent(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        REQUIRE(borrowing_calls(&NATIVE_ARRAY_slice_CALL) == 1);
+        REQUIRE(borrowing_calls(&NATIVE_ARRAY_reverse_CALL) == 1);
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        arena_alloc(&program->managed->storage, 4096);
+        uint64_t marks = arena_collect_marks();
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_collect_marks() > marks);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 44));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* Two independent program owners, one cell and one single-element array.
+ * Every foreign ingress must reject before queueing or changing state. */
+TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers)
+{
+    prepare();
+    REQUIRE(compile("Keeper :: behavior { saved: ^int?; }", BEHAVIOR_BYTECODE));
+    other_program = execution_program_new(module, world, NULL);
+    REQUIRE(other_program);
+    ecs_entity owner = ecs_world_create_entity(world);
+    uint64_t entity = ecs_entity_to_u64(owner), id = state_id("saved");
+    execution_instance *local = execution_program_attach(program, entity),
+                       *foreign = execution_program_attach(other_program, entity);
+    REQUIRE(local && foreign && id);
+    pin_value pointer;
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &pointer, execution_instance_state(local, id))
+    );
+    pin_pointer *cell = arena_alloc(&program->managed->storage, sizeof *cell);
+    *cell = (pin_pointer){ .value = { .type = PIN_I32, .i = 17 },
+                           .storage = &program->managed->storage };
+    pin_arena_trace_pointer(&program->managed->storage, cell);
+    pointer.ptr = cell;
+    REQUIRE(execution_instance_set_state(local, id, pointer) == FLOW_OK);
+    REQUIRE(execution_instance_set_state(foreign, id, pointer) == FLOW_ERR_ARGUMENT);
+    REQUIRE(!execution_instance_state(foreign, id)->ptr);
+    pin_array items = { .element_type = PIN_POINTER,
+                        .type_name = pointer.type_name,
+                        .count = 1,
+                        .capacity = 1,
+                        .items = &pointer };
+    pin_value nested = { .type = PIN_POINTER,
+                         .type_name = pointer.type_name,
+                         .container = PIN_CONTAINER_ARRAY,
+                         .ptr = &items };
+    REQUIRE(execution_program_emit(other_program, 11, entity, &nested, 1) == FLOW_ERR_ARGUMENT);
+    REQUIRE(
+        execution_program_dispatch(other_program, 11, entity, &nested, 1, 0, 0, 100) == FLOW_ERR_ARGUMENT
+    );
+    REQUIRE(execution_instance_dispatch(foreign, 11, &nested, 1, 0, 0, 100) == FLOW_ERR_ARGUMENT);
+    REQUIRE(
+        execution_program_field_changed(other_program, entity, 501, 0, nested, 0, 0, 100) == FLOW_ERR_ARGUMENT
+    );
+    REQUIRE(!acount(other_program->events) && !acount(other_program->field_edges));
+    REQUIRE(!execution_instance_state(foreign, id)->ptr && cell->value.i == 17);
+    return true;
+}
 void test_language_migration34()
 {
     pu_setup(NULL, cleanup);
@@ -11168,6 +11736,15 @@ void test_language_migration34()
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_captured_addressed_local_preserves_pointer_alias);
+    RUN_TEST_CASE(program_borrowed_pointer_array_results_survive_collection);
+    RUN_TEST_CASE(program_borrowing_kernel_results_survive_collection);
+    RUN_TEST_CASE(program_detached_event_batches_keep_managed_arguments);
+    RUN_TEST_CASE(program_staged_replacement_pins_preserved_pointers);
+    RUN_TEST_CASE(program_replacement_preserves_pointers_beside_inline_records);
+    RUN_TEST_CASE(program_suspended_union_reads_keep_pointer_targets);
+    RUN_TEST_CASE(program_paused_reducing_systems_keep_pointer_targets);
+    RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
     RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
     RUN_TEST_CASE(program_reduction_query_rows_count_filtered_candidates);
@@ -11243,6 +11820,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_result_snapshot_outlives_the_last_handle);
     RUN_TEST_CASE(program_task_await_copies_large_payload_once);
     RUN_TEST_CASE(program_task_collection_indexes_handles_across_many_owners);
+    RUN_TEST_CASE(program_task_collection_follows_long_pointer_chains);
     RUN_TEST_CASE(program_task_results_keep_nested_task_handles_alive);
     RUN_TEST_CASE(program_prepared_tasks_preserve_cancellation_union_and_deadlines);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
@@ -11293,6 +11871,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_34_collection_descriptor_boundaries);
     RUN_TEST_CASE(program_version_34_set_writer_roundtrip);
     RUN_TEST_CASE(program_version_34_ambiguous_collection_keeps_transaction_unchanged);
+    RUN_TEST_CASE(program_version_35_ref_calls_mark_resolved_arguments);
     RUN_TEST_CASE(program_migration_retry_resumes_after_finished_steps);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);

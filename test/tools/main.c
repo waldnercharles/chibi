@@ -1673,6 +1673,8 @@ int main(int argc, char **argv)
         test_tool_web_storage();
     } else if (query_benchmark) {
         test_tool_ecs_query_benchmark();
+    } else if (types) {
+        test_tool_types();
     } else if (arena) {
         test_arena();
     } else if (types) {

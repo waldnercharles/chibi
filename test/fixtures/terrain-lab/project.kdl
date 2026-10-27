@@ -1,4 +1,4 @@
-version 35
+version 36
 name "Terrain Lab"
 content "content"
 start_scene "scenes/Quarry.kdl"

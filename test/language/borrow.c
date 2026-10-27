@@ -13,7 +13,9 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/copy.h"
+#include "types/pointer.h"
 #include "types/text.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -1625,6 +1627,94 @@ static pin_value strings(pin_array *array, pin_value *items, const char *const *
     return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
 }
 
+/* Two union constructors: ordinary payloads become private copies, while a
+ * copied pointer array still reaches the original managed cell. */
+TEST_CASE(borrow_union_constructor_tracks_payload_aliases)
+{
+    for (int pointers = 0; pointers < 2; pointers++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value shape = { .type = pointers ? PIN_POINTER : PIN_F64,
+                            .container = PIN_CONTAINER_ARRAY };
+        pin_value result = { .type = PIN_UNION };
+        behavior_function_builder_signature(builder, &shape, 1, &result, 1, NULL, 0);
+        pin_value headers[] = { { .type = PIN_U64, .u64 = 1 }, shape };
+        int host = behavior_function_builder_host(
+            builder,
+            &EXECUTION_union_make_call,
+            &EXECUTION_value_access,
+            headers,
+            2,
+            &result,
+            1
+        );
+        uint64_t id = execution_intrinsic_id(&EXECUTION_union_make_call);
+        REQUIRE(
+            behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+        );
+        int input = value(
+            (behavior_function_instruction){ .op = BF_ARRAY,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = 0,
+                                             .target = BF_ARGUMENT,
+                                             .value = shape },
+            true
+        );
+        int payload = host_address(behavior_function_builder_host_first(builder, host) + 1);
+        emit((behavior_function_instruction){ .op = BF_WRITE,
+                                              .type = BF_POINTER_TYPE,
+                                              .left = input,
+                                              .right = payload,
+                                              .offset = offsetof(pin_value, d) });
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        int output = value(
+            (behavior_function_instruction){
+                .op = BF_LOAD,
+                .type = PIN_UNION,
+                .left = host_address(behavior_function_builder_host_results(builder, host)),
+                .offset = offsetof(pin_value, d) },
+            false
+        );
+        emit((behavior_function_instruction){ .op = BF_RESULT,
+                                              .type = PIN_UNION,
+                                              .left = output });
+        emit((behavior_function_instruction){ .op = BF_RETURN });
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        REQUIRE(function);
+        execution_prepare_argument_sharing(function);
+        REQUIRE(function->argument_sharing == BEHAVIOR_SHARING_SAFE);
+        REQUIRE(execution_builds_safely(function) == !pointers);
+
+        pin_pointer cell = { .value = { .type = PIN_F64, .d = 1 } };
+        pin_value item = pointers ? (pin_value){ .type = PIN_POINTER, .ptr = &cell }
+                                  : (pin_value){ .type = PIN_F64, .d = 1 };
+        pin_array array = { .element_type = shape.type,
+                            .items = &item,
+                            .count = 1,
+                            .capacity = 1 };
+        headers[1].ptr = &array;
+        REQUIRE(!EXECUTION_union_make_call.value(&storage, headers, 2, &result));
+        const pin_union *sum = result.ptr;
+        REQUIRE(sum && sum->count == 1 && sum->values[0].ptr != &array);
+        pin_array *copy = sum->values[0].ptr;
+        if (pointers) {
+            pin_value copied = pin_array_get(copy, 0);
+            REQUIRE(copied.ptr == &cell);
+            cell.value.d = 7;
+            REQUIRE(((pin_pointer *)copied.ptr)->value.d == 7);
+        } else {
+            pin_value changed = { .type = PIN_F64, .d = 7 };
+            REQUIRE(!pin_array_set(copy, 0, &changed));
+            REQUIRE(pin_array_get(copy, 0).d == 7 && item.d == 1);
+        }
+    }
+    return true;
+}
+
 /* A helper that only reads a table, or copies it before changing it, receives
  * the caller's array without a copy; value semantics still hold. */
 TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies)
@@ -1717,7 +1807,7 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
     REQUIRE(authored(
         "Share :: library {"
         "Root :: (input: string[]) -> int { local := input; return "
-        "Write(local, local); }"
+        "Write(local, ref local); }"
         "Write :: (values: string[], target: ref string[]) -> int { target[0] "
         "= \"z\";"
         "if values[0] == \"a\" { return 1; } return 0; } }"
@@ -2444,6 +2534,7 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_argument_sharing_copies_after_unplaced_header_writes);
     RUN_TEST_CASE(borrow_call_rejects_result_header_rewrites);
     RUN_TEST_CASE(borrow_argument_sharing_tracks_reference_kinds);
+    RUN_TEST_CASE(borrow_union_constructor_tracks_payload_aliases);
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);

@@ -734,9 +734,18 @@ bool source_edit_capability(
             if (producer.text && !strcmp(value, producer.text) && supplied &&
                 producer_call < 0) {
                 producer_call = acount(call) + (count ? 2 : 0) +
-                                (positional ? 0 : (int)strlen(argument) + 2);
+                                (positional ? 0 : (int)strlen(argument) + 2) +
+                                ((parameter->type.flags & SCRIPT_TYPE_REFERENCE) ? 4 : 0);
             }
-            append(&call, "%s%s%s%s", count++ ? ", " : "", argument, positional ? "" : ": ", value);
+            append(
+                &call,
+                "%s%s%s%s%s",
+                count++ ? ", " : "",
+                argument,
+                positional ? "" : ": ",
+                (parameter->type.flags & SCRIPT_TYPE_REFERENCE) ? "ref " : "",
+                value
+            );
             free(argument);
         }
         if (producer.text && !supplied) {

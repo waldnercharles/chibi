@@ -120,6 +120,7 @@ TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots)
         "Effects :: library { items: retain int[] = [1]; "
         "WriteState :: () { items[0] = 2; } "
         "WriteReference :: (values: ref int[]) { values[0] = 3; } "
+        "Forward :: (values: ref int[]) { WriteReference(ref values); } "
         "WriteLocal :: () -> int { values: int[] = [1]; values[0] = 4; return "
         "values[0]; } }"
     ));
@@ -127,6 +128,8 @@ TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots)
     REQUIRE(!function("WriteState")->pure);
     REQUIRE(function("WriteReference") && (function("WriteReference")->effects & SCRIPT_EFFECT_WRITE));
     REQUIRE(!function("WriteReference")->pure);
+    REQUIRE(function("Forward") && (function("Forward")->effects & SCRIPT_EFFECT_WRITE));
+    REQUIRE(!function("Forward")->pure);
     REQUIRE(function("WriteLocal") && function("WriteLocal")->pure);
     return true;
 }

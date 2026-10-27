@@ -11,6 +11,7 @@
 #include "types/catalog.h"
 #include "types/copy_internal.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
@@ -180,6 +181,17 @@ static const char *value_equal(arena *storage, const pin_value *args, int count,
     (void)storage;
     if (count != 2) {
         return "Record equality requires two operands";
+    }
+    if (args[0].type == PIN_POINTER || args[1].type == PIN_POINTER) {
+        if (args[0].type != PIN_POINTER || args[1].type != PIN_POINTER ||
+            args[0].container != PIN_CONTAINER_SINGLE ||
+            args[1].container != PIN_CONTAINER_SINGLE || !args[0].type_name ||
+            !args[1].type_name || strcmp(args[0].type_name, args[1].type_name)) {
+            return "Pointer equality requires matching pointer types";
+        }
+        *out = (pin_value){ .type = PIN_BOOL,
+                            .b = pin_value_equal(&args[0], &args[1]) };
+        return NULL;
     }
     if (args[0].container == PIN_CONTAINER_MAP && args[1].container == PIN_CONTAINER_MAP) {
         *out = (pin_value){ .type = PIN_BOOL,
@@ -460,6 +472,7 @@ typedef struct
     const language_reference_path *path;
     int variable;
     execution_box *box;
+    pin_pointer *managed;
 } language_reference;
 static void reference_trace(const void *value, const void *shape, arena_marker mark, void *user)
 {
@@ -468,6 +481,7 @@ static void reference_trace(const void *value, const void *shape, arena_marker m
     pin_value_trace(&reference->root, mark, user);
     pin_value_trace(&reference->type, mark, user);
     mark(user, reference->path);
+    mark(user, reference->managed);
     if (reference->kind == LANGUAGE_REFERENCE_STATE) {
         mark(user, reference->owner);
     }
@@ -651,6 +665,9 @@ static pin_value reference_root(language_reference *ref)
         }
         return root;
     }
+    if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        return ref->managed->value;
+    }
     return ref->kind == LANGUAGE_REFERENCE_STATE
              ? ref->owner->variables[ref->variable]
              : *ref->value;
@@ -672,7 +689,7 @@ static bool field_at(const type_desc *layout, size_t offset, pin_value type)
 {
     for (int i = 0; i < layout->field_count; i++) {
         const type_field *field = &layout->fields[i];
-        bool named = type.type != PIN_STRUCT ||
+        bool named = (type.type != PIN_STRUCT && type.type != PIN_POINTER) ||
                      (field->type_name && type.type_name &&
                       !strcmp(field->type_name, type.type_name));
         if (field->offset == offset && field->type == type.type &&
@@ -828,7 +845,7 @@ static bool same_storage(pin_value a, pin_value b)
     if (a.type != b.type || a.container != b.container) {
         return false;
     }
-    if (a.type != PIN_STRUCT && a.type != PIN_UNION) {
+    if (a.type != PIN_STRUCT && a.type != PIN_UNION && a.type != PIN_POINTER) {
         return true;
     }
     if (a.record || b.record) {
@@ -934,6 +951,12 @@ static bool component_scalar_path(const language_reference *ref)
 }
 static const char *write_reference_value(arena *owner_storage, language_reference *ref, const pin_value *args)
 {
+    if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        const char *error = behavior_managed_storage_value_error(ref->managed->storage, &args[1]);
+        if (error) {
+            return error;
+        }
+    }
     pin_value root;
     void *current = reference_data(ref, &root);
     /* The value is copied by the reference's type, and an unpathed or element
@@ -1061,6 +1084,8 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
             return "Referenced state owner has no persistent storage";
         }
         ref->owner->store_value(ref->owner->value_owner, ref->variable, &retained);
+    } else if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        ref->managed->value = retained;
     } else {
         *ref->value = retained;
     }
@@ -1098,6 +1123,8 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
             arena_free(&committed);
         }
         arena_free(&working);
+    } else if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        error = write_reference_value(ref->managed->storage, ref, args);
     } else if (ref->kind == LANGUAGE_REFERENCE_VALUE) {
         error = write_reference_value(ref->owner->value_storage, ref, args);
     } else {
@@ -1109,6 +1136,155 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
     *out = (pin_value){ .type = PIN_BOOL, .b = !error };
     return error;
 }
+
+/* Managed cells contain values, never invocation contexts or frame addresses. */
+static pin_pointer *pointer_root(pin_pointer *pointer)
+{
+    while (pointer->base) {
+        pointer = pointer->base;
+    }
+    return pointer;
+}
+static language_reference pointer_view(pin_pointer *pointer)
+{
+    pin_pointer *root = pointer_root(pointer);
+    return (language_reference){ .kind = LANGUAGE_REFERENCE_MANAGED,
+                                 .managed = root,
+                                 .root = root->value,
+                                 .type = pointer->value,
+                                 .path = pointer->path,
+                                 .variable = -1 };
+}
+static const char *pointer_make(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 3);
+    (void)count;
+    behavior_function_context *context = value_context(args[0]);
+    if (!context || !context->managed_heap ||
+        !context->managed_heap->storage.collectable) {
+        return "Managed pointer requires an initialized caller-owned managed "
+               "heap";
+    }
+    if (!same_storage(args[1], args[2])) {
+        return "Managed pointer initializer differs from its pointee type";
+    }
+    const char *error = behavior_managed_storage_value_error(
+        &context->managed_heap->storage,
+        &args[2]
+    );
+    if (error) {
+        return error;
+    }
+    arena *heap = &context->managed_heap->storage;
+    pin_pointer *pointer = arena_alloc(heap, sizeof *pointer);
+    *pointer = (pin_pointer){ .storage = heap };
+    if (pin_value_snapshot_to_arena(heap, &pointer->value, &args[2])) {
+        return "Cannot retain managed pointer initializer";
+    }
+    pin_arena_trace_pointer(heap, pointer);
+    out->type = PIN_POINTER;
+    out->container = PIN_CONTAINER_SINGLE;
+    out->ptr = pointer;
+    return NULL;
+}
+static const char *pointer_read(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    if (!args[0].ptr) {
+        return "Cannot dereference an absent managed pointer";
+    }
+    language_reference view = pointer_view(args[0].ptr);
+    pin_value reference = { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&view };
+    return read_reference(storage, &reference, 1, out);
+}
+static const char *pointer_write(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    if (!args[0].ptr) {
+        return "Cannot dereference an absent managed pointer";
+    }
+    language_reference view = pointer_view(args[0].ptr);
+    pin_value values[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&view },
+                           args[1] };
+    return write_reference(storage, values, 2, out);
+}
+static const char *pointer_field(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 5);
+    (void)count;
+    if (!args[0].ptr) {
+        return "Cannot project an absent managed pointer";
+    }
+    if (args[3].b) {
+        return "Managed pointers to array entries are not supported";
+    }
+    pin_pointer *base = args[0].ptr;
+    if (!same_storage(base->value, args[4])) {
+        return "Managed pointer base differs from its expected record layout";
+    }
+    language_reference view = pointer_view(base);
+    pin_value root;
+    void *data = reference_data(&view, &root);
+    const type_desc *layout = pin_value_type(&base->value);
+    if (!data || !layout || !field_at(layout, args[2].u64, args[1])) {
+        return "Managed pointer field differs from its record layout";
+    }
+    arena *heap = base->storage;
+    pin_value header = args[1], owned;
+    header.ptr = NULL;
+    if (pin_value_snapshot_to_arena(heap, &owned, &header)) {
+        return "Cannot retain managed pointer field type";
+    }
+    language_reference_path *path = arena_alloc(heap, sizeof *path);
+    *path = (language_reference_path){ .parent = base->path,
+                                       .type = owned,
+                                       .offset = args[2].u64 };
+    arena_set_trace(heap, path, reference_path_trace, NULL);
+    pin_pointer *pointer = arena_alloc(heap, sizeof *pointer);
+    *pointer = (pin_pointer){ .base = base,
+                              .value = owned,
+                              .path = path,
+                              .offset = args[2].u64,
+                              .storage = heap };
+    /* Projected values carry a header only; the root cell owns the payload. */
+    pointer->value.ptr = NULL;
+    pin_arena_trace_pointer(heap, pointer);
+    out->type = PIN_POINTER;
+    out->container = PIN_CONTAINER_SINGLE;
+    out->ptr = pointer;
+    return NULL;
+}
+bool execution_reference_managed_pointer(pin_value value, pin_value *out)
+{
+    const language_reference *reference = (const void *)(uintptr_t)value.u64;
+    if (!reference || reference->kind != LANGUAGE_REFERENCE_MANAGED) {
+        return false;
+    }
+    *out = (pin_value){ .type = PIN_POINTER, .ptr = reference->managed };
+    return true;
+}
+static const char *pointer_reference(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 1);
+    (void)count;
+    if (!args[0].ptr) {
+        return "Cannot reference an absent managed pointer";
+    }
+    language_reference *reference = arena_alloc(storage, sizeof *reference);
+    *reference = pointer_view(args[0].ptr);
+    arena_set_trace(storage, reference, reference_trace, NULL);
+    *out = (pin_value){ .type = BF_POINTER_TYPE, .u64 = (uintptr_t)reference };
+    return NULL;
+}
+const node_host_call EXECUTION_pointer_make_call = { .value = pointer_make };
+const node_host_call EXECUTION_pointer_read_call = { .value = pointer_read };
+const node_host_call EXECUTION_pointer_write_call = { .value = pointer_write };
+const node_host_call EXECUTION_pointer_field_call = { .value = pointer_field };
+const node_host_call EXECUTION_pointer_reference_call = { .value = pointer_reference };
 static const char *reduce_reference(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     (void)storage;
@@ -1150,7 +1326,9 @@ static const char *release_local(arena *storage, const pin_value *args, int coun
     (void)count;
     const language_reference *ref = (const language_reference *)(uintptr_t)args[0]
                                         .u64;
-    ref->owner->release_local(ref->owner, ref->value);
+    if (ref->owner->release_local) {
+        ref->owner->release_local(ref->owner, ref->value);
+    }
     *out = (pin_value){ .type = PIN_BOOL, .b = true };
     return NULL;
 }
@@ -1436,6 +1614,16 @@ const node_host_call EXECUTION_string_cursor_call = { .value = string_cursor };
 const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 {
     switch (id) {
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+            return &EXECUTION_pointer_make_call;
+        case EXECUTION_INTRINSIC_POINTER_READ:
+            return &EXECUTION_pointer_read_call;
+        case EXECUTION_INTRINSIC_POINTER_WRITE:
+            return &EXECUTION_pointer_write_call;
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+            return &EXECUTION_pointer_field_call;
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+            return &EXECUTION_pointer_reference_call;
         case EXECUTION_INTRINSIC_STRING_CURSOR:
             return &EXECUTION_string_cursor_call;
         case EXECUTION_INTRINSIC_STRING_BYTES:
@@ -1504,6 +1692,14 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 }
 uint64_t execution_intrinsic_id(const node_host_call *call)
 {
+    for (int id = EXECUTION_INTRINSIC_POINTER_MAKE;
+         id <= EXECUTION_INTRINSIC_POINTER_REFERENCE;
+         id++) {
+        if (call == execution_intrinsic_call((execution_intrinsic)id)) {
+            return UINT64_C(0x4348494900000000) | (unsigned)id;
+        }
+    }
+
     for (int id = EXECUTION_INTRINSIC_STRING_BYTES;
          id <= EXECUTION_INTRINSIC_STRING_CURSOR;
          id++) {
@@ -1646,6 +1842,9 @@ const node_access *execution_intrinsic_access(uint64_t id)
         case EXECUTION_INTRINSIC_SNAPSHOT:
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_CONSTRUCT:
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
             return &EXECUTION_value_access;

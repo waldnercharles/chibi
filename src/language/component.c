@@ -174,8 +174,37 @@ static char *unit(reader *r, TSNode node)
     afree(out);
     return owned;
 }
+static bool pointer_syntax(TSNode node)
+{
+    if (is(node, "pointer_type")) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (pointer_syntax(ts_node_named_child(node, i))) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool pointer_fields(const script_catalog *catalog, script_type type, int depth)
+{
+    if (type.storage == PIN_POINTER || depth >= 64) {
+        return true;
+    }
+    const script_catalog_type *record = script_catalog_type_by_id(catalog, type.nominal);
+    for (int i = 0; record && i < record->field_count; i++) {
+        if (pointer_fields(catalog, record->fields[i].type, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
 static void type(reader *r, TSNode node, script_component_field *out)
 {
+    if (pointer_syntax(node)) {
+        report(r, node, "ECS component fields cannot own managed pointers");
+        return;
+    }
     if (is(node, "measured_type")) {
         type(r, field(node, "base"), out);
         if (out->unit || !out->type ||
@@ -214,6 +243,11 @@ static void type(reader *r, TSNode node, script_component_field *out)
     if (builtin.storage == PIN_UNION ||
         (named >= 0 && r->catalog->types[named].type.storage == PIN_UNION)) {
         report(r, node, "ECS component fields cannot own union payloads");
+        return;
+    }
+    if (builtin.storage == PIN_POINTER ||
+        (named >= 0 && pointer_fields(r->catalog, r->catalog->types[named].type, 0))) {
+        report(r, node, "ECS component fields cannot own managed pointers");
         return;
     }
     if (type_known(r, out->type)) {

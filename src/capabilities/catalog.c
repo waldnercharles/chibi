@@ -152,15 +152,18 @@ const script_catalog_capability *script_catalog_capability_by_id(const script_ca
 const char *script_scalar_name(pin_type storage)
 {
     static const char *const names[] = {
-        [PIN_FLOW] = "void",     [PIN_BOOL] = "bool",  [PIN_I8] = "i8",
-        [PIN_U8] = "u8",         [PIN_I16] = "i16",    [PIN_U16] = "u16",
-        [PIN_I32] = "int",       [PIN_U32] = "u32",    [PIN_I64] = "i64",
-        [PIN_U64] = "u64",       [PIN_F32] = "number", [PIN_F64] = "f64",
-        [PIN_NAME] = "name",     [PIN_STR] = "string", [PIN_HANDLE] = "handle",
-        [PIN_STRUCT] = "struct", [PIN_ENUM] = "enum",  [PIN_TASK] = "task",
-        [PIN_UNION] = "union"
+        [PIN_FLOW] = "void",     [PIN_BOOL] = "bool",
+        [PIN_I8] = "i8",         [PIN_U8] = "u8",
+        [PIN_I16] = "i16",       [PIN_U16] = "u16",
+        [PIN_I32] = "int",       [PIN_U32] = "u32",
+        [PIN_I64] = "i64",       [PIN_U64] = "u64",
+        [PIN_F32] = "number",    [PIN_F64] = "f64",
+        [PIN_NAME] = "name",     [PIN_STR] = "string",
+        [PIN_HANDLE] = "handle", [PIN_STRUCT] = "struct",
+        [PIN_ENUM] = "enum",     [PIN_TASK] = "task",
+        [PIN_UNION] = "union",   [PIN_POINTER] = "pointer"
     };
-    return storage >= PIN_FLOW && storage <= PIN_UNION ? names[storage] : "error";
+    return storage >= PIN_FLOW && storage <= PIN_POINTER ? names[storage] : "error";
 }
 const char *script_reference_type_name(script_reference_kind kind)
 {
@@ -267,6 +270,15 @@ bool script_type_equal(script_type a, script_type b)
            (a.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS)) ==
                (b.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS));
 }
+script_type script_catalog_pointee_type(const script_catalog *catalog, script_type type)
+{
+    const script_catalog_type *descriptor = type.storage == PIN_POINTER &&
+                                                    type.container == PIN_CONTAINER_SINGLE
+                                              ? script_catalog_type_by_id(catalog, type.nominal)
+                                              : NULL;
+    return descriptor ? descriptor->element_type
+                      : (script_type){ .flags = SCRIPT_TYPE_ERROR };
+}
 script_type script_catalog_element_type(const script_catalog *catalog, script_type type)
 {
     const script_catalog_type *descriptor = script_catalog_type_by_id(catalog, type.collection);
@@ -327,7 +339,8 @@ bool script_type_assignable(script_type expected, script_type actual)
         return script_type_equal(expected, actual);
     }
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_UNTYPED) {
-        return true;
+        return expected.storage != PIN_POINTER || actual.storage == PIN_POINTER ||
+               (expected.flags & SCRIPT_TYPE_UNTYPED);
     }
     expected.flags &= ~SCRIPT_TYPE_GENERIC;
     actual.flags &= ~SCRIPT_TYPE_GENERIC;
@@ -554,6 +567,9 @@ static uint64_t abi_type_shape(
             return hash;
         }
         parents[depth++] = record->id;
+        if (type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE) {
+            hash = abi_type_shape(hash, catalog, record->element_type, parents, depth);
+        }
         hash = abi_word(hash, record->variant_count);
         for (int i = 0; i < record->variant_count; i++) {
             const script_catalog_variant *v = &record->variants[i];

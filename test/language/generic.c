@@ -281,8 +281,9 @@ TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref)
                   "Identity::(value:$T)->T{return value} "
                   "Increment::(value:ref $T){value+=1} "
                   "Borrow::(item:ref int){copy:=Identity(item); "
-                  "Increment(item); copied=copy;} "
-                  "on Run :: () { value:int=4; Borrow(value); changed=value; } "
+                  "Increment(value: ref item); copied=copy;} "
+                  "on Run :: () { value:int=4; Borrow(item: ref value); "
+                  "changed=value; } "
                   "}";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
@@ -607,8 +608,10 @@ TEST_CASE(generic_version_34_cross_file_collisions_preserve_project)
     const char
         *safe = "package p\nimport \"core:\"\nG :: () -> int { return 3 }";
     REQUIRE(migration_write(paths[2], safe));
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
-    REQUIRE(migration_file_is(paths[0], "version 35\ncontent \"content\"\nstart_scene \"Start.kdl\"\n"));
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 34);
+    char current[80];
+    snprintf(current, sizeof current, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    REQUIRE(migration_file_is(paths[0], current));
     REQUIRE(migration_file_is(paths[1], "package p\nF :: () -> f64 { return f64(7) }"));
     REQUIRE(migration_file_is(paths[2], safe));
     REQUIRE(!chibi_project_migrate(root, error, sizeof error));
@@ -813,7 +816,7 @@ TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifi
                   "Bump::(value:ref Box(int)){value.value+=1} "
                   "Run::()->int { values:Box(int)[]=[{value:4}]; "
                   "item:Box(int)={value:5}; "
-                  "Bump(item); maybe:Box(int)?=item; "
+                  "Bump(ref item); maybe:Box(int)?=item; "
                   "nested:Box(int)[][]=[values]; "
                   "return item.value+values[0].value+nested[0][0].value; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };

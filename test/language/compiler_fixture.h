@@ -3,6 +3,7 @@
 
 #include "authoring/native_bindings.h"
 #include "authoring/source_package_prepare.h"
+#include "execution/managed.h"
 #include "runtime/native_definitions.h"
 #include "types/array.h"
 #include "types/record.h"
@@ -18,6 +19,7 @@ typedef struct
     bool collectable;
     native_capabilities *native;
     authoring_packages *owners[2];
+    behavior_managed_heap *managed;
 } compiler_fixture;
 typedef struct
 {
@@ -87,7 +89,9 @@ const pin_record *compiler_fixture_record(
 );
 /* Exactly one result; its type is seeded from exported signature metadata.
  * Snapshots into detached before destroying producer context/activation/storage.
- * The caller owns arguments and must retire their arena before comparison. */
+ * The caller owns arguments and must retire their arena before comparison.
+ * Managed pointer results retain identity in the fixture-owned heap, which
+ * lives until compiler_fixture_free; detached storage does not own pointees. */
 bool compiler_fixture_call(
     const compiler_fixture *,
     int backend,

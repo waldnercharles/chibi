@@ -46,6 +46,29 @@ static bool format(const char *input)
            !strcmp(source->text, input);
 }
 
+TEST_CASE(source_format_spaces_managed_pointers_and_xor)
+{
+    REQUIRE(format(
+        "Demo :: behavior { a: ^ int []; b: ^ int ?; c: ^ (int []); "
+        "F :: (dt:number m/s^2) {} on Tick :: () { p := & value; "
+        "x := p^+1; y := p ^ +q; z := p ^ q; "
+        "a := p^^; b := p^.field; c := p^[i]; F(ref p^); } }"
+    ));
+    REQUIRE(strstr(text, "a: ^int[];"));
+    REQUIRE(strstr(text, "b: ^int?;"));
+    REQUIRE(strstr(text, "c: ^(int[]);"));
+    REQUIRE(strstr(text, "m/s^2"));
+    REQUIRE(strstr(text, "p := &value;"));
+    REQUIRE(strstr(text, "x := p^ + 1;"));
+    REQUIRE(strstr(text, "y := p ^ +q;"));
+    REQUIRE(strstr(text, "z := p ^ q;"));
+    REQUIRE(strstr(text, "a := p^^;"));
+    REQUIRE(strstr(text, "b := p^.field;"));
+    REQUIRE(strstr(text, "c := p^[i];"));
+    REQUIRE(strstr(text, "F(ref p^);"));
+    return true;
+}
+
 static bool configured(const char *input, authoring_format_options options)
 {
     source = script_parse(input);
@@ -1881,6 +1904,28 @@ TEST_CASE(source_format_authored_prototypes_and_relationships)
     return true;
 }
 
+TEST_CASE(source_format_preserves_explicit_reference_arguments)
+{
+    REQUIRE(format(
+        "Refs::library{Bump::(v:ref int){v+=1;}Run::(){n:=1;"
+        "Bump(ref n);Bump(v:ref n);Bump(ref /*caller*/ n);}}"
+    ));
+    REQUIRE(strstr(text, "Bump(ref n)"));
+    REQUIRE(strstr(text, "Bump(v: ref n)"));
+    REQUIRE(strstr(text, "Bump(ref /*caller*/ n)"));
+    state_after = script_analyze_document(formatted, &catalog, "Refs");
+    REQUIRE(state_after->valid);
+    cleanup();
+    REQUIRE(minimize_valid(
+        &catalog,
+        "Refs :: library { Bump :: (v: ref int) { v += 1; } "
+        "Run :: () { n: int = 1; Bump(v: ref n); } }",
+        "Refs :: library { Bump :: (v: ref int) { v += 1 } "
+        "Run :: () { n := 1; Bump(ref n) } }"
+    ));
+    return true;
+}
+
 void test_language_root_state()
 {
     test_parallel_begin();
@@ -1896,6 +1941,7 @@ void test_language_format()
 {
     test_parallel_begin();
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_format_spaces_managed_pointers_and_xor);
     RUN_TEST_CASE(source_format_keeps_named_payload_fields);
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
     RUN_TEST_CASE(source_format_spaces_reverse_and_half_open_loops);
@@ -1907,6 +1953,7 @@ void test_language_format()
     RUN_TEST_CASE(source_format_hugs_struct_braces);
     RUN_TEST_CASE(source_format_options_preserve_defaults);
     RUN_TEST_CASE(source_format_generic_types_maps_and_reference_iteration);
+    RUN_TEST_CASE(source_format_preserves_explicit_reference_arguments);
     RUN_TEST_CASE(source_format_authored_prototypes_and_relationships);
     RUN_TEST_CASE(source_format_configures_indentation);
     RUN_TEST_CASE(source_format_reflows_lists_and_records);

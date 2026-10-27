@@ -829,6 +829,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     const char *observed = NULL;
     behavior_function_context context = { 0 };
     behavior_function_activation activation = { 0 };
+    behavior_managed_heap managed = { 0 };
     arena storage = { 0 };
     service_binding *services = NULL;
     bool success = false;
@@ -917,7 +918,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         behavior_function_activation_init(entry, &activation);
     }
     pin_value value = { .type = PIN_I32 };
-    context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
+    behavior_managed_heap_init(&managed);
+    context = (behavior_function_context){ .managed_heap = &managed,
+                                           .activation = resumable ? &activation : NULL,
                                            .results = &value,
                                            .budget = options->instruction_budget
                                                        ? options->instruction_budget
@@ -974,6 +977,7 @@ done:
     }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&managed);
     arena_free(&storage);
     afree(services);
     if (packages) {

@@ -48,13 +48,39 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     return QualifiedCallable(callables, natives, aliases, home, Text(forest, text, callee),
                              NativeCallName(forest, text, call));
 }
+// Call-site wrappers are syntax, not expressions. Keep the marker separate
+// from the value so by-value calls cannot silently discard it.
+ReferenceArgumentNode :: (forest: snapshot.SnapshotNode[], argument: int) -> int {
+    at := argument;
+    if (Is(forest, at, "named_argument") || Is(forest, at, "typed_argument")) {
+        at = Field(forest, at, "value");
+    }
+    if (Is(forest, at, "reference_argument")) {
+        return at;
+    }
+    return -1;
+}
+ArgumentExpression :: (forest: snapshot.SnapshotNode[], argument: int) -> int {
+    at := argument;
+    while (Is(forest, at, "named_argument") || Is(forest, at, "typed_argument") ||
+           Is(forest, at, "reference_argument")) {
+        at = Field(forest, at, "value");
+    }
+    return at;
+}
+FirstReferenceArgument :: (forest: snapshot.SnapshotNode[], call: int) -> int {
+    for (argument in Members(forest, Field(forest, call, "arguments"))) {
+        marker := ReferenceArgumentNode(forest, argument);
+        if (marker >= 0) {
+            return marker;
+        }
+    }
+    return -1;
+}
 // The name a ref argument reaches through its fields, or "" for a value no
 // reference can reach.
 ArgumentRoot :: (forest: snapshot.SnapshotNode[], text: string, argument: int) -> string {
-    root := argument;
-    while (Is(forest, root, "member_expression")) {
-        root = Field(forest, root, "object");
-    }
+    root := RootOf(forest, ArgumentExpression(forest, argument));
     if (!Is(forest, root, "identifier")) {
         return "";
     }
@@ -320,6 +346,12 @@ MakeValueHost :: (first: int) -> Host {
 ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                           members: TypeMember[], names: Name[], item: Work, ops: Ops, target: Target,
                           at: Bases) -> Step {
+    if (Is(forest, item.node, "dereference_expression")) {
+        resumed := item;
+        resumed.phase = PointerBridgePhase;
+        return Step.Emitted([ExpressionCode(ops, forest[item.node])], [], [], [], [], [], [], [],
+                            [Visit(Field(forest, item.node, "operand")), resumed], 0, NoValue(), NoValue(), []);
+    }
     node := forest[item.node];
     code := TargetPoints(forest, text, names, ops, item.node);
     root := item.node;
@@ -330,6 +362,39 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     found: int = -1;
     if (Is(forest, root, "identifier")) {
         found = Lookup(names, Text(forest, text, root));
+    }
+    if (root != item.node && (Is(forest, root, "dereference_expression") ||
+                              (found >= 0 && names[found].storage == PointerStorage))) {
+        source := root;
+        points: Code[] = [ExpressionCode(ops, node)];
+        points.append(ExpressionCode(ops, forest[root]));
+        if (Is(forest, root, "dereference_expression")) {
+            source = Field(forest, root, "operand");
+        }
+        resumed := item;
+        resumed.phase = PointerRefFieldPhase;
+        return Step.Emitted(points, [], [], [], [], [], [], [], [Visit(source), resumed], 0,
+                            NoValue(), NoValue(), []);
+    }
+    if (found >= 0 && names[found].place == ManagedPlace) {
+        binding := names[found];
+        if (root == item.node && !SameType(item.storage, item.container, item.record,
+                                           Typed(-1, binding.storage, binding.container, binding.record))) {
+            return Fail(forest, item.node, document, "reference argument differs from the parameter's type");
+        }
+        pointer := FindPointer(types, {storage: binding.storage, container: binding.container, record: binding.record}, false);
+        code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
+        slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+        if (root != item.node) {
+            resumed := item;
+            resumed.phase = PointerBridgePhase;
+            field := PointerFieldStep(forest, text, document, types, members,
+                                      Typed(at.slot + 1, PointerStorage, 0, pointer), item.node, 0,
+                                      ops, target, SlotsPast(at, 2));
+            return PointerContinue(PointerPrefix(code, slots, field), resumed);
+        }
+        return PointerPrefix(code, slots, PointerPopped(PointerReferenceStep(
+            Typed(at.slot + 1, PointerStorage, 0, pointer), ops, target, SlotsPast(at, 2), node), 0));
     }
     if (found < 0 || !names[found].writable || Alias(names[found].place)) {
         return Fail(forest, item.node, document, "Reference argument requires a writable value");

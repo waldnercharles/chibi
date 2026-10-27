@@ -72,7 +72,7 @@ pub Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
             diagnostics := name_diagnostics;
             annotation := reader.Type(environment, tree, reader.Field(tree, member, "type"), scope, document);
             switch annotation {
-                case .Read(value, has_unit, unit, updated, errors, uses, publications):
+                case .Read(value, has_unit, unit, updated, errors, uses, publications, collection):
                     for (error in errors) {
                         diagnostics.append(error);
                     }

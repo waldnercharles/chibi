@@ -6,6 +6,7 @@
 #include "types/catalog.h"
 #include "types/copy_internal.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/scalar.h"
 #include "types/text.h"
@@ -40,7 +41,8 @@ static bool packed_layout(const type_desc *type, int depth)
             }
         } else if (
             !((field->type >= PIN_BOOL && field->type <= PIN_F64) ||
-              field->type == PIN_HANDLE || field->type == PIN_ENUM) ||
+              field->type == PIN_HANDLE || field->type == PIN_ENUM ||
+              field->type == PIN_POINTER) ||
             field->size != behavior_scalar_size(field->type)
         ) {
             return false;
@@ -54,7 +56,7 @@ size_t pin_array_element_stride(pin_type storage, const char *name, const pin_re
         return 0;
     }
     if ((storage >= PIN_BOOL && storage <= PIN_F64) || storage == PIN_HANDLE ||
-        storage == PIN_ENUM) {
+        storage == PIN_ENUM || storage == PIN_POINTER) {
         return record ? 0 : behavior_scalar_size(storage);
     }
     if (storage != PIN_STRUCT) {
@@ -119,7 +121,7 @@ pin_value pin_array_get(const pin_array *array, int index)
 static bool compatible(const pin_array *array, const pin_value *value)
 {
     bool nominal = value->type == PIN_STRUCT || value->type == PIN_ENUM ||
-                   value->type == PIN_HANDLE;
+                   value->type == PIN_HANDLE || value->type == PIN_POINTER;
     return value->container == PIN_CONTAINER_SINGLE &&
            value->type == array->element_type &&
            pin_record_same(value->record, array->record) &&
@@ -438,6 +440,10 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
             } else {
                 const char *text = *(const char **)member;
                 *(const char **)member = arena_string(a, text, PIN_COPY_TEXT);
+            }
+        } else if (field->type == PIN_POINTER) {
+            if (field->size != sizeof(pin_pointer *)) {
+                return -1;
             }
         } else if (field->type == PIN_UNION) {
             if (field->size != sizeof(void *)) {
@@ -990,6 +996,9 @@ int pin_value_equal(const pin_value *a, const pin_value *b)
         case PIN_I64: return a->i64 == b->i64;
         case PIN_U64: return a->u64 == b->u64;
         case PIN_TASK: return a->u64 == b->u64;
+        case PIN_POINTER:
+            return !strcmp(a->type_name ? a->type_name : "", b->type_name ? b->type_name : "") &&
+                   pin_pointer_equal(a->ptr, b->ptr);
         case PIN_F32: return a->f == b->f;
         case PIN_F64: return a->d == b->d;
         case PIN_ENUM:

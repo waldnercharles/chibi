@@ -54,6 +54,23 @@ script_catalog_type script_constructor_collection(
                                   .key_type = key,
                                   .element_type = value };
 }
+script_catalog_type script_constructor_pointer(arena *storage, script_type pointee, size_t pointer_size)
+{
+    char identity[32];
+    snprintf(identity, sizeof identity, "%" PRIu64, script_type_tag(pointee));
+    uint64_t id = script_catalog_id("pointer-type", identity);
+    char text[64];
+    snprintf(text, sizeof text, "__pointer_%" PRIu64, id);
+    size_t bytes = strlen(text) + 1;
+    char *owned = arena_alloc(storage, bytes);
+    memcpy(owned, text, bytes);
+    return (script_catalog_type){ .id = id,
+                                  .name = owned,
+                                  .type = { .storage = PIN_POINTER, .nominal = id },
+                                  .size = pointer_size,
+                                  .internal = true,
+                                  .element_type = pointee };
+}
 script_constructor_plan script_constructor_union(
     arena *storage,
     const script_constructor_facts *facts,
@@ -262,6 +279,7 @@ bool script_constructor_materialize(
     script_catalog_type type = { .id = plan->id,
                                  .name = plan->name,
                                  .type = plan->definition_type,
+                                 .element_type = plan->element_type,
                                  .size = plan->size,
                                  .internal = plan->internal,
                                  .variants = variants,

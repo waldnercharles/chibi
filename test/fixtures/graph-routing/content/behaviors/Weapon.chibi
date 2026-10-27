@@ -7,7 +7,7 @@ Weapon :: behavior {
     elapsed: number = 0.125
     // The step the next advance adds.
     step: f64 = 0
-    action elapsed_dt = AdvanceElapsed(elapsed, step)
+    action elapsed_dt = AdvanceElapsed(ref elapsed, step)
     on Tick :: (dt: number s) {
         step = dt
         if self.Aim.Manual {

@@ -490,6 +490,15 @@ static const struct
 {
     const char *name, *text;
 } SOURCES[] = {
+    { "managed pointers",
+      "package p\n"
+      "F :: (values: ^int[], optional: ^int?, all: ^(int[])) {\n"
+      "value := values[0]^\n"
+      "pointer := &value\n"
+      "copy := pointer^^\n"
+      "xor := value ^ +value\n"
+      "F(ref pointer^)\n"
+      "}\n" },
     { "half-open range", "package p\nRange :: () { for i in 0..<9 {} }\n" },
     { "numbers",
       "package p\n"
@@ -500,6 +509,8 @@ static const struct
       "W :: 0XaB\n"
       "Range :: () {\n"
       "    for i in 0..9 {\n"
+      "    }\n"
+      "    for i in 0..<9 {\n"
       "    }\n"
       "}\n" },
     { "label",

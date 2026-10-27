@@ -175,6 +175,15 @@ command reads `CHIBI_LLVM_BIN`. `-O2`, the default, optimizes; `-O0` does not.
 `-g` adds DWARF line tables, as rustc's `-C debuginfo=line-tables-only` does,
 so a debugger's backtrace or a profiler places the program's code at its
 source lines at either level. A build with `-g` gets its own folder.
+`--target` picks the program's system by its LLVM triple:
+`x86_64-unknown-linux-gnu`, the default, `aarch64-apple-darwin` or
+`x86_64-pc-windows-msvc`. LLVM's own linker links each one on Linux, with no
+SDK of the other system. The macOS program links against a stub of
+`libSystem`, as Zig's do, and is signed ad hoc. The Windows program,
+`program.exe`, imports only `ExitProcess` from `kernel32.dll` through an
+import library the build writes, as rustc's `raw-dylib` does. Each target gets
+its own folder. Line tables are Linux x86-64 only, so `-g` with
+another target fails.
 The program and its receipt go to `build/native/O2-HASH` or `O0-HASH`, named
 by a hash of the source, the SDK and the tools, and the command prints the
 program's path. An unchanged build reuses its folder once its receipt still
@@ -352,8 +361,8 @@ Each command accepts `--help`.
 
 ## Platform limits
 
-Linux and macOS support all commands, except `build --native`, which builds
-Linux x86-64 programs only.
+Linux and macOS support all commands, except `build --native`, which runs on
+Linux only. It builds programs for Linux x86-64, macOS arm64 and Windows x64.
 
 TODO: Windows support for reading package sources in `test` and `doc`.
 

@@ -11787,6 +11787,22 @@ static bool native_recursion_probes_the_stack(int b)
     REQUIRE(occurrences(ir, "define i32 @chibi_scalar() #0 {\nentry:\n") == 1);
     REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
     REQUIRE(occurrences(ir, probes) == 1 && !occurrences(ir, "depth"));
+    /* LLVM probes inline on macOS too, but on Windows the attribute names the
+     * probe function, so Windows code calls __chkstk. */
+    static const char *const targets[] = { "MacOSArm64", "WindowsX64" };
+    static const char *const target_probes[] = {
+        probes,
+        "\nattributes #0 = { \"probe-stack\"=\"__chkstk\" }\n"
+    };
+    for (int t = 0; t < 2; t++) {
+        const pin_union *value;
+        REQUIRE(native_target_emit(b, targets[t], &m, &value));
+        REQUIRE(
+            value->tag ==
+            fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted")
+        );
+        REQUIRE(occurrences(pin_text(value->values[0]), target_probes[t]) == 1);
+    }
     /* Function 0 calls 1, which calls 0. */
     native_code mutual[8];
     memcpy(mutual, recursive, sizeof mutual);

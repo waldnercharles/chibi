@@ -60,16 +60,25 @@ executes fixed argument vectors:
 2. Admit the verified canonical output's exact triple and data layout:
    `x86_64-unknown-linux-gnu`, `arm64-apple-macosx11.0.0` or
    `x86_64-pc-windows-msvc`, each with the layout LLVM 18 gives it. `Build`
-   admits only `x86_64-unknown-linux-gnu`, the one target it links.
+   links all three.
 3. `llc -filetype=obj -O=0|2 -relocation-model=pic` without a target
    override. A static object's absolute references, such as the table O2
    lowers a dense switch through, cannot link into the shared libraries the
    native tests load.
 4. For `Build` only: the same `llc` arguments on the generated `start.ll`,
-   giving `start.o`, then
-   `ld.lld -flavor gnu -static --gc-sections -e _start object.o start.o -o program`.
+   giving `start.o`, then the target's link:
+   - Linux x86-64:
+     `ld.lld -flavor gnu -static --gc-sections -e _start object.o start.o -o program`.
+   - macOS arm64: `ld.lld -flavor darwin -arch arm64 -platform_version macos
+     11.0.0 11.0.0 -dead_strip -e _main object.o start.o libSystem.tbd -o
+     program`.
+   - Windows x64: `ld.lld -flavor link /lib /nologo /def:kernel32.def
+     /machine:x64 /out:kernel32.lib`, then `ld.lld -flavor link /nologo
+     /subsystem:console /entry:mainCRTStartup /nodefaultlib /opt:ref
+     /out:program.exe object.o start.o kernel32.lib`.
+
    The driver runs the linker it resolved, which may be lld's generic driver,
-   so it names the GNU flavor rather than relying on the `ld.lld` name.
+   so it names the flavor rather than relying on the `ld.lld` name.
 
 The accepted Linux data layout is
 `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`.
@@ -87,7 +96,8 @@ provenance or arbitrary LLVM semantics, and does not parse LLVM independently.
 Only successful object creation (plus an executable file for `Build`), unchanged
 direct tool hashes, and a completed receipt permit no-replace publication.
 `source.ll`, `module.ll`, `object.o` and `receipt.txt` are published together;
-`Build` additionally publishes `start.ll`, `start.o` and `program`. Every receipt explicitly records
+`Build` additionally publishes `start.ll`, `start.o` and the program,
+`program.exe` on Windows. Every receipt explicitly records
 `output-kind object` or `output-kind executable`, resolved tool paths/SHA256,
 actual argv, mode and input/module/object hashes. An object receipt contains no
 linker identity, link command or program hash, and `Object` does not resolve,
@@ -112,7 +122,7 @@ quadratic remainder-slicing, for canonical metadata. Existing 16MiB text and
 
 ## Linking without a C compiler
 
-`Build` links Linux x86-64 programs with `ld.lld` alone. The program's only
+`Build` links programs with `ld.lld` alone, on Linux, for every target. The program's only
 runtime is `start.ll`, which the driver writes and compiles with the same `llc`
 arguments as the module. Like Odin's no-CRT `_start` and musl's `crt1`, it
 clears the frame pointer, aligns the stack down to 16 bytes, calls the module's
@@ -122,6 +132,21 @@ flavor (`-flavor gnu`, `--gc-sections`, `-static`). Emitted scalar
 objects have no undefined symbols, so the static link needs no C library,
 startup file or compiler driver, and an empty `PATH` changes nothing. Programs
 that overflow their stack end with the system's SIGSEGV, as before (D4).
+
+The other targets need no SDK of their own system:
+
+- macOS arm64: `start.ll` defines `main`, which returns `chibi_scalar()`;
+  dyld calls it through `LC_MAIN` and exits with its result. The program links
+  against `libSystem.tbd`, a text stub that names
+  `/usr/lib/libSystem.B.dylib` and exports nothing, as Zig's stubs stand in
+  for the SDK. Every macOS process loads `libSystem`, and lld signs arm64
+  output ad hoc, which the kernel requires.
+- Windows x64: `start.ll` defines `mainCRTStartup`, which passes
+  `chibi_scalar()` to `ExitProcess`, imported through a `kernel32.lib` that
+  lld writes from a one-line `.def` file, as rustc's `raw-dylib` does. It also
+  defines `_fltused`, which code using floating point references, and
+  `__chkstk`, the stack probe Windows code calls for a frame larger than a
+  page: compiler-rt's, which touches each page from the top of the frame down.
 
 The checks:
 
@@ -137,6 +162,12 @@ The checks:
   compile outlasts the cases' 10-second deadlines. CI links real programs
   through `chibi build --native` instead: the `native-build` selector in the
   projects group (see `docs/guide/toolchain.md`).
+- In `native-build`, `native_build_links_macos_and_windows_programs` checks
+  the macOS and Windows link lines, stubs and start objects with controlled
+  tools, and `native_build_links_other_targets_with_llvm` links real programs
+  for both with `CHIBI_LLVM_BIN`. With `CHIBI_NATIVE_BUNDLE` set, those
+  programs go into the bundle that `native-targets` runs on macOS and Windows
+  (`test/native_aot/targets/README.md`).
 
 `fixtures/scalar/Main.ll` is the source path's own output for
 `fixtures/scalar/Main.chibi`: the bootstrap compiler's `CollectScalar` rows,

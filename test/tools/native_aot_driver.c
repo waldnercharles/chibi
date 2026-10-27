@@ -168,9 +168,15 @@ TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings)
     path(partial, root, "reserved.partial");
     REQUIRE(!mkdir(partial, 0700) && !mkdir(output, 0700));
     write_at(output, "receipt.txt", "previous complete output\n");
-    const char *names[] = { "source.ll", "module.ll", "object.o",   "start.ll",
-                            "start.o",   "program",   "receipt.txt" };
-    for (int i = 0; i < 7; i++) {
+    const char *names[] = { "source.ll",    "module.ll",    "object.o",
+                            "start.ll",     "start.o",      "libSystem.tbd",
+                            "kernel32.def", "kernel32.lib", "program",
+                            "program.exe",  "receipt.txt" };
+    enum
+    {
+        NAMES = (int)(sizeof names / sizeof *names)
+    };
+    for (int i = 0; i < NAMES; i++) {
         write_at(partial, names[i], "owned bytes\n");
     }
     write_at(partial, "prior-owner", "keep unknown bytes\n");
@@ -178,7 +184,7 @@ TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings)
     REQUIRE(invoke("InspectCleanup", arguments, 1, true) && result.value == 1);
     REQUIRE(equals(partial, "prior-owner", "keep unknown bytes\n"));
     REQUIRE(equals(output, "receipt.txt", "previous complete output\n"));
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < NAMES; i++) {
         char file[1024];
         path(file, partial, names[i]);
         REQUIRE(!exists(file));

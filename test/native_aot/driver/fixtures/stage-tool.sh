@@ -6,6 +6,7 @@ name=${0##*/}
 trace=$name.argv
 case "$name:$*" in
     llc*/start.ll*) trace=$name.start.argv ;;
+    *:"-flavor link /lib "*) trace=$name.lib.argv ;;
 esac
 printf '%s\n' "$@" > "$root/$trace"
 case "$name" in
@@ -14,7 +15,13 @@ case "$name" in
         test "$1" = -S && test "$4" = -o || exit 64
         # Pass lists stay permissive so independent C argv assertions must catch
         # missing verification/optimization, even when marker emission succeeds.
-        printf '%s\n' 'target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"' > "$5"
+        # The layout LLVM 18 gives the input's target, so the driver admits it.
+        layout='e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128'
+        case "$(/bin/cat "$3")" in
+            *'"arm64-apple-macosx11.0.0"'*) layout='e-m:o-i64:64-i128:128-n32:64-S128' ;;
+            *'"x86_64-pc-windows-msvc"'*) layout='e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128' ;;
+        esac
+        printf 'target datalayout = "%s"\n' "$layout" > "$5"
         /bin/cat "$3" >> "$5"
         ;;
     llc*)
@@ -37,10 +44,25 @@ case "$name" in
         esac
         ;;
     linker*|ld.lld*)
-        test "$#" = 10 || exit 64
-        test "$1" = -flavor && test "$3" = -static && test "$5" = -e && test "$9" = -o || exit 64
-        printf '#!/bin/sh\nexit 42\n' > "${10}"
-        /bin/chmod 700 "${10}"
+        test "$1" = -flavor || exit 64
+        case "$2:$#" in
+            gnu:10)
+                test "$3" = -static && test "$5" = -e && test "$9" = -o || exit 64
+                out=${10}
+                ;;
+            darwin:16)
+                test "$3" = -arch && test "${15}" = -o || exit 64
+                out=${16}
+                ;;
+            link:7 | link:11)
+                for argument in "$@"; do
+                    case "$argument" in /out:*) out=${argument#/out:} ;; esac
+                done
+                ;;
+            *) exit 64 ;;
+        esac
+        printf '#!/bin/sh\nexit 42\n' > "$out"
+        /bin/chmod 700 "$out"
         ;;
     *) exit 99 ;;
 esac

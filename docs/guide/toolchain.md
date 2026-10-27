@@ -172,6 +172,9 @@ Twice :: (value: int) -> int {
 
 `--llvm` names the folder of LLVM's `opt`, `llc` and `ld.lld`. Without it the
 command reads `CHIBI_LLVM_BIN`. `-O2`, the default, optimizes; `-O0` does not.
+`-g` adds DWARF line tables, as rustc's `-C debuginfo=line-tables-only` does,
+so a debugger's backtrace or a profiler places the program's code at its
+source lines at either level. A build with `-g` gets its own folder.
 The program and its receipt go to `build/native/O2-HASH` or `O0-HASH`, named
 by a hash of the source, the SDK and the tools, and the command prints the
 program's path. An unchanged build reuses its folder once its receipt still

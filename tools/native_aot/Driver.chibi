@@ -478,9 +478,13 @@ Elements :: (json: string) -> string[] {
 }
 
 // The `.chibi` files below `folder`, relative to it, in listing order.
+// Hidden entries are skipped, as the project's source catalog skips them.
 Sources :: (folder: string) -> string[] {
     paths: string[] = [];
     for (name in build.list_directory(folder)) {
+        if (strings.HasPrefix(name, ".")) {
+            continue;
+        }
         path := Join([folder, "/", name]);
         if (build.file_kind(path) == "directory") {
             for (nested in Sources(path)) {
@@ -508,7 +512,7 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 Finish :: (work: string, status: int) -> int {
     ok := true;
     for (name in ["target.json", "compile.json", "emitter.chibip", "collect.json", "rows.json", "emit.json",
-                  "module.ll", "diagnostic.txt"]) {
+                  "module.ll", "diagnostic.txt", "optimized.ll", "library.o"]) {
         ok = build.remove(Join([work, "/", name])) && ok;
     }
     if (!build.remove(work) || !ok) {
@@ -745,4 +749,250 @@ Native :: () -> int {
         build.report(Join(["native: ", output, "/", program]));
     }
     return Finish(work, status);
+}
+
+// Whether `value` is a byte of an identifier, as the grammar spells one.
+Word :: (value: int) -> bool {
+    return value == 95 || (value >= 48 && value <= 57) || (value >= 65 && value <= 90) || (value >= 97 && value <= 122);
+}
+
+// Where the whitespace and comments from `at` end.
+Trivia :: (bytes: int[], at: int) -> int {
+    while (at < length(bytes)) {
+        value := bytes[at];
+        next := 0;
+        if (at + 1 < length(bytes)) {
+            next = bytes[at + 1];
+        }
+        if (value == 32 || (value >= 9 && value <= 13)) {
+            at += 1;
+        } else if (value == 47 && next == 47) {
+            while (at < length(bytes) && bytes[at] != 10) {
+                at += 1;
+            }
+        } else if (value == 47 && next == 42) {
+            at += 2;
+            while (at + 1 < length(bytes) && !(bytes[at] == 42 && bytes[at + 1] == 47)) {
+                at += 1;
+            }
+            at += 2;
+        } else {
+            return at;
+        }
+    }
+    return at;
+}
+
+// Where the identifier at `at` ends, or `at` when none starts there.
+WordEnd :: (bytes: int[], at: int) -> int {
+    if (at >= length(bytes) || (bytes[at] >= 48 && bytes[at] <= 57)) {
+        return at;
+    }
+    while (at < length(bytes) && Word(bytes[at])) {
+        at += 1;
+    }
+    return at;
+}
+
+// The library a source declares, or "". The grammar roots a library source
+// at its declaration alone, so its first tokens are a name, `::` and
+// `library`.
+LibraryName :: (text: string) -> string {
+    bytes := strings.Bytes(text);
+    start := Trivia(bytes, 0);
+    end := WordEnd(bytes, start);
+    colons := Trivia(bytes, end);
+    keyword := Trivia(bytes, colons + 2);
+    if (end == start || colons + 2 > length(bytes) || bytes[colons] != 58 || bytes[colons + 1] != 58 ||
+        WordEnd(bytes, keyword) != keyword + 7 || strings.Slice(text, keyword, 7) != "library") {
+        return "";
+    }
+    return strings.Slice(text, start, end - start);
+}
+
+// The `.chibi` files in the folders the project compiles executable sources
+// from, relative to `content`, as source_catalog.c scans them.
+ExecutableSources :: (content: string) -> string[] {
+    paths: string[] = [];
+    for (folder in ["behaviors", "libraries", "systems"]) {
+        if (build.file_kind(Join([content, "/", folder])) == "directory") {
+            for (path in Sources(Join([content, "/", folder]))) {
+                paths.append(Join([folder, "/", path]));
+            }
+        }
+    }
+    return paths;
+}
+
+// `output`, the shared object the player loads, linked from the emitted
+// `module` in `work`: verified and optimized as Run does, for the one
+// admitted target a library emits, with only its manifest exported.
+Shared :: (module: string, work: string, output: string, opt: string, llc: string, lld: string,
+           mode: string) -> bool {
+    passes := "verify";
+    if (mode == "2") {
+        passes = "verify,default<O2>,verify";
+    }
+    optimized := Join([work, "/optimized.ll"]);
+    object := Join([work, "/library.o"]);
+    if (build.run([opt, "-S", Join(["-passes=", passes]), module, "-o", optimized]) != 0 ||
+        build.file_kind(optimized) != "file" || Target(build.read_file(optimized)) != 0) {
+        return false;
+    }
+    return build.run([llc, "-filetype=obj", Join(["-O=", mode]), "-relocation-model=pic", optimized, "-o",
+                      object]) == 0 &&
+           build.run([lld, "-flavor", "gnu", "-shared", "--gc-sections", object, "-o", output]) == 0 &&
+           build.file_kind(output) == "file";
+}
+
+// Removes the partial output's libraries, then the folder.
+Unpublished :: (partial: string, names: string[]) -> bool {
+    ok := true;
+    for (name in names) {
+        ok = build.remove(Join([partial, "/", name, ".so"])) && ok;
+    }
+    return build.remove(partial) && ok;
+}
+
+// `chibi export --native`: each library source below CONTENT, through the
+// ordinary compiler's CollectScalar and the emitter's EmitLibrary
+// (0xe37e475ee6152694), to OUTPUT/<Library>.so, which the player loads from
+// a game's natives folder. A library's function IDs name its path below
+// CONTENT, as the prepared artifact's do. A library the emitter rejects stays
+// in the VM, and the driver says why (Rejection, 0x33c99518aadf27a3); any
+// other failure fails the step. CACHE keeps the emitter closure, as
+// Native's folder does, and OUTPUT is published only when complete.
+Libraries :: () -> int {
+    arguments := build.arguments();
+    if (length(arguments) != 8) {
+        build.report("usage: COMPILER_HOST COMPILER CORE CONTENT LLVM 0|2 CACHE OUTPUT (absolute paths)");
+        return 2;
+    }
+    host := Tool(arguments[0]);
+    compiler := arguments[1];
+    core := arguments[2];
+    content := arguments[3];
+    mode := arguments[5];
+    cache := arguments[6];
+    output := arguments[7];
+    artifact := Join([compiler, "/bootstrap/compiler.chibip"]);
+    if (host == "" || !Path(compiler) || !Path(core) || build.file_kind(artifact) != "file" || !Path(content) ||
+        build.file_kind(content) != "directory" || (mode != "0" && mode != "2") || !Path(cache) || !Path(output)) {
+        build.report("native: a compiler host, the SDK's compiler and core, a content folder, 0 or 2, a cache and an output are required");
+        return 2;
+    }
+    if (build.platform() != "Linux") {
+        build.report("native: libraries are built on Linux x86-64 only so far");
+        return 2;
+    }
+    opt := Tool(Join([arguments[4], "/opt"]));
+    llc := Tool(Join([arguments[4], "/llc"]));
+    lld := Tool(Join([arguments[4], "/ld.lld"]));
+    if (!Path(arguments[4]) || opt == "" || llc == "" || lld == "") {
+        build.report(Join(["native: ", arguments[4], " must hold LLVM's opt, llc and ld.lld"]));
+        return 2;
+    }
+    paths: string[] = [];
+    names: string[] = [];
+    for (path in ExecutableSources(content)) {
+        name := LibraryName(build.read_file(Join([content, "/", path])));
+        for (other in names) {
+            if (name != "" && name == other) {
+                build.report(Join(["native: two libraries are named ", name, "; the player loads one file per library"]));
+                return 1;
+            }
+        }
+        if (name != "") {
+            paths.append(path);
+            names.append(name);
+        }
+    }
+    if (length(paths) == 0) {
+        build.report(Join(["native: ", content, " holds no library sources"]));
+        return 0;
+    }
+    work := Join([cache, "/libraries.work"]);
+    partial := Join([output, ".partial"]);
+    for (stale in [work, partial]) {
+        if (build.file_kind(stale) != "") {
+            build.report(Join(["native: an interrupted build left ", stale, "; remove it once no build is running"]));
+            return 1;
+        }
+    }
+    if (build.file_kind(output) != "") {
+        build.report(Join(["native: ", output, " must be absent"]));
+        return 2;
+    }
+    if (!build.make_directory(cache) || !build.reserve_directory(work)) {
+        build.report(Join(["native: cannot reserve ", work]));
+        return 1;
+    }
+    if (!build.reserve_directory(partial)) {
+        build.report(Join(["native: cannot reserve ", partial]));
+        return Finish(work, 1);
+    }
+    target := Join([work, "/target.json"]);
+    if (build.probe([host, "--target-json", target]) != 0) {
+        build.report("native: the compiler host gave no target");
+        Unpublished(partial, names);
+        return Finish(work, 1);
+    }
+    target_json := build.trim(build.read_file(target));
+    facts := Elements(target_json);
+    emitter_key := EmitterKey(host, artifact, compiler, core);
+    emitter := Join([cache, "/emitter-", strings.Slice(emitter_key, 0, 16), ".chibip"]);
+    if (length(facts) != 6) {
+        build.report(Join(["native: the compiler host gave a malformed target: ", target_json]));
+        Unpublished(partial, names);
+        return Finish(work, 1);
+    }
+    if (build.file_kind(emitter) != "file" && !Emitter(host, artifact, compiler, core, work, target_json, emitter)) {
+        Unpublished(partial, names);
+        return Finish(work, 1);
+    }
+    collect := Join([work, "/collect.json"]);
+    rows := Join([work, "/rows.json"]);
+    module := Join([work, "/module.ll"]);
+    diagnostic := Join([work, "/diagnostic.txt"]);
+    built := 0;
+    for (index in 0..<length(paths)) {
+        source := Join([content, "/", paths[index]]);
+        request := Join(["[\"/project\",", Quote(paths[index]), ",", Quote(build.read_file(source)), ",", facts[0], ",",
+                         facts[2], ",", facts[3], ",", facts[4], ",", facts[5], "]"]);
+        if (!build.write_file(collect, request) ||
+            Invoke(host, artifact, "0xebbc43e46769862a", collect, "", "120000") != 0 ||
+            !build.write_file(rows, build.last_stdout())) {
+            build.report(Join(["native: the compiler did not read ", source, ": ", build.last_stderr()]));
+            Unpublished(partial, names);
+            return Finish(work, 1);
+        }
+        if (Invoke(host, emitter, "0xe37e475ee6152694", rows, module, "120000") != 0) {
+            if (Invoke(host, emitter, "0x33c99518aadf27a3", rows, diagnostic, "120000") != 0) {
+                build.report(Join(["native: ", source, " has no native module: ", build.last_stderr()]));
+                Unpublished(partial, names);
+                return Finish(work, 1);
+            }
+            build.report(Join([source, ":", build.read_file(diagnostic), "; the library stays in the VM"]));
+        } else if (!Shared(module, work, Join([partial, "/", names[index], ".so"]), opt, llc, lld, mode)) {
+            build.report(Join(["native: ", source, " did not link"]));
+            Unpublished(partial, names);
+            return Finish(work, 1);
+        } else {
+            built += 1;
+        }
+        for (name in ["module.ll", "optimized.ll", "library.o", "diagnostic.txt"]) {
+            build.remove(Join([work, "/", name]));
+        }
+    }
+    if (built == 0) {
+        Unpublished(partial, names);
+        return Finish(work, 0);
+    }
+    if (!build.publish_directory(partial, output)) {
+        build.report(Join(["native: cannot publish ", output]));
+        Unpublished(partial, names);
+        return Finish(work, 1);
+    }
+    build.report(Join(["native: built ", format_text("{}", built), " of ", format_text("{}", length(paths)), " libraries"]));
+    return Finish(work, 0);
 }

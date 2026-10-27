@@ -4,9 +4,11 @@
 #ifndef _WIN32
 #include "host/serve.h"
 #endif
+#include "support/array.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -49,8 +51,9 @@ extern char **environ;
  * package sources of a folder without a project.kdl, in their canonical form,
  * or with --check names the ones that are not.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
- * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
- * folder, or a static site for browsers.
+ * chibi export [PROJECT] --output DIR [--web PLAYER | --native [--llvm DIR]]:
+ * builds a runnable game folder, or a static site for browsers, with --native
+ * its library sources compiled for the player to load.
  * chibi web [PROJECT] --player PLAYER [--port PORT]: exports the static site
  * into a temporary folder and serves it on loopback until interrupted.
  * chibi doc [ROOT] [--serve] [--port PORT]: writes ROOT/build/docs from
@@ -58,6 +61,11 @@ extern char **environ;
 
 #define CHIBI_BUILD_DIR ".chibi/build"
 #define CHIBI_ARTIFACT CHIBI_BUILD_DIR "/game.chibip"
+/* Where export --native keeps the native driver's emitter between exports. */
+#define CHIBI_NATIVE_CACHE CHIBI_BUILD_DIR "/native"
+#define NEEDS_LLVM                                                             \
+    "pass --llvm DIR, the folder of opt, llc and ld.lld, or set "              \
+    "CHIBI_LLVM_BIN"
 #define CHIBI_COMPILER_STAMP CHIBI_BUILD_DIR "/compiler"
 
 static char *join(const char *base, const char *name)
@@ -174,6 +182,7 @@ static int usage(const char *program)
         "       %s test [ROOT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
+        "                [--native [--llvm DIR]]\n"
         "       %s web [PROJECT] --player PLAYER [--port PORT]\n"
         "       %s doc [ROOT] [--serve] [--port PORT]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
@@ -213,7 +222,12 @@ static int usage(const char *program)
         "folder with an .exe on Windows, and a folder with a .desktop entry\n"
         "elsewhere. --web PLAYER writes a static site instead, with the\n"
         "browser player from the PLAYER folder (make package-web-player).\n"
-        "--archive also writes DIR.tar.gz.\n"
+        "--archive also writes DIR.tar.gz. --native, on Linux x86-64 so far,\n"
+        "also compiles each library source to a shared object in the data\n"
+        "folder's natives folder with LLVM's tools in DIR, or in\n"
+        "CHIBI_LLVM_BIN without --llvm. The player runs those libraries'\n"
+        "functions natively; a library native code cannot hold yet stays in\n"
+        "the VM, and export says why.\n"
         "web exports the browser site into a temporary folder, serves it at\n"
         "http://127.0.0.1:PORT/ (8000 by default; 0 picks a free port) until\n"
         "interrupted, then removes the folder. Windows does not serve yet.\n"
@@ -353,58 +367,6 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
     free(identity);
     free(compiler);
     return result;
-}
-
-static int export_game(int argc, char **argv)
-{
-    const char *requested = NULL, *output = NULL, *web = NULL;
-    bool archive = false;
-    for (int i = 2; i < argc; i++) {
-        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
-            return usage(argv[0]);
-        }
-        if (!strcmp(argv[i], "--archive")) {
-            archive = true;
-        } else if (!strcmp(argv[i], "--output") && i + 1 < argc && !output) {
-            output = argv[++i];
-        } else if (!strcmp(argv[i], "--web") && i + 1 < argc && !web) {
-            web = argv[++i];
-        } else if (argv[i][0] != '-' && !requested) {
-            requested = argv[i];
-        } else {
-            fprintf(stderr, "Invalid export option: %s; use --help.\n", argv[i]);
-            return 2;
-        }
-    }
-    if (!output || !output[0]) {
-        fprintf(stderr, "Export needs --output DIR\n");
-        return 2;
-    }
-    chibi_project project = { 0 };
-    if (!open_project(&project, requested, true)) {
-        return 2;
-    }
-    char *bin = file_executable_dir();
-    chibi_export_spec spec = { .project = project.root,
-                               .name = project.name,
-                               .title = project.application.title,
-                               .icon = project.application.icon,
-                               .bin = bin,
-                               .output = output,
-#if defined(__APPLE__)
-                               .layout = CHIBI_EXPORT_APP,
-#elif defined(_WIN32)
-                               .layout = CHIBI_EXPORT_WINDOWS,
-#endif
-                               .archive = archive };
-    if (web) {
-        spec.layout = CHIBI_EXPORT_WEB;
-        spec.web = web;
-    }
-    bool exported = chibi_export(&spec);
-    free(bin);
-    chibi_project_free(&project);
-    return exported ? 0 : 1;
 }
 
 #ifndef _WIN32
@@ -988,55 +950,185 @@ static char *private_program(const char *bin, const char *name)
     return program;
 }
 
-/* Runs the native driver in the build host with the SDK's compiler and core.
- * `options` are its optimization level, line tables and target. */
-static int run_native_driver(
+/* The build host's command that runs the native driver's `entry` with the
+ * SDK's compiler host, compiler and core, then `arguments`, up to NULL. The
+ * command owns its strings; free it with free_command. */
+static char **native_driver_command(
     const char *bin,
     const char *share,
-    char *root,
-    char *tools,
-    const char *const options[3]
+    const char *entry,
+    const char *const *arguments
 )
 {
-    char *host = private_program(bin, "chibi-build-host" CHIBI_EXECUTABLE_SUFFIX);
+    char *build_host = private_program(bin, "chibi-build-host" CHIBI_EXECUTABLE_SUFFIX);
     char *compiler_host = private_program(bin, "chibi-compiler-host" CHIBI_EXECUTABLE_SUFFIX);
     char *driver = join(share, "tools/native_aot");
     char *source = join(driver, "Driver.chibi");
     char *compiler = join(share, "compiler");
     char *core = join(share, "core");
-    char *args[] = { host,
-                     "--root",
-                     driver,
-                     "--source",
-                     source,
-                     "--core",
-                     core,
-                     "--compiler",
-                     compiler,
-                     "--compiler-core",
-                     core,
-                     "--entry",
-                     "Native",
-                     "--timeout-ms",
-                     "900000",
-                     "--",
-                     compiler_host,
-                     compiler,
-                     core,
-                     root,
-                     tools,
-                     (char *)options[0],
-                     (char *)options[1],
-                     (char *)options[2],
-                     NULL };
-    int result = chibi_process_run(args);
+    const char *const fixed[] = {
+        build_host,    "--root",          driver,   "--source",
+        source,        "--core",          core,     "--compiler",
+        compiler,      "--compiler-core", core,     "--entry",
+        entry,         "--timeout-ms",    "900000", "--",
+        compiler_host, compiler,          core
+    };
+    char **command = NULL;
+    for (size_t i = 0; i < sizeof fixed / sizeof *fixed; i++) {
+        apush(command, xstrdup(fixed[i]));
+    }
+    for (int i = 0; arguments[i]; i++) {
+        apush(command, xstrdup(arguments[i]));
+    }
+    apush(command, NULL);
     free(core);
     free(compiler);
     free(source);
     free(driver);
     free(compiler_host);
-    free(host);
-    return result;
+    free(build_host);
+    return command;
+}
+static void free_command(char **command)
+{
+    for (int i = 0; i < acount(command); i++) {
+        free(command[i]);
+    }
+    afree(command);
+}
+
+/* The launcher's bin folder, its SDK's share/chibi and the LLVM tools in
+ * `llvm`, resolved, or false with why. */
+static bool native_sdk(const char *llvm, char **bin, char **share, char **tools)
+{
+    *bin = file_executable_dir();
+    char *shared = join(*bin, "../share/chibi");
+    *share = realpath(shared, NULL);
+    free(shared);
+    assert(llvm);
+    *tools = realpath(llvm, NULL);
+    if (!*share) {
+        fprintf(stderr, "native: cannot find the SDK's share/chibi\n");
+    } else if (!*tools) {
+        fprintf(stderr, "native: cannot find %s\n", llvm);
+    }
+    return *share && *tools;
+}
+
+/* Whether export --native can build libraries for this export: the player
+ * loads them on Linux x86-64 only so far, and the browser loads none. */
+static bool native_export_supported(const char *web)
+{
+#if defined(__linux__) && defined(__x86_64__)
+    if (!web) {
+        return true;
+    }
+    fprintf(stderr, "export --native builds no browser site; the browser player runs every function in the VM\n");
+    return false;
+#else
+    (void)web;
+    fprintf(stderr, "export --native builds libraries on Linux x86-64 only so far\n");
+    return false;
+#endif
+}
+
+/* The native driver's command that compiles `project`'s library sources into
+ * the folder export appends, keeping its emitter in CHIBI_NATIVE_CACHE, or
+ * NULL with why. */
+static char **natives_command(const chibi_project *project, const char *llvm)
+{
+    char *bin, *share, *tools, **command = NULL;
+    if (native_sdk(llvm, &bin, &share, &tools)) {
+        char *dot = join(project->root, ".chibi");
+        char *build = join(project->root, CHIBI_BUILD_DIR);
+        char *cache = join(project->root, CHIBI_NATIVE_CACHE);
+        mkdir(dot, 0777);
+        mkdir(build, 0777);
+        const char *const arguments[] = { project->content, tools, "2", cache, NULL };
+        command = native_driver_command(bin, share, "Libraries", arguments);
+        free(cache);
+        free(build);
+        free(dot);
+    }
+    free(tools);
+    free(share);
+    free(bin);
+    return command;
+}
+
+static int export_game(int argc, char **argv)
+{
+    const char *requested = NULL, *output = NULL, *web = NULL,
+               *llvm = getenv("CHIBI_LLVM_BIN");
+    bool archive = false, native = false, located = false;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            return usage(argv[0]);
+        }
+        if (!strcmp(argv[i], "--archive")) {
+            archive = true;
+        } else if (!strcmp(argv[i], "--native")) {
+            native = true;
+        } else if (!strcmp(argv[i], "--llvm") && i + 1 < argc && !located) {
+            llvm = argv[++i];
+            located = true;
+        } else if (!strcmp(argv[i], "--output") && i + 1 < argc && !output) {
+            output = argv[++i];
+        } else if (!strcmp(argv[i], "--web") && i + 1 < argc && !web) {
+            web = argv[++i];
+        } else if (argv[i][0] != '-' && !requested) {
+            requested = argv[i];
+        } else {
+            fprintf(stderr, "Invalid export option: %s; use --help.\n", argv[i]);
+            return 2;
+        }
+    }
+    if (!output || !output[0]) {
+        fprintf(stderr, "Export needs --output DIR\n");
+        return 2;
+    }
+    if (located && !native) {
+        fprintf(stderr, "export --llvm needs --native\n");
+        return 2;
+    }
+    if (native && !native_export_supported(web)) {
+        return 2;
+    }
+    if (native && (!llvm || !*llvm)) {
+        fprintf(stderr, "export --native needs LLVM: %s\n", NEEDS_LLVM);
+        return 2;
+    }
+    chibi_project project = { 0 };
+    if (!open_project(&project, requested, true)) {
+        return 2;
+    }
+    char *bin = file_executable_dir();
+    chibi_export_spec spec = { .project = project.root,
+                               .name = project.name,
+                               .title = project.application.title,
+                               .icon = project.application.icon,
+                               .bin = bin,
+                               .output = output,
+#if defined(__APPLE__)
+                               .layout = CHIBI_EXPORT_APP,
+#elif defined(_WIN32)
+                               .layout = CHIBI_EXPORT_WINDOWS,
+#endif
+                               .archive = archive };
+    if (web) {
+        spec.layout = CHIBI_EXPORT_WEB;
+        spec.web = web;
+    }
+    char **natives = native ? natives_command(&project, llvm) : NULL;
+    spec.natives = (const char *const *)natives;
+    int status = 2;
+    if (!native || natives) {
+        status = chibi_export(&spec) ? 0 : 1;
+    }
+    free_command(natives);
+    free(bin);
+    chibi_project_free(&project);
+    return status;
 }
 
 /* chibi build --native [-O0|-O2] [-g] [--target TRIPLE] [--llvm DIR] [ROOT]:
@@ -1072,38 +1164,24 @@ static int build_native(int argc, char **argv)
         }
     }
     if (!llvm || !*llvm) {
-        fprintf(
-            stderr,
-            "build --native needs LLVM: pass --llvm DIR, the folder of opt, "
-            "llc and ld.lld, or set "
-            "CHIBI_LLVM_BIN\n"
-        );
+        fprintf(stderr, "build --native needs LLVM: %s\n", NEEDS_LLVM);
         return 2;
     }
-    char *root = realpath(requested, NULL);
-    char *tools = realpath(llvm, NULL);
-    char *bin = file_executable_dir();
-    char *shared = join(bin, "../share/chibi");
-    char *share = realpath(shared, NULL);
-    free(shared);
-    const char *missing = NULL;
-    if (!root) {
-        missing = requested;
-    } else if (!tools) {
-        missing = llvm;
-    } else if (!share) {
-        missing = "the SDK's share/chibi";
-    }
+    char *root = realpath(requested, NULL), *bin = NULL, *share = NULL, *tools = NULL;
     int result = 2;
-    if (missing) {
-        fprintf(stderr, "build --native: cannot find %s\n", missing);
-    } else {
-        const char *const options[] = { mode, lines ? "lines" : "none", target };
-        result = run_native_driver(bin, share, root, tools, options);
+    if (!root) {
+        fprintf(stderr, "build --native: cannot find %s\n", requested);
+    } else if (native_sdk(llvm, &bin, &share, &tools)) {
+        const char *const arguments[] = { root,   tools,
+                                          mode,   lines ? "lines" : "none",
+                                          target, NULL };
+        char **command = native_driver_command(bin, share, "Native", arguments);
+        result = chibi_process_run(command);
+        free_command(command);
     }
+    free(tools);
     free(share);
     free(bin);
-    free(tools);
     free(root);
     return result;
 }

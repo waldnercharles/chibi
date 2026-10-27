@@ -73,6 +73,7 @@ static int entries(const char *relative)
 
 static const char *title = "My <Game> \\ & Co";
 static const char *icon = "art/icon.png";
+static const char *const *natives;
 
 static bool export_as(const char *relative, chibi_export_layout layout, bool archive)
 {
@@ -89,7 +90,8 @@ static bool export_as(const char *relative, chibi_export_layout layout, bool arc
                                .web = layout == CHIBI_EXPORT_WEB ? web : NULL,
                                .output = output,
                                .layout = layout,
-                               .archive = archive };
+                               .archive = archive,
+                               .natives = natives };
     return chibi_export(&spec);
 }
 
@@ -319,13 +321,35 @@ TEST_CASE(export_assembles_a_runnable_folder)
     free(saved_path);
     REQUIRE(rename(fake_compiler, compiler) == 0);
 
+    /* The natives command writes the libraries into the data folder's
+     * natives/, which it receives last; when it fails, nothing is exported. */
+    write_at(
+        "sdk/natives.sh",
+        "#!/bin/sh\n"
+        "test \"$1\" = cache || exit 3\n"
+        "for last; do :; done\n"
+        "mkdir \"$last\" && printf so > \"$last/Mix.so\"\n",
+        0755
+    );
+    char script[512];
+    snprintf(script, sizeof script, "%s/sdk/natives.sh", root);
+    const char *const built[] = { script, "cache", NULL }, *const failing[] = { script,
+                                                                                "none",
+                                                                                NULL };
+    natives = built;
+    REQUIRE(export_to("native/Game") && has("native/Game/data/natives/Mix.so", "so"));
+    natives = failing;
+    REQUIRE(!export_to("native/Broken") && !has("native/Broken/data/game.chibip", NULL));
+    REQUIRE(entries("native") == 1);
+    natives = NULL;
+
     /* A failed compile or a missing resource leaves no partial folder. */
     write_at("project/fail", "", 0644);
     REQUIRE(!export_to("broken"));
     remove_at("project/fail");
     remove_at("project/art/sheet.bin");
     REQUIRE(!export_to("broken"));
-    REQUIRE(entries(".") == 10); /* sdk, project, out, apps, mine, linked, win, web, node and site */
+    REQUIRE(entries(".") == 11); /* sdk, project, out, apps, mine, linked, win, web, node, site and native */
 
     char command[600];
     snprintf(command, sizeof command, "rm -rf '%s'", root);

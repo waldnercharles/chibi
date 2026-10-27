@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef __linux__
+#if defined(__linux__) && defined(__x86_64__)
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -209,7 +209,7 @@ TEST_CASE(native_workloads_build_and_run)
 
 void test_native_workload_benchmark(const char *binary)
 {
-#ifdef __linux__
+#if defined(__linux__) && defined(__x86_64__)
     const char *bin = getenv("CHIBI_LLVM_BIN");
     if (!bin || !*bin) {
         fprintf(stderr, "native workloads: set CHIBI_LLVM_BIN to the folder of opt, llc and ld.lld\n");
@@ -229,6 +229,6 @@ void test_native_workload_benchmark(const char *binary)
     tool_remove_tree(suite);
 #else
     (void)binary;
-    fprintf(stderr, "native workloads: one Linux case unexecuted on this platform\n");
+    fprintf(stderr, "native workloads: one Linux x86-64 case unexecuted on this platform\n");
 #endif
 }

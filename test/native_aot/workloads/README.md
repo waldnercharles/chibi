@@ -17,7 +17,7 @@ budget and call depth so that this check keeps working. Kernels that need
 strings, arrays or maps (a real tokenizer or compiler pass) wait for W3 and
 W7.
 
-`native-workload-benchmark` (`test/tools/native_workloads.c`) builds each
+`native-workload-benchmark` (`test/tools/native_workloads.c`, Linux x86-64) builds each
 kernel with the launcher it is given and the LLVM tools in `CHIBI_LLVM_BIN`,
 checks the status and prints one line per kernel and mode:
 

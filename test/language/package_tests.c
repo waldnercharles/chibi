@@ -485,10 +485,10 @@ TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
     return true;
 }
 
-/* Each run allocates managed pointers in a heap of its own. Pointer
- * allocation is not a pure host call, so those tests run alone between the
- * parallel spans of pure tests, serially, on a two-worker executor and on the
- * task pool. */
+/* Each run allocates managed pointers in a heap of its own. The pointer
+ * tests are inferred serial and run alone between the parallel spans of a pure
+ * test: serially, on a two-worker executor and on the task pool. A copy marked
+ * parallel then runs them concurrently on the pool, each run with its heap. */
 TEST_CASE(package_tests_allocate_managed_pointers)
 {
     enum
@@ -545,6 +545,22 @@ TEST_CASE(package_tests_allocate_managed_pointers)
                 REQUIRE(results[i].passed);
             }
         }
+#ifdef CHIBI_PACKAGE_TEST_POOL
+        package_test concurrent[2 * POINTER_TESTS];
+        for (int i = 0; i < 2 * POINTER_TESTS; i++) {
+            concurrent[i] = tests[2 + i % POINTER_TESTS];
+            concurrent[i].parallel = true;
+        }
+        package_test_result overlapped[2 * POINTER_TESTS];
+        task_pool *pool = task_pool_acquire_workers(2);
+        task_pool_begin(pool, true);
+        package_tests_run(concurrent, 2 * POINTER_TESTS, backends[b], BUDGET, task_pool_tasks(pool), overlapped);
+        task_pool_end(pool);
+        task_pool_release(pool);
+        for (int i = 0; i < 2 * POINTER_TESTS; i++) {
+            REQUIRE(overlapped[i].passed);
+        }
+#endif
     }
     return true;
 }

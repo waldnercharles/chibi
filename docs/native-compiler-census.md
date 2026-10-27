@@ -16,26 +16,26 @@ once that package lands.
 
 ## Summary
 
-Of 651 functions, 129 pass the producer, 71 of them without flattened imports or constants.
+Of 692 functions, 131 pass the producer, 71 of them without flattened imports or constants.
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 448 |
-| none | passes the producer | 129 |
-| W9 | strings and arrays in records and unions | 69 |
+| W7 | array parameters, results and natives | 483 |
+| none | passes the producer | 131 |
+| W9 | strings and arrays in records and unions | 73 |
 | none yet | other forms; see each message | 5 |
 
 Each first blocker by the producer's message:
 
 | Package | Rejection | Functions |
 | --- | --- | ---: |
-| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 444 |
+| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 479 |
 | W7 | Unknown function 'length' | 4 |
-| W9 | scalar proof requires number and bool record fields | 48 |
-| W9 | scalar proof requires number and bool union payloads | 21 |
+| W9 | scalar proof requires number and bool record fields | 49 |
+| W9 | scalar proof requires number and bool union payloads | 24 |
 | none yet | scalar proof requires known effect-free scalar execution | 5 |
 
-The census flattens two features, so neither is ever a first blocker: 329 functions name another package (W13), and 271 name a package constant (W12).
+The census flattens two features, so neither is ever a first blocker: 362 functions name another package (W13), and 299 name a package constant (W12).
 
 ## Functions
 
@@ -196,7 +196,7 @@ The census flattens two features, so neither is ever a first blocker: 329 functi
 | `package_compiler/Compile.chibi` | `Referenced` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `ReadReferencedType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `FindMap` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `TypeTag` | W7 |  | W13 | `types: TypeDecl[]` |
+| `package_compiler/Compile.chibi` | `TypeTag` | W7 |  |  | `types: TypeDecl[]` |
 | `package_compiler/Compile.chibi` | `DeclareMaps` | W7 |  | W12, W13 | `TypeDecl[]` |
 | `package_compiler/Compile.chibi` | `FieldSize` | none |  | W12 |  |
 | `package_compiler/Compile.chibi` | `AlignTo` | none |  |  |  |
@@ -515,6 +515,9 @@ The census flattens two features, so neither is ever a first blocker: 329 functi
 | `package_compiler/Maps.chibi` | `MapForStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `AnyReference` | W7 |  |  | `params: Param[]` |
 | `package_compiler/References.chibi` | `CalledFunction` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/References.chibi` | `ReferenceArgumentNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/References.chibi` | `ArgumentExpression` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/References.chibi` | `FirstReferenceArgument` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `ArgumentRoot` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `ReferencedNames` | W7 |  | W13 | `string[]` |
 | `package_compiler/References.chibi` | `Holds` | W7 |  |  | `names: string[]` |
@@ -539,6 +542,44 @@ The census flattens two features, so neither is ever a first blocker: 329 functi
 | `package_compiler/References.chibi` | `ReferenceArgumentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `ReferenceWatch` | W9 |  | W13 | `name: string;` |
 | `package_compiler/References.chibi` | `ReferenceFieldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `SemanticTag` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `FindPointer` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `PointerElement` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `AddPointer` | W7 |  | W12, W13 | `TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `TypePointerNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `TypeGroupNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `DeclarePointers` | W7 |  | W12, W13 | `TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `AddressedNames` | W7 |  | W13 | `string[]` |
+| `package_compiler/Pointers.chibi` | `PointerCell` | none |  | W12 |  |
+| `package_compiler/Pointers.chibi` | `PointerReadStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `DeclareAddressPointers` | W7 |  | W12, W13 | `TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `PointerPrefix` | W7 |  | W13 | `code: Code[]` |
+| `package_compiler/Pointers.chibi` | `ManagedLayoutError` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `ManagedBoxStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `ManagedReadStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `PointerWriteStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `ManagedAssignStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `PointerReferenceStep` | W9 |  | W12, W13 | `kind: string;` |
+| `package_compiler/Pointers.chibi` | `PointerFieldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerExpressionStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `Accepts` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `PointerPopped` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
+| `package_compiler/Pointers.chibi` | `PointerContinue` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
+| `package_compiler/Pointers.chibi` | `ManagedCompoundStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerCompoundStep` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerAssignmentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerNilComparisonStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `NeedsPointerValue` | W7 |  | W12 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `PointerDestination` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `HandleComponent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerAssignmentStart` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerProofChanged` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerGuard` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerPresent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Pointers.chibi` | `PointerNarrow` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
+| `package_compiler/Pointers.chibi` | `PointerWork` | none |  | W12 |  |
+| `package_compiler/Pointers.chibi` | `PointerParameterStep` | W7 |  | W12, W13 | `types: TypeDecl[]` |
+| `package_compiler/Pointers.chibi` | `PointerStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Tree.chibi` | `Member` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Tree.chibi` | `Members` | W7 |  | W13 | `int[]` |
 | `package_compiler/Tree.chibi` | `FirstMember` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |

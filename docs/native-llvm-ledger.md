@@ -113,25 +113,27 @@ Lanes:
 
 ## Census
 
-The [census](native-compiler-census.md) (W21) gives each of the 651 functions
+The [census](native-compiler-census.md) (W21) gives each of the 692 functions
 in the self-hosted compiler's bootstrap closure the first rejection the
 producer gives it, after flattening imports (W13) and constants (W12) into one
-package. With the runtime context and `format_text` (W5) on top of text natives
-(W4, #764), native strings (W3, #740), constants (W12, #751), native libraries
-(#753) and the producer's size limits removed (W27, #754), 27 October 2026:
+package. With the runtime context and `format_text` (W5, #768) on top of text
+natives (W4, #764), native strings (W3, #740), constants (W12, #751), native
+libraries (#753), the producer's size limits removed (W27, #754) and managed
+pointers in the compiler (#695), 27 October 2026:
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 448 |
-| none | passes the producer | 129 |
-| W9 | strings and arrays in records and unions | 69 |
+| W7 | array parameters, results and natives | 483 |
+| none | passes the producer | 131 |
+| W9 | strings and arrays in records and unions | 73 |
 | none yet | other forms | 5 |
 
 All 9 functions whose first blocker was `format_text` now pass. The closure
-gained six producer functions, five from multiple results (W2, #766) and one
-from W5, all at W7's arrays. The 5 others build a `string[]` literal, which
-waits for W7. Of the 129 that pass, 71 need neither flattening. In all, 329
-functions name another package and 271 a package constant.
+gained 47 functions: six producer functions, five from multiple results (W2,
+#766) and one from W5, and 41 from managed pointers, of which 2 pass, 35 stop
+at W7's arrays and 4 at W9's managed fields. The 5 others build a `string[]`
+literal, which waits for W7. Of the 131 that pass, 71 need neither flattening.
+In all, 362 functions name another package and 299 a package constant.
 
 The producer checks every signature before any body, so a count shows the
 first blocker only, and the next one appears when its package lands. Rerun

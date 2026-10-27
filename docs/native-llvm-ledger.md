@@ -93,7 +93,7 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W24 | Game scenarios | none | game fixtures | proposed lane | yes | deterministic scenarios for each feature the inventory finds in games | no | none | decided |
 | W25 | Native game execution | W16, W14, W7 | W16's bridge | LLVM lane | no | representative scenes run with native functions and give the VM's traces; tasks stay in the VM (D10) | no | none | decided: D10, native functions never suspend |
 | W26 | Default adoption and removal | all of the above | stable command defaults | owner decision | no | PLAN.md's deletion gate for each removed path | no | none | open: the owner decides the switch |
-| W27 | Remove the producer's size limits | none | the limits in `Facts.chibi` | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules past the old limits agree at O0 and O2 | yes (this PR) | none | decided: removed, as Rust and Odin have none; the validator keeps structural checks |
+| W27 | Remove the producer's size limits | none | the limits in `Facts.chibi` | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules past the old limits agree at O0 and O2 | yes (#754) | none | decided: removed, as Rust and Odin have none; the validator keeps structural checks |
 
 Lanes:
 

@@ -185,19 +185,25 @@ for updating the explicitly prebuilt runtime dependency.
 
 ### Starting CI with labels
 
-The `CI control` workflow starts runs for anyone who can label a pull request,
-including agents whose GitHub access cannot re-run or dispatch workflows. It
-acts only on branches of this repository and removes the label when it is done.
+The `CI control` workflow starts runs for maintainers and agents whose GitHub
+access cannot re-run or dispatch workflows. It acts only when the person who
+added the label or retargeted the PR has write access, which GitHub requires
+for re-runs and dispatches anyway. It only acts on branches of this repository
+and on the head commit that the event named, and removes the label when it is
+done.
 
-- `ci-rerun` re-runs the failed jobs of every failed workflow on the head
-  commit. On a PR into `main`, it also dispatches CI and the compiler
-  self-build on the head branch if either never ran on that commit.
+- `ci-rerun` re-runs the failed jobs of the PR's own CI and compiler
+  self-build runs on the head commit. It never re-runs a push or publishing
+  run that shares the commit. On a PR into `main`, it dispatches a workflow
+  that never ran on the head branch.
 - `ci-seed` dispatches the runtime-seed workflow on the head branch. Publishing
   the release and moving the pin in `tools/compiler/runtime.json` stay manual.
 
-Retargeting a stacked PR to `main` does the same as `ci-rerun`, so it gets CI
-without a new push. A dispatched run checks the head branch, not the merge with
-`main`.
+A dispatched run must build the head commit the event named. If the branch
+moved in between, the workflow cancels the run and fails, and the PR needs the
+label again. Retargeting a stacked PR to `main` does the same as `ci-rerun`, so
+it gets CI without a new push. A dispatched run checks the head branch, not the
+merge with `main`.
 
 ## Feature coverage
 

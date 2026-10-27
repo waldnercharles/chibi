@@ -1,8 +1,10 @@
 name: CI control
 
-# Starts CI for people and agents whose own GitHub access cannot re-run or
-# dispatch workflows. Labels need triage access, and only branches of this
-# repository qualify, so outside contributors cannot start these runs.
+# Starts CI for maintainers and agents whose own GitHub access cannot re-run or
+# dispatch workflows. It acts only for a sender with write access, which GitHub
+# requires for re-runs and dispatches anyway, only on branches of this
+# repository, and only on the head commit the event named. It re-runs only the
+# PR's own CI and compiler self-build runs, never publishing workflows.
 # pull_request_target runs this file from main; it never checks out pull
 # request code.
 on:
@@ -13,62 +15,78 @@ permissions:
   actions: write
   pull-requests: write
 
-env:
-  GH_TOKEN: ${{ github.token }}
-  GH_REPO: ${{ github.repository }}
-  PR: ${{ github.event.pull_request.number }}
-  HEAD_REF: ${{ github.event.pull_request.head.ref }}
-  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-
 jobs:
-  rerun:
-    name: Re-run failed checks
-    # The label, or a stacked pull request retargeted to main: CI and the
-    # compiler self-build only run on pull requests into main.
+  control:
+    name: Start CI
+    # ci-rerun or ci-seed, or a stacked pull request retargeted to main: CI
+    # and the compiler self-build only run on pull requests into main.
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      ((github.event.action == 'labeled' && github.event.label.name == 'ci-rerun') ||
+      ((github.event.action == 'labeled' && contains(fromJSON('["ci-rerun", "ci-seed"]'), github.event.label.name)) ||
       (github.event.action == 'edited' && github.event.changes.base && github.event.pull_request.base.ref == 'main'))
-    # Per job, so unrelated labels and edits never replace a pending request.
-    concurrency: ci-control-rerun-${{ github.event.pull_request.number }}
+    # Per operation, so unrelated labels and edits never replace a pending
+    # request. Retargeting re-runs like the ci-rerun label.
+    concurrency: ci-control-${{ github.event.pull_request.number }}-${{ github.event.label.name || 'ci-rerun' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      OP: ${{ github.event.label.name || 'ci-rerun' }}
+      PR: ${{ github.event.pull_request.number }}
+      BASE: ${{ github.event.pull_request.base.ref }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      SENDER: ${{ github.event.sender.login }}
     steps:
-      - name: Re-run failed runs of the head commit
+      - name: Require write access and the event's head commit
         run: |
-          gh run list --commit "$HEAD_SHA" --limit 100 \
-            --json databaseId,workflowName,event,status,conclusion \
-            --jq 'map(select(.event != "pull_request_target")) | group_by(.workflowName) | map(max_by(.databaseId))
-                  | .[] | select(.status == "completed" and (.conclusion | IN("failure", "cancelled", "timed_out"))) | .databaseId' |
-          while read -r run; do
-            echo "Re-running failed jobs of run $run"
-            gh run rerun "$run" --failed
-          done
-      - name: Start required workflows that never ran on the head commit
-        if: github.event.pull_request.base.ref == 'main'
+          permission=$(gh api "repos/$GH_REPO/collaborators/$SENDER/permission" --jq .permission)
+          case $permission in
+            admin | write) ;;
+            *) echo "::error::$SENDER has $permission access; re-runs and dispatches need write access."; exit 1 ;;
+          esac
+          head=$(gh api "repos/$GH_REPO/git/ref/heads/$HEAD_REF" --jq .object.sha)
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "::error::$HEAD_REF moved from $HEAD_SHA to $head. Label the PR again for the new head."
+            exit 1
+          fi
+      - name: Re-run or start the PR's checks, or dispatch the seed
         run: |
-          for workflow in ci.yml compiler-recovery.yml; do
-            runs=$(gh run list --workflow "$workflow" --commit "$HEAD_SHA" --limit 1 --json databaseId --jq length)
-            if [ "$runs" = 0 ]; then
-              echo "Dispatching $workflow on $HEAD_REF"
-              gh workflow run "$workflow" --ref "$HEAD_REF"
+          # Dispatch on the branch, then require the run to build HEAD_SHA:
+          # the branch can move between the check above and the dispatch.
+          dispatch() {
+            run=$(gh api -X POST "repos/$GH_REPO/actions/workflows/$1/dispatches" -f ref="$HEAD_REF" --jq .workflow_run_id)
+            sha=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .head_sha)
+            if [ "$sha" != "$HEAD_SHA" ]; then
+              gh run cancel "$run"
+              echo "::error::Run $run of $1 built $sha instead of $HEAD_SHA; cancelled it."
+              exit 1
             fi
+            echo "Dispatched $1 on $HEAD_REF at $HEAD_SHA: run $run"
+          }
+          if [ "$OP" = ci-seed ]; then
+            dispatch compiler-runtime-seed.yml
+            exit 0
+          fi
+          # Only this PR's own runs of its required workflows: a push or
+          # dispatch on another branch can share the commit.
+          for workflow in ci.yml compiler-recovery.yml; do
+            latest=$(gh run list --workflow "$workflow" --commit "$HEAD_SHA" --limit 100 \
+              --json databaseId,event,headBranch,status,conclusion \
+              --jq 'map(select((.event == "pull_request" or .event == "workflow_dispatch") and .headBranch == env.HEAD_REF))
+                    | max_by(.databaseId) // empty | "\(.databaseId) \(.status) \(.conclusion)"')
+            read -r run status conclusion <<< "$latest"
+            if [ -z "$run" ]; then
+              if [ "$BASE" = main ]; then dispatch "$workflow"; fi
+              continue
+            fi
+            case "$status $conclusion" in
+              "completed failure" | "completed cancelled" | "completed timed_out")
+                echo "Re-running failed jobs of $workflow run $run"
+                gh run rerun "$run" --failed ;;
+            esac
           done
       - name: Remove the label
         if: always() && github.event.action == 'labeled'
-        run: gh api -X DELETE "repos/$GH_REPO/issues/$PR/labels/ci-rerun"
-
-  seed:
-    name: Refresh the compiler runtime seed
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.action == 'labeled' && github.event.label.name == 'ci-seed'
-    concurrency: ci-control-seed-${{ github.event.pull_request.number }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Dispatch the seed workflow on the head branch
-        run: gh workflow run compiler-runtime-seed.yml --ref "$HEAD_REF"
-      - name: Remove the label
-        if: always()
-        run: gh api -X DELETE "repos/$GH_REPO/issues/$PR/labels/ci-seed"
+        run: gh api -X DELETE "repos/$GH_REPO/issues/$PR/labels/$OP"

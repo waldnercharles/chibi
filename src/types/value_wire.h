@@ -30,13 +30,30 @@ typedef struct execution_wire
     size_t storage_charged;
     /* Optional writer hash sink receives exact encoded bytes without a buffer. */
     uint64_t *hash;
+    /* Interned metadata strings; see execution_wire_strings_begin. Writers
+     * keep the distinct strings in first-use order and probe `slots`, which
+     * hold 1 + their index. Readers count the entries named so far. */
+    bool interning;
+    const char **strings;
+    size_t string_count, strings_named;
+    int *slots;
 } execution_wire;
 void execution_wire_u64(execution_wire *, uint64_t *);
 void execution_wire_int(execution_wire *, int *);
 void execution_wire_size(execution_wire *, size_t *);
 void execution_wire_bool(execution_wire *, bool *);
-/* NUL-free metadata/name text only; PIN_STR values use length-prefixed bytes. */
+/* NUL-free metadata/name text only; PIN_STR values use length-prefixed bytes.
+ * While interning, a string is its 1-based index in the table, 0 for NULL. */
 void execution_wire_string(execution_wire *, const char **);
+/* Stores each metadata string once. Between begin and finish, each string is
+ * its index in the table, numbered in order of first use. Finish writes the
+ * table, then the fixed 8-byte offset it starts at, so the wire ends with
+ * them; writers stream, and a hash sink sees the bytes as written. A reader's
+ * begin reads the table from the end and shares one decoded string between
+ * repeats; its finish requires every entry to have been named, in order.
+ * Writer scratch is reserved from storage_budget and released at finish. */
+void execution_wire_strings_begin(execution_wire *);
+void execution_wire_strings_finish(execution_wire *);
 /* minimum_fields bounds a decoded count by the bytes left: each field is at least one. */
 void execution_wire_count(execution_wire *, int *, size_t minimum_fields);
 /* Counts one decoded value record, failing past the wire's record bound. */

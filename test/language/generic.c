@@ -174,14 +174,16 @@ TEST_CASE(generic_argument_types_specialize_once_and_execute)
 }
 TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls)
 {
-    const char *source =
-        "Constants :: behavior { result: retain int = 0; real:retain f64=0; "
-        "Factorial :: (n: int) -> int { if n <= 1 { return 1 } "
-        "return n * Factorial(n - 1) } "
-        "Size :: Factorial(5); "
-        "Scale :: (value: $T, $N: int) -> T { return value * N } "
-        "Gain :: (value:$T,$Amount:f64)->T{return value*Amount} "
-        "on Run :: () { result = Scale(int(2), Size); real=Gain(3.0,0.5); } }";
+    const char
+        *source = "Constants :: behavior { result: retain int = 0; real:retain "
+                  "f64=0; "
+                  "Factorial :: (n: int) -> int { if n <= 1 { return 1 } "
+                  "return n * Factorial(n - 1) } "
+                  "Size :: Factorial(5); "
+                  "Scale :: (value: $T, $N: int) -> T { return value * N } "
+                  "Gain :: (value:$T,$Amount:f64)->T{return value*Amount} "
+                  "on Run :: () { result = Scale(int(2), Size); "
+                  "real=Gain(f64(3),0.5); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         REQUIRE(compile(source, backends[i]));
@@ -767,7 +769,7 @@ TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings)
         }
         pin_value value = analysis->expressions[symbol->initializer].constant;
         if (!strcmp(symbol->name, "Fraction")) {
-            fraction = value.type == PIN_F64 && value.d == 0.5;
+            fraction = value.type == PIN_F32 && value.f == 0.5f;
         }
         if (!strcmp(symbol->name, "Whole")) {
             whole = value.type == PIN_I32 && value.i == 0;

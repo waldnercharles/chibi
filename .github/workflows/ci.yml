@@ -73,7 +73,9 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
-          restore-keys: ${{ steps.ccache-config.outputs.prefix }}-
+          restore-keys: |
+            ${{ steps.ccache-config.outputs.prefix }}-
+            ${{ steps.ccache-config.outputs.compatibility-prefix }}-
       - name: Record compiler cache configuration and reset counters
         run: |
           ccache --show-config
@@ -146,7 +148,9 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
-          restore-keys: ${{ steps.ccache-config.outputs.prefix }}-
+          restore-keys: |
+            ${{ steps.ccache-config.outputs.prefix }}-
+            ${{ steps.ccache-config.outputs.compatibility-prefix }}-
       - name: Record compiler cache configuration and reset counters
         run: |
           ccache --show-config

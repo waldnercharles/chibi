@@ -233,68 +233,74 @@ static const char driver_ci_build
          "    sys.exit(0)\n";
 /* Inject only the expensive workload; exercise the experiment's real CLI
  * handlers and policy supervisor over the existing native worker. */
-static const char driver_experiment
-    [] = "if sys.argv[2].startswith('experiment-'):\n"
-         "    import debug_optimization_experiment as experiment\n"
-         "    action, worker, root = sys.argv[2:5]\n"
-         "    if action == 'experiment-flags':\n"
-         "        options = json.loads(sys.argv[5])\n"
-         "        experiment.flags(**options)\n"
-         "        sys.exit(0)\n"
-         "    if action == 'experiment-build-output':\n"
-         "        command = experiment.build_command(Path(root))\n"
-         "        print(json.dumps(command), flush=True)\n"
-         "        native = command[command.index('--') + 1:] if '--' in "
-         "command else []\n"
-         "        if sys.argv[5] == 'unsynchronized': native = []\n"
-         "        for name in ('a', 'b'):\n"
-         "            Path(root, name + '-ready').unlink(missing_ok=True)\n"
-         "        result = subprocess.run(['make', '-f', root + '/output.mk',\n"
-         "            '-j4', *native], cwd=root, stdout=subprocess.PIPE,\n"
-         "            stderr=subprocess.STDOUT, text=True, timeout=5)\n"
-         "        print('status', result.returncode)\n"
-         "        print('intact', sum(line in ('a' * 12000, 'b' * 12000)\n"
-         "            for line in result.stdout.splitlines()))\n"
-         "        sys.exit(0)\n"
-         "    if action == 'experiment-verify':\n"
-         "        experiment.verify(Path(root) / 'build', Path(root), 1)\n"
-         "        sys.exit(0)\n"
-         "    if action == 'experiment-inner':\n"
-         "        signal.signal(signal.SIGTERM, signal.SIG_DFL)\n"
-         "        signal.signal(signal.SIGINT, signal.SIG_DFL)\n"
-         "        def workload():\n"
-         "            detached = '1' if sys.platform == 'linux' else '0'\n"
-         "            orphan = '1' if sys.argv[5] == 'error' else '0'\n"
-         "            deadline = time.monotonic() + (.3 if sys.argv[5] == "
-         "'timeout' else 4)\n"
-         "            experiment.run_phase(Path(root), deadline, sys.argv[5],\n"
-         "                [worker, 'descendant', root, detached, orphan], "
-         "dict(os.environ))\n"
-         "            if orphan == '1':\n"
-         "                experiment.run_phase(Path(root), deadline, "
-         "'error-failure',\n"
-         "                    [worker, 'exit', '7'], dict(os.environ))\n"
-         "        experiment.main = workload\n"
-         "        sys.exit(experiment.cli())\n"
-         "    child = subprocess.Popen([sys.executable, __file__, "
-         "sys.argv[1],\n"
-         "        'experiment-inner', worker, root, sys.argv[5]])\n"
-         "    try:\n"
-         "        if sys.argv[5] == 'cancel':\n"
-         "            deadline = time.monotonic() + 4\n"
-         "            while not os.path.exists(root + '/started'):\n"
-         "                if child.poll() is not None or time.monotonic() >= "
-         "deadline:\n"
-         "                    raise RuntimeError('experiment worker did not "
-         "start')\n"
-         "                time.sleep(.001)\n"
-         "            child.send_signal(signal.SIGTERM)\n"
-         "        status = child.wait(timeout=4)\n"
-         "        subprocess.run([worker, 'cleanup-probe', root], check=True)\n"
-         "        sys.exit(status)\n"
-         "    finally:\n"
-         "        if child.poll() is None: child.terminate()\n"
-         "        child.wait(timeout=4)\n";
+static const char driver_experiment[] =
+    "if sys.argv[2].startswith('experiment-'):\n"
+    "    import debug_optimization_experiment as experiment\n"
+    "    action, worker, root = sys.argv[2:5]\n"
+    "    if action == 'experiment-flags':\n"
+    "        options = json.loads(sys.argv[5])\n"
+    "        experiment.flags(**options)\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-configure':\n"
+    "        options = json.loads(sys.argv[5])\n"
+    "        print(json.dumps(experiment.configure_command(Path(root), "
+    "**options)))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-build-output':\n"
+    "        command = experiment.build_command(Path(root))\n"
+    "        print(json.dumps(command), flush=True)\n"
+    "        native = command[command.index('--') + 1:] if '--' in "
+    "command else []\n"
+    "        if sys.argv[5] == 'unsynchronized': native = []\n"
+    "        for name in ('a', 'b'):\n"
+    "            Path(root, name + '-ready').unlink(missing_ok=True)\n"
+    "        result = subprocess.run(['make', '-f', root + '/output.mk',\n"
+    "            '-j4', *native], cwd=root, stdout=subprocess.PIPE,\n"
+    "            stderr=subprocess.STDOUT, text=True, timeout=5)\n"
+    "        print('status', result.returncode)\n"
+    "        print('intact', sum(line in ('a' * 12000, 'b' * 12000)\n"
+    "            for line in result.stdout.splitlines()))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-verify':\n"
+    "        options = json.loads(sys.argv[5]) if len(sys.argv) > 5 else {}\n"
+    "        experiment.verify(Path(root) / 'build', Path(root), **options)\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-inner':\n"
+    "        signal.signal(signal.SIGTERM, signal.SIG_DFL)\n"
+    "        signal.signal(signal.SIGINT, signal.SIG_DFL)\n"
+    "        def workload():\n"
+    "            detached = '1' if sys.platform == 'linux' else '0'\n"
+    "            orphan = '1' if sys.argv[5] == 'error' else '0'\n"
+    "            deadline = time.monotonic() + (.3 if sys.argv[5] == "
+    "'timeout' else 4)\n"
+    "            experiment.run_phase(Path(root), deadline, sys.argv[5],\n"
+    "                [worker, 'descendant', root, detached, orphan], "
+    "dict(os.environ))\n"
+    "            if orphan == '1':\n"
+    "                experiment.run_phase(Path(root), deadline, "
+    "'error-failure',\n"
+    "                    [worker, 'exit', '7'], dict(os.environ))\n"
+    "        experiment.main = workload\n"
+    "        sys.exit(experiment.cli())\n"
+    "    child = subprocess.Popen([sys.executable, __file__, "
+    "sys.argv[1],\n"
+    "        'experiment-inner', worker, root, sys.argv[5]])\n"
+    "    try:\n"
+    "        if sys.argv[5] == 'cancel':\n"
+    "            deadline = time.monotonic() + 4\n"
+    "            while not os.path.exists(root + '/started'):\n"
+    "                if child.poll() is not None or time.monotonic() >= "
+    "deadline:\n"
+    "                    raise RuntimeError('experiment worker did not "
+    "start')\n"
+    "                time.sleep(.001)\n"
+    "            child.send_signal(signal.SIGTERM)\n"
+    "        status = child.wait(timeout=4)\n"
+    "        subprocess.run([worker, 'cleanup-probe', root], check=True)\n"
+    "        sys.exit(status)\n"
+    "    finally:\n"
+    "        if child.poll() is None: child.terminate()\n"
+    "        child.wait(timeout=4)\n";
 /* Keep each concatenated literal below ISO C's 4095-byte minimum limit.
  * Writing these chunks in order preserves the generated Python byte-for-byte. */
 static const char *const driver_parallel[] = {
@@ -1800,7 +1806,7 @@ TEST_CASE(debug_experiment_flags)
     return true;
 }
 
-static void experiment_evidence(bool complete, bool exported, bool database)
+static void experiment_evidence(bool complete, bool exported, bool database, int level, bool sanitizers)
 {
     char name[PATH_MAX];
     path(name, "build/test/tools/testing/include");
@@ -1818,13 +1824,21 @@ static void experiment_evidence(bool complete, bool exported, bool database)
                               "src/ui/rml.cpp" };
     path(name, "build/compile_commands.json");
     FILE *db = fopen(name, "w");
-    path(name, "o1-build.log");
+    char build_log[64];
+    snprintf(build_log, sizeof build_log, "o%d-build.log", level);
+    path(name, build_log);
     FILE *log = fopen(name, "w");
     assert(db && log);
     fprintf(db, "[");
     for (int i = 0; i < 5; i++) {
-        const char *flags = "-g -O1 -fsanitize=address,undefined "
-                            "-fno-omit-frame-pointer -UNDEBUG";
+        char flags[160];
+        snprintf(
+            flags,
+            sizeof flags,
+            "-g -O%d %s -fno-omit-frame-pointer -UNDEBUG",
+            level,
+            sanitizers ? "-fsanitize=address,undefined" : ""
+        );
         if (database || i < 4) {
             fprintf(
                 db,
@@ -1853,7 +1867,14 @@ static void experiment_evidence(bool complete, bool exported, bool database)
     path(name, "build/test/tools/testing/include/export_compiler.h");
     FILE *header = fopen(name, "w");
     assert(header);
-    fprintf(header, "\"/usr/bin/clang-18\",\n\"-g\",\n\"-O1\",\n\"-fsanitize=address,undefined\",\n\"-fno-omit-frame-pointer\",\n%s", exported ? "\"-UNDEBUG\",\n" : "");
+    fprintf(
+        header,
+        "\"/usr/bin/"
+        "clang-18\",\n\"-g\",\n\"-O%d\",\n%s\"-fno-omit-frame-pointer\",\n%s",
+        level,
+        sanitizers ? "\"-fsanitize=address,undefined\",\n" : "",
+        exported ? "\"-UNDEBUG\",\n" : ""
+    );
     assert(!fclose(header));
     path(name, "build/CMakeCache.txt");
     tool_write(name, "CHIBI_THIRD_PARTY_DIR:INTERNAL=/same/archive\n");
@@ -1895,16 +1916,62 @@ TEST_CASE(debug_experiment_parallel_build_output)
     return true;
 }
 
+TEST_CASE(debug_experiment_manual_workflow)
+{
+    char name[PATH_MAX];
+    snprintf(name, sizeof name, "%s/.github/workflows/debug-optimization-experiment.yml", tool_root());
+    char *workflow = tool_read(name);
+    REQUIRE(workflow);
+    REQUIRE(strstr(workflow, "workflow_dispatch:"));
+    REQUIRE(!strstr(workflow, "pull_request:") && !strstr(workflow, "push:"));
+    REQUIRE(strstr(workflow, "sanitizers: [\"on\", \"off\"]"));
+    REQUIRE(strstr(workflow, "fail-fast: false"));
+    REQUIRE(strstr(workflow, "timeout-minutes: 45"));
+    REQUIRE(strstr(workflow, "ref: ${{ inputs.sha }}"));
+    REQUIRE(strstr(workflow, "--sanitizers \"$EXPERIMENT_SANITIZERS\""));
+    REQUIRE(strstr(workflow, "name: debug-optimization-${{ matrix.sanitizers }}-"));
+    REQUIRE(strstr(workflow, "if: always()"));
+    REQUIRE(!strstr(workflow, "actions/cache"));
+    free(workflow);
+    return true;
+}
+
 TEST_CASE(debug_experiment_compilation_evidence)
 {
-    experiment_evidence(true, true, true);
-    REQUIRE(run("experiment-verify", NULL) == 0);
-    experiment_evidence(false, true, true);
-    REQUIRE(run("experiment-verify", NULL) != 0);
-    experiment_evidence(true, false, true);
-    REQUIRE(run("experiment-verify", NULL) != 0);
-    experiment_evidence(true, true, false);
-    REQUIRE(run("experiment-verify", NULL) != 0);
+    for (int level = 1; level <= 2; level++) {
+        for (int sanitizers = 0; sanitizers <= 1; sanitizers++) {
+            char options[100];
+            snprintf(
+                options,
+                sizeof options,
+                "{\"level\":%d,\"sanitizers\":%s}",
+                level,
+                sanitizers ? "true" : "false"
+            );
+            experiment_evidence(true, true, true, level, sanitizers);
+            REQUIRE(run("experiment-verify", options) == 0);
+            experiment_evidence(false, true, true, level, sanitizers);
+            REQUIRE(run("experiment-verify", options) != 0);
+            experiment_evidence(true, false, true, level, sanitizers);
+            REQUIRE(run("experiment-verify", options) != 0);
+            experiment_evidence(true, true, false, level, sanitizers);
+            REQUIRE(run("experiment-verify", options) != 0);
+            experiment_evidence(true, true, true, level, !sanitizers);
+            REQUIRE(run("experiment-verify", options) != 0);
+            REQUIRE(run("experiment-configure", options) == 0);
+            char *output = tool_read(logpath);
+            REQUIRE(output);
+            REQUIRE(
+                strstr(output, sanitizers ? "-DCHIBI_ENABLE_SANITIZERS=ON" : "-DCHIBI_ENABLE_SANITIZERS=OFF")
+            );
+            char debug[100];
+            snprintf(debug, sizeof debug, "-DCMAKE_C_FLAGS_DEBUG=-g -O%d -fno-omit-frame-pointer", level);
+            REQUIRE(strstr(output, debug));
+            REQUIRE(strstr(output, "-DCMAKE_BUILD_TYPE=Debug"));
+            REQUIRE(strstr(output, "-DCHIBI_ENABLE_CCACHE=OFF"));
+            free(output);
+        }
+    }
     return true;
 }
 
@@ -1962,6 +2029,7 @@ void test_tool_test_policy()
 {
     set_up();
     RUN_TEST_CASE(debug_experiment_flags);
+    RUN_TEST_CASE(debug_experiment_manual_workflow);
     RUN_TEST_CASE(debug_experiment_parallel_build_output);
     RUN_TEST_CASE(debug_experiment_compilation_evidence);
     RUN_TEST_CASE(debug_experiment_cancellation_and_failure_clean_up);

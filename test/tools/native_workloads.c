@@ -9,11 +9,13 @@
 
 #if defined(__linux__) && defined(__x86_64__)
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* W20's fixed kernels, built with `chibi build --native` and the LLVM tools
@@ -39,6 +41,7 @@ enum
     RUNS = 3,
     BUILD_SECONDS = 300,
     RUN_SECONDS = 60,
+    STOP_SECONDS = 2,
 };
 
 static char suite[256], launcher[1024], llvm[1024];
@@ -56,34 +59,59 @@ typedef struct
     long peak_kb;
 } measured;
 
-/* Runs `chibi build --native` in a child of its own, so wait4 reports the
- * peak resident memory of the largest process in the build. */
+/* Runs `executable` in a process group of its own, so wait4 reports the peak
+ * resident memory of the largest process in it. The group is the fixture's
+ * owned process while it runs, so an interrupt kills it; a timeout sends it
+ * SIGTERM, then SIGKILL, and whatever it leaves behind is killed on exit.
+ * The status is -1 unless the executable exits within `seconds`. */
+static measured supervise(const char *executable, const char *const *argv, double seconds)
+{
+    const char *envp[] = { "PATH=", NULL };
+    double start = chibi_process_now(), stopping = 0;
+    pid_t child = fork();
+    assert(child >= 0);
+    if (!child) {
+        setpgid(0, 0);
+        int quiet = open("/dev/null", O_RDWR);
+        if (quiet < 0 || dup2(quiet, STDIN_FILENO) < 0 ||
+            dup2(quiet, STDOUT_FILENO) < 0 || dup2(quiet, STDERR_FILENO) < 0) {
+            _exit(127);
+        }
+        execve(executable, (char *const *)argv, (char *const *)envp);
+        _exit(127);
+    }
+    setpgid(child, child);
+    tool_own_process(child);
+    int status = 0;
+    struct rusage usage;
+    pid_t waited;
+    while ((waited = wait4(child, &status, WNOHANG, &usage)) <= 0) {
+        assert(waited == 0 || errno == EINTR);
+        double now = chibi_process_now();
+        if (!stopping && now - start >= seconds) {
+            stopping = now;
+            kill(-child, SIGTERM);
+        }
+        if (stopping && now - stopping >= STOP_SECONDS) {
+            kill(-child, SIGKILL);
+        }
+        struct timespec pause = { .tv_nsec = 1000000 };
+        nanosleep(&pause, NULL);
+    }
+    kill(-child, SIGKILL);
+    tool_release_process(child);
+    measured result = { .status = !stopping && WIFEXITED(status) ? WEXITSTATUS(status)
+                                                                 : -1,
+                        .seconds = chibi_process_now() - start,
+                        .peak_kb = usage.ru_maxrss };
+    return result;
+}
+
 static measured build(const char *game, const char *mode)
 {
     const char *argv[] = { launcher, "build", "--native", mode,
                            "--llvm", llvm,    game,       NULL };
-    const char *envp[] = { "PATH=", NULL };
-    double start = chibi_process_now();
-    pid_t child = fork();
-    assert(child >= 0);
-    if (!child) {
-        int quiet = open("/dev/null", O_WRONLY);
-        if (quiet < 0 || dup2(quiet, STDOUT_FILENO) < 0 ||
-            dup2(quiet, STDERR_FILENO) < 0) {
-            _exit(127);
-        }
-        alarm(BUILD_SECONDS);
-        execve(launcher, (char *const *)argv, (char *const *)envp);
-        _exit(127);
-    }
-    int status = 0;
-    struct rusage usage;
-    pid_t waited = wait4(child, &status, 0, &usage);
-    assert(waited == child);
-    measured result = { .status = WIFEXITED(status) ? WEXITSTATUS(status) : -1,
-                        .seconds = chibi_process_now() - start,
-                        .peak_kb = usage.ru_maxrss };
-    return result;
+    return supervise(launcher, argv, BUILD_SECONDS);
 }
 
 /* The one program published for `mode` (O0 or O2) below game/build/native. */
@@ -198,6 +226,36 @@ static bool measure(const workload *kernel)
     return true;
 }
 
+static void pause_for(double seconds)
+{
+    struct timespec pause = { .tv_sec = (time_t)seconds,
+                              .tv_nsec = (long)((seconds - (time_t)seconds) * 1e9) };
+    while (nanosleep(&pause, &pause) && errno == EINTR) {
+    }
+}
+
+/* A fake launcher leaves a background child that would touch a marker a
+ * second later. Supervision must kill it both when the launcher hangs past
+ * its timeout and when the launcher exits first. */
+TEST_CASE(native_workloads_supervision_leaves_no_descendants)
+{
+    char script[1024], marker[1024], text[4096];
+    path(script, suite, "launcher.sh");
+    path(marker, suite, "survivor");
+    snprintf(text, sizeof text, "#!/bin/sh\n(/bin/sleep 1; : > '%s') &\nif [ \"$1\" = hang ]; then exec /bin/sleep 30; fi\n", marker);
+    tool_write(script, text);
+    REQUIRE(!chmod(script, 0700));
+    const char *hang[] = { script, "hang", NULL };
+    measured hung = supervise(script, hang, 0.2);
+    REQUIRE(hung.status == -1 && hung.seconds < 5);
+    const char *leave[] = { script, "leave", NULL };
+    REQUIRE(supervise(script, leave, 10).status == 0);
+    pause_for(1.5);
+    struct stat info;
+    REQUIRE(stat(marker, &info) && errno == ENOENT);
+    return true;
+}
+
 TEST_CASE(native_workloads_build_and_run)
 {
     for (int i = 0; i < (int)(sizeof WORKLOADS / sizeof *WORKLOADS); i++) {
@@ -210,9 +268,13 @@ TEST_CASE(native_workloads_build_and_run)
 void test_native_workload_benchmark(const char *binary)
 {
 #if defined(__linux__) && defined(__x86_64__)
+    strcpy(suite, "/tmp/chibi-native-workloads-XXXXXX");
+    assert(mkdtemp(suite));
+    RUN_TEST_CASE(native_workloads_supervision_leaves_no_descendants);
     const char *bin = getenv("CHIBI_LLVM_BIN");
     if (!bin || !*bin) {
         fprintf(stderr, "native workloads: set CHIBI_LLVM_BIN to the folder of opt, llc and ld.lld\n");
+        tool_remove_tree(suite);
         return;
     }
     char *resolved = realpath(binary, NULL);
@@ -223,8 +285,6 @@ void test_native_workload_benchmark(const char *binary)
     assert(resolved && strlen(resolved) < sizeof llvm);
     strcpy(llvm, resolved);
     free(resolved);
-    strcpy(suite, "/tmp/chibi-native-workloads-XXXXXX");
-    assert(mkdtemp(suite));
     RUN_TEST_CASE(native_workloads_build_and_run);
     tool_remove_tree(suite);
 #else

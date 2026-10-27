@@ -737,9 +737,11 @@ same C selectors and identical build flags, retaining their timing output.
 `--native-workload-benchmark LAUNCHER` builds the four kernels in
 `test/native_aot/workloads` with `chibi build --native` and the LLVM tools in
 `CHIBI_LLVM_BIN`, checks each program's status against the VM's, and prints the
-build time, peak memory, size and median run time at O0 and O2. It runs on
-Linux x86-64, the one target the driver admits, and prints a skip without
-`CHIBI_LLVM_BIN`. `make benchmark` passes the Release launcher and
+build time, peak memory, size and median run time at O0 and O2. Each build
+runs in a process group the fixture owns, so a timeout or an interrupt kills
+everything the launcher started, and a fake-launcher case checks that no
+descendant survives. It runs on Linux x86-64, the one target the driver admits,
+and skips the builds without `CHIBI_LLVM_BIN`. `make benchmark` passes the Release launcher and
 `NATIVE_LLVM_BIN`. It takes about 70 seconds.
 
 `--asset-values` runs nine cases on KDL asset text and the native value tree:

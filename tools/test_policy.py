@@ -620,12 +620,11 @@ GROUPS['benchmarks'] = [name for name in TOOLS if name.endswith('-benchmark') an
 
 # Only source-audited independent selectors may overlap. Missing entries are
 # exclusive barriers, not skipped coverage. See docs/test-parallel-resources.md.
-# language, language-format, language-root-state and language-test-parallel own
-# an in-process case pool: retain their exclusive outer admission to avoid
-# multiplying the selector budget by the case-worker budget.
+# Native C and authored test pools own their in-process budget: keep their
+# selectors (including compiler-fixture and package-compiler-chibi-scalar)
+# exclusive to avoid multiplying outer and inner worker budgets.
 PARALLEL_RESOURCES = {
     name: frozenset() for name in (
-        'language-package-compiler-chibi-scalar',
         'language-package-compiler-chibi-behaviors',
         'language-package-compiler-chibi-behaviors-rest',
         'language-integer-semantics',

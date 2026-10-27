@@ -12371,8 +12371,12 @@ static bool native_rejects_floats(int b)
  * rejects before writing IR. */
 TEST_CASE(package_compiler_native_emitter_checks_calls)
 {
-    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
+    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS,
+                                             EMITTER_TEST_SOURCE_INPUTS };
+    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
+    REQUIRE(
+        compiler_fixture_prepare_packs(&consumer, sources, (int)(sizeof sources / sizeof *sources), core, 1)
+    );
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_calls_emit_definitions(b));
         REQUIRE(native_libraries_export_words(b));
@@ -12385,6 +12389,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_floats_emit(b));
         REQUIRE(native_rejects_floats(b));
     }
+    REQUIRE(compiler_fixture_tests(&consumer));
     return true;
 }
 static const char CASES_PACKAGE[] = "project:scalar_cases";

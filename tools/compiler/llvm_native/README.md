@@ -1,6 +1,6 @@
 # Runtime-free scalar LLVM backend (opt-in WIP)
 
-`llvm_native.Emit` validates a bounded scalar instruction plan and writes LLVM
+`llvm_native.Emit` validates a scalar instruction plan and writes LLVM
 IR. `native_abi` owns the exact Linux x86-64 target and internal scalar mapping;
 the selected LLVM backend supplies its actual data layout. This clean integration
 carries those reviewed pure packages from [3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
@@ -8,7 +8,7 @@ onto the current-base [authored LLVM driver](https://github.com/waldnercharles/c
 
 It deliberately does **not** carry `package_compiler/Native.chibi`,
 `native_compiler`, or the diagnostic Front/Back packet adapters. Its one source
-connection is the bounded `scalar_facts` handoff in
+connection is the `scalar_facts` handoff in
 `test/native_aot/scalar/README.md`: the compiler's `CollectScalar` produces
 owned rows and `scalar_llvm` lowers them to this plan. Private frontend
 Code/Slot IDs are not an API.
@@ -21,14 +21,14 @@ interface, or the complete allocation/memory/output/free native island.
 
 ## Emitter contract
 
-- A module of at most 32 functions, each a consecutive range of the parameter,
+- A module of one or more functions, each a consecutive range of the parameter,
   slot, local, code and argument tables. Function 0 is the exported entry,
   `chibi_scalar`, or `main` for a zero-argument `int` entry; the others are
   `internal` `chibi_scalar.N`. Each takes plain integer, `number`, `f64`
   and `bool` parameters (`i8` through `u64` as `iN` with no sign, and
   `number` and `f64` as LLVM `float` and `double`) and returns one scalar result. Foreign bool ABI is not promised. Storage
   ordinals are backend-internal, not public semantic IDs.
-- A module declares at most 16 records, each a range of at most 16 scalar
+- A module declares records, each a range of one or more scalar
   field types in the field table, emitted in that order as
   `%recordN = type { ... }`. Record type `RecordType + N` is a value: internal
   functions take and return it, slots and locals hold it, and its only
@@ -40,7 +40,7 @@ interface, or the complete allocation/memory/output/free native island.
   the C ABI.
 - A string is `native_abi.TextType()`, `{ ptr, i32 }`, the layout of the
   runtime's `pin_string`: its bytes, then its length. Its `Constant`'s
-  `literal` indexes the module's text table, at most 32,768 texts, and each
+  `literal` indexes the module's text table, and each
   text is a `private unnamed_addr` global of its bytes and a NUL. Strings
   have only `Eq` and `Ne`, which call the module's internal
   `@chibi_scalar.text_equal`, emitted only when some instruction compares
@@ -65,9 +65,9 @@ interface, or the complete allocation/memory/output/free native island.
 - Scalar locals, branches, comparisons, bitwise operations, integer and
   floating arithmetic, and conversions. Comparisons, division, remainders and
   `>>` are unsigned for an unsigned type. `bool` has `==`, `!=` and `BitNot`,
-  its `!`. Limits per function are eight parameters, 256 slots, 128 locals,
-  1,024 body instructions and 256 call arguments. These are plan bounds, not a
-  source-language acceptance claim.
+  its `!`. As in Rust and Odin, nothing bounds a module's functions, records
+  or texts, or a function's parameters, slots, locals, instructions or call
+  arguments.
 - Integer operations never fail, as the language's integer contract says.
   Add, subtract, multiply and negate wrap, with no `nsw`/`nuw` promises.
   `x / 0` is 0 and `x % 0` is `x`; `MIN / -1` is `MIN` and `MIN % -1` is 0.

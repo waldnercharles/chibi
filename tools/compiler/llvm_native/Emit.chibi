@@ -3,7 +3,7 @@ package llvm_native
 import abi "project:native_abi"
 import strings "core:strings"
 
-// A deliberately bounded, runtime-free scalar backend. This is not the
+// A runtime-free scalar backend. This is not the
 // prepared/pin_value ABI: arguments and results are native LLVM values.
 // Slots and locals are private stack storage, never observable pointers.
 pub Instruction :: struct {
@@ -89,18 +89,6 @@ pub Insert: int : 30;
 // type is the field's type.
 pub Extract: int : 31;
 
-// Module bounds: these are plan bounds, not a source-language acceptance claim.
-MaxFunctions: int : 32;
-MaxParameters: int : 8;
-MaxSlots: int : 256;
-MaxLocals: int : 128;
-MaxCode: int : 1024;
-MaxArguments: int : 256;
-MaxRecords: int : 16;
-MaxFields: int : 16;
-// One text for each constant the code tables can hold.
-MaxTexts: int : 32768;
-
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
 }
@@ -174,15 +162,12 @@ FieldType :: (records: Record[], fields: int[], type: int, field: i64) -> int {
     }
     return fields[record.first + int(field)];
 }
-// Records partition the field table in order, each with 1 to MaxFields
-// scalar fields.
+// Records partition the field table in order, each with at least one scalar
+// field.
 RecordLayout :: (records: Record[], fields: int[]) -> bool {
-    if (length(records) > MaxRecords) {
-        return false;
-    }
     first: int = 0;
     for (record in records) {
-        if (record.first != first || record.count < 1 || record.count > MaxFields) {
+        if (record.first != first || record.count < 1) {
             return false;
         }
         first += record.count;
@@ -275,22 +260,18 @@ Codes :: (code: Instruction[], first: int, count: int) -> Instruction[] {
     }
     return part;
 }
-Bounded :: (count: int, limit: int) -> bool {
-    return count >= 0 && count <= limit;
-}
 // Functions partition every table in order, so no range overlaps another or
-// leaves a row unowned. Each count is bounded before it is summed.
+// leaves a row unowned. Each count is checked before it is summed.
 Layout :: (functions: Function[], parameters: int[], slots: int[], locals: int[], code: Instruction[],
            arguments: int[]) -> bool {
-    if (length(functions) < 1 || length(functions) > MaxFunctions) {
+    if (length(functions) < 1) {
         return false;
     }
     at: Function = {result: 0, first_parameter: 0, parameters: 0, first_slot: 0, slots: 0, first_local: 0,
                     locals: 0, first_code: 0, code: 0, first_argument: 0, arguments: 0};
     for (item in functions) {
-        if (!Bounded(item.parameters, MaxParameters) || !Bounded(item.slots, MaxSlots) ||
-            !Bounded(item.locals, MaxLocals) || item.code < 1 || item.code > MaxCode ||
-            !Bounded(item.arguments, MaxArguments) || item.first_parameter != at.first_parameter ||
+        if (item.parameters < 0 || item.slots < 0 || item.locals < 0 || item.code < 1 || item.arguments < 0 ||
+            item.first_parameter != at.first_parameter ||
             item.first_slot != at.first_slot || item.first_local != at.first_local ||
             item.first_code != at.first_code || item.first_argument != at.first_argument) {
             return false;
@@ -904,9 +885,6 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     }
     if (!RecordLayout(records, fields)) {
         return Result.Rejected(-1, "native records differ from their field table");
-    }
-    if (length(texts) > MaxTexts) {
-        return Result.Rejected(-1, format_text("native module holds more than {} texts", MaxTexts));
     }
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, texts,

@@ -1,4 +1,5 @@
 #include "host/build_host.h"
+#include "host/build_timing.h"
 #include "host/process.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
@@ -238,7 +239,8 @@ int main(int argc, char **argv)
         return usage();
     }
     /* Budget starts before file IO and preparation, and every child shares it. */
-    double deadline = chibi_build_now() + timeout / 1000.0;
+    double started = chibi_build_now();
+    double deadline = started + timeout / 1000.0;
     if (!isfinite(deadline)) {
         fprintf(stderr, "build process host failure\n");
         return 1;
@@ -247,6 +249,17 @@ int main(int argc, char **argv)
         fprintf(stderr, "build process host failure\n");
         return 1;
     }
+    const char *timing_directory = getenv("CHIBI_BUILD_TIMINGS");
+    FILE *timings = build_timing_open(timing_directory);
+    if (timing_directory && timing_directory[0] && !timings) {
+        fprintf(stderr, "build timing trace unavailable: %s\n", strerror(errno));
+    }
+    const char *name = build_timing_name(path);
+    const char *kind = !strcmp(name, "Graph.chibi")         ? "graph-host"
+                     : !strcmp(name, "Build.chibi")         ? "build-host"
+                     : !strcmp(name, "AssetCompiler.chibi") ? "generator-host"
+                                                            : "other-host";
+    build_timing_write(timings, kind, 0, started, started, 0, 0);
     char *source_path = from_root(root, path);
     char *core_path = NULL;
     if (core) {
@@ -291,10 +304,15 @@ int main(int argc, char **argv)
                                               : shared("core");
     char error[256] = "SDK compiler sources and core collection could not be "
                       "found";
+    double loading = timings ? chibi_build_now() : 0;
+    build_timing_write(timings, "startup", 0, started, loading, 0, 0);
     chibi_build_compiler
         *compiler = sources && compiler_collection
                       ? chibi_build_compiler_load(sources, compiler_collection, error, sizeof error)
                       : NULL;
+    if (timings) {
+        build_timing_write(timings, "compiler-load", 0, loading, chibi_build_now(), 0, compiler ? 0 : 1);
+    }
     free(sources);
     free(compiler_collection);
     chibi_build_options options = {
@@ -312,6 +330,7 @@ int main(int argc, char **argv)
         .deadline = deadline,
         .cancelled = &cancelled,
         .prepared = preparation_end,
+        .timings = timings,
     };
     chibi_build_result result = { 0 };
     bool success = compiler && chibi_build_invoke(&options, &result);
@@ -336,6 +355,21 @@ int main(int argc, char **argv)
     for (int i = 0; i < collection_count; i++) {
         free((char *)named[i].name);
         free(roots[i]);
+    }
+    if (timings) {
+        build_timing_write(
+            timings,
+            "invocation",
+            0,
+            started,
+            chibi_build_now(),
+            result.value,
+            success ? 0 : 1
+        );
+        bool failed = ferror(timings);
+        if (fclose(timings) || failed) {
+            fprintf(stderr, "build timing trace incomplete\n");
+        }
     }
     /* Authored negative signal results retain their conventional CLI encoding. */
     return success ? (result.value < 0 && result.value >= -127 ? 128 - result.value

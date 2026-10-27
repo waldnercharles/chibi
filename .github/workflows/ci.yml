@@ -72,7 +72,7 @@ jobs:
           python3 -m venv /tmp/cmake
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
-          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
       - name: Verify installed and archived license notices
         run: python3 test/tools/package_licenses.py
       - name: Configure compiler cache
@@ -95,10 +95,13 @@ jobs:
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        env:
+          CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
         run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Build products and test drivers (selected Debug profile)
         env:
           VERBOSE: '1'
+          CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
         shell: bash
         run: |
           set -o pipefail
@@ -140,6 +143,7 @@ jobs:
           path: |
             ${{ runner.temp }}/native-profile.json
             ${{ runner.temp }}/native-build.log
+            ${{ runner.temp }}/build-timings/
           if-no-files-found: warn
           retention-days: 7
       - name: Report compiler cache statistics
@@ -174,7 +178,7 @@ jobs:
           python3 -m venv /tmp/cmake
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
-          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
       - name: Configure compiler cache
         id: ccache-config
         run: python3 .github/native-ccache.py
@@ -196,6 +200,8 @@ jobs:
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the Debug builds use.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        env:
+          CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
         run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
       # The Release build host runs the outer Build and Graph programs, which
       # plan the selected Debug build. Release hosts also generate the asset
@@ -203,6 +209,7 @@ jobs:
       - name: Build products and test drivers (selected Debug profile)
         env:
           VERBOSE: '1'
+          CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
         shell: bash
         run: |
           set -o pipefail
@@ -242,6 +249,7 @@ jobs:
           path: |
             ${{ runner.temp }}/native-profile.json
             ${{ runner.temp }}/native-build.log
+            ${{ runner.temp }}/build-timings/
           if-no-files-found: warn
           retention-days: 7
       - name: Report compiler cache statistics

@@ -619,7 +619,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY AND
         "${CHIBI_SDK_ROOT}/src/host/build_values.c"
         "${CHIBI_SDK_ROOT}/src/host/build_io.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_package_files.c")
-    foreach(header build_host build_host_internal build_values build_io process)
+    foreach(header build_host build_host_internal build_timing build_values build_io process)
         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/host/${header}.h" COPYONLY)
     endforeach()

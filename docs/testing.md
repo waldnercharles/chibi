@@ -196,8 +196,12 @@ done.
   self-build runs on the head commit. It never re-runs a push or publishing
   run that shares the commit. On a PR into `main`, it dispatches a workflow
   that never ran on the head branch.
-- `ci-seed` dispatches the runtime-seed workflow on the head branch. Publishing
-  the release and moving the pin in `tools/compiler/runtime.json` stay manual.
+- `ci-seed` dispatches the runtime-seed workflow on the head branch with
+  `publish` set. Once all three platforms recover identical compiler bytes, it
+  publishes the seeds as a commit-specific prerelease and commits the new pin in
+  `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
+  self-build on the pin commit. Pull before pushing again. If the branch moved
+  after the seed run started, the pin step fails and the release stays unpinned.
 
 A dispatched run must build the head commit the event named. If the branch
 moved in between, the workflow cancels the run and fails, and the PR needs the

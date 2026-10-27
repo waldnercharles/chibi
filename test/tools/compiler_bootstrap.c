@@ -595,7 +595,7 @@ static yyjson_mut_doc *reuse_input()
     return doc;
 }
 
-/* Reuse loads and checks the closure, about 10 s for the 20 MB package
+/* Reuse loads and checks the closure, several seconds for the 13 MB package
  * compiler under the sanitizers; recompiling it takes minutes. */
 #define REUSE_SECONDS 30
 

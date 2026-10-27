@@ -259,6 +259,41 @@ TEST_CASE(target_admits_each_triple_with_its_own_layout)
     return true;
 }
 
+/* `chibi export --native` finds library sources by their first tokens:
+ * comments and whitespace, a name, `::` and the whole word `library`. */
+TEST_CASE(library_names_come_from_the_declaration_alone)
+{
+    reset("library names");
+    static const char *const sources[] = {
+        "Mix :: library {\n}\n",
+        "// Mixing.\n/* A * block */\n\tMix::library{}\n",
+        "Mix\n::\nlibrary /* trailing */ {}\n",
+        "Mix :: libraryish {}\n",
+        "Mix :: behavior {}\n",
+        "Mixer :: library {}\n",
+        "/* Mix :: library {} */\n",
+        "// Mix :: library {}\n",
+        "Mix : library {}\n",
+        "Mix ::",
+        "",
+    };
+    enum
+    {
+        COUNT = (int)(sizeof sources / sizeof *sources)
+    };
+    char files[COUNT][1024];
+    const char *arguments[COUNT];
+    for (int i = 0; i < COUNT; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "source %d.chibi", i);
+        path(files[i], root, name);
+        tool_write(files[i], sources[i]);
+        arguments[i] = files[i];
+    }
+    REQUIRE(invoke("InspectLibraryNames", arguments, COUNT, true) && result.value == 7);
+    return true;
+}
+
 static void cancel(int signal)
 {
     (void)signal;
@@ -596,6 +631,7 @@ void test_native_aot_driver(const char *source)
     RUN_TEST_CASE(tool_admission_resolves_aliases_and_rejects_unusable_paths);
     RUN_TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings);
     RUN_TEST_CASE(target_admits_each_triple_with_its_own_layout);
+    RUN_TEST_CASE(library_names_come_from_the_declaration_alone);
     RUN_TEST_CASE(stage_cancellation_requires_the_cancellation_diagnostic);
     RUN_TEST_CASE(optimizer_trace_distinguishes_passes_and_snapshot_paths);
 #ifdef __linux__

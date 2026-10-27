@@ -38,5 +38,26 @@ and 104 s). The host then writes the artifact from stage two. The clean run
 recovers the same closure from the committed bootstrap, so only `revision`
 changes.
 
+## Build-process group at d18a9e126
+
+| Log | Command | Revision | Exit |
+| --- | --- | --- | --- |
+| `logs/build-process.log` | `CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_BUILD_HOST=build/sdk/chibi-build-host python3 tools/test_policy.py tool build-process` | d18a9e126, clean, ASan/UBSan Debug `test_tools` and `chibi-build-host`, on an otherwise idle host | 1 |
+
+No CI group runs this selector. `private_programs_allocate_managed_pointers`
+passes on both backends. 47 of 48 cases pass. The one failure is
+`private_host_cli_executes_source_and_reports_errors` at `build_process.c:624`:
+its `CoreProgram.chibi` run hits the case's fixed 10-second timeout. The same
+`chibi-build-host` command, given a 120-second timeout, took 12.9 s and
+12.0 s when built from main c3fd1b42b, and 13.9 s and 13.3 s on this branch.
+Both exit 7, so the timeout fails on main as well in this sanitizer build.
+
+## Main 2c69729b7
+
+675f2f2fe merges main at 2c69729b7 (#767) without conflicts. #767 changes no
+compiler, bootstrap, runtime ABI or pin input, so the fixed point above still
+holds. `tools/graph/engine/Targets.chibi` merges to blob
+`687020569b9fa43cda0dd60cf72e32d2e99b98b1`.
+
 Closure: 10,114,071 bytes, SHA-256
 `3f075c12e0e860c373b4b7a80dbb143f1306a36be280e742dd25da3a6bdc8c82`.

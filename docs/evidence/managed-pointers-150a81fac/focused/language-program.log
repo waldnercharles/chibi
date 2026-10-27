@@ -1,0 +1,324 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-program
+revision 150a81faceb8911c49301fc991754c4acd251eed 0 modified
+Running: program_captured_addressed_local_preserves_pointer_alias (OK) (0.017968 secs)
+Running: program_borrowed_pointer_array_results_survive_collection (OK) (0.023392 secs)
+Running: program_borrowing_kernel_results_survive_collection (OK) (0.022212 secs)
+Running: program_detached_event_batches_keep_managed_arguments (OK) (0.000648 secs)
+Running: program_staged_replacement_pins_preserved_pointers (OK) (0.001440 secs)
+Running: program_public_ingress_rejects_foreign_managed_pointers (OK) (0.000672 secs)
+Running: program_descriptor_field_observers_compare_all_bytes (OK) (0.000771 secs)
+Running: program_reduction_updates_preserve_clock_and_event_order (OK) (0.042664 secs)
+Running: program_reduction_query_rows_count_filtered_candidates (OK) (0.005983 secs)
+Running: program_pattern_bindings_share_and_spellings (OK) (0.031620 secs)
+Running: program_switches_use_narrowed_union_tags (OK) (0.013900 secs)
+Running: program_general_unions_construct_match_and_extract (OK) (0.035896 secs)
+Running: program_union_arrays_keep_owned_writable_values (OK) (0.032480 secs)
+Running: program_failed_call_stacks_unwind_at_once (OK) (0.009566 secs)
+Running: program_module_finish_preserves_failure_and_consumes_success (OK) (0.000066 secs)
+Running: program_typed_event_changes_state_on_vm_and_sljit (OK) (0.005091 secs)
+Running: program_integer_reports_are_taken_once_per_site_until_reset (OK) (0.012727 secs)
+Running: program_integer_reports_keep_sites_apart_under_inspection (OK) (0.005356 secs)
+Running: program_prepared_integer_reports_include_imported_functions (OK) (0.035808 secs)
+Running: program_handlers_name_payload_fields (OK) (0.017779 secs)
+Running: program_occurrences_survive_whitespace_and_follow_the_source (OK) (0.004996 secs)
+Running: program_nested_typed_records_preserve_explicit_labels (OK) (0.012896 secs)
+Running: program_int_to_float_compare_and_cast_run_on_vm_and_sljit (OK) (0.005293 secs)
+Running: program_systems_name_their_step (OK) (0.013789 secs)
+Running: program_query_owner_snapshots_preserve_parallel_effects (OK) (0.008299 secs)
+Running: program_system_membership_exit_cancels_pending_work (OK) (0.007820 secs)
+Running: program_query_sources_resolve_current_targets_and_nearest_ancestors (OK) (0.013914 secs)
+Running: program_query_required_path_keeps_one_instance_per_root (OK) (0.004679 secs)
+Running: program_query_joins_filter_targets_and_refresh_across_suspension (OK) (0.012840 secs)
+Running: program_query_optional_joins_preserve_missing_target_exclusions (OK) (0.005965 secs)
+Running: program_relationship_loops_stream_targets_explicitly (OK) (0.013497 secs)
+Running: program_query_chained_variables_filter_values_and_keep_event_tuples (OK) (0.030571 secs)
+Running: program_query_rows_keep_locals_and_cancel_removed_tuple (OK) (0.006554 secs)
+Running: program_query_changed_preserves_busy_published_writes (OK) (0.012180 secs)
+Running: program_query_admission_is_frozen_before_row_writes (OK) (0.004429 secs)
+Running: program_query_value_filters_preserve_short_circuit_failure_order (OK) (0.013647 secs)
+Running: program_query_predicates_reuse_bounded_scratch_and_fresh_values (OK) (0.023593 secs)
+Running: program_query_predicates_call_bound_natives (OK) (0.006962 secs)
+Running: program_component_binding_runs_and_source_cycle_is_rejected (OK) (0.010655 secs)
+Running: program_imported_library_preserves_owner_namespace_and_reader_after_replace (OK) (0.016144 secs)
+Running: program_system_shared_state_survives_membership_and_is_registration_owned (OK) (0.005221 secs)
+Running: program_managed_state_survives_overwrite_and_multiple_resumes (OK) (0.006865 secs)
+Running: program_result_tuple_copies_survive_mutation_loop_and_resume (OK) (0.013563 secs)
+Running: program_array_literals_are_fresh_copies (OK) (0.021101 secs)
+Running: program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes (OK) (0.074563 secs)
+Running: program_completed_payloads_are_released_without_marking (OK) (0.057707 secs)
+Running: program_temporary_payloads_preserve_roots_across_collection (OK) (0.093719 secs)
+Running: program_sibling_timer_actions_complete_indepeprogram semantic: append changes the array; call it as a statement on a name
+program semantic: Incompatible types: expected f64, got int
+program semantic: append changes the array; call it as a statement on a name
+program semantic: Incompatible types: expected f64, got int
+program semantic: Incompatible types: expected f64, got int
+program semantic: Unknown callable 'xs.array_add'
+program semantic: Unknown callable 'xs.ArrayAdd'
+ndently_and_cancel_on_detach (OK) (0.005628 secs)
+Running: program_failure_snapshot_owns_outlined_source_diagnostics (OK) (0.003995 secs)
+Running: program_assert_fails_with_its_message_or_condition (OK) (0.020767 secs)
+Running: program_assert_binds_names_and_keeps_helpers_pure (OK) (0.008257 secs)
+Running: program_integer_conversions_clamp_or_wrap (OK) (0.012807 secs)
+Running: program_loops_count_half_open_and_in_reverse (OK) (0.032195 secs)
+Running: program_char_conversions_and_arithmetic_stay_unicode_scalars (OK) (0.027281 secs)
+Running: program_char_compares_with_ints_and_steps_below_surrogates (OK) (0.022824 secs)
+Running: program_local_array_survives_collection_mid_build (OK) (0.020790 secs)
+Running: program_local_array_store_checks_its_range (OK) (0.012077 secs)
+Running: program_array_methods_change_their_array (OK) (0.023628 secs)
+Running: program_integer_and_nominal_enum_literals_preserve_exact_bits (OK) (0.008465 secs)
+Running: program_concrete_assignments_preserve_name_byte_and_handle_storage (OK) (0.006891 secs)
+Running: program_source_float_width_conversion_preserves_native_input (OK) (0.003627 secs)
+Running: program_state_actions_demand_inputs_route_and_preserve_per_owner_state (OK) (0.036071 secs)
+Running: program_retrigger_evaluates_each_duration_once (OK) (0.008346 secs)
+Running: program_debugger_steps_without_replaying_and_retains_owned_watches (OK) (0.009908 secs)
+Running: program_task_runs_to_first_suspension_then_beside_caller (OK) (0.010459 secs)
+Running: program_task_cancel_cascades_and_wakes_awaiters (OK) (0.013091 secs)
+Running: program_task_cancelling_itself_stops_at_once (OK) (0.017240 secs)
+Running: program_task_owns_tasks_started_by_its_continuations (OK) (0.011010 secs)
+Running: program_task_continuation_cancels_but_cannot_await_its_task (OK) (0.026485 secs)
+Running: program_task_slots_are_reused_without_reviving_old_handles (OK) (0.016754 secs)
+Running: program_task_deadlines_use_start_time_and_do_not_cancel_waiters (OK) (0.012402 secs)
+Running: program_task_copies_retain_results_and_unobserved_results_are_reclaimed (OK) (0.023784 secs)
+Running: program_task_handle_survives_in_a_detached_capture (OK) (0.013388 secs)
+Running: program_task_handles_survive_in_suspended_array_values (OK) (0.051952 secs)
+Running: program_task_scope_exits_drop_only_unobserved_handles (OK) (0.018256 secs)
+Running: program_native_nested_collections_retain_task_handles (OK) (0.014409 secs)
+Running: program_task_cancellation_is_distinct_from_zero_false_and_empty_text (OK) (0.037727 secs)
+Running: program_task_waiters_receive_independent_success_snapshots (OK) (0.016378 secs)
+Running: program_task_result_snapshot_outlives_the_last_handle (OK) (0.010865 secs)
+Running: program_task_await_copies_large_payload_once (OK) (0.030172 secs)
+Running: program_task_collection_indexes_handles_across_many_owners (OK) (0.212890 secs)
+Running: program_task_results_keep_nested_task_handles_alive (OK) (0.014381 secs)
+Running: program_prepared_tasks_preserve_cancellation_union_and_deadlines (OK) (0.027638 secs)
+Running: program_task_stops_with_owner_and_does_not_block_events (OK) (0.007342 secs)
+Running: program_many_tasks_collect_in_linear_mark_work (OK) (0.086336 secs)
+Running: program_task_semantics_reject_invalid_uses (OK) (0.005611 secs)
+Running: program_version_10_blocking_calls_migrate_to_awaits (OK) (0.146909 secs)
+Running: program_handler_payloads_do_not_hide_parameters (OK) (0.007036 secs)
+Running: program_nested_functions_wait_for_themselves (OK) (0.009233 secs)
+Running: program_version_11_references_migrate_to_values (OK) (0.043605 secs)
+Running: program_version_12_results_migrate_to_returns (OK) (0.376985 secs)
+Running: program_version_13_values_migrate_to_their_expressions (OK) (0.032163 secs)
+Running: program_version_14_scenes_migrate_to_own_behaviors (OK) (0.027218 secs)
+Running: program_version_15_bindings_migrate_to_the_input_map (OK) (0.028064 secs)
+Running: program_input_map_validates_actions (OK) (0.021118 secs)
+Running: program_scene_children_are_referenced (OK) (0.000615 secs)
+Running: program_input_actions_read_thversion 34 invalid asset: result -1, /tmp/chibi-number-retry-E60gy5/content/Broken.kdl: line 2, column 1: Unexpected '}'
+version 34 ambiguous collection: result -1, /tmp/chibi-number-owned-F5ULNt/content/Rows.kdl: line 6, column 42: Numeric collection metadata requires an explicit pin container
+program semantic: Await this task to read 'a'
+program semantic: Incompatible types: expected f64, got union
+program semantic: Unknown value 'set_variable'
+program semantic: Expression statements must invoke a callable
+program semantic: Incompatible types: expected f64, got union
+program semantic: Unknown value 'set_variable'
+program semantic: Expression statements must invoke a callable
+program semantic: Incompatible types: expected f64, got union
+program semantic: Unknown value 'set_variable'
+program semantic: Expression statements must invoke a callable
+program semantic: Incompatible types: expected f64, got union
+program semantic: Unknown value 'set_variable'
+program semantic: Expression statements must invoke a callable
+rough_typed_names (OK) (0.006992 secs)
+Running: program_scene_bindings_are_typed_names_before_play (OK) (0.006845 secs)
+Running: program_version_16_locals_migrate_to_declarations (OK) (0.061745 secs)
+Running: program_version_17_sdf_motion_is_removed (OK) (0.022888 secs)
+Running: program_version_18_dotted_names_are_renamed (OK) (0.011027 secs)
+Running: program_version_19_components_move_to_chibi (OK) (0.020376 secs)
+Running: program_version_20_surface_outputs_take_counter_pin_ids (OK) (0.009781 secs)
+Running: program_version_21_lighting_drops_lab_fields (OK) (0.002658 secs)
+Running: program_version_22_prefixes_migrate_without_changing_data (OK) (0.079942 secs)
+Running: program_version_22_prefixes_preserve_resolved_helpers (OK) (0.064665 secs)
+Running: program_constant_definitions_execute (OK) (0.016436 secs)
+Running: program_version_23_declarations_and_switch_migrate (OK) (0.011629 secs)
+Running: program_version_23_not_calls_migrate_with_native_identity (OK) (0.043549 secs)
+Running: program_version_24_retention_migrates_and_executes (OK) (0.030126 secs)
+Running: program_version_24_retention_content_is_all_or_nothing (OK) (0.003668 secs)
+Running: program_version_25_syntax_preserves_storage_and_comments (OK) (0.006296 secs)
+Running: program_version_25_syntax_content_preserves_header_comments (OK) (0.002551 secs)
+Running: program_version_25_symbol_names_and_native_shadows_migrate (OK) (0.005208 secs)
+Running: program_version_25_reference_flow_crosses_library_parameters (OK) (0.018343 secs)
+Running: program_version_26_casts_migrate_to_conversions (OK) (0.003275 secs)
+Running: program_version_27_entry_reads_migrate_to_parameter_names (OK) (0.003632 secs)
+Running: program_version_28_after_entry_moves_into_function_bodies (OK) (0.014453 secs)
+Running: program_version_29_handlers_migrate_to_named_payloads (OK) (0.040427 secs)
+Running: program_version_30_step_globals_move_into_tick_lists (OK) (0.004844 secs)
+Running: program_version_31_array_calls_take_their_new_names (OK) (0.001686 secs)
+Running: program_version_32_angle_forms_take_version_33_spellings (OK) (0.014791 secs)
+Running: program_version_33_vectors_take_version_34_names (OK) (0.004818 secs)
+Running: program_version_34_numbers_take_odin_names (OK) (0.004164 secs)
+Running: program_version_34_metadata_preserves_payload_fields (OK) (0.005688 secs)
+Running: program_version_34_invalid_asset_preserves_project_for_retry (OK) (0.005303 secs)
+Running: program_version_34_collection_metadata_preserves_exact_values (OK) (0.006062 secs)
+Running: program_version_34_collection_ownership_is_explicit (OK) (0.000776 secs)
+Running: program_version_34_collection_descriptor_boundaries (OK) (0.001617 secs)
+Running: program_version_34_set_writer_roundtrip (OK) (0.001556 secs)
+Running: program_version_34_ambiguous_collection_keeps_transaction_unchanged (OK) (0.005105 secs)
+Running: program_version_35_ref_calls_mark_resolved_arguments (OK) (0.005654 secs)
+Running: program_migration_retry_resumes_after_finished_steps (OK) (0.006423 secs)
+Running: program_migration_rerun_leaves_scripts_later_steps_migrated (OK) (0.006834 secs)
+Running: program_single_result_call_fields_read_the_result (OK) (0.008262 secs)
+Running: program_results_are_inferred_from_returns (OK) (0.021910 secs)
+Running: program_task_with_several_results_awaits_a_tuple (OK) (0.017947 secs)
+Running: program_library_call_starts_a_task (OK) (0.015912 secs)
+Running: program_library_task_writes_the_callers_state (OK) (0.008615 secs)
+Running: program_task_keeps_state_and_component_references (OK) (0.009355 secs)
+Running: program_nested_calls_number_indexes_and_mixed_clamp (OK) (0.026529 secs)
+Running: program_returns_convert_to_their_result_type (OK) (0.016634 secs)
+Running: program_yield_resumes_on_the_next_update_without_time (OK) (0.005230 secs)
+Running: program_task_state_awaits_its_function_results (OK) (0.114925 secs)
+Running: program_task_handles_belong_to_their_instance (OK) (0.004835 secs)
+Running: program_component_paths_test_presence (OK) (0.018343 secs)
+Running: program_branch_completes_inside_action_continuation (OK) (0.029979 secs)
+Running: program_parameters_defaults_and_contextual_words (OK) (0.024427 secs)
+Running: program_task_shares_boxed_locals (OK) (0.035883 secs)
+Running: program_detached_string_capture_retention_audit capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=504 activation_capacity=504
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=2 shape=string phase=overwrite writes=32 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=2 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=3342 activation_capacity=3342
+capture backend=2 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=504 activation_capacity=504
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=1 shape=string phase=overwrite writes=32 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=1 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=3342 activation_capacity=3342
+capture backend=1 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=504 activation_capacity=504
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=2 shape=string phase=writer-cancelled writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=3342 activation_capacity=3342
+capture backend=2 shape=string phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=3342 activation_capacity=3342
+capture backend=2 shape=string phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=504 activation_capacity=504
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=1 shape=string phase=writer-cancelled writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=3342 activation_capacity=3342
+capture backend=1 shape=string phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=3342 activation_capacity=3342
+capture backend=1 shape=string phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=2 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=504 activation_capacity=504
+capture backend=2 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=2 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=2 shape=string phase=owner-detach instances=0 activations=0 payload=0
+capture backend=1 shape=string phase=start writes=0 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=504 activation_capacity=504
+capture backend=1 shape=string phase=overwrite writes=8 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=1 shape=string phase=overwrite writes=16 attached=0 holders=3 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=5265 activation_capacity=9497
+capture backend=1 shape=string phase=owner-detach instances=0 activations=0 payload=0
+(OK) (0.101453 secs)
+Running: program_detached_array_capture_retention_audit capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=504 activation_capacity=504
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=9471 activation_capacity=15217
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=13750 activation_capacity=15585
+capture backend=2 shape=array-element phase=overwrite writes=32 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=9471 activation_capacity=15217
+capture backend=2 shape=array-element phase=writer-complete writes=32 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=5385 activation_capacity=5385
+capture backend=2 shape=array-element phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=504 activation_capacity=504
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=9471 activation_capacity=15217
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=13750 activation_capacity=15585
+capture backend=1 shape=array-element phase=overwrite writes=32 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=9471 activation_capacity=15217
+capture backend=1 shape=array-element phase=writer-complete writes=32 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=5385 activation_capacity=5385
+capture backend=1 shape=array-element phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=504 activation_capacity=504
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=9471 activation_capacity=15217
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=13750 activation_capacity=15585
+capture backend=2 shape=array-element phase=writer-cancelled writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=5385 activation_capacity=5385
+capture backend=2 shape=array-element phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=5385 activation_capacity=5385
+capture backend=2 shape=array-element phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=504 activation_capacity=504
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=9471 activation_capacity=15217
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=13750 activation_capacity=15585
+capture backend=1 shape=array-element phase=writer-cancelled writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=5385 activation_capacity=5385
+capture backend=1 shape=array-element phase=cancelled-before-update writes=16 attached=0 holders=1 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=5385 activation_capacity=5385
+capture backend=1 shape=array-element phase=last-holder-cancelled writes=16 holders=0 boxes=0
+capture backend=2 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=504 activation_capacity=504
+capture backend=2 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=9471 activation_capacity=15217
+capture backend=2 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=13750 activation_capacity=15585
+capture backend=2 shape=array-element phase=owner-detach instances=0 activations=0 payload=0
+capture backend=1 shape=array-element phase=start writes=0 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=504 activation_capacity=504
+capture backend=1 shape=array-element phase=overwrite writes=8 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=9471 activation_capacity=15217
+capture backend=1 shape=array-element phase=overwrite writes=16 attached=0 holders=3 box_used=1210 box_capacity=1843 box_backing=1939 current_snapshot=1210 activation_payload=13750 activation_capacity=15585
+capture backend=1 shape=array-element phase=owner-detach instances=0 activations=0 payload=0
+(OK) (0.164885 secs)
+Running: program_attached_string_capture_retention_control capture backend=2 shape=string phase=start writes=0 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=2763 activation_capacity=2763
+capture backend=2 shape=string phase=overwrite writes=8 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11756 activation_capacity=13343
+capture backend=2 shape=string phase=overwrite writes=16 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11756 activation_capacity=14401
+capture backend=2 shape=string phase=overwrite writes=32 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11756 activation_capacity=14401
+capture backend=2 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=4400 activation_capacity=4400
+capture backend=2 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+capture backend=1 shape=string phase=start writes=0 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=2763 activation_capacity=2763
+capture backend=1 shape=string phase=overwrite writes=8 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11756 activation_capacity=13343
+capture backend=1 shape=string phase=overwrite writes=16 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11756 activation_capacity=14401
+capture backend=1 shape=string phase=overwrite writes=32 attached=1 holders=4 box_used=0 box_capacity=0 box_backing=0 current_snapshot=529 activation_payload=11756 activation_capacity=14401
+capture backend=1 shape=string phase=writer-complete writes=32 attached=0 holders=1 box_used=529 box_capacity=529 box_backing=561 current_snapshot=529 activation_payload=4400 activation_capacity=4400
+capture backend=1 shape=string phase=last-holder-complete writes=32 holders=0 boxes=0
+(OK) (0.048684 secs)
+Running: program_descendant_capture_keeps_inspector_snapshots_across_shrink (OK) (0.025324 secs)
+Running: program_detached_capture_preserves_task_handles_until_replaced (OK) (0.017043 secs)
+Running: program_assignments_and_reference_writes_do_not_allocate (OK) (0.020019 secs)
+Running: program_component_scalar_reference_writes_do_not_copy_rows (OK) (0.027242 secs)
+Running: program_repeated_helpers_have_bounded_allocations (OK) (0.008260 secs)
+Running: program_reused_helpers_reset_locals_and_preserve_nested_calls (OK) (0.013622 secs)
+Running: program_reused_helpers_keep_managed_results_and_resume_fresh_locals (OK) (0.014838 secs)
+Running: retention_helpers_keep_owner_state_and_copy_plain_values (OK) (0.006644 secs)
+Running: retention_system_owner_survives_row_exit_and_registration_isolation (OK) (0.004687 secs)
+Running: retention_helper_identity_preserves_values_until_restart (OK) (0.007722 secs)
+Running: capture_whole_value_shrink_preserves_escaped_and_self_values capture-write success=1 previous_backing=8529 final_backing=8529 xalloc_calls=5 xalloc_requested=33508
+capture-write success=1 previous_backing=8529 final_backing=288 xalloc_calls=3 xalloc_requested=8817
+capture-write success=1 previous_backing=288 final_backing=288 xalloc_calls=2 xalloc_requested=576
+capture-write success=0 previous_backing=288 final_backing=288 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000115 secs)
+Running: capture_paths_survive_root_replacement_and_fail_atomically capture-write success=1 previous_backing=24979 final_backing=288 xalloc_calls=4 xalloc_requested=25267
+capture-write success=1 previous_backing=288 final_backing=288 xalloc_calls=2 xalloc_requested=576
+capture-write success=1 previous_backing=288 final_backing=8529 xalloc_calls=5 xalloc_requested=33508
+capture-write success=1 previous_backing=8529 final_backing=288 xalloc_calls=3 xalloc_requested=8817
+capture-write success=0 previous_backing=288 final_backing=288 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=288 final_backing=288 xalloc_calls=2 xalloc_requested=576
+capture-write success=0 previous_backing=288 final_backing=288 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=288 final_backing=24979 xalloc_calls=6 xalloc_requested=49958
+capture-write success=0 previous_backing=24979 final_backing=24979 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000201 secs)
+Running: capture_nested_scalar_writes_retain_only_current_managed_root capture-write success=1 previous_backing=24931 final_backing=24931 xalloc_calls=6 xalloc_requested=49862
+capture-write success=1 previous_backing=24931 final_backing=24931 xalloc_calls=6 xalloc_requested=49862
+capture-write success=1 previous_backing=24931 final_backing=24931 xalloc_calls=6 xalloc_requested=49862
+capture-write success=1 previous_backing=24931 final_backing=24931 xalloc_calls=6 xalloc_requested=49862
+capture-write success=1 previous_backing=24931 final_backing=24931 xalloc_calls=6 xalloc_requested=49862
+capture-write success=1 previous_backing=24931 final_backing=24931 xalloc_calls=6 xalloc_requested=49862
+capture-write success=1 previous_backing=24931 final_backing=24931 xalloc_calls=6 xalloc_requested=49862
+capture-write success=1 previous_backing=24931 final_backing=24931 xalloc_calls=6 xalloc_requested=49862
+(OK) (0.000424 secs)
+Running: capture_references_refuse_another_type capture-write success=0 previous_backing=288 final_backing=288 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000031 secs)
+Running: capture_element_writes_keep_the_item_type capture-write success=0 previous_backing=288 final_backing=288 xalloc_calls=0 xalloc_requested=0
+capture-write success=0 previous_backing=288 final_backing=288 xalloc_calls=0 xalloc_requested=0
+capture-write success=1 previous_backing=288 final_backing=288 xalloc_calls=2 xalloc_requested=576
+(OK) (0.000030 secs)
+Running: capture_unnamed_union_references_read_and_write capture-write success=1 previous_backing=288 final_backing=288 xalloc_calls=2 xalloc_requested=576
+capture-write success=0 previous_backing=288 final_backing=288 xalloc_calls=0 xalloc_requested=0
+(OK) (0.000021 secs)
+Running: query_binding_direct_matches_host_values_and_failures (OK) (0.004122 secs)
+Running: query_binding_rejects_invalid_immediates_and_types (OK) (0.000069 secs)
+Running: query_binding_unused_load_preserves_branches_and_budget (OK) (0.000294 secs)
+Running: query_binding_preserves_live_integer_slots (OK) (0.000349 secs)
+Running: query_binding_prepared_roundtrip_preserves_errors_and_values (OK) (0.000797 secs)
+Running: query_binding_predicate_requires_bound_variables_transitively (OK) (0.000213 secs)
+Running: query_binding_dispatch_has_bounded_measurements QUERY_BINDING path=direct_query_variable backend=vm trial=0 reads=512 us_per_read=1.063910 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=1 reads=512 us_per_read=0.962850 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=2 reads=512 us_per_read=1.049924 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=3 reads=512 us_per_read=0.999229 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=vm trial=4 reads=512 us_per_read=1.018920 host_calls=0 data_values=0 allocation_calls=512 requested_bytes=40960 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=0 reads=512 us_per_read=0.147480 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=1 reads=512 us_per_read=0.135143 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=2 reads=512 us_per_read=0.135150 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=3 reads=512 us_per_read=0.217246 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+QUERY_BINDING path=direct_query_variable backend=compiled trial=4 reads=512 us_per_read=0.136334 host_calls=0 data_values=0 allocation_calls=0 requested_bytes=0 arena_blocks=0
+(OK) (0.003154 secs)
+Running: query_change_versions_saturate (OK) (0.000061 secs)
+Running: query_predicates_roundtrip_with_services_effects_and_preflight (OK) (0.001847 secs)
+Running: query_binding_publication_and_prepared_reader_reject_forged_bound_masks (OK) (0.001314 secs)
+Running: query_binding_authored_join_lowers_without_host_banks (OK) (0.000940 secs)
+Running: query_binding_order_is_checked_before_publication (OK) (0.000981 secs)
+Running: query_predicate_purity_is_rechecked_after_native_linking (OK) (0.000636 secs)
+Running: query_predicate_purity_follows_each_outlined_callee (OK) (0.000682 secs)
+Running: query_predicate_context_cannot_be_recovered_through_bank_aliases (OK) (0.000218 secs)
+===============================================================
+Summary: Passed: 183 Failed: 0 Total: 183 Suites: 0 Asserts: 12713
+Test command wall time: 4.325s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

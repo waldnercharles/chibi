@@ -357,7 +357,9 @@ static bool read_source(int source)
 /* The names in scope that shadow package names: parameters, locals, loop
  * variables and pattern bindings. Each takes effect after its declaration, so
  * a local's initializer still names the package's declaration, and ends with
- * the block, loop or switch arm that holds it. */
+ * the block, loop or switch arm that holds it. A condition's pattern binds
+ * through its `if` or `while` body, but not an `else`, as the analyzer's
+ * statement scopes do. */
 static char **bound;
 
 static bool is_bound(int source, TSNode name)
@@ -385,6 +387,7 @@ static void unbind(int depth)
 static bool scopes(TSNode node)
 {
     return node_is(node, "block") || node_is(node, "for_statement") ||
+           node_is(node, "if_statement") || node_is(node, "while_statement") ||
            node_is(node, "switch_arm");
 }
 /* The declaration `node` names from its place in `source`, or -1. */
@@ -448,6 +451,9 @@ static void references(int source, TSNode node, const char *field, census_edit *
             if (node_is(node, "for_statement") && name && !strcmp(name, "body")) {
                 bind(source, node, "key");
                 bind(source, node, "name");
+            }
+            if (node_is(node, "if_statement") && name && !strcmp(name, "alternative")) {
+                unbind(depth);
             }
             references(source, ts_tree_cursor_current_node(&cursor), name, edits);
         } while (ts_tree_cursor_goto_next_sibling(&cursor));
@@ -1092,9 +1098,10 @@ static int decl_named(const char *name)
     }
     return -1;
 }
-/* Two packages: app imports lib, whose functions name its record and
- * constant, shadow the constant in nested and sibling scopes, and call a
- * function of more parameters than the producer admits. */
+/* Two packages: app imports lib, whose functions name its record, union and
+ * constant. Locals, loop variables and pattern bindings shadow the constant
+ * and the import alias in nested and sibling scopes, and a function calls one
+ * of more parameters than the producer admits. */
 static const char
     LIB_SOURCE[] = "package lib\n"
                    "pub Limit: int : 3;\n"
@@ -1110,6 +1117,15 @@ static const char
                    "    for Limit in 0..<x { v += Limit; }\n"
                    "    Limit := Limit + v;\n"
                    "    return Limit;\n"
+                   "}\n"
+                   "pub Value :: union { Yes(value: int) | No }\n"
+                   "pub Picked :: (v: Value) -> int {\n"
+                   "    if v is .Yes(Limit) && Limit > 0 { return Limit; } "
+                   "else { return Limit; }\n"
+                   "    while v is .Yes(Limit) { return Limit; }\n"
+                   "    switch v { case .Yes(Limit): return Limit; case: "
+                   "return Limit; }\n"
+                   "    return Limit;\n"
                    "}\n";
 static const char APP_SOURCE
     [] = "package app\n"
@@ -1117,6 +1133,10 @@ static const char APP_SOURCE
          "Twice :: (x: int) -> int { return lib.Sum({a: x, b: x}); }\n"
          "Wrap :: (x: int) -> int {\n"
          "    return Many(x, x, x, x, x, x, x, x, x);\n"
+         "}\n"
+         "Alias :: (v: lib.Value) -> int {\n"
+         "    if v is .Yes(lib) { return lib; }\n"
+         "    return lib.Sum({a: 1, b: 2});\n"
          "}\n"
          "Many :: (a: int, b: int, c: int, d: int, e: int,\n"
          "         f: int, g: int, h: int, i: int) -> int {\n"
@@ -1180,6 +1200,32 @@ TEST_CASE(native_census_flattens_imports_and_constants)
         "}\n"
     ));
     REQUIRE(build->constants);
+    build = census_of("Picked", NULL);
+    REQUIRE(!strcmp(
+        build->text,
+        "package lib\n"
+        "NativeCensusEntry :: () -> int { return 0; }\n"
+        "pub Picked :: (v: Value) -> int {\n"
+        "    if v is .Yes(Limit) && Limit > 0 { return Limit; } else { return "
+        "int(3); }\n"
+        "    while v is .Yes(Limit) { return Limit; }\n"
+        "    switch v { case .Yes(Limit): return Limit; case: return int(3); "
+        "}\n"
+        "    return int(3);\n"
+        "}\n"
+        "pub Value :: union { Yes(value: int) | No }\n"
+    ));
+    build = census_of("Alias", NULL);
+    REQUIRE(!strcmp(
+        build->text,
+        "package app\n"
+        "NativeCensusEntry :: () -> int { return 0; }\n"
+        "Alias :: (v: lib__Value) -> int {\n"
+        "    if v is .Yes(lib) { return lib; }\n"
+        "    return lib__Sum({a: 1, b: 2});\n"
+        "}\n"
+        "pub lib__Value :: union { Yes(value: int) | No }\n"
+    ));
     build_free(&sample);
     return true;
 }

@@ -11,9 +11,11 @@ directory, it also emits each module it runs for the other targets
 - `opt` and `llc` build it at O0 and O2 with the native driver's exact
   arguments, and the optimized module must declare the target's triple and
   the data layout `tools/native_aot/Driver.chibi` admits for it;
-- the object must have no undefined symbol, except `_fltused` on Windows,
-  which Windows code that uses floating point references and the platform
-  runtime defines. The bundle's `windows-x64/runtime.o` defines it;
+- the object must have no undefined symbol, except `_fltused` and
+  `__chkstk` on Windows, which the platform runtime defines: Windows code
+  that uses floating point references `_fltused`, and a frame larger than a
+  page calls `__chkstk`. The bundle's `windows-x64/runtime.o` defines both,
+  `__chkstk` as compiler-rt's x86-64 probe;
 - `<target>/modules.txt` lists each object, then each call with the value
   both VMs and the native Linux runs gave: `call SYMBOL EXPECTED COUNT
   ARGUMENTS...`.

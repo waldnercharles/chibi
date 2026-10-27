@@ -107,8 +107,11 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
 
 bool behavior_function_hosts_pure(const behavior_function *root)
 {
-    const behavior_function **functions = NULL;
+    /* Keep discovery order separate from the pointer index. Repeated edges
+     * search logarithmically; inserting a new pointer charges every move. */
+    const behavior_function **functions = NULL, **sorted = NULL;
     apush(functions, root);
+    apush(sorted, root);
     int steps = EFFECT_STEPS;
     bool valid = true;
     for (int at = 0; valid && at < acount(functions); at++) {
@@ -136,19 +139,43 @@ bool behavior_function_hosts_pure(const behavior_function *root)
         }
         for (int i = 0; valid && i < acount(f->calls); i++) {
             const behavior_function_invocation *call = &f->calls[i];
+            if (call->task) {
+                valid = false;
+                break;
+            }
             bool seen = false;
-            for (int j = 0; j < acount(functions); j++) {
-                if (--steps < 0 || call->task) {
+            int low = 0, high = acount(sorted);
+            while (low < high) {
+                if (--steps < 0) {
                     valid = false;
                     break;
                 }
-                seen |= functions[j] == call->function;
+                int middle = low + (high - low) / 2;
+                if (sorted[middle] == call->function) {
+                    seen = true;
+                    break;
+                }
+                if ((uintptr_t)sorted[middle] < (uintptr_t)call->function) {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
             }
             if (valid && !seen) {
+                int count = acount(sorted), moves = count - low;
+                if (count == EFFECT_RECORDS || steps < moves) {
+                    valid = false;
+                    break;
+                }
+                steps -= moves;
                 apush(functions, call->function);
+                apush(sorted, call->function);
+                memmove(sorted + low + 1, sorted + low, (size_t)moves * sizeof *sorted);
+                sorted[low] = call->function;
             }
         }
     }
+    afree(sorted);
     afree(functions);
     return valid;
 }

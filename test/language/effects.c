@@ -1,5 +1,7 @@
 #include "authoring/source_catalog.h"
+#include "execution/definition.h"
 #include "language/semantic.h"
+#include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -11,6 +13,8 @@ static script_syntax *syntax;
 static script_analysis *analysis;
 static source_catalog *imports;
 static char root[128];
+static behavior_function *bodies;
+static int body_count;
 static const script_catalog_parameter integer[] = {
     { .name = "value", .type = { .storage = PIN_I32 } }
 };
@@ -46,8 +50,21 @@ static const script_catalog catalog = {
     .capabilities = capabilities,
     .capability_count = sizeof capabilities / sizeof *capabilities,
 };
+static void free_bodies()
+{
+    for (int i = 0; i < body_count; i++) {
+        afree(bodies[i].calls);
+        afree(bodies[i].host_calls);
+        afree(bodies[i].queries);
+        afree(bodies[i].commands);
+    }
+    free(bodies);
+    bodies = NULL;
+    body_count = 0;
+}
 static void cleanup()
 {
+    free_bodies();
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     analysis = NULL;
@@ -213,6 +230,156 @@ TEST_CASE(effects_imports_publish_transitive_effects_before_query_analysis)
     REQUIRE(!syntax->diagnostic_count && !analysis->valid);
     return true;
 }
+static void prepare_bodies(int count)
+{
+    free_bodies();
+    bodies = xcalloc((size_t)count, sizeof *bodies);
+    body_count = count;
+    for (int i = 0; i < count; i++) {
+        bodies[i].frozen = true;
+    }
+}
+static const char *pure_host(void *, const pin_value *, pin_value *)
+{
+    return NULL;
+}
+static const char *host_action(
+    const behavior_function_context *,
+    void *,
+    const pin_value *,
+    int,
+    pin_value *,
+    int,
+    const uint64_t *,
+    int,
+    int *
+)
+{
+    return NULL;
+}
+TEST_CASE(effects_host_proof_converges_with_repeated_edges)
+{
+    /* Both pointer insertion orders, mutual/self recursion and a late unsafe
+     * leaf. Scanning all visited functions per edge exhausts the work bound. */
+    enum
+    {
+        FUNCTIONS = 512,
+        REPEATS = 8
+    };
+    const node_host_call host = { .invoke = pure_host };
+    const node_access access = { .flags = NODE_EFFECT_PURE };
+    for (int reverse = 0; reverse < 2; reverse++) {
+        prepare_bodies(FUNCTIONS);
+        behavior_function *first = &bodies[reverse ? FUNCTIONS - 1 : 0];
+        behavior_function *last = &bodies[reverse ? 0 : FUNCTIONS - 1];
+        for (int i = 1; i < FUNCTIONS; i++) {
+            behavior_function *next = &bodies[reverse ? FUNCTIONS - 1 - i : i];
+            apush(first->calls, (behavior_function_invocation){ .function = next });
+            for (int j = 0; j < REPEATS; j++) {
+                apush(
+                    next->calls,
+                    (behavior_function_invocation){
+                        .function = j % 4 ? &bodies[FUNCTIONS / 2] : first }
+                );
+            }
+        }
+        apush(last->host_calls, (behavior_function_host_call){ .call = &host, .access = &access });
+        REQUIRE(behavior_function_hosts_pure(first));
+        last->host_calls[0].access = NULL;
+        REQUIRE(!behavior_function_hosts_pure(first));
+    }
+    return true;
+}
+TEST_CASE(effects_host_proof_keeps_unsafe_edges_and_hosts_serial)
+{
+    prepare_bodies(2);
+    apush(bodies[0].calls, (behavior_function_invocation){ .function = &bodies[1] });
+    apush(bodies[1].calls, (behavior_function_invocation){ .function = &bodies[0] });
+    node_host_call host = { .invoke = pure_host };
+    node_access access = { .flags = NODE_EFFECT_PURE | NODE_EFFECT_PARALLEL };
+    apush(bodies[1].host_calls, (behavior_function_host_call){ .call = &host, .access = &access });
+    REQUIRE(behavior_function_hosts_pure(bodies));
+    REQUIRE(!behavior_function_hosts_pure(NULL));
+    bodies[1].frozen = false;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    bodies[1].frozen = true;
+    bodies[1].calls[0].task = true;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    bodies[1].calls[0].task = false;
+    bodies[1].calls[0].function = NULL;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    bodies[1].calls[0].function = bodies;
+    apush(bodies[1].queries, (behavior_function_query){ 0 });
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    aclear(bodies[1].queries);
+    apush(bodies[1].commands, (behavior_function_command){ 0 });
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    aclear(bodies[1].commands);
+    host.service = "service";
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    host.service = NULL;
+    host.missing_service = "missing";
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    host.missing_service = NULL;
+    host.action = host_action;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    host.action = NULL;
+    access.flags = NODE_EFFECT_PARALLEL;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    access.flags = NODE_EFFECT_PURE | NODE_EFFECT_RANDOM;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    access.flags = NODE_EFFECT_PURE;
+    access.read_count = 1;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    access.read_count = 0;
+    access.write_count = 1;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    access.write_count = 0;
+    const uint64_t *reference = NULL;
+    access.read_refs = &reference;
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    access.read_refs = NULL;
+    REQUIRE(behavior_function_hosts_pure(bodies));
+    return true;
+}
+TEST_CASE(effects_host_proof_fails_closed_at_work_and_record_bounds)
+{
+    /* These are the production proof limits, not a larger test-only budget. */
+    enum
+    {
+        STEPS = 200000,
+        RECORDS = 65536
+    };
+    prepare_bodies(1);
+    for (int i = 0; i < STEPS; i++) {
+        apush(bodies[0].calls, (behavior_function_invocation){ .function = bodies });
+    }
+    REQUIRE(behavior_function_hosts_pure(bodies));
+    apush(bodies[0].calls, (behavior_function_invocation){ .function = bodies });
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    aclear(bodies[0].calls);
+    const node_host_call host = { .invoke = pure_host };
+    const node_access access = { .flags = NODE_EFFECT_PURE };
+    for (int i = 0; i < STEPS; i++) {
+        apush(bodies[0].host_calls, (behavior_function_host_call){ .call = &host, .access = &access });
+    }
+    REQUIRE(behavior_function_hosts_pure(bodies));
+    apush(bodies[0].host_calls, (behavior_function_host_call){ .call = &host, .access = &access });
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    prepare_bodies(RECORDS + 1);
+    for (int i = 1; i <= RECORDS; i++) {
+        apush(bodies[0].calls, (behavior_function_invocation){ .function = &bodies[i] });
+    }
+    /* This exceeds both bounds; the work bound can reject it first. */
+    REQUIRE(!behavior_function_hosts_pure(bodies));
+    prepare_bodies(1024);
+    for (int i = 1022; i >= 0; i--) {
+        apush(bodies[1023].calls, (behavior_function_invocation){ .function = &bodies[i] });
+    }
+    /* Binary searches alone fit; index insertion moves must be bounded too. */
+    REQUIRE(!behavior_function_hosts_pure(&bodies[1023]));
+    return true;
+}
 void test_language_effects()
 {
     pu_setup(NULL, cleanup);
@@ -221,5 +388,8 @@ void test_language_effects()
     RUN_TEST_CASE(effects_query_checks_inferred_helpers_and_retained_reads);
     RUN_TEST_CASE(effects_component_await_is_synchronous_but_host_await_is_not);
     RUN_TEST_CASE(effects_imports_publish_transitive_effects_before_query_analysis);
+    RUN_TEST_CASE(effects_host_proof_converges_with_repeated_edges);
+    RUN_TEST_CASE(effects_host_proof_keeps_unsafe_edges_and_hosts_serial);
+    RUN_TEST_CASE(effects_host_proof_fails_closed_at_work_and_record_bounds);
     pu_clear_setup();
 }

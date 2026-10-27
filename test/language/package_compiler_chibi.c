@@ -10402,9 +10402,6 @@ enum
     SCALAR_TAG_ROW = 33,
     SCALAR_PAYLOAD_ROW = 34,
     SCALAR_RANGE_EXCLUSIVE = 1,
-    SCALAR_MAX_LOCALS = 16,
-    SCALAR_MAX_STATEMENTS = 32,
-    SCALAR_MAX_OPERANDS = 64,
     SCALAR_INT = 1,
     SCALAR_BOOL = 2,
     SCALAR_INT8 = 3,
@@ -10417,7 +10414,6 @@ enum
     SCALAR_FLOAT = 10,
     SCALAR_DOUBLE = 11,
     SCALAR_STRING = 12,
-    SCALAR_MAX_SOURCE = 16384,
     SCALAR_RECORD = 32
 };
 /* The kind of each of GUARD_SOURCE's rows, and the rows edited. */
@@ -10433,6 +10429,7 @@ static const int GUARD_KINDS[] = {
 };
 enum
 {
+    GUARD_CALLEE = 7,
     GUARD_ROW = 10,
     GUARD_CONDITION = 11,
     GUARD_COMPARE = 13,
@@ -10746,6 +10743,8 @@ static const malformed_guard MALFORMED_GUARDS[] = {
     { { EDIT(GUARD_ROW, "count", 0) }, LAYOUT },
     { { EDIT(GUARD_FINAL, "kind", SCALAR_IF_ROW) }, LAYOUT },
     { { EDIT(GUARD_END, "kind", SCALAR_ELSE_ROW) }, LAYOUT },
+    /* A function whose parameter count would wrap past the rows. */
+    { { EDIT(GUARD_CALLEE, "count", INT32_MAX) }, LAYOUT },
     /* A comparison's operator, arity and result. */
     { { EDIT(GUARD_COMPARE, "value", 0) }, COMPARISON },
     { { EDIT(GUARD_COMPARE, "value", 7) }, COMPARISON },
@@ -10804,6 +10803,7 @@ static const malformed_guard MALFORMED_CONTROL[] = {
     { { EDIT(CONTROL_LOGICAL, "count", 0) }, LOGIC },
     { { EDIT(CONTROL_LOGICAL, "count", 5) }, LOGIC },
     { { EDIT(CONTROL_LOGICAL, "count", 1) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "count", INT32_MAX) }, LOGIC },
     { { EDIT(CONTROL_LOGICAL, "value", 3) }, LOGIC },
     { { EDIT(CONTROL_LOGICAL, "type", SCALAR_INT) }, LOGIC },
     /* A not of an int. */
@@ -10921,6 +10921,7 @@ static const malformed_guard MALFORMED_RECORDS[] = {
     /* A record whose members overrun into the function after them, one
      * with no name, and a record that does not lie where it is declared. */
     { { EDIT(RECORD_DECLARATION, "count", 3) }, MEMBER_ROW },
+    { { EDIT(RECORD_DECLARATION, "count", INT32_MAX) }, RECORD_ROW },
     { { { .row = RECORD_DECLARATION, .field = "name", .text = "", .from = -1 } },
       RECORD_ROW },
     { { EDIT(RECORD_DECLARATION, "type", SCALAR_INT) }, RECORD_ROW },
@@ -10975,6 +10976,10 @@ static const malformed_guard MALFORMED_UNIONS[] = {
     { { { .row = UNION_BOX, .field = "name", .text = "Dot", .from = -1 } }, VARIANT_ROW },
     { { COPY(UNION_BOX, "end", UNION_MAIN) }, VARIANT_ROW },
     { { EDIT(UNION_BOX, "count", 1) }, LAYOUT },
+    /* Payload counts that would wrap the next variant's row negative. */
+    { { EDIT(UNION_DOT, "count", INT32_MAX) }, UNION_ROW },
+    { { EDIT(UNION_BOX, "count", INT32_MAX) }, UNION_ROW },
+    { { EDIT(UNION_DECLARATION, "count", INT32_MAX) }, UNION_ROW },
     /* A payload numbered as another, of a record type, named as another in
      * its variant, or outside its variant. */
     { { EDIT(UNION_H, "value", 0) }, PAYLOAD_ROW },
@@ -11307,12 +11312,17 @@ static bool stringed_rows(int b, pin_value *rows)
     REQUIRE(shared);
     pin_value *literal = guard_row(rows, STRING_LITERAL);
     pin_value saved = scalar_field(literal, "text");
-    char *long_text = xmalloc(SCALAR_MAX_SOURCE + 2);
-    memset(long_text, 'a', SCALAR_MAX_SOURCE + 1);
-    long_text[SCALAR_MAX_SOURCE + 1] = 0;
+    /* A literal has no length bound. */
+    enum
+    {
+        LONG_TEXT = 40000
+    };
+    char *long_text = xmalloc(LONG_TEXT + 1);
+    memset(long_text, 'a', LONG_TEXT);
+    long_text[LONG_TEXT] = 0;
     write_row(rows, STRING_LITERAL, "text", text(long_text));
     free(long_text);
-    REQUIRE(validated(b, rows, NONCANONICAL));
+    REQUIRE(validated(b, rows, ""));
     write_row(rows, STRING_LITERAL, "text", saved);
     return true;
 }
@@ -12073,6 +12083,28 @@ static bool native_recursion_probes_the_stack(int b)
     m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
     m.functions = gap;
     REQUIRE(native_rejects(b, &m, TABLES));
+    /* Slot ranges whose sum wraps back to an empty slot table. */
+    static const native_code returns[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+    };
+    static const native_function wrapped[] = {
+        { NATIVE_INT, 0, 0, 0, INT32_MAX, 0, 4, 0, 0 },
+        { NATIVE_INT, 0, 0, INT32_MAX, INT32_MAX, 4, 4, 0, 0 },
+        { NATIVE_INT, 0, 0, -2, 2, 8, 4, 0, 0 },
+    };
+    m = (native_module){ wrapped, 3, NULL, 0, NULL, 0, returns, 12, NULL, 0 };
+    REQUIRE(native_rejects(b, &m, TABLES));
     return true;
 }
 /* main() builds {3, 4.5} from its zero, passes it through the internal
@@ -12200,6 +12232,14 @@ static bool native_records_emit(int b)
     REQUIRE(native_rejects(b, &m, layout));
     m = record_module(RECORD_CODE);
     m.fields = nested;
+    REQUIRE(native_rejects(b, &m, layout));
+    /* Counts whose sum wraps back to the field table's length. */
+    static const native_record wrapped[] = { { 0, INT32_MAX },
+                                             { INT32_MAX, INT32_MAX },
+                                             { -2, 4 } };
+    m = record_module(RECORD_CODE);
+    m.records = wrapped;
+    m.record_count = 3;
     REQUIRE(native_rejects(b, &m, layout));
     return true;
 }
@@ -12418,8 +12458,7 @@ static bool native_strings_emit(int b)
     for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
         REQUIRE(native_rejects_text_change(b, changes[i].change, changes[i].message));
     }
-    /* No string crosses the exported entry, and a table holds at most
-     * 32,768 texts. */
+    /* No string crosses the exported entry. */
     static const native_code returned[] = {
         { .op = NATIVE_CHECK },
         { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
@@ -12463,20 +12502,6 @@ static bool native_strings_emit(int b)
     alone.slots = TEXT_SLOTS + 2;
     alone.code = published;
     REQUIRE(native_rejects(b, &alone, "unsupported native scalar parameter"));
-    enum
-    {
-        TOO_MANY_TEXTS = 32769
-    };
-    const char **many = xmalloc(sizeof *many * TOO_MANY_TEXTS);
-    for (int i = 0; i < TOO_MANY_TEXTS; i++) {
-        many[i] = "";
-    }
-    m = text_module(TEXT_CODE);
-    m.texts = many;
-    m.text_count = TOO_MANY_TEXTS;
-    bool bounded = native_rejects(b, &m, "native module holds more than 32768 texts");
-    free(many);
-    REQUIRE(bounded);
     /* A module that compares no strings defines no comparison. */
     native_code equal[TEXT_CODE_COUNT];
     memcpy(equal, TEXT_CODE, sizeof equal);
@@ -12678,19 +12703,6 @@ static const struct
       "Main :: () -> int { return 1; }\n",
       "scalar proof requires number and bool union payloads",
       "p: Point" },
-    { "package scalar\nWide :: union { A(a0: int, a1: int, a2: int, a3: int, "
-      "a4: int, a5: int, a6: int, a7: int) |\n"
-      "    B(b0: int, b1: int, b2: int, b3: int, b4: int, b5: int, b6: int, "
-      "b7: int) }\n"
-      "Main :: () -> int { return 1; }\n",
-      "scalar proof admits at most 15 payloads per union",
-      "b7: int" },
-    { "package scalar\nMany :: union { V0 | V1 | V2 | V3 | V4 | V5 | V6 | V7 | "
-      "V8 | V9 | V10 | V11 | V12 | V13 | "
-      "V14 | V15 | V16 }\nMain :: () -> int { return 1; }\n",
-      "scalar proof admits at most 16 variants per union",
-      "Many :: union { V0 | V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | "
-      "V11 | V12 | V13 | V14 | V15 | V16 }" },
 };
 /* Each of UNION_REJECTIONS is a located rejection on both VMs, its source
  * and diagnostic and nothing else. */
@@ -12869,12 +12881,12 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 52
+    SCALAR_ACCEPTED_CASES = 51
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
  * the recovered compiler, which has no such limit. */
-static const char *const DEEP_CASES[] = { "most_operands", "too_many_operands" };
+static const char *const DEEP_CASES[] = { "deep_operands" };
 enum
 {
     DEEP_CASE_COUNT = (int)(sizeof DEEP_CASES / sizeof *DEEP_CASES)
@@ -13804,20 +13816,80 @@ static int library_child(const char *library, int count, char **specs)
  * them and built with the driver's opt and llc arguments into the bundle,
  * whose runner (test/native_aot/targets) links and runs it on that target.
  * Each has native_abi's function, the bundle's subdirectory, the triple and
- * the data layout LLVM 18 gives it, which the driver admits, and the one
- * symbol its objects may leave undefined, or NULL: Windows code that uses
- * floating point references _fltused, which the platform runtime defines. */
+ * the data layout LLVM 18 gives it, which the driver admits, and the
+ * symbols its objects may leave undefined, which the bundle's runtime.o
+ * defines from `runtime`, or none. Windows code that uses floating point
+ * references _fltused, and a frame larger than a page calls __chkstk; the C
+ * runtime would define both. This __chkstk is compiler-rt's x86-64 probe, as
+ * tools/native_aot/Driver.chibi's start object defines it: it touches each
+ * page from the stack pointer down by RAX bytes and changes no register. */
+enum
+{
+    BUNDLE_RUNTIME_SYMBOLS = 2
+};
 static const struct
 {
     const char *function, *directory, *triple, *layout, *runtime;
+    const char *defines[BUNDLE_RUNTIME_SYMBOLS];
 } BUNDLE_TARGETS[] = {
-    { "MacOSArm64", "macos-arm64", "arm64-apple-macosx11.0.0", "e-m:o-i64:64-i128:128-n32:64-S128", NULL },
-    { "WindowsX64", "windows-x64", "x86_64-pc-windows-msvc", "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128", "_fltused" },
+    { "MacOSArm64",
+      "macos-arm64",
+      "arm64-apple-macosx11.0.0",
+      "e-m:o-i64:64-i128:128-n32:64-S128",
+      NULL,
+      { NULL } },
+    { "WindowsX64",
+      "windows-x64",
+      "x86_64-pc-windows-msvc",
+      "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:"
+      "64-S128",
+      "@_fltused = dso_local global i32 0\n"
+      "module asm \".text\"\n"
+      "module asm \".globl __chkstk\"\n"
+      "module asm \"__chkstk:\"\n"
+      "module asm \"pushq %rcx\"\n"
+      "module asm \"pushq %rax\"\n"
+      "module asm \"cmpq $0x1000, %rax\"\n"
+      "module asm \"leaq 24(%rsp), %rcx\"\n"
+      "module asm \"jb 1f\"\n"
+      "module asm \"2:\"\n"
+      "module asm \"subq $0x1000, %rcx\"\n"
+      "module asm \"testq %rcx, (%rcx)\"\n"
+      "module asm \"subq $0x1000, %rax\"\n"
+      "module asm \"cmpq $0x1000, %rax\"\n"
+      "module asm \"ja 2b\"\n"
+      "module asm \"1:\"\n"
+      "module asm \"subq %rax, %rcx\"\n"
+      "module asm \"testq %rcx, (%rcx)\"\n"
+      "module asm \"popq %rax\"\n"
+      "module asm \"popq %rcx\"\n"
+      "module asm \"retq\"\n",
+      { "__chkstk", "_fltused" } },
 };
 enum
 {
     BUNDLE_TARGET_COUNT = (int)(sizeof BUNDLE_TARGETS / sizeof *BUNDLE_TARGETS)
 };
+/* Whether each line of `undefined` names a symbol target `t`'s runtime
+ * defines. */
+static bool bundle_runtime_defines(int t, const char *undefined)
+{
+    for (const char *at = undefined; *at;) {
+        size_t length = strcspn(at, "\n");
+        bool defined = false;
+        for (int i = 0; i < BUNDLE_RUNTIME_SYMBOLS && BUNDLE_TARGETS[t].defines[i];
+             i++) {
+            const char *symbol = BUNDLE_TARGETS[t].defines[i];
+            defined = defined ||
+                      (strlen(symbol) == length && !strncmp(at, symbol, length));
+        }
+        if (!defined) {
+            return false;
+        }
+        at += length + (at[length] == '\n');
+    }
+    return true;
+}
 /* The modules bundled so far, which number each one's objects: generated
  * modules share some corpus cases' names. */
 static int bundled_modules;
@@ -13884,8 +13956,7 @@ static bool bundle_module(
     REQUIRE(list);
     bool built = true;
     for (int level = 0; level < 3; level += 2) {
-        char file[128], object[PATH_MAX], module[PATH_MAX],
-            undefined[NATIVE_OUTPUT], allowed[64] = "";
+        char file[128], object[PATH_MAX], module[PATH_MAX], undefined[NATIVE_OUTPUT];
         snprintf(file, sizeof file, "%d-%s-%d.o", bundled_modules, name, level);
         snprintf(
             object,
@@ -13895,12 +13966,9 @@ static bool bundle_module(
             BUNDLE_TARGETS[t].directory,
             file
         );
-        if (BUNDLE_TARGETS[t].runtime) {
-            snprintf(allowed, sizeof allowed, "%s\n", BUNDLE_TARGETS[t].runtime);
-        }
         built = native_object(directory, label, ir, adapter, level, object, module, undefined) &&
                 bundle_module_targets(module, t);
-        if (built && *undefined && strcmp(undefined, allowed)) {
+        if (built && !bundle_runtime_defines(t, undefined)) {
             fprintf(stderr, "%s has undefined symbols: %s\n", object, undefined);
             built = false;
         }
@@ -14473,29 +14541,48 @@ static const struct
       "    return total;\n"
       "}\n",
       1240 },
-    /* A union of the most payloads, which with its tag fills the most
-     * fields a native record holds, all bound in one arm of a function of
-     * nearly the most operands: 1 + 2 + ... + 15, grouped so the producer's
-     * operand recursion stays shallow. */
+    /* Past the bounds the facts once had: a union of 18 variants, one of
+     * 20 payloads all bound in one arm, a record of 20 fields and 17 more
+     * records: 210 + 210 + 1000 + 5. */
     { "widest_union",
       "package scalar\n"
-      "Wide :: union { Empty | All(a: int, b: int, c: int, d: int, e: int, "
-      "f: "
-      "int, g: int, h: int, i: int, j: int,\n"
-      "    k: int, l: int, m: int, n: int, o: int) }\n"
-      "Main :: () -> int { return Sum(Wide.All(1, 2, 3, 4, 5, 6, 7, 8, 9, "
-      "10, "
-      "11, 12, 13, 14, 15)); }\n"
+      "Wide :: union { Empty | All(a: int, b: int, c: int, d: int, e: int, f: "
+      "int, g: int, h: int, i: int, j: int, k: int, l: int, m: int, n: int, o: "
+      "int, p: int, q: int, r: int, s: int, t: int) |\n"
+      "    V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | V11 | V12 | V13 | V14 "
+      "| V15 | V16 | V17 }\n"
+      "Big :: struct { a: int; b: int; c: int; d: int; e: int; f: int; g: int; "
+      "h: int; i: int; j: int; k: int; l: int; m: int; n: int; o: int; p: int; "
+      "q: int; r: int; s: int; t: int; }\n"
+      "R1 :: struct { x: int; }\nR2 :: struct { x: int; }\nR3 :: struct { x: "
+      "int; }\nR4 :: struct { x: int; }\nR5 :: struct { x: int; }\nR6 :: "
+      "struct { x: int; }\nR7 :: struct { x: int; }\nR8 :: struct { x: int; "
+      "}\nR9 :: struct { x: int; }\nR10 :: struct { x: int; }\nR11 :: struct { "
+      "x: int; }\nR12 :: struct { x: int; }\nR13 :: struct { x: int; }\nR14 :: "
+      "struct { x: int; }\nR15 :: struct { x: int; }\nR16 :: struct { x: int; "
+      "}\nR17 :: struct { x: int; }\n"
+      "Main :: () -> int { r: R17 = {x: 5}; return Sum(Wide.All(1, 2, 3, 4, 5, "
+      "6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)) + Fields() + "
+      "Sum(Wide.V17) + r.x; }\n"
       "Sum :: (w: Wide) -> int {\n"
       "    switch w {\n"
       "        case .Empty: return 0;\n"
-      "        case .All(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o):\n"
-      "            return (a + b + c + d + e) + (f + g + h + i + j) + (k + "
-      "l + "
-      "m + n + o);\n"
+      "        case .All(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, "
+      "s, t):\n"
+      "            return (a + b + c + d + e) + (f + g + h + i + j) + (k + l + "
+      "m + n + o) + (p + q + r + s + t);\n"
+      "        case .V17: return 1000;\n"
+      "        case: return -1;\n"
       "    }\n"
+      "}\n"
+      "Fields :: () -> int {\n"
+      "    b: Big = {a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: "
+      "10, k: 11, l: 12, m: 13, n: 14, o: 15, p: 16, q: 17, r: 18, s: 19, t: "
+      "20};\n"
+      "    return (b.a + b.b + b.c + b.d + b.e) + (b.f + b.g + b.h + b.i + "
+      "b.j) + (b.k + b.l + b.m + b.n + b.o) + (b.p + b.q + b.r + b.s + b.t);\n"
       "}\n",
-      120 },
+      1425 },
     /* Strings: literals, parameters, results, locals, assignments,
      * defaults and arguments, compared by their bytes with == and !=,
      * including the empty string, a prefix, a last byte that differs,
@@ -16171,35 +16258,35 @@ static bool switches_agree(const char *directory)
     REQUIRE(agreed);
     return true;
 }
-/* A function at the facts bounds whose loops take the most native slots:
- * eight parameters, SCALAR_MAX_LOCALS reversed exclusive ranges of 13 slots
- * each, then an assignment of a logical chain that fills the remaining
- * operands, then a return, 248 of llvm_native's 256 slots. Its native
- * lowering must still fit llvm_native's tables. */
+/* A function well past the bounds the facts once had: twelve parameters,
+ * WIDE_LOOPS reversed exclusive ranges, then WIDE_CHAINS assignments of a
+ * logical chain of five reads, then a return. Short chains keep stage zero's
+ * operand recursion within its 64 calls. */
+enum
+{
+    WIDE_LOOPS = 40,
+    WIDE_CHAINS = 20
+};
 static bool widest_loops_agree(const char *directory)
 {
-    char source[2048];
+    char source[4096];
     int at = snprintf(
         source,
         sizeof source,
-        "package scalar\nMain :: () -> int { return Wide(1, 3, true, 0, 0, "
-        "0, "
-        "0, 0); }\n"
-        "Wide :: (a: int, b: int, c: bool, d: int, e: int, f: int, g: int, "
-        "h: "
-        "int) -> int {\n"
+        "package scalar\nMain :: () -> int { return Wide(1, 3, true, 0, 0, 0, "
+        "0, 0, 0, 0, 0, 12); }\n"
+        "Wide :: (a: int, b: int, c: bool, d: int, e: int, f: int, g: int, h: "
+        "int, i: int, j: int, k: int, l: int) -> int {\n"
     );
-    for (int i = 0; i < SCALAR_MAX_LOCALS; i++) {
-        at += snprintf(source + at, sizeof source - (size_t)at, "    for < i in a..<b {}\n");
+    for (int i = 0; i < WIDE_LOOPS; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, "    for < n in a..<b {}\n");
     }
-    /* Each range has two operands, the chain 2k - 1 for k reads of c, and
-     * the return one. */
-    at += snprintf(source + at, sizeof source - (size_t)at, "    c = c");
-    for (int i = 1; i < (SCALAR_MAX_OPERANDS - 2 * SCALAR_MAX_LOCALS) / 2; i++) {
-        at += snprintf(source + at, sizeof source - (size_t)at, " && c");
+    for (int i = 0; i < WIDE_CHAINS; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, "    c = c && c && c && c && c;\n");
     }
-    snprintf(source + at, sizeof source - (size_t)at, ";\n    return a;\n}\n");
-    scalar_call call = { .probe = { "widest", "Main", 0, { 0 }, 1 } };
+    snprintf(source + at, sizeof source - (size_t)at, "    return a + l;\n}\n");
+    assert(strlen(source) < sizeof source - 1);
+    scalar_call call = { .probe = { "widest", "Main", 0, { 0 }, 13 } };
     REQUIRE(width_module_agrees(directory, 0, "widest", source, &call, 1));
     return true;
 }
@@ -16452,73 +16539,28 @@ static bool recursion_overflows_by_name(const char *directory)
     return true;
 }
 
-/* A function of `locals` locals, then `assignments` assignments, then a
- * return: one statement each. */
-static void bounded_source(char *source, size_t size, int locals, int assignments)
+/* A function of LONG_LOCALS locals, then LONG_ASSIGNMENTS assignments, then a
+ * return, one statement each, well past the bounds the facts once had. */
+enum
 {
-    int at = snprintf(source, size, "package scalar\nMain :: () -> int {\n");
-    for (int i = 0; i < locals; i++) {
-        at += snprintf(source + at, size - (size_t)at, "    x%d := %d;\n", i, i);
-    }
-    for (int i = 0; i < assignments; i++) {
-        at += snprintf(source + at, size - (size_t)at, "    x0 = %d;\n", i);
-    }
-    snprintf(source + at, size - (size_t)at, "    return x0;\n}\n");
-}
-/* `rows` with the two rows from `at` repeated after them. */
-static bool repeated_rows(pin_value *rows, int at, pin_value *longer)
+    LONG_LOCALS = 40,
+    LONG_ASSIGNMENTS = 100
+};
+static bool long_functions_agree(const char *directory)
 {
-    const pin_array *array = rows->ptr;
-    pin_array *copy = pin_array_snapshot_like(&detached, array, array->count + 2);
-    for (int i = 0; i < copy->count; i++) {
-        pin_value item = pin_array_get(array, i < at + 2 ? i : i - 2);
-        REQUIRE(!pin_array_snapshot_set(&detached, copy, i, &item));
+    char source[4096];
+    int at = snprintf(source, sizeof source, "package scalar\nMain :: () -> int {\n");
+    for (int i = 0; i < LONG_LOCALS; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, "    x%d := %d;\n", i, i);
     }
-    *longer = *rows;
-    longer->ptr = copy;
-    return true;
-}
-/* Main's statements and locals reach the facts bounds on both VMs, and one
- * more of either is rejected with its bound, by the producer and, for
- * statements, by the consumer. */
-static bool statement_bounds_agree()
-{
-    static const struct
-    {
-        int locals, assignments;
-        const char *message;
-    } BOUNDS[] = {
-        { SCALAR_MAX_LOCALS, SCALAR_MAX_STATEMENTS - SCALAR_MAX_LOCALS - 1, NULL },
-        { SCALAR_MAX_LOCALS + 1, 0, "scalar proof admits at most 16 locals per function" },
-        { 1, SCALAR_MAX_STATEMENTS - 1, "scalar proof admits at most 32 statements per function" }
-    };
-    char source[2048];
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < (int)(sizeof BOUNDS / sizeof *BOUNDS); i++) {
-            bounded_source(source, sizeof source, BOUNDS[i].locals, BOUNDS[i].assignments);
-            pin_value rows;
-            REQUIRE(collected_rows(b, "bounds", text(source), &rows));
-            char *ir;
-            REQUIRE(emitted_ir(b, &rows, &ir));
-            const pin_array *array = rows.ptr;
-            const char *message = pin_text(scalar_field(&array->items[1], "text"))
-                                      .bytes;
-            REQUIRE(BOUNDS[i].message ? !ir && !strcmp(message, BOUNDS[i].message) : ir != NULL);
-            free(ir);
-            if (!BOUNDS[i].message) {
-                /* An assignment and its literal, after the source,
-                 * document, function and each local's two rows. */
-                pin_value longer;
-                REQUIRE(repeated_rows(&rows, 3 + 2 * SCALAR_MAX_LOCALS, &longer));
-                REQUIRE(
-                    scalar_field(guard_row(&rows, 3 + 2 * SCALAR_MAX_LOCALS), "kind")
-                        .i == SCALAR_ASSIGN_ROW
-                );
-                REQUIRE(validated(b, &rows, "") && validated(b, &longer, LAYOUT));
-            }
-            arena_free(&detached);
-        }
+    for (int i = 0; i < LONG_ASSIGNMENTS; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, "    x0 = x%d + %d;\n", i % LONG_LOCALS, i);
     }
+    snprintf(source + at, sizeof source - (size_t)at, "    return x0;\n}\n");
+    assert(strlen(source) < sizeof source - 1);
+    /* The last assignment reads x19 and adds 99. */
+    scalar_call call = { .probe = { "long", "Main", 0, { 0 }, 118 } };
+    REQUIRE(width_module_agrees(directory, 0, "long", source, &call, 1));
     return true;
 }
 /* A new directory for the native builds' files. */
@@ -16595,14 +16637,8 @@ TEST_CASE(native_bundle_starts_empty)
         if (!started || !BUNDLE_TARGETS[t].runtime) {
             continue;
         }
-        char ir[256], object[PATH_MAX], module[PATH_MAX], undefined[NATIVE_OUTPUT];
-        snprintf(
-            ir,
-            sizeof ir,
-            "target triple = \"%s\"\n@%s = dso_local global i32 0\n",
-            BUNDLE_TARGETS[t].triple,
-            BUNDLE_TARGETS[t].runtime
-        );
+        char ir[128], object[PATH_MAX], module[PATH_MAX], undefined[NATIVE_OUTPUT];
+        snprintf(ir, sizeof ir, "target triple = \"%s\"\n", BUNDLE_TARGETS[t].triple);
         snprintf(
             object,
             sizeof object,
@@ -16610,7 +16646,7 @@ TEST_CASE(native_bundle_starts_empty)
             bundle_root(),
             BUNDLE_TARGETS[t].directory
         );
-        started = native_object(directory, "runtime", ir, "", 0, object, module, undefined) &&
+        started = native_object(directory, "runtime", ir, BUNDLE_TARGETS[t].runtime, 0, object, module, undefined) &&
                   !*undefined && bundle_module_targets(module, t);
     }
     REQUIRE(remove_native_files(directory) && started);
@@ -16926,9 +16962,26 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
     REQUIRE(remove_native_files(directory) && agreed);
     return true;
 }
+/* Whether `manifest` exports Small, whose entry gives 19 through Wide, and
+ * not Wide, whose parameters no entry takes. */
+static bool exports_small_alone(const execution_native_manifest *manifest)
+{
+    const execution_native_export *small = NULL;
+    for (int i = 0; i < manifest->count; i++) {
+        REQUIRE(strcmp(manifest->exports[i].name, "Wide"));
+        if (!strcmp(manifest->exports[i].name, "Small")) {
+            small = &manifest->exports[i];
+        }
+    }
+    REQUIRE(small && small->parameter_count == 0);
+    uint64_t result = 0;
+    small->entry(NULL, &result);
+    REQUIRE(result == 19);
+    return true;
+}
 /* NATIVE_CALLS_LIBRARY compiled natively at O0 and O2: its object's
- * manifest names every function, and bound to the library's module it gives
- * a running Probe the VM's states. */
+ * manifest names every function an entry can take, and bound to the
+ * library's module it gives a running Probe the VM's states. */
 static bool library_runs_in_a_scene(const char *directory)
 {
     pin_value rows;
@@ -16948,7 +17001,8 @@ static bool library_runs_in_a_scene(const char *directory)
         const execution_native_manifest *manifest = opened ? dlsym(opened, "chibi_natives_Native")
                                                            : NULL;
         agreed = manifest && manifest->abi == EXECUTION_NATIVE_ABI &&
-                 manifest->count == 4 && native_calls_agree(manifest);
+                 manifest->count == 5 && exports_small_alone(manifest) &&
+                 native_calls_agree(manifest);
         if (opened) {
             dlclose(opened);
         }
@@ -16981,7 +17035,7 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
     agreed = agreed && folded_sources_agree(directory) &&
              folded_overflow_rejected() && widths_agree(directory) &&
              floats_agree(directory) && control_agrees(directory) &&
-             statement_bounds_agree() && loops_agree(directory) &&
+             long_functions_agree(directory) && loops_agree(directory) &&
              widest_loops_agree(directory) && switches_agree(directory) &&
              endless_loops_hang(directory) && recursion_agrees(directory) &&
              recursion_overflows_by_name(directory) &&

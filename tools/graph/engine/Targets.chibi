@@ -3513,6 +3513,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/component_write_ir.c", "test/language/component_write_source.c",
         "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
         "test/language/docs_markdown.c", "test/language/effect_analysis_chibi.c",
+        "test/language/effects.c",
         "test/language/execution.c", "test/language/execution_scope.c", "test/language/generic.c",
         "test/language/inferred_string_arrays.c", "test/language/integer_semantics.c",
         "test/language/lexical_binding_chibi.c",

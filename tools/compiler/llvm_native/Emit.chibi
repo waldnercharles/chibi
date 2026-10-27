@@ -173,7 +173,7 @@ FieldType :: (records: Record[], fields: int[], type: int, field: i64) -> int {
 RecordLayout :: (records: Record[], fields: int[]) -> bool {
     first: int = 0;
     for (record in records) {
-        if (record.first != first || record.count < 1) {
+        if (record.first != first || record.count < 1 || record.count > length(fields) - first) {
             return false;
         }
         first += record.count;
@@ -276,8 +276,12 @@ Layout :: (functions: Function[], parameters: int[], slots: int[], locals: int[]
     at: Function = {result: 0, first_parameter: 0, parameters: 0, first_slot: 0, slots: 0, first_local: 0,
                     locals: 0, first_code: 0, code: 0, first_argument: 0, arguments: 0};
     for (item in functions) {
+        // Each count is checked against what remains of its table, so no
+        // sum wraps.
         if (item.parameters < 0 || item.slots < 0 || item.locals < 0 || item.code < 1 || item.arguments < 0 ||
-            item.first_parameter != at.first_parameter ||
+            item.parameters > length(parameters) - at.first_parameter || item.slots > length(slots) - at.first_slot ||
+            item.locals > length(locals) - at.first_local || item.code > length(code) - at.first_code ||
+            item.arguments > length(arguments) - at.first_argument || item.first_parameter != at.first_parameter ||
             item.first_slot != at.first_slot || item.first_local != at.first_local ||
             item.first_code != at.first_code || item.first_argument != at.first_argument) {
             return false;

@@ -178,10 +178,11 @@ Loop :: (kind: int) -> bool {
 }
 // The row after the declaration at `at`: a Record row and its members, or a
 // Union row and its variants, each with its members; -1 when a count is
-// empty or negative or a union's variant row is missing.
+// empty or negative, runs past `rows`, or a union's variant row is missing.
+// Each count is compared with the rows that remain, so no sum wraps.
 After :: (rows: facts.Row[], at: int) -> int {
     count := rows[at].count;
-    if (count < 1) {
+    if (count < 1 || count > length(rows) - at - 1) {
         return -1;
     }
     if (rows[at].kind == facts.RecordRow) {
@@ -189,7 +190,8 @@ After :: (rows: facts.Row[], at: int) -> int {
     }
     next := at + 1;
     for (variant in 0..<count) {
-        if (next >= length(rows) || rows[next].kind != facts.VariantRow || rows[next].count < 0) {
+        if (next >= length(rows) || rows[next].kind != facts.VariantRow || rows[next].count < 0 ||
+            rows[next].count > length(rows) - next - 1) {
             return -1;
         }
         next += rows[next].count + 1;
@@ -314,7 +316,7 @@ Heads :: (rows: facts.Row[], start: int) -> int[] {
     at := start;
     while (at < length(rows)) {
         function := rows[at];
-        if (function.kind != facts.FunctionRow || function.count < 0 || at + function.count + 1 >= length(rows)) {
+        if (function.kind != facts.FunctionRow || function.count < 0 || function.count > length(rows) - at - 2) {
             return empty;
         }
         heads.append(at);
@@ -458,11 +460,13 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             }
         } else if (operand.kind == facts.LogicalRow) {
             base := length(stack) - 1;
+            if (operand.count < 1 || operand.count > last - row - 1) {
+                return "scalar logic differs from its bool operands";
+            }
             end := row + operand.count + 1;
             if (operand.name != "" || operand.type != facts.BoolType ||
-                (operand.value != facts.LogicalAnd && operand.value != facts.LogicalOr) || operand.count < 1 ||
-                end > last || (length(ends) > 0 && end > ends[length(ends) - 1]) || base < floor ||
-                stack[base] != facts.BoolType) {
+                (operand.value != facts.LogicalAnd && operand.value != facts.LogicalOr) ||
+                (length(ends) > 0 && end > ends[length(ends) - 1]) || base < floor || stack[base] != facts.BoolType) {
                 return "scalar logic differs from its bool operands";
             }
             stack = slice(stack, 0, base);

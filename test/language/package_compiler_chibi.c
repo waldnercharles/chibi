@@ -10173,6 +10173,7 @@ static const int GUARD_KINDS[] = {
 };
 enum
 {
+    GUARD_CALLEE = 7,
     GUARD_ROW = 10,
     GUARD_CONDITION = 11,
     GUARD_COMPARE = 13,
@@ -10486,6 +10487,8 @@ static const malformed_guard MALFORMED_GUARDS[] = {
     { { EDIT(GUARD_ROW, "count", 0) }, LAYOUT },
     { { EDIT(GUARD_FINAL, "kind", SCALAR_IF_ROW) }, LAYOUT },
     { { EDIT(GUARD_END, "kind", SCALAR_ELSE_ROW) }, LAYOUT },
+    /* A function whose parameter count would wrap past the rows. */
+    { { EDIT(GUARD_CALLEE, "count", INT32_MAX) }, LAYOUT },
     /* A comparison's operator, arity and result. */
     { { EDIT(GUARD_COMPARE, "value", 0) }, COMPARISON },
     { { EDIT(GUARD_COMPARE, "value", 7) }, COMPARISON },
@@ -10544,6 +10547,7 @@ static const malformed_guard MALFORMED_CONTROL[] = {
     { { EDIT(CONTROL_LOGICAL, "count", 0) }, LOGIC },
     { { EDIT(CONTROL_LOGICAL, "count", 5) }, LOGIC },
     { { EDIT(CONTROL_LOGICAL, "count", 1) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "count", INT32_MAX) }, LOGIC },
     { { EDIT(CONTROL_LOGICAL, "value", 3) }, LOGIC },
     { { EDIT(CONTROL_LOGICAL, "type", SCALAR_INT) }, LOGIC },
     /* A not of an int. */
@@ -10661,6 +10665,7 @@ static const malformed_guard MALFORMED_RECORDS[] = {
     /* A record whose members overrun into the function after them, one
      * with no name, and a record that does not lie where it is declared. */
     { { EDIT(RECORD_DECLARATION, "count", 3) }, MEMBER_ROW },
+    { { EDIT(RECORD_DECLARATION, "count", INT32_MAX) }, RECORD_ROW },
     { { { .row = RECORD_DECLARATION, .field = "name", .text = "", .from = -1 } },
       RECORD_ROW },
     { { EDIT(RECORD_DECLARATION, "type", SCALAR_INT) }, RECORD_ROW },
@@ -10715,6 +10720,8 @@ static const malformed_guard MALFORMED_UNIONS[] = {
     { { { .row = UNION_BOX, .field = "name", .text = "Dot", .from = -1 } }, VARIANT_ROW },
     { { COPY(UNION_BOX, "end", UNION_MAIN) }, VARIANT_ROW },
     { { EDIT(UNION_BOX, "count", 1) }, LAYOUT },
+    { { EDIT(UNION_BOX, "count", INT32_MAX) }, UNION_ROW },
+    { { EDIT(UNION_DECLARATION, "count", INT32_MAX) }, UNION_ROW },
     /* A payload numbered as another, of a record type, named as another in
      * its variant, or outside its variant. */
     { { EDIT(UNION_H, "value", 0) }, PAYLOAD_ROW },
@@ -11917,6 +11924,14 @@ static bool native_records_emit(int b)
     REQUIRE(native_rejects(b, &m, layout));
     m = record_module(RECORD_CODE);
     m.fields = nested;
+    REQUIRE(native_rejects(b, &m, layout));
+    /* Counts whose sum wraps back to the field table's length. */
+    static const native_record wrapped[] = { { 0, INT32_MAX },
+                                             { INT32_MAX, INT32_MAX },
+                                             { -2, 4 } };
+    m = record_module(RECORD_CODE);
+    m.records = wrapped;
+    m.record_count = 3;
     REQUIRE(native_rejects(b, &m, layout));
     return true;
 }

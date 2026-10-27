@@ -875,7 +875,8 @@ Files :: (target: string) -> string[] {
     }
     if (target == "test_tools") {
         return [
-            "test/tools/main.c", "test/tools/graph_dispatch.c", "test/tools/prepared.c",
+            "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
+            "test/tools/graph_dispatch.c", "test/tools/prepared.c",
             "test/tools/fixture.c", "test/tools/execution_policy.c", "test/tools/package.c",
             "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
             "test/tools/package_ownership.c",

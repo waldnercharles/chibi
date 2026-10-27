@@ -11334,6 +11334,11 @@ typedef struct native_module
     int field_count;
     const char *const *texts;
     int text_count;
+    /* Line tables: the source file, or NULL for none, its directory, each
+     * function's name and each code row's line and column. */
+    const char *file, *directory;
+    const char *const *names;
+    const int *lines, *columns;
 } native_module;
 static const char NATIVE_PACKAGE[] = "project:llvm_native";
 static pin_value native_ints(const int *values, int count)
@@ -11478,11 +11483,18 @@ static bool native_result(int b, const char *function, pin_value *args, int coun
 /* Emits m as a module of internal functions under budget 1. */
 static bool native_emit(int b, const native_module *m, const pin_union **out)
 {
-    pin_value args[12];
+    pin_value args[16];
     REQUIRE(native_tables(b, m, args));
-    args[10] = (pin_value){ .type = PIN_BOOL, .b = false };
-    args[11] = (pin_value){ .type = PIN_I32, .i = 1 };
-    return native_result(b, "Emit", args, 12, out);
+    args[10] = record_row(&consumer, b, NATIVE_PACKAGE, "Source");
+    REQUIRE(put_value(&args[10], "file", text(m->file ? m->file : "")));
+    REQUIRE(put_value(&args[10], "directory", text(m->directory ? m->directory : "")));
+    int placed = m->file ? m->code_count : 0;
+    args[11] = strings(m->names, m->file ? m->function_count : 0);
+    args[12] = native_ints(m->lines, placed);
+    args[13] = native_ints(m->columns, placed);
+    args[14] = (pin_value){ .type = PIN_BOOL, .b = false };
+    args[15] = (pin_value){ .type = PIN_I32, .i = 1 };
+    return native_result(b, "Emit", args, 16, out);
 }
 /* Emits m as the library `name` under budget 1, its functions named and
  * identified by `names` and `ids`, `count` of each. */
@@ -11954,6 +11966,116 @@ static bool native_rejects_text_change(int b, native_change change, const char *
     native_module m = text_module(code);
     return native_rejects(b, &m, message);
 }
+/* Whether every instruction line of `ir` has a location. */
+static bool located(pin_string ir)
+{
+    for (size_t at = 0; at < ir.length;) {
+        const char *end = memchr(ir.bytes + at, '\n', ir.length - at);
+        size_t length = end ? (size_t)(end - (ir.bytes + at)) : ir.length - at;
+        pin_string line = { ir.bytes + at, length };
+        if (length > 2 && !memcmp(line.bytes, "  ", 2) && !contains(line, ", !dbg !")) {
+            return false;
+        }
+        at += length + 1;
+    }
+    return true;
+}
+/* Pick's call module with line tables, as rustc's line-tables-only: each
+ * function is a subprogram under its source name, every instruction is at
+ * its code row's position, and the entry and trap blocks at its first row's.
+ * Without a file, the module has no debug information. */
+static bool native_lines_place_code(int b)
+{
+    static const char *const names[] = { "Main", "Pick" };
+    static const int lines[] = { 2, 3, 3, 3, 3, 3, 3, 6, 7, 7, 7 },
+                     columns[] = { 1, 17, 20, 26, 12, 5, 5, 1, 5, 5, 5 };
+    native_module m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
+    pin_string plain;
+    REQUIRE(native_text(b, &m, &plain));
+    REQUIRE(!contains(plain, "!dbg") && !contains(plain, "!llvm"));
+    m.file = "Main.chibi";
+    m.directory = "/game \"x\"";
+    m.names = names;
+    m.lines = lines;
+    m.columns = columns;
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    static const char *const expected[] = {
+        "define i32 @chibi_scalar() #0 !dbg !6 {\nentry:\n  %budget0 = alloca "
+        "i32, !dbg !8\n",
+        "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) "
+        "#0 !dbg !7 {\nentry:\n"
+        "  %budget0 = alloca i32, !dbg !15\n",
+        "%v4 = call i32 @chibi_scalar.1(i32 %c4_0, i1 %c4_1, i32 %c4_2), !dbg "
+        "!12\n",
+        "trap:\n  call void @llvm.trap(), !dbg !8\n  unreachable, !dbg !8\n",
+        "trap:\n  call void @llvm.trap(), !dbg !15\n",
+        "!llvm.dbg.cu = !{!0}\n!llvm.module.flags = !{!2, !3}\n",
+        "!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, "
+        "producer: \"chibi\", "
+        "isOptimized: false, runtimeVersion: 0, emissionKind: "
+        "LineTablesOnly)\n",
+        "!1 = !DIFile(filename: \"Main.chibi\", directory: \"/game "
+        "\\22x\\22\")\n",
+        "!2 = !{i32 7, !\"Dwarf Version\", i32 4}\n!3 = !{i32 2, !\"Debug Info "
+        "Version\", i32 3}\n",
+        "!4 = !DISubroutineType(types: !5)\n!5 = !{}\n",
+        "!6 = distinct !DISubprogram(name: \"Main\", linkageName: "
+        "\"chibi_scalar\", scope: !1, file: !1, "
+        "line: 2, type: !4, scopeLine: 2, spFlags: DISPFlagDefinition, unit: "
+        "!0)\n",
+        "!7 = distinct !DISubprogram(name: \"Pick\", linkageName: "
+        "\"chibi_scalar.1\", scope: !1, file: !1, "
+        "line: 6, type: !4, scopeLine: 6, spFlags: DISPFlagLocalToUnit | "
+        "DISPFlagDefinition, unit: !0)\n",
+        "!12 = !DILocation(line: 3, column: 12, scope: !6)\n",
+        "!18 = !DILocation(line: 7, column: 5, scope: !7)\n",
+    };
+    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
+        REQUIRE(contains(ir, expected[i]));
+    }
+    REQUIRE(located(ir) && !contains(ir, "!19 ="));
+    /* A function without a name, or a position before the source, has no
+     * line table. */
+    static const char *const unnamed[] = { "Main", "" };
+    static const int before[] = { 2, 3, 3, 3, 3, 3, 3, 6, -1, 7, 7 };
+    static const char rejected[] = "native line table differs from its module";
+    m.names = unnamed;
+    REQUIRE(native_rejects(b, &m, rejected));
+    m.names = names;
+    m.lines = before;
+    REQUIRE(native_rejects(b, &m, rejected));
+    m.lines = lines;
+    m.columns = before;
+    REQUIRE(native_rejects(b, &m, rejected));
+    /* The string comparison helper is artificial, at line 0. */
+    static const char *const text_names[] = { "Main" };
+    static const int text_lines[] = { 1, 2, 2, 2, 2, 2 };
+    native_module strings_module = text_module(TEXT_CODE);
+    strings_module.file = "Main.chibi";
+    strings_module.directory = "/game";
+    strings_module.names = text_names;
+    strings_module.lines = text_lines;
+    strings_module.columns = text_lines;
+    REQUIRE(native_text(b, &strings_module, &ir));
+    static const char *const helper[] = {
+        "define internal i1 @chibi_scalar.text_equal({ ptr, i32 } %a, { ptr, "
+        "i32 } %b) #0 !dbg !7 {\n",
+        "  %index = phi i32 [ 0, %entry ], [ %next, %byte ], !dbg !14\n",
+        "!7 = distinct !DISubprogram(name: \"chibi_scalar.text_equal\", scope: "
+        "!1, file: !1, line: 0, "
+        "type: !4, scopeLine: 0, flags: DIFlagArtificial, spFlags: "
+        "DISPFlagLocalToUnit | DISPFlagDefinition, "
+        "unit: !0)\n",
+        "!13 = !DILocation(line: 2, column: 2, scope: !6)\n!14 = "
+        "!DILocation(line: 0, scope: !7)\n",
+    };
+    for (size_t i = 0; i < sizeof helper / sizeof *helper; i++) {
+        REQUIRE(contains(ir, helper[i]));
+    }
+    REQUIRE(located(ir));
+    return true;
+}
 static bool native_strings_emit(int b)
 {
     pin_value type;
@@ -12213,6 +12335,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_recursion_probes_the_stack(b));
         REQUIRE(native_records_emit(b));
         REQUIRE(native_strings_emit(b));
+        REQUIRE(native_lines_place_code(b));
         REQUIRE(native_cycles_run_unchecked(b));
         REQUIRE(native_floats_emit(b));
         REQUIRE(native_rejects_floats(b));

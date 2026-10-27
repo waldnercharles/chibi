@@ -241,6 +241,21 @@ static const char driver_experiment
          "        options = json.loads(sys.argv[5])\n"
          "        experiment.flags(**options)\n"
          "        sys.exit(0)\n"
+         "    if action == 'experiment-build-output':\n"
+         "        command = experiment.build_command(Path(root))\n"
+         "        print(json.dumps(command), flush=True)\n"
+         "        native = command[command.index('--') + 1:] if '--' in "
+         "command else []\n"
+         "        if sys.argv[5] == 'unsynchronized': native = []\n"
+         "        for name in ('a', 'b'):\n"
+         "            Path(root, name + '-ready').unlink(missing_ok=True)\n"
+         "        result = subprocess.run(['make', '-f', root + '/output.mk',\n"
+         "            '-j4', *native], cwd=root, stdout=subprocess.PIPE,\n"
+         "            stderr=subprocess.STDOUT, text=True, timeout=5)\n"
+         "        print('status', result.returncode)\n"
+         "        print('intact', sum(line in ('a' * 12000, 'b' * 12000)\n"
+         "            for line in result.stdout.splitlines()))\n"
+         "        sys.exit(0)\n"
          "    if action == 'experiment-verify':\n"
          "        experiment.verify(Path(root) / 'build', Path(root), 1)\n"
          "        sys.exit(0)\n"
@@ -1844,6 +1859,42 @@ static void experiment_evidence(bool complete, bool exported, bool database)
     tool_write(name, "CHIBI_THIRD_PARTY_DIR:INTERNAL=/same/archive\n");
 }
 
+TEST_CASE(debug_experiment_parallel_build_output)
+{
+#ifdef __linux__
+    char filename[PATH_MAX];
+    path(filename, "output.py");
+    tool_write(
+        filename,
+        "import os, pathlib, sys, time\n"
+        "name = sys.argv[1]\n"
+        "os.write(1, (name * 6000).encode())\n"
+        "pathlib.Path(name + '-ready').touch()\n"
+        "deadline = time.monotonic() + 3\n"
+        "while not all(pathlib.Path(n + '-ready').exists() for n in ('a', "
+        "'b')):\n"
+        "    if time.monotonic() >= deadline: sys.exit(2)\n"
+        "    time.sleep(.001)\n"
+        "os.write(1, (name * 6000 + '\\n').encode())\n"
+    );
+    path(filename, "output.mk");
+    tool_write(filename, ".PHONY: all a b\nall: a b\na b:\n\t@python3 output.py $@\n");
+    REQUIRE(run("experiment-build-output", "unsynchronized") == 0);
+    char *log = tool_read(logpath);
+    bool interleaved = strstr(log, "status 0\nintact 0\n");
+    free(log);
+    REQUIRE(interleaved);
+    REQUIRE(run("experiment-build-output", "synchronized") == 0);
+    log = tool_read(logpath);
+    bool correct = strstr(log, "\"--parallel\", \"4\"") &&
+                   strstr(log, "\"--\", \"--output-sync=target\"") &&
+                   strstr(log, "status 0\nintact 2\n");
+    free(log);
+    REQUIRE(correct);
+#endif
+    return true;
+}
+
 TEST_CASE(debug_experiment_compilation_evidence)
 {
     experiment_evidence(true, true, true);
@@ -1911,6 +1962,7 @@ void test_tool_test_policy()
 {
     set_up();
     RUN_TEST_CASE(debug_experiment_flags);
+    RUN_TEST_CASE(debug_experiment_parallel_build_output);
     RUN_TEST_CASE(debug_experiment_compilation_evidence);
     RUN_TEST_CASE(debug_experiment_cancellation_and_failure_clean_up);
     RUN_TEST_CASE(asset_language_cases_are_in_the_actual_ci_group);

@@ -1164,6 +1164,35 @@ TEST_CASE(ci_linux_optimization_preserves_explicit_o0)
     return true;
 }
 
+TEST_CASE(ci_main_push_finishes_before_newest_pending_run)
+{
+    char workflow[PATH_MAX];
+    snprintf(workflow, sizeof workflow, "%s/.github/workflows/ci.yml", tool_root());
+    char *text = tool_read(workflow);
+    REQUIRE(text);
+    char *block = strstr(text, "\nconcurrency:\n");
+    char *end = block ? strstr(block, "\nenv:\n") : NULL;
+    bool scoped = block && end;
+    if (end) {
+        *end = '\0';
+    }
+    const char
+        *group = "  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ "
+                 "github.event_name }}-${{ (github.event_name == 'schedule' || "
+                 "inputs.sanitizers == true) && 'sanitizer' || 'fast' }}\n";
+    const char
+        *cancel = "  cancel-in-progress: ${{ github.event_name != 'push' || "
+                  "github.ref != 'refs/heads/main' }}\n";
+    bool isolated = scoped && strstr(block, group);
+    bool main_finishes = scoped && strstr(block, cancel);
+    bool single_pending = scoped && !strstr(block, "queue:");
+    free(text);
+    REQUIRE(isolated);
+    REQUIRE(main_finishes);
+    REQUIRE(single_pending);
+    return true;
+}
+
 TEST_CASE(ci_preserves_failed_macos_graph_stage_log)
 {
     char workflow[PATH_MAX];
@@ -2294,6 +2323,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
     RUN_TEST_CASE(ci_generator_hosts_resolve_symlink_root);
     RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);
+    RUN_TEST_CASE(ci_main_push_finishes_before_newest_pending_run);
     RUN_TEST_CASE(ci_preserves_failed_macos_graph_stage_log);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);

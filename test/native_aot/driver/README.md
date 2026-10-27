@@ -109,10 +109,11 @@ quadratic remainder-slicing, for canonical metadata. Existing 16MiB text and
 
 `Build` links Linux x86-64 programs with `ld.lld` alone. The program's only
 runtime is `start.ll`, which the driver writes and compiles with the same `llc`
-arguments as the module: `_start` clears the frame pointer, calls the module's
+arguments as the module. Like Odin's no-CRT `_start` and musl's `crt1`, it
+clears the frame pointer, aligns the stack down to 16 bytes, calls the module's
 entry `chibi_scalar() -> i32` as `scalar_llvm` emits it, and passes the result
-to the `exit_group` system call. The kernel starts `_start` with a 16-byte
-aligned stack, so the call gives the entry its ABI alignment. Emitted scalar
+to the `exit_group` system call. The link line follows rustc's direct `ld.lld`
+flavor (`-flavor gnu`, `--gc-sections`, `-static`). Emitted scalar
 objects have no undefined symbols, so the static link needs no C library,
 startup file or compiler driver, and an empty `PATH` changes nothing. Programs
 that overflow their stack end with the system's SIGSEGV, as before (D4).

@@ -58,13 +58,6 @@ Nest :: (depth: int) -> string {
     return format_text("package scalar\nMain :: () -> int { return {}; }\nId :: (x: int) -> int { return x; }\n",
                        Nested(depth));
 }
-// Main guarding on Small(Id(...(1))) with `condition` nested calls of Id,
-// then returning `arm` nested calls of Id in its arm: operands across both
-// segments count against one bound.
-Split :: (condition: int, arm: int) -> string {
-    return format_text("package scalar\nMain :: () -> int { if (Small({})) { return {}; } return 0; }\nSmall :: (x: int) -> bool { return x < 2; }\nId :: (x: int) -> int { return x; }\n",
-                       Nested(condition), Nested(arm));
-}
 // Main returning 1, then a comment that pads the source to `size` bytes.
 Padded :: (size: int) -> string {
     text := "package scalar\nMain :: () -> int { return 1; }\n//";
@@ -108,26 +101,28 @@ Cases :: () -> Case[] {
         Accepted("extra_return", "package scalar\nMain :: () -> int { return 42; return 0; }", 42, "Main", "return 42 return 0"),
         Rejected("unknown_call", "package scalar\nMain :: () -> int { return unknown(); }", "Unknown function 'unknown'", "unknown"),
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
-        Rejected("reference", "package scalar\nMain :: (x: ref int) -> int { return 42; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "x: ref int"),
+        Rejected("reference", "package scalar\nMain :: (x: ref int) -> int { return 42; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "x: ref int"),
         Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
         Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int", "i64"),
-        Rejected("array_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "int[]"),
+        Rejected("array_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "int[]"),
         Rejected("nominal_result", "package scalar\nMain :: () -> Missing { return 42; }", "result type is not supported yet", "Missing"),
-        Rejected("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "(x: int)"),
+        Accepted("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", 42, "Main", "x := x return 42"),
         Rejected("struct", "package scalar\nValue :: struct { x: string; }\nMain :: () -> int { return 42; }", "scalar proof requires number and bool record fields", "x: string;"),
-        Rejected("constant", "package scalar\nN: int : 42;\nMain :: () -> int { return 42; }", "scalar proof supports only ordinary function, record and union declarations", "N: int : 42;"),
+        // A package constant is its folded value: alone, and in a folded
+        // expression.
+        Accepted("constant", "package scalar\nN: int : 40;\nHalf: number : 0.5;\nMain :: () -> int {\n    if (Half < 1.0) { return Add(N, N / 20); }\n    return 0;\n}\nAdd :: (a: int, b: int) -> int { return a + b; }\n", 42, "Main,Add", "if Half ; 1.0 ; Half < 1.0 return N ; N / 20 ; Add(N, N / 20) end return 0 | return a ; b ; a + b"),
         Accepted("second_function", "package scalar\nMain :: () -> int { return 42; }\nOther :: () -> int { return 0; }", 42, "Main,Other", "return 42 | return 0"),
         Rejected("import", "package scalar\nimport missing \"project:missing\"\nMain :: () -> int { return 42; }", "Imported package is missing from the snapshot", "\"project:missing\""),
         Rejected("attribute_test", "package scalar\n@test Main :: () -> int { return 42; }", "scalar proof does not support function attributes", "@test"),
         Rejected("attribute_pure", "package scalar\n@pure Main :: () -> int { return 42; }", "scalar proof does not support function attributes", "@pure"),
         Rejected("empty", "package scalar\nMain :: () -> int {}", "Missing return", "{}"),
         Rejected("bare_return", "package scalar\nMain :: () -> int { return; }", "return needs a value", "return;"),
-        Rejected("no_result", "package scalar\nMain :: () { return; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "Main :: () { return; }"),
+        Rejected("no_result", "package scalar\nMain :: () { return; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "Main :: () { return; }"),
         Rejected("no_function", "package scalar\n", "scalar proof requires at least one function", "package scalar\n"),
         Rejected("malformed", "package scalar\nMain :: () -> int { return 42;", "Expected }", ""),
         Rejected("nul", "package scalar\nMain :: () -> int { return 42; }\u0000", "Package source contains NUL bytes", "\u0000"),
-        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "string"),
-        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "[int: int]"),
+        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires its first function to return int", "string"),
+        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "[int: int]"),
         Rejected("assert_before", "package scalar\nMain :: () -> int { assert(false); return 42; }", "scalar proof supports only locals, assignments, if statements, switches, loops and returns", "assert(false);"),
         Rejected("return_outcome", "package scalar\nMain :: () -> int { return .Done 42; }", "scalar proof does not support return outcomes", "Done"),
         Accepted("float_one", "package scalar\nMain :: () -> int { return 1.0; }", 1, "Main", "return 1.0"),
@@ -143,7 +138,7 @@ Cases :: () -> Case[] {
         Accepted("repeated", "package scalar\nMain :: () -> int { return Second(Id(1), Id(2)); }\nId :: (x: int) -> int { return x; }\nSecond :: (a: int, b: int) -> int { return b; }", 2, "Main,Id,Second", "return 1 ; Id(1) ; 2 ; Id(2) ; Second(Id(1), Id(2)) | return x | return b"),
         Accepted("nested", "package scalar\nMain :: () -> int { return Third(1, Second(2, 3), Third(4, 5, 6)); }\nSecond :: (a: int, b: int) -> int { return b; }\nThird :: (a: int, b: int, c: int) -> int { return c; }", 6, "Main,Second,Third", "return 1 ; 2 ; 3 ; Second(2, 3) ; 4 ; 5 ; 6 ; Third(4, 5, 6) ; Third(1, Second(2, 3), Third(4, 5, 6)) | return b | return c"),
         Accepted("same_spelling", "package scalar\nMain :: () -> int { return Value(21); }\nValue :: (Value: int) -> int { return Value; }", 21, "Main,Value", "return 21 ; Value(21) | return Value"),
-        Accepted("eight_parameters", "package scalar\nMain :: () -> int { return P(1, 2, 3, 4, 5, 6, 7, 8); }\nP :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int { return g; }", 7, "Main,P", "return 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; P(1, 2, 3, 4, 5, 6, 7, 8) | return g"),
+        Accepted("twelve_parameters", "package scalar\nMain :: () -> int { return P(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12); }\nP :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int, j: int, k: int, l: int) -> int { return k; }", 11, "Main,P", "return 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 10 ; 11 ; 12 ; P(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) | return k"),
         Accepted("int_max_argument", "package scalar\nMain :: () -> int { return Id(2147483647); }\nId :: (x: int) -> int { return x; }", 2147483647, "Main,Id", "return 2147483647 ; Id(2147483647) | return x"),
         Accepted("recursion", "package scalar\nMain :: () -> int { return Sum(4); }\nSum :: (n: int) -> int {\n    if (n > 0) { return n + Sum(n - 1); }\n    return 0;\n}\n", 10, "Main,Sum", "return 4 ; Sum(4) | if n ; 0 ; n > 0 return n ; n ; 1 ; n - 1 ; Sum(n - 1) ; n + Sum(n - 1) end return 0"),
         Accepted("mutual_recursion", "package scalar\nMain :: () -> int { return A(3); }\nA :: (n: int) -> int {\n    if (n > 0) { return B(n - 1); }\n    return 1;\n}\nB :: (n: int) -> int {\n    if (n > 0) { return A(n - 1); }\n    return 2;\n}\n", 2, "Main,A,B", "return 3 ; A(3) | if n ; 0 ; n > 0 return n ; 1 ; n - 1 ; B(n - 1) end return 1 | if n ; 0 ; n > 0 return n ; 1 ; n - 1 ; A(n - 1) end return 2"),
@@ -156,18 +151,15 @@ Cases :: () -> Case[] {
         Accepted("conversion", "package scalar\nMain :: () -> int { return Low(298); }\nLow :: (x: int) -> int { return int(u8(wrap: x)); }", 42, "Main,Low", "return 298 ; Low(298) | return x ; u8(wrap: x) ; int(u8(wrap: x))"),
         Rejected("named_argument", "package scalar\nMain :: () -> int { return Id(x: 1); }\nId :: (x: int) -> int { return x; }", "unsupported syntax 'named_argument'", "x: 1"),
         Accepted("default_parameter", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int = 7) -> int { return x; }", 7, "Main,Id", "return Id() ; Id() | return x"),
-        Rejected("string_parameter", "package scalar\nMain :: () -> int { return Size(\"a\"); }\nSize :: (text: string) -> int { return 1; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "text: string"),
+        Accepted("string_equality", "package scalar\nMain :: () -> int {\n    if (Name(1) == \"one\") { return 1; }\n    return 2;\n}\nName :: (n: int) -> string {\n    if (n == 1) { return \"one\"; }\n    return \"many\";\n}\n", 1, "Main,Name", "if 1 ; Name(1) ; \"one\" ; Name(1) == \"one\" return 1 end return 2 | if n ; 1 ; n == 1 return \"one\" end return \"many\""),
         Accepted("int_operators", IntOperators(), 37, "Main,Id,Add,Sub,Mul,Div,Mod,BitAnd,BitOr,BitXor,Neg,BitNot,Mix", "return 1 + 2 ; Id(1 + 2) ; 4 ; 5 ; Mix(Id(1 + 2), 4, 5) | return x | return a ; b ; a + b | return a ; b ; a - b | return a ; b ; a * b | return a ; b ; a / b | return a ; b ; a % b | return a ; b ; a & b | return a ; b ; a | b | return a ; b ; a ^ b | return a ; -a | return a ; ~a | if a ; b ; +a < b return a ; b ; a + b ; c ; (a + b) * c ; c ; -c ; 3 ; -c % 3 ; (a + b) * c - -c % 3 end return a"),
         Rejected("native_call", "package scalar\nMain :: () -> int { return print(1); }", "Unknown function 'print'", "print"),
         Rejected("qualified_call", "package scalar\nMain :: () -> int { return scalar.Id(1); }\nId :: (x: int) -> int { return x; }", "Unknown function 'scalar.Id'", "Id"),
         Rejected("duplicate_function", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { return x; }\nId :: (y: int) -> int { return y; }", "Duplicate declaration 'Id'", "Id :: (y: int) -> int { return y; }"),
         Accepted("helper_statement", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { y := x; return y; }", 1, "Main,Id", "return 1 ; Id(1) | y := x return y"),
-        Rejected("nine_parameters", "package scalar\nMain :: () -> int { return 1; }\nP :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int) -> int { return a; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int)"),
-        Accepted("most_functions", Chain(32), 31, ChainNames(32), ""),
-        Rejected("too_many_functions", Chain(33), "scalar proof admits at most 32 functions", "F32 :: () -> int { return 32; }"),
-        Accepted("most_operands", Nest(63), 1, "Main,Id", ""),
-        Rejected("too_many_operands", Nest(64), "scalar proof admits at most 64 operands per function", Nested(64)),
-        Accepted("largest_source", Padded(16384), 1, "Main", "return 1"),
+        Accepted("many_functions", Chain(40), 39, ChainNames(40), ""),
+        Accepted("deep_operands", Nest(100), 1, "Main,Id", ""),
+        Accepted("large_source", Padded(32768), 1, "Main", "return 1"),
         Accepted("min", "package scalar\nMain :: () -> int { return Min(7, 3); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\n", 3, "Main,Min", "return 7 ; 3 ; Min(7, 3) | if a ; b ; a < b return a end return b"),
         Accepted("max", "package scalar\nMain :: () -> int { return Max(3, 7); }\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 7, "Main,Max", "return 3 ; 7 ; Max(3, 7) | if a ; b ; a > b return a end return b"),
         Accepted("clamp", "package scalar\nMain :: () -> int { return Clamp(12, 0, 10); }\nClamp :: (x: int, low: int, high: int) -> int { return Min(Max(x, low), high); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 10, "Main,Clamp,Min,Max", "return 12 ; 0 ; 10 ; Clamp(12, 0, 10) | return x ; low ; Max(x, low) ; high ; Min(Max(x, low), high) | if a ; b ; a < b return a end return b | if a ; b ; a > b return a end return b"),
@@ -175,8 +167,6 @@ Cases :: () -> Case[] {
         Accepted("call_condition", "package scalar\nMain :: () -> int {\n    if (Small(3)) { return 1; }\n    return 2;\n}\nSmall :: (x: int) -> bool { return x < 10; }\n", 1, "Main,Small", "if 3 ; Small(3) return 1 end return 2 | return x ; 10 ; x < 10"),
         Accepted("lazy_arm", "package scalar\nMain :: () -> int { return Choose(false); }\nChoose :: (c: bool) -> int {\n    if (c) { return Taken(); }\n    return Skipped();\n}\nTaken :: () -> int { return 1; }\nSkipped :: () -> int { return 2; }\n", 2, "Main,Choose,Taken,Skipped", "return false ; Choose(false) | if c return Taken() end return Skipped() | return 1 | return 2"),
         Accepted("bare_condition", "package scalar\nMain :: () -> int { return Positive(5); }\nPositive :: (x: int) -> int {\n    if x > 0 { return x; }\n    return 0;\n}\n", 5, "Main,Positive", "return 5 ; Positive(5) | if x ; 0 ; x > 0 return x end return 0"),
-        Accepted("split_most_operands", Split(31, 29), 1, "Main,Small,Id", ""),
-        Rejected("split_too_many_operands", Split(31, 30), "scalar proof admits at most 64 operands per function", "0"),
         Accepted("else_branch", "package scalar\nMain :: () -> int {\n    if (true) { return 1; } else { return 2; }\n}\n", 1, "Main", "if true return 1 else return 2 end"),
         Accepted("two_guards", "package scalar\nMain :: () -> int {\n    if (false) { return 1; }\n    if (true) { return 2; }\n    return 3;\n}\n", 2, "Main", "if false return 1 end if true return 2 end return 3"),
         Rejected("guard_without_return", "package scalar\nMain :: () -> int {\n    if (true) { return 1; }\n}\n", "Missing return", "{\n    if (true) { return 1; }\n}"),
@@ -184,8 +174,7 @@ Cases :: () -> Case[] {
         Accepted("shift", "package scalar\nMain :: () -> int { return Shl(1); }\nShl :: (a: int) -> int { return a << 2; }", 4, "Main,Shl", "return 1 ; Shl(1) | return a ; 2 ; a << 2"),
         Accepted("logical_and", "package scalar\nMain :: () -> int { return Mid(1, 2, 3); }\nMid :: (a: int, b: int, c: int) -> int {\n    if (a < b && b < c) { return b; }\n    return a;\n}\n", 2, "Main,Mid", "return 1 ; 2 ; 3 ; Mid(1, 2, 3) | if a ; b ; a < b ; a < b && b < c ; b ; c ; b < c return b end return a"),
         Accepted("recursive_guard", "package scalar\nMain :: () -> int { return Down(3); }\nDown :: (x: int) -> int {\n    if (x > 0) { return Down(0); }\n    return x;\n}\n", 0, "Main,Down", "return 3 ; Down(3) | if x ; 0 ; x > 0 return 0 ; Down(0) end return x"),
-        Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "if 7 ; 3 ; 7 < 3 return 1 end return 2"),
-        Rejected("too_large", Padded(16385), "scalar proof admits at most 16384 source bytes", "")];
+        Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "if 7 ; 3 ; 7 < 3 return 1 end return 2")];
 }
 pub Count :: () -> int {
     return length(Cases());

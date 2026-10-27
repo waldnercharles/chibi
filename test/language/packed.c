@@ -714,7 +714,7 @@ TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
     }
     return true;
 }
-TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths)
+static bool packed_authored_loops(bool benchmark)
 {
     const pin_type types[] = { PIN_I8,  PIN_U8,  PIN_I16, PIN_U16, PIN_I32,
                                PIN_U32, PIN_I64, PIN_U64, PIN_F32, PIN_F64 };
@@ -747,36 +747,49 @@ TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths)
                                                        .budget = 100000 };
                 behavior_function_bind_storage(&context, &storage);
                 REQUIRE(behavior_function_bind(function, &context, NULL, 0));
-                double begin = now();
-                for (int trial = 0; trial < TRIALS; trial++) {
+                double begin = benchmark ? now() : 0;
+                /* Initial execution and warm reuse are correctness checks. */
+                for (int trial = 0; trial < (benchmark ? TRIALS : 2); trial++) {
                     REQUIRE(behavior_function_run(function, &context, b != 0) == FLOW_OK);
                     REQUIRE(pin_value_equal(&result, &expected));
                 }
-                seconds[representation] = now() - begin;
+                seconds[representation] = benchmark ? now() - begin : 0;
                 behavior_function_release_host(&context);
                 behavior_function_activation_free(&activation);
                 context = (behavior_function_context){ 0 };
                 activation = (behavior_function_activation){ 0 };
                 arena_free(&storage);
             }
-            printf(
-                "packed-loop backend=%s type=%s elements=%d trials=%d "
-                "boxed_bytes=%zu packed_bytes=%zu boxed_seconds=%.6f "
-                "packed_seconds=%.6f\n",
-                behavior_backend_name(backends[b]),
-                script_scalar_name(types[t]),
-                ELEMENTS,
-                TRIALS,
-                pin_array_storage_bytes(&boxed),
-                pin_array_storage_bytes(packed),
-                seconds[0],
-                seconds[1]
-            );
+            if (benchmark) {
+                printf(
+                    "packed-loop backend=%s type=%s elements=%d trials=%d "
+                    "boxed_bytes=%zu packed_bytes=%zu boxed_seconds=%.6f "
+                    "packed_seconds=%.6f\n",
+                    behavior_backend_name(backends[b]),
+                    script_scalar_name(types[t]),
+                    ELEMENTS,
+                    TRIALS,
+                    pin_array_storage_bytes(&boxed),
+                    pin_array_storage_bytes(packed),
+                    seconds[0],
+                    seconds[1]
+                );
+            }
             cleanup();
         }
     }
     return true;
 }
+TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths)
+{
+    return packed_authored_loops(false);
+}
+
+TEST_CASE(packed_authored_loop_benchmark)
+{
+    return packed_authored_loops(true);
+}
+
 static bool float_conversion_call(
     const behavior_function *function,
     pin_value input,
@@ -1052,5 +1065,12 @@ void test_language_packed()
     RUN_TEST_CASE(wide_literals_need_an_f64_context);
     RUN_TEST_CASE(float_explicit_narrowing_uses_literal_rounding_oracles);
     RUN_TEST_CASE(float_implicit_widening_preserves_literal_values);
+    pu_clear_setup();
+}
+
+void test_language_packed_benchmark()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(packed_authored_loop_benchmark);
     pu_clear_setup();
 }

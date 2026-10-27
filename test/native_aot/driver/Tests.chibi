@@ -31,7 +31,7 @@ Absent :: (output: string) -> bool {
 Tests :: () -> int {
     settings := build.arguments();
     if (length(settings) != 9) {
-        build.report("usage: HOST DRIVER COMPILER CORE EMITTED42.ll FRESH_TEST_DIR OPT LLC LINKER");
+        build.report("usage: HOST DRIVER COMPILER CORE EMITTED42.ll FRESH_TEST_DIR OPT LLC LD_LLD");
         return 2;
     }
     root := settings[5];
@@ -87,7 +87,11 @@ Tests :: () -> int {
     wrong := "target triple = \"aarch64-unknown-linux-gnu\"";
     text := build.read_file(input);
     // Canonical metadata, not target-looking comments or a raw substring.
+    // Another target's triple with this module's Linux layout is a crossed
+    // pair.
     replacements := ["", wrong, Join([triple, "\n", wrong]),
+                     "target triple = \"arm64-apple-macosx11.0.0\"",
+                     "target triple = \"x86_64-pc-windows-msvc\"",
                      Join(["target datalayout = \"e-p:32:32\"\n", triple]),
                      Join(["; ", triple]), Join(["; ", triple, "\n", wrong])];
     for (i in 0..<length(replacements)) {

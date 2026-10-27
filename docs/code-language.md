@@ -986,7 +986,10 @@ chibi fmt path/to/project
 chibi check path/to/project
 ```
 
-Tests run without a game. They cannot wait or start tasks.
+Independent tests run in parallel by default, with private execution state and
+source-ordered results. Tests with external effects run alone. Set
+`CHIBI_TEST_WORKERS=1` for serial debugging. Tests run without a game and cannot
+wait or start tasks.
 See [Testing](guide/testing.md) and [Toolchain](guide/toolchain.md) for commands
 and platform limits.
 

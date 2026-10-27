@@ -83,6 +83,7 @@ void source_registry_free(source_registry *r)
         free(r->records[i].name);
     }
     afree(r->records);
+    execution_natives_free(r->natives);
     afree(r->attachments);
     for (int i = 0; i < acount(r->services); i++) {
         free((void *)r->services[i].type_name);
@@ -90,6 +91,60 @@ void source_registry_free(source_registry *r)
     afree(r->services);
     event_catalog_free(r->events);
     free(r);
+}
+/* The registered module that defines the authored function `id`, or NULL. */
+static const execution_module *defining_module(const source_registry *r, uint64_t id)
+{
+    for (int i = 0; i < acount(r->records); i++) {
+        const execution_module *module = r->records[i].module;
+        for (int j = 0; j < execution_module_function_count(module); j++) {
+            execution_module_function_info info = execution_module_function_at(module, j);
+            if (info.kind == EXECUTION_FUNCTION_AUTHORED && info.id == id) {
+                return module;
+            }
+        }
+    }
+    return NULL;
+}
+int source_bind_natives(
+    source_registry *r,
+    const execution_native_manifest *const *manifests,
+    int count,
+    char *error,
+    size_t size
+)
+{
+    assert(!r->staging && !r->natives && !acount(r->attachments));
+    if (!count) {
+        return 0;
+    }
+    execution_natives *natives = execution_natives_new();
+    for (int i = 0; i < count; i++) {
+        const execution_native_manifest *manifest = manifests[i];
+        /* Another ABI's exports need not have this layout; binding says so. */
+        bool named = manifest->abi == EXECUTION_NATIVE_ABI && manifest->count;
+        const execution_module
+            *library = named ? defining_module(r, manifest->exports[0].id) : NULL;
+        if (named && !library) {
+            snprintf(
+                error,
+                size,
+                "native export %s has no source module",
+                manifest->exports[0].name
+            );
+            execution_natives_free(natives);
+            return -1;
+        }
+        if (!execution_natives_bind(natives, library, manifest, error, size)) {
+            execution_natives_free(natives);
+            return -1;
+        }
+    }
+    r->natives = natives;
+    for (int i = 0; i < acount(r->records); i++) {
+        execution_program_set_natives(r->records[i].program, natives);
+    }
+    return 0;
 }
 int source_set_events(source_registry *r, event_catalog *events)
 {

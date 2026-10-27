@@ -12,7 +12,7 @@ if (Test-Path -LiteralPath $output) { throw 'Scalar evidence output already exis
 New-Item -ItemType Directory -Path $output | Out-Null
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $timer = [Diagnostics.Stopwatch]::StartNew()
-$evidence = [ordered]@{ format = 1; status = 'running'; platform = $Platform; compiler_sources = @(); sources = @(); runs = @(); cases = @() }
+$evidence = [ordered]@{ format = 1; status = 'running'; platform = $Platform; compiler_sources = @(); sources = @(); runs = @(); batch_members = @(); cases = @() }
 
 function Digest([string]$path) {
     return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -39,8 +39,9 @@ function Entry([string]$symbol) {
     if ($hash.IsZero) { $hash = [System.Numerics.BigInteger]::One }
     return '0x' + ([uint64]$hash).ToString('x16')
 }
-# The complete 96-source matrix starts 970 bounded child invocations. Keep one
-# finite total, and never give a child more than 120 seconds or what remains.
+# Batch only pure producers/checks; retain every raw-byte CLI crossing. The
+# 96-source matrix needs 466 children, not 970. Keep the same finite total and
+# never give a child more than 120 seconds or what remains.
 function Host-Limit([double]$elapsed, [string]$name) {
     $total = 240000
     if ($elapsed -ge $total) {
@@ -51,8 +52,24 @@ function Host-Limit([double]$elapsed, [string]$name) {
     }
     return [Math]::Max(1, [Math]::Min(120000, [int]($total - $elapsed)))
 }
+# Each batch member calls compiler_host_invoke with the same host backend.
+# sum_counts adds unsigned counters and flags overflow: a zero aggregate for
+# other backends/fallback proves no member used them; selected counts cannot
+# cancel or hide a fallback. Counts remain aggregate, not invented per item.
+function Backend-Entries([string]$errorText, [string]$backend, [string]$name) {
+    $matches = [regex]::Matches($errorText, '(?m)^compiler-host bytecode=(\d+) sljit=(\d+) wasm=(\d+) fallback=(\d+) overflow=(\d+)\r?$')
+    if ($matches.Count -ne 1) { throw "$name has no unique execution counters" }
+    $counts = @($matches[0].Groups | Select-Object -Skip 1 | ForEach-Object { [uint64]$_.Value })
+    $selected = if ($backend -eq 'bytecode') { 0 } else { 1 }
+    if ($counts[$selected] -eq 0 -or $counts[1 - $selected] -ne 0 -or
+        $counts[2] -ne 0 -or $counts[3] -ne 0 -or $counts[4] -ne 0) {
+        throw "$name did not execute exclusively on its requested backend"
+    }
+    return $counts[$selected]
+}
 function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
-                     [string]$request, [string]$backend, [string]$raw = '', [switch]$Compile) {
+                     [string]$request, [string]$backend, [string]$raw = '', [switch]$Compile, [switch]$Batch) {
+    $startedAt = $timer.Elapsed.TotalSeconds
     $limit = Host-Limit $timer.Elapsed.TotalMilliseconds $name
     $stdoutPath = Join-Path $output ($name + '.stdout')
     $stderrPath = Join-Path $output ($name + '.stderr')
@@ -64,6 +81,7 @@ function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
     $start.RedirectStandardError = $true
     $arguments = @('--artifact', $artifact, '--entry', $entry, '--input', $request,
                    '--backend', $backend, '--budget', '2000000000', '--timeout-ms', [string]$limit)
+    if ($Batch) { $arguments += '--batch' }
     if ($raw) { $arguments += @($(if ($Compile) { '--output-artifact' } else { '--output-bytes' }), $raw) }
     foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
     $start.Environment.Clear()
@@ -101,30 +119,89 @@ function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
     }
     $record = [ordered]@{ name = $name; backend = $backend; exit_code = $exit;
         input_sha256 = (Digest $request); artifact_sha256 = (Digest $artifact);
-        stdout_sha256 = (Digest $stdoutPath); stderr_sha256 = (Digest $stderrPath) }
+        stdout_sha256 = (Digest $stdoutPath); stderr_sha256 = (Digest $stderrPath);
+        batch = $Batch.IsPresent; elapsed_seconds = ($timer.Elapsed.TotalSeconds - $startedAt) }
     $evidence.runs += $record
     $errorText = [IO.File]::ReadAllText($stderrPath, $utf8)
     if ($exit -eq 0) {
-        $matches = [regex]::Matches($errorText, '(?m)^compiler-host bytecode=(\d+) sljit=(\d+) wasm=(\d+) fallback=(\d+) overflow=(\d+)\r?$')
-        if ($matches.Count -ne 1) { throw "$name has no unique execution counters" }
-        $counts = @($matches[0].Groups | Select-Object -Skip 1 | ForEach-Object { [uint64]$_.Value })
-        $selected = if ($backend -eq 'bytecode') { 0 } else { 1 }
-        if ($counts[$selected] -eq 0 -or $counts[1 - $selected] -ne 0 -or
-            $counts[2] -ne 0 -or $counts[3] -ne 0 -or $counts[4] -ne 0) {
-            throw "$name did not execute exclusively on its requested backend"
-        }
-        $record['selected_entries'] = $counts[$selected]
+        $record['selected_entries'] = Backend-Entries $errorText $backend $name
     }
-    return [pscustomobject]@{ Exit = $exit; Stdout = $stdoutPath; Stderr = $errorText }
+    return [pscustomobject]@{ Name = $name; Exit = $exit; Stdout = $stdoutPath; Stderr = $errorText }
 }
 function Require-Success($result) {
-    if ($result.Exit -ne 0) { throw "Compiler invocation failed: $($result.Stderr)" }
+    if ($result.Exit -ne 0) { throw "Compiler invocation $($result.Name) failed: $($result.Stderr)" }
 }
 function Scalar-Result($result) {
     Require-Success $result
     $node = Read-Node $result.Stdout
     if ($node.AsArray().Count -ne 1) { throw 'Expected one authored scalar check result' }
     return $node[0].GetValue[int]()
+}
+
+
+# The existing host batch API reuses only the loaded artifact: each item gets
+# its own activation, arena and instruction budget. Join/split transport bytes,
+# never reserialize an owned producer envelope through a host JSON model.
+function Write-Batch([string]$path, [string[]]$files) {
+    if ($files.Count -lt 1 -or $files.Count -gt 8) { throw 'Invalid scalar batch size' }
+    $stream = [IO.File]::Open($path, [IO.FileMode]::CreateNew)
+    try {
+        $stream.WriteByte(91)
+        for ($index = 0; $index -lt $files.Count; $index++) {
+            if ($index) { $stream.WriteByte(44) }
+            $bytes = [IO.File]::ReadAllBytes($files[$index])
+            $stream.Write($bytes, 0, $bytes.Length)
+        }
+        $stream.WriteByte(93)
+    } finally { $stream.Dispose() }
+}
+function Split-Batch($result, [string]$prefix, [int]$count) {
+    Require-Success $result
+    $bytes = [IO.File]::ReadAllBytes($result.Stdout)
+    $batchHash = Digest $result.Stdout
+    $document = [System.Text.Json.JsonDocument]::Parse($utf8.GetString($bytes))
+    try {
+        if ($count -lt 1 -or $count -gt 8 -or
+            $document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Array -or
+            $document.RootElement.GetArrayLength() -ne $count) { throw 'Scalar batch result count differs' }
+        $offset = 0
+        while ($bytes[$offset] -in 9, 10, 13, 32) { $offset++ }
+        if ($bytes[$offset] -ne 91) { throw 'Scalar batch has no opening bracket' }
+        $offset++
+        $parts = @()
+        $index = 0
+        foreach ($item in $document.RootElement.EnumerateArray()) {
+            while ($bytes[$offset] -in 9, 10, 13, 32) { $offset++ }
+            if ($index) {
+                if ($bytes[$offset] -ne 44) { throw 'Scalar batch has no separator' }
+                $offset++
+                while ($bytes[$offset] -in 9, 10, 13, 32) { $offset++ }
+            }
+            # GetRawText identifies boundaries only. The forwarded file is copied
+            # from the original byte buffer, preserving escapes and numeric text.
+            $raw = $item.GetRawText()
+            $length = $utf8.GetByteCount($raw)
+            $member = [byte[]]::new($length)
+            [Array]::Copy($bytes, $offset, $member, 0, $length)
+            if (![string]::Equals($utf8.GetString($member), $raw, [StringComparison]::Ordinal)) {
+                throw 'Scalar batch member differs from its original byte range'
+            }
+            $name = "$prefix-$index"
+            $path = Join-Path $output ($name + '.stdout')
+            [IO.File]::WriteAllBytes($path, $member)
+            $evidence.batch_members += [ordered]@{ name = $name; batch = $result.Name; index = $index;
+                batch_sha256 = $batchHash; offset = $offset; bytes = $length; sha256 = (Digest $path) }
+            $parts += [pscustomobject]@{ Name = $name; Batch = $result.Name; Item = $index; Exit = 0; Stdout = $path; Stderr = '' }
+            $offset += $length
+            $index++
+        }
+        while ($bytes[$offset] -in 9, 10, 13, 32) { $offset++ }
+        if ($bytes[$offset] -ne 93) { throw 'Scalar batch has no closing bracket' }
+        $offset++
+        while ($offset -lt $bytes.Length -and $bytes[$offset] -in 9, 10, 13, 32) { $offset++ }
+        if ($offset -ne $bytes.Length) { throw 'Scalar batch has trailing bytes' }
+        return $parts
+    } finally { $document.Dispose() }
 }
 
 try {
@@ -261,60 +338,89 @@ try {
     if ($sources.Count -le 0 -or $sources.Count -gt 96) { throw 'Authored source corpus exceeds its runner bound' }
     $evidence['case_count'] = $sources.Count
     $priorChecked = @{}
-    for ($index = 0; $index -lt $sources.Count; $index++) {
-        $source = $sources[$index].GetValue[string]()
-        $request = [System.Text.Json.Nodes.JsonArray]::new()
-        $request.Add((String-Node '/project'))
-        $request.Add((String-Node 'Scalar.chibi'))
-        $request.Add((String-Node $source))
-        $request.Add((Copy-Node $manifest['target'][0]))
-        $request.Add((Copy-Node $manifest['target'][2]))
-        $inputPath = Join-Path $output ("case-$index.json")
-        Write-Node $inputPath $request
+    for ($first = 0; $first -lt $sources.Count; $first += 8) {
+        $count = [Math]::Min(8, $sources.Count - $first)
+        $inputs = @()
+        for ($item = 0; $item -lt $count; $item++) {
+            $index = $first + $item
+            $request = [System.Text.Json.Nodes.JsonArray]::new()
+            $request.Add((String-Node '/project'))
+            $request.Add((String-Node 'Scalar.chibi'))
+            $request.Add((String-Node ($sources[$index].GetValue[string]())))
+            $request.Add((Copy-Node $manifest['target'][0]))
+            foreach ($fact in 2..5) { $request.Add((Copy-Node $manifest['target'][$fact])) }
+            $inputPath = Join-Path $output ("case-$index.json")
+            Write-Node $inputPath $request
+            $inputs += $inputPath
+        }
+        $batchInput = Join-Path $output ("batch-$first.json")
+        Write-Batch $batchInput $inputs
+        $produced = @{}
+        $checked = @{}
         foreach ($producerBackend in @('bytecode', 'sljit')) {
-            $producer = Invoke-Host "$index-$producerBackend-produce" $compiler (Entry 'project:package_compiler:1:CollectScalar:callable') $inputPath $producerBackend
-            Require-Success $producer
-            $envelopeHash = Digest $producer.Stdout
-            # Identity only, not source classification: Cases.Check must inspect
-            # the source requested here, not another internally valid fixture.
-            $returned = Read-Node $producer.Stdout
-            if ($returned.AsArray().Count -ne 1 -or $returned[0].AsArray().Count -lt 2 -or
-                ![string]::Equals($returned[0][0]['text'].GetValue[string](), $source, [StringComparison]::Ordinal) -or
-                ![string]::Equals($returned[0][0]['name'].GetValue[string](), 'Scalar.chibi', [StringComparison]::Ordinal)) {
-                throw 'Producer result source identity differs from its requested input'
+            $prefix = "$first-$producerBackend"
+            $producer = Invoke-Host "$prefix-produce-batch" $compiler (Entry 'project:package_compiler:1:CollectScalar:callable') $batchInput $producerBackend -Batch
+            $produced[$producerBackend] = @(Split-Batch $producer "$prefix-produce" $count)
+            for ($item = 0; $item -lt $count; $item++) {
+                $returned = Read-Node $produced[$producerBackend][$item].Stdout
+                if ($returned.AsArray().Count -ne 1 -or $returned[0].AsArray().Count -lt 2 -or
+                    ![string]::Equals($returned[0][0]['text'].GetValue[string](), $sources[$first + $item].GetValue[string](), [StringComparison]::Ordinal) -or
+                    ![string]::Equals($returned[0][0]['name'].GetValue[string](), 'Scalar.chibi', [StringComparison]::Ordinal)) {
+                    throw "Producer result source identity differs at case $($first + $item) ($producerBackend)"
+                }
             }
             foreach ($consumerBackend in @('bytecode', 'sljit')) {
-                $name = "$index-$producerBackend-$consumerBackend"
-                $check = Invoke-Host "$name-check" $regression (Entry 'project:scalar_regression:1:Check:callable') $producer.Stdout $consumerBackend
-                $classification = Scalar-Result $check
-                if ($classification -notin 0, 1) { throw "Authored source/consumer check failed: $classification" }
-                $rawPath = Join-Path $output ($name + '.ll')
-                $raw = Invoke-Host "$name-raw" $regression (Entry 'project:scalar_regression:1:EmitBytes:callable') $producer.Stdout $consumerBackend $rawPath
-                $row = [ordered]@{ index = $index; producer = $producerBackend; consumer = $consumerBackend;
-                    input_sha256 = (Digest $inputPath); envelope_sha256 = $envelopeHash; accepted = ($classification -eq 1) }
-                if ($classification -eq 1) {
-                    Require-Success $raw
-                    if ((Get-Item -LiteralPath $rawPath).Length -eq 0) { throw 'Accepted raw output is empty' }
-                    $row['ir_sha256'] = Digest $rawPath
-                } else {
-                    if ($raw.Exit -eq 0 -or $raw.Stderr.Trim() -ne 'the compiler entry returned no bytes' -or
-                        (Test-Path -LiteralPath $rawPath)) { throw 'Rejected raw output was published' }
-                    # This host failure path omits counters. Its matching authored
-                    # Check above executes EmitBytes and proves empty bytes on the
-                    # selected backend; no unavailable raw counters are invented.
-                    $crossing = "$producerBackend-$consumerBackend"
-                    if (!$priorChecked.ContainsKey($crossing)) {
-                        [IO.File]::WriteAllText($rawPath, "prior complete IR`n", $utf8)
-                        $priorHash = Digest $rawPath
-                        $prior = Invoke-Host "$name-prior" $regression (Entry 'project:scalar_regression:1:EmitBytes:callable') $producer.Stdout $consumerBackend $rawPath
-                        if ($prior.Exit -eq 0 -or $prior.Stderr.Trim() -ne 'the compiler entry returned no bytes' -or
-                            (Digest $rawPath) -ne $priorHash) { throw 'Rejected output damaged an existing file' }
-                        Remove-Item -LiteralPath $rawPath
-                        $priorChecked[$crossing] = $true
+                # Producer stdout already is an array of invocation argument lists.
+                # Forward that entire buffer unchanged through the consumer batch.
+                $crossing = "$producerBackend-$consumerBackend"
+                $check = Invoke-Host "$first-$crossing-check-batch" $regression (Entry 'project:scalar_regression:1:Check:callable') $producer.Stdout $consumerBackend -Batch
+                $checked[$crossing] = @(Split-Batch $check "$first-$crossing-check" $count)
+            }
+        }
+        # Preserve original case/producer/consumer classification and raw output
+        # order. Up to seven later pure cases may already have been computed, but
+        # the first failing classification stops all later raw output/next batches.
+        for ($item = 0; $item -lt $count; $item++) {
+            $index = $first + $item
+            $inputPath = $inputs[$item]
+            foreach ($producerBackend in @('bytecode', 'sljit')) {
+                $producer = $produced[$producerBackend][$item]
+                $envelopeHash = Digest $producer.Stdout
+                foreach ($consumerBackend in @('bytecode', 'sljit')) {
+                    $name = "$index-$producerBackend-$consumerBackend"
+                    $check = $checked["$producerBackend-$consumerBackend"][$item]
+                    $classification = Scalar-Result $check
+                    if ($classification -notin 0, 1) { throw "Authored source/consumer check failed at $name (batch item $item): $classification" }
+                    $rawPath = Join-Path $output ($name + '.ll')
+                    $raw = Invoke-Host "$name-raw" $regression (Entry 'project:scalar_regression:1:EmitBytes:callable') $producer.Stdout $consumerBackend $rawPath
+                    $row = [ordered]@{ index = $index; producer = $producerBackend; consumer = $consumerBackend;
+                        input_sha256 = (Digest $inputPath); envelope_sha256 = $envelopeHash; accepted = ($classification -eq 1);
+                        producer_batch = $producer.Batch; producer_item = $producer.Item;
+                        check_batch = $check.Batch; check_item = $check.Item }
+                    if ($classification -eq 1) {
+                        Require-Success $raw
+                        if ((Get-Item -LiteralPath $rawPath).Length -eq 0) { throw 'Accepted raw output is empty' }
+                        $row['ir_sha256'] = Digest $rawPath
+                    } else {
+                        if ($raw.Exit -eq 0 -or $raw.Stderr.Trim() -ne 'the compiler entry returned no bytes' -or
+                            (Test-Path -LiteralPath $rawPath)) { throw 'Rejected raw output was published' }
+                        # This host failure path omits counters. Its matching authored
+                        # Check above executes EmitBytes and proves empty bytes on the
+                        # selected backend; no unavailable raw counters are invented.
+                        $crossing = "$producerBackend-$consumerBackend"
+                        if (!$priorChecked.ContainsKey($crossing)) {
+                            [IO.File]::WriteAllText($rawPath, "prior complete IR`n", $utf8)
+                            $priorHash = Digest $rawPath
+                            $prior = Invoke-Host "$name-prior" $regression (Entry 'project:scalar_regression:1:EmitBytes:callable') $producer.Stdout $consumerBackend $rawPath
+                            if ($prior.Exit -eq 0 -or $prior.Stderr.Trim() -ne 'the compiler entry returned no bytes' -or
+                                (Digest $rawPath) -ne $priorHash) { throw 'Rejected output damaged an existing file' }
+                            Remove-Item -LiteralPath $rawPath
+                            $priorChecked[$crossing] = $true
+                        }
                     }
+                    if ((Digest $producer.Stdout) -ne $envelopeHash) { throw 'Producer envelope changed during forwarding' }
+                    $evidence.cases += [pscustomobject]$row
                 }
-                if ((Digest $producer.Stdout) -ne $envelopeHash) { throw 'Producer envelope changed during forwarding' }
-                $evidence.cases += [pscustomobject]$row
             }
         }
     }

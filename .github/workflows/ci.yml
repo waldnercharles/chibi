@@ -1,8 +1,16 @@
 name: CI
+run-name: "CI · ${{ (github.event_name == 'schedule' || inputs.sanitizers == true) && 'ASan + UBSan' || 'fast Debug O1' }} · ${{ github.event_name }}"
 
 on:
+  schedule:
+    - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
+      sanitizers:
+        description: 'Run full ASan + UBSan validation (including major releases)'
+        required: false
+        type: boolean
+        default: false
       studio_sha:
         description: 'Optional exact Studio SHA for additional native/Web SDK verification'
         required: false
@@ -24,10 +32,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ (github.event_name == 'schedule' || inputs.sanitizers == true) && 'sanitizer' || 'fast' }}
+  # Finish one trusted main run so successful native jobs can publish their cache.
+  # The default single pending slot keeps only the newest queued main run.
+  cancel-in-progress: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
 
 env:
+  CHIBI_CI_SANITIZERS: ${{ (github.event_name == 'schedule' || inputs.sanitizers == true) && 'ON' || 'OFF' }}
   CC: clang-18
   CXX: clang++-18
   # Builds download their pinned third-party archive from this repository's
@@ -44,10 +55,14 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Select CI native profile
+        run: python3 .github/native-profile.py
       - name: Verify CI APT source fixtures
         run: |
           python3 .github/test-ubuntu-dependencies.py
           python3 .github/test-native-ccache.py
+          python3 .github/test-native-profile.py
+          python3 .github/test-verify-native-profile.py
       - name: Install build dependencies
         run: |
           python3 .github/install-ubuntu-dependencies.py ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
@@ -57,7 +72,7 @@ jobs:
           python3 -m venv /tmp/cmake
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
-          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
       - name: Verify installed and archived license notices
         run: python3 test/tools/package_licenses.py
       - name: Configure compiler cache
@@ -69,35 +84,89 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
-          restore-keys: ${{ steps.ccache-config.outputs.prefix }}-
+          restore-keys: |
+            ${{ steps.ccache-config.outputs.prefix }}-
+            ${{ steps.ccache-config.outputs.compatibility-prefix }}-
       - name: Record compiler cache configuration and reset counters
         run: |
           ccache --show-config
           ccache --zero-stats
-      - name: Build products and test drivers (ASan and UBSan)
-        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT=/usr/lib/llvm-18
       # validate-project runs chibi_ctl dozens of times, and published-docs and
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
-        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+        env:
+          CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
+        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Build products and test drivers (selected Debug profile)
+        env:
+          VERBOSE: '1'
+          CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
+        shell: bash
+        run: |
+          set -o pipefail
+          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+      - name: Verify native profile evidence
+        run: python3 .github/verify-native-profile.py
       # Run authored command generation on the Release helper; test_tools and
-      # the reference profile remain Debug + ASan/UBSan. No products are compiled.
+      # the reference profile remain the selected Debug profile. No products are compiled.
       - name: Graph Debug optimization and command parity (commands only)
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
         run: python3 tools/test_policy.py tool build-graph-debug-optimization
       # After make build, whose build/reflect the reflection identity cases run.
+      - name: Build timing host regressions (ready drivers)
+        env:
+          CHIBI_TOOLS_BUILD_DIR: build/test/tools
+          CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
+        run: python3 tools/test_policy.py --timeout 180 tool build-timings
       - name: Tooling and process integrations
-        run: make test-tools TOOLS_C_COMPILER=clang-18
-      # One make process shares test-build across these targets. Keep groups
-      # sequential so they cannot race over fixtures or build outputs.
+        env:
+          CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
+        run: |
+          mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
+          make test-tools TOOLS_C_COMPILER=clang-18
+          ./build-tools/test_tools --case-timings
+      # Release helpers are already built. Avoid their repeated planner entry;
+      # retain the selected-profile Build.chibi invocation for Linux coverage.
+      # Keep groups sequential: they share fixtures and build outputs.
       - name: Native, material, project and language selectors
         env:
           UBSAN_OPTIONS: halt_on_error=1
-        # test-build runs Build.chibi in the sanitized build host: CI's one run
-        # of a build program under the sanitizers, so keep its default host.
-        run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
+          # language-scalar-native also builds each module it runs for macOS
+          # arm64 and Windows x64 here, and native-targets runs them there.
+          CHIBI_NATIVE_BUNDLE: ${{ runner.temp }}/native-bundle
+        shell: bash
+        run: |
+          set -e
+          # Preserve Linux Build.chibi coverage through the selected-profile host,
+          # including sanitizer runs whose first cold build used CMake recovery.
+          make test-build ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
+          export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
+          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
+          python3 tools/test_policy.py group native
+          python3 tools/test_policy.py group materials
+          CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
+          CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group language
+      - name: Keep the macOS and Windows native modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-bundle
+          path: ${{ runner.temp }}/native-bundle
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve native profile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/native-profile.json
+            ${{ runner.temp }}/native-build.log
+            ${{ runner.temp }}/build-timings/
+            ${{ runner.temp }}/case-timings/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Report compiler cache statistics
         if: always() && steps.ccache-config.outcome == 'success'
         run: ccache --show-stats --verbose
@@ -118,6 +187,8 @@ jobs:
       XDG_RUNTIME_DIR: /tmp/chibi-runtime
     steps:
       - uses: actions/checkout@v4
+      - name: Select CI native profile
+        run: python3 .github/native-profile.py
       - name: Install build dependencies
         run: |
           brew install llvm ccache
@@ -128,7 +199,7 @@ jobs:
           python3 -m venv /tmp/cmake
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
-          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-timings"
       - name: Configure compiler cache
         id: ccache-config
         run: python3 .github/native-ccache.py
@@ -138,7 +209,9 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
-          restore-keys: ${{ steps.ccache-config.outputs.prefix }}-
+          restore-keys: |
+            ${{ steps.ccache-config.outputs.prefix }}-
+            ${{ steps.ccache-config.outputs.compatibility-prefix }}-
       - name: Record compiler cache configuration and reset counters
         run: |
           ccache --show-config
@@ -146,16 +219,24 @@ jobs:
       # validate-project runs chibi_ctl dozens of times, and published-docs and
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player, and
-      # the Graph build adds the Release build host the sanitized builds use.
+      # the Graph build adds the Release build host the Debug builds use.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
-        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
+        env:
+          CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
+        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
       # The Release build host runs the outer Build and Graph programs, which
-      # plan the sanitized build. Compiling the Graph program in the ASan host
-      # took about two minutes of every macOS build. The sanitizer profile, the
-      # products, the test drivers and the asset compiler generation (which
-      # runs this tree's sanitized hosts) are unchanged.
-      - name: Build products and test drivers (ASan and UBSan)
-        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT="$LLVM"
+      # plan the selected Debug build. Release hosts also generate the asset
+      # compiler resource; products and test drivers retain the selected profile.
+      - name: Build products and test drivers (selected Debug profile)
+        env:
+          VERBOSE: '1'
+          CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
+        shell: bash
+        run: |
+          set -o pipefail
+          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+      - name: Verify native profile evidence
+        run: python3 .github/verify-native-profile.py
       - name: Preserve failed macOS Graph stage log
         if: failure()
         uses: actions/upload-artifact@v4
@@ -166,12 +247,43 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       # After make build, whose build/reflect the reflection identity cases run.
+      - name: Build timing host regressions (ready drivers)
+        env:
+          CHIBI_TOOLS_BUILD_DIR: build/test/tools
+          CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
+        run: python3 tools/test_policy.py --timeout 180 tool build-timings
       - name: Tooling and process integrations
-        run: make test-tools TOOLS_C_COMPILER="$CC"
-      # One make process shares test-build across these targets. Keep groups
-      # sequential so they cannot race over fixtures or build outputs.
+        env:
+          CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
+        run: |
+          mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
+          make test-tools TOOLS_C_COMPILER="$CC"
+          ./build-tools/test_tools --case-timings
+      # The selected-profile build and Release helpers above already produced
+      # these drivers. Run the same groups without re-entering either planner.
+      # Keep groups sequential: they share fixtures and build outputs.
       - name: Native, material, project and language selectors
-        run: make -j1 test-native test-materials test-projects test-language-all BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT="$LLVM"
+        shell: bash
+        run: |
+          set -e
+          export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
+          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
+          python3 tools/test_policy.py group native
+          python3 tools/test_policy.py group materials
+          CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN= python3 tools/test_policy.py group projects
+          CHIBI_LLVM_BIN= python3 tools/test_policy.py group language
+      - name: Preserve native profile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-profile-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/native-profile.json
+            ${{ runner.temp }}/native-build.log
+            ${{ runner.temp }}/build-timings/
+            ${{ runner.temp }}/case-timings/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Report compiler cache statistics
         if: always() && steps.ccache-config.outcome == 'success'
         run: ccache --show-stats --verbose
@@ -183,6 +295,51 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
+
+  # The engine's test drivers do not build on Windows yet, so the Linux job
+  # builds each module language-scalar-native runs for macOS arm64 and Windows
+  # x64, and this job links and runs them there (test/native_aot/targets).
+  native-targets:
+    name: Native scalar modules (${{ matrix.platform }})
+    needs: native
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: macos-arm64
+          - os: windows-2022
+            platform: windows-x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-bundle
+          path: ${{ runner.temp }}/native-bundle
+      - name: Link and run the macOS modules
+        if: runner.os == 'macOS'
+        run: |
+          clang -std=c2x -O1 -Wall -Wextra -Werror -I. test/native_aot/targets/run.c -o "$RUNNER_TEMP/run"
+          "$RUNNER_TEMP/run" "$RUNNER_TEMP/native-bundle" /usr/bin/clang
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV }
+          }
+      - name: Link and run the Windows modules
+        if: runner.os == 'Windows'
+        run: |
+          $llvm = 'C:\Program Files\LLVM\bin'
+          & "$llvm\clang.exe" -std=c2x -O1 -Wall -Wextra -Werror -D_CRT_SECURE_NO_WARNINGS -I. test/native_aot/targets/run.c -o "$env:RUNNER_TEMP\run.exe"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP\run.exe" "$env:RUNNER_TEMP\native-bundle" "$llvm\lld-link.exe"
+          exit $LASTEXITCODE
 
   windows:
     name: Engine build and compile smoke test (Windows)
@@ -408,6 +565,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Select CI native profile
+        run: python3 .github/native-profile.py
       - name: Verify clean source candidate
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"

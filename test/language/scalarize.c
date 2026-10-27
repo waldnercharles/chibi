@@ -1186,7 +1186,7 @@ static double read_seconds()
     return now.tv_sec + now.tv_nsec * 1e-9;
 }
 
-TEST_CASE(scalar_component_properties_use_proven_native_access_metadata)
+static bool scalar_component_properties(bool benchmark)
 {
     for (int getter = 0; getter < 2; getter++) {
         for (int field = 0; field < 3; field++) {
@@ -1269,7 +1269,9 @@ TEST_CASE(scalar_component_properties_use_proven_native_access_metadata)
                     host_bytes,
                     bytes
                 );
-                for (int trial = 0; trial < READ_TRIALS; trial++) {
+                /* One warm-reuse pass covers correctness; repeated timing
+                 * trials belong only to the explicitly requested benchmark. */
+                for (int trial = 0; trial < (benchmark ? READ_TRIALS : 1); trial++) {
                     xalloc_stats before, after;
                     xalloc_stats_get(&before);
                     uint64_t blocks = arena_block_allocations();
@@ -1279,14 +1281,14 @@ TEST_CASE(scalar_component_properties_use_proven_native_access_metadata)
                     execution_wasm_jit_stats wasm_before, wasm_after;
                     execution_wasm_jit_get_stats(&wasm_before);
 #endif
-                    double start = read_seconds();
+                    double start = benchmark ? read_seconds() : 0;
                     for (int run = 0; run < READ_INVOCATIONS; run++) {
                         context.error_message = "stale scalar read error";
                         REQUIRE(read_run(mode) == FLOW_OK);
                         REQUIRE(read_equal(output, field));
                         REQUIRE(!context.error_message);
                     }
-                    double elapsed = read_seconds() - start;
+                    double elapsed = benchmark ? read_seconds() - start : 0;
                     xalloc_stats_get(&after);
                     REQUIRE(behavior_function_data_allocations() == banks);
                     REQUIRE(behavior_function_host_storage_bytes(&context) == host_bytes);
@@ -1299,35 +1301,52 @@ TEST_CASE(scalar_component_properties_use_proven_native_access_metadata)
                     );
                     REQUIRE(wasm_after.compile_failures == wasm_before.compile_failures);
 #endif
-                    printf(
-                        "SCALAR_READ path=%s field=%s backend=%s inspected=%d "
-                        "trial=%d "
-                        "calls=%d assertion_inclusive_seconds=%.9f "
-                        "host_bytes=%zu arena_bytes=%zu "
-                        "arena_capacity=%zu "
-                        "alloc_calls=%llu requested_bytes=%llu "
-                        "arena_blocks=%llu bank_allocs=%llu vm_allocs=%llu\n",
-                        getter ? "native-metadata" : "snapshot",
-                        scalar_read_fields[field].name,
-                        behavior_backend_name((mode & 1) ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE),
-                        mode >= 2,
-                        trial,
-                        READ_INVOCATIONS,
-                        elapsed,
-                        host_bytes,
-                        bytes,
-                        capacity,
-                        (unsigned long long)(after.calls - before.calls),
-                        (unsigned long long)(after.requested_bytes - before.requested_bytes),
-                        (unsigned long long)(arena_block_allocations() - blocks),
-                        (unsigned long long)(behavior_function_data_allocations() - banks),
-                        (unsigned long long)(behavior_function_vm_allocations() - vm)
-                    );
+                    if (benchmark) {
+                        printf(
+                            "SCALAR_READ path=%s field=%s backend=%s "
+                            "inspected=%d "
+                            "trial=%d "
+                            "calls=%d assertion_inclusive_seconds=%.9f "
+                            "host_bytes=%zu arena_bytes=%zu "
+                            "arena_capacity=%zu "
+                            "alloc_calls=%llu requested_bytes=%llu "
+                            "arena_blocks=%llu bank_allocs=%llu "
+                            "vm_allocs=%llu\n",
+                            getter ? "native-metadata" : "snapshot",
+                            scalar_read_fields[field].name,
+                            behavior_backend_name(
+                                (mode & 1) ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE
+                            ),
+                            mode >= 2,
+                            trial,
+                            READ_INVOCATIONS,
+                            elapsed,
+                            host_bytes,
+                            bytes,
+                            capacity,
+                            (unsigned long long)(after.calls - before.calls),
+                            (unsigned long long)(after.requested_bytes -
+                                                 before.requested_bytes),
+                            (unsigned long long)(arena_block_allocations() - blocks),
+                            (unsigned long long)(behavior_function_data_allocations() - banks),
+                            (unsigned long long)(behavior_function_vm_allocations() - vm)
+                        );
+                    }
                 }
             }
         }
     }
     return true;
+}
+
+TEST_CASE(scalar_component_properties_use_proven_native_access_metadata)
+{
+    return scalar_component_properties(false);
+}
+
+TEST_CASE(scalar_component_read_benchmark)
+{
+    return scalar_component_properties(true);
 }
 
 TEST_CASE(scalar_component_reads_preserve_failures_and_same_context_recovery)
@@ -2088,5 +2107,12 @@ void test_language_scalarize()
     RUN_TEST_CASE(scalar_component_reads_evaluate_explicit_entity_once);
     RUN_TEST_CASE(scalar_component_properties_keep_explicit_aggregate_snapshots);
     RUN_TEST_CASE(scalar_component_reads_keep_copied_values_across_source_inspection);
+    pu_clear_setup();
+}
+
+void test_language_scalar_read_benchmark()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(scalar_component_read_benchmark);
     pu_clear_setup();
 }

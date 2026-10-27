@@ -1,14 +1,14 @@
 # Runtime-free scalar LLVM backend (opt-in WIP)
 
-`llvm_native.Emit` validates a bounded scalar instruction plan and writes LLVM
-IR. `native_abi` owns the exact Linux x86-64 target and internal scalar mapping;
-the selected LLVM backend supplies its actual data layout. This clean integration
-carries those reviewed pure packages from [3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
+`llvm_native.Emit` validates a scalar instruction plan and writes LLVM
+IR. `native_abi` owns the exact targets (Linux x86-64, macOS arm64 and Windows
+x64) and internal scalar mapping; the selected LLVM backend supplies its actual
+data layout. This clean integration carries those reviewed pure packages from [3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
 onto the current-base [authored LLVM driver](https://github.com/waldnercharles/chibi/commit/ae4828697dfc976a657c33014513f00e047ec422).
 
 It deliberately does **not** carry `package_compiler/Native.chibi`,
 `native_compiler`, or the diagnostic Front/Back packet adapters. Its one source
-connection is the bounded `scalar_facts` handoff in
+connection is the `scalar_facts` handoff in
 `test/native_aot/scalar/README.md`: the compiler's `CollectScalar` produces
 owned rows and `scalar_llvm` lowers them to this plan. Private frontend
 Code/Slot IDs are not an API.
@@ -21,14 +21,26 @@ interface, or the complete allocation/memory/output/free native island.
 
 ## Emitter contract
 
-- A module of at most 32 functions, each a consecutive range of the parameter,
+- A module of one or more functions, each a consecutive range of the parameter,
   slot, local, code and argument tables. Function 0 is the exported entry,
   `chibi_scalar`, or `main` for a zero-argument `int` entry; the others are
   `internal` `chibi_scalar.N`. Each takes plain integer, `number`, `f64`
   and `bool` parameters (`i8` through `u64` as `iN` with no sign, and
   `number` and `f64` as LLVM `float` and `double`) and returns one scalar result. Foreign bool ABI is not promised. Storage
   ordinals are backend-internal, not public semantic IDs.
-- A module declares at most 16 records, each a range of at most 16 scalar
+- `EmitLibrary` emits the same tables as the native library `name`, which
+  `execution_natives_bind` (`src/execution/native.h`) binds. Every function
+  is `internal`, and the object exports one symbol, `chibi_natives_<name>`,
+  a `{ i32 abi, i32 count, ptr exports }` manifest at `native_abi.ExportAbi`.
+  Each export is `{ ptr name, i64 id, ptr types, i32 parameters, i32 results,
+  ptr entry }`, named and identified by the caller's `names` and `ids`, and
+  its entry `void (ptr in, ptr out)` reads its arguments from and writes its
+  result to 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1,
+  `number` and `f64` as their bits. A function with a string or record
+  parameter or result has no wrapper and stays callable only inside the
+  library. Libraries are Linux x86-64 only: a macOS or Windows target is
+  rejected.
+- A module declares records, each a range of one or more scalar
   field types in the field table, emitted in that order as
   `%recordN = type { ... }`. Record type `RecordType + N` is a value: internal
   functions take and return it, slots and locals hold it, and its only
@@ -38,12 +50,27 @@ interface, or the complete allocation/memory/output/free native island.
   `right` (`extractvalue`); the field's type must be the value's. The
   exported function takes and returns scalars only, so no aggregate crosses
   the C ABI.
+- A string is `native_abi.TextType()`, `{ ptr, i32 }`, the layout of the
+  runtime's `pin_string`: its bytes, then its length. Its `Constant`'s
+  `literal` indexes the module's text table, and each
+  text is a `private unnamed_addr` global of its bytes and a NUL. `Eq` and
+  `Ne` call the module's internal `@chibi_scalar.text_equal`, emitted only
+  when some instruction compares strings: equal lengths, then equal bytes,
+  reading no byte of an empty string. `TextLength` is a string's byte count,
+  an `int`; `TextByte` its byte at the `right` index, zero-extended, or -1
+  outside it (a negative index is outside); `TextDrop` and `TextTake` the
+  string past its first `right` bytes and its first `right` bytes, with the
+  count clamped to 0 through the length, so no byte read or pointer passes
+  the string. No allocation, copy or drop is needed, since every string is
+  a view of a constant. The exported function takes and returns no string.
 - `Call` defines a slot from another function's result. Its arguments are
   slots of the caller's own argument range, each of the callee's parameter
   type and defined on every path; they load in order, so evaluation order stays
   visible at O0. Calls may recurse, directly or mutually, with no depth
   counter, as Rust's and Odin's do. Every function carries
-  `"probe-stack"="inline-asm"`, so a frame larger than a page touches each
+  `native_abi.StackProbe`: `"probe-stack"="inline-asm"`, or on Windows
+  `"probe-stack"="__chkstk"`, a call to the probe MSVC's and rustc's code
+  calls, which the program defines. A frame larger than a page touches each
   page in turn and running out of stack always faults in the guard page below
   it rather than past it. That makes an overflow a fault, never a silent write
   past the stack. What the fault prints is up to the process. A host that has
@@ -56,9 +83,9 @@ interface, or the complete allocation/memory/output/free native island.
 - Scalar locals, branches, comparisons, bitwise operations, integer and
   floating arithmetic, and conversions. Comparisons, division, remainders and
   `>>` are unsigned for an unsigned type. `bool` has `==`, `!=` and `BitNot`,
-  its `!`. Limits per function are eight parameters, 256 slots, 128 locals,
-  1,024 body instructions and 256 call arguments. These are plan bounds, not a
-  source-language acceptance claim.
+  its `!`. As in Rust and Odin, nothing bounds a module's functions, records
+  or texts, or a function's parameters, slots, locals, instructions or call
+  arguments.
 - Integer operations never fail, as the language's integer contract says.
   Add, subtract, multiply and negate wrap, with no `nsw`/`nuw` promises.
   `x / 0` is 0 and `x % 0` is `x`; `MIN / -1` is `MIN` and `MIN % -1` is 0.
@@ -95,6 +122,13 @@ interface, or the complete allocation/memory/output/free native island.
 - An exhausted budget branches to `llvm.trap`. This provisional fail-stop
   contract does not supply VM diagnostics, recovery or asynchronous
   cancellation. The caller still supervises process timeout.
+- Line tables are opt-in, as rustc's `-C debuginfo=line-tables-only`: a
+  `Source` with a file, a name for each function and a line and column for
+  each code instruction add a DWARF compile unit, one subprogram per function
+  (and an artificial one for `text_equal`), and a `!dbg` location on every
+  instruction. `native_abi.DebugFormat` gives the target's DWARF version
+  flag. Line tables are Linux x86-64 only: a macOS or Windows module with a
+  source file is rejected. An empty file emits the module unchanged.
 
 The emitter rejects unsupported instructions/types and validates table bounds,
 operand types, constants within their type, unique scalar definitions and
@@ -111,7 +145,8 @@ scalar ordinals.
   recursion with stack probes.
 - `tool language-package-compiler-chibi-scalar` (`test/language`): call
   definitions and argument order, malformed calls and misplaced call
-  graphs, floating encodings, comparisons, conversions and intrinsic
+  graphs, library wrappers and manifests, floating encodings, comparisons,
+  conversions and intrinsic
   declarations, and floating operations and conversions outside the native subset,
   each with its exact rejection, on both VMs.
 - `tools/compiler/scalar_llvm`: lowers producer-owned `scalar_facts` rows; see

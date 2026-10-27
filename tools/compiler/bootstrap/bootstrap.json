@@ -1,31 +1,31 @@
 {
   "format": 1,
-  "version": 7,
+  "version": 6,
   "minimum": 2,
-  "revision": "5ad732659d4fdf831ff2618df664dbd0647b288b",
+  "revision": "6f46605da9a2cbc52028bf3de5ad0a6d82c8d5bc",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 13204587,
-    "sha256": "a6e3abadb888c298da60b6a9d50294c90c479723ec5f8bc1a20150ad9d24d523"
+    "bytes": 10114071,
+    "sha256": "3f075c12e0e860c373b4b7a80dbb143f1306a36be280e742dd25da3a6bdc8c82"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 139098,
-      "sha256": "91f3e08532076be2ffb9c3af9b8e1ba0854d11c6276b32d091c749c6a2bffe70"
+      "bytes": 132973,
+      "sha256": "9f2f256e18bf156ff8eebe3f1e863733a58da44366b5787177cd4462319e4442"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 158578,
-      "sha256": "9c4f13bde8d3031ba08d64360052a8936e153e77cb8371f5dcb7d4f6133ab5c1"
+      "bytes": 149357,
+      "sha256": "e8f433f53a828d220d5aa393be81e1a472ba99eedf87c747260d851bc4b65da2"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 284561,
-      "sha256": "3ca0ece18c253de73c6b0766243488eaf0b995bb4a69e1685e02a651090b12cd"
+      "bytes": 275054,
+      "sha256": "174222e9b4008c7dd09eb8f49e56c27052f5240eb377340d4038003f6a18f444"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -39,8 +39,8 @@
     },
     {
       "path": "package_compiler/Pointers.chibi",
-      "bytes": 50620,
-      "sha256": "a2d61642b9deb554286b641b41d3dd4587fbbdc677559dd565d875e65c25d7e4"
+      "bytes": 46713,
+      "sha256": "850ea5f62e07012b07cc5780372c4e860d8847005b4d84ff2651506a674db088"
     },
     {
       "path": "package_compiler/Tree.chibi",
@@ -53,24 +53,14 @@
       "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
     },
     {
-      "path": "package_compiler/Queries.chibi",
-      "bytes": 92776,
-      "sha256": "1280e7a2e35537a8d513d5e856d7ec807cd7d404f77424f02a8cfc3aa0d0acb4"
-    },
-    {
-      "path": "package_compiler/QueryLoops.chibi",
-      "bytes": 12138,
-      "sha256": "00948cd6712e6ed2b91eeb9b0f398e0b270b50e51057b3d2516a2f6e06da9ecc"
-    },
-    {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 56135,
-      "sha256": "f6904aab43d0d6b6d53e65996b9cbbb49b4b76b8702e248c1c43573af79ae469"
+      "bytes": 49000,
+      "sha256": "6365f6498295e0a71840e4b6c388497e7e2a66be5d02f9bae04f513a0401215a"
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 94768,
-      "sha256": "dba4908e4f28f7bd7715358c47ab8fd6db50d33284e5d6955b5c8c971e2a953d"
+      "bytes": 111282,
+      "sha256": "5e0e4d3ba1acc273000ba1a7204a940dce23da9c1314655faf4a65f99d8ff276"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -119,39 +109,36 @@
     },
     {
       "path": "prepared_writer/Writer.chibi",
-      "bytes": 39069,
-      "sha256": "95fba42621ad8e22186a34b2bdcee64afc14b11366d93d3585ffd02c1c3ad7a6"
+      "bytes": 36713,
+      "sha256": "d73754bf4b642c01da7719c4be40b8d9aa3385e71f2157485f2b85fc6fc991c7"
     },
     {
       "path": "scalar_facts/Facts.chibi",
-      "bytes": 14860,
-      "sha256": "7301ef2162b87b940c40e4ade26caa67c253141d7f0f61ecf177e05a36c3b501"
+      "bytes": 16416,
+      "sha256": "44ff493ea2fc12ba12b68930274aefb8d61e88c42b0ecb280d47966b3edeae7d"
     }
   ],
   "target": [
     {
       "pointer_storage": 9,
       "pointer_size": 8,
-      "value_size": 48,
+      "value_size": 40,
       "payload_offset": 8,
-      "arguments_offset": 168,
-      "delta_seconds_offset": 320,
       "results_offset": 184,
       "type_offset": 0,
       "container_offset": 16,
       "name_offset": 24,
       "record_offset": 32,
-      "schema_offset": 40,
       "count_offset": 24,
       "items_offset": 32,
       "data_offset": 40,
       "stride_offset": 48,
-      "map_count_offset": 96,
+      "map_count_offset": 80,
       "data_failure": 4,
       "argument_failure": 7,
       "assert_failure": 3
     },
-    10711995348391902914,
+    16866039625053527240,
     [
       "CONSTANT",
       "VARIABLE",
@@ -281,248 +268,217 @@
         "first": 0,
         "parameters": 2,
         "results": 1,
-        "variadic": true,
-        "effects": 0
+        "variadic": true
       },
       {
         "name": "text_equal",
         "first": 3,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "text_byte_length",
         "first": 6,
         "parameters": 1,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "text_byte_at",
         "first": 8,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "text_slice",
         "first": 11,
         "parameters": 3,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "text_bytes",
         "first": 15,
         "parameters": 1,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "make_array",
         "first": 17,
         "parameters": 1,
         "results": 1,
-        "variadic": true,
-        "effects": 0
+        "variadic": true
       },
       {
         "name": "get",
         "first": 19,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "length",
         "first": 22,
         "parameters": 1,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "last_index",
         "first": 24,
         "parameters": 1,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "is_empty",
         "first": 26,
         "parameters": 1,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "is_not_empty",
         "first": 28,
         "parameters": 1,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "is_valid_index",
         "first": 30,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "contains",
         "first": 33,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "find",
         "first": 36,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "identical",
         "first": 39,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "append",
         "first": 42,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "add_unique",
         "first": 45,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "extend",
         "first": 48,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "set_array_elem",
         "first": 51,
         "parameters": 3,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "insert",
         "first": 55,
         "parameters": 3,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "remove_index",
         "first": 59,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "remove_item",
         "first": 62,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "clear",
         "first": 65,
         "parameters": 1,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "reverse",
         "first": 67,
         "parameters": 1,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "swap",
         "first": 69,
         "parameters": 3,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "resize",
         "first": 73,
         "parameters": 2,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "slice",
         "first": 76,
         "parameters": 3,
         "results": 1,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "compiler_json_string",
         "first": 80,
         "parameters": 1,
         "results": 3,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "compiler_json_value_string",
         "first": 84,
         "parameters": 1,
         "results": 3,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       },
       {
         "name": "compiler_syntax_parse",
         "first": 88,
         "parameters": 1,
         "results": 15,
-        "variadic": false,
-        "effects": 0
+        "variadic": false
       }
     ],
     [

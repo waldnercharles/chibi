@@ -256,6 +256,7 @@ Files :: (target: string) -> string[] {
             "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",
             "src/execution/jit_system.c", "src/execution/jit_watch.c", "src/execution/log.c",
             "src/execution/machine.c", "src/execution/module.c", "src/execution/module_effects.c",
+            "src/execution/native.c",
             "src/execution/opt.c", "src/execution/parallel.c", "src/execution/preparation_budget.c",
             "src/execution/prepared.c", "src/execution/prepared_function.c", "src/execution/prepared_record.c",
             "src/execution/program.c", "src/execution/program_inspection.c",
@@ -683,7 +684,10 @@ Files :: (target: string) -> string[] {
         return files;
     }
     if (target == "chibi-player") {
-        return ["src/host/player_main.c", "src/host/player_url.c"];
+        return [
+            "src/host/player_main.c", "src/host/player_url.c", "src/host/native_libraries.c",
+            "src/host/stack_overflow.c"
+        ];
     }
     if (target == "chibi-compile") {
         return [
@@ -715,6 +719,7 @@ Files :: (target: string) -> string[] {
     if (target == "test_language") {
         return [
             "test/language/main.c", "test/language/inferred_string_arrays.c",
+            "test/parallel.c", "test/language/parallel.c",
             "test/language/build_workflow.c", "test/language/record_publication.c",
             "test/language/outliner_projection.c", "test/language/row_array.c",
             "test/language/record_compatibility.c", "test/language/record_state.c",
@@ -724,8 +729,9 @@ Files :: (target: string) -> string[] {
             "test/language/record_prepared.c", "test/language/runtime_attribution.c",
             "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
             "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
-            "test/language/query_boundary.c", "test/language/query_values.c", "test/language/query_migration.c", "test/language/incremental.c",
-            "test/language/operations.c", "test/language/modules.c",
+            "test/language/query_boundary.c", "test/language/query_values.c", "test/language/query_migration.c",
+            "test/language/incremental.c", "test/language/operations.c",
+            "test/language/modules.c", "test/language/native_calls.c",
             "test/language/ranges.c", "test/language/scalarize.c", "test/language/component_write.c",
             "test/language/component_write_source.c", "test/language/component_write_ir.c",
             "test/language/borrow.c", "test/language/reductions.c", "test/language/benchmark.c",
@@ -749,7 +755,7 @@ Files :: (target: string) -> string[] {
             "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
             "test/language/prepared_writer_chibi.c", "test/language/shader_source_chibi.c",
             "test/language/asset_packaging_chibi.c", "test/language/package_compiler_chibi.c",
-            "src/host/process.c",
+            "test/language/native_census.c", "src/host/process.c",
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
             "test/language/scalar_lowering_chibi.c",
             "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
@@ -874,16 +880,18 @@ Files :: (target: string) -> string[] {
     }
     if (target == "test_tools") {
         return [
-            "test/tools/main.c", "test/tools/graph_dispatch.c", "test/tools/prepared.c",
+            "test/tools/main.c", "test/tools/case_timings.c", "test/tools/case_timings_test.c",
+            "test/tools/graph_dispatch.c", "test/tools/prepared.c",
             "test/tools/fixture.c", "test/tools/execution_policy.c", "test/tools/package.c",
-            "test/tools/chibi_cli.c", "test/tools/package_ownership.c",
+            "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
+            "test/tools/package_ownership.c",
             "test/tools/desktop_dependencies.c", "test/tools/third_party_publish.c",
             "test/tools/collab.c", "test/tools/validate_project.c",
             "test/tools/fixture_format.c", "test/tools/controller.c", "test/tools/render_fixture.c",
             "test/tools/test_policy.c", "test/tools/validation_plan.c", "test/tools/web_storage.c",
             "test/tools/player_url.c", "test/tools/webgpu_staging.c", "test/tools/browser.c",
             "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
-            "src/host/process.c", "third_party/yyjson/yyjson.c",
+            "src/host/process.c", "src/host/native_libraries.c", "third_party/yyjson/yyjson.c",
             "test/tools/native_aot_driver.c", "test/tools/build_process.c",
             "test/tools/build_toolchain.c", "test/tools/build_graph.c", "test/tools/build_sdk.c",
             "test/tools/compiler_artifact.c", "test/tools/compiler_bootstrap.c",
@@ -1105,7 +1113,7 @@ pub PublicHeaders :: (target: string) -> string[] {
             "execution/function_builder.h", "execution/inspection.h", "execution/integer_report.h",
             "execution/intrinsics.h",
             "execution/map_intrinsics.h", "execution/module.h", "execution/module_builder.h",
-            "execution/prepared.h", "execution/task.h", "execution/update.h"
+            "execution/native.h", "execution/prepared.h", "execution/task.h", "execution/update.h"
         ];
     }
     if (target == "chibi_core_capabilities") {
@@ -1472,7 +1480,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
         ];
     }
     if (target == "chibi_player") {
-        return ["host/player_clock.h", "host/player_url.h"];
+        return ["host/player_clock.h", "host/player_url.h", "host/native_libraries.h", "host/stack_overflow.h"];
     }
     if (target == "chibi_source_catalog") {
         return [
@@ -1518,7 +1526,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
         // The build host's private headers, which its object library and
         // executable share.
         return [
-            "host/build_host.h", "host/build_host_internal.h", "host/build_io.h", "host/build_values.h",
+            "host/build_host.h", "host/build_host_internal.h", "host/build_timing.h", "host/build_io.h", "host/build_values.h",
             "host/process.h", "support/sha256.h", "authoring/source_package_io.h"
         ];
     }
@@ -2551,7 +2559,7 @@ pub Includes :: (target: string) -> string[] {
             "public/native_prepared", "public/native_capabilities", "public/capabilities",
             "public/types", "public/execution_contract", "public/behavior_runtime", "public/execution",
             "public/ecs", "public/tasks", "public/events", "public/compiler_host",
-            "public/asset_compiler_host", "public/math_capabilities",
+            "public/asset_compiler_host", "public/math_capabilities", "public/conversion_capabilities",
             "public/project_compilation", "public/source_catalog", "public/authoring",
             "public/compiler", "public/language", "public/reference_index", "public/input_map",
             "public/input_action", "public/prototype_document", "public/scene_document",
@@ -3055,7 +3063,8 @@ CommonSystemIncludes :: (target: string) -> string[] {
         ];
     }
     if (target == "test_language") {
-        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math"];
+        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math",
+                "third-party/include/chibi/vendor/enkits/1"];
     }
     if (target == "chibi_sdk_contracts") {
         return ["public/math"];
@@ -3256,7 +3265,8 @@ pub Defines :: (target: string) -> string[] {
         return ["_POSIX_C_SOURCE=200809L"];
     }
     if (target == "test_language") {
-        return ["CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS"];
+        return ["CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS", "CHIBI_PACKAGE_TEST_POOL=1",
+                "CHIBI_TEST_ENKITS=1"];
     }
     if (target == "chibi_sdk_contracts") {
         return [
@@ -3507,11 +3517,13 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/component_write_ir.c", "test/language/component_write_source.c",
         "test/language/constant_proof_chibi.c", "test/language/constant_scalar_chibi.c",
         "test/language/docs_markdown.c", "test/language/effect_analysis_chibi.c",
+        "test/language/effects.c",
         "test/language/execution.c", "test/language/execution_scope.c", "test/language/generic.c",
         "test/language/inferred_string_arrays.c", "test/language/integer_semantics.c",
         "test/language/lexical_binding_chibi.c",
         "test/language/maps.c", "test/language/named_binding_chibi.c",
-        "test/language/nominal_binding_chibi.c", "test/language/numeric.c",
+        "test/language/native_census.c", "test/language/nominal_binding_chibi.c",
+        "test/language/numeric.c",
         "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
         "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
@@ -3613,6 +3625,7 @@ pub Configures :: (target: string) -> string[] {
         return [
             "third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h",
             "test/prepared_fixture.h=test/prepared_fixture.h",
+            "test/parallel.h=test/parallel.h",
             "package_core_source.h=test/language/package_core_source.h.in",
             "docs_markdown_source.h=test/language/docs_markdown_source.h.in",
             "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",
@@ -3664,7 +3677,8 @@ pub Configures :: (target: string) -> string[] {
 // as CMake's file(READ ... HEX) initializer, `cstring:PATH` as C string lines,
 // and `compiler:ARGUMENT` as C string initializer lines of the profile's C
 // compiler, its C flags and then ARGUMENT, as test/tools writes the compiler
-// its exported C builds with.
+// its exported C builds with. `test-sources:PREFIX:PACKAGE:DIR` and
+// `test-inputs:PREFIX:PACKAGE:DIR` discover a test package's direct .chibi files.
 pub Substitutions :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
@@ -3686,6 +3700,8 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_DOCS_MARKDOWN_BYTES=bytes:tools/docs/markdown/Markdown.chibi",
             "CHIBI_DOCS_REFERENCE_BYTES=bytes:tools/docs/reference/Reference.chibi",
             "CHIBI_DOCS_SITE_BYTES=bytes:tools/docs/site/Site.chibi",
+            "CHIBI_EMITTER_TEST_SOURCES=test-sources:EMITTER_TEST_SOURCE:llvm_native_calls:test/native_aot/emitter_calls",
+            "CHIBI_EMITTER_TEST_INPUTS=test-inputs:EMITTER_TEST_SOURCE:llvm_native_calls:test/native_aot/emitter_calls",
             "CHIBI_EFFECT_ANALYSIS_BYTES=bytes:tools/compiler/effect_analysis/Effects.chibi",
             "CHIBI_LEXICAL_BINDING_BYTES=bytes:tools/compiler/lexical_binding/Binding.chibi",
             "CHIBI_LLVM_NATIVE_BYTES=bytes:tools/compiler/llvm_native/Emit.chibi",
@@ -3807,7 +3823,8 @@ pub Resources :: (target: string) -> string[] {
     if (target == "chibi-build-host") {
         return [
             "build/share/chibi/compiler=tools/compiler",
-            "build/share/chibi/core=packages/core"
+            "build/share/chibi/core=packages/core",
+            "build/share/chibi/tools/native_aot=tools/native_aot"
         ];
     }
     if (target == "chibi") {

@@ -734,6 +734,27 @@ static bool finish(
     return embedded;
 }
 
+/* Runs `command` with the data folder's natives/ appended, for `project`. */
+static bool build_natives(const char *const *command, const char *data, const char *project)
+{
+    /* The driver takes absolute paths, and --output may be relative. */
+    char *resolved = realpath(data, NULL);
+    assert(resolved);
+    char *natives = join(resolved, "natives");
+    free(resolved);
+    char **argv = NULL;
+    for (int i = 0; command[i]; i++) {
+        apush(argv, (char *)command[i]);
+    }
+    apush(argv, natives);
+    apush(argv, NULL);
+    bool built = chibi_process_run(argv) == 0 ||
+                 failed("the native libraries did not build", project);
+    afree(argv);
+    free(natives);
+    return built;
+}
+
 static bool assemble(const chibi_export_spec *spec, const char *staging)
 {
     char *data = join(staging, LAYOUTS[spec->layout].data);
@@ -761,6 +782,9 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
         assembled = failed("the project did not compile", spec->project);
     }
     assembled = assembled && copy_external(spec->project, data);
+    if (spec->natives) {
+        assembled = assembled && build_natives(spec->natives, data, spec->project);
+    }
     static const char *const engine_files[] = { "shaders", "licenses", "engine.json" };
     for (size_t i = 0; assembled && i < sizeof engine_files / sizeof *engine_files;
          i++) {

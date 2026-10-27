@@ -13,6 +13,7 @@
 #include "host/native_default.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/component_catalog.h"
+#include "runtime/task_pool.h"
 #include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/asset_format.h"
@@ -284,13 +285,20 @@ static void print_invalid(const authoring_packages *packages)
     }
 }
 /* Runs each test and prints its outcome; the number that failed. */
-static int run_tests(const authoring_packages *packages, behavior_backend backend)
+static int run_tests(const authoring_packages *packages, behavior_backend backend, int workers)
 {
     package_test *tests = package_tests_find(packages);
+    int count = acount(tests);
+    package_test_result *results = xcalloc((size_t)count, sizeof *results);
+    task_pool *pool = task_pool_acquire_workers(workers);
+    task_pool_begin(pool, count > 1);
+    package_tests_run(tests, count, backend, PACKAGE_TEST_BUDGET, task_pool_tasks(pool), results);
+    task_pool_end(pool);
+    task_pool_release(pool);
     int failed = 0;
-    for (int i = 0; i < acount(tests); i++) {
-        package_test_failure failure;
-        bool passed = package_test_run(&tests[i], backend, PACKAGE_TEST_BUDGET, &failure);
+    for (int i = 0; i < count; i++) {
+        package_test_failure failure = results[i].failure;
+        bool passed = results[i].passed;
         printf(
             "%s %s.%s\n",
             passed ? "PASS" : "FAIL",
@@ -313,7 +321,8 @@ static int run_tests(const authoring_packages *packages, behavior_backend backen
             printf("  %s\n", failure.message);
         }
     }
-    printf("%d tests, %d failed\n", acount(tests), failed);
+    printf("%d tests, %d failed\n", count, failed);
+    free(results);
     afree(tests);
     return failed;
 }
@@ -322,6 +331,20 @@ static int run_tests(const authoring_packages *packages, behavior_backend backen
  * can hold tests. */
 int authoring_project_test(const char *root, const char *core)
 {
+    /* Independent of the repository selector runner's process-level job limit. */
+    const char *setting = getenv("CHIBI_TEST_WORKERS");
+    int workers = 0;
+    if (setting) {
+        char *end;
+        errno = 0;
+        long value = strtol(setting, &end, 10);
+        if (!*setting || strspn(setting, "0123456789") != strlen(setting) ||
+            *end || errno || value < 1 || value > TASK_WORKER_MAX) {
+            fprintf(stderr, "CHIBI_TEST_WORKERS must be an integer from 1 to %d\n", TASK_WORKER_MAX);
+            return 1;
+        }
+        workers = (int)value;
+    }
     char error[512] = { 0 };
     const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
                                                 COMPILER_JSON_DEFINITION_PACK };
@@ -350,7 +373,7 @@ int authoring_project_test(const char *root, const char *core)
     );
     int status = 1;
     if (authoring_packages_valid(packages)) {
-        status = run_tests(packages, backend) ? 1 : 0;
+        status = run_tests(packages, backend, workers) ? 1 : 0;
     } else {
         print_invalid(packages);
     }
@@ -529,7 +552,10 @@ static bool generate(
         behavior_function_activation_init(function, &activation);
     }
     pin_value result = { .type = PIN_STR, .container = PIN_CONTAINER_ARRAY };
-    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+    behavior_managed_heap managed;
+    behavior_managed_heap_init(&managed);
+    behavior_function_context context = { .managed_heap = &managed,
+                                          .activation = resumable ? &activation : NULL,
                                           .arguments = arguments,
                                           .argument_count = count,
                                           .results = &result,
@@ -558,6 +584,7 @@ static bool generate(
     }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&managed);
     arena_free(&storage);
     return written;
 }

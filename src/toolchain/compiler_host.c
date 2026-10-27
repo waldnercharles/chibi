@@ -804,6 +804,7 @@ static void sum_counts(behavior_run_counts *total, const behavior_run_counts *va
         value->size_bytecode_fallbacks,
         &total->overflow
     );
+    sum_counter(&total->native_entries, value->native_entries, &total->overflow);
 }
 bool compiler_host_invoke_batch(
     compiler_host *host,

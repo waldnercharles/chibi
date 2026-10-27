@@ -1,5 +1,6 @@
 #include "authoring/source_prepare.h"
 #include "host/build_host.h"
+#include "host/build_timing.h"
 #include "host/build_values.h"
 #include "support/sha256.h"
 #include "types/text.h"
@@ -14,6 +15,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +34,98 @@ static char *fixture_source;
 static char output[1024], errors[1024];
 static chibi_process_output out, err;
 static volatile sig_atomic_t cancelled;
+
+/* Trace order is wait order, not child exit order. Check each interval rather
+ * than treating parallel/nested elapsed intervals as additive wall time. */
+static int timing_rows(FILE *file, const char *wanted, int wanted_status, int wanted_error)
+{
+    rewind(file);
+    char line[256], category[32];
+    int count = 0;
+    while (fgets(line, sizeof line, file)) {
+        if (!strncmp(line, "category\t", 9)) {
+            continue;
+        }
+        int step, status, error;
+        double started, observed;
+        if (sscanf(line, "%31s%d%lf%lf%d%d", category, &step, &started, &observed, &status, &error) !=
+                6 ||
+            !isfinite(started) || !isfinite(observed) || started <= 0 ||
+            observed < started || step < 0) {
+            return -1;
+        }
+        count += !strcmp(category, wanted) && status == wanted_status &&
+                 error == wanted_error;
+    }
+    return ferror(file) ? -1 : count;
+}
+
+static double timing_observed(FILE *file, int wanted)
+{
+    rewind(file);
+    char line[256], category[32];
+    while (fgets(line, sizeof line, file)) {
+        int step, status, error;
+        double started, observed;
+        if (sscanf(line, "%31s%d%lf%lf%d%d", category, &step, &started, &observed, &status, &error) ==
+                6 &&
+            step == wanted && !strcmp(category, "process")) {
+            return observed;
+        }
+    }
+    return 0;
+}
+
+TEST_CASE(build_timings_are_opt_in_bounded_and_exclusive)
+{
+    REQUIRE(!build_timing_open(NULL) && !build_timing_open(""));
+    char directory[256];
+    snprintf(directory, sizeof directory, "%s/timings", root);
+    REQUIRE(!mkdir(directory, 0700));
+    for (int i = 0; i < BUILD_TIMING_FILES; i++) {
+        FILE *file = build_timing_open(directory);
+        REQUIRE(file);
+        build_timing_write(file, "compile", i, 1, 2, 0, 0);
+        REQUIRE(!fclose(file));
+    }
+    REQUIRE(!build_timing_open(directory) && errno == ENOSPC);
+    char path[512];
+    snprintf(path, sizeof path, "%s/00.tsv", directory);
+    FILE *file = fopen(path, "r");
+    REQUIRE(file);
+    REQUIRE(timing_rows(file, "compile", 0, 0) == 1);
+    REQUIRE(!fclose(file));
+    return true;
+}
+
+TEST_CASE(build_timings_classify_without_recording_arguments)
+{
+    char *compile[] = { "/usr/bin/ccache",  "/usr/bin/clang", "-c",
+                        "private-source.c", "-DSECRET=value", NULL };
+    char *link[] = { "/usr/bin/clang++", "-o", "private-output", NULL };
+    char *archive[] = { "/usr/bin/llvm-ar", "rcs", "private-output", NULL };
+    char *reflect[] = { "/build/reflect", NULL };
+    char *generator[] = { "/build/chibi-build-host",
+                          "--source",
+                          "tools/toolchain/AssetCompiler.chibi",
+                          NULL };
+    REQUIRE(!strcmp(build_timing_category(compile, true), "compile"));
+    REQUIRE(!strcmp(build_timing_category(link, true), "link"));
+    REQUIRE(!strcmp(build_timing_category(archive, true), "archive"));
+    REQUIRE(!strcmp(build_timing_category(reflect, true), "reflection"));
+    REQUIRE(!strcmp(build_timing_category(generator, true), "generator"));
+    REQUIRE(!strcmp(build_timing_category(compile, false), "probe"));
+    FILE *file = tmpfile();
+    REQUIRE(file);
+    build_timing_write(file, build_timing_category(compile, true), 1, 1, 2, 7, 0);
+    REQUIRE(timing_rows(file, "compile", 7, 0) == 1);
+    rewind(file);
+    char text[256] = { 0 };
+    REQUIRE(fread(text, 1, sizeof text - 1, file) > 0);
+    REQUIRE(!strstr(text, "private") && !strstr(text, "SECRET") && !strstr(text, "clang"));
+    REQUIRE(!fclose(file));
+    return true;
+}
 
 static double now()
 {
@@ -1020,6 +1114,8 @@ TEST_CASE(steps_take_up_to_1023_arguments)
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         chibi_build_options options = primitive_options(sources[0], backend);
+        options.timings = tmpfile();
+        REQUIRE(options.timings);
         chibi_build_result result;
         bool success = chibi_build_invoke(&options, &result);
         if (!success) {
@@ -1029,6 +1125,9 @@ TEST_CASE(steps_take_up_to_1023_arguments)
             success && result.value == 7 && result.steps == 1 &&
             primitive_backend(&result, backend)
         );
+        REQUIRE(timing_rows(options.timings, "process", 7, CHIBI_PROCESS_OK) == 1);
+        REQUIRE(timing_rows(options.timings, "execute", 7, 0) == 1);
+        REQUIRE(!fclose(options.timings));
         options = primitive_options(sources[1], backend);
         REQUIRE(!chibi_build_invoke(&options, &result));
         REQUIRE(
@@ -1212,6 +1311,26 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
         !strcmp(result.diagnostic, "Unknown import collection") &&
         !result.counts.bytecode_entries
     );
+    return true;
+}
+
+/* A build entry takes the address of a local and writes through it on each
+ * backend: the host gives the entry a managed heap for the cell. */
+TEST_CASE(private_programs_allocate_managed_pointers)
+{
+    static const char
+        *source = "package pointers\n"
+                  "Build :: () -> int { x := 2; p := &x; p^ += 1; "
+                  "return x; }";
+    for (int b = 0; b < 2; b++) {
+        chibi_build_options options = primitive_options(source, b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        bool invoked = chibi_build_invoke(&options, &result);
+        if (!invoked) {
+            fprintf(stderr, "managed pointer build: backend=%d %s\n", b, result.diagnostic);
+        }
+        REQUIRE(invoked && result.value == 3);
+    }
     return true;
 }
 
@@ -1450,13 +1569,16 @@ TEST_CASE(private_started_steps_run_together)
                   "handles: int[] = []; "
                   "for (i in 0..<4) { handles = append(handles, "
                   "build.start([worker, \"sleep\", \"0.4\"])); } "
+                  "fast := build.start([worker, \"sleep\", \"0.05\"]); "
                   "failed := 0; "
                   "for (handle in handles) { if (build.wait(handle) != 0) { "
                   "failed += 1; } } "
-                  "return failed; }";
+                  "return failed + build.wait(fast); }";
     chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
     primitive_started = 0;
     options.prepared = primitive_prepared;
+    options.timings = tmpfile();
+    REQUIRE(options.timings);
     double started = now();
     chibi_build_result result;
     bool invoked = chibi_build_invoke(&options, &result);
@@ -1471,7 +1593,12 @@ TEST_CASE(private_started_steps_run_together)
     REQUIRE(invoked);
     double elapsed = now() - primitive_started;
     /* One after another the four would take 1.6 s. */
-    REQUIRE(result.value == 0 && result.steps == 4 && elapsed < 1.2);
+    REQUIRE(result.value == 0 && result.steps == 5 && elapsed < 1.2);
+    REQUIRE(timing_rows(options.timings, "prepare", 0, 0) == 1);
+    REQUIRE(timing_rows(options.timings, "process", 0, CHIBI_PROCESS_OK) == 5);
+    REQUIRE(timing_rows(options.timings, "execute", 0, 0) == 1);
+    REQUIRE(timing_observed(options.timings, 5) < timing_observed(options.timings, 1));
+    REQUIRE(!fclose(options.timings));
     return true;
 }
 
@@ -1533,18 +1660,69 @@ TEST_CASE(private_unwaited_and_late_steps_stop)
     chibi_build_options options = primitive_options(unwaited, BEHAVIOR_BYTECODE);
     primitive_started = 0;
     options.prepared = primitive_prepared;
+    options.timings = tmpfile();
+    REQUIRE(options.timings);
     chibi_build_result result;
     REQUIRE(chibi_build_invoke(&options, &result));
     REQUIRE(result.value == 0 && now() - primitive_started < 2);
+    REQUIRE(timing_rows(options.timings, "abandoned", -SIGKILL, CHIBI_PROCESS_OK) == 1);
+    REQUIRE(!fclose(options.timings));
     static const char
         *late = "package jobs\nBuild :: () -> int { return build.wait("
                 "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
                 "\"sleep\", \"30\"])); }";
     options = primitive_options(late, BEHAVIOR_BYTECODE);
     options.deadline = now() + 0.5;
+    options.timings = tmpfile();
+    REQUIRE(options.timings);
     double started = now();
     REQUIRE(!chibi_build_invoke(&options, &result));
     REQUIRE(!strcmp(result.diagnostic, "build process timeout") && now() - started < 2);
+    REQUIRE(
+        timing_rows(options.timings, "execute", 0, 1) +
+            timing_rows(options.timings, "prepare", 0, 1) ==
+        1
+    );
+    REQUIRE(!fclose(options.timings));
+    return true;
+}
+
+/* Start cancellation after preparation so this witnesses an interrupted child,
+ * not merely an expired compilation budget. */
+static void timing_cancel_prepared()
+{
+    struct itimerval timer = { .it_value = { .tv_usec = 200000 } };
+    assert(!setitimer(ITIMER_REAL, &timer, NULL));
+}
+
+TEST_CASE(build_timings_record_interrupted_children)
+{
+    const char
+        *source = "package jobs\nBuild :: () -> int { return build.wait("
+                  "build.start([build.environment(\"CHIBI_BUILD_WORKER\"), "
+                  "\"sleep\", \"30\"])); }";
+    chibi_build_options options = primitive_options(source, BEHAVIOR_BYTECODE);
+    options.prepared = timing_cancel_prepared;
+    options.cancelled = &cancelled;
+    options.timings = tmpfile();
+    REQUIRE(options.timings);
+    struct sigaction action = { .sa_handler = cancel_alarm }, previous;
+    sigemptyset(&action.sa_mask);
+    REQUIRE(!sigaction(SIGALRM, &action, &previous));
+    struct itimerval previous_timer, timer = { 0 };
+    assert(!getitimer(ITIMER_REAL, &previous_timer));
+    cancelled = 0;
+    chibi_build_result result;
+    bool success = chibi_build_invoke(&options, &result);
+    assert(!setitimer(ITIMER_REAL, &timer, NULL));
+    assert(!sigaction(SIGALRM, &previous, NULL));
+    assert(!setitimer(ITIMER_REAL, &previous_timer, NULL));
+    cancelled = 0;
+    REQUIRE(!success && result.steps == 1);
+    REQUIRE(!strcmp(result.diagnostic, "build process cancelled"));
+    REQUIRE(timing_rows(options.timings, "process", 0, CHIBI_PROCESS_CANCELLED) == 1);
+    REQUIRE(timing_rows(options.timings, "execute", 0, 1) == 1);
+    REQUIRE(!fclose(options.timings));
     return true;
 }
 
@@ -2331,7 +2509,14 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     return true;
 }
 
-static void build_process(const char *worker, const char *host, bool files_only)
+typedef enum
+{
+    BUILD_PROCESS_ALL,
+    BUILD_PROCESS_FILES,
+    BUILD_PROCESS_TIMINGS
+} build_process_cases;
+
+static void build_process(const char *worker, const char *host, build_process_cases cases)
 {
     worker_path = worker;
     host_path = host;
@@ -2364,13 +2549,25 @@ static void build_process(const char *worker, const char *host, bool files_only)
     saved_allowed = getenv("CHIBI_BUILD_ALLOWED")
                       ? strdup(getenv("CHIBI_BUILD_ALLOWED"))
                       : NULL;
-    if (files_only) {
+    if (cases == BUILD_PROCESS_TIMINGS) {
+        assert(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
+        RUN_TEST_CASE(build_timings_are_opt_in_bounded_and_exclusive);
+        RUN_TEST_CASE(build_timings_classify_without_recording_arguments);
+        RUN_TEST_CASE(steps_take_up_to_1023_arguments);
+        RUN_TEST_CASE(private_started_steps_run_together);
+        RUN_TEST_CASE(private_unwaited_and_late_steps_stop);
+        RUN_TEST_CASE(build_timings_record_interrupted_children);
+        goto teardown;
+    }
+    if (cases == BUILD_PROCESS_FILES) {
         RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
         RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
         RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
         goto teardown;
     }
     RUN_TEST_CASE(argv_cwd_and_explicit_environment);
+    RUN_TEST_CASE(build_timings_are_opt_in_bounded_and_exclusive);
+    RUN_TEST_CASE(build_timings_classify_without_recording_arguments);
     RUN_TEST_CASE(separate_output_bounds);
     RUN_TEST_CASE(exits_and_spawn_errors);
     RUN_TEST_CASE(timeout_and_active_cancellation);
@@ -2393,6 +2590,7 @@ static void build_process(const char *worker, const char *host, bool files_only)
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
     RUN_TEST_CASE(private_programs_import_named_collections);
+    RUN_TEST_CASE(private_programs_allocate_managed_pointers);
     RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
     RUN_TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation);
     RUN_TEST_CASE(private_runtime_failures_name_their_cause);
@@ -2400,6 +2598,7 @@ static void build_process(const char *worker, const char *host, bool files_only)
     RUN_TEST_CASE(private_waits_take_output_in_wait_order);
     RUN_TEST_CASE(private_waits_refuse_unknown_and_repeated_handles);
     RUN_TEST_CASE(private_unwaited_and_late_steps_stop);
+    RUN_TEST_CASE(build_timings_record_interrupted_children);
     RUN_TEST_CASE(private_value_helpers_preserve_nul_and_validate_c_boundaries);
     RUN_TEST_CASE(private_last_output_preserves_bytes_and_refuses_truncation);
     RUN_TEST_CASE(private_file_reads_preserve_bytes_and_reject_invalid_files);
@@ -2441,9 +2640,13 @@ teardown:
 
 void test_tool_build_process(const char *worker, const char *host)
 {
-    build_process(worker, host, false);
+    build_process(worker, host, BUILD_PROCESS_ALL);
 }
 void test_tool_build_process_files(const char *worker, const char *host)
 {
-    build_process(worker, host, true);
+    build_process(worker, host, BUILD_PROCESS_FILES);
+}
+void test_tool_build_timings(const char *worker, const char *host)
+{
+    build_process(worker, host, BUILD_PROCESS_TIMINGS);
 }

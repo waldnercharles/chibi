@@ -541,7 +541,8 @@ bool behavior_jit_integer(
         if (i->op == BF_NE) {
             sljit_emit_op2(c, SLJIT_XOR | SLJIT_32, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, 1);
         }
-        sljit_emit_op1(c, SLJIT_MOV32, dest, offset, SLJIT_R0, 0);
+        /* A bool return defines only its low byte. */
+        sljit_emit_op1(c, SLJIT_MOV_U8, dest, offset, SLJIT_R0, 0);
         return true;
     }
     if (behavior_function_bitwise(i->op)) {

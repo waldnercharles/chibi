@@ -77,6 +77,10 @@ typedef struct
     const package_module *modules;
     int module_count;
     const execution_prepared_linker *linker;
+    /* Native library manifests the modules' library functions bind to, which
+     * outlive the player. */
+    const execution_native_manifest *const *natives;
+    int native_count;
     behavior_backend backend;
     const player_prototype *prototypes;
     int prototype_count;

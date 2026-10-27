@@ -19,7 +19,8 @@ package scalar_facts
 // a rejection, and it must never be emitted.
 //
 // An accepted module's row 1 is its Document: `name` is the shared source
-// snapshot's document key. Then each record and union the source declares
+// snapshot's document key, and `text` is empty for a package and the library's
+// name for a native library source. Then each record and union the source declares
 // follows in declaration order:
 // - a record is a Record row, its `name`, `count` fields and declaration
 //   range, then `count` Member rows: `name`, scalar `type`, ordinal `value`
@@ -31,10 +32,11 @@ package scalar_facts
 //   among all the union's payloads in declaration order.
 // The d-th of them is type RecordType + d, which a function's result, a
 // parameter, a variable and an operand may have. Then each function follows
-// in declaration order; the first is the module's entry and takes no
-// parameters and returns int:
+// in declaration order; a package's first is the module's entry and takes no
+// parameters and returns int, and a library has no entry:
 // - a Function row: its `name`, result `type`, `count` parameters and
-//   declaration range;
+//   declaration range, and in a library its stable symbol ID as `literal`,
+//   the ID the runtime binds it by;
 // - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
 // - its body's statement rows in source order, each with its statement's
 //   range. The body ends in a terminating statement: a return, an if

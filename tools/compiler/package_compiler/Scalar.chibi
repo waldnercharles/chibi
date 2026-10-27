@@ -2,6 +2,8 @@ package package_compiler
 
 import facts "project:scalar_facts"
 import snapshot "project:source_snapshot"
+import raw "project:compiler_syntax"
+import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 import routes "project:package_routes"
 import strings "core:strings"
@@ -1503,19 +1505,20 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
 // The functions of the module, each checked as a whole before the next.
 ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[],
                  params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], ops: Ops,
-                 target: Target) -> ScalarOperands {
+                 target: Target, is_library: bool) -> ScalarOperands {
     for (callable in callables) {
         rejected := ScalarSignature(forest, types, params, callable);
         if (rejected >= 0) {
             return ScalarOperands.Failed(Diagnose(forest, rejected, 0, "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result"));
         }
     }
+    // A library has no entry.
     first := callables[0];
-    if (first.count != 0) {
+    if (!is_library && first.count != 0) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "parameters"), 0,
                                               "scalar proof requires its first function to take no parameters"));
     }
-    if (first.result != IntStorage) {
+    if (!is_library && first.result != IntStorage) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, first.node, "results"), 0,
                                               "scalar proof requires its first function to return int"));
     }
@@ -1660,6 +1663,82 @@ ScalarNul :: (text: string) -> syntax.Diagnostic {
     return ScalarPassed();
 }
 
+// The rows of a game library, `Name :: library { ... }` holding only
+// functions, under `path`, the identity the project compiles the source by
+// (its content path). Its Document row's `text` names the library, and each
+// Function row's `literal` is the function's stable ID, which the library's
+// prepared module records, so a native object compiled from the rows can be
+// bound to that module. No rows when the source has syntax errors, which the
+// package snapshot reports, or declares no library.
+ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target) -> facts.Row[] {
+    forest: snapshot.SnapshotNode[] = [];
+    top: int = -1;
+    switch raw.Parse(text) {
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            if (length(syntax.Diagnose(nodes, root)) > 0) {
+                return [];
+            }
+            for (at in 0..<length(nodes)) {
+                forest.append(snapshot.Node(nodes[at], fields[at], is_named[at], is_extra[at], 0));
+            }
+            top = root;
+    }
+    declaration := FirstMember(forest, top);
+    if (!Is(forest, declaration, "library")) {
+        return [];
+    }
+    solid := SolidOffsets(text);
+    empty_types: TypeDecl[] = [];
+    aliases: Name[] = [];
+    callables: Callable[] = [];
+    params: Param[] = [];
+    ids: u64[] = [];
+    member := FirstMember(forest, Field(forest, declaration, "body"));
+    while (member >= 0) {
+        if (!Is(forest, member, "function_declaration") || Field(forest, member, "attribute") >= 0) {
+            return ScalarFailure(path, text, Diagnose(forest, member, 0,
+                                                      "a native library holds only functions without attributes"));
+        }
+        name := Text(forest, text, Field(forest, member, "name"));
+        if (FindCallable(callables, 0, name) >= 0) {
+            return ScalarFailure(path, text, Diagnose(forest, member, 0, format_text("Duplicate declaration '{}'", name)));
+        }
+        switch FunctionSignature(forest, text, path, solid, empty_types, aliases, 0, 0, member, name, length(params)) {
+            case .Failed(diagnostic):
+                return ScalarFailure(path, text, diagnostic);
+            case .Read(callable, added):
+                params.extend(added);
+                callables.append(callable);
+                ids.append(binding.ID("symbol", format_text("{}:1:{}:callable", path, name)));
+        }
+        member = NextMember(forest, member);
+    }
+    if (length(callables) == 0) {
+        return ScalarFailure(path, text, Diagnose(forest, declaration, 0, "scalar proof requires at least one function"));
+    }
+    members: TypeMember[] = [];
+    constants: ConstDecl[] = [];
+    switch ScalarModule(forest, text, path, callables, params, empty_types, members, constants, ops, target, true) {
+        case .Failed(diagnostic):
+            return ScalarFailure(path, text, diagnostic);
+        case .Built(rows):
+            head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0, literal: 0, name: path,
+                               text: Text(forest, text, Field(forest, declaration, "name")), start: 0, end: 0, line: 0,
+                               column: 0};
+            module: facts.Row[] = [ScalarSource(path, text), head];
+            function: int = 0;
+            for (row in rows) {
+                identified := row;
+                if (row.kind == facts.FunctionRow) {
+                    identified.literal = i64(wrap: ids[function]);
+                    function += 1;
+                }
+                module.append(identified);
+            }
+            return module;
+    }
+}
+
 pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[]) -> facts.Row[] {
     ops := ResolveOps(names, false);
     if (!Complete(ops)) {
@@ -1668,6 +1747,10 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
     nul := ScalarNul(text);
     if (nul.message != "") {
         return ScalarFailure(path, text, nul);
+    }
+    library_rows := ScalarLibrary(path, text, ops, target);
+    if (length(library_rows) > 0) {
+        return library_rows;
     }
     input: snapshot.Input = {path: path, text: text, has_path: true, has_text: true};
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
@@ -1696,7 +1779,7 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
                             return ScalarFailure(path, text, diagnostic);
                         case .Collected(callables, params, types, members, constants):
                             switch ScalarModule(nodes, text, document.key, callables, params, types, members,
-                                                constants, ops, target) {
+                                                constants, ops, target, false) {
                                 case .Failed(diagnostic):
                                     return ScalarFailure(path, text, diagnostic);
                                 case .Built(rows):

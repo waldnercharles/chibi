@@ -312,7 +312,7 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
 }
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
              module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
-             fields: int[], texts: string[], main: bool) -> Result {
+             fields: int[], texts: string[], mode: int) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -322,9 +322,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     result := shape.result;
     // The exported entry takes and returns scalars: no foreign aggregate or
     // string ABI is promised.
-    exported := function == 0;
+    exported := function == 0 && mode != NoEntry;
     if (!Valued(records, result) || (exported && abi.ScalarType(result) == "") ||
-        (main && exported && (length(parameters) != 0 || result != 6))) {
+        (mode == MainEntry && exported && (length(parameters) != 0 || result != 6))) {
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
     for (type in parameters) {
@@ -741,20 +741,25 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     return format_text("{}{}", out, format_text("  br label %p{}\n", pc + 1));
 }
 
-// The entry, function 0, is `chibi_scalar`, or `main` for a zero-argument
-// int entry; every other function is internal to the module.
-Symbol :: (function: int, main: bool) -> string {
-    if (function == 0 && main) {
+// How a module exports function 0: as `chibi_scalar`, as `main` for a
+// zero-argument int entry, or not at all, as a library, which exports only
+// its manifest.
+ScalarEntry: int : 0;
+MainEntry: int : 1;
+NoEntry: int : 2;
+// The entry's symbol, or an internal function's.
+Symbol :: (function: int, mode: int) -> string {
+    if (function == 0 && mode == MainEntry) {
         return "main";
     }
-    if (function == 0) {
+    if (function == 0 && mode == ScalarEntry) {
         return "chibi_scalar";
     }
     return format_text("chibi_scalar.{}", function);
 }
 // Arguments load in call order, so evaluation order stays visible at O0.
 CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
-                    main: bool) -> string {
+                    mode: int) -> string {
     callee := functions[item.left];
     out := format_text("p{}:\n", pc);
     list := "";
@@ -766,20 +771,20 @@ CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], 
         }
         list = format_text("{}{} %c{}_{}", list, TypeName(type), pc, index);
     }
-    out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, TypeName(item.type), Symbol(item.left, main), list);
+    out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, TypeName(item.type), Symbol(item.left, mode), list);
     out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 main: bool, step_budget: int) -> string {
+                 mode: int, step_budget: int) -> string {
     shape := functions[function];
     result := shape.result;
     linkage := "";
-    if (function != 0) {
+    if (function != 0 || mode == NoEntry) {
         linkage = "internal ";
     }
-    out := format_text("define {}{} @{}(", linkage, TypeName(result), Symbol(function, main));
+    out := format_text("define {}{} @{}(", linkage, TypeName(result), Symbol(function, mode));
     for (index in 0..<shape.parameters) {
         if (index > 0) {
             out = format_text("{}, ", out);
@@ -803,7 +808,7 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
         if (item.op == Call) {
-            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, main));
+            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, mode));
         } else {
             out = format_text("{}{}", out, EmitInstruction(item, pc, result, records, fields, texts));
         }
@@ -877,9 +882,9 @@ Declarations :: (code: Instruction[]) -> string {
     }
     return out;
 }
-pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
-             code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-             source: Source, names: string[], lines: int[], columns: int[], main: bool, step_budget: int) -> Result {
+Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+           code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[], source: Source,
+           names: string[], lines: int[], columns: int[], mode: int, step_budget: int) -> Result {
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
     }
@@ -897,7 +902,7 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     }
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, texts,
-                        main) {
+                        mode) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -927,7 +932,7 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     compares := Compares(code);
     for (function in 0..<length(functions)) {
         text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                             texts, main, step_budget);
+                             texts, mode, step_budget);
         if (debug) {
             text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                 functions[function].first_code));
@@ -946,7 +951,7 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     // it, which the host reports as a stack overflow.
     out = format_text("{}\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n", out);
     if (debug) {
-        out = format_text("{}\n{}", out, Metadata(target, functions, source, names, lines, columns, main, compares));
+        out = format_text("{}\n{}", out, Metadata(target, functions, source, names, lines, columns, mode, compares));
     }
     return Result.Emitted(out);
 }
@@ -1013,7 +1018,7 @@ Located :: (text: string, scope: int, first: int) -> string {
 // entry is external and every other function local to the unit; the string
 // comparison helper is artificial, at line 0.
 Metadata :: (target: abi.Target, functions: Function[], source: Source, names: string[], lines: int[], columns: int[],
-             main: bool, compares: bool) -> string {
+             mode: int, compares: bool) -> string {
     out := "!llvm.dbg.cu = !{!0}\n!llvm.module.flags = !{!2, !3}\n";
     out = format_text("{}!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: \"chibi\", isOptimized: false, runtimeVersion: 0, emissionKind: LineTablesOnly)\n",
                       out);
@@ -1024,11 +1029,11 @@ Metadata :: (target: abi.Target, functions: Function[], source: Source, names: s
     for (function in 0..<length(functions)) {
         line := lines[functions[function].first_code];
         flags := "DISPFlagDefinition";
-        if (function != 0) {
+        if (function != 0 || mode == NoEntry) {
             flags = "DISPFlagLocalToUnit | DISPFlagDefinition";
         }
         out = format_text("{}!{} = distinct !DISubprogram(name: \"{}\", linkageName: \"{}\", scope: !1, file: !1, line: {}, type: !4, scopeLine: {}, spFlags: {}, unit: !0)\n",
-                          out, Subprogram(function), Escaped(names[function]), Symbol(function, main), line, line,
+                          out, Subprogram(function), Escaped(names[function]), Symbol(function, mode), line, line,
                           flags);
     }
     if (compares) {
@@ -1052,4 +1057,149 @@ Metadata :: (target: abi.Target, functions: Function[], source: Source, names: s
                           Subprogram(length(functions)));
     }
     return out;
+}
+pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+             code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
+             source: Source, names: string[], lines: int[], columns: int[], main: bool, step_budget: int) -> Result {
+    mode := ScalarEntry;
+    if (main) {
+        mode = MainEntry;
+    }
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source, names,
+                  lines, columns, mode, step_budget);
+}
+
+// Whether `name` can end a C symbol: an ASCII letter or `_`, then letters,
+// digits and `_`.
+Identifier :: (name: string) -> bool {
+    bytes := strings.Bytes(name);
+    for (index in 0..<length(bytes)) {
+        value := bytes[index];
+        letter := (value >= 65 && value <= 90) || (value >= 97 && value <= 122) || value == 95;
+        if (!letter && (index == 0 || value < 48 || value > 57)) {
+            return false;
+        }
+    }
+    return length(bytes) > 0;
+}
+// The manifest types of a function's parameters, then its result, or none
+// when a word cannot carry one of them, such as a string or a record.
+ExportTypes :: (shape: Function, parameters: int[]) -> int[] {
+    types: int[] = [];
+    for (index in 0..<shape.parameters) {
+        types.append(abi.ExportType(parameters[shape.first_parameter + index]));
+    }
+    types.append(abi.ExportType(shape.result));
+    for (type in types) {
+        if (type == 0) {
+            return [];
+        }
+    }
+    return types;
+}
+// `word`, an i64, as a value `name` of storage `type`.
+FromWord :: (name: string, word: string, type: int) -> string {
+    if (type == abi.FloatStorage) {
+        return format_text("  %{}.bits = trunc i64 {} to i32\n  %{} = bitcast i32 %{}.bits to float\n", name, word,
+                           name, name);
+    }
+    if (type == abi.DoubleStorage) {
+        return format_text("  %{} = bitcast i64 {} to double\n", name, word);
+    }
+    if (abi.IntegerBits(type) == 64) {
+        return format_text("  %{} = add i64 {}, 0\n", name, word);
+    }
+    return format_text("  %{} = trunc i64 {} to {}\n", name, word, abi.ScalarType(type));
+}
+// The value `value` of storage `type` as an i64 `name`: an integer sign- or
+// zero-extended, a bool as 0 or 1, and a float or double as its bits.
+ToWord :: (name: string, value: string, type: int) -> string {
+    if (type == abi.FloatStorage) {
+        return format_text("  %{}.bits = bitcast float {} to i32\n  %{} = zext i32 %{}.bits to i64\n", name, value,
+                           name, name);
+    }
+    if (type == abi.DoubleStorage) {
+        return format_text("  %{} = bitcast double {} to i64\n", name, value);
+    }
+    if (abi.IntegerBits(type) == 64) {
+        return format_text("  %{} = add i64 {}, 0\n", name, value);
+    }
+    extend := "sext";
+    if (type == abi.BoolStorage || abi.Unsigned(type)) {
+        extend = "zext";
+    }
+    return format_text("  %{} = {} {} {} to i64\n", name, extend, abi.ScalarType(type), value);
+}
+// Function `function`'s export entry, which reads its arguments from words
+// and writes its result as one.
+ExportEntry :: (functions: Function[], function: int, parameters: int[]) -> string {
+    shape := functions[function];
+    out := format_text("define internal void @chibi_scalar.export.{}(ptr %in, ptr %out) #0 {\nentry:\n", function);
+    list := "";
+    for (index in 0..<shape.parameters) {
+        type := parameters[shape.first_parameter + index];
+        out = format_text("{}  %w{}.at = getelementptr inbounds i64, ptr %in, i64 {}\n", out, index, index);
+        out = format_text("{}  %w{} = load i64, ptr %w{}.at\n", out, index, index);
+        out = format_text("{}{}", out, FromWord(format_text("a{}", index), format_text("%w{}", index), type));
+        if (index > 0) {
+            list = format_text("{}, ", list);
+        }
+        list = format_text("{}{} %a{}", list, TypeName(type), index);
+    }
+    out = format_text("{}  %r = call {} @{}({})\n", out, TypeName(shape.result), Symbol(function, NoEntry), list);
+    out = format_text("{}{}", out, ToWord("word", "%r", shape.result));
+    return format_text("{}  store i64 %word, ptr %out\n  ret void\n}\n", out);
+}
+// A library module: each function is internal, and the one symbol it exports
+// is its manifest, `chibi_natives_<library>`, a constant execution_native_manifest
+// (src/execution/native.h) listing an entry for each function whose
+// parameters and result words carry, under its name and stable ID.
+pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
+                    parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
+                    records: Record[], fields: int[], texts: string[], step_budget: int) -> Result {
+    if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
+        return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
+    }
+    for (index in 0..<length(names)) {
+        for (other in 0..<index) {
+            if (names[other] == names[index] || ids[other] == ids[index]) {
+                return Result.Rejected(-1, "native library names each function once");
+            }
+        }
+    }
+    out := "";
+    // A library has no line tables yet.
+    source: Source = {file: "", directory: ""};
+    no_positions: int[] = [];
+    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source,
+                  names, no_positions, no_positions, NoEntry, step_budget) {
+        case .Rejected(instruction, message):
+            return Result.Rejected(instruction, message);
+        case .Emitted(text):
+            out = text;
+    }
+    out = format_text("{}\n%chibi.export = type { ptr, i64, ptr, i32, i32, ptr }\n", out);
+    out = format_text("{}%chibi.manifest = type { i32, i32, ptr }\n", out);
+    exports: string[] = [];
+    for (function in 0..<length(functions)) {
+        types := ExportTypes(functions[function], parameters);
+        if (length(types) == 0) {
+            continue;
+        }
+        out = format_text("{}@chibi_scalar.export.name.{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n",
+                          out, function, strings.ByteLength(names[function]) + 1, Escaped(names[function]));
+        listed: string[] = [];
+        for (type in types) {
+            listed.append(format_text("i8 {}", type));
+        }
+        out = format_text("{}@chibi_scalar.export.types.{} = private unnamed_addr constant [{} x i8] [{}]\n", out,
+                          function, length(types), strings.Join(listed, ", "));
+        out = format_text("{}\n{}", out, ExportEntry(functions, function, parameters));
+        exports.append(format_text("%chibi.export { ptr @chibi_scalar.export.name.{}, i64 {}, ptr @chibi_scalar.export.types.{}, i32 {}, i32 1, ptr @chibi_scalar.export.{} }",
+                                   function, ids[function], function, functions[function].parameters, function));
+    }
+    out = format_text("{}\n@chibi_scalar.exports = private constant [{} x %chibi.export] [{}]\n", out,
+                      length(exports), strings.Join(exports, ", "));
+    return Result.Emitted(format_text("{}@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
+                                      out, name, abi.ExportAbi, length(exports)));
 }

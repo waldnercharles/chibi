@@ -8,11 +8,25 @@ import strings "core:strings"
 // raw bytes the compiler host writes unchanged: the module's IR, or why it has
 // none.
 pub Emit :: (rows: facts.Row[]) -> u8[] {
+    if (Library(rows)) {
+        none: u8[] = [];
+        return none;
+    }
     return scalar.EmitBytes(rows);
 }
 // Emit with line tables, for a source in `directory`.
 pub EmitLines :: (rows: facts.Row[], directory: string) -> u8[] {
+    if (Library(rows)) {
+        none: u8[] = [];
+        return none;
+    }
     return scalar.EmitLinesBytes(rows, directory);
+}
+
+// Whether the rows are a native library's, which has no entry to link a
+// program from: its Document row names the library.
+Library :: (rows: facts.Row[]) -> bool {
+    return rows[1].kind == facts.DocumentRow && rows[1].text != "";
 }
 
 pub Diagnose :: (rows: facts.Row[]) -> u8[] {
@@ -23,7 +37,9 @@ pub Diagnose :: (rows: facts.Row[]) -> u8[] {
         case .Invalid(reason):
             message = reason;
         case .Emitted(text):
-            message = "";
+            if (Library(rows)) {
+                message = "a native library has no entry; build --native links a package";
+            }
     }
     bytes: u8[] = [];
     for (value in strings.Bytes(message)) {

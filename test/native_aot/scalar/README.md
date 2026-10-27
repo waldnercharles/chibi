@@ -12,7 +12,13 @@ tracks which language features reach native code and what blocks the rest.
 
 One source document holding one package, no imports, and only ordinary
 function declarations without attributes, records, unions and constants.
-The first function is the module's entry and must be `() -> int`. Every function:
+The first function is the module's entry and must be `() -> int`. A source that is
+instead one native library, `Name :: library { ... }` of such
+functions, has no entry: its Document row's `text` is `Name`, each Function
+row's `literal` is the function's stable symbol ID,
+`script_catalog_id("symbol", "<path>:1:<function>:callable")`, and
+`scalar_llvm` emits it with `llvm_native.EmitLibrary`, whose manifest the
+runtime binds (D11 in the ledger). Every function:
 
 - takes plain number, `bool` or `string` parameters (`i8`,
   `u8`, `i16`, `u16`, `int`, `u32`, `i64`, `u64`, `number` or `f64`; no

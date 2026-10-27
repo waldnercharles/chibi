@@ -1515,14 +1515,16 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[]) -> bool {
     }
     return true;
 }
-// Whether every host call builds a record from its fields, copies one or
-// writes a field through a reference to it, or makes a union, tests its
-// variant or reads a payload, the only host calls a record or union of this
-// subset takes, and every traced root is a record or union.
+// Whether every host call builds a record from its fields, copies, drops or
+// snapshots one or reads or writes a field through a reference to it, or
+// makes a union, tests its variant or reads a payload, the only host calls a
+// record or union of this subset takes, and every traced root is a record or
+// union. Its records and unions hold only numbers and bools, so a value copy
+// or drop is a plain copy or nothing.
 ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
-    admitted := [ConstructIntrinsic, SnapshotIntrinsic, ReferenceMakeIntrinsic, ReferenceFieldIntrinsic,
-                 ReferenceWriteIntrinsic, UnionMakeIntrinsic, UnionKeepIntrinsic, UnionTestIntrinsic,
-                 UnionGetIntrinsic];
+    admitted := [ConstructIntrinsic, SnapshotIntrinsic, ValueCopyIntrinsic, ValueDropIntrinsic,
+                 ReferenceMakeIntrinsic, ReferenceFieldIntrinsic, ReferenceReadIntrinsic, ReferenceWriteIntrinsic,
+                 UnionMakeIntrinsic, UnionKeepIntrinsic, UnionTestIntrinsic, UnionGetIntrinsic];
     for (host in hosts) {
         intrinsic := host.intrinsic;
         if (intrinsic >= InResult) {

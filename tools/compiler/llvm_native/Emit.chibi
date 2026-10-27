@@ -919,6 +919,9 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     if (length(texts) > MaxTexts) {
         return Result.Rejected(-1, format_text("native module holds more than {} texts", MaxTexts));
     }
+    if (source.file != "" && abi.DebugFormat(target) == "") {
+        return Result.Rejected(-1, "native line tables are Linux x86-64 only");
+    }
     if (source.file != "" && !Placed(names, lines, columns, length(functions), length(code))) {
         return Result.Rejected(-1, "native line table differs from its module");
     }
@@ -1179,6 +1182,10 @@ ExportEntry :: (functions: Function[], function: int, parameters: int[]) -> stri
 pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
                     parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
                     records: Record[], fields: int[], texts: string[], step_budget: int) -> Result {
+    // The export ABI is checked only on Linux x86-64 so far.
+    if (!abi.Same(target, abi.LinuxX64())) {
+        return Result.Rejected(-1, "native libraries are Linux x86-64 only");
+    }
     if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
         return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
     }

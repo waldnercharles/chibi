@@ -57,8 +57,10 @@ executes fixed argument vectors:
 
 1. `opt -S -passes=verify` for mode0, or
    `opt -S -passes=verify,default<O2>,verify` for mode2.
-2. Admit the verified canonical output's exact
-   `x86_64-unknown-linux-gnu` triple and observed LLVM19 x86-64 data layout.
+2. Admit the verified canonical output's exact triple and data layout:
+   `x86_64-unknown-linux-gnu`, `arm64-apple-macosx11.0.0` or
+   `x86_64-pc-windows-msvc`, each with the layout LLVM 18 gives it. `Build`
+   admits only `x86_64-unknown-linux-gnu`, the one target it links.
 3. `llc -filetype=obj -O=0|2 -relocation-model=pic` without a target
    override. A static object's absolute references, such as the table O2
    lowers a dense switch through, cannot link into the shared libraries the
@@ -69,9 +71,12 @@ executes fixed argument vectors:
    The driver runs the linker it resolved, which may be lld's generic driver,
    so it names the GNU flavor rather than relying on the `ld.lld` name.
 
-The accepted canonical data layout is
+The accepted Linux data layout is
 `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`.
-It was measured from the actual LLVM19 backend, not guessed. The source emitter
+It was measured from the actual LLVM 18 and 19 backends, not guessed; LLVM 18
+to 21 give the same x86-64 layouts. The arm64 layout changes with the LLVM
+major (LLVM 19 appends `-Fn32`), so the driver admits LLVM 18's and rejects
+the others. The source emitter
 provides a triple but no layout; LLVM canonicalization adds this layout. Missing
 or foreign canonical target metadata and conflicting layouts reject before
 object emission. Comments cannot supply metadata. LLVM resolves duplicate

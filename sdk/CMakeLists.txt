@@ -522,6 +522,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate30.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate31.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate32.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_migrate34.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"

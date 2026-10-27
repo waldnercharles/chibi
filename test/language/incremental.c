@@ -137,7 +137,7 @@ static bool value_is(int generation, const char *name, double expected)
     bool ok = instance &&
               execution_instance_dispatch(instance, 10, NULL, 0, 0, 0, 1000) == FLOW_OK;
     const pin_value *value = ok ? execution_instance_state(instance, state) : NULL;
-    ok = value && value->type == PIN_F64 && value->d == expected;
+    ok = value && value->type == PIN_F32 && value->f == (float)expected;
     execution_program_free(program);
     program = NULL;
     return ok;
@@ -533,7 +533,7 @@ TEST_CASE(struct_defaults_use_frozen_values_and_actual_snapshot_layout)
     static const type_field reflected_field = { .name = "amount",
                                                 .type = PIN_F64,
                                                 .size = sizeof(double),
-                                                .type_name = "double" };
+                                                .type_name = "f64" };
     static const type_desc reflected = { .name = "IncrementalDefault",
                                          .size = sizeof(double),
                                          .fields = &reflected_field,
@@ -675,7 +675,7 @@ TEST_CASE(struct_default_keys_keep_opaque_bytes_and_do_not_read_malformed_fields
         reflected_field = (type_field){ .name = "amount",
                                         .type = PIN_F64,
                                         .size = sizeof(double),
-                                        .type_name = "double" };
+                                        .type_name = "f64" };
         reflected = (type_desc){ .name = "IncrementalOpaque",
                                  .size = sizeof payload,
                                  .fields = &reflected_field,

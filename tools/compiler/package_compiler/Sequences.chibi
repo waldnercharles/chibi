@@ -47,7 +47,7 @@ SequenceOperation :: (forest: snapshot.SnapshotNode[], text: string, names: Name
 
 // Emits one intrinsic call with typed cells. A literal tag, when present,
 // follows the evaluated arguments. No argument is copied implicitly.
-SequenceCallStep :: (arguments: Value[], intrinsic: int, result: Value, tag: uint64, tagged: bool,
+SequenceCallStep :: (arguments: Value[], intrinsic: int, result: Value, tag: u64, tagged: bool,
                      popped: int, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     code: Code[] = [];
     slots: Slot[] = [];
@@ -154,7 +154,7 @@ SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     }
     if (operation == 3) {
         emitted := SequenceCallStep([object], SequenceLengthIntrinsic, Typed(-1, IntStorage, 0, -1),
-                                    uint64(0), false, 1, ops, target, at, node);
+                                    u64(0), false, 1, ops, target, at, node);
         return CleanupSequenceValues(emitted, [object], ops, target, at, node);
     }
     if (element.container != 0) {
@@ -341,13 +341,13 @@ MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     }
     // Runtime accepts the operation as its second, int-typed argument.
     operation_slot := at.slot;
-    operation_code := ConstantCode(ops, IntStorage, uint64(operation), operation_slot, node);
+    operation_code := ConstantCode(ops, IntStorage, u64(operation), operation_slot, node);
     watches.append(operation_code);
     operation_value := Typed(operation_slot, IntStorage, 0, -1);
     arguments = insert(arguments, 1, operation_value);
     shifted: Bases = {pc: at.pc + length(watches), slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
                       call: at.call};
-    switch SequenceCallStep(arguments, ArrayMutatePlaceIntrinsic, Typed(-1, BoolStorage, 0, -1), uint64(0), false,
+    switch SequenceCallStep(arguments, ArrayMutatePlaceIntrinsic, Typed(-1, BoolStorage, 0, -1), u64(0), false,
                             count, ops, target, shifted, node) {
         case .Failed(diagnostic):
             return Step.Failed(diagnostic);
@@ -460,7 +460,7 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     }
     shifted := SlotsPast(at, length(slots));
     emitted := PointerPrefix(code, slots, IgnoreSequenceValue(SequenceCallStep([place, value], ReferenceWriteIntrinsic,
-                                                                               Typed(-1, BoolStorage, 0, -1), uint64(0), false, count,
+                                                                               Typed(-1, BoolStorage, 0, -1), u64(0), false, count,
                                                                                ops, target, shifted, node)));
     return CleanupSequenceValues(emitted, [value], ops, target, at, node);
 }
@@ -497,7 +497,7 @@ CopyValueStep :: (value: Value, popped: int, ops: Ops, target: Target, at: Bases
         return Step.Emitted([], [], [], [], [], [], [], [], [], popped, value, NoValue(), []);
     }
     return SequenceCallStep([value], ValueCopyIntrinsic, Typed(-1, value.storage, value.container, value.record),
-                            uint64(0), false, popped, ops, target, at, node);
+                            u64(0), false, popped, ops, target, at, node);
 }
 
 PlaceVisit :: (node: int) -> Work {
@@ -525,7 +525,7 @@ PlaceResult :: (step: Step, element: ValueType) -> Step {
 ReadSequencePlace :: (place: Value, popped: int, ops: Ops, target: Target, at: Bases,
                       node: snapshot.SnapshotNode) -> Step {
     return SequenceCallStep([place], ReferenceReadIntrinsic,
-                            Typed(-1, place.storage, place.container, place.record), uint64(0), false,
+                            Typed(-1, place.storage, place.container, place.record), u64(0), false,
                             popped, ops, target, at, node);
 }
 // A place carries only a rooted logical location. Projections preserve the
@@ -569,7 +569,7 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         part := members[field];
         element: ValueType = {storage: part.storage, container: part.container, record: part.record};
         offset := TypedCell(WordStorage, 0, -1);
-        offset.constant = uint64(part.offset);
+        offset.constant = u64(part.offset);
         cells: Cell[] = [ReferenceCell(target), TypedCell(part.storage, part.container, part.record),
                          offset, TypedCell(BoolStorage, 0, -1), ReferenceCell(target)];
         code := CellWrite(target.pointer_storage, base.slot, at.cell, ops, target, at.slot, node);
@@ -850,7 +850,7 @@ DropSequenceValues :: (values: Value[], ops: Ops, target: Target, at: Bases,
     for (value in values) {
         if (value.owned && value.storage > 0) {
             step := IgnoreSequenceValue(SequenceCallStep([value], ValueDropIntrinsic,
-                                                         Typed(-1, BoolStorage, 0, -1), uint64(0), false,
+                                                         Typed(-1, BoolStorage, 0, -1), u64(0), false,
                                                          0, ops, target, shifted, node));
             switch step {
                 case .Failed(diagnostic):

@@ -33,6 +33,7 @@
 
 - Work autonomously. Ask only when a choice changes the goal, an output the owner will notice, or something that can't be undone; otherwise pick the reasonable default, say which, and keep going.
 - This is production-grade software: no hacks or shortcuts. Fix root causes, and leave every commit building, formatted and tested.
+- When checks need a re-run (for example after a dependency merged), label the PR `ci-rerun`; label it `ci-seed` to build, publish and pin new compiler runtime seeds on its branch (pull before pushing again). See [starting CI with labels](docs/testing.md#starting-ci-with-labels).
 - Recipes for adding a component, a native script function, a test scene and a project migration are in `.claude/skills/chibi-recipes/SKILL.md`.
 
 ## Before every commit

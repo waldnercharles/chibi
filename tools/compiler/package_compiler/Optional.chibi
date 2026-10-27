@@ -11,7 +11,7 @@ OptionalDecl: int : 7;
 // nominal record identity; value_* describes its immediate element type.
 CollectionDecl: int : 8;
 
-SequenceNominal :: (types: TypeDecl[], value: ValueType) -> uint64 {
+SequenceNominal :: (types: TypeDecl[], value: ValueType) -> u64 {
     if (value.record < 0) {
         return 0;
     }
@@ -196,7 +196,7 @@ OptionalType :: (types: TypeDecl[], value: ValueType, optional: bool) -> ValueTy
 }
 // The successful constructor is the complete nonoptional script_type_tag,
 // including the array/view distinction. This is not the optional's own tag.
-OptionalTag :: (types: TypeDecl[], value: ValueType) -> uint64 {
+OptionalTag :: (types: TypeDecl[], value: ValueType) -> u64 {
     semantic := value;
     flags := SequenceFlags(types, value);
     if (value.record >= 0 && types[value.record].kind == OptionalDecl) {
@@ -204,7 +204,7 @@ OptionalTag :: (types: TypeDecl[], value: ValueType) -> uint64 {
         semantic = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
     }
     nominal := SequenceNominal(types, semantic);
-    collection: uint64 = 0;
+    collection: u64 = 0;
     if (semantic.record >= 0 && (types[semantic.record].kind == MapDecl || types[semantic.record].kind == CollectionDecl)) {
         collection = types[semantic.record].id;
     }

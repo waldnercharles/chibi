@@ -34,7 +34,7 @@ static void cleanup()
 }
 static field_program *circle(char *error, size_t size)
 {
-    char name[] = "radius", type[] = "float";
+    char name[] = "radius", type[] = "number";
     field_parameter parameter = { name, { .type = PIN_F32, .type_name = type, .f = 2 } };
     field_ir code[] = {
         { .op = FIELD_X },
@@ -167,7 +167,7 @@ TEST_CASE(typed_field_catalog_preserves_overrides_and_invalidates_old_sessions)
 }
 TEST_CASE(typed_argument_catalog_survives_prepared_handoff)
 {
-    char error[192], name[] = "radius", type[] = "float", key[] = "preset/large";
+    char error[192], name[] = "radius", type[] = "number", key[] = "preset/large";
     fields = material_fields_new();
     program = circle(error, sizeof error);
     REQUIRE(program);

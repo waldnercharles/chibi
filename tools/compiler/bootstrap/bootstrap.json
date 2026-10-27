@@ -1,46 +1,46 @@
 {
   "format": 1,
-  "version": 7,
-  "minimum": 6,
-  "revision": "157d6b5b42d1a86c7eda4aa7a9f28504944205c4",
+  "version": 6,
+  "minimum": 2,
+  "revision": "49475a74f1eafb3aedd50cc63d1adadc30a4fd08",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 27347702,
-    "sha256": "c53a41de676b4a8db50d1f159ff48515b2eb92e2baa11ae586ac9303e85d49ec"
+    "bytes": 9935000,
+    "sha256": "478b37aad488abc1d375e7285cee1e2e92b0b203fb7333dcdb09c2ff7f828a59"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 137005,
-      "sha256": "016cecb68987e04db096e598554a83ef4da88e5d310638497a5fe7c5229a1f55"
+      "bytes": 132973,
+      "sha256": "9f2f256e18bf156ff8eebe3f1e863733a58da44366b5787177cd4462319e4442"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 160126,
-      "sha256": "0c855b2b2389f3634568f3d82df22ba7af3b9d599b7653ca506c7819e20d6566"
+      "bytes": 149357,
+      "sha256": "e8f433f53a828d220d5aa393be81e1a472ba99eedf87c747260d851bc4b65da2"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 291043,
-      "sha256": "d236eb12aa9cd96d6772126dbb800bbf90003c2b616e822dd059986b39004c66"
+      "bytes": 275054,
+      "sha256": "174222e9b4008c7dd09eb8f49e56c27052f5240eb377340d4038003f6a18f444"
     },
     {
       "path": "package_compiler/Maps.chibi",
-      "bytes": 29266,
-      "sha256": "cc777f804895edf7784839cd909339a335b23a3f7dbbf9277ce9c6777c25fefd"
+      "bytes": 26449,
+      "sha256": "efb325def0f456ad9801a8fa68c7989f45804e3daa77b582cd4bccf3aaa6a88d"
     },
     {
       "path": "package_compiler/References.chibi",
-      "bytes": 30162,
-      "sha256": "beb29c160791e733b8d1e367d68c942e493b25285809249ab4a78183850a7b02"
+      "bytes": 28712,
+      "sha256": "cbf5028cff9960858a72844fe48f53a71a87d6816836aca491ac9ea17e8dc0eb"
     },
     {
       "path": "package_compiler/Pointers.chibi",
-      "bytes": 46498,
-      "sha256": "ea58f44443a14dfb11b502c06d43d81baad278aa88a0f4f8d17887159985164e"
+      "bytes": 46713,
+      "sha256": "850ea5f62e07012b07cc5780372c4e860d8847005b4d84ff2651506a674db088"
     },
     {
       "path": "package_compiler/Tree.chibi",
@@ -49,28 +49,18 @@
     },
     {
       "path": "package_compiler/Number.chibi",
-      "bytes": 27932,
-      "sha256": "b079c0ca758be91be5a01b0e0c26996a54eb1e9bf3af0f538faf557097166048"
-    },
-    {
-      "path": "package_compiler/Optional.chibi",
-      "bytes": 20585,
-      "sha256": "1ba191344c2e823bb59ae5fc70ede06abe371c2ba8579e77864426013dbba07e"
-    },
-    {
-      "path": "package_compiler/Sequences.chibi",
-      "bytes": 60753,
-      "sha256": "d5e0867ba0c8a3fdbc4a19c180b205c9b801f164829f700ff610f4b145845721"
+      "bytes": 29513,
+      "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 49241,
-      "sha256": "c47ad6775af755362a780188b981fb878a0342c1e4f5599d24c5f6c6c146e3b0"
+      "bytes": 49000,
+      "sha256": "6365f6498295e0a71840e4b6c388497e7e2a66be5d02f9bae04f513a0401215a"
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 32509,
-      "sha256": "4161d6a20c2685d7e83237e24ea14d78f0c59129ad807a5fa3e9fbcf218ddeab"
+      "bytes": 94568,
+      "sha256": "296278640364f9a6983d3fbc571e798518ac85481d2e0f945455628ff7c8da1f"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -79,13 +69,13 @@
     },
     {
       "path": "/sdk/core/strings/Strings.chibi",
-      "bytes": 16444,
-      "sha256": "8df227effb88f0d4f1afe81391579ab8c0e9f0e21cdd01da9bdae5adf9ca509b"
+      "bytes": 16404,
+      "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
     },
     {
       "path": "source_snapshot/Snapshot.chibi",
-      "bytes": 15888,
-      "sha256": "7fa45334614d21478ba44904861944b8dca2e1fb0f7e3088eccd8d7301fbf72d"
+      "bytes": 15871,
+      "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
     },
     {
       "path": "compiler_syntax/Syntax.chibi",
@@ -114,18 +104,18 @@
     },
     {
       "path": "lexical_binding/Binding.chibi",
-      "bytes": 8697,
-      "sha256": "395cf907c0278c7186a4df1922c4ee414624cb98f9b627edce5bf869ac0e2450"
+      "bytes": 8673,
+      "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1"
     },
     {
       "path": "prepared_writer/Writer.chibi",
-      "bytes": 26474,
-      "sha256": "c3eed8a80dfedbb63c323579c84ef0a089e268795d1cc61dc9d39c5beb3d1b3b"
+      "bytes": 36713,
+      "sha256": "d73754bf4b642c01da7719c4be40b8d9aa3385e71f2157485f2b85fc6fc991c7"
     },
     {
       "path": "scalar_facts/Facts.chibi",
-      "bytes": 5569,
-      "sha256": "6d726d4babcd1c028fd6d812a816fc6307a5eb92252373d1a9c51175ee9ead46"
+      "bytes": 14860,
+      "sha256": "7301ef2162b87b940c40e4ade26caa67c253141d7f0f61ecf177e05a36c3b501"
     }
   ],
   "target": [
@@ -134,7 +124,7 @@
       "pointer_size": 8,
       "value_size": 40,
       "payload_offset": 8,
-      "results_offset": 208,
+      "results_offset": 184,
       "type_offset": 0,
       "container_offset": 16,
       "name_offset": 24,
@@ -148,7 +138,7 @@
       "argument_failure": 7,
       "assert_failure": 3
     },
-    1578141987125770950,
+    16866039625053527240,
     [
       "CONSTANT",
       "VARIABLE",
@@ -1131,49 +1121,49 @@
       1683859838082548203,
       16323488948382029418,
       9113434692769582988,
-      5467248588562738232,
+      14167156245305274212,
       13611205187560399313,
-      13680434747823500096,
+      13449025496981513964,
       10031281214538873543,
-      9030429985650009275,
+      6554897603666606767,
       15392606041591830683,
-      17387169772646433363,
+      4067796862701892359,
       10131322737650309994,
-      1063631936535020129,
+      6988088496320900289,
       16727144441193224855,
-      6605004713616652801,
+      10161969858693626145,
       11519237158948198813,
-      17906106193223333194,
+      10497653110738357554,
       3978275859795887710,
-      2864553297212340903,
+      11548099748676597923,
       18085313995829699436,
-      14978198957586829996,
+      14415035780413938864,
       10923784612712179670,
-      14875510901342301758,
+      7880211163723144446,
       894073180469776815,
-      16023555187956048836,
+      13724489741509985000,
       8687968834157511617,
-      16577023619922528936,
+      4721244266156470484,
       10791124252785537111,
-      773185895515206741,
+      14432019643586639517,
       4384905729313988471,
-      8010233377337498195,
+      11302079019438918407,
       8746412179663267998,
-      7399617057581346390,
+      9851197928620395350,
       17840489223285925927,
-      1067702335548618913,
+      16110184346374136321,
       11088276214961122186,
-      6743002519690195990,
+      15949719137508516374,
       4051959292006589208,
-      17046019287460786684,
+      10151732505731489664,
       11477201415349259395,
-      18048060469725558740,
+      967623793700182456,
       13246221053306855936,
-      2721077971776083750,
+      6577510696204325862,
       14634955569547237247,
-      10669239291351873401,
+      14456448460765080889,
       9047479961286963383,
-      7536676735324318578,
+      17530768130557930906,
       2237180186179475025,
       7549062905279916309,
       9759211591336674878,

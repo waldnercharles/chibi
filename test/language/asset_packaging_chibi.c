@@ -110,7 +110,7 @@ static bool prepare(bool boundaries)
 {
     static const char BOUNDARY[] = "package asset_packaging\n"
                                    "pub JoinProbe :: (parts: string[]) -> "
-                                   "byte[] { return Bytes(Join(parts)); }\n";
+                                   "u8[] { return Bytes(Join(parts)); }\n";
     source_package_input files[] = {
         { "asset_packaging/Packaging.chibi",
           ASSET_PACKAGING_SOURCE,

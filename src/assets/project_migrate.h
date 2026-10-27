@@ -143,8 +143,17 @@ int chibi_migrate_angle_forms(const char *source, char **migrated, char *error, 
  * CF_V3 vec2 and vec3. Returns -1 with `error` set when the source does not
  * parse. */
 int chibi_migrate_vector_names(const char *source, char **migrated, char *error, size_t size);
+/* Version 35 spells sized numbers with Odin's names and makes `number` 32-bit:
+ * see chibi_migrate34_number_names. Returns -1 with `error` set when the
+ * source declares one of the new names or the current grammar rejects the
+ * result. */
+int chibi_migrate_number_names(const char *source, char **migrated, char *error, size_t error_size);
+/* Version 35 also renames the scalar types that graph pins and event fields
+ * store in KDL. Writes an owned copy to `migrated`, or NULL when unchanged.
+ * Returns -1 with a located error when the KDL cannot be parsed. */
+int chibi_migrate_number_types(const char *asset, char **migrated, char *error, size_t error_size);
 
-/* Version 35 marks arguments of authored ref parameters. Resolves local
+/* Version 36 marks arguments of authored ref parameters. Resolves local
  * callables by lexical scope and qualified library calls across all sources.
  * Unknown native calls stay unchanged. Returns owned results (NULL for each
  * unchanged source), or NULL with error set for invalid/ambiguous source.

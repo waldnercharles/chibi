@@ -198,7 +198,7 @@ static bool prepare(behavior_backend backend)
         compile(0, "Finish :: behavior { bind self.Position.y = self.Position.x + 1; }", backend)
     );
     REQUIRE(
-        compile(1, "Seed :: behavior { seed: double = 1; bind self.Velocity.x = seed; bind self.Position.x = self.Velocity.x + 1; }", backend)
+        compile(1, "Seed :: behavior { seed: f64 = 1; bind self.Velocity.x = seed; bind self.Position.x = self.Velocity.x + 1; }", backend)
     );
     for (int i = 0; i < OWNER_COUNT; i++) {
         owners[i] = ecs_world_create_entity(world);
@@ -532,10 +532,10 @@ TEST_CASE(binding_schedule_keeps_dynamic_target_dependencies)
         clear_slot(0);
         clear_slot(1);
         REQUIRE(
-            compile(0, "Reader :: behavior { target: entity; offsets: double[] = [1]; choice: int = 0; bind self.Position.y = target.Velocity.x + offsets[choice]; }", backends[b])
+            compile(0, "Reader :: behavior { target: entity; offsets: f64[] = [1]; choice: int = 0; bind self.Position.y = target.Velocity.x + offsets[choice]; }", backends[b])
         );
         REQUIRE(
-            compile(1, "Writer :: behavior { seed: double = 1; bind self.Velocity.x = seed; }", backends[b])
+            compile(1, "Writer :: behavior { seed: f64 = 1; bind self.Velocity.x = seed; }", backends[b])
         );
         execution_instance *reader = execution_program_attach(
             programs[0],

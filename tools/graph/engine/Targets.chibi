@@ -380,7 +380,7 @@ Files :: (target: string) -> string[] {
         return [
             "src/assets/project.c", "src/assets/project_migrate.c", "src/assets/project_migrate26.c",
             "src/assets/project_migrate29.c", "src/assets/project_migrate30.c", "src/assets/project_migrate31.c",
-            "src/assets/project_migrate32.c",
+            "src/assets/project_migrate32.c", "src/assets/project_migrate34.c",
             "src/assets/project_parser23.c", "src/assets/project_parser24.c", "src/assets/project_parser25.c",
             "src/assets/project_parser26.c", "src/assets/project_parser27.c", "src/assets/project_parser28.c",
             "src/assets/project_parser29.c", "src/assets/project_parser30.c", "src/assets/project_parser31.c"
@@ -2837,7 +2837,20 @@ pub Includes :: (target: string) -> string[] {
 
 // A target's system include directories, which CMake gives after its others as
 // -isystem: staged headers as Includes names them.
+// Cute's Linux interface links s2n after PhysicsFS and before SDL. Preserve
+// that transitive include order; other platforms do not link s2n.
 pub SystemIncludes :: (target: string) -> string[] {
+    includes: string[] = [];
+    for (include in CommonSystemIncludes(target)) {
+        if (build.platform() == "Linux" && include == "third-party/include/chibi/vendor/SDL3_Headers/1") {
+            includes.extend(["third-party/include/chibi/vendor/s2n/1", "third-party/include/chibi/vendor/s2n/2"]);
+        }
+        includes.append(include);
+    }
+    return includes;
+}
+
+CommonSystemIncludes :: (target: string) -> string[] {
     if (target == "chibi_vector_capabilities") {
         return ["public/math"];
     }

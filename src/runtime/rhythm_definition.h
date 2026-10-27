@@ -5,8 +5,8 @@
 #define RHYTHM_VALUE(X, NAME)                                                  \
     X(NAME,                                                                    \
       NATIVE_PARAMETER_DATA,                                                   \
-      PIN_F64,                                                                 \
-      "double",                                                                \
+      PIN_F32,                                                                 \
+      "number",                                                                \
       PIN_CONTAINER_SINGLE,                                                    \
       0,                                                                       \
       0,                                                                       \

@@ -31,7 +31,7 @@ pub Capability :: struct {
     result_count: int;
 }
 pub Environment :: union {
-    Tables(reader: reader.Environment, types: named.Type[], ids: uint64[],
+    Tables(reader: reader.Environment, types: named.Type[], ids: u64[],
            definitions: Definition[], variants: Variant[], fields: Field[],
            capabilities: Capability[], capability_fields: Field[])
 }
@@ -55,7 +55,7 @@ DeclaredVariant :: struct {
 }
 pub Update :: union {
     Added(plan: constructors.Plan)
-    | Replaced(id: uint64, variants: DeclaredVariant[], fields: DeclaredField[], types: named.Type[], ids: uint64[])
+    | Replaced(id: u64, variants: DeclaredVariant[], fields: DeclaredField[], types: named.Type[], ids: u64[])
 }
 pub Members :: union {
     Built(environment: Environment, updates: Update[], diagnostics: syntax.Diagnostic[], uses: named.Use[])
@@ -67,19 +67,19 @@ pub Validation :: union {
 MaxDepth: int : 256;
 
 // The traversal keeps its own stack: callable depth is limited to 64.
-CycleID :: (ids: uint64[], slot: int) -> uint64 {
+CycleID :: (ids: u64[], slot: int) -> u64 {
     if (slot < 0) {
         return 0;
     }
     return ids[slot];
 }
-CycleType :: (types: named.Type[], ids: uint64[], index: int) -> named.Value {
+CycleType :: (types: named.Type[], ids: u64[], index: int) -> named.Value {
     row := types[index];
     return named.Value.Typed(row.storage, row.container, row.flags,
                              CycleID(ids, row.nominal_slot), CycleID(ids, row.parameter_slot));
 }
 // The record or union definition a value names, or -1 when it owns no edges.
-Target :: (ids: uint64[], definitions: Definition[], value: named.Value) -> int {
+Target :: (ids: u64[], definitions: Definition[], value: named.Value) -> int {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             if (storage != 15 && storage != 18) {
@@ -123,7 +123,7 @@ Edges :: (definition: Definition, variants: Variant[], fields: Field[]) -> int[]
 // Walk discovers owned edges from metadata depth first. Visiting/done checks
 // precede the depth guard, exactly as in C; a definition's depth is the number
 // of definitions open above it.
-Walk :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
+Walk :: (types: named.Type[], ids: u64[], definitions: Definition[], variants: Variant[], fields: Field[],
          root: named.Value, states: int[]) -> Validation {
     updated := states;
     open: int[] = [];
@@ -167,7 +167,7 @@ Walk :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants
     }
     return Validation.Checked(-1, 0, updated);
 }
-pub Validate :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
+pub Validate :: (types: named.Type[], ids: u64[], definitions: Definition[], variants: Variant[], fields: Field[],
                  roots: int[], states: int[]) -> Validation {
     updated := states;
     index: int = 0;
@@ -263,7 +263,7 @@ Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
                     while (index < length(selected_fields)) {
                         selection := selected_fields[index];
                         payload := named.Builtin("invalid");
-                        payload_collection: uint64 = 0;
+                        payload_collection: u64 = 0;
                         if (selection.capability >= 0) {
                             original := capabilities[selection.capability];
                             row := capability_fields[original.result_start + selection.parameter];
@@ -350,8 +350,8 @@ OneError :: (result: Members, tree: reader.Tree, node: int, document: int, messa
     return Errors(result, errors);
 }
 
-Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVariant[], declared_fields: DeclaredField[],
-            payload_types: named.Type[], payload_ids: uint64[]) -> Environment {
+Replace :: (environment: Environment, id: u64, declared_variants: DeclaredVariant[], declared_fields: DeclaredField[],
+            payload_types: named.Type[], payload_ids: u64[]) -> Environment {
     switch environment {
         case .Tables(reading, types, ids, definitions, variants, fields, capabilities, capability_fields):
             new_types := types;
@@ -450,8 +450,8 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
     variants: DeclaredVariant[] = [];
     fields: DeclaredField[] = [];
     types: named.Type[] = [];
-    ids: uint64[] = [];
-    union_id := uint64(0);
+    ids: u64[] = [];
+    union_id := u64(0);
     switch union_value {
         case .Typed(storage, container, flags, nominal, parameter):
             union_id = nominal;
@@ -500,7 +500,7 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                             case .Name(field_name, field_errors):
                                                 current = Errors(current, field_errors);
                                                 value := named.Builtin("invalid");
-                                                value_collection: uint64 = 0;
+                                                value_collection: u64 = 0;
                                                 switch current {
                                                     case .Built(environment, updates, diagnostics, uses):
                                                         switch environment {

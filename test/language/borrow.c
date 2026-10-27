@@ -5,6 +5,7 @@
 #include "execution/intrinsics.h"
 #include "execution/managed.h"
 #include "execution/module_effects.h"
+#include "execution/preparation_budget.h"
 #include "execution/prepared.h"
 #include "execution/program_internal.h"
 #include "execution/status.h"
@@ -41,6 +42,12 @@ static int result_bank, opaque_calls, alias_slot;
 static bool pause;
 static pin_value *callback_item;
 static int entered_calls;
+enum
+{
+    NESTED_LINKS = 4,
+    NESTED_LINK_SLOTS = 40000
+};
+static behavior_function *links[NESTED_LINKS + 1];
 static const pin_value array_shape = { .type = PIN_F64,
                                        .container = PIN_CONTAINER_ARRAY };
 
@@ -69,6 +76,10 @@ static void cleanup()
         behavior_function_free(function);
     }
     behavior_function_free(helper_function);
+    for (int i = 0; i <= NESTED_LINKS; i++) {
+        behavior_function_free(links[i]);
+        links[i] = NULL;
+    }
     if (builder) {
         behavior_function_builder_free(builder);
     }
@@ -566,7 +577,7 @@ static void mutate_at_call(const behavior_function *, behavior_function_context 
 TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
 {
     REQUIRE(
-        authored("Borrow :: library {Root :: (input: double[]) -> double { copy := input; return Forward(copy); }Forward :: (input: double[]) -> double { return Sum(input); }Sum :: (input: double[]) -> double { total := 0.0; for value in input { total += value; } return total; } }")
+        authored("Borrow :: library {Root :: (input: f64[]) -> f64 { copy := input; return Forward(copy); }Forward :: (input: f64[]) -> f64 { return Sum(input); }Sum :: (input: f64[]) -> f64 { total: f64 = 0; for value in input { total += value; } return total; } }")
     );
     /* Root lends its unchanged copy; the loop's copy is the one guarded. */
     REQUIRE(function->readonly_collections);
@@ -603,7 +614,7 @@ TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
 TEST_CASE(borrow_call_callbacks_keep_their_owned_argument_snapshots)
 {
     REQUIRE(
-        authored("Borrow :: library {Root :: (input: double[]) -> double { copy := input; return Sum(copy) + Sum(copy); }Sum :: (input: double[]) -> double { total := 0.0; for value in input { total += value; } return total; } }")
+        authored("Borrow :: library {Root :: (input: f64[]) -> f64 { copy := input; return Sum(copy) + Sum(copy); }Sum :: (input: f64[]) -> f64 { total: f64 = 0; for value in input { total += value; } return total; } }")
     );
     REQUIRE(function->readonly_collections);
     for (int backend = 0; backend < 2; backend++) {
@@ -628,16 +639,16 @@ TEST_CASE(borrow_call_callbacks_keep_their_owned_argument_snapshots)
 TEST_CASE(borrow_call_contract_rejects_escape_mutation_suspend_and_recursion)
 {
     const char *sources[] = {
-        ("Borrow :: library { Root :: (input: double[]) -> double[] { return "
-         "Keep(input); }Keep :: (input: double[]) -> double[] { return input; "
+        ("Borrow :: library { Root :: (input: f64[]) -> f64[] { return "
+         "Keep(input); }Keep :: (input: f64[]) -> f64[] { return input; "
          "} }"),
-        ("Borrow :: library { Root :: (input: double[]) -> double { return "
-         "Change(input); }Change :: (input: double[]) -> double { input[0] = "
+        ("Borrow :: library { Root :: (input: f64[]) -> f64 { return "
+         "Change(input); }Change :: (input: f64[]) -> f64 { input[0] = "
          "99; return input[0]; } }"),
-        ("Borrow :: library { Root :: (input: double[]) -> double { return "
-         "await Wait(input); }Wait :: (input: double[]) -> double { yield; "
+        ("Borrow :: library { Root :: (input: f64[]) -> f64 { return "
+         "await Wait(input); }Wait :: (input: f64[]) -> f64 { yield; "
          "return input[0]; } }"),
-        ("Borrow :: library { Root :: (input: double[]) -> double { return "
+        ("Borrow :: library { Root :: (input: f64[]) -> f64 { return "
          "Root(input); } }")
     };
     for (int i = 0; i < 4; i++) {
@@ -722,7 +733,7 @@ TEST_CASE(borrow_helper_mutation_and_opaque_calls_remain_owning)
 TEST_CASE(borrow_call_guards_program_state_headers_before_commit)
 {
     REQUIRE(
-        authored("Borrow :: behavior { scalar: double = 7;Root :: (input: double[]) -> double { total := 0.0; for value in input { scalar = 99; Touch(); total += value; } return total; }Touch :: () -> double { return 0; } }")
+        authored("Borrow :: behavior { scalar: f64 = 7;Root :: (input: f64[]) -> f64 { total: f64 = 0; for value in input { scalar = 99; Touch(); total += value; } return total; }Touch :: () -> f64 { return 0; } }")
     );
     REQUIRE(function->readonly_collections && guarded() > 0);
     uint64_t state = 0;
@@ -769,7 +780,7 @@ TEST_CASE(borrow_authored_readonly_loop_keeps_scalar_writes)
                                               .name = "Run",
                                               .kind = SCRIPT_CAPABILITY_EVENT };
     const script_catalog catalog = { .capabilities = &event, .capability_count = 1 };
-    syntax = script_parse("Borrow :: behavior { values: double[]=[]; total: double=0; on Run :: () { sum:=0.0; for value in values { sum+=value; } total+=sum; } }");
+    syntax = script_parse("Borrow :: behavior { values: f64[]=[]; total: f64=0; on Run :: () { sum: f64 = 0; for value in values { sum+=value; } total+=sum; } }");
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(analysis && analysis->valid);
@@ -1007,7 +1018,7 @@ TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code)
     cleanup();
     const script_catalog catalog = { 0 };
     const script_lower_bindings bindings = { 0 };
-    syntax = script_parse("Borrow :: library { Count :: (values:double[])->double { total:=0.0; for value in values { total+=1; } return total; } }");
+    syntax = script_parse("Borrow :: library { Count :: (values:f64[])->f64 { total: f64 = 0; for value in values { total+=1; } return total; } }");
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(analysis && analysis->valid);
@@ -2554,6 +2565,72 @@ TEST_CASE(borrow_aliased_results_stay_independent)
     REQUIRE(!output.b);
     return true;
 }
+/* A finished function of `slots` scalar slots that returns 1 after calling
+ * `callee`, when there is one. */
+static behavior_function *nested_link(const behavior_function *callee, int slots)
+{
+    pin_value number = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, &number, 1, NULL, 0);
+    while (acount(behavior_function_builder_definition(builder)->slots) < slots - 1) {
+        behavior_function_builder_slot(builder, PIN_I32);
+    }
+    if (callee) {
+        int call = behavior_function_builder_call(builder, callee, NULL, 0, &number, 1);
+        emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    }
+    int one = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_I32,
+                                         .value = { .type = PIN_I32, .i = 1 } },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = one });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    behavior_function *f = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!f) {
+        fprintf(stderr, "nested link: %s\n", error);
+    }
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    return f;
+}
+TEST_CASE(borrow_proof_bounds_nested_callee_facts)
+{
+    /* links[i] calls links[i - 1]. Each proof keeps a kind and bank per slot
+     * and a marker per local live in every frame it has entered, so a walk
+     * from links[i] holds the facts of links[0] to links[i - 1] besides its
+     * own, which its preparation scratch already counts. */
+    size_t nested[NESTED_LINKS + 1] = { 0 };
+    for (int i = 0; i <= NESTED_LINKS; i++) {
+        links[i] = nested_link(i ? links[i - 1] : NULL, NESTED_LINK_SLOTS);
+        REQUIRE(links[i] && behavior_function_compile(links[i]));
+        behavior_function_prepare_borrows(links[i]);
+        size_t frame = ((size_t)acount(links[i]->slots) + 1) * 2 * sizeof(int) +
+                       ((size_t)acount(links[i]->locals) + 1) * sizeof(bool);
+        REQUIRE(behavior_function_borrow_bytes(links[i]) == frame);
+        if (i < NESTED_LINKS) {
+            nested[i + 1] = nested[i] + frame;
+        }
+    }
+    /* Three callees' facts fit the nested bound and four exceed it. */
+    REQUIRE(nested[NESTED_LINKS - 1] <= BEHAVIOR_BORROW_NESTED_BYTES);
+    REQUIRE(nested[NESTED_LINKS] > BEHAVIOR_BORROW_NESTED_BYTES);
+    for (int i = 0; i < NESTED_LINKS; i++) {
+        REQUIRE(links[i]->readonly_collections);
+    }
+    REQUIRE(!links[NESTED_LINKS]->readonly_collections);
+    /* Whatever an accepted walk keeps live fits the scratch it reserves. */
+    size_t scratch = behavior_function_preparation_bytes(links[NESTED_LINKS - 1])
+                         .scratch;
+    REQUIRE(scratch != SIZE_MAX);
+    REQUIRE(
+        scratch >= behavior_function_borrow_bytes(links[NESTED_LINKS - 1]) + BEHAVIOR_BORROW_NESTED_BYTES
+    );
+    return true;
+}
 void test_language_borrow()
 {
     pu_setup(NULL, cleanup);
@@ -2587,5 +2664,6 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_result_reached_through_argument_builds_nothing);
     RUN_TEST_CASE(borrow_aliased_results_stay_independent);
     RUN_TEST_CASE(borrow_update_after_union_keep_builds_nothing);
+    RUN_TEST_CASE(borrow_proof_bounds_nested_callee_facts);
     pu_clear_setup();
 }

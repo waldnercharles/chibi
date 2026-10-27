@@ -38,6 +38,20 @@ static asset_compiler_options options()
     value.cache_directory = "";
     return value;
 }
+TEST_CASE(asset_source_keeps_the_16_mib_source_bound)
+{
+    size_t length = 16u * 1024u * 1024u + 1u;
+    written = malloc(length + 1);
+    REQUIRE(written);
+    memset(written, ' ', length);
+    written[length] = 0;
+    asset_compiler_options config = options();
+    asset_compiler_diagnostic error;
+    document = asset_source_read(written, "/project/TooLarge.chibi", &config, &error);
+    REQUIRE(!document);
+    REQUIRE(!strcmp(error.message, "Asset source must be non-null and at most 16 MiB"));
+    return true;
+}
 static av_doc *read_document(const char *source)
 {
     asset_compiler_options config = options();
@@ -127,7 +141,7 @@ TEST_CASE(asset_source_public_scene_build_and_reuse)
 {
     static const char
         SOURCE[] = "package probe\nimport data \"game:assets\"\n"
-                   "pub Build :: () -> byte[] { return "
+                   "pub Build :: () -> u8[] { return "
                    "data.Encode(data.Scene(\"Empty\", [], [])); }\n";
     asset_compiler_options config = options();
     asset_compiler_diagnostic error;
@@ -163,7 +177,7 @@ TEST_CASE(asset_source_public_scene_build_and_reuse)
 TEST_CASE(asset_source_authored_validation_rejects_duplicate_field)
 {
     static const char SOURCE[] = "package probe\nimport data \"game:assets\"\n"
-                                 "pub Build :: () -> byte[] { return "
+                                 "pub Build :: () -> u8[] { return "
                                  "data.Encode(data.Scene(\"Empty\", [], "
                                  "[data.Field.Named(\"name\", "
                                  "data.Value.Text(\"Other\"))])); }\n";
@@ -184,7 +198,7 @@ TEST_CASE(asset_source_authored_validation_rejects_duplicate_field)
 }
 TEST_CASE(asset_source_malformed_build_reports_position)
 {
-    static const char SOURCE[] = "package probe\npub Build :: () -> byte[] { "
+    static const char SOURCE[] = "package probe\npub Build :: () -> u8[] { "
                                  "return Missing(); }\n";
     asset_compiler_options config = options();
     asset_compiler_diagnostic error;
@@ -209,10 +223,10 @@ TEST_CASE(asset_source_native_scene_values_own_their_storage)
 {
     static const char *const SOURCES[] = {
         "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> byte[] { return data.Encode(data.Scene(\"Empty\", "
+        "pub Build :: () -> u8[] { return data.Encode(data.Scene(\"Empty\", "
         "[], [])); }\n",
         "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> byte[] { return data.Encode(data.Scene(\"Owned\", "
+        "pub Build :: () -> u8[] { return data.Encode(data.Scene(\"Owned\", "
         "[data.EntityDefinition.Named(\"Root\", \"Base\", "
         "[data.Field.Named(\"Unregistered\", data.Object("
         "[data.Field.Named(\"label\", data.Value.Text(\"kept\"))]))], [])], "
@@ -245,12 +259,11 @@ TEST_CASE(asset_source_native_scene_values_own_their_storage)
 }
 TEST_CASE(asset_source_native_prototype_owns_name_and_identity)
 {
-    static const char
-        SOURCE[] = "package probe\nimport data \"game:assets\"\n"
-                   "pub Build :: () -> byte[] { return data.Encode("
-                   "data.Prototype(\"Seed\", [], [], [], "
-                   "[data.Field.Named(\"identity\", "
-                   "data.Value.Text(\"owned-identity\"))])); }\n";
+    static const char SOURCE[] = "package probe\nimport data \"game:assets\"\n"
+                                 "pub Build :: () -> u8[] { return data.Encode("
+                                 "data.Prototype(\"Seed\", [], [], [], "
+                                 "[data.Field.Named(\"identity\", "
+                                 "data.Value.Text(\"owned-identity\"))])); }\n";
     document = read_document(SOURCE);
     REQUIRE(document);
     char error[256] = { 0 };
@@ -271,12 +284,12 @@ TEST_CASE(asset_source_native_readers_keep_kind_shape_and_catalog_checks)
 {
     static const char *const SOURCES[] = {
         "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> byte[] { return data.Encode(data.Object("
+        "pub Build :: () -> u8[] { return data.Encode(data.Object("
         "[data.Field.Named(\"version\", data.Value.Int(1)), "
         "data.Field.Named(\"name\", data.Value.Text(\"Signed\")), "
         "data.Field.Named(\"entities\", data.List([]))])); }\n",
         "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> byte[] { return data.Encode(data.Object("
+        "pub Build :: () -> u8[] { return data.Encode(data.Object("
         "[data.Field.Named(\"version\", data.Value.UInt(1)), "
         "data.Field.Named(\"name\", data.Value.Text(\"WrongShape\")), "
         "data.Field.Named(\"entities\", data.Value.Text(\"not-an-array\"))])); "
@@ -297,7 +310,7 @@ TEST_CASE(asset_source_native_readers_keep_kind_shape_and_catalog_checks)
     }
     static const char
         UNKNOWN[] = "package probe\nimport data \"game:assets\"\n"
-                    "pub Build :: () -> byte[] { return data.Encode("
+                    "pub Build :: () -> u8[] { return data.Encode("
                     "data.Prototype(\"Unknown\", "
                     "[data.Field.Named(\"Unregistered\", data.Object([]))], "
                     "[], [], [])); }\n";
@@ -341,10 +354,10 @@ TEST_CASE(asset_source_writer_and_reader_reject_nul_without_mutation)
     static const char NUL[] = { 'a', 0, 'b' };
     static const char *const SOURCES[] = {
         "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> byte[] { return data.Encode(data.Object("
+        "pub Build :: () -> u8[] { return data.Encode(data.Object("
         "[data.Field.Named(\"value\", data.Value.Text(\"a\\u0000b\"))])); }\n",
         "package probe\nimport data \"game:assets\"\n"
-        "pub Build :: () -> byte[] { return data.Encode(data.Object("
+        "pub Build :: () -> u8[] { return data.Encode(data.Object("
         "[data.Field.Named(\"a\\u0000b\", data.Value.Text(\"value\"))])); }\n"
     };
     static const char *const MESSAGES[] = {
@@ -385,7 +398,7 @@ TEST_CASE(asset_source_writer_canonical_scene_reaches_owned_native_reader)
     /* Independently checked with the normal source formatter and its fixpoint. */
     static const char EXPECTED[] =
         "package asset\n\nimport data \"game:assets\"\n\n"
-        "pub Build :: () -> byte[] {\n"
+        "pub Build :: () -> u8[] {\n"
         "    return data.Encode(\n"
         "        data.Object([\n"
         "            data.Field.Named(\"version\", data.Value.UInt(1)),\n"
@@ -470,24 +483,10 @@ TEST_CASE(asset_source_writer_restores_outer_scope_on_budget_and_cancel)
     }
     return true;
 }
-/* An asset source keeps the 16 MiB in-process bound; only the command-line
- * compiler's file outputs take the larger artifact bound. */
-TEST_CASE(asset_source_keeps_the_16_mib_source_bound)
-{
-    const size_t size = 16u * 1024u * 1024u + 1u;
-    written = malloc(size + 1);
-    REQUIRE(written);
-    memset(written, ' ', size);
-    written[size] = '\0';
-    asset_compiler_options config = options();
-    asset_compiler_diagnostic error;
-    document = asset_source_read(written, "/project/asset/Large.chibi", &config, &error);
-    REQUIRE(!document && !strcmp(error.message, "Asset source must be non-null and at most 16 MiB"));
-    return true;
-}
 void test_language_asset_compiler_host()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(asset_source_keeps_the_16_mib_source_bound);
     RUN_TEST_CASE(asset_source_public_scene_build_and_reuse);
     RUN_TEST_CASE(asset_source_authored_validation_rejects_duplicate_field);
     RUN_TEST_CASE(asset_source_malformed_build_reports_position);
@@ -498,6 +497,5 @@ void test_language_asset_compiler_host()
     RUN_TEST_CASE(asset_source_writer_and_reader_reject_nul_without_mutation);
     RUN_TEST_CASE(asset_source_writer_canonical_scene_reaches_owned_native_reader);
     RUN_TEST_CASE(asset_source_writer_restores_outer_scope_on_budget_and_cancel);
-    RUN_TEST_CASE(asset_source_keeps_the_16_mib_source_bound);
     pu_clear_setup();
 }

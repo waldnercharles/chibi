@@ -15,6 +15,22 @@ pixel, renderer, backend and authored-workflow assertions until a focused test
 covers their contract. A short unit result does not satisfy unrelated integration
 requirements or clear a PR hold. The broad suites below still need migration.
 
+Compiler fixtures normally prepare independent bytecode and compiled owners.
+The package-compiler sample selectors request only their compiler backend;
+their stage-zero oracle prepares only the bytecode owner it serializes. The
+generated sample closures still run on both target backends, with the existing
+output, diagnostic, debug metadata and execution-counter assertions. Each
+preparation owns a fresh source snapshot and native catalog; preparation is not
+cached across fixture lifetimes. Scalar producer/consumer lifetime tests retain
+their original preparation of both backends.
+
+`language-compiler-fixture` adds two fixed C cases: six single-backend
+preparations and one default dual-backend preparation of a one-function source,
+with eight calls at budget 100. It checks absent unrequested owners, independent
+snapshots, mutation of the original source, concurrent fixtures, detached text
+after teardown, changed source on re-preparation, and both execution backends.
+It adds no processes, timing loops, network, rendering or GPU work.
+
 ## Run the checks
 
 The engine build compiles the full test drivers, `test_tools` and
@@ -40,6 +56,50 @@ make test-compiler-parity # Release package-compiler routes, including bootstrap
 make benchmark          # native C benchmark selectors
 make agent-test AGENT_SELECTOR=--source-edit
 ```
+
+Groups automatically overlap source-audited independent selectors in separate
+processes, initially up to two workers (bounded by available CPU affinity and a
+conservative 2 GiB available-memory admission reserve per worker). Linux checks MemAvailable
+and visible cgroup limits; macOS checks free/inactive/speculative pages. Missing
+or uninspectable capacity selects serial execution.
+No CI sharding or flags are required: `make test-language-all` takes this route.
+The initial allowlist contains the heavy scalar, behavior, packaging, asset-host,
+compiler-bootstrap and Linux scalar-native selectors. Other selectors remain
+exclusive barriers until their resources are audited; they are not omitted.
+`make -j1` still protects cross-target fixtures. `make test-language-all
+TEST_JOBS=1` or `python3 tools/test_policy.py --jobs 1 group language` preserves
+the original fully serial group route. `--jobs N` / `TEST_JOBS=N` explicitly
+selects a worker limit; it does not make unaudited selectors parallel-safe.
+
+Each worker owns its supervisor/process group, temporary root and disk-backed
+log. Logs are emitted without interleaving in manifest order. Failure stops new
+work, cancels owned workers, prints their partial logs and reports queued selectors
+as not run. The optional group deadline still covers the whole group, including
+queueing; existing in-test child budgets are unchanged. Scratch is removed after
+worker cleanup, including on SIGINT/SIGTERM. Absolute source paths are not
+isolated by changing TMPDIR; the [resource audit](test-parallel-resources.md)
+records why each enabled selector is safe.
+
+The runner writes `Test policy: {...}` JSON diagnostics to stderr, separate from
+program stdout: selected automatic/explicit worker count and admission reason,
+CPU/memory probe availability and reserve, then manifest-ordered selector
+supervisor start/observed-finish timestamps and statuses, observed peak live
+workers and group wall time. Timestamps use the monotonic clock; intervals include
+supervisor startup/cleanup and are not CPU time or a speedup measurement. Exits
+are polled afresh before admission. These receipts distinguish actual scheduled
+overlap from a serial capacity fallback in ordinary CI logs without CI flags.
+The preserved legacy serial route explicitly reports `unobserved-serial` and a
+null peak: it does not invent per-selector intervals or claim observed overlap.
+
+This is selector-level parallelism, not individual pico_unit cases or threads.
+The initial two-worker cap is a conservative rollout policy, not a measured
+memory bound or a promise to use every core. Peak-memory and matched serial /
+parallel wall-time measurements are required before increasing the automatic
+cap; native compiler/linker children can themselves use threads. The memory
+reserve is an admission heuristic, not a measured peak-RSS limit; `--jobs N`
+overrides automatic admission when the caller has better capacity evidence.
+Finer-grained discovery should serve the Chibi-first test API rather than making C coverage
+the language's testing foundation.
 
 The runner has no default global timeout.
 `make test-fast TEST_ARGS='--test-runner'` runs a selected standalone tooling
@@ -123,6 +183,32 @@ call `make test-bootstrap`, which prepares stage one through stage zero.
 The separate manual runtime-seed workflow retains the C/CMake recovery route
 for updating the explicitly prebuilt runtime dependency.
 
+### Starting CI with labels
+
+The `CI control` workflow starts runs for maintainers and agents whose GitHub
+access cannot re-run or dispatch workflows. It acts only when the person who
+added the label or retargeted the PR has write access, which GitHub requires
+for re-runs and dispatches anyway. It only acts on branches of this repository
+and on the head commit that the event named, and removes the label when it is
+done.
+
+- `ci-rerun` re-runs the failed jobs of the PR's own CI and compiler
+  self-build runs on the head commit. It never re-runs a push or publishing
+  run that shares the commit. On a PR into `main`, it dispatches a workflow
+  that never ran on the head branch.
+- `ci-seed` dispatches the runtime-seed workflow on the head branch with
+  `publish` set. Once all three platforms recover identical compiler bytes, it
+  publishes the seeds as a commit-specific prerelease and commits the new pin in
+  `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
+  self-build on the pin commit. Pull before pushing again. If the branch moved
+  after the seed run started, the pin step fails and the release stays unpinned.
+
+A dispatched run must build the head commit the event named. If the branch
+moved in between, the workflow cancels the run and fails, and the PR needs the
+label again. Retargeting a stacked PR to `main` does the same as `ci-rerun`, so
+it gets CI without a new push. A dispatched run checks the head branch, not the
+merge with `main`.
+
 ## Feature coverage
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per
@@ -180,7 +266,7 @@ These counts describe coverage and do not record a pass.
   10,000-instruction per-call budget.
 - `language-record-document`: five cases, adding three tiny JSON roundtrips,
   four malformed byte tags and one rejected NUL name.
-- `language-record-prepared`: twelve cases, including a four-byte wire roundtrip,
+- `language-record-prepared`: fourteen cases, including a four-byte wire roundtrip,
   budget failure, metadata rejection and invalid field markers. Shared-layout
   validation uses one 128-field record and 256 headers under the default work
   limit; tiny decoded definitions check distinct invalid layouts, later headers,
@@ -1967,7 +2053,7 @@ activation. The existing array capability pack supplies the append operation.
 
 ## Compiler bootstrap checks
 
-`python3 tools/test_policy.py tool compiler-bootstrap` selects seven cases. They
+`python3 tools/test_policy.py tool compiler-bootstrap` includes seven CLI admission cases. They
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
@@ -1983,11 +2069,23 @@ of 55, 56 and 64 a's, which sit at the padding boundaries. The cases run about
 twenty host children on tiny folders. The target case loads the closure that
 `test_language --compiler-artifact-write` writes.
 
+The seed read also admits 16 MiB + 1 byte and exactly 32 MiB, reaching source
+validation, and rejects 32 MiB + 1 byte before decoding. An API case checks
+artifact reads at 16 MiB, 16 MiB + 1, 32 MiB and 32 MiB + 1 with sparse files:
+accepted reads still fail the unchanged checksum check, then the original
+valid artifact loads again. Ordinary byte-output and asset-source bounds remain 16 MiB;
+only bootstrap closures and existing CLI file outputs use the artifact bound.
+
 `python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
-selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
+selects two cases. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
 the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
-`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
+`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact. The API recovery case
+adds a marker to the exported compiler source, recovers to a fixed point,
+executes the new export and verifies that the load API writes no output file.
+Interned strings keep the compiler near 9 MB and package sources are capped at
+8 MiB, so this case cannot cross 16 MiB; the sparse cases above cover the
+artifact bound. The instruction budgets and child deadlines are unchanged.
 
 ## Game equivalence
 
@@ -2067,8 +2165,8 @@ takes about 19 s when it recovers stage one and 2 s once it is kept.
 
 ## Compiler artifact runtime checks
 
-`python3 tools/test_policy.py tool compiler-artifact` selects sixteen tooling
-cases and two cases in one child producer. One checks that `--output-bytes`
+`python3 tools/test_policy.py tool compiler-artifact` selects seventeen tooling
+cases and three cases in one child producer. One checks that `--output-bytes`
 writes bytes that are no compiler and refuses an empty result. Build `test_language`, `test_tools`
 and `chibi-compiler-host` separately. The original producer prepares the actual
 eight-package source-snapshot compiler closure on both backends (16 source
@@ -2079,6 +2177,14 @@ on both backends, with exactly four authored exports: `Echo(byte[]) -> byte[]`,
 `Scalar() -> byte`, `Integers() -> int[]` and `Loop(bool) -> byte[]`. Stage zero
 serializes this <=32 KiB closure and writes its IDs and bounded inputs. It makes
 no source calls. This is transport fixture generation, not authored serialization.
+A third producer case prepares a separate one-export `Sized(int) -> u8[]`
+fixture on both backends, also below 32 KiB, with no source calls. `Sized`
+uses one native resize per call. On bytecode and SLJIT, the boundary
+case checks 16 MiB, 16 MiB + 1, 32 MiB and 32 MiB + 1 against both limits;
+oversized results leave no bytes, and admitted results preserve their size and
+endpoints. Inputs stay below 32 bytes and calls retain a 10,000-instruction
+budget. `language-asset-compiler-host` separately rejects a source of 16 MiB + 1
+before compiler admission.
 
 Two fresh original product processes load only the snapshot artifact and run
 five requests on bytecode and SLJIT. Actual entry counters must confirm the
@@ -2086,8 +2192,8 @@ requested backend without inspection fallback. Requests include a three-file
 import graph, syntax failure, invalid UTF-8, embedded-NUL source length and an
 exact uint64 maximum declared size. Five source calls plus ten product calls
 each permit three million instructions. Four C oracle parses and twelve raw
-bridge parses are unchanged: with 18 preparation parses, the route has at most
-34 parser calls. Each original request contains at most three input files.
+bridge parses are unchanged: with 20 preparation parses, the route has at most
+36 parser calls. Each original request contains at most three input files.
 The original artifact cap remains 16 MiB, request JSON 8 KiB, expected/captured
 output 256 KiB and stderr 4 KiB.
 
@@ -2297,6 +2403,26 @@ that always fails: the headers its libraries staged stay in place, since an
 executable stages none. Only `reflect` is linked by a test; the other links
 are compared, and a manual full build links and runs them. About 25 s.
 
+`python3 tools/test_policy.py tool build-graph-debug-optimization` is the narrow
+Linux CI route after the existing sanitized products and Release helper builds.
+It uses sanitized `build/test/tools/test_tools` and the Debug CMake reference,
+not the standalone runtime-only `build-tools` driver. CI explicitly selects
+`CHIBI_BUILD_HOST=build-release/sdk/chibi-build-host` only for this route: the
+Release helper executes authored command generation, while the emitted profiles
+retain Debug assertions and ASan/UBSan. The default focused CLI still uses the
+Debug host unless this override is supplied. The initial Debug-host CI attempt
+hit each existing 50-second child ceiling before useful output; Release-helper
+coverage does not establish sanitized-host execution speed or correctness. Three C cases compare reference-profile compile
+commands with CMake, verify default/O0/O1 Debug instrumentation and assertions,
+and reject malformed or non-Debug optimization requests before output creation.
+The eleven authored-host invocations only emit commands or reject arguments;
+they never compile graph products. Existing 50-second child limits and the CI
+job budget remain unchanged. The full graph/program routes retain their cases;
+this focused route is not a full Graph suite or an O1 performance measurement.
+It preserves CMake's exact compiler paths; compiler discovery remains covered
+only by the separate `build-graph` route. Normal macOS CI does not execute the
+new O1 cases; macOS O1 runtime validation remains unrun pending a later experiment.
+
 `python3 tools/test_policy.py tool build-graph-programs` runs the graph with
 `--commands-only on --target test_tools --target chibi`: its link commands
 name them and the programs they run (`policy_worker`, `chibi_ctl`,
@@ -2438,6 +2564,128 @@ only after checking every source's review, holds and approvals.
 Keep saved plans outside the worktree.
 
 ## Historical timing evidence
+
+### Demand-driven compiler fixture preparation
+
+Measured candidate `596db47c90508809a9370af8106210cfff6b75f5` against baseline
+`84f7ba15e05423bd4ab3c3d29f4f360ee83c19ba` on an ARM64 Mac
+(macOS 26.7.1, Clang 22.1.8), using separate baseline/candidate checkouts and
+the standalone `test/language` driver in Debug with ASan and UBSan. Both used
+the existing sanitizer dependency archive
+`216c7cf5c4fdb5a5a43d18732a9ea78f0b45c416bdf4a5494af0997e69c1b6e6`;
+all 509 compiler commands matched after normalizing checkout paths.
+The timings and local validation counts in this section belong to that pair;
+they are not measurements of subsequent main integrations.
+
+Three repetitions per selector ran sequentially in fresh processes, alternating
+baseline/candidate order. The separate runtime profiler was idle. The table
+reports seconds, median (minimum–maximum); selector names omit the
+`language-package-compiler-chibi-` prefix. The compiler backend in the name is
+distinct from the generated closures' execution backends, which remain both
+bytecode and SLJIT.
+
+| Selector / compiler backend | Baseline total | Candidate total | Reduction |
+| --- | ---: | ---: | ---: |
+| `types` / bytecode | 77.88 (75.98–79.76) | 47.99 (47.87–49.45) | 38.4% |
+| `types-compiled` / SLJIT | 63.68 (60.83–66.51) | 34.83 (33.88–36.28) | 45.3% |
+| `collections-compiled` / SLJIT | 62.00 (60.78–62.71) | 34.40 (33.67–34.47) | 44.5% |
+
+Temporary outer-fixture timers separated preparation from the remaining test
+work. They did not alter runtime observers, argument sharing or call budgets.
+
+| Selector | Preparation median, baseline → candidate | Remaining median, baseline → candidate |
+| --- | ---: | ---: |
+| `types` | 56.09 → 26.97 | 21.66 → 21.04 |
+| `types-compiled` | 57.92 → 29.16 | 5.76 → 5.67 |
+| `collections-compiled` | 56.39 → 28.79 | 5.61 → 5.55 |
+
+Total includes the test policy runner, fixture setup, compilation, artifact
+execution, assertions, tracing and teardown. Remaining time is total minus
+fixture preparation, not a pure invocation benchmark. No cache flushing was
+performed; these three repetitions on one host do not establish a CI-wide
+speedup or a memory improvement. Successful driver builds were separate:
+183.51 s baseline and 179.75 s candidate, with `-j 2`; configuration and earlier
+warning-flag setup retries are excluded, as are all build times from the table.
+
+All nine matched pairs passed with exactly equal ordered traces of closure
+SHA-256, function/arguments, result status/JSON/diagnostics and serialized oracle
+SHA-256: 323 events for `types`, 204 for `types-compiled`, 107 for
+`collections-compiled`. Each selector still ran one test case. Assertion counts
+were respectively 5805 → 5613, 5205 → 5141 and 4371 → 4300. The differences
+(192, 64 and 71) equal exactly `4 + 3 * source_file_count` for each omitted
+owner: snapshot/owner/validity/document-count checks plus each source's
+copy-pointer, length and contents checks. No semantic assertion was removed.
+The temporary probes were removed before final correctness validation.
+
+The clean Debug ASan/UBSan candidate passed 16 selectors, 35 cases and 145,018
+assertions. All commands used `tools/test_policy.py tool`, with
+`CHIBI_LANGUAGE_BUILD_DIR=build-language`, `MallocNanoZone=0` and
+`UBSAN_OPTIONS=halt_on_error=1`. Counts below are cases / assertions; names omit
+the `language-` prefix.
+
+| Selector | Cases / assertions |
+| --- | ---: |
+| `compiler-fixture` | 2 / 201 |
+| `bounded-compiler-chibi` | 1 / 37,599 |
+| `prepared-writer-chibi` | 2 / 1,112 |
+| `package-compiler-chibi` | 3 / 20,139 |
+| `package-compiler-chibi-compiled` | 1 / 14,525 |
+| `package-compiler-chibi-types` | 1 / 5,613 |
+| `package-compiler-chibi-types-compiled` | 1 / 5,141 |
+| `package-compiler-chibi-collections` | 1 / 4,567 |
+| `package-compiler-chibi-collections-compiled` | 1 / 4,300 |
+| `package-compiler-chibi-scalar` | 3 / 14,271 |
+| `package-compiler-chibi-sharing` | 1 / 133 |
+| `package-compiler-chibi-debug-free` | 1 / 2,452 |
+| `package-compiler-chibi-behaviors-rest` | 2 / 5,730 |
+| `package-compiler-chibi-libraries` | 13 / 17,393 |
+| `package-compiler-chibi-native-arguments-oracle` | 1 / 178 |
+| `package-compiler-chibi-native-arguments` | 1 / 11,664 |
+
+The new fixture regression also failed under a temporary eager-preparation
+negative control, at the assertion that the unselected owner is absent; its
+default-both case still passed. The clean measured selectors retained exactly
+their instrumented case/assertion counts. `make check-format` passed.
+
+The unchanged scalar selector also passed on the clean baseline with the same
+3 cases and 14,271 assertions. The existing Release imports routes passed on
+the candidate: `language-package-compiler-chibi-imports` had 2 cases / 13,328
+assertions and `language-package-compiler-chibi-imports-compiled` had 2 /
+13,103, including both float-constant dependency cases. Their separate Release
+driver build took 50.91 s; selector wall times were 8.60 s and 6.21 s. Release
+used the same compiler, the existing Release dependency archive, sanitizers
+off as in those routes, `-Wno-error=string-concatenation` and `-Wl,-dead_strip`.
+These are correctness checks, not matched Release performance measurements.
+
+Validation follows the affected-contract policy above. Broad native, material,
+project, tooling and full-language suites were not run. Wasm, Linux x86-64
+native scalar execution, GPU, Studio and web coverage were not executed on
+this Mac. Existing cases, limits, sanitizer configuration, backend assertions
+and fallback policy are preserved; normal review and required server checks
+still apply.
+
+Reproduction uses the existing dependency cache and toolchain, without
+installation. Configure both checkouts with the same options:
+
+```sh
+cmake -S test/language -B build-language -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER="$CLANG22" \
+  -DCHIBI_THIRD_PARTY_CACHE="$CACHE" \
+  -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=address,undefined \
+  '-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -Wno-error=string-concatenation' \
+  '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined -Wl,-dead_strip' \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build-language --target test_language -j 2
+MallocNanoZone=0 UBSAN_OPTIONS=halt_on_error=1 \
+  CHIBI_LANGUAGE_BUILD_DIR=build-language \
+  python3 tools/test_policy.py tool language-package-compiler-chibi-types
+```
+
+The explicit sanitizer flags are necessary for this standalone driver build.
+The warning option keeps an existing string-concatenation warning visible and
+nonfatal (the top-level build already excludes that warning). Repeat with the
+other two selector names above, sequentially; uninstrumented runs omit trace
+and timer overhead.
 
 The original native coverage is recorded in
 [test inventory](test-inventory.md). The former tooling
@@ -3245,3 +3493,43 @@ With matching compiler input it took 2.6 seconds on the Mac validation host. Wit
 changed compiler source and retained older input it took 71 seconds including supported
 in-process recovery. It retains the existing process budget. No second workflow
 invocation or broader suite is added.
+
+## Project 34 numeric migration
+
+`python3 tools/test_policy.py tool language-migration34` runs the format 34→35
+step's C cases through the production source, content and project migration
+entrypoints on disposable files; `language-migration34-generic-repro`, in the
+language group, runs its four source cases alone. The repair is Charles's
+reviewed checkpoint (`fdae32fe`, `1eaf4a8e`), ported from version 32→33 to
+34→35.
+
+Every `.chibi` source is checked before inputs are filtered or files staged.
+The inventory refuses declarations and bindings spelling an old name, a rename
+destination or a newly reserved scalar name, including loop keys and values,
+pattern and `is` bindings, generic type binders and import aliases. A local
+named `number`, which version 34 allowed, is refused only when the same source
+renames a `float` to `number`. Unqualified argument values and conversion
+callees are then rewritten; qualified names, members, argument labels, fields,
+variants, units, strings and comments keep their text. The migrated
+`Quantity(double, 1, -1)` program compiles and runs on both backends.
+
+KDL assets change only graph pin and event metadata, through source-span
+edits, so numeric payload bytes such as `1.0000000000000002`, `16777217`,
+`1e300` and `-0.0` are kept. Explicitly owned array and set default
+descriptors migrate; map collection defaults, and an omitted pin container
+that may hold a codec envelope needing a rename, are refused before any write.
+A pin that omits its storage and names an old scalar in `type_name` is renamed:
+no declaration can take that name. A malformed asset fails with the KDL
+parser's located diagnostic and leaves the project unchanged for a retry.
+
+Every project in this repository at `main`'s version 34 migrates with the
+step, and the result matches the committed projects except where they were
+hand-simplified afterwards. `project-declarations` and
+`language-query-program`, which no group runs, also failed on the checkpoint's
+base.
+
+## Debug optimization experiment
+
+See [the opt-in O0/O1 sanitizer comparison](debug-optimization-experiment.md) for
+matched build flags, correctness gates and wall-time measurements. CI defaults
+and sanitizer coverage remain unchanged.

@@ -72,11 +72,11 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                         type_name "ShaderVec2"
                         default x=0.0 y=0.0
                     }
-                    Radius id=45 declaration_id=105 type="float" default=35.0
-                    Width id=46 declaration_id=106 type="float" default=3.0
+                    Radius id=45 declaration_id=105 type="number" default=35.0
+                    Width id=46 declaration_id=106 type="number" default=3.0
                 }
                 outputs {
-                    Mask id=47 declaration_id=108 type="float"
+                    Mask id=47 declaration_id=108 type="number"
                 }
             }
             - {
@@ -136,7 +136,7 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                         flags 64
                         default x=1.0 y=1.0 z=1.0
                     }
-                    Width id=56 type="float" default=100.0
+                    Width id=56 type="number" default=100.0
                 }
                 outputs {
                     Color {
@@ -176,11 +176,11 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                 reference_name "Pulse"
                 reference_asset "ShaderMath"
                 inputs {
-                    Time id=65 declaration_id=61 type="float"
-                    Speed id=66 declaration_id=62 type="float"
+                    Time id=65 declaration_id=61 type="number"
+                    Speed id=66 declaration_id=62 type="number"
                 }
                 outputs {
-                    Brightness id=67 declaration_id=63 type="float"
+                    Brightness id=67 declaration_id=63 type="number"
                 }
             }
             - {
@@ -294,7 +294,7 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                         flags 64
                         default x=1.0 y=1.0 z=1.0
                     }
-                    - id=6 name="Width" type="float" kind="data" default=100.0
+                    - id=6 name="Width" type="number" kind="data" default=100.0
                 }
             }
             - {

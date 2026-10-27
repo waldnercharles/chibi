@@ -277,7 +277,7 @@ MapPlaceDeleteStep :: (forest: snapshot.SnapshotNode[], document: int, types: Ty
         return Fail(forest, key, document, "Map key type does not match");
     }
     return IgnoreSequenceValue(SequenceCallStep([place, value], MapDeletePlaceIntrinsic,
-                                                Typed(-1, BoolStorage, 0, -1), uint64(0), false, 2, ops, target, at, node));
+                                                Typed(-1, BoolStorage, 0, -1), u64(0), false, 2, ops, target, at, node));
 }
 // The in-place store or removal on the local map names[item.a]: the local's
 // header address, the key and a store's value go to the intrinsic, which

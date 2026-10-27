@@ -7,6 +7,7 @@
 #include "project_migrate30.h"
 #include "project_migrate31.h"
 #include "project_migrate32.h"
+#include "project_migrate34.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -18,6 +19,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,7 +71,7 @@ void tree_sitter_chibi_project24_external_scanner_deserialize(void *scanner, con
 
 script_syntax *chibi_migrate_parse(const char *text, int version)
 {
-    /* Versions 34 and 35 keep version 33's grammar. */
+    /* Versions 34 to 36 keep version 33's grammar. */
     if (version >= 33) {
         return script_parse(text);
     }
@@ -166,7 +168,7 @@ static script_syntax *parse32(const char *text)
     return chibi_migrate_parse(text, 32);
 }
 /* Whether text parses with the grammar of project `version`, from 23 on.
- * Versions 34 and 35 kept version 33's grammar, the current one. */
+ * Versions 34 to 36 kept version 33's grammar, the current one. */
 static bool valid_at(const char *text, int version)
 {
     script_syntax *syntax = version < 33 ? chibi_migrate_parse(text, version)
@@ -6187,6 +6189,353 @@ static char **migrate_vector_names(char **sources, char **paths, int count, char
     return migrated;
 }
 
+int chibi_migrate_number_names(const char *source, char **migrated, char *error, size_t size)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    if (chibi_migrate34_number_names(source, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Number name", 35, migrated, error, size)
+             : 0;
+}
+/* This step owns graph/event shapes, not the data their defaults hold. Use
+ * source spans so changing a type never rewrites an unrelated numeric value. */
+#define NUMBER_DOCUMENT_DEPTH 64
+#define NUMBER_DOCUMENT_VALUES 1000000
+
+typedef struct
+{
+    const char *text;
+    size_t length;
+    text_edit *edits;
+    char *error;
+    size_t size;
+    int values;
+    bool failed;
+} number_document;
+
+enum
+{
+    NUMBER_VALUE,
+    NUMBER_ARRAY,
+    NUMBER_SET,
+    NUMBER_MAP
+};
+
+static void number_error(number_document *s, const av_value *value, const char *message)
+{
+    if (s->failed) {
+        return;
+    }
+    s->failed = true;
+    size_t at = av_get_source(value).start;
+    int line = 1, column = 1;
+    for (size_t i = 0; i < s->length && i < at; i++) {
+        if (s->text[i] == '\n') {
+            line++;
+            column = 1;
+        } else {
+            column++;
+        }
+    }
+    snprintf(s->error, s->size, "line %d, column %d: %s", line, column, message);
+}
+static const char *number_string(const av_value *value)
+{
+    return av_is_str(value) && strlen(av_get_str(value)) == av_get_len(value)
+             ? av_get_str(value)
+             : NULL;
+}
+static const char *number_canonical(const char *name)
+{
+    const char *renamed = name ? chibi_migrate34_number_name(name) : NULL;
+    return renamed ? renamed : name;
+}
+static bool number_primitive(const char *name)
+{
+    static const char *const names[] = { "bool",        "i8",     "u8",  "i16",
+                                         "u16",         "int",    "u32", "i64",
+                                         "u64",         "number", "f64", "name",
+                                         "const char *" };
+    for (size_t i = 0; name && i < sizeof names / sizeof *names; i++) {
+        if (!strcmp(number_canonical(name), names[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+static void number_type_field(number_document *s, av_value *value, const char *key)
+{
+    av_value *field = av_obj_get(value, key);
+    const char *before = number_string(field),
+               *after = before ? chibi_migrate34_number_name(before) : NULL;
+    if (!after || s->failed) {
+        return;
+    }
+    av_source span = av_get_source(field);
+    if (span.start > span.end || span.end > s->length || span.end > INT_MAX) {
+        number_error(s, field, "Numeric type metadata has no editable source span");
+        return;
+    }
+    size_t length = strlen(after) + 3;
+    char *quoted = xmalloc(length);
+    snprintf(quoted, length, "\"%s\"", after);
+    apush(s->edits, ((text_edit){ (int)span.start, (int)span.end, quoted }));
+}
+static int number_container(const av_value *value)
+{
+    static const char *const names[] = { "value", "array", "set", "map" };
+    const char *name = number_string(value);
+    for (int i = 0; name && i < 4; i++) {
+        if (!strcmp(name, names[i])) {
+            return i;
+        }
+    }
+    return -1;
+}
+static bool number_budget(number_document *s, const av_value *value, int depth)
+{
+    if (s->failed) {
+        return false;
+    }
+    if (depth >= NUMBER_DOCUMENT_DEPTH || ++s->values > NUMBER_DOCUMENT_VALUES) {
+        number_error(s, value, "Collection metadata exceeds the migration traversal limit");
+        return false;
+    }
+    return true;
+}
+static bool number_descriptor_valid(const av_value *shape)
+{
+    const av_value *name = av_obj_get(shape, "name"),
+                   *id = av_obj_get(shape, "record_id"),
+                   *layout = av_obj_get(shape, "record_layout");
+    const char *kind = number_string(av_obj_get(shape, "storage")),
+               *nominal = number_string(name);
+    bool record = kind && !strcmp(kind, "struct");
+    bool supported = number_primitive(kind) || record ||
+                     (kind && (!strcmp(kind, "handle") ||
+                               !strcmp(kind, "enum") || !strcmp(kind, "union")));
+    return av_is_obj(shape) && supported &&
+           number_container(av_obj_get(shape, "container")) >= 0 &&
+           (!name || (nominal && *nominal)) &&
+           av_obj_size(shape) == 2u + (name != NULL) + (id != NULL) + (layout != NULL) &&
+           (!(id || layout) ||
+            (record && id && layout && av_is_uint(id) && av_is_uint(layout)));
+}
+/* An omitted pin container inherits its node template. Read only possible
+ * codec paths to detect needed edits; these shapes never establish ownership. */
+static void number_collection_probe(number_document *, const av_value *, int, int);
+static int number_descriptor_probe(number_document *s, const av_value *shape, int depth)
+{
+    if (!number_descriptor_valid(shape) || !number_budget(s, shape, depth)) {
+        return -1;
+    }
+    const av_value *storage = av_obj_get(shape, "storage"),
+                   *name = av_obj_get(shape, "name");
+    const char *kind = number_string(storage), *nominal = number_string(name);
+    if ((kind && chibi_migrate34_number_name(kind)) ||
+        (number_primitive(kind) && nominal && chibi_migrate34_number_name(nominal))) {
+        number_error(
+            s,
+            kind && chibi_migrate34_number_name(kind) ? storage : name,
+            "Numeric collection metadata requires an explicit pin container"
+        );
+        return -1;
+    }
+    return number_container(av_obj_get(shape, "container"));
+}
+static void number_collection_probe(number_document *s, const av_value *value, int container, int depth)
+{
+    if (!av_is_obj(value) || container == NUMBER_VALUE ||
+        !number_budget(s, value, depth)) {
+        return;
+    }
+    if (container == NUMBER_ARRAY || container == NUMBER_SET) {
+        const av_value *items = av_obj_get(value, "items");
+        if (av_obj_size(value) != 2 || !av_is_arr(items)) {
+            return;
+        }
+        int child = number_descriptor_probe(s, av_obj_get(value, "element_type"), depth + 1);
+        for (size_t i = 0;
+             !s->failed && child > NUMBER_VALUE && i < av_arr_size(items);
+             i++) {
+            number_collection_probe(s, av_arr_get(items, i), child, depth + 1);
+        }
+        return;
+    }
+    if (container == NUMBER_MAP) {
+        const av_value *entries = av_obj_get(value, "entries");
+        if (av_obj_size(value) != 3 || !av_is_arr(entries) ||
+            !number_descriptor_valid(av_obj_get(value, "key_type")) ||
+            !number_descriptor_valid(av_obj_get(value, "value_type"))) {
+            return;
+        }
+        int key = number_descriptor_probe(s, av_obj_get(value, "key_type"), depth + 1),
+            item = number_descriptor_probe(s, av_obj_get(value, "value_type"), depth + 1);
+        for (size_t i = 0; !s->failed && i < av_arr_size(entries); i++) {
+            const av_value *pair = av_arr_get(entries, i);
+            number_collection_probe(s, av_arr_get(pair, 0), key, depth + 1);
+            number_collection_probe(s, av_arr_get(pair, 1), item, depth + 1);
+        }
+    }
+}
+/* Validate only the descriptor this collection owns. Record identities and
+ * nominal names are data; scalar payloads are never searched for type keys. */
+static int number_descriptor(number_document *s, av_value *shape, const char *expected)
+{
+    av_value *storage = av_obj_get(shape, "storage"),
+             *name = av_obj_get(shape, "name");
+    const char *kind = number_string(storage), *nominal = number_string(name);
+    int container = number_container(av_obj_get(shape, "container"));
+    if (!number_descriptor_valid(shape)) {
+        number_error(s, shape, "Invalid collection type descriptor");
+        return -1;
+    }
+    if ((expected && strcmp(number_canonical(expected), number_canonical(kind))) ||
+        (number_primitive(kind) && number_primitive(nominal) &&
+         strcmp(number_canonical(kind), number_canonical(nominal)))) {
+        number_error(s, storage, "Collection type descriptor differs from its declaration");
+        return -1;
+    }
+    number_type_field(s, shape, "storage");
+    if (number_primitive(kind)) {
+        number_type_field(s, shape, "name");
+    }
+    return container;
+}
+static void number_collection(number_document *s, av_value *value, int container, const char *expected, int depth)
+{
+    if (container == NUMBER_VALUE || !number_budget(s, value, depth)) {
+        return;
+    }
+    /* Graph defaults pass through serialize_read_array, whose outer storage
+     * cannot represent the union-valued maps used by the collection codec. */
+    if (container == NUMBER_MAP) {
+        number_error(s, value, "Map collection defaults require a supported owning graph schema");
+        return;
+    }
+    if (av_is_arr(value)) {
+        return; /* Plain arrays contain scalar/record payloads, not descriptors. */
+    }
+    av_value *shape = av_obj_get(value, "element_type"),
+             *items = av_obj_get(value, "items");
+    if (!av_is_obj(value) || av_obj_size(value) != 2 || !shape || !av_is_arr(items)) {
+        number_error(s, value, "Invalid nested array document");
+        return;
+    }
+    int child = number_descriptor(s, shape, expected);
+    if (child == NUMBER_VALUE) {
+        number_error(s, shape, "Nested array descriptor must name a collection");
+        return;
+    }
+    if (child == NUMBER_MAP) {
+        number_error(s, shape, "Map collection defaults require a supported owning graph schema");
+        return;
+    }
+    const char *storage = number_string(av_obj_get(shape, "storage"));
+    for (size_t i = 0; !s->failed && child > NUMBER_VALUE && i < av_arr_size(items);
+         i++) {
+        number_collection(s, av_arr_get(items, i), child, storage, depth + 1);
+    }
+}
+static void number_metadata(number_document *s, av_value *value, bool pin)
+{
+    number_type_field(s, value, "type");
+    const char *storage = number_string(av_obj_get(value, "type")),
+               *name = number_string(av_obj_get(value, "type_name"));
+    /* A pin that omits its storage keeps the node's. A type_name spelling a
+     * version 34 scalar still names that scalar: preflight refuses any
+     * declaration of those names. */
+    if (number_primitive(storage) ||
+        (!storage && name && chibi_migrate34_number_name(name))) {
+        number_type_field(s, value, "type_name");
+    }
+    av_value *def = av_obj_get(value, "default"),
+             *container = av_obj_get(value, "container");
+    if (!def) {
+        return;
+    }
+    if (!container) {
+        if (pin) {
+            number_collection_probe(s, def, NUMBER_ARRAY, 0);
+        }
+        return; /* Omitted variable containers are explicitly scalar. */
+    }
+    if (!av_is_int(container) || av_get_sint(container) < NUMBER_VALUE ||
+        av_get_sint(container) > NUMBER_MAP) {
+        number_error(s, container, "Invalid graph default container");
+        return;
+    }
+    number_collection(s, def, (int)av_get_sint(container), number_string(av_obj_get(value, "type")), 0);
+}
+static void number_pins(number_document *s, av_value *pins)
+{
+    for (size_t i = 0; !s->failed && av_is_arr(pins) && i < av_arr_size(pins); i++) {
+        number_metadata(s, av_arr_get(pins, i), true);
+    }
+    for (size_t i = 0; !s->failed && av_is_obj(pins) && i < av_obj_size(pins); i++) {
+        number_metadata(s, av_obj_value_at(pins, i), true);
+    }
+}
+static void number_graph(number_document *s, av_value *graph)
+{
+    av_value *nodes = av_obj_get(graph, "nodes");
+    for (size_t i = 0; !s->failed && av_is_arr(nodes) && i < av_arr_size(nodes); i++) {
+        av_value *node = av_arr_get(nodes, i);
+        number_pins(s, av_obj_get(node, "inputs"));
+        number_pins(s, av_obj_get(node, "outputs"));
+    }
+}
+int chibi_migrate_number_types(const char *asset, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    av_doc *document = asset_text_read(asset, error, size);
+    if (!document) {
+        return -1;
+    }
+    number_document s = { .text = asset, .length = strlen(asset), .error = error, .size = size };
+    av_value *root = av_doc_root(document), *graphs = av_obj_get(root, "graphs");
+    number_graph(&s, root);
+    for (size_t i = 0; !s.failed && av_is_arr(graphs) && i < av_arr_size(graphs); i++) {
+        number_graph(&s, av_arr_get(graphs, i));
+    }
+    const char *domain = number_string(av_obj_get(root, "domain"));
+    if (av_is_arr(graphs) || (domain && !strcmp(domain, "event"))) {
+        av_value *variables = av_obj_get(root, "variables");
+        for (size_t i = 0;
+             !s.failed && av_is_arr(variables) && i < av_arr_size(variables);
+             i++) {
+            number_metadata(&s, av_arr_get(variables, i), false);
+        }
+    }
+    if (!s.failed && acount(s.edits)) {
+        *migrated = text_edits_apply(asset, s.edits, acount(s.edits));
+    }
+    for (int i = 0; i < acount(s.edits); i++) {
+        free((void *)s.edits[i].text);
+    }
+    afree(s.edits);
+    av_doc_free(document);
+    return s.failed ? -1 : 0;
+}
+static char **migrate_number_names(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        int status = has_suffix(paths[i], ".chibi")
+                       ? chibi_migrate_number_names(sources[i], &migrated[i], error, size)
+                       : chibi_migrate_number_types(sources[i], &migrated[i], error, size);
+        if (status) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
+}
+
 /* The declaration collector is shared with the task-call migration. Unlike
  * that older step, this step rejects ambiguous library matches and only exposes
  * declarations directly inside a library through its qualifier. */
@@ -6371,7 +6720,7 @@ char **chibi_migrate_ref_calls(const char *const *sources, int count, char *erro
     for (int i = 0; i < count && valid; i++) {
         syntax[i] = script_parse(sources[i]);
         if (syntax[i]->diagnostic_count) {
-            snprintf(error, size, "Cannot migrate invalid version 34 source %d", i + 1);
+            snprintf(error, size, "Cannot migrate invalid version 35 source %d", i + 1);
             valid = false;
         } else {
             collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, true, &c.functions);
@@ -6382,7 +6731,7 @@ char **chibi_migrate_ref_calls(const char *const *sources, int count, char *erro
         valid = ref_call_rewrite(&c, i, ts_tree_root_node(syntax[i]->tree), &edits, error, size);
         if (valid && acount(edits)) {
             char *result = text_edits_apply(sources[i], edits, acount(edits));
-            valid = !accept_migrated(sources[i], result, "Ref call", 35, &migrated[i], error, size);
+            valid = !accept_migrated(sources[i], result, "Ref call", 36, &migrated[i], error, size);
         }
         afree(edits);
     }
@@ -6432,11 +6781,12 @@ int chibi_project_migrate_content(
         return migrate_components(content, error, error_size);
     }
     char **paths = NULL;
-    /* Versions 15, 16, 18, 19 and 22 change scenes and prototypes, and
+    /* Versions 15, 16, 18, 19, 22 and 35 change scenes and prototypes, and
      * version 21 changes materials, wherever the project keeps them; every
      * other step changes scripts. */
     bool declarative = from == 14 || from == 15 || from == 17 || from == 18 ||
-                       from == 20 || from == 21 || from == 22 || from == 25;
+                       from == 20 || from == 21 || from == 22 || from == 25 ||
+                       from == 34;
     int status = collect_sources(
         content,
         declarative ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
@@ -6445,8 +6795,9 @@ int chibi_project_migrate_content(
         error_size
     );
     /* Versions 16 and 18 also check scripts for names they remove, and
-     * versions 23 and 26 also rewrite scripts. */
-    if (!status && (from == 15 || from == 17 || from == 22 || from == 25)) {
+     * versions 23, 26 and 35 also rewrite scripts. */
+    if (!status &&
+        (from == 15 || from == 17 || from == 22 || from == 25 || from == 34)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
     /* Version 30 types handler payloads from the project's event declarations,
@@ -6487,6 +6838,17 @@ int chibi_project_migrate_content(
                                          : read_text(paths[i]);
         if (!status && !sources[i]) {
             snprintf(error, error_size, "Cannot read source %s", paths[i]);
+            status = -1;
+        }
+    }
+    /* Include every declaration before discarding already-migrated sources:
+     * a sibling can still bind a name this version is about to introduce. */
+    for (int i = 0; !status && from == 34 && i < count; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate34_preflight(sources[i], error, error_size)) {
+            char *message = xstrdup(error);
+            snprintf(error, error_size, "%s: %s", paths[i], message);
+            free(message);
             status = -1;
         }
     }
@@ -6622,6 +6984,11 @@ int chibi_project_migrate_content(
                 status = error[0] ? -1 : 0;
                 break;
             case 34:
+                error[0] = '\0';
+                migrated = migrate_number_names(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 35:
                 error[0] = '\0';
                 migrated = chibi_migrate_ref_calls((const char *const *)sources, count, error, error_size);
                 status = migrated ? 0 : -1;

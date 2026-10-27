@@ -17,15 +17,15 @@ description "Shared pulse and ring masking functions with explicit inputs."
                 id 57
                 type "Function Entry"
                 (array)outputs {
-                    - id=61 name="Time" type="float" kind="data"
-                    - id=62 name="Speed" type="float" kind="data"
+                    - id=61 name="Time" type="number" kind="data"
+                    - id=62 name="Speed" type="number" kind="data"
                 }
             }
             - {
                 id 59
                 type "Return"
                 (array)inputs {
-                    - id=63 name="Brightness" type="float" kind="data"
+                    - id=63 name="Brightness" type="number" kind="data"
                 }
             }
             - id=64 type="Shader Multiply"
@@ -34,14 +34,14 @@ description "Shared pulse and ring masking functions with explicit inputs."
                 id 71
                 type "Shader Add"
                 inputs {
-                    B type_name="float" default=1.0
+                    B type_name="number" default=1.0
                 }
             }
             - {
                 id 75
                 type "Shader Multiply"
                 inputs {
-                    B type_name="float" default=0.5
+                    B type_name="number" default=0.5
                 }
             }
         }
@@ -74,15 +74,15 @@ description "Shared pulse and ring masking functions with explicit inputs."
                         kind "data"
                         default x=0.0 y=0.0
                     }
-                    - id=105 name="Radius" type="float" kind="data" default=35.0
-                    - id=106 name="Width" type="float" kind="data" default=3.0
+                    - id=105 name="Radius" type="number" kind="data" default=35.0
+                    - id=106 name="Width" type="number" kind="data" default=3.0
                 }
             }
             - {
                 id 107
                 type "Return"
                 (array)inputs {
-                    - id=108 name="Mask" type="float" kind="data"
+                    - id=108 name="Mask" type="number" kind="data"
                 }
             }
             - {

@@ -187,7 +187,7 @@ TEST_CASE(branches_collapse_to_macros_and_expand_back)
 static node *real(graph *g, double value)
 {
     node *n = graph_add_node(g, graph_palette_node("Real"));
-    pin_value v = { .type = PIN_F64, .type_name = "double", .d = value };
+    pin_value v = { .type = PIN_F64, .type_name = "f64", .d = value };
     int set = graph_set_pin_default(g, n, 0, 0, &v);
     assert(set == 0);
     (void)set;

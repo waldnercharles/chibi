@@ -1,3 +1,3 @@
-Drift :: system(position: Transform, velocity: Velocity) on Tick :: (dt: float s) {
+Drift :: system(position: Transform, velocity: Velocity) on Tick :: (dt: number s) {
     position += velocity * dt
 }

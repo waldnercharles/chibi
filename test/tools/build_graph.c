@@ -30,6 +30,7 @@ static char compiler[GRAPH_PATH], cxx_compiler[GRAPH_PATH], compiler_id[64],
     debug_dir[GRAPH_PATH], archiver[GRAPH_PATH], ranlib[GRAPH_PATH],
     third_party[GRAPH_PATH];
 static bool warnings;
+static char debug_optimization[2];
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
 #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
 
@@ -129,6 +130,13 @@ static void read_profile()
     free(cxx_file);
     compiler_value(file, "CMAKE_C_COMPILER_ID", compiler_id, sizeof compiler_id);
     cache_value(cache, "CMAKE_BUILD_TYPE", build_type, sizeof build_type);
+    debug_optimization[0] = 0;
+    cache_value(cache, "CMAKE_C_FLAGS_DEBUG", value, sizeof value);
+    if (!strcmp(build_type, "Debug") &&
+        (!strcmp(value, "-g -O0") || !strcmp(value, "-g -O1"))) {
+        debug_optimization[0] = value[strlen(value) - 1];
+        debug_optimization[1] = 0;
+    }
     cache_value(cache, "CMAKE_OSX_SYSROOT", sysroot, sizeof sysroot);
     cache_value(cache, "CMAKE_OSX_ARCHITECTURES", architecture, sizeof architecture);
 #ifdef __APPLE__
@@ -222,15 +230,35 @@ static int run_graph(
 static int graph(const char *root, const char *build_dir, bool warn, const char *const *extra)
 {
     const char *const options[] = {
-        "--compiler",        compiler,        "--cxx-compiler",
-        cxx_compiler,        "--compiler-id", compiler_id,
-        "--build-type",      build_type,      "--warnings",
-        warn ? "on" : "off", "--archiver",    archiver,
-        "--ranlib",          ranlib,          "--architecture",
-        architecture,        "--sysroot",     sysroot,
-        "--sanitizers",      sanitizers,      "--debug-compilation-dir",
-        debug_dir,           "--launcher",    "",
-        "--third-party",     third_party,     NULL,
+        "--compiler",
+        compiler,
+        "--cxx-compiler",
+        cxx_compiler,
+        "--compiler-id",
+        compiler_id,
+        "--build-type",
+        build_type,
+        "--warnings",
+        warn ? "on" : "off",
+        "--archiver",
+        archiver,
+        "--ranlib",
+        ranlib,
+        "--architecture",
+        architecture,
+        "--sysroot",
+        sysroot,
+        "--sanitizers",
+        sanitizers,
+        "--debug-compilation-dir",
+        debug_dir,
+        "--launcher",
+        "",
+        "--third-party",
+        third_party,
+        debug_optimization[0] ? "--debug-optimization" : NULL,
+        debug_optimization,
+        NULL,
     };
     return run_graph(root, build_dir, options, extra);
 }
@@ -242,11 +270,17 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
     const char *profile = sanitizers[0]                  ? "sanitizer"
                         : !strcmp(build_type, "Release") ? "release"
                                                          : "debug";
-    const char *const options[] = {
-        "--profile", profile,      "--debug-compilation-dir",
-        debug_dir,   "--warnings", warnings ? "on" : "off",
-        NULL
-    };
+    const char *const options[] = { "--profile",
+                                    profile,
+                                    "--debug-compilation-dir",
+                                    debug_dir,
+                                    "--warnings",
+                                    warnings ? "on" : "off",
+                                    debug_optimization[0]
+                                        ? "--debug-optimization"
+                                        : NULL,
+                                    debug_optimization,
+                                    NULL };
     /* Without CXX, the C++ compiler is the one beside CC, as CMake's. */
     char *saved = getenv("CC") ? strdup(getenv("CC")) : NULL;
     char *saved_cxx = getenv("CXX") ? strdup(getenv("CXX")) : NULL;
@@ -323,21 +357,9 @@ static bool same_command(yyjson_val *ours, char *theirs)
     return index == yyjson_arr_size(ours);
 }
 
-/* Every compile command the graph writes, from the profile it finds, equals
- * CMake's for the same source. */
-TEST_CASE(commands_match_cmake)
+/* The caller owns both documents, including when a REQUIRE fails here. */
+static bool command_documents_match(yyjson_val *ours, yyjson_val *theirs)
 {
-    /* Only the profile's name: the graph finds its compiler, SDK, libclang and
-     * flags as CMake did. */
-    const char *const commands_only[] = { "--commands-only", "on", NULL };
-    REQUIRE(discovered_graph(CHIBI_SOURCE_ROOT, built, commands_only) == 0);
-    char path[GRAPH_PATH];
-    join(path, built, "compile_commands.json");
-    yyjson_doc *graph_doc = yyjson_read_file(path, 0, NULL, NULL);
-    join(path, reference, "compile_commands.json");
-    yyjson_doc *cmake_doc = yyjson_read_file(path, 0, NULL, NULL);
-    REQUIRE(graph_doc && cmake_doc);
-    yyjson_val *ours = yyjson_doc_get_root(graph_doc);
     /* The libraries the graph owns are those its objects belong to. */
     char owners[GRAPH_OWNERS][128];
     int owner_count = 0;
@@ -359,7 +381,7 @@ TEST_CASE(commands_match_cmake)
         }
     }
     int matched = 0, expected = 0;
-    yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(cmake_doc));
+    yyjson_arr_iter iter = yyjson_arr_iter_with(theirs);
     while ((entry = yyjson_arr_iter_next(&iter))) {
         const char *command = yyjson_get_str(yyjson_obj_get(entry, "command"));
         const char *file = yyjson_get_str(yyjson_obj_get(entry, "file"));
@@ -396,9 +418,39 @@ TEST_CASE(commands_match_cmake)
     }
     fprintf(stderr, "graph commands: %d of %d match CMake's in %d libraries\n", matched, expected, owner_count);
     REQUIRE(expected > 0 && matched == expected && (size_t)expected == yyjson_arr_size(ours));
+    return true;
+}
+/* Every compile command the graph writes equals CMake's for the same source. */
+static bool commands_match(bool discover)
+{
+    const char *const commands_only[] = { "--commands-only", "on", NULL };
+    REQUIRE(
+        (discover ? discovered_graph(CHIBI_SOURCE_ROOT, built, commands_only)
+                  : graph(CHIBI_SOURCE_ROOT, built, warnings, commands_only)) == 0
+    );
+    char path[GRAPH_PATH];
+    join(path, built, "compile_commands.json");
+    yyjson_doc *graph_doc = yyjson_read_file(path, 0, NULL, NULL);
+    join(path, reference, "compile_commands.json");
+    yyjson_doc *cmake_doc = yyjson_read_file(path, 0, NULL, NULL);
+    bool matches = graph_doc && cmake_doc &&
+                   command_documents_match(yyjson_doc_get_root(graph_doc), yyjson_doc_get_root(cmake_doc));
     yyjson_doc_free(graph_doc);
     yyjson_doc_free(cmake_doc);
+    REQUIRE(matches);
     return true;
+}
+
+TEST_CASE(commands_match_cmake)
+{
+    /* Only the profile's name: discover the compiler, SDK, libclang and flags. */
+    return commands_match(true);
+}
+
+TEST_CASE(explicit_commands_match_cmake)
+{
+    /* Preserve CMake's exact compiler paths, including versioned Linux Clang. */
+    return commands_match(false);
 }
 
 static void append(const char *root, const char *name, const char *text)
@@ -1150,6 +1202,132 @@ TEST_CASE(invalid_targets_fail_before_writing_commands)
     return true;
 }
 
+/* No compiler runs: explicit profiles expose every language's argv, including
+ * test assertions, before the opt-in experiment is allowed to build. */
+TEST_CASE(debug_optimization_preserves_instrumentation)
+{
+    const char *const options[] = { "--profile",
+                                    "explicit",
+                                    "--compiler",
+                                    "/unused/clang",
+                                    "--cxx-compiler",
+                                    "/unused/clang++",
+                                    "--compiler-id",
+                                    "Clang",
+                                    "--build-type",
+                                    "Debug",
+                                    "--sanitizers",
+                                    "address,undefined",
+                                    "--archiver",
+                                    "/unused/ar",
+                                    "--ranlib",
+                                    "/unused/ranlib",
+                                    NULL };
+    const char *const levels[] = { "", "0", "1" };
+    for (int level = 0; level < 3; level++) {
+        char build_dir[GRAPH_PATH], path[GRAPH_PATH];
+        join(build_dir, suite, level == 0 ? "default debug" : levels[level]);
+        const char *const extra[] = { "--commands-only",
+                                      "on",
+                                      "--target",
+                                      "chibi_support",
+                                      "--all-commands",
+                                      "on",
+                                      level ? "--debug-optimization" : NULL,
+                                      levels[level],
+                                      level ? "--debug-optimization" : NULL,
+                                      "0",
+                                      NULL };
+        /* Valid repetitions retain Option's existing first-value precedence. */
+        REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, extra) == 0);
+        join(path, build_dir, "compile_commands.json");
+        yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
+        REQUIRE(doc);
+        bool saw_test = false, saw_cxx = false, saw_engine = false, saw_sdk = false;
+#ifdef __APPLE__
+        bool saw_tools = false, saw_language = false, saw_objc = false;
+#endif
+        yyjson_arr_iter entries = yyjson_arr_iter_with(yyjson_doc_get_root(doc));
+        yyjson_val *entry;
+        while ((entry = yyjson_arr_iter_next(&entries))) {
+            bool debug = false, sanitizer = false, frames = false, assertions = false;
+            int optimizations = 0;
+            yyjson_arr_iter arguments = yyjson_arr_iter_with(
+                yyjson_obj_get(entry, "arguments")
+            );
+            yyjson_val *value;
+            while ((value = yyjson_arr_iter_next(&arguments))) {
+                const char *arg = yyjson_get_str(value);
+                REQUIRE(arg);
+                debug |= !strcmp(arg, "-g");
+                sanitizer |= !strcmp(arg, "-fsanitize=address,undefined");
+                frames |= !strcmp(arg, "-fno-omit-frame-pointer");
+                assertions |= !strcmp(arg, "-UNDEBUG");
+                REQUIRE(strncmp(arg, "-DNDEBUG", 8));
+                if (!strncmp(arg, "-O", 2)) {
+                    optimizations++;
+                    REQUIRE(level && !strcmp(arg + 2, levels[level]));
+                }
+            }
+            REQUIRE(debug && sanitizer && frames);
+            REQUIRE(optimizations == (level != 0));
+            const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
+            saw_engine |= strstr(output, "/objects/chibi_engine/") != NULL;
+            saw_sdk |= strstr(output, "/objects/chibi_compiler/") != NULL;
+            if (strstr(output, "/objects/test_host/") ||
+                strstr(output, "/objects/policy_worker/")) {
+                REQUIRE(assertions);
+                saw_test = true;
+            }
+            const char *file = yyjson_get_str(yyjson_obj_get(entry, "file"));
+            saw_cxx |= strstr(file, ".cpp") != NULL;
+#ifdef __APPLE__
+            if (strstr(output, "/objects/test_tools/")) {
+                REQUIRE(assertions);
+                saw_tools = true;
+            }
+            if (strstr(output, "/objects/test_language/")) {
+                REQUIRE(assertions);
+                saw_language = true;
+            }
+            saw_objc |= !strcmp(file + strlen(file) - 2, ".m");
+#endif
+        }
+        REQUIRE(saw_test && saw_cxx && saw_engine && saw_sdk);
+#ifdef __APPLE__
+        REQUIRE(saw_tools && saw_language && saw_objc);
+#endif
+        yyjson_doc_free(doc);
+    }
+    return true;
+}
+
+TEST_CASE(debug_optimization_rejects_invalid_profiles)
+{
+    const char *const options[] = { "--profile", "explicit", NULL };
+    const char *const cases[][9] = {
+        { "--build-type", "Debug", "--debug-optimization", "2", NULL },
+        { "--build-type", "Debug", "--debug-optimization", "1", "--debug-optimization", "2", NULL },
+        { "--build-type", "Debug", "--debug-optimization", "", NULL },
+        { "--build-type", "Debug", "--debug-optimization", NULL },
+        { "--build-type", "Debug", "--debug-optimization", "--commands-only", "on", NULL },
+        { "--build-type", "Release", "--debug-optimization", "1", NULL },
+        { "--build-type", "RelWithDebInfo", "--debug-optimization", "0", NULL }
+    };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        char build_dir[GRAPH_PATH];
+        join(build_dir, suite, "invalid optimization");
+        REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, cases[i]) == -1);
+        char *log = tool_read(log_path);
+        bool diagnostic = log &&
+                          strstr(log, "--debug-optimization requires 0 or 1 and build type Debug");
+        free(log);
+        REQUIRE(diagnostic);
+        REQUIRE(access(build_dir, F_OK));
+    }
+    return true;
+}
+
 /* Parse fixed dependency files through the bytecode CLI, under this route's
  * existing host subprocess and aggregate deadlines. */
 TEST_CASE(authored_dependency_files_list_prerequisites)
@@ -1342,6 +1520,17 @@ TEST_CASE(language_corpus_lists_as_cmake)
     return true;
 }
 
+/* Focused pre-merge coverage: emit commands, never compile graph products. */
+void test_build_graph_debug_optimization(const char *host, const char *cmake_build)
+{
+    set_up(host, cmake_build);
+    fprintf(stderr, "Graph command tests: host=%s; reference=%s\n", host_path, reference);
+    RUN_TEST_CASE(explicit_commands_match_cmake);
+    RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
+    RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
+    tool_remove_tree(suite);
+}
+
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
 void test_build_graph_programs(const char *host, const char *cmake_build)
@@ -1350,6 +1539,8 @@ void test_build_graph_programs(const char *host, const char *cmake_build)
     RUN_TEST_CASE(named_programs_build_what_they_run);
     RUN_TEST_CASE(all_commands_list_every_target);
     RUN_TEST_CASE(invalid_targets_fail_before_writing_commands);
+    RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
+    RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
     RUN_TEST_CASE(authored_dependency_files_list_prerequisites);
     tool_remove_tree(suite);
 }

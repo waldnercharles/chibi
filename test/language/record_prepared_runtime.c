@@ -22,8 +22,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Fifteen fixed prepared cases. The largest validation fixture has 128 fields
- * and 256 shared headers, and the type lookup fixture 256 types and up to 512
+/* Sixteen fixed prepared cases. The largest validation fixture has 128 fields
+ * and 256 shared headers, and the type lookup fixtures up to 512 types and 512
  * headers. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -458,27 +458,27 @@ enum
     NAMED_TYPES = 256,
     NAMED_HEADERS = 256
 };
-/* A prepared image of a module requiring NAMED_TYPES one-field records,
- * listed in name and id order or, when `reversed`, in the reverse of both,
- * whose `headers` values all have the last one's type. */
 /* Which of a named type table's indexes its types are listed against. */
 enum
 {
     NAMES_REVERSED = 1,
     IDS_REVERSED = 2
 };
-static bool named_headers_image(int headers, unsigned reversed)
+/* A prepared image of a module requiring `types` one-field records, listed in
+ * name and id order except where `reversed` says, whose `headers` values all
+ * have the last one's type. */
+static bool named_headers_image(int types, int headers, unsigned reversed)
 {
     static const type_field shape[] = { { .name = "value", .type = PIN_I32 } };
     plan = execution_module_plan_new();
     plan->id = function_id = 1;
     plan->valid = true;
     const pin_record *record = NULL;
-    for (int i = 0; i < NAMED_TYPES; i++) {
+    for (int i = 0; i < types; i++) {
         char name[16];
-        int named = reversed & NAMES_REVERSED ? NAMED_TYPES - 1 - i : i;
-        int id = reversed & IDS_REVERSED ? NAMED_TYPES - 1 - i : i;
-        snprintf(name, sizeof name, "Rows.T%03d", named);
+        int named = reversed & NAMES_REVERSED ? types - 1 - i : i;
+        int id = reversed & IDS_REVERSED ? types - 1 - i : i;
+        snprintf(name, sizeof name, "Rows.T%04d", named);
         record = pin_record_create(&producer, name, 100 + id, shape, 1);
         REQUIRE(record);
         apush(
@@ -491,7 +491,7 @@ static bool named_headers_image(int headers, unsigned reversed)
                                            .size = record->type.size })
         );
     }
-    plan->type_count = NAMED_TYPES;
+    plan->type_count = types;
     const pin_value header = { .type = PIN_STRUCT,
                                .type_name = record->type.name,
                                .record = record };
@@ -546,9 +546,9 @@ static bool admits_layout_work(size_t layout_work, bool *admitted)
     return true;
 }
 /* The least layout work that decodes the image of `headers` named headers. */
-static bool least_layout_work(int headers, unsigned reversed, size_t *least)
+static bool least_layout_work(int types, int headers, unsigned reversed, size_t *least)
 {
-    REQUIRE(named_headers_image(headers, reversed));
+    REQUIRE(named_headers_image(types, headers, reversed));
     size_t low = 1, high = EXECUTION_WIRE_MAX_BYTES;
     bool admitted;
     REQUIRE(admits_layout_work(high, &admitted) && admitted);
@@ -566,18 +566,31 @@ static bool least_layout_work(int headers, unsigned reversed, size_t *least)
     *least = low;
     return true;
 }
+/* The layout work each of the named headers adds, from the least work that
+ * decodes `headers` and twice as many with `types` types. */
+static bool header_layout_work(int types, int headers, size_t *each)
+{
+    size_t least[2];
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(least_layout_work(types, headers << i, 0, &least[i]));
+    }
+    REQUIRE(least[1] > least[0]);
+    *each = (least[1] - least[0]) / (size_t)headers;
+    return true;
+}
 /* Each header finds its type by name in log2 of the type count comparisons,
  * not by a scan of every type before it. A scan charges about NAMED_TYPES
- * times the name per header; a quarter of that is the bound. */
+ * times the name per header; a quarter of that is the bound. Every
+ * comparison is still charged: twice the types cost each header at least one
+ * more comparison. */
 TEST_CASE(record_prepared_finds_header_types_by_name)
 {
-    size_t fewer, more;
-    REQUIRE(least_layout_work(NAMED_HEADERS, 0, &fewer));
-    REQUIRE(least_layout_work(2 * NAMED_HEADERS, 0, &more));
-    REQUIRE(more > fewer);
-    size_t each = (more - fewer) / NAMED_HEADERS;
-    size_t name = strlen("Rows.T000") + 2;
+    size_t each, wider;
+    REQUIRE(header_layout_work(NAMED_TYPES, NAMED_HEADERS, &each));
+    REQUIRE(header_layout_work(2 * NAMED_TYPES, NAMED_HEADERS, &wider));
+    size_t name = strlen("Rows.T0000") + 2;
     REQUIRE(each < NAMED_TYPES * name / 4);
+    REQUIRE(wider >= each + name);
     return true;
 }
 /* Each type is checked for a repeated name or id by two searches of the
@@ -586,8 +599,8 @@ TEST_CASE(record_prepared_finds_header_types_by_name)
 TEST_CASE(record_prepared_finds_repeated_types_by_search)
 {
     size_t least;
-    REQUIRE(least_layout_work(1, 0, &least));
-    size_t name = strlen("Rows.T000") + 1;
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, 0, &least));
+    size_t name = strlen("Rows.T0000") + 1;
     REQUIRE(least < NAMED_TYPES * (NAMED_TYPES - 1) / 2 * name / 2);
     return true;
 }
@@ -598,10 +611,10 @@ TEST_CASE(record_prepared_finds_repeated_types_by_search)
 TEST_CASE(record_prepared_charges_type_index_moves)
 {
     size_t forward, names, ids, both;
-    REQUIRE(least_layout_work(1, 0, &forward));
-    REQUIRE(least_layout_work(1, NAMES_REVERSED, &names));
-    REQUIRE(least_layout_work(1, IDS_REVERSED, &ids));
-    REQUIRE(least_layout_work(1, NAMES_REVERSED | IDS_REVERSED, &both));
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, 0, &forward));
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, NAMES_REVERSED, &names));
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, IDS_REVERSED, &ids));
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, NAMES_REVERSED | IDS_REVERSED, &both));
     size_t moves = NAMED_TYPES * (NAMED_TYPES - 1) / 2 * sizeof(int);
     REQUIRE(names >= forward + moves && ids >= forward + moves);
     REQUIRE(both >= forward + 2 * moves);

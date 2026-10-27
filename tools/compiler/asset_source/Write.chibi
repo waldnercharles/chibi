@@ -95,8 +95,8 @@ Indent :: (depth: int) -> string {
     return strings.Repeat("    ", depth + 2);
 }
 
-Scalar :: (kind: int, text: string, signed: int64, unsigned: uint64,
-           real: double, boolean: bool) -> string {
+Scalar :: (kind: int, text: string, signed: i64, unsigned: u64,
+           real: f64, boolean: bool) -> string {
     if (kind == 0) {
         return "data.Value.Null";
     }
@@ -134,7 +134,7 @@ Scalar :: (kind: int, text: string, signed: int64, unsigned: uint64,
 }
 
 EmitRange :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-              signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[], document: bool, alias: string,
+              signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[], document: bool, alias: string,
               first: int, last: int, helpers: bool[], ends: int[]) -> string {
     count := length(kinds);
     assert(count > 0 && count <= MaxValues, "Asset source requires a bounded value tree");
@@ -153,7 +153,7 @@ EmitRange :: (kinds: int[], parents: int[], keys: string[], texts: string[],
     seen: [string: bool] = [:];
     parts: string[] = [];
     if (document) {
-        parts.append("package asset\n\nimport data \"game:assets\"\n\npub Build :: () -> byte[] {\n    return data.Encode(\n        ");
+        parts.append("package asset\n\nimport data \"game:assets\"\n\npub Build :: () -> u8[] {\n    return data.Encode(\n        ");
     }
     at := first;
     while (at < last) {
@@ -286,8 +286,8 @@ CheckedJoin :: (parts: string[]) -> string {
     return strings.Join(parts, "");
 }
 
-MemberSource :: (at: int, kinds: int[], texts: string[], signed: int64[], unsigned: uint64[],
-                 reals: double[], booleans: bool[]) -> string {
+MemberSource :: (at: int, kinds: int[], texts: string[], signed: i64[], unsigned: u64[],
+                 reals: f64[], booleans: bool[]) -> string {
     if (kinds[at] >= 6) {
         return format_text("AssetValue{}()", at);
     }
@@ -301,8 +301,8 @@ GroupName :: (at: int, object: bool, level: int, group: int) -> string {
     return format_text("AssetValues{}_{}_{}", at, level, group);
 }
 
-WideSource :: (at: int, kinds: int[], keys: string[], texts: string[], signed: int64[],
-               unsigned: uint64[], reals: double[], booleans: bool[], ends: int[]) -> string {
+WideSource :: (at: int, kinds: int[], keys: string[], texts: string[], signed: i64[],
+               unsigned: u64[], reals: f64[], booleans: bool[], ends: int[]) -> string {
     object := kinds[at] == 6;
     element := "data.Value";
     constructor := "data.List";
@@ -377,8 +377,8 @@ WideSource :: (at: int, kinds: int[], keys: string[], texts: string[], signed: i
     return CheckedJoin(parts);
 }
 
-DeepSource :: (kinds: int[], parents: int[], keys: string[], texts: string[], signed: int64[],
-               unsigned: uint64[], reals: double[], booleans: bool[], alias: string) -> string {
+DeepSource :: (kinds: int[], parents: int[], keys: string[], texts: string[], signed: i64[],
+               unsigned: u64[], reals: f64[], booleans: bool[], alias: string) -> string {
     // Full module writers use the one fixed import alias. Fragment insertion
     // may use another alias and deliberately stays on the literal path.
     assert(alias == "data", "Deep asset modules require their data import");
@@ -482,12 +482,12 @@ DeepSource :: (kinds: int[], parents: int[], keys: string[], texts: string[], si
         }
         at += 1;
     }
-    parts.append("pub Build :: () -> byte[] {\n    return data.Encode(AssetValue0());\n}\n");
+    parts.append("pub Build :: () -> u8[] {\n    return data.Encode(AssetValue0());\n}\n");
     return CheckedJoin(parts);
 }
 
 EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-              signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[], document: bool, alias: string) -> string {
+              signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[], document: bool, alias: string) -> string {
     count := length(kinds);
     assert(count > 0 && count <= MaxValues, "Asset source requires a bounded value tree");
     assert(length(parents) == count && length(keys) == count && length(texts) == count &&
@@ -502,15 +502,15 @@ EmitNamed :: (kinds: int[], parents: int[], keys: string[], texts: string[],
 }
 
 Emit :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-         signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[], document: bool) -> string {
+         signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[], document: bool) -> string {
     return EmitNamed(kinds, parents, keys, texts, signed, unsigned, reals, booleans, document, "data");
 }
 
-SourceBytes :: (text: string) -> byte[] {
+SourceBytes :: (text: string) -> u8[] {
     assert(strings.ByteLength(text) <= MaxBytes, "Asset source exceeds byte quota");
-    out: byte[] = [];
+    out: u8[] = [];
     for (value in strings.Bytes(text)) {
-        out.append(byte(value));
+        out.append(u8(value));
     }
     return out;
 }
@@ -518,11 +518,11 @@ SourceBytes :: (text: string) -> byte[] {
 // Constructor expression for syntax-owned insertion/replacement. The same
 // authored writer owns quoting, numeric spelling and shape validation.
 pub Expression :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-                   signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+                   signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> u8[] {
     return SourceBytes(Emit(kinds, parents, keys, texts, signed, unsigned, reals, booleans, false));
 }
 
 pub Write :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-              signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> byte[] {
+              signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> u8[] {
     return SourceBytes(Emit(kinds, parents, keys, texts, signed, unsigned, reals, booleans, true));
 }

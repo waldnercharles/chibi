@@ -93,11 +93,11 @@ pub Escape :: (text: string) -> string {
 // considered only inside a single, unqualified type_name. An identifier's
 // spelling or initial capital alone never gives it a syntactic role.
 BuiltinType :: (word: string) -> bool {
-    return word == "void" || word == "bool" || word == "int8" || word == "byte" ||
-           word == "int16" || word == "uint16" || word == "int" || word == "uint" ||
-           word == "int64" || word == "uint64" || word == "float" || word == "double" ||
-           word == "name" || word == "string" || word == "handle" || word == "enum" ||
-           word == "number" || word == "char" || word == "exec" || word == "flow" ||
+    return word == "void" || word == "bool" || word == "i8" || word == "u8" ||
+           word == "i16" || word == "u16" || word == "int" || word == "i32" ||
+           word == "u32" || word == "i64" || word == "u64" || word == "f32" ||
+           word == "f64" || word == "name" || word == "string" || word == "handle" ||
+           word == "enum" || word == "number" || word == "char" || word == "exec" || word == "flow" ||
            word == "entity" || word == "task" || word == "any" || word == "Prototype" ||
            word == "Component" || word == "Relationship" || word == "Cancelled";
 }

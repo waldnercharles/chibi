@@ -178,68 +178,74 @@ TEST_CASE(source_controller_connected_reads_live_slots)
     return true;
 }
 
+/* Saved numbers are numbers: f32 values round-trip exactly, and saved text
+ * outside the f32 range reads as missing. */
 TEST_CASE(source_native_saved_numbers_preserve_values_and_defaults)
 {
-    const char *
-        text = "Numbers :: behavior { input:retain double=0; number:retain "
-               "double=0; found:retain bool=false; fallback:retain double=0; "
-               "missing:retain bool=true; on Begin :: () { "
-               "absent:=read_saved_number(Key:\"absent\",Default:19.5); "
-               "missing=absent.Found; fallback=absent.Number; } on Tick :: () "
-               "{ "
-               "await set_saved_number(Key:\"score\",Number:input); "
-               "result:=read_saved_number(Key:\"score\",Default:-1.0); "
-               "found=result.Found; number=result.Number; await commit_save(); "
-               "await set_saved_number(Key:\"score\",Number:42.0); await "
-               "discard_save_changes(); } }";
-    const double samples[] = {
-        0,       -0.0,    0.1,          -12345.625,
-        DBL_MAX, DBL_MIN, DBL_TRUE_MIN, 9007199254740991.0
-    };
+    const char
+        *text = "Numbers :: behavior { input:retain number=0; saved:retain "
+                "number=0; found:retain bool=false; fallback:retain number=0; "
+                "missing:retain bool=true; on Begin :: () { "
+                "absent:=read_saved_number(Key:\"absent\",Default:19.5); "
+                "missing=absent.Found; fallback=absent.Number; } on Tick :: () "
+                "{ "
+                "await set_saved_number(Key:\"score\",Number:input); "
+                "result:=read_saved_number(Key:\"score\",Default:-1.0); "
+                "found=result.Found; saved=result.Number; await commit_save(); "
+                "await set_saved_number(Key:\"score\",Number:42.0); await "
+                "discard_save_changes(); } }";
+    const float samples[] = { 0,       -0.0f,   0.1f,         -12345.625f,
+                              FLT_MAX, FLT_MIN, FLT_TRUE_MIN, 16777215.0f };
     for (int backend = 0; backend < 2; backend++) {
         test_save = save_new();
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t begin = execution_module_event(prepared->module, "Begin"),
                  tick = execution_module_event(prepared->module, "Tick"),
-                 input = state_id("input"), number = state_id("number"),
+                 input = state_id("input"), saved = state_id("saved"),
                  found = state_id("found"), fallback = state_id("fallback"),
                  missing = state_id("missing");
-        REQUIRE(begin && tick && input && number && found && fallback && missing);
+        REQUIRE(begin && tick && input && saved && found && fallback && missing);
         instance = execution_program_attach(program, 0);
         REQUIRE(instance);
         retire_producer();
         REQUIRE(dispatch(begin, 1024) >= 0);
         REQUIRE(!execution_instance_state(instance, missing)->b);
-        REQUIRE(execution_instance_state(instance, fallback)->d == 19.5);
-        /* Invalid existing text uses the same fallback as an absent key. */
-        REQUIRE(save_set(test_save, "absent", "1.25oops"));
-        REQUIRE(dispatch(begin, 1024) >= 0);
-        REQUIRE(!execution_instance_state(instance, missing)->b);
-        REQUIRE(execution_instance_state(instance, fallback)->d == 19.5);
+        REQUIRE(execution_instance_state(instance, fallback)->f == 19.5f);
+        /* Invalid existing text and a value number cannot hold use the same
+         * fallback as an absent key. */
+        const char *unreadable[] = { "1.25oops", "1e300" };
+        for (int i = 0; i < 2; i++) {
+            REQUIRE(save_set(test_save, "absent", unreadable[i]));
+            REQUIRE(dispatch(begin, 1024) >= 0);
+            REQUIRE(!execution_instance_state(instance, missing)->b);
+            REQUIRE(execution_instance_state(instance, fallback)->f == 19.5f);
+        }
         for (int i = 0; i < (int)(sizeof samples / sizeof *samples); i++) {
             REQUIRE(
                 execution_instance_set_state(
                     instance,
                     input,
-                    (pin_value){ .type = PIN_F64, .d = samples[i] }
+                    (pin_value){ .type = PIN_F32, .f = samples[i] }
                 ) == 0
             );
             REQUIRE(dispatch(tick, 2048) >= 0);
             REQUIRE(execution_instance_pending(instance) == 0);
             REQUIRE(execution_instance_state(instance, found)->b);
-            double actual = execution_instance_state(instance, number)->d;
+            float actual = execution_instance_state(instance, saved)->f;
             REQUIRE(!memcmp(&actual, &samples[i], sizeof actual));
-            REQUIRE(save_get_number(test_save, "score", &actual));
-            REQUIRE(!memcmp(&actual, &samples[i], sizeof actual));
+            double stored = 0;
+            REQUIRE(save_get_number(test_save, "score", &stored));
+            actual = (float)stored;
+            REQUIRE(stored == actual && !memcmp(&actual, &samples[i], sizeof actual));
         }
         uint64_t revision = save_revision(test_save);
-        const double invalid[] = { NAN, INFINITY, -INFINITY };
+        const float invalid[] = { NAN, INFINITY, -INFINITY };
         for (int i = 0; i < 3; i++) {
             REQUIRE(
                 execution_instance_set_state(
                     instance,
                     input,
-                    (pin_value){ .type = PIN_F64, .d = invalid[i] }
+                    (pin_value){ .type = PIN_F32, .f = invalid[i] }
                 ) == 0
             );
             REQUIRE(dispatch(tick, 2048) < 0);

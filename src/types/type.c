@@ -128,6 +128,12 @@ int pin_read_field_path(
     return -1;
 }
 
+const char *type_field_type_name(const type_field *f)
+{
+    bool scalar = f->type >= PIN_BOOL && f->type <= PIN_F64;
+    return f->type_name && !scalar ? f->type_name : pin_type_name(f->type);
+}
+
 bool type_field_range_valid(const type_field *f)
 {
     if (!f->range_contract) {

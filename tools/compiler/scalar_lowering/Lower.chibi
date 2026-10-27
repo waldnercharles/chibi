@@ -55,7 +55,7 @@ pub Target :: struct {
 }
 pub Request :: union {
     Tables(types: Type[], expressions: Expression[], symbols: Symbol[],
-           variables: Variable[], results: Result[], literals: Literal[], ids: uint64[],
+           variables: Variable[], results: Result[], literals: Literal[], ids: u64[],
            ranges: Range[], documents: string[], target: Target, range: int)
 }
 Slot :: struct {
@@ -93,7 +93,7 @@ Diagnostic :: struct {
 }
 pub Plan :: union {
     Rejected(diagnostics: Diagnostic[])
-    | Ready(target: Target, variable_ids: uint64[], defaults: Literal[], results: Literal[],
+    | Ready(target: Target, variable_ids: u64[], defaults: Literal[], results: Literal[],
             slots: Slot[], locals: Local[], origins: Range[], documents: string[], code: Instruction[])
 }
 Emitter :: union {
@@ -254,7 +254,7 @@ pub Lower :: (request: Request) -> Plan {
                 !ValidIndex(request_range, length(ranges))) {
                 return Reject(-1, "scalar lowering input exceeds its schema limits");
             }
-            if (abi.schema != 1 || abi.prepared != 22 ||
+            if (abi.schema != 1 || abi.prepared != 24 ||
                 (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
                 abi.value_size < 1 || abi.value_size > 256 || abi.payload_offset < 0 ||
                 abi.payload_offset > abi.value_size - 4 || abi.results_offset < 0 || abi.results_offset > 4096) {
@@ -284,7 +284,7 @@ pub Lower :: (request: Request) -> Plan {
                 index += 1;
             }
             defaults: Literal[] = [];
-            variable_ids: uint64[] = [];
+            variable_ids: u64[] = [];
             index = 0;
             while (index < length(variables)) {
                 variable := variables[index];

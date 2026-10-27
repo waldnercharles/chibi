@@ -19,10 +19,10 @@ pub Environment :: union {
 }
 pub Reading :: union {
     Read(value: named.Value, has_unit: bool, unit: string, environment: Environment,
-         diagnostics: syntax.Diagnostic[], uses: named.Use[], publications: constructors.Plan[], collection: uint64)
+         diagnostics: syntax.Diagnostic[], uses: named.Use[], publications: constructors.Plan[], collection: u64)
 }
 Indexed :: union {
-    Added(types: named.Type[], ids: uint64[], index: int)
+    Added(types: named.Type[], ids: u64[], index: int)
 }
 Decoded :: union {
     Name(value: string, diagnostics: syntax.Diagnostic[])
@@ -102,7 +102,7 @@ pub Name :: (tree: Tree, node: int, document: int) -> Decoded {
     }
     return Decoded.Name(decoded.value, diagnostics);
 }
-pub AddType :: (source_types: named.Type[], source_ids: uint64[], value: named.Value) -> Indexed {
+pub AddType :: (source_types: named.Type[], source_ids: u64[], value: named.Value) -> Indexed {
     // Type publication returns a new table without mutating its input catalog.
     types := source_types;
     ids := source_ids;
@@ -117,7 +117,7 @@ pub AddType :: (source_types: named.Type[], source_ids: uint64[], value: named.V
             return Indexed.Added(types, ids, index);
     }
 }
-pub AddTypeCollection :: (types: named.Type[], ids: uint64[], value: named.Value, collection: uint64) -> Indexed {
+pub AddTypeCollection :: (types: named.Type[], ids: u64[], value: named.Value, collection: u64) -> Indexed {
     switch AddType(types, ids, value) {
         case .Added(rows, pool, index):
             updated := rows;
@@ -143,7 +143,7 @@ Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
                     switch names {
                         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                                      identity, package_scope, has_native, has_documents, entity_id):
-                            published_collection: uint64 = 0;
+                            published_collection: u64 = 0;
                             if (collection_container != 0) {
                                 published_collection = id;
                             }
@@ -301,7 +301,7 @@ Construct :: (reading: Reading, plan: constructors.Plan) -> Reading {
                     if (publish) {
                         publications.append(plan);
                     }
-                    result_collection: uint64 = 0;
+                    result_collection: u64 = 0;
                     if (collection_container != 0) {
                         result_collection = id;
                     }
@@ -333,7 +333,7 @@ OptionalModifier :: (reading: Reading) -> Reading {
             }
     }
 }
-CollectionModifier :: (reading: Reading, container: int, key: named.Value, key_collection: uint64) -> Reading {
+CollectionModifier :: (reading: Reading, container: int, key: named.Value, key_collection: u64) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
             switch environment {
@@ -481,7 +481,7 @@ FinishPointer :: (reading: Reading, tree: Tree, node: int, document: int) -> Rea
             }
     }
 }
-FinishUnion :: (reading: Reading, members: named.Value[], collections: uint64[]) -> Reading {
+FinishUnion :: (reading: Reading, members: named.Value[], collections: u64[]) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications, collection):
             switch environment {
@@ -524,7 +524,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
     reading := Empty(environment, named.Builtin("invalid"));
     frames: Work[] = [];
     members: named.Value[] = [];
-    member_collections: uint64[] = [];
+    member_collections: u64[] = [];
     position := node;
     ready := false;
     switch tree {
@@ -685,7 +685,7 @@ pub Type :: (environment: Environment, tree: Tree, node: int, scope: int, docume
                             first := NextMember(tree, nodes[position].first_child);
                             if (first < 0) {
                                 empty_members: named.Value[] = [];
-                                empty_collections: uint64[] = [];
+                                empty_collections: u64[] = [];
                                 reading = FinishUnion(reading, empty_members, empty_collections);
                                 ready = true;
                                 continue;

@@ -81,7 +81,7 @@ static bool named(const pin_spec *pins, int count, const char *const *expected)
 /* A float variable's Get, to wire into calls. */
 static node *float_get(const char *name)
 {
-    behavior_variable *v = behavior_asset_add_variable(asset, name, PIN_F32, "float", PIN_CONTAINER_SINGLE, NULL, NULL);
+    behavior_variable *v = behavior_asset_add_variable(asset, name, PIN_F32, "number", PIN_CONTAINER_SINGLE, NULL, NULL);
     return behavior_asset_add_get_node(asset, v->id);
 }
 
@@ -103,7 +103,7 @@ TEST_CASE(function_signature_edits_reach_every_call)
     node *ret = graph_node_by_id(fn, fn->return_id);
     graph_connect_exec(fn, entry, 0, ret, 0, 0);
     node *call = behavior_asset_add_function_call_node(asset, fn);
-    pin_spec value = { .name = "Value", .type = PIN_F32, .type_name = "float" };
+    pin_spec value = { .name = "Value", .type = PIN_F32, .type_name = "number" };
     REQUIRE(graph_signature_add(asset, fn, false, &value) == 0);
     REQUIRE(find_pin(entry, 1, "Value") == 1 && find_pin(call, 0, "Value") == 1);
     REQUIRE(call->input_pins[1].declaration_id == entry->output_pins[1].id);
@@ -111,7 +111,7 @@ TEST_CASE(function_signature_edits_reach_every_call)
     graph_connect_data(asset->graph, float_get("Input"), 0, call, 1);
     REQUIRE(graph_signature_rename(asset, fn, false, 1, "Amount") == 0);
     REQUIRE(find_pin(call, 0, "Amount") == 1 && wired(asset->graph, call, 1));
-    pin_spec result = { .name = "Scaled", .type = PIN_F32, .type_name = "float" };
+    pin_spec result = { .name = "Scaled", .type = PIN_F32, .type_name = "number" };
     REQUIRE(graph_signature_add(asset, fn, true, &result) == 0);
     REQUIRE(find_pin(ret, 0, "Scaled") == 1 && find_pin(call, 1, "Scaled") == 1);
     /* Retyping drops call wires the new type can't carry. */
@@ -133,7 +133,7 @@ TEST_CASE(purity_toggles_execution_pins_on_calls)
     node *entry = graph_node_by_id(fn, fn->entry_id);
     node *ret = graph_node_by_id(fn, fn->return_id);
     graph_connect_exec(fn, entry, 0, ret, 0, 0);
-    pin_spec value = { .name = "Value", .type = PIN_F32, .type_name = "float" };
+    pin_spec value = { .name = "Value", .type = PIN_F32, .type_name = "number" };
     graph_signature_add(asset, fn, false, &value);
     node *event = graph_add_node(asset->graph, &NODE_Event);
     graph_set_event_name(asset->graph, event, "Run");
@@ -177,7 +177,7 @@ TEST_CASE(variables_duplicate_and_own_their_defaults)
         asset,
         "Speed",
         PIN_F32,
-        "float",
+        "number",
         PIN_CONTAINER_SINGLE,
         &four,
         "Motion"
@@ -237,7 +237,7 @@ TEST_CASE(macro_signature_edits_reach_every_call)
     pin_spec amount = { .name = "Amount",
                         .kind = PIN_DATA,
                         .type = PIN_F32,
-                        .type_name = "float" };
+                        .type_name = "number" };
     REQUIRE(graph_signature_add(asset, macro, false, &amount) == 0);
     graph_connect_data(asset->graph, float_get("Input"), 0, call, find_pin(call, 0, "Amount"));
     int at = find_pin(entry, 1, "Amount");
@@ -290,7 +290,7 @@ TEST_CASE(input_defaults_reach_calls_that_kept_them)
     asset = behavior_asset_new("Defaults");
     graph *fn = behavior_asset_add_function(asset, "Move", 1);
     node *entry = graph_node_by_id(fn, fn->entry_id);
-    pin_spec speed = { .name = "Speed", .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" };
+    pin_spec speed = { .name = "Speed", .kind = PIN_DATA, .type = PIN_F32, .type_name = "number" };
     graph_signature_add(asset, fn, false, &speed);
     node *kept = behavior_asset_add_function_call_node(asset, fn);
     node *edited = behavior_asset_add_function_call_node(asset, fn);
@@ -319,7 +319,7 @@ TEST_CASE(promoted_outputs_run_after_a_free_then)
 {
     asset = behavior_asset_new("Promote");
     graph *fn = behavior_asset_add_function(asset, "Roll", 0);
-    pin_spec roll = { .name = "Roll", .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" };
+    pin_spec roll = { .name = "Roll", .kind = PIN_DATA, .type = PIN_F32, .type_name = "number" };
     graph_signature_add(asset, fn, true, &roll);
     node *free_call = behavior_asset_add_function_call_node(asset, fn);
     node *busy_call = behavior_asset_add_function_call_node(asset, fn);
@@ -364,7 +364,7 @@ TEST_CASE(moved_function_pins_move_on_returns_and_calls)
     graph_connect_exec(fn, entry, 0, ret, 0, 0);
     const char *const signature[] = { "A", "B", "Low", "High" };
     for (int i = 0; i < 4; i++) {
-        pin_spec pin = { .name = signature[i], .type = PIN_F32, .type_name = "float" };
+        pin_spec pin = { .name = signature[i], .type = PIN_F32, .type_name = "number" };
         REQUIRE(graph_signature_add(asset, fn, i >= 2, &pin) == 0);
     }
     node *second = add_return(fn);
@@ -373,7 +373,7 @@ TEST_CASE(moved_function_pins_move_on_returns_and_calls)
     graph_connect_data(asset->graph, a, 0, call, find_pin(call, 0, "A"));
     pin_value three = { .type = PIN_F32, .f = 3 };
     graph_set_pin_default(asset->graph, call, 0, find_pin(call, 0, "B"), &three);
-    uint64_t kept = behavior_asset_add_variable(asset, "Kept", PIN_F32, "float", PIN_CONTAINER_SINGLE, NULL, NULL)
+    uint64_t kept = behavior_asset_add_variable(asset, "Kept", PIN_F32, "number", PIN_CONTAINER_SINGLE, NULL, NULL)
                         ->id;
     node *set = behavior_asset_add_set_node(asset, kept);
     graph_connect_data(asset->graph, call, find_pin(call, 1, "High"), set, 1);
@@ -412,7 +412,7 @@ TEST_CASE(moved_macro_pins_move_on_calls)
     pin_spec amount = { .name = "Amount",
                         .kind = PIN_DATA,
                         .type = PIN_F32,
-                        .type_name = "float" };
+                        .type_name = "number" };
     pin_spec side = EXEC_PIN;
     side.name = "Side";
     REQUIRE(graph_signature_add(asset, macro, false, &amount) == 0);

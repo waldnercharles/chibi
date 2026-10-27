@@ -565,7 +565,7 @@ TEST_CASE(operations_preserve_context_and_delay_lifetimes_on_both_backends)
         *source = "Probe :: behavior { before: entity = 0; resumed_value: "
                   "entity = 0; same: "
                   "bool = false; "
-                  "text: string = \"old\"; on Run :: (duration: double) { "
+                  "text: string = \"old\"; on Run :: (duration: f64) { "
                   "before = "
                   "owner_alias(); "
                   "saved := before; same = owner_alias() == self; "

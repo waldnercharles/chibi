@@ -56,7 +56,12 @@ jobs:
           # Dispatch on the branch, then require the run to build HEAD_SHA:
           # the branch can move between the check above and the dispatch.
           dispatch() {
-            run=$(gh api -X POST "repos/$GH_REPO/actions/workflows/$1/dispatches" -f ref="$HEAD_REF" --jq .workflow_run_id)
+            run=$(gh api -X POST "repos/$GH_REPO/actions/workflows/$1/dispatches" \
+              -f ref="$HEAD_REF" -F return_run_details=true --jq .workflow_run_id)
+            if [ -z "$run" ]; then
+              echo "::error::Dispatching $1 returned no run id, so its commit can't be checked."
+              exit 1
+            fi
             sha=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .head_sha)
             if [ "$sha" != "$HEAD_SHA" ]; then
               gh run cancel "$run"

@@ -478,9 +478,13 @@ Elements :: (json: string) -> string[] {
 }
 
 // The `.chibi` files below `folder`, relative to it, in listing order.
+// Hidden entries are skipped, as the project's source catalog skips them.
 Sources :: (folder: string) -> string[] {
     paths: string[] = [];
     for (name in build.list_directory(folder)) {
+        if (strings.HasPrefix(name, ".")) {
+            continue;
+        }
         path := Join([folder, "/", name]);
         if (build.file_kind(path) == "directory") {
             for (nested in Sources(path)) {
@@ -806,6 +810,20 @@ LibraryName :: (text: string) -> string {
     return strings.Slice(text, start, end - start);
 }
 
+// The `.chibi` files in the folders the project compiles executable sources
+// from, relative to `content`, as source_catalog.c scans them.
+ExecutableSources :: (content: string) -> string[] {
+    paths: string[] = [];
+    for (folder in ["behaviors", "libraries", "systems"]) {
+        if (build.file_kind(Join([content, "/", folder])) == "directory") {
+            for (path in Sources(Join([content, "/", folder]))) {
+                paths.append(Join([folder, "/", path]));
+            }
+        }
+    }
+    return paths;
+}
+
 // `output`, the shared object the player loads, linked from the emitted
 // `module` in `work`: verified and optimized as Run does, for the one
 // admitted target a library emits, with only its manifest exported.
@@ -876,7 +894,7 @@ Libraries :: () -> int {
     }
     paths: string[] = [];
     names: string[] = [];
-    for (path in Sources(content)) {
+    for (path in ExecutableSources(content)) {
         name := LibraryName(build.read_file(Join([content, "/", path])));
         for (other in names) {
             if (name != "" && name == other) {

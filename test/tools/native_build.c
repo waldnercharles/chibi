@@ -683,8 +683,10 @@ static void native_game(const char *root)
                               "content/scenes",
                               "content/prototypes",
                               "content/behaviors",
-                              "content/libraries" };
-    for (int i = 0; i < 6; i++) {
+                              "content/libraries",
+                              "content/libraries/.backup",
+                              "content/examples" };
+    for (int i = 0; i < 8; i++) {
         directory(root, folders[i]);
     }
     write_at(root, "project.kdl", manifest);
@@ -710,6 +712,9 @@ static void native_game(const char *root)
         "{\n"
         "        return value * 2 + count\n    }\n}\n"
     );
+    /* Neither compiles into the game: the export must not ship them. */
+    write_at(root, "content/examples/Demo.chibi", "Demo :: library {\n    One :: () -> int {\n        return 1\n    }\n}\n");
+    write_at(root, "content/libraries/.backup/Old.chibi", "Old :: library {\n    One :: () -> int {\n        return 1\n    }\n}\n");
     write_at(root, "content/libraries/Effects.chibi", "Effects :: library {\n    Mark :: (value: number) {\n        return\n    }\n}\n");
 }
 
@@ -839,8 +844,13 @@ TEST_CASE(native_export_ships_libraries_the_player_binds)
     );
     path(library, data, "natives/Mix.so");
     REQUIRE(exists(library));
-    path(library, data, "natives/Effects.so");
-    REQUIRE(!exists(library));
+    static const char *const skipped[] = { "natives/Effects.so",
+                                           "natives/Demo.so",
+                                           "natives/Old.so" };
+    for (size_t i = 0; i < sizeof skipped / sizeof *skipped; i++) {
+        path(library, data, skipped[i]);
+        REQUIRE(!exists(library));
+    }
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     test_native_catalog_enable(); /* The default natives' records need test_tools' types. */
     uint64_t vm = played(data, false);

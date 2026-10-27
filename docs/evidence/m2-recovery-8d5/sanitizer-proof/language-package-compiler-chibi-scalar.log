@@ -1,6 +1,0 @@
-Running: package_compiler_scalar_rows_outlive_the_producer (OK) (14.544821 secs)
-Running: package_compiler_native_emitter_checks_calls (OK) (0.326402 secs)
-Running: package_compiler_scalar_results_require_the_fixture_value (OK) (0.216133 secs)
-===============================================================
-Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 10905
-Test command wall time: 15.333s; includes in-test fixture setup; external configuration/build excluded.

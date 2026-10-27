@@ -1,4 +1,0 @@
-configure-native: running (log: .chibi/logs/1792903405114448063-22030-configure-native.log)
-configure-native: ok (2.1s; log: .chibi/logs/1792903405114448063-22030-configure-native.log)
-build: running (log: .chibi/logs/1792903407280502385-22059-build.log)
-build: ok (2.3s; log: .chibi/logs/1792903407280502385-22059-build.log)

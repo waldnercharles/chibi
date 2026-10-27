@@ -64,15 +64,28 @@ class ProfileTests(unittest.TestCase):
             block = block.split('\n  windows:', 1)[0] if job == 'native-macos' else block.split('\n  native-macos:', 1)[0]
             self.assertIn('timeout-minutes: 45', block)
             self.assertIn('make test-tools', block)
-            self.assertIn('make -j1 test-native test-materials test-projects test-language-all', block)
+            groups = ['python3 tools/test_policy.py group ' + name
+                      for name in ('native', 'materials', 'projects', 'language')]
+            positions = [block.index(command) for command in groups]
+            self.assertEqual(positions, sorted(positions))
+            self.assertTrue(all(block.count(command) == 1 for command in groups))
+            selectors = block.split('- name: Native, material, project and language selectors', 1)[1].split('      - name:', 1)[0]
+            self.assertIn('shell: bash', selectors)
+            self.assertIn('set -e', selectors)
+            self.assertNotIn('if:', selectors)  # Default success gate must not be weakened.
+            if job == 'native':
+                self.assertLess(block.index('make test-build'), positions[0])
+            else:
+                self.assertNotIn('make test-build', block)
             self.assertIn('run: python3 .github/verify-native-profile.py', block)
             release = block.index('run: make build-release')
             build = block.index('make build BUILD_TARGET=')
             verify = block.index('run: python3 .github/verify-native-profile.py')
             self.assertLess(release, build)
             self.assertLess(build, verify)
+            self.assertLess(verify, positions[0])
             self.assertIn('chibi-compiler-host', block[release:build])
-            self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 2)
+            self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 2 if job == 'native' else 1)
         self.assertNotIn('continue-on-error:', text.split('  native:\n')[1].split('  windows:\n')[0])
 
 

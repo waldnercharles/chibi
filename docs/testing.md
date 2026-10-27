@@ -1540,15 +1540,31 @@ reaches the rendered text. Each call stays under a 2,000,000-instruction budget.
 There is no filesystem, process, service or GPU work. This focused route is
 outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-package-tests` selects two fixed C
-cases for the shared runner behind `chibi test`. One preparation per backend has
+`python3 tools/test_policy.py tool language-package-tests` selects four portable C
+cases (plus a worker-pool case when that SDK target is available) for the
+shared runner behind `chibi test`. One preparation per backend has
 five files: the shipped `core:strings` source, a collection package with a test
 that must not be found, a package at the project root and a two-file project
 package, with nine tests. They cover discovery order, names and positions,
 passes, a failed `assert` reported inside its helper, an `assert` without a
 message reported by its condition, an out-of-range read, an exhausted
-100,000-instruction budget, a wait and a task start on bytecode and SLJIT. There is no filesystem, process, service or GPU work. This focused route
-is outside the language aggregate.
+100,000-instruction budget, a wait and a task start on bytecode and SLJIT. The
+runner cases compare serial and reverse-completion results, infer serial
+execution through direct/helper/imported random calls and opaque native
+callbacks, accept a recursive pure closure, and retain enclosing shared-budget
+and cancellation scopes. A bounded atomic rendezvous proves real overlapping
+invocations, private mutable array storage, thread-local numeric formatting and
+conversion, and join-before-exclusive execution. Two tests overlap even if the
+pool offers more workers. Both automatic and explicit two-worker requests run
+the check; a one-worker pass checks the serial override.
+No wall-time speed threshold is used. There is no filesystem, process, service
+or GPU work. This selector is included in the ordinary language aggregate as
+an exclusive barrier: it owns an inner pool and never overlaps selector workers.
+
+The end-user `chibi test` command automatically runs eligible authored tests on
+the existing bounded runtime thread pool, independently of repository selector
+processes and C case scheduling. `CHIBI_TEST_WORKERS=1` keeps it serial; see the
+[package testing guide](guide/testing.md#parallel-execution).
 
 `python3 tools/test_policy.py tool language-package-graph-chibi` reuses the
 existing 23 C graph cases for differential comparison with the authored compiler

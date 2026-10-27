@@ -34,7 +34,7 @@ target_include_directories(chibi_source_catalog PRIVATE
     "${CHIBI_SDK_ROOT}/third_party/yyjson")
 target_link_libraries(chibi_source_catalog PUBLIC chibi_authoring chibi_input_map
     chibi_prototype_document
-    PRIVATE chibi_asset_text chibi_ui_document chibi_json)
+    PRIVATE chibi_asset_text chibi_ui_document chibi_json chibi_tasks)
 
 add_library(chibi_source_presentation STATIC)
 foreach(unit graph_expression presentation_schema source_presentation source_presentation_graph source_presentation_anchors

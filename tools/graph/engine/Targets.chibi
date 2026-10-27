@@ -3258,7 +3258,7 @@ pub Defines :: (target: string) -> string[] {
         return ["_POSIX_C_SOURCE=200809L"];
     }
     if (target == "test_language") {
-        return ["CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS"];
+        return ["CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS", "CHIBI_PACKAGE_TEST_POOL=1"];
     }
     if (target == "chibi_sdk_contracts") {
         return [

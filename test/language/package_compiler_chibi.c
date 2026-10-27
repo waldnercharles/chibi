@@ -12236,7 +12236,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 51
+    SCALAR_ACCEPTED_CASES = 52
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -13716,6 +13716,27 @@ static const struct
       "    return n;\n"
       "}\n",
       3127061 },
+    /* Package constants are their folded values: alone, in folded
+     * expressions, as a shift count and typed number, f64 and u64 values,
+     * declared after a constant that names them.
+     * Add(40, 2) + 8 + 100 + 1000 + Limit() (-40 + 2). */
+    { "constants",
+      "package scalar\n"
+      "M: int : N / 20;\n"
+      "N: int : 40;\n"
+      "Half: number : 0.5;\n"
+      "Big: f64 : 1e300;\n"
+      "Wide: u64 : 18446744073709551615;\n"
+      "Shift: u32 : 3;\n"
+      "Main :: () -> int {\n"
+      "    total := Add(N, M) + (1 << Shift);\n"
+      "    if (Half < 1.0 && Big > 1e299) { total = total + 100; }\n"
+      "    if (Wide == 18446744073709551615) { total = total + 1000; }\n"
+      "    return total + Limit();\n"
+      "}\n"
+      "Add :: (a: int, b: int) -> int { return a + b; }\n"
+      "Limit :: () -> int { return Add(-N, M); }\n",
+      1112 },
     /* Not constant: the sum wraps at run time. */
     { "wrapped_operand",
       "package scalar\nMain :: () -> int { return Half(2147483647); }\n"

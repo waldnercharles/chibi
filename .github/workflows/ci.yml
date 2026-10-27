@@ -42,6 +42,10 @@ jobs:
     name: Engine build and native tests
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      # Measured Linux-only candidate: keep Debug, assertions and ASan/UBSan.
+      # Developer defaults, macOS and the separate Release build are unchanged.
+      SANITIZER_CMAKE_FLAGS: -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=address,undefined -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON -DCMAKE_C_FLAGS_DEBUG="-g -O1" -DCMAKE_CXX_FLAGS_DEBUG="-g -O1"
     steps:
       - uses: actions/checkout@v4
       - name: Verify CI APT source fixtures

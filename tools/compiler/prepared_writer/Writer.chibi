@@ -617,7 +617,8 @@ Gather :: (module: Module) -> Gathered {
                     span := spans[function.spans + table];
                     item := span.first;
                     last := span.first + span.count;
-                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults) {
+                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults ||
+                        table == CommandArguments || table == CommandResults) {
                         while (item < last) {
                             steps.append(item);
                             item += 1;

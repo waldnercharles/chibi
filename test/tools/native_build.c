@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#ifdef __linux__
+#if defined(__linux__) && defined(__x86_64__)
 /* `chibi build --native` through a relocated SDK and the build tree's own
  * launcher. Controlled LLVM stand-ins (the driver's stage-tool.sh) cover the
  * process contract; CHIBI_LLVM_BIN's real tools cover the program. */
@@ -351,7 +351,7 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
 
 void test_native_build(const char *binary)
 {
-#ifdef __linux__
+#if defined(__linux__) && defined(__x86_64__)
     strcpy(suite, "/tmp/chibi-native-build-XXXXXX");
     assert(mkdtemp(suite));
     char *resolved = realpath(suite, NULL);
@@ -371,6 +371,6 @@ void test_native_build(const char *binary)
     tool_remove_tree(suite);
 #else
     (void)binary;
-    fprintf(stderr, "native build: six Linux cases unexecuted on this platform\n");
+    fprintf(stderr, "native build: six Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
 #endif
 }

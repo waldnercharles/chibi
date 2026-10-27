@@ -743,6 +743,25 @@ static const char *const driver_parallel[] = {
     "    if action.startswith('parallel-language'):\n"
     "        names = list(policy.GROUPS['language'])\n"
     "        modes = ['mark'] * len(names)\n"
+    /* This whole-manifest check exercises real scheduler admission, leaf workers,
+     * and ordered output. Dedicated tests below cover supervisor containment.
+     * Re-importing this fixture in one supervisor per no-descendant mark worker
+     * adds startup work unrelated to manifest identity (49 launches today). */
+    "    leaf_launches = []\n"
+    "    if action == 'parallel-language':\n"
+    "        original_popen = policy.subprocess.Popen\n"
+    "        def leaf_popen(command, *args, **kwargs):\n"
+    "            if len(command) == 4 and command[:3] == [sys.executable, "
+    "str(Path(policy.__file__).resolve()), '_supervise']:\n"
+    "                commands = json.loads(command[3])\n"
+    "                if len(commands) == 1 and len(commands[0]) == 5 and "
+    "commands[0][:3] == "
+    "[worker, 'parallel', root] and commands[0][3] in names and "
+    "commands[0][-1] == 'mark':\n"
+    "                    command = commands[0]\n"
+    "                    leaf_launches.append(command[3])\n"
+    "            return original_popen(command, *args, **kwargs)\n"
+    "        policy.subprocess.Popen = leaf_popen\n"
     "    if action == 'parallel-default':\n"
     "        jobs = None\n"
     "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
@@ -920,7 +939,10 @@ static const char *const driver_parallel[] = {
     "            Path(root, 'sibling-release').touch()\n"
     "            sibling.wait(timeout=6)\n"
     "        sys.exit(result)\n"
-    "    sys.exit(policy.run_group(names, jobs=jobs))\n"
+    "    result = policy.run_group(names, jobs=jobs)\n"
+    "    if action == 'parallel-language':\n"
+    "        print('leaf-launches', len(leaf_launches))\n"
+    "    sys.exit(result)\n"
 };
 
 static const char driver_source[] =
@@ -2653,6 +2675,9 @@ TEST_CASE(parallel_language_manifest_matches_serial_exactly)
         record++;
     }
     REQUIRE(records == count);
+    char expected[64];
+    snprintf(expected, sizeof expected, "leaf-launches %d\n", count);
+    REQUIRE(strstr(parallel, expected));
     free(metrics);
     free(serial);
     free(parallel);
@@ -3117,6 +3142,33 @@ TEST_CASE(debug_experiment_cancellation_and_failure_clean_up)
     return true;
 }
 
+TEST_CASE(web_publish_uses_private_https_dependencies)
+{
+    char filename[PATH_MAX];
+    snprintf(filename, sizeof filename, "%s/.github/workflows/publish.yml", tool_root());
+    char *workflow = tool_read(filename);
+    REQUIRE(workflow);
+    REQUIRE(strstr(workflow, "      - '.github/install-ubuntu-dependencies.py'\n"));
+    REQUIRE(strstr(
+        workflow,
+        "      - name: Install build dependencies\n"
+        "        if: steps.release.outputs.complete != 'true'\n"
+        "        run: |\n"
+        "          python3 .github/install-ubuntu-dependencies.py "
+        "--no-install-recommends \\\n"
+        "            ninja-build ccache clang-18 clang-tools-18 "
+        "libclang-18-dev libclang-rt-18-dev \\\n"
+        "            libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev "
+        "libxi-dev libxrandr-dev \\\n"
+        "            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev "
+        "libasound2-dev libpulse-dev\n"
+        "          pip install 'cmake==4.2.3'\n"
+    ));
+    REQUIRE(!strstr(workflow, "apt-get"));
+    free(workflow);
+    return true;
+}
+
 TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets)
 {
     char filename[PATH_MAX];
@@ -3230,6 +3282,7 @@ static void set_up()
 void test_tool_test_policy()
 {
     set_up();
+    RUN_TEST_CASE(web_publish_uses_private_https_dependencies);
     RUN_TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order);
     RUN_TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets);
     RUN_TEST_CASE(runtime_seed_reuse_checks_published_provenance);

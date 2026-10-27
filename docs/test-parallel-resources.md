@@ -47,3 +47,91 @@ anchors.
   cancellation and manifest-preservation regressions separately from engine
   runs. Claim iteration speedups only after matched serial/parallel wall-time
   measurements; pico_unit CPU time is not elapsed time.
+
+## Build-once isolated language shards (manual proof)
+
+`Language shard validation` is an opt-in workflow, not a replacement for ordinary
+CI. Each platform builds the ASan/UBSan drivers once and restores the same-run
+artifact into three separate hosted runners. Each runner executes one complete
+assigned selector list serially. Linux and macOS have independent producer/test
+pipelines; Linux does not wait for the macOS build. No purchased runner capacity
+or billing setting is involved. All ordinary native, material, project, language,
+tooling, Studio, graph and formatting gates remain in `.github/workflows/ci.yml`.
+
+The artifact contains only `build/test/language/test_language`, its `corpus.txt`,
+`build/test/tools/test_tools`, and `build/sdk/chibi-compiler-host`. The test
+binaries embed the source path; the corpus also contains absolute paths, and
+compiler-bootstrap uses `git archive HEAD`. Consumers therefore check out the
+exact producer commit at the identical absolute workspace path on a separate
+runner. Copying these binaries into an arbitrary worktree is not supported.
+`tools/language_test_artifact.py` verifies the source commit, tracked-tree
+cleanliness, source root, OS/architecture, runner image, run/attempt, compiler and
+sanitizer runtime identity, selector manifest, file inventory, hashes and modes.
+The fixed-member tar unpacker rejects duplicate names, links, special files,
+path traversal and wrong modes before writing, then verifies the staged identity.
+A mismatch fails closed, before a test runs. It does not fetch cross-run artifacts
+or substitute Release binaries. Runtime libraries come from the matching runner
+image/toolchain; successful restored selector execution is still required to
+prove the real loader/runtime closure, especially macOS ASan dylibs.
+
+`python3 tools/test_policy.py shard-manifest` prints the exact current manifest,
+platform exclusions and all three lanes. `--shard 1/3 group language` selects the
+first lane and always uses one worker; `--jobs 2` is rejected. The ordinary
+unsharded invocation is unchanged, and `--shard 1/1 group language` preserves the
+full original serial order. Counts outside 1–3 and out-of-range indices fail
+before launching work. Each platform's current `GROUPS['language']` is the sole
+coverage source. Historical integer weights only choose a lane; new/unmeasured
+selectors have weight one and cannot disappear. A lane preserves the original
+relative selector order. This permits overlap only across independent runner
+filesystems, not across previously unaudited selectors in one checkout. Existing
+supervision, failure propagation, sanitizer settings, subprocess budgets and
+45-minute job timeouts remain in effect.
+
+Closure tracing at `15bc4b78`: `tools/test_policy.py` maps every language
+selector to `test_language`, except compiler-bootstrap's `test_tools` invocation
+with the language and compiler-host paths. Syntax and format receive the corpus
+manifest. `test/language/CMakeLists.txt:340–385` creates that absolute-path
+manifest; `tools/graph/engine/Targets.chibi:3836` declares its graph equivalent.
+`test/tools/compiler_bootstrap.c:635` archives source `HEAD` into private scratch,
+`test/language/integer_semantics.c:744–746` reads the checked source bootstrap,
+and `test/language/asset_packaging_chibi.c:362` reads source-root files. Native
+scalar helpers self-execute via `/proc/self/exe`
+(`test/language/package_compiler_chibi.c:12811`) and invoke the supplied LLVM
+binaries. Authored generated asset code is linked into the driver, not copied
+as a writable shared cache. These source checks motivate the minimal closure;
+they do not replace the exact-head restored-runtime tests.
+
+### Critical path and runner-time tradeoff
+
+Baseline run [40423984810](https://github.com/waldnercharles/chibi/actions/runs/40423984810)
+checked out `28059065dbf35823a7ab825a5ce0451d51da5f16`.
+[Linux selector diagnostics](https://github.com/waldnercharles/chibi/actions/runs/40423984810/job/121925067563)
+recorded 923 seconds of language wall time at two workers and 1,516 seconds of
+summed selector lifetimes. Applying the checked-in partition to those observations
+models lanes of 507/503/506 seconds, before setup, transfer and queue time: about
+416 seconds less test-tail wall time, but about 1.64 times the test-phase runner
+seconds. These are scheduling estimates, not a measured new CI speedup or CPU
+cost. Removing CPU contention can change individual lifetimes.
+
+Current main `15bc4b78` has an additional
+`language-migration34-generic-repro` selector (48 Linux / 47 macOS total versus
+47/46 in the measured run). Its time is not measured and is not included in that
+estimate. The macOS baseline spent 1,097 seconds in its serial language group;
+Linux durations are not macOS measurements. PR #723 independently changes the
+planner and macOS worker admission; this work does not duplicate or presume its
+results. The separate O0/O1 experiment also remains independent.
+
+The manual run must establish exact-head restored runtime success on both OSes,
+complete/disjoint manifests, artifact bytes and upload/download/setup timing,
+whole-run critical path and runner-seconds before enabling the default CI split.
+Keep the ordinary CI fallback until that evidence and independent review pass.
+
+### Local regression scope
+
+The existing pico_unit `--test-runner` dispatcher checks exact membership,
+disjointness, deterministic assignment, per-lane order, unknown-selector
+inclusion, one-lane fallback, invalid requests, serial execution and exit-code
+propagation. Artifact fixtures exercise pack/verify/restore and reject damaged
+files, modes, inventory, symlinks, path escapes and identity mismatches. These
+fixtures cannot prove a real hosted ASan binary is portable; the manual workflow
+is the integration proof, and all existing CI remains required.

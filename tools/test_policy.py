@@ -614,6 +614,42 @@ PARALLEL_RESOURCES = {
 }
 
 
+def language_shards(names, count=3):
+    """Balance isolated serial runners; weights never decide coverage.
+
+    Lifetimes rounded from Linux run 40423984810, not cross-platform promises.
+    Keep each lane in group order. Unmeasured/new selectors get weight one and
+    remain covered; the complete one-lane route is the rollback path.
+    """
+    if count not in (1, 2, 3):
+        raise ValueError('language shard count must be 1, 2 or 3')
+    if len(set(names)) != len(names):
+        raise ValueError('duplicate language selector')
+    weights = {
+        'language-asset-compiler-host': 309,
+        'language-scalar-native': 278,
+        'language-package-compiler-chibi-scalar': 235,
+        'language-package-compiler-chibi-behaviors-rest': 229,
+        'compiler-bootstrap': 177,
+        'language-package-compiler-chibi-behaviors': 116,
+        'language-integer-shift-counts-authored': 69,
+        'language-asset-packaging-chibi': 49,
+    }
+    loads, assignment = [0] * count, {}
+    for index in sorted(range(len(names)), key=lambda i: (-weights.get(names[i], 1), i)):
+        name = names[index]
+        lane = min(range(count), key=lambda lane: (loads[lane], lane))
+        assignment[name] = lane
+        loads[lane] += weights.get(name, 1)
+    return [[name for name in names if assignment[name] == lane] for lane in range(count)]
+
+
+def language_manifest(count=3):
+    return dict(version=1, platform=sys.platform, machine=platform.machine(),
+                selectors=GROUPS['language'], shards=language_shards(GROUPS['language'], count),
+                unrun=UNRUN)
+
+
 def tool_command(name):
     if name in GPU_TOOLS:
         return [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--' + name]
@@ -1146,8 +1182,10 @@ def main():
     parser.add_argument('--timeout', type=float, help='Optional timeout in seconds for this command')
     parser.add_argument('--jobs', type=int, default=os.environ.get('CHIBI_TEST_JOBS'),
                         help='Group workers (automatic by default; 1 keeps serial execution)')
+    parser.add_argument('--shard', help='Isolated language runner INDEX/COUNT (1-based; serial only)')
     parser.add_argument('action', choices=['inventory', 'unit', 'short', 'tool', 'group',
-                                         'native', 'native-env', 'agent-env', '_supervise'])
+                                         'native', 'native-env', 'agent-env', '_supervise',
+                                         'shard-manifest'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments
@@ -1159,6 +1197,25 @@ def main():
             raise ValueError('jobs must be a positive integer')
     except ValueError as error:
         parser.error(str(error))
+    shard_names = None
+    if args.shard is not None:
+        try:
+            index, count = map(int, args.shard.split('/'))
+            if args.action != 'group' or arguments != ['language']:
+                raise ValueError('shards require group language')
+            if args.jobs not in (None, 1):
+                raise ValueError('isolated language shards require --jobs 1')
+            shards = language_shards(GROUPS['language'], count)
+            if not 1 <= index <= count:
+                raise ValueError('language shard index out of range')
+            shard_names = shards[index - 1]
+        except ValueError as error:
+            parser.error(str(error))
+    if args.action == 'shard-manifest':
+        if arguments:
+            parser.error('shard-manifest takes no arguments')
+        print(json.dumps(language_manifest(), sort_keys=True))
+        return 0
     if args.action == '_supervise':
         return supervise(json.loads(arguments[0]))
     if args.action == 'inventory':
@@ -1183,6 +1240,9 @@ def main():
         if arguments[0] == 'language':
             for name, reason in UNRUN.items():
                 print(f'{name} not run: {reason}')
+        if shard_names is not None:
+            diagnostic('shard', index=index, count=count, selectors=shard_names)
+            return run_group(shard_names, jobs=1, seconds=args.timeout)
         return run_group(GROUPS[arguments[0]], jobs=args.jobs, seconds=args.timeout)
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:

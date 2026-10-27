@@ -256,6 +256,7 @@ Files :: (target: string) -> string[] {
             "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",
             "src/execution/jit_system.c", "src/execution/jit_watch.c", "src/execution/log.c",
             "src/execution/machine.c", "src/execution/module.c", "src/execution/module_effects.c",
+            "src/execution/native.c",
             "src/execution/opt.c", "src/execution/parallel.c", "src/execution/preparation_budget.c",
             "src/execution/prepared.c", "src/execution/prepared_function.c", "src/execution/prepared_record.c",
             "src/execution/program.c", "src/execution/program_inspection.c",
@@ -725,7 +726,7 @@ Files :: (target: string) -> string[] {
             "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
             "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
             "test/language/query_boundary.c", "test/language/incremental.c", "test/language/operations.c",
-            "test/language/modules.c",
+            "test/language/modules.c", "test/language/native_calls.c",
             "test/language/ranges.c", "test/language/scalarize.c", "test/language/component_write.c",
             "test/language/component_write_source.c", "test/language/component_write_ir.c",
             "test/language/borrow.c", "test/language/reductions.c", "test/language/benchmark.c",
@@ -1104,7 +1105,7 @@ pub PublicHeaders :: (target: string) -> string[] {
             "execution/function_builder.h", "execution/inspection.h", "execution/integer_report.h",
             "execution/intrinsics.h",
             "execution/map_intrinsics.h", "execution/module.h", "execution/module_builder.h",
-            "execution/prepared.h", "execution/task.h", "execution/update.h"
+            "execution/native.h", "execution/prepared.h", "execution/task.h", "execution/update.h"
         ];
     }
     if (target == "chibi_core_capabilities") {

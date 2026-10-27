@@ -6,6 +6,7 @@
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
 #include "execution/module.h"
+#include "execution/native.h"
 #include "execution/program_inspection.h"
 #include "execution/program_internal.h"
 #include "execution/request.h"
@@ -2983,6 +2984,14 @@ void execution_program_invalidate_bindings(execution_program *p)
     }
 }
 
+void execution_program_set_natives(execution_program *p, const execution_natives *natives)
+{
+    assert(!acount(p->instances));
+    p->natives = natives;
+    for (int i = 0; i < acount(p->imports); i++) {
+        execution_program_set_natives(p->imports[i], natives);
+    }
+}
 void execution_program_set_name(execution_program *p, const char *name)
 {
     assert(!p->dispatching && !p->running && !p->system_prepared);

@@ -95,8 +95,9 @@ source_staging *source_stage(
     size_t size
 )
 {
+    /* Native bindings name the functions of the bound generation. */
     assert(
-        r && !r->executing && !r->staging && count >= 0 &&
+        r && !r->executing && !r->staging && !r->natives && count >= 0 &&
         (!count || entries) && (!size || error)
     );
     if (size) {

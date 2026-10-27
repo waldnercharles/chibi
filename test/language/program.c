@@ -11518,6 +11518,147 @@ TEST_CASE(program_staged_replacement_pins_preserved_pointers)
     }
     return true;
 }
+/* One entity on bytecode: a pointer preserved beside a native record in a
+ * union is rooted alone while the replacement is staged, so the staging
+ * succeeds and the target survives the commit and a forced collection. */
+TEST_CASE(program_replacement_preserves_pointers_beside_inline_records)
+{
+    const char
+        *source = "Keeper :: behavior { Slot :: union { Empty | "
+                  "Full(position: Position, target: ^number) }; "
+                  "held: Slot = Slot.Empty; seen: number = 0; "
+                  "on Impulse :: (amount: f64, enabled: bool) { if enabled { "
+                  "x := 5.0; at: Position = {x: 1, y: 2}; "
+                  "held = Slot.Full(at, &x); } "
+                  "if !enabled { if held is .Full(position, target) { "
+                  "seen = target^; } } } }";
+    prepare();
+    REQUIRE(compile(source, BEHAVIOR_BYTECODE));
+    uint64_t entity = ecs_entity_to_u64(ecs_world_create_entity(world));
+    execution_instance *instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL, .b = true } };
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    other_program = execution_program_prepare_replace(program, module, false);
+    REQUIRE(other_program);
+    execution_program_commit_replace(program, other_program);
+    other_program = NULL;
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    arena_alloc(&program->managed->storage, 4096);
+    program_collect_payloads(program, NULL);
+    args[1].b = false;
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(instance, "seen", 5));
+    return true;
+}
+/* One entity on two backends. A handler suspends holding a union it read from
+ * state, then the state is overwritten. The local owns a copy of the union, so
+ * a forced collection still reaches its pointer, and a new cell allocated
+ * afterwards does not take its place. */
+TEST_CASE(program_suspended_union_reads_keep_pointer_targets)
+{
+    const char
+        *source = "Keeper :: behavior { Slot :: union { Empty | Full(p: "
+                  "^number) "
+                  "}; "
+                  "held: Slot = Slot.Empty; seen: number = 0; "
+                  "on Impulse :: (amount: f64, enabled: bool) { "
+                  "if amount == 0 { y := 3.0; held = Slot.Full(&y); } "
+                  "if amount == 1 { h := held; await Delay(1); "
+                  "if h is .Full(p) { seen = p^; } } "
+                  "if amount == 2 { held = Slot.Empty; } "
+                  "if amount == 3 { z := 7.0; held = Slot.Full(&z); } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        for (int step = 0; step < 4; step++) {
+            if (step == 3) {
+                arena_alloc(&program->managed->storage, 4096);
+                uint64_t marks = arena_collect_marks();
+                program_collect_payloads(program, NULL);
+                REQUIRE(arena_collect_marks() > marks);
+            }
+            args[0].d = step;
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(execution_instance_pending(instance) == 1);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 3));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* One moving entity on two backends. A reducing system pauses at a breakpoint
+ * while a local array holds the only pointer to a cell whose local went out of
+ * scope. The paused activation's slots and payload are listed by no
+ * collection, so a collection requested during the pause marks nothing, and
+ * the cell is still there when the system resumes. */
+TEST_CASE(program_paused_reducing_systems_keep_pointer_targets)
+{
+    const char *source = "Held :: system(p: Position, v: Velocity) { "
+                         "kept: retain number = 0; finished: retain f64 = 0; "
+                         "ps: ^number[] = []; if true { x := 3.0; ps = [&x]; } "
+                         "reduce p.x += v.x; finished += 1; kept = ps[0]^; }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        ecs_entity entity = positioned(0, true);
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_program_pump(program, 0, 0, 1000) == FLOW_OK);
+        execution_instance *instance = execution_program_instance(program, ecs_entity_to_u64(entity));
+        REQUIRE(instance);
+        debugger = execution_program_inspector(program);
+        REQUIRE(debugger);
+        uint64_t function = 0, point = 0;
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info info = execution_module_function_at(module, i);
+            if (info.kind == EXECUTION_FUNCTION_SYSTEM) {
+                function = info.id;
+            }
+        }
+        for (int i = 0; i < analysis->statement_count; i++) {
+            const script_statement *s = &analysis->statements[i];
+            if (s->kind == SCRIPT_STMT_ASSIGN && s->expression >= 0 &&
+                analysis->expressions[s->expression].symbol >= 0 &&
+                !strcmp(
+                    analysis
+                        ->symbols[analysis->expressions[s->expression].symbol]
+                        .name,
+                    "finished"
+                )) {
+                script_occurrences *occurrences = script_occurrences_new(analysis);
+                point = script_record_id(occurrences, SCRIPT_RECORD_STATEMENT, i);
+                script_occurrences_free(occurrences);
+            }
+        }
+        REQUIRE(function && point);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), function, point, true)
+        );
+        REQUIRE(execution_program_update(program, 1, .5, 1000) == FLOW_PAUSED_RESULT);
+        arena_alloc(&program->managed->storage, 4096);
+        uint64_t marks = arena_collect_marks();
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_collect_marks() == marks);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), function, point, false)
+        );
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, .5, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "finished", 1));
+        REQUIRE(number_state(instance, "kept", 3));
+    }
+    return true;
+}
 /* One entity, one addressed local and one delayed continuation on two backends;
  * each backend dispatches once and advances exactly two scheduled steps. */
 TEST_CASE(program_captured_addressed_local_preserves_pointer_alias)
@@ -11723,6 +11864,9 @@ void test_language_program()
     RUN_TEST_CASE(program_borrowing_kernel_results_survive_collection);
     RUN_TEST_CASE(program_detached_event_batches_keep_managed_arguments);
     RUN_TEST_CASE(program_staged_replacement_pins_preserved_pointers);
+    RUN_TEST_CASE(program_replacement_preserves_pointers_beside_inline_records);
+    RUN_TEST_CASE(program_suspended_union_reads_keep_pointer_targets);
+    RUN_TEST_CASE(program_paused_reducing_systems_keep_pointer_targets);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
     RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);

@@ -649,8 +649,11 @@ int entities_request_event(entities *entities, ecs_entity target, const char *na
     if (!name || !name[0] || inputs.count < 0 || (inputs.count && !inputs.values)) {
         return FLOW_ERR_ARGUMENT;
     }
+    /* Queued events live outside every managed heap, so no collection can
+     * keep a pointer's target alive until dispatch. */
     for (int i = 0; i < inputs.count; i++) {
-        if (inputs.values[i].container != PIN_CONTAINER_SINGLE) {
+        if (inputs.values[i].container != PIN_CONTAINER_SINGLE ||
+            pin_value_has_managed_pointer(&inputs.values[i])) {
             return FLOW_ERR_ARGUMENT;
         }
     }

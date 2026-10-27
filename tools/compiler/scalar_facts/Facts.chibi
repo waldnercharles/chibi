@@ -7,8 +7,9 @@ package scalar_facts
 // variants, while loops, loops over int ranges, breaks, continues and
 // returns. Values and conditions are literals, variables, arithmetic,
 // shifts, conversions, comparisons, logic, record literals, field reads,
-// union variants, their tests and payloads, and direct calls of functions of
-// the set, whose operands are such expressions.
+// union variants, their tests and payloads, a string's byte count, bytes and
+// slices, and direct calls of functions of the set, whose operands are such
+// expressions.
 // This is not a general IR, and no compiler-private identity crosses this
 // boundary.
 //
@@ -127,7 +128,15 @@ package scalar_facts
 // give the payload, of its `type`. Payloads are read only where their variant
 // is held; the backend cannot check this, and another variant's payload reads
 // its zero. `v is .V` is the Tag of `v`, a Literal of V's ordinal with the
-// pattern's range, then an Equal Compare, or NotEqual for `is not`. A record
+// pattern's range, then an Equal Compare, or NotEqual for `is not`. A Text
+// row reads a string's bytes as the runtime's text natives do, and its
+// `value` is its operator: TextLength consumes the most recent unconsumed
+// operand, a string, to give its byte count; TextByte consumes the two most
+// recent, a string then an index, to give the byte there, 0 to 255, or -1
+// outside the string; TextSlice consumes the three most recent, a string,
+// then a start and a count, to give the string of those bytes, its start
+// clamped to the string and its count to the bytes after the start. The
+// indexes, starts, counts and byte counts are ints. A record
 // literal is a Zero row with the literal's range, then each
 // field's value in source order and its Update, with the field's range. An
 // assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
@@ -192,6 +201,7 @@ pub VariantRow: int : 31;
 pub MakeRow: int : 32;
 pub TagRow: int : 33;
 pub PayloadRow: int : 34;
+pub TextRow: int : 35;
 
 // The value types: int and bool, then the other integer types, then the
 // floating ones, then string. The facts carry no compiler storage ordinal.
@@ -246,6 +256,11 @@ pub Not: int : 3;
 // Logical operators: the source's && and ||.
 pub LogicalAnd: int : 1;
 pub LogicalOr: int : 2;
+
+// Text operators: the runtime's text_byte_length, text_byte_at and text_slice.
+pub TextLength: int : 1;
+pub TextByte: int : 2;
+pub TextSlice: int : 3;
 
 // A For row's range flags.
 pub RangeExclusive: int : 1;

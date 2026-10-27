@@ -14,6 +14,7 @@
 #include "types/catalog.h"
 #include "types/record.h"
 #include "types/text.h"
+#include "types/trace.h"
 
 #include <assert.h>
 #include <math.h>
@@ -369,7 +370,7 @@ const char *entities_global_name_at(const entities *entities, int index)
 
 static bool global_value_header_valid(const pin_value *value)
 {
-    if (!value || value->type <= PIN_FLOW || value->type > PIN_UNION ||
+    if (!value || value->type <= PIN_FLOW || value->type >= PIN_POINTER ||
         value->container < PIN_CONTAINER_SINGLE ||
         value->container > PIN_CONTAINER_MAP) {
         return false;
@@ -496,7 +497,8 @@ int entities_get_global_value(const entities *entities, const char *name, arena 
 
 int entities_set_global_value(entities *entities, const char *name, const pin_value *value)
 {
-    if (!entities || !name || !name[0] || !global_value_header_valid(value)) {
+    if (!entities || !name || !name[0] || !global_value_header_valid(value) ||
+        pin_value_has_managed_pointer(value)) {
         return -1;
     }
     const global_binding *binding = find_global_binding_const(entities, name);
@@ -647,8 +649,11 @@ int entities_request_event(entities *entities, ecs_entity target, const char *na
     if (!name || !name[0] || inputs.count < 0 || (inputs.count && !inputs.values)) {
         return FLOW_ERR_ARGUMENT;
     }
+    /* Queued events live outside every managed heap, so no collection can
+     * keep a pointer's target alive until dispatch. */
     for (int i = 0; i < inputs.count; i++) {
-        if (inputs.values[i].container != PIN_CONTAINER_SINGLE) {
+        if (inputs.values[i].container != PIN_CONTAINER_SINGLE ||
+            pin_value_has_managed_pointer(&inputs.values[i])) {
             return FLOW_ERR_ARGUMENT;
         }
     }

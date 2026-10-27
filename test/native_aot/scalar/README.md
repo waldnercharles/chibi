@@ -149,7 +149,7 @@ switch on a union expression other than a variable are rejected. The
 exported `Main` still takes and returns scalars.
 As in Rust and Odin, nothing bounds a source's size, a module's functions or
 records, or a function's parameters, locals, statements or operands.
-`test/scalar_facts/cases/Cases.chibi` holds the 90-source corpus (52 accepted)
+`test/scalar_facts/cases/Cases.chibi` holds the 90-source corpus (53 accepted)
 with each accepted value and statement trace and each rejection's exact
 message and source excerpt, including functions, operands and sources well
 past the bounds the facts once had.
@@ -290,7 +290,7 @@ branching on `a < b`.
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 50 accepted sources build, run and agree at O0 and O2.
+other 52 accepted sources build, run and agree at O0 and O2.
 
 Generated width modules stay out of the corpus, which `Run.ps1` bounds. For
 each integer type, one module declares every operator on that type and

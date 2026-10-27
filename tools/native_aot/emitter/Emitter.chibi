@@ -5,9 +5,9 @@ import facts "project:scalar_facts"
 import scalar "project:scalar_llvm"
 import strings "core:strings"
 
-// `chibi build --native`'s entries over CollectScalar's rows. Each returns
-// raw bytes the compiler host writes unchanged: the module's IR, or why it has
-// none.
+// `chibi build --native`'s and `chibi export --native`'s entries over
+// CollectScalar's rows. Each returns raw bytes the compiler host writes
+// unchanged: the module's IR, or why it has none.
 // Emit for the driver's target 0, 1 or 2: Linux x86-64, macOS arm64 or
 // Windows x64.
 pub Emit :: (rows: facts.Row[], target: int) -> u8[] {
@@ -27,6 +27,32 @@ pub EmitLines :: (rows: facts.Row[], directory: string) -> u8[] {
     return scalar.EmitLinesBytes(rows, directory);
 }
 
+// A native library's module, for `chibi export --native`, which links it as
+// the shared object the player loads. Libraries are Linux x86-64 only so far.
+pub EmitLibrary :: (rows: facts.Row[]) -> u8[] {
+    if (!Library(rows)) {
+        none: u8[] = [];
+        return none;
+    }
+    return scalar.EmitBytesFor(abi.LinuxX64(), rows);
+}
+
+// Why native code cannot hold the library, or no bytes when the emitter did
+// not reject it: `chibi export --native` keeps a rejected library in the VM and
+// fails on anything else.
+pub Rejection :: (rows: facts.Row[]) -> u8[] {
+    message := "";
+    switch scalar.Emit(rows) {
+        case .Rejected(rejected):
+            message = Located(rejected[1]);
+        case .Invalid(reason):
+            message = "";
+        case .Emitted(text):
+            message = "";
+    }
+    return Text(message);
+}
+
 // Whether the rows are a native library's, which has no entry to link a
 // program from: its Document row names the library.
 Library :: (rows: facts.Row[]) -> bool {
@@ -37,7 +63,7 @@ pub Diagnose :: (rows: facts.Row[]) -> u8[] {
     message := "";
     switch scalar.Emit(rows) {
         case .Rejected(rejected):
-            message = format_text("{}:{}: {}", rejected[1].line, rejected[1].column, rejected[1].text);
+            message = Located(rejected[1]);
         case .Invalid(reason):
             message = reason;
         case .Emitted(text):
@@ -45,6 +71,15 @@ pub Diagnose :: (rows: facts.Row[]) -> u8[] {
                 message = "a native library has no entry; build --native links a package";
             }
     }
+    return Text(message);
+}
+
+// A rejection row as "line:column: reason".
+Located :: (row: facts.Row) -> string {
+    return format_text("{}:{}: {}", row.line, row.column, row.text);
+}
+
+Text :: (message: string) -> u8[] {
     bytes: u8[] = [];
     for (value in strings.Bytes(message)) {
         bytes.append(u8(value));

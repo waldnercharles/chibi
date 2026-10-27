@@ -485,6 +485,75 @@ TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
     return true;
 }
 
+/* Each run allocates managed pointers in a heap of its own. Identity tests
+ * that only compare pointers are inferred parallel and overlap with a pure
+ * test; tests that dereference or write through a pointer are inferred serial
+ * and run alone. Each mix runs serially, on a two-worker executor and on the
+ * task pool. */
+TEST_CASE(package_tests_allocate_managed_pointers)
+{
+    enum
+    {
+        POINTER_TESTS = 5
+    };
+    const char
+        source[] = "package facts\n"
+                   "Link :: struct { value: int; next: ^Link?; }\n"
+                   "Bump :: (p: ^int) { p^ += 1; }\n"
+                   "@test\nAlias :: () { x: int = 1; p := &x; Bump(p); "
+                   "p^ += 1; assert(x == 3); }\n"
+                   "@test\nPure :: () { assert(1 + 2 == 3); }\n"
+                   "@test\nSame :: () { x := 1; p := &x; assert(p == p); }\n"
+                   "@test\nDistinct :: () { x := 1; y := 2; p := &x; q := &y; "
+                   "assert(p != q); }\n"
+                   "@test\nCycle :: () { a: Link = {value: 1, next: nil}; "
+                   "b: Link = {value: 2, next: nil}; p := &a; q := &b; "
+                   "p.next = q; q.next = p; "
+                   "assert(p.value * 10 + q.value == 12); }\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        /* Root.chibi and facts/A.chibi each add one test before these. */
+        REQUIRE(prepare_text(backends[b], source, POINTER_TESTS + 2));
+        REQUIRE(!tests[2].parallel && !tests[6].parallel);
+        REQUIRE(tests[3].parallel && tests[4].parallel && tests[5].parallel);
+        package_test_result results[POINTER_TESTS];
+        for (int run = 0; run < 3; run++) {
+            reverse_executor executor = { 0 };
+            task_system tasks = { 2, &executor, enqueue_reverse, finish_reverse };
+#ifdef CHIBI_PACKAGE_TEST_POOL
+            task_pool *pool = run == 2 ? task_pool_acquire_workers(2) : NULL;
+            if (pool) {
+                task_pool_begin(pool, true);
+            }
+            const task_system *system = run == 0 ? NULL
+                                      : pool     ? task_pool_tasks(pool)
+                                                 : &tasks;
+#else
+            const task_system *system = run == 0 ? NULL : &tasks;
+#endif
+            package_tests_run(tests + 2, POINTER_TESTS, backends[b], BUDGET, system, results);
+#ifdef CHIBI_PACKAGE_TEST_POOL
+            if (pool) {
+                task_pool_end(pool);
+                task_pool_release(pool);
+            }
+#endif
+            for (int i = 0; i < POINTER_TESTS; i++) {
+                if (!results[i].passed) {
+                    fprintf(
+                        stderr,
+                        "managed pointer test %d: %s\n",
+                        i,
+                        results[i].failure.message
+                    );
+                }
+                REQUIRE(results[i].passed);
+            }
+        }
+    }
+    return true;
+}
+
 #ifdef CHIBI_PACKAGE_TEST_POOL
 TEST_CASE(package_tests_overlap_with_private_storage_and_exclusive_barriers)
 {
@@ -550,6 +619,7 @@ void test_language_package_tests()
     RUN_TEST_CASE(package_tests_report_where_each_failure_stopped);
     RUN_TEST_CASE(package_tests_keep_results_and_failures_in_discovery_order);
     RUN_TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports);
+    RUN_TEST_CASE(package_tests_allocate_managed_pointers);
 #ifdef CHIBI_PACKAGE_TEST_POOL
     RUN_TEST_CASE(package_tests_overlap_with_private_storage_and_exclusive_barriers);
 #endif

@@ -13,6 +13,7 @@ pub Type :: struct {
     flags: int;
     nominal_slot: int;
     parameter_slot: int;
+    collection: u64;
 }
 pub Entry :: struct {
     name: string;
@@ -62,7 +63,7 @@ pub TypeUse :: union {
 }
 pub Resolution :: union {
     Resolved(storage: int, container: int, flags: int, nominal: u64,
-             parameter: u64, use: TypeUse, diagnostics: syntax.Diagnostic[])
+             parameter: u64, use: TypeUse, diagnostics: syntax.Diagnostic[], collection: u64)
 }
 pub Environment :: union {
     Tables(lexical: binding.Environment, types: Type[], ids: u64[],
@@ -309,7 +310,8 @@ UseAt :: (environment: Environment, request: Request, symbol: int, nominal: u64)
     }
 }
 Complete :: (environment: Environment, request: Request, value: Value, symbol: int,
-             diagnostics: syntax.Diagnostic[], tokens: string[], forced_container: int, added_flags: int) -> Resolution {
+             diagnostics: syntax.Diagnostic[], tokens: string[], forced_container: int, added_flags: int,
+             collection: u64) -> Resolution {
     switch value {
         case .Typed(storage, original_container, original_flags, nominal, parameter):
             container := original_container;
@@ -346,12 +348,13 @@ Complete :: (environment: Environment, request: Request, value: Value, symbol: i
                         }
                 }
             }
-            return Resolution.Resolved(storage, container, flags, nominal, parameter, use, diagnostics);
+            return Resolution.Resolved(storage, container, flags, nominal, parameter, use, diagnostics, collection);
     }
 }
 BindName :: (environment: Environment, request: Request, name: string,
              parsed: bool, tokens: string[], forced_container: int, added_flags: int) -> Resolution {
     value := Builtin(name);
+    collection: u64 = 0;
     diagnostics: syntax.Diagnostic[] = [];
     switch environment {
         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
@@ -363,6 +366,7 @@ BindName :: (environment: Environment, request: Request, name: string,
                     case .Tables(scopes, symbols, functions, lexical_ids, keys):
                         if (symbol >= 0 && (symbols[symbol].kind == 12 || symbols[symbol].kind == 13)) {
                             value = TypeAt(types, ids, symbol_types[symbol]);
+                            collection = types[symbol_types[symbol]].collection;
                             replaced = true;
                         }
                 }
@@ -371,6 +375,7 @@ BindName :: (environment: Environment, request: Request, name: string,
                 found := FindType(environment, request.scope, request.document, name);
                 if (found >= 0) {
                     value = WithNominal(TypeAt(types, ids, merged[found].type), IDAt(ids, merged[found].id_slot));
+                    collection = types[merged[found].type].collection;
                 } else {
                     message_prefix := "Unknown";
                     if (found == -2) {
@@ -394,7 +399,7 @@ BindName :: (environment: Environment, request: Request, name: string,
                         useSymbol = symbol;
                     }
             }
-            return Complete(environment, request, value, useSymbol, diagnostics, tokens, forced_container, added_flags);
+            return Complete(environment, request, value, useSymbol, diagnostics, tokens, forced_container, added_flags, collection);
     }
 }
 // Parsed names are decoded ordinary type leaves. Constructor arguments,

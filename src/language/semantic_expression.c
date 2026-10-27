@@ -469,8 +469,85 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
 {
     return script_analyzer_expr_add(a, script_analyzer_number_literal(a, node, expected, negate));
 }
-/* A character literal takes an integer type from context when its scalar
- * fits, as Odin types an untyped rune constant, and is a char otherwise. */
+int script_analyzer_dereference(analyzer *a, TSNode node, int value)
+{
+    script_expression source = a->out->expressions[value];
+    script_type pointee = script_catalog_pointee_type(a->catalog, source.type);
+    if (pointee.flags & SCRIPT_TYPE_ERROR) {
+        script_analyzer_diagnostic(a, node, "Dereference requires a managed pointer");
+    } else if (
+        (source.type.flags & SCRIPT_TYPE_OPTIONAL) &&
+        !script_analyzer_present(a, source.symbol)
+    ) {
+        script_analyzer_diagnostic(a, node, "Nullable pointer requires a presence guard before dereference");
+    }
+    return script_analyzer_expr_add(
+        a,
+        (script_expression){ .kind = SCRIPT_EXPR_DEREFERENCE,
+                             .type = pointee,
+                             .range = script_analyzer_range(a, node),
+                             .symbol = -1,
+                             .left = value,
+                             .right = -1,
+                             .writable = true,
+                             .effects = source.effects | SCRIPT_EFFECT_READ }
+    );
+}
+static const char *managed_address_layout(analyzer *a, int expression)
+{
+    const script_expression *value = &a->out->expressions[expression];
+    if (value->kind == SCRIPT_EXPR_MEMBER) {
+        return managed_address_layout(a, value->left);
+    }
+    script_type type = value->kind == SCRIPT_EXPR_SYMBOL && value->symbol >= 0
+                         ? a->out->symbols[value->symbol].type
+                         : value->type;
+    if (type.storage != PIN_STRUCT || type.container != PIN_CONTAINER_SINGLE) {
+        return NULL;
+    }
+    const script_catalog_type *record = script_catalog_type_by_id(a->catalog, type.nominal);
+    if (!record || !record->authored_record) {
+        return "Managed values require authored record layouts";
+    }
+    for (int i = 0; i < record->field_count; i++) {
+        if (record->fields[i].type.storage == PIN_STRUCT) {
+            return "Managed pointers require records without inline record "
+                   "fields";
+        }
+    }
+    return NULL;
+}
+static bool addressable_local(analyzer *a, int expression)
+{
+    const script_expression *value = &a->out->expressions[expression];
+    if (!value->writable) {
+        return false;
+    }
+    if (value->kind == SCRIPT_EXPR_DEREFERENCE) {
+        return !(value->type.flags & SCRIPT_TYPE_ERROR);
+    }
+    if (value->kind == SCRIPT_EXPR_MEMBER && !value->read && !value->write) {
+        if (!addressable_local(a, value->left)) {
+            return false;
+        }
+        (void)script_analyzer_pointer_type(a, value->type);
+        return true;
+    }
+    if (value->kind != SCRIPT_EXPR_SYMBOL || value->symbol < 0) {
+        return false;
+    }
+    script_symbol *symbol = &a->out->symbols[value->symbol];
+    int owner = symbol->scope >= 0 ? a->out->scopes[symbol->scope].function : -1;
+    int current = a->scope >= 0 ? a->out->scopes[a->scope].function : -1;
+    if ((symbol->kind != SCRIPT_LOCAL && symbol->kind != SCRIPT_PARAMETER) ||
+        owner != current || (symbol->type.flags & SCRIPT_TYPE_REFERENCE)) {
+        return false;
+    }
+    symbol->addressed = true;
+    script_analyzer_invalidate_pointers(a);
+    (void)script_analyzer_pointer_type(a, symbol->type);
+    return true;
+}
 static int character_constant(analyzer *a, TSNode node, script_type expected)
 {
     expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
@@ -796,6 +873,10 @@ static bool hides_parameter(const analyzer *a, const script_symbol *symbol)
  * of its field defaults, or zero. */
 static int zero_value(analyzer *a, TSNode node, script_type type)
 {
+    if (type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE &&
+        !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        script_analyzer_diagnostic(a, node, "A non-null pointer requires an initializer");
+    }
     script_expression result = {
         .kind = type.container == PIN_CONTAINER_MAP    ? SCRIPT_EXPR_MAP
               : type.container != PIN_CONTAINER_SINGLE ? SCRIPT_EXPR_ARRAY
@@ -829,7 +910,8 @@ static int absent_value(analyzer *a, TSNode node, script_type type)
                                  .right = -1 }
         );
     }
-    if (type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_UNION | SCRIPT_TYPE_TASK |
+    if ((type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE) ||
+        type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_UNION | SCRIPT_TYPE_TASK |
                       SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_ERROR | SCRIPT_TYPE_UNTYPED) ||
         (type.storage == PIN_UNION && type.container == PIN_CONTAINER_SINGLE)) {
         return -1;
@@ -1004,8 +1086,46 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                  .left = -1,
                                  .right = -1 };
     if (ts_node_is_null(node)) {
-        script_analyzer_diagnostic(a, node, "Expected a value expression");
+        script_analyzer_diagnostic(
+            a,
+            node,
+            expected.storage == PIN_POINTER && expected.container == PIN_CONTAINER_SINGLE &&
+                    !(expected.flags & SCRIPT_TYPE_OPTIONAL)
+                ? "A non-null pointer requires an initializer"
+                : "Expected a value expression"
+        );
         return script_analyzer_expr_add(a, result);
+    }
+    if (script_analyzer_is(node, "address_expression")) {
+        result.kind = SCRIPT_EXPR_ADDRESS;
+        result.left = script_analyzer_expression(
+            a,
+            script_analyzer_field(node, "operand"),
+            (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+        );
+        const char *layout_error = managed_address_layout(a, result.left);
+        if (layout_error) {
+            script_analyzer_diagnostic(a, node, layout_error);
+        } else if (!addressable_local(a, result.left)) {
+            script_analyzer_diagnostic(a, node, "Managed pointer requires a writable local or record field");
+        }
+        script_expression addressed = a->out->expressions[result.left];
+        script_type target = addressed.kind == SCRIPT_EXPR_SYMBOL &&
+                                     addressed.symbol >= 0
+                               ? a->out->symbols[addressed.symbol].type
+                               : addressed.type;
+        target.flags &= ~(SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_UNTYPED);
+        result.type = script_analyzer_pointer_type(a, target);
+        result.effects = script_analyzer_expr_effects(a, result.left);
+        return script_analyzer_expr_add(a, result);
+    }
+    if (script_analyzer_is(node, "dereference_expression")) {
+        int value = script_analyzer_expression(
+            a,
+            script_analyzer_field(node, "operand"),
+            (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+        );
+        return script_analyzer_dereference(a, node, value);
     }
     if (script_analyzer_is(node, "parenthesized_expression")) {
         return script_analyzer_expression(a, script_analyzer_field(node, "expression"), expected);
@@ -1082,6 +1202,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "nil")) {
+        if (expected.storage == PIN_POINTER && expected.container == PIN_CONTAINER_SINGLE &&
+            !(expected.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_UNTYPED))) {
+            script_analyzer_diagnostic(a, node, "A non-null pointer cannot be nil");
+        }
         if (script_reference_kind_for_type(expected) != SCRIPT_REFERENCE_NONE &&
             !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
             script_analyzer_diagnostic(a, node, "A nonoptional symbol reference must name a declared symbol");
@@ -1568,6 +1692,10 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
                                  .right = -1,
                                  .range = script_analyzer_range(a, node) }
         );
+    }
+    if (script_analyzer_is(node, "reference_argument")) {
+        script_analyzer_diagnostic(a, node, "ref argument requires a reference parameter");
+        node = script_analyzer_field(node, "value");
     }
     a->depth++;
     int result = script_analyzer_expression_inner(a, node, expected);

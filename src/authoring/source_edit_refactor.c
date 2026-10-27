@@ -92,6 +92,9 @@ static bool type_text(
     if (type.container != PIN_CONTAINER_SINGLE) {
         return source_refactor_fail(error, size, "This container has no callable source annotation");
     }
+    if (type.storage == PIN_POINTER) {
+        return source_refactor_fail(error, size, "Pointer type annotations are not supported by this refactor");
+    }
     const char *name = script_reference_type_name(script_reference_kind_for_type(type));
     if (!name && script_type_char(type)) {
         name = "char";
@@ -378,7 +381,10 @@ static bool extract(
             valid = source_refactor_fail(error, size, "Captured value has no resolved source expression");
             break;
         }
-        source_refactor_append(&call, "%s%s", i ? ", " : "", input);
+        const script_symbol *symbol = &a->symbols[inputs[i]];
+        bool reference = symbol->writable ||
+                         (symbol->type.flags & SCRIPT_TYPE_REFERENCE);
+        source_refactor_append(&call, "%s%s%s", i ? ", " : "", reference ? "ref " : "", input);
         free(input);
     }
     source_refactor_append(&call, ");\n");

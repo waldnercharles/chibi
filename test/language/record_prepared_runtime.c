@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Thirteen fixed prepared cases. The largest validation fixture has 128 fields
+/* Fourteen fixed prepared cases. The largest validation fixture has 128 fields
  * and 256 shared headers, and the type lookup fixtures up to 512 types and 512
  * headers. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
@@ -858,6 +858,46 @@ TEST_CASE(record_prepared_packed_rows_survive_collection)
     REQUIRE(bytes == 0);
     return true;
 }
+/* One twelve-field immutable layout and twenty-four payload-free headers.
+ * A 32 KiB work budget admits hashing/reuse; 8 KiB still stops decoding. */
+TEST_CASE(record_prepared_repeated_headers_charge_hash_work)
+{
+    REQUIRE(table());
+    const pin_record *record = write_plan->types[0].record;
+    pin_value header = { .type = PIN_STRUCT,
+                         .type_name = record->type.name,
+                         .record = record };
+    for (int i = 0; i < 24; i++) {
+        prepared_value(&writer, &header);
+    }
+    REQUIRE(!writer.wire.error);
+    for (int sufficient = 0; sufficient < 2; sufficient++) {
+        REQUIRE(read_table());
+        reader.record_work_limit = sufficient ? 32 * 1024 : 8 * 1024;
+        int count = 0;
+        for (; count < 24 && !reader.wire.error; count++) {
+            pin_value decoded = { 0 };
+            prepared_value(&reader, &decoded);
+            if (!reader.wire.error) {
+                REQUIRE(decoded.record == read_plan->types[0].record);
+                REQUIRE(!decoded.ptr && pin_record_valid(decoded.record));
+            }
+        }
+        if (sufficient) {
+            REQUIRE(count == 24 && !reader.wire.error);
+            REQUIRE(reader.wire.offset == reader.wire.size);
+            REQUIRE(prepared_records_finalize(&reader));
+        } else {
+            REQUIRE(count < 24 && reader.wire.error);
+            REQUIRE(strstr(reader.wire.error, "work limit"));
+        }
+        free(reader.records);
+        reader = (prepared_context){ 0 };
+        execution_module_plan_free(read_plan);
+        read_plan = NULL;
+    }
+    return true;
+}
 static bool table_image(int mode)
 {
     execution_wire *w = &writer.wire;
@@ -1371,6 +1411,7 @@ void test_language_record_prepared_runtime()
     RUN_TEST_CASE(record_prepared_failed_proofs_do_not_survive_retry);
     RUN_TEST_CASE(record_prepared_proofs_do_not_outlive_native_catalog);
     RUN_TEST_CASE(record_prepared_recursive_codec);
+    RUN_TEST_CASE(record_prepared_repeated_headers_charge_hash_work);
     RUN_TEST_CASE(record_prepared_packed_rows_survive_collection);
     RUN_TEST_CASE(record_prepared_table_rejections);
     RUN_TEST_CASE(record_prepared_legacy_and_failure_atomicity);

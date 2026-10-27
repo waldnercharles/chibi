@@ -8,7 +8,7 @@ const syntax_corpus_case syntax_corpus_cases[SYNTAX_CORPUS_CASE_COUNT] = {
     { "missing-initializer", "Broken :: behavior { on Begin :: () { value := ; } }", false },
     { "unclosed-blocks", "Broken :: behavior { on Begin :: () { if true { }", false },
     { "missing-body", "Broken :: library { MissingBody :: () -> () }", false },
-    { "obsolete-reference", "Broken :: behavior { on Begin :: () { nudge(&speed) } }", false },
+    { "missing-address-operand", "Broken :: behavior { on Begin :: () { nudge(&) } }", false },
     { "recovery-after-error", "Broken :: behavior { broken := ; later := 7 }", false },
     { "utf8-before-edit", "Edit :: behavior {\n// café\ncount := 1\n}\n", true },
     { "error-edit-base", "Edit :: behavior { first := 1; later := 2 }", true },

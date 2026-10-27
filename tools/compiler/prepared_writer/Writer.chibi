@@ -17,7 +17,7 @@ import strings "core:strings"
 // far more than a field.
 
 Magic: u64 : 0x4348494249505245;
-Version: int : 22;
+Version: int : 23;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),

@@ -195,7 +195,7 @@ Example :: library {
 ```
 
 Parameters normally receive value copies. A `ref` parameter writes to the
-caller's mutable value. A call needs no address-of operator.
+caller's mutable value. Mark that argument with `ref` at the call site too.
 
 ```chibi
 // chibi-mit-example: reference-parameter
@@ -205,11 +205,69 @@ Example :: library {
     AddScore :: (score: ref int, points: int) {
         score += points
     }
+
+    Run :: () -> int {
+        score := 10
+        AddScore(ref score, 5)
+        return score // 15
+    }
 }
 ```
 
+The argument must be a writable value of the parameter's exact type. Missing
+`ref`, or using it with a value parameter, is a compile error. Forwarding a
+reference to another function also requires `ref`. Native compilation also
+accepts named arguments such as `AddScore(score: ref score, points: 5)`;
+the Chibi-written compiler currently requires positional calls.
+
+Copy avoidance and ownership transfers are compiler details. Calling a function
+does not require a `move` keyword or invalidate an ordinary value.
+
 The compiler infers effects and purity. Functions need no separate `pure`
 keyword. Runtime calls have a shared depth limit of 64.
+
+## Managed pointers
+
+The managed-pointer implementation is available on the local implementation
+branch. Its contract and check results are tracked in
+[Managed pointers](managed-pointers.md).
+
+`^T` points to a mutable value of type `T`. Take an address with `&value`,
+access the target with `pointer^`, or access its fields directly. Copying a
+pointer keeps referring to the same target. Copying a record copies its field
+values, so pointer fields in the two records still refer to the same targets.
+
+```chibi
+Example :: library {
+    Actor :: struct { health: int; }
+
+    Run :: () -> int {
+        actor: Actor = {health: 100}
+        copy := actor
+        pointer := &actor
+        alias := pointer
+        copy.health = 50
+        alias.health = 80
+        return actor.health // 80
+    }
+}
+```
+
+A pointer keeps its target alive after the declaring function returns.
+Unreachable cycles are collected automatically. No ownership-transfer keyword
+is needed. Memory reclamation does not replace explicitly closing a file or
+another external resource.
+
+`^T?` permits `nil`; check a nullable local before dereferencing it. `^T[]`
+is an array of pointers, and `^(T[])` points to an array. A postfix caret must
+touch its operand: `pointer^`. Binary xor has spaces: `a ^ b`.
+
+`F(ref pointer^)` passes the target to an existing `ref` parameter. Taking an
+address currently requires a writable local, value parameter or field of a flat
+authored record. Managed payloads containing inline nested records or native
+reflected records are rejected until their layouts can be retained safely.
+Array/map elements and existing `ref` parameters do not yet support address-taking.
+Managed pointers cannot cross ordinary native-service or persistence boundaries.
 
 ## Conditions and loops
 

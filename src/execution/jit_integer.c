@@ -3,6 +3,7 @@
 #if CHIBI_HAVE_SJLIT
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/pointer.h"
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@ int behavior_jit_integer_move(pin_type type)
         case PIN_UNION:
         case PIN_TASK:
         case PIN_HANDLE: return SLJIT_MOV;
+        case PIN_POINTER:
         case PIN_NAME:
         case PIN_STR: return SLJIT_MOV_P;
         default: assert(false); return 0;
@@ -531,6 +533,17 @@ bool behavior_jit_integer(
 )
 {
     struct sljit_compiler *c = m->compiler;
+    if (behavior_jit_pointer_comparison(m->function, i)) {
+        load(m, i->left, SLJIT_R0);
+        load(m, i->right, SLJIT_R1);
+        sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(32, P, P), SLJIT_IMM, (sljit_sw)pin_pointer_equal);
+        if (i->op == BF_NE) {
+            sljit_emit_op2(c, SLJIT_XOR | SLJIT_32, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, 1);
+        }
+        /* A bool return defines only its low byte. */
+        sljit_emit_op1(c, SLJIT_MOV_U8, dest, offset, SLJIT_R0, 0);
+        return true;
+    }
     if (behavior_function_bitwise(i->op)) {
         load(m, i->left, SLJIT_R0);
         if (i->op != BF_BIT_NOT) {
@@ -577,7 +590,8 @@ bool behavior_jit_integer(
         return true;
     }
     bool integer = behavior_scalar_integer(i->type) || i->type == PIN_BOOL ||
-                   (i->type == PIN_HANDLE || i->type == PIN_TASK || i->type == PIN_UNION) ||
+                   (i->type == PIN_HANDLE || i->type == PIN_TASK ||
+                    i->type == PIN_UNION || i->type == PIN_POINTER) ||
                    behavior_scalar_string(i->type);
     if (i->op == BF_CAST) {
         cast(m, i, dest, offset);

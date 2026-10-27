@@ -238,7 +238,7 @@ void script_analyzer_union_results(analyzer *a, int function, TSNode body)
     for (int i = 0; i < acount(f->results); i++) {
         int symbol = f->results[i];
         const script_symbol *result = &a->out->symbols[symbol];
-        if (result->type.storage != PIN_UNION ||
+        if ((result->type.storage != PIN_UNION && result->type.storage != PIN_POINTER) ||
             result->type.container != PIN_CONTAINER_SINGLE ||
             (result->type.flags & SCRIPT_TYPE_OPTIONAL)) {
             continue;
@@ -256,7 +256,8 @@ void script_analyzer_union_results(analyzer *a, int function, TSNode body)
             script_analyzer_diagnostic(
                 a,
                 body,
-                "Union result '%s' requires a value on every return path",
+                "%s result '%s' requires a value on every return path",
+                result->type.storage == PIN_POINTER ? "Pointer" : "Union",
                 result->name
             );
         }
@@ -914,6 +915,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                          script_analyzer_expr_effects(a, result.second);
         if (writes_external_storage(a->out, result.expression)) {
             result.effects |= SCRIPT_EFFECT_WRITE;
+            script_analyzer_invalidate_pointers(a);
         }
         if (address.symbol >= 0) {
             script_analyzer_use(a, target, address.symbol, SCRIPT_WRITE, address.member);

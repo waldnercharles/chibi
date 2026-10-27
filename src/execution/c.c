@@ -2,6 +2,7 @@
 #include "execution/intrinsics.h"
 #include "execution/status.h"
 #include "support/array.h"
+#include "types/pointer.h"
 #include "types/text.h"
 
 #include <assert.h>
@@ -45,8 +46,8 @@ static void constant(FILE *out, const behavior_function *f, pin_type type, pin_v
         type_name(out, value.str);
         return;
     }
-    if (behavior_scalar_integer(type) ||
-        (type == PIN_HANDLE || type == PIN_TASK || type == PIN_UNION)) {
+    if (behavior_scalar_integer(type) || (type == PIN_HANDLE || type == PIN_TASK ||
+                                          type == PIN_UNION || type == PIN_POINTER)) {
         uint64_t bits = behavior_scalar_bits(value);
         fprintf(out, "(%s)UINT64_C(%llu)", behavior_scalar_c_type(type), (unsigned long long)bits);
         return;
@@ -604,6 +605,9 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 break;
             case BF_HOST_CALL: {
                 const behavior_function_host_call *spec = &f->host_calls[i->target];
+                fprintf(out, "{c->error_message=behavior_function_host_arguments(c,%d);if(c->error_message){", i->target);
+                failure(out, i, BEHAVIOR_FUNCTION_DATA);
+                fputs("}}\n", out);
                 if (spec->call->action) {
                     fprintf(
                         out,
@@ -1236,6 +1240,18 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 break;
             default: {
+                if ((i->op == BF_EQ || i->op == BF_NE) &&
+                    f->slots[i->left] == PIN_POINTER) {
+                    fprintf(
+                        out,
+                        "v%d=%spin_pointer_equal(v%d,v%d);\n",
+                        i->output,
+                        i->op == BF_NE ? "!" : "",
+                        i->left,
+                        i->right
+                    );
+                    break;
+                }
                 if ((i->op == BF_DIV || i->op == BF_MOD) &&
                     behavior_scalar_integer(i->type)) {
                     integer_division(out, i);
@@ -1280,7 +1296,7 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
     fprintf(
         out,
         "#include \"execution/scalar.h\"\n#include "
-        "\"execution/function.h\"\n#include "
+        "\"execution/function.h\"\n#include \"types/pointer.h\"\n#include "
         "\"execution/random.h\"\n#include \"execution/borrow.h\"\n#include "
         "\"execution/component_write.h\"\n#include "
         "<math.h>\n#include "

@@ -153,4 +153,11 @@ int chibi_migrate_number_names(const char *source, char **migrated, char *error,
  * Returns -1 with a located error when the KDL cannot be parsed. */
 int chibi_migrate_number_types(const char *asset, char **migrated, char *error, size_t error_size);
 
+/* Version 36 marks arguments of authored ref parameters. Resolves local
+ * callables by lexical scope and qualified library calls across all sources.
+ * Unknown native calls stay unchanged. Returns owned results (NULL for each
+ * unchanged source), or NULL with error set for invalid/ambiguous source.
+ * Existing markers are retained, so rerunning the step is safe. */
+char **chibi_migrate_ref_calls(const char *const *sources, int count, char *error, size_t error_size);
+
 #endif

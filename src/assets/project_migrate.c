@@ -71,6 +71,10 @@ void tree_sitter_chibi_project24_external_scanner_deserialize(void *scanner, con
 
 script_syntax *chibi_migrate_parse(const char *text, int version)
 {
+    /* Versions 34 to 36 keep version 33's grammar. */
+    if (version >= 33) {
+        return script_parse(text);
+    }
     script_syntax *syntax = xcalloc(1, sizeof *syntax);
     syntax->text = xstrdup(text);
     TSParser *parser = ts_parser_new();
@@ -164,7 +168,7 @@ static script_syntax *parse32(const char *text)
     return chibi_migrate_parse(text, 32);
 }
 /* Whether text parses with the grammar of project `version`, from 23 on.
- * Versions 34 and 35 kept version 33's grammar, the current one. */
+ * Versions 34 to 36 kept version 33's grammar, the current one. */
 static bool valid_at(const char *text, int version)
 {
     script_syntax *syntax = version < 33 ? chibi_migrate_parse(text, version)
@@ -6532,6 +6536,222 @@ static char **migrate_number_names(char **sources, char **paths, int count, char
     return migrated;
 }
 
+/* The declaration collector is shared with the task-call migration. Unlike
+ * that older step, this step rejects ambiguous library matches and only exposes
+ * declarations directly inside a library through its qualifier. */
+static TSNode ref_call_field(TSNode node, const char *name)
+{
+    return ts_node_is_null(node)
+             ? (TSNode){ 0 }
+             : ts_node_child_by_field_name(node, name, (uint32_t)strlen(name));
+}
+static bool ref_qualifier_binding(const char *source, TSNode scope, TSNode name)
+{
+    if (ts_node_is_null(scope)) {
+        return false;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
+        TSNode node = ts_node_named_child(scope, i);
+        if ((is(node, "parameter") || is(node, "local_declaration") ||
+             is(node, "constant_declaration") || is(node, "state_declaration")) &&
+            same_name(source, ref_call_field(node, "name"), source, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool ref_qualifier_shadowed(const char *source, TSNode target, TSNode name)
+{
+    for (TSNode scope = ts_node_parent(target); !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        if (binds_here(source, scope, name) ||
+            ref_qualifier_binding(source, scope, name) ||
+            ref_qualifier_binding(source, ref_call_field(scope, "parameters"), name)) {
+            return true;
+        }
+    }
+    return false;
+}
+static const function *ref_call_callee(const corpus *c, int file, TSNode target, bool *ambiguous)
+{
+    TSNode name = target, qualifier = { 0 };
+    if (is(target, "member_expression")) {
+        qualifier = ref_call_field(target, "object");
+        name = ref_call_field(target, "member");
+    }
+    if (!is_name(name) || (!ts_node_is_null(qualifier) && !is_name(qualifier))) {
+        return NULL;
+    }
+    const char *source = c->sources[file];
+    bool local = ts_node_is_null(qualifier);
+    if (!local && ref_qualifier_shadowed(source, target, qualifier)) {
+        return NULL;
+    }
+    const function *found = NULL;
+    bool found_exact = false;
+    for (int i = 0; i < acount(c->functions); i++) {
+        const function *f = &c->functions[i];
+        const char *defined = c->sources[f->file];
+        bool exact = same_name(source, name, defined, f->name);
+        if (local) {
+            if (f->file != file || !contains(f->scope, target) || !exact) {
+                continue;
+            }
+            if (found && span(f->scope) > span(found->scope)) {
+                continue;
+            }
+            if (found && span(f->scope) == span(found->scope)) {
+                /* Actions occupy the value namespace and take precedence. */
+                bool action = is(ts_node_parent(f->name), "action_declaration");
+                bool previous_action = is(ts_node_parent(found->name), "action_declaration");
+                if (action != previous_action) {
+                    found = action ? f : found;
+                    *ambiguous = false;
+                    continue;
+                }
+                *ambiguous = true;
+                continue;
+            }
+        } else {
+            if (ts_node_is_null(f->library) ||
+                !is(ts_node_parent(f->scope), "library") ||
+                !similar_name(source, qualifier, defined, f->library) ||
+                !similar_name(source, name, defined, f->name)) {
+                continue;
+            }
+            exact &= same_name(source, qualifier, defined, f->library);
+            if (found && found_exact && !exact) {
+                continue;
+            }
+            if (found && found_exact == exact) {
+                *ambiguous = true;
+                continue;
+            }
+        }
+        found = f;
+        found_exact = exact;
+        *ambiguous = false;
+    }
+    return found;
+}
+static bool ref_call_rewrite(const corpus *c, int file, TSNode node, text_edit **edits, char *error, size_t size)
+{
+    if (is(node, "call_expression")) {
+        bool ambiguous = false;
+        const function *f = ref_call_callee(c, file, ref_call_field(node, "function"), &ambiguous);
+        if (ambiguous) {
+            script_range range = script_node_range(node);
+            snprintf(
+                error,
+                size,
+                "Ambiguous callable at %d:%d; rename it before ref-call "
+                "migration",
+                range.line,
+                range.column
+            );
+            return false;
+        }
+        TSNode declaration = f ? ts_node_parent(f->name) : (TSNode){ 0 };
+        TSNode parameters = ref_call_field(declaration, "parameters");
+        if (f && !is(declaration, "action_declaration")) {
+            TSNode *params = NULL;
+            for (uint32_t i = 0; !ts_node_is_null(parameters) &&
+                                 i < ts_node_named_child_count(parameters);
+                 i++) {
+                TSNode p = ts_node_named_child(parameters, i);
+                if (is(p, "parameter")) {
+                    apush(params, p);
+                }
+            }
+            TSNode arguments = ref_call_field(node, "arguments");
+            int ordinal = 0;
+            for (uint32_t i = 0; i < ts_node_named_child_count(arguments); i++) {
+                TSNode arg = ts_node_named_child(arguments, i);
+                if (ts_node_is_extra(arg)) {
+                    continue;
+                }
+                TSNode label = ref_call_field(arg, "name");
+                int parameter = ordinal++;
+                if (!ts_node_is_null(label)) {
+                    parameter = -1;
+                    for (int j = 0; j < acount(params); j++) {
+                        if (same_name(
+                                c->sources[file],
+                                label,
+                                c->sources[f->file],
+                                ref_call_field(params[j], "name")
+                            )) {
+                            parameter = j;
+                            break;
+                        }
+                    }
+                }
+                if (parameter < 0 || parameter >= acount(params) ||
+                    !ref_parameter(params[parameter])) {
+                    continue;
+                }
+                TSNode value = ts_node_is_null(label)
+                                 ? arg
+                                 : ref_call_field(arg, "value");
+                if (ts_node_is_null(value)) {
+                    value = ref_call_field(arg, "source");
+                }
+                if (!ts_node_is_null(value) && !is(value, "reference_argument")) {
+                    int start = (int)ts_node_start_byte(value);
+                    apush(*edits, ((text_edit){ start, start, "ref " }));
+                }
+            }
+            afree(params);
+        }
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!ref_call_rewrite(c, file, ts_node_named_child(node, i), edits, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+char **chibi_migrate_ref_calls(const char *const *sources, int count, char *error, size_t size)
+{
+    script_syntax **syntax = xcalloc((size_t)count, sizeof *syntax);
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    corpus c = { .sources = sources };
+    bool valid = true;
+    for (int i = 0; i < count && valid; i++) {
+        syntax[i] = script_parse(sources[i]);
+        if (syntax[i]->diagnostic_count) {
+            snprintf(error, size, "Cannot migrate invalid version 35 source %d", i + 1);
+            valid = false;
+        } else {
+            collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, true, &c.functions);
+        }
+    }
+    for (int i = 0; i < count && valid; i++) {
+        text_edit *edits = NULL;
+        valid = ref_call_rewrite(&c, i, ts_tree_root_node(syntax[i]->tree), &edits, error, size);
+        if (valid && acount(edits)) {
+            char *result = text_edits_apply(sources[i], edits, acount(edits));
+            valid = !accept_migrated(sources[i], result, "Ref call", 36, &migrated[i], error, size);
+        }
+        afree(edits);
+    }
+    for (int i = 0; i < count; i++) {
+        if (syntax[i]) {
+            script_syntax_free(syntax[i]);
+        }
+        if (!valid) {
+            free(migrated[i]);
+        }
+    }
+    free(syntax);
+    afree(c.functions);
+    if (!valid) {
+        free(migrated);
+        return NULL;
+    }
+    return migrated;
+}
+
 /* Removes the scripts later steps migrated past version `from + 1` from the
  * step's inputs; returns the remaining count. */
 static int skip_migrated_ahead(char **paths, char **sources, int count, int from)
@@ -6767,6 +6987,11 @@ int chibi_project_migrate_content(
                 error[0] = '\0';
                 migrated = migrate_number_names(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
+                break;
+            case 35:
+                error[0] = '\0';
+                migrated = chibi_migrate_ref_calls((const char *const *)sources, count, error, error_size);
+                status = migrated ? 0 : -1;
                 break;
             default: assert(false);
         }

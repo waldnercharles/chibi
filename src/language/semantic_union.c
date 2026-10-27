@@ -450,7 +450,7 @@ int script_analyzer_union_constructor(analyzer *a, TSNode node)
             continue;
         }
         TSNode name = script_analyzer_field(argument, "name");
-        TSNode value = script_analyzer_field(argument, "value");
+        TSNode value = script_analyzer_call_argument(argument);
         if (ts_node_is_null(value)) {
             value = argument;
         }

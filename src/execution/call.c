@@ -1,5 +1,6 @@
 #include "execution/borrow.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/native.h"
 #include "execution/runner.h"
 #include "execution/service.h"
@@ -287,6 +288,7 @@ static invocation_frame *frame_new(
     behavior_function_prepare_data(call.function, parent->services, &frame->data);
     frame->context = (behavior_function_context){
         .parent = parent,
+        .managed_heap = parent->managed_heap,
         .call_enter = parent->call_enter,
         .call_leave = parent->call_leave,
         .activation = &frame->activation,
@@ -598,7 +600,7 @@ int behavior_function_run_calls(
 
 static void trace_value(const pin_value *value, behavior_value_kind kind, arena_marker mark, void *user)
 {
-    pin_value_trace(value, mark, user);
+    behavior_managed_heap_trace_value(value, mark, user);
     if (kind != BEHAVIOR_VALUE) {
         mark(user, (const void *)(uintptr_t)behavior_scalar_bits(*value));
     }
@@ -634,7 +636,7 @@ static void trace_context(
             behavior_value_kind kind = value < slots ? f->slot_kinds[value]
                                                      : f->locals[value - slots].kind;
             if (kind != BEHAVIOR_VALUE || type == PIN_STR || type == PIN_NAME ||
-                type == PIN_UNION) {
+                type == PIN_UNION || type == PIN_POINTER) {
                 mark(user, (const void *)(uintptr_t)a->values[value]);
             }
         }
@@ -652,7 +654,7 @@ static void trace_context(
         if (f->data_values[i].size) {
             pin_value value = f->data_values[i].initial;
             value.ptr = ctx->data->buffers[i];
-            pin_value_trace(&value, mark, user);
+            behavior_managed_heap_trace_value(&value, mark, user);
         }
     }
 }
@@ -682,6 +684,23 @@ static void visit_bank(
         visit(user, &values[i]);
     }
 }
+static void visit_reference_bank(
+    const pin_value *values,
+    const behavior_value_kind *kinds,
+    int count,
+    void (*visit)(void *, const pin_value *),
+    void *user
+)
+{
+    for (int i = 0; kinds && i < count; i++) {
+        pin_value pointer;
+        if (kinds[i] == BEHAVIOR_REFERENCE &&
+            execution_reference_managed_pointer(values[i], &pointer)) {
+            visit(user, &pointer);
+        }
+    }
+}
+
 static void visit_context(
     const behavior_function *f,
     const behavior_function_context *ctx,
@@ -703,9 +722,19 @@ static void visit_context(
             int index = s->values[i];
             pin_type type = index < slots ? f->slots[index]
                                           : f->locals[index - slots].initial.type;
-            if (type == PIN_TASK || type == PIN_UNION) {
+            behavior_value_kind kind = index < slots ? f->slot_kinds[index]
+                                                     : f->locals[index - slots].kind;
+            if (kind == BEHAVIOR_REFERENCE) {
+                pin_value reference = { .type = BF_POINTER_TYPE,
+                                        .u64 = a->values[index] },
+                          pointer;
+                if (execution_reference_managed_pointer(reference, &pointer)) {
+                    visit(user, &pointer);
+                }
+            }
+            if (type == PIN_TASK || type == PIN_UNION || type == PIN_POINTER) {
                 pin_value value = { .type = type, .u64 = a->values[index] };
-                if (type == PIN_UNION) {
+                if (type == PIN_UNION || type == PIN_POINTER) {
                     value.ptr = (void *)(uintptr_t)a->values[index];
                 }
                 visit(user, &value);
@@ -713,6 +742,17 @@ static void visit_context(
         }
     }
     visit_bank(ctx->arguments, ctx->argument_count, visit, user);
+    visit_reference_bank(ctx->arguments, f->argument_kinds, ctx->argument_count, visit, user);
+    visit_reference_bank(ctx->results, f->result_kinds, f->result_count, visit, user);
+    visit_reference_bank(
+        ctx->command_arguments,
+        f->command_argument_kinds,
+        acount(f->command_arguments),
+        visit,
+        user
+    );
+    visit_reference_bank(ctx->command_results, f->command_result_kinds, acount(f->command_results), visit, user);
+
     visit_bank(ctx->results, f->result_count, visit, user);
     visit_bank(ctx->variables, f->variable_count, visit, user);
     visit_bank(ctx->command_arguments, acount(f->command_arguments), visit, user);
@@ -721,6 +761,14 @@ static void visit_context(
         return;
     }
     visit_bank(ctx->data->values, acount(f->data_values), visit, user);
+    for (int i = 0; i < acount(f->data_values); i++) {
+        pin_value pointer;
+        if (f->data_values[i].kind == BEHAVIOR_REFERENCE &&
+            execution_reference_managed_pointer(ctx->data->values[i], &pointer)) {
+            visit(user, &pointer);
+        }
+    }
+
     for (int i = 0; i < acount(f->data_values); i++) {
         if (f->data_values[i].size) {
             pin_value value = f->data_values[i].initial;

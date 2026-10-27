@@ -684,7 +684,10 @@ Files :: (target: string) -> string[] {
         return files;
     }
     if (target == "chibi-player") {
-        return ["src/host/player_main.c", "src/host/player_url.c"];
+        return [
+            "src/host/player_main.c", "src/host/player_url.c", "src/host/native_libraries.c",
+            "src/host/stack_overflow.c"
+        ];
     }
     if (target == "chibi-compile") {
         return [
@@ -887,7 +890,7 @@ Files :: (target: string) -> string[] {
             "test/tools/test_policy.c", "test/tools/validation_plan.c", "test/tools/web_storage.c",
             "test/tools/player_url.c", "test/tools/webgpu_staging.c", "test/tools/browser.c",
             "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
-            "src/host/process.c", "third_party/yyjson/yyjson.c",
+            "src/host/process.c", "src/host/native_libraries.c", "third_party/yyjson/yyjson.c",
             "test/tools/native_aot_driver.c", "test/tools/build_process.c",
             "test/tools/build_toolchain.c", "test/tools/build_graph.c", "test/tools/build_sdk.c",
             "test/tools/compiler_artifact.c", "test/tools/compiler_bootstrap.c",
@@ -971,7 +974,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_types") {
         return [
             "types/annotate.h", "types/array.h", "types/catalog.h", "types/copy.h", "types/map.h",
-            "types/record.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
+            "types/record.h", "types/pointer.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
             "types/union.h", "types/value.h", "types/text.h", "types/value_format.h", "types/value_wire.h"
         ];
     }
@@ -999,8 +1002,9 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_execution_contract") {
         return [
             "execution/arguments.h", "execution/backend.h", "execution/borrow.h", "execution/component.h",
-            "execution/diagnostic.h", "execution/function.h", "execution/host.h", "execution/instruction.h",
-            "execution/log.h", "execution/operation.h", "execution/random.h", "execution/request.h", "execution/scalar.h",
+            "execution/diagnostic.h", "execution/managed.h", "execution/function.h", "execution/host.h",
+            "execution/instruction.h", "execution/log.h", "execution/operation.h", "execution/random.h",
+            "execution/request.h", "execution/scalar.h",
             "execution/service.h", "execution/source_debug.h", "execution/state.h", "execution/status.h",
             "execution/value_kind.h"
         ];
@@ -1475,7 +1479,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
         ];
     }
     if (target == "chibi_player") {
-        return ["host/player_clock.h", "host/player_url.h"];
+        return ["host/player_clock.h", "host/player_url.h", "host/native_libraries.h", "host/stack_overflow.h"];
     }
     if (target == "chibi_source_catalog") {
         return [
@@ -3709,6 +3713,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_MAPS_BYTES=bytes:tools/compiler/package_compiler/Maps.chibi",
             "CHIBI_PACKAGE_COMPILER_NUMBER_BYTES=bytes:tools/compiler/package_compiler/Number.chibi",
             "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",
+            "CHIBI_PACKAGE_COMPILER_POINTERS_BYTES=bytes:tools/compiler/package_compiler/Pointers.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAR_BYTES=bytes:tools/compiler/package_compiler/Scalar.chibi",
             "CHIBI_PACKAGE_COMPILER_STEPS_BYTES=bytes:tools/compiler/package_compiler/Steps.chibi",
             "CHIBI_PACKAGE_COMPILER_TREE_BYTES=bytes:tools/compiler/package_compiler/Tree.chibi",

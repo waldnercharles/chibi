@@ -213,7 +213,7 @@ Annotation :: (work: Work, tree: reader.Tree, node: int, context: Context, signa
                         reading = reader.Type(signature, tree, node, context.scope, context.document);
                     }
                     switch reading {
-                        case .Read(value, has_unit, unit, updated_signature, diagnostics, uses, publications):
+                        case .Read(value, has_unit, unit, updated_signature, diagnostics, uses, publications, collection):
                             all_diagnostics := old_diagnostics;
                             all_uses := old_uses;
                             all_publications := old_publications;

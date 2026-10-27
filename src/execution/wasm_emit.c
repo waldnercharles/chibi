@@ -224,10 +224,12 @@ static bool direct(const behavior_function *f, const behavior_function_instructi
     }
     if (i->op == BF_STORE || i->op == BF_RESULT) {
         return (i->type >= PIN_BOOL && i->type <= PIN_F64) || i->type == PIN_ENUM ||
-               (i->type == PIN_HANDLE || i->type == PIN_TASK || i->type == PIN_UNION);
+               (i->type == PIN_HANDLE || i->type == PIN_TASK ||
+                i->type == PIN_UNION || i->type == PIN_POINTER);
     }
     if (i->op == BF_LOAD || i->op == BF_READ || i->op == BF_WRITE) {
-        return i->type >= PIN_BOOL && i->type <= PIN_F64 && i->offset <= UINT32_MAX;
+        return ((i->type >= PIN_BOOL && i->type <= PIN_F64) || i->type == PIN_POINTER) &&
+               i->offset <= UINT32_MAX;
     }
     if (i->op == BF_JUMP || i->op == BF_BRANCH || i->op == BF_CONSTANT ||
         i->op == BF_LOCAL) {

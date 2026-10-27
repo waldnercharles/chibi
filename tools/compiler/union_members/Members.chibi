@@ -223,7 +223,7 @@ EligibleUnion :: (environment: Environment, tree: reader.Tree, node: int, scope:
 // an earlier declaration. Tagged child payload spans remain raw catalog facts.
 Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
     switch plan {
-        case .Constructed(value, publish, id, name, definition_value, size, internal, selected, selected_fields, output_ids, diagnostics):
+        case .Constructed(value, publish, id, name, definition_value, size, internal, selected, selected_fields, output_ids, diagnostics, element_type, element_collection):
             if (!publish) {
                 return environment;
             }
@@ -248,7 +248,7 @@ Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
                             field_count = source_variant.field_count;
                             tagged = source_variant.tagged;
                         }
-                        switch reader.AddType(new_types, new_ids, payload) {
+                        switch reader.AddTypeCollection(new_types, new_ids, payload, item.collection) {
                             case .Added(rows, pool, type_index):
                                 new_types = rows;
                                 new_ids = pool;
@@ -263,10 +263,12 @@ Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
                     while (index < length(selected_fields)) {
                         selection := selected_fields[index];
                         payload := named.Builtin("invalid");
+                        payload_collection: u64 = 0;
                         if (selection.capability >= 0) {
                             original := capabilities[selection.capability];
                             row := capability_fields[original.result_start + selection.parameter];
                             payload = named.TypeAt(types, ids, row.type);
+                            payload_collection = types[row.type].collection;
                         } else {
                             switch reading {
                                 case .Tables(names, constructor_tables, pointer_size):
@@ -274,10 +276,11 @@ Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
                                         case .Tables(lexical, name_types, name_ids, merged, own, native, symbol_types, imports, exports, uses,
                                                      identity, package_scope, has_native, has_documents, entity_id):
                                             payload = named.TypeAt(name_types, name_ids, symbol_types[selection.symbol]);
+                                            payload_collection = name_types[symbol_types[selection.symbol]].collection;
                                     }
                             }
                         }
-                        switch reader.AddType(new_types, new_ids, payload) {
+                        switch reader.AddTypeCollection(new_types, new_ids, payload, payload_collection) {
                             case .Added(rows, pool, type_index):
                                 new_types = rows;
                                 new_ids = pool;
@@ -297,7 +300,7 @@ Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
 }
 Absorb :: (environment: Environment, result: reader.Reading) -> Members {
     switch result {
-        case .Read(value, has_unit, unit, updated, diagnostics, uses, publications):
+        case .Read(value, has_unit, unit, updated, diagnostics, uses, publications, collection):
             current := environment;
             updates: Update[] = [];
             for (plan in publications) {
@@ -356,7 +359,7 @@ Replace :: (environment: Environment, id: u64, declared_variants: DeclaredVarian
             new_fields := fields;
             field_start := length(new_fields);
             for (item in declared_fields) {
-                switch reader.AddType(new_types, new_ids, named.TypeAt(payload_types, payload_ids, item.type)) {
+                switch reader.AddTypeCollection(new_types, new_ids, named.TypeAt(payload_types, payload_ids, item.type), payload_types[item.type].collection) {
                     case .Added(rows, pool, type_index):
                         new_types = rows;
                         new_ids = pool;
@@ -367,7 +370,7 @@ Replace :: (environment: Environment, id: u64, declared_variants: DeclaredVarian
             new_variants := variants;
             variant_start := length(new_variants);
             for (item in declared_variants) {
-                switch reader.AddType(new_types, new_ids, named.TypeAt(payload_types, payload_ids, item.type)) {
+                switch reader.AddTypeCollection(new_types, new_ids, named.TypeAt(payload_types, payload_ids, item.type), payload_types[item.type].collection) {
                     case .Added(rows, pool, type_index):
                         new_types = rows;
                         new_ids = pool;
@@ -396,7 +399,7 @@ Replace :: (environment: Environment, id: u64, declared_variants: DeclaredVarian
                             alternatives := ctor_variants;
                             start := length(alternatives);
                             for (item in declared_variants) {
-                                switch reader.AddType(rows, pool, named.TypeAt(payload_types, payload_ids, item.type)) {
+                                switch reader.AddTypeCollection(rows, pool, named.TypeAt(payload_types, payload_ids, item.type), payload_types[item.type].collection) {
                                     case .Added(next_rows, next_pool, type_index):
                                         rows = next_rows;
                                         tag_slot := length(next_pool);
@@ -410,7 +413,7 @@ Replace :: (environment: Environment, id: u64, declared_variants: DeclaredVarian
                             while (index < length(definitions_copy)) {
                                 item := definitions_copy[index];
                                 if (named.IDAt(pool, item.id_slot) == id) {
-                                    row: constructors.Definition = {id_slot: item.id_slot, variant_start: start, variant_count: length(declared_variants)};
+                                    row: constructors.Definition = {id_slot: item.id_slot, variant_start: start, variant_count: length(declared_variants), element_type: item.element_type};
                                     definitions_copy[index] = row;
                                 }
                                 index += 1;
@@ -497,14 +500,16 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                             case .Name(field_name, field_errors):
                                                 current = Errors(current, field_errors);
                                                 value := named.Builtin("invalid");
+                                                value_collection: u64 = 0;
                                                 switch current {
                                                     case .Built(environment, updates, diagnostics, uses):
                                                         switch environment {
                                                             case .Tables(reading, graph_types, graph_ids, definitions, graph_variants, graph_fields, capabilities, capability_fields):
                                                                 result := reader.Type(reading, tree, reader.Field(tree, parameter_node, "type"), scope, document);
                                                                 switch result {
-                                                                    case .Read(resolved, has_unit, unit, updated, type_errors, type_uses, publications):
+                                                                    case .Read(resolved, has_unit, unit, updated, type_errors, type_uses, publications, collection):
                                                                         value = resolved;
+                                                                        value_collection = collection;
                                                                 }
                                                                 current = Combine(current, Absorb(environment, result));
                                                         }
@@ -515,7 +520,7 @@ BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, docum
                                                             current = OneError(current, tree, parameter_node, document, "Union payloads require an owned value type");
                                                         }
                                                 }
-                                                switch reader.AddType(types, ids, value) {
+                                                switch reader.AddTypeCollection(types, ids, value, value_collection) {
                                                     case .Added(rows, pool, type_index):
                                                         types = rows;
                                                         id_slot := length(pool);

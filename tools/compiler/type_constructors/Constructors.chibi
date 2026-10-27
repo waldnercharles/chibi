@@ -9,6 +9,7 @@ pub Definition :: struct {
     id_slot: int;
     variant_start: int;
     variant_count: int;
+    element_type: int;
 }
 pub RawVariant :: struct {
     tag_slot: int;
@@ -50,6 +51,7 @@ Variant :: struct {
     nominal_slot: int;
     parameter_slot: int;
     tag_slot: int;
+    collection: u64;
 }
 Field :: struct {
     capability: int;
@@ -62,10 +64,11 @@ Selections :: union {
 pub Plan :: union {
     Constructed(value: named.Value, publish: bool, id: u64, name: string,
                 definition: named.Value, size: int, internal: bool,
-                variants: Variant[], fields: Field[], ids: u64[], diagnostics: syntax.Diagnostic[])
+                variants: Variant[], fields: Field[], ids: u64[], diagnostics: syntax.Diagnostic[],
+                element_type: named.Value, element_collection: u64)
 }
 
-Tag :: (value: named.Value) -> u64 {
+Tag :: (value: named.Value, collection: u64) -> u64 {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             if ((flags & 512) != 0) {
@@ -79,6 +82,9 @@ Tag :: (value: named.Value) -> u64 {
             if ((flags & 64) != 0) {
                 nominal_id = 0;
                 result = parameter;
+            }
+            if (collection != 0) {
+                return binding.ID("union-type", format_text("{}:{}:{}:{}:{}:{}", storage, container, nominal_id, result, flags & 74, collection));
             }
             return binding.ID("union-type", format_text("{}:{}:{}:{}:{}", storage, container, nominal_id, result, flags & 74));
     }
@@ -97,7 +103,7 @@ FindDefinition :: (environment: Environment, id: u64) -> int {
     }
 }
 Select :: (selection: Selections, value: named.Value, catalog_type: int, variant: int,
-           member: int, tag: u64) -> Selections {
+           member: int, tag: u64, collection: u64) -> Selections {
     switch selection {
         case .Selected(payload_rows, payload_ids):
             rows := payload_rows;
@@ -117,13 +123,13 @@ Select :: (selection: Selections, value: named.Value, catalog_type: int, variant
                     ids.append(tag);
                     row: Variant = {catalog_type: catalog_type, variant: variant, member: member,
                                     storage: storage, container: container, flags: flags,
-                                    nominal_slot: slot, parameter_slot: slot + 1, tag_slot: slot + 2};
+                                    nominal_slot: slot, parameter_slot: slot + 1, tag_slot: slot + 2, collection: collection};
                     rows.append(row);
                     return Selections.Selected(rows, ids);
             }
     }
 }
-SelectMember :: (environment: Environment, selection: Selections, value: named.Value, member: int) -> Selections {
+SelectMember :: (environment: Environment, selection: Selections, value: named.Value, member: int, collection: u64) -> Selections {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             nested: int = -1;
@@ -131,7 +137,7 @@ SelectMember :: (environment: Environment, selection: Selections, value: named.V
                 nested = FindDefinition(environment, nominal);
             }
             if (nested < 0) {
-                return Select(selection, value, -1, -1, member, Tag(value));
+                return Select(selection, value, -1, -1, member, Tag(value, collection), collection);
             }
             switch environment {
                 case .Tables(types, ids, definitions, variants, capabilities, functions, symbols, results):
@@ -141,7 +147,7 @@ SelectMember :: (environment: Environment, selection: Selections, value: named.V
                         original := variants[definition.variant_start + index];
                         tag := named.IDAt(ids, original.tag_slot);
                         if (parameter == 0 || tag == parameter) {
-                            selection = Select(selection, named.TypeAt(types, ids, original.type), nested, index, -1, tag);
+                            selection = Select(selection, named.TypeAt(types, ids, original.type), nested, index, -1, tag, types[original.type].collection);
                         }
                         index += 1;
                     }
@@ -193,10 +199,10 @@ FinishUnion :: (environment: Environment, selection: Selections, pointer_size: i
                 noIDs: u64[] = [];
                 return Plan.Constructed(value, false, 0, "",
                                         named.Value.Typed(0, 0, 0, 0, 0),
-                                        0, false, empty, fields, noIDs, diagnostics);
+                                        0, false, empty, fields, noIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
             }
             return Plan.Constructed(value, true, id, format_text("union:{}", id), value,
-                                    pointer_size, true, rows, fields, ids, diagnostics);
+                                    pointer_size, true, rows, fields, ids, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
     }
 }
 pub Union :: (environment: Environment, members: int[], pointer_size: int) -> Plan {
@@ -207,7 +213,7 @@ pub Union :: (environment: Environment, members: int[], pointer_size: int) -> Pl
         case .Tables(types, sourceIDs, definitions, variants, capabilities, functions, symbols, results):
             index: int = 0;
             while (index < length(members)) {
-                selection = SelectMember(environment, selection, named.TypeAt(types, sourceIDs, members[index]), index);
+                selection = SelectMember(environment, selection, named.TypeAt(types, sourceIDs, members[index]), index, types[members[index]].collection);
                 index += 1;
             }
     }
@@ -222,12 +228,12 @@ pub Task :: (environment: Environment, result: int, function: u64) -> Plan {
     switch environment {
         case .Tables(types, ids, definitions, rawVariants, capabilities, functions, symbols, results):
             descriptor := named.TypeAt(types, ids, result);
-            id := Tag(descriptor);
+            id := Tag(descriptor, 0);
             value := named.Value.Typed(17, 0, 64, function, id);
             if (FindDefinition(environment, id) >= 0) {
                 return Plan.Constructed(value, false, 0, "",
                                         named.Value.Typed(0, 0, 0, 0, 0),
-                                        0, false, variants, fields, outputIDs, diagnostics);
+                                        0, false, variants, fields, outputIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
             }
             if ((types[result].flags & 8) != 0) {
                 capability: int = -1;
@@ -266,7 +272,7 @@ pub Task :: (environment: Environment, result: int, function: u64) -> Plan {
                 }
             }
             return Plan.Constructed(value, true, id, format_text("task-result:{}", id), descriptor,
-                                    0, true, variants, fields, outputIDs, diagnostics);
+                                    0, true, variants, fields, outputIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
     }
 }
 pub Await :: (environment: Environment, success: int, request: Request) -> Plan {
@@ -298,9 +304,33 @@ pub Await :: (environment: Environment, success: int, request: Request) -> Plan 
                                                  message: "Cancelled is reserved for task cancellation, not a successful task result"};
                 diagnostics.append(diagnostic);
             }
-            selection = SelectMember(environment, selection, value, 0);
+            selection = SelectMember(environment, selection, value, 0, types[success].collection);
             selection = SelectMember(environment, selection, named.Value.Typed(18, 0, 512,
-                                                                               0x63616e63656c6c65, 0), 1);
+                                                                               0x63616e63656c6c65, 0), 1, 0);
     }
     return FinishUnion(environment, selection, request.pointer_size, diagnostics);
+}
+
+// A pointer names its complete pointee, including optional/container metadata.
+// Its payload metadata is published independently of the returned pointer type.
+pub Pointer :: (environment: Environment, pointee: int, pointer_size: int) -> Plan {
+    fields: Field[] = [];
+    variants: Variant[] = [];
+    outputIDs: u64[] = [];
+    diagnostics: syntax.Diagnostic[] = [];
+    switch environment {
+        case .Tables(types, ids, definitions, rawVariants, capabilities, functions, symbols, results):
+            element := named.TypeAt(types, ids, pointee);
+            collection := types[pointee].collection;
+            id := binding.ID("pointer-type", format_text("{}", Tag(element, collection)));
+            value := named.Value.Typed(19, 0, 0, id, 0);
+            if (FindDefinition(environment, id) >= 0) {
+                return Plan.Constructed(value, false, 0, "",
+                                        named.Value.Typed(0, 0, 0, 0, 0),
+                                        0, false, variants, fields, outputIDs, diagnostics,
+                                        named.Value.Typed(0, 0, 0, 0, 0), 0);
+            }
+            return Plan.Constructed(value, true, id, format_text("__pointer_{}", id), value,
+                                    pointer_size, true, variants, fields, outputIDs, diagnostics, element, collection);
+    }
 }

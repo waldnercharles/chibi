@@ -1,5 +1,6 @@
 #include "execution/program_internal.h"
 #include "execution/scalar.h"
+#include "execution/status.h"
 #include "support/array.h"
 #include "types/trace.h"
 
@@ -53,7 +54,10 @@ static void add_totals(payload_totals *totals, const execution_activation *a)
 }
 static void scope_totals(const execution_program *p, payload_totals *totals)
 {
-    totals->running |= p->running != NULL;
+    /* A system paused under reductions keeps its activations, whose slots
+     * and payloads no collection lists, until the system finishes. */
+    totals->running |= p->running != NULL ||
+                       (p->system_prepared && p->system_status == FLOW_PAUSED_RESULT);
     for (int i = 0; i < acount(p->instances); i++) {
         const execution_instance *instance = p->instances[i];
         for (int j = 0; j < acount(instance->activations); j++) {
@@ -66,6 +70,11 @@ static void scope_totals(const execution_program *p, payload_totals *totals)
 static bool collection_due(const execution_program *p, const execution_activation *extra)
 {
     payload_totals totals = { 0 };
+    for (behavior_managed_heap *heap = p->owner_program->managed; heap;
+         heap = heap->previous) {
+        totals.allocated += heap->storage.allocated;
+        totals.kept += heap->storage.kept;
+    }
     scope_totals(p, &totals);
     for (int i = 0; i < acount(p->imports); i++) {
         scope_totals(p->imports[i], &totals);
@@ -82,10 +91,69 @@ static void trace_action_values(const execution_activation *a, arena_marker mark
         const action_values *action = &a->actions[i];
         for (int j = 0; j < action->count; j++) {
             const pin_value *value = &action->values[j];
-            pin_value_trace(value, marker, user);
+            behavior_managed_heap_trace_value(value, marker, user);
             if (value->type == BF_POINTER_TYPE &&
                 value->container == PIN_CONTAINER_SINGLE) {
                 marker(user, (const void *)(uintptr_t)behavior_scalar_bits(*value));
+            }
+        }
+    }
+}
+static void managed_value(arena_collection *collection, const pin_value *value)
+{
+    behavior_managed_heap_trace_value(value, arena_collect_mark, collection);
+}
+static void managed_scope_roots(const execution_program *p, arena_collection *collection)
+{
+    const execution_module_plan *plan = &p->module->plan;
+    for (int i = 0; i < plan->state_count; i++) {
+        managed_value(collection, &p->shared[i].value);
+    }
+    for (int i = 0; i < acount(p->events); i++) {
+        for (int j = 0; j < p->events[i].count; j++) {
+            managed_value(collection, &p->events[i].arguments[j]);
+        }
+    }
+    for (const queued_event_batch *batch = p->dispatch_events; batch;
+         batch = batch->previous) {
+        for (int i = batch->first; i < acount(batch->events); i++) {
+            for (int j = 0; j < batch->events[i].count; j++) {
+                managed_value(collection, &batch->events[i].arguments[j]);
+            }
+        }
+    }
+    for (int i = 0; i < acount(p->field_edges); i++) {
+        managed_value(collection, &p->field_edges[i].value);
+    }
+    for (int i = 0; i < acount(p->reductions); i++) {
+        managed_value(collection, &p->reductions[i].value);
+    }
+    for (int i = 0; i < acount(p->instances); i++) {
+        const execution_instance *instance = p->instances[i];
+        for (int j = 0; j < plan->state_count; j++) {
+            managed_value(collection, &instance->values[j]);
+            managed_value(collection, &instance->states[j].value);
+        }
+        for (int j = 0; j < acount(instance->node_states); j++) {
+            managed_value(collection, &instance->node_states[j]);
+        }
+        for (int j = 0; j < plan->binding_count; j++) {
+            const binding_cache *cache = &instance->bindings[j];
+            if (!cache->valid) {
+                continue;
+            }
+            managed_value(collection, &cache->output);
+            for (int k = 0; k < plan->bindings[j].dependency_count; k++) {
+                managed_value(collection, &cache->inputs[k]);
+            }
+        }
+        for (int j = 0; j < acount(instance->observations); j++) {
+            managed_value(collection, &instance->observations[j].value);
+        }
+        for (int j = 0; j < acount(instance->tasks); j++) {
+            const execution_task *task = &instance->tasks[j];
+            for (int k = 0; k < task->result_count; k++) {
+                managed_value(collection, &task->results[k]);
             }
         }
     }
@@ -101,11 +169,28 @@ void program_collect_payloads(execution_program *p, execution_activation *extra)
     for (int i = 0; i < acount(values); i++) {
         apush(arenas, &values[i]->payload);
     }
+    for (behavior_managed_heap *heap = p->managed; heap; heap = heap->previous) {
+        apush(arenas, &heap->storage);
+    }
     arena_collection c;
     arena_collect_begin(&c, arenas, acount(arenas));
     for (int i = 0; i < acount(values); i++) {
         behavior_function_trace_values(values[i]->function, &values[i]->context, arena_collect_mark, &c);
         trace_action_values(values[i], arena_collect_mark, &c);
+    }
+    behavior_managed_heap_trace_roots(p->managed, arena_collect_mark, &c);
+    managed_scope_roots(p, &c);
+    for (int i = 0; i < acount(p->imports); i++) {
+        managed_scope_roots(p->imports[i], &c);
+    }
+    for (int i = 0; i < acount(values); i++) {
+        const execution_activation *a = values[i];
+        for (int j = 0; j < acount(a->boxes); j++) {
+            managed_value(&c, a->boxes[j]->value);
+        }
+        for (int j = 0; j < acount(a->held); j++) {
+            managed_value(&c, a->held[j]->value);
+        }
     }
     arena_collect_end(&c);
     afree(arenas);
@@ -115,6 +200,13 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
 {
     assert(p && !p->owner_program->running);
     execution_memory_usage result = { 0 };
+    for (const behavior_managed_heap *heap = p->owner_program->managed; heap;
+         heap = heap->previous) {
+        size_t bytes, capacity;
+        arena_usage(&heap->storage, &bytes, &capacity);
+        result.payload_bytes += bytes;
+        result.payload_capacity += capacity;
+    }
     execution_activation **values = activations(p->owner_program, NULL);
     result.activation_bytes = (size_t)acount(values) * sizeof(execution_activation);
     for (int i = 0; i < acount(values); i++) {

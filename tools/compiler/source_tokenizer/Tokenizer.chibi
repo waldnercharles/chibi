@@ -271,6 +271,9 @@ pub Tokenize :: (text: string) -> Tokens {
             } else if (kind == GtEq && start + 2 < count && bytes[start + 2] == 62) {
                 // `>=>` closes type arguments before `=>`.
                 kind = Gt;
+            } else if (kind == Ellipsis && start + 2 < count && bytes[start + 2] == 60) {
+                kind = HalfOpenRange;
+                end = start + 3;
             } else if (kind != Invalid) {
                 end = start + 2;
             } else {
@@ -301,6 +304,9 @@ pub Tokenize :: (text: string) -> Tokens {
         ends.append(end);
         rows.append(row);
         columns.append(column);
+        // An adjacent caret after an expression is postfix dereference;
+        // spaced carets keep their existing binary xor meaning.
+        dereference := kind == Xor && kept && start == offset;
         offset = end;
         if (kind == Comment) {
             at := start;
@@ -338,7 +344,7 @@ pub Tokenize :: (text: string) -> Tokens {
         }
         // A word after `.` is a member name, which can end a statement; an
         // attribute's name cannot.
-        ends := endings[kind] || (previous == Period && kind >= Package && kind <= Delete);
+        ends := endings[kind] || dereference || (previous == Period && kind >= Package && kind <= Delete);
         insert = (ends && previous != At) || (kind == CloseBrace && closed == Literal) ||
                  (kind == Colon && label);
         if (kind == Invalid) {

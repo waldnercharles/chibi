@@ -195,7 +195,8 @@ if(TARGET Chibi::entity_runtime)
     endif()
     target_compile_definitions(chibi_native_consumer PRIVATE CHIBI_TEST_NATIVE_RUNTIME=1)
     target_compile_options(chibi_native_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_native_consumer>)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_native_consumer>
+        "${CHIBI_TOOL_ROOT}/src/host/native_libraries.c")
     target_link_libraries(test_tools PRIVATE Chibi::player Chibi::engine Chibi::entity_runtime Chibi::comparison_capabilities Chibi::conversion_capabilities Chibi::host_native_default
         Chibi::physics_runtime Chibi::physics3d_runtime Chibi::material_runtime Chibi::task_pool_runtime
         Chibi::spatial_runtime Chibi::tilemap_runtime Chibi::mesh_runtime)

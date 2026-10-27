@@ -107,6 +107,12 @@ static bool int_field(const pin_value *row, const char *name, int expected)
     REQUIRE(read(row, name, &value) && value.type == PIN_I32 && value.i == expected);
     return true;
 }
+static bool collection_field(const pin_value *row, uint64_t expected)
+{
+    pin_value value;
+    REQUIRE(read(row, "collection", &value) && value.type == PIN_U64 && value.u64 == expected);
+    return true;
+}
 static bool bool_field(const pin_value *row, const char *name, bool expected)
 {
     pin_value value;
@@ -193,7 +199,8 @@ static bool type_at(const pin_value *types, const pin_value *ids, int index, scr
         int_field(row, "container", (int)expected.container) &&
         int_field(row, "flags", bits(expected.flags)) &&
         id_field(row, "nominal_slot", ids, expected.nominal) &&
-        id_field(row, "parameter_slot", ids, expected.parameter)
+        id_field(row, "parameter_slot", ids, expected.parameter) &&
+        collection_field(row, expected.collection)
     );
     return true;
 }
@@ -328,7 +335,8 @@ static int pool_id(pools *p, uint64_t id)
 static bool same_type(script_type a, script_type b)
 {
     return a.storage == b.storage && a.container == b.container &&
-           a.flags == b.flags && a.nominal == b.nominal && a.parameter == b.parameter;
+           a.flags == b.flags && a.nominal == b.nominal &&
+           a.parameter == b.parameter && a.collection == b.collection;
 }
 static int pool_type(pools *p, script_type type)
 {
@@ -356,7 +364,8 @@ static bool pack_pools(int b, pools *p, pin_value *types, pin_value *ids)
             put(&a->items[i], "container", integer(t.container)) &&
             put(&a->items[i], "flags", integer(bits(t.flags))) &&
             put(&a->items[i], "nominal_slot", integer(n)) &&
-            put(&a->items[i], "parameter_slot", integer(r))
+            put(&a->items[i], "parameter_slot", integer(r)) &&
+            put(&a->items[i], "collection", (pin_value){ .type = PIN_U64, .u64 = t.collection })
         );
     }
     pin_array *id = pin_array_snapshot_allocate(&input, PIN_U64, NULL, p->ni);
@@ -587,14 +596,16 @@ static bool compare_added(const pin_union *update, const script_catalog_type *d,
 {
     const pin_union *p;
     const pin_array *a;
-    REQUIRE(update->count == 1 && union_data(&update->values[0], 11, &p));
+    REQUIRE(update->count == 1 && union_data(&update->values[0], 13, &p));
     REQUIRE(
         p->values[1].type == PIN_BOOL && p->values[1].b && p->values[2].type == PIN_U64 &&
         p->values[2].u64 == d->id && p->values[3].type == PIN_STR &&
         !strcmp(pin_text(p->values[3]).bytes, d->name) &&
-        typed_value(&p->values[4], d->type) && p->values[5].type == PIN_I32 &&
-        p->values[5].i == (int)d->size && p->values[6].type == PIN_BOOL &&
-        p->values[6].b == d->internal &&
+        typed_value(&p->values[4], d->type) &&
+        typed_value(&p->values[11], d->element_type) && p->values[12].type == PIN_U64 &&
+        p->values[12].u64 == d->element_type.collection &&
+        p->values[5].type == PIN_I32 && p->values[5].i == (int)d->size &&
+        p->values[6].type == PIN_BOOL && p->values[6].b == d->internal &&
         list(&p->values[7], PIN_STRUCT, d->variant_count, &a)
     );
     if (d->variant_count) {
@@ -613,6 +624,7 @@ static bool compare_added(const pin_union *update, const script_catalog_type *d,
             int_field(r, "storage", v->type.storage) &&
             int_field(r, "container", v->type.container) &&
             int_field(r, "flags", bits(v->type.flags)) &&
+            collection_field(r, v->type.collection) &&
             id_field(r, "nominal_slot", &p->values[9], v->type.nominal) &&
             id_field(r, "parameter_slot", &p->values[9], v->type.parameter) &&
             id_field(r, "tag_slot", &p->values[9], v->tag) &&

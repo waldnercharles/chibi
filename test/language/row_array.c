@@ -812,7 +812,7 @@ TEST_CASE(row_array_local_arrays_update_in_place)
              "append(values, int(9)); return 5; }\n"
              "pub Order :: () -> int {\n"
              "    xs: int[] = [1];\n"
-             "    xs = append(xs, Bump(xs));\n"
+             "    xs = append(xs, Bump(ref xs));\n"
              "    return length(xs) * 10 + xs[length(xs) - 1];\n"
              "}\n"
              "pub Rows :: (n: int) -> int {\n"

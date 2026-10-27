@@ -1,0 +1,12 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-signature-reader-chibi
+revision b43d01b1321abfb3ddfe6294314a078bf1f1e38c 0 modified
+Running: signature_reader_type_syntax_and_publication_state_match (OK) (3.209736 secs)
+Running: signature_reader_units_names_diagnostics_and_uses_match Signature reader:29 raw trees,58 calls,9 publications, max39 nodes/depth12
+(OK) (0.319246 secs)
+Running: signature_reader_deep_parentheses_do_not_consume_callable_depth Signature deep parentheses:65 wrappers,173 bytes,283 nodes/depth138,2 calls
+(OK) (0.648205 secs)
+Running: signature_reader_readings_survive_all_producer_owners (OK) (0.040402 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 201417
+Test command wall time: 4.462s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

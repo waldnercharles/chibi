@@ -760,6 +760,16 @@ and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
 overlapping, and passes 96 assertions in 1.4 seconds. Compare builds using the
 same C selectors and identical build flags, retaining their timing output.
 
+`--native-workload-benchmark LAUNCHER` builds the four kernels in
+`test/native_aot/workloads` with `chibi build --native` and the LLVM tools in
+`CHIBI_LLVM_BIN`, checks each program's status against the VM's, and prints the
+build time, peak memory, size and median run time at O0 and O2. Each build
+runs under a Linux subreaper, so a timeout, an interrupt or the launcher's exit
+kills every process the build started, including those in groups or sessions of
+their own; a fake-launcher case checks that no descendant survives. It runs on Linux x86-64, the one target the driver admits,
+and skips the builds without `CHIBI_LLVM_BIN`. `make benchmark` passes the Release launcher and
+`NATIVE_LLVM_BIN`. It takes about 70 seconds.
+
 `--asset-values` runs nine cases on KDL asset text and the native value tree:
 typed scalars at the 64-bit limits, slashdash, annotated arrays and source
 ranges; reals and floats that read back bit for bit and write plainly;

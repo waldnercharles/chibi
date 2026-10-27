@@ -1,0 +1,20 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-record-prepared
+revision b43d01b1321abfb3ddfe6294314a078bf1f1e38c 0 modified
+Running: wire_record_limit (OK) (0.000189 secs)
+Running: string_wire_bytes (OK) (0.000484 secs)
+Running: record_prepared_scalar_owners (OK) (0.019351 secs)
+Running: record_prepared_array_owners (OK) (0.024419 secs)
+Running: record_prepared_shared_headers_fit_default_work (OK) (0.117325 secs)
+Running: record_prepared_finds_header_types_by_name (OK) (1.061793 secs)
+Running: record_prepared_proof_keeps_each_header_check (OK) (0.000145 secs)
+Running: record_prepared_failed_proofs_do_not_survive_retry (OK) (0.000160 secs)
+Running: record_prepared_proofs_do_not_outlive_native_catalog (OK) (0.000212 secs)
+Running: record_prepared_recursive_codec (OK) (0.000807 secs)
+Running: record_prepared_repeated_headers_charge_hash_work (OK) (0.000854 secs)
+Running: record_prepared_packed_rows_survive_collection (OK) (0.000256 secs)
+Running: record_prepared_table_rejections (OK) (0.001244 secs)
+Running: record_prepared_legacy_and_failure_atomicity (OK) (0.012353 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 3633
+Test command wall time: 1.405s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

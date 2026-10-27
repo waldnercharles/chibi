@@ -1,0 +1,16 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-package-compiler-chibi-actions
+revision b43d01b1321abfb3ddfe6294314a078bf1f1e38c 0 modified
+Running: package_compiler_exports_native_actions (OK) (0.005128 secs)
+Running: package_compiler_keeps_unavailable_native_functions (OK) (0.002315 secs)
+Running: package_compiler_rejects_nonzero_handle_defaults (OK) (0.001985 secs)
+Running: package_compiler_calls_native_actions (OK) (145.274379 secs)
+Running: package_compiler_keeps_numeric_native_overloads_untyped_until_selected (OK) (136.303093 secs)
+Running: package_compiler_watches_overloaded_native_defaults (OK) (132.821885 secs)
+Running: package_compiler_rejects_native_action_arguments (OK) (135.077545 secs)
+Running: package_compiler_rejects_native_name_collisions (OK) (136.905147 secs)
+Running: package_compiler_watches_native_owner_arguments (OK) (144.525029 secs)
+Running: package_compiler_keeps_function_assert_binding_identity (OK) (147.099654 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 4628
+Test command wall time: 992.474s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

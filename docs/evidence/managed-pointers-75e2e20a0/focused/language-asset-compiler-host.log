@@ -1,0 +1,19 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-asset-compiler-host
+revision 75e2e20a052a906ff458f03719094b75b8e17693 0 modified
+authored rejection: game:assets/Assets.chibi:24:21 Assertion failed: Duplicate asset object field
+compile rejection: :2:34 Unknown function 'Missing'
+Running: asset_source_keeps_the_16_mib_source_bound (OK) (0.011957 secs)
+Running: asset_source_public_scene_build_and_reuse (OK) (24.290219 secs)
+Running: asset_source_authored_validation_rejects_duplicate_field (OK) (25.774935 secs)
+Running: asset_source_malformed_build_reports_position (OK) (12.487925 secs)
+Running: asset_source_native_scene_values_own_their_storage (OK) (46.615004 secs)
+Running: asset_source_native_prototype_owns_name_and_identity (OK) (22.783414 secs)
+Running: asset_source_native_readers_keep_kind_shape_and_catalog_checks (OK) (72.233472 secs)
+Running: asset_source_public_writer_preserves_kinds_and_owned_source (OK) (31.248381 secs)
+Running: asset_source_writer_and_reader_reject_nul_without_mutation (OK) (47.300278 secs)
+Running: asset_source_writer_canonical_scene_reaches_owned_native_reader (OK) (32.755734 secs)
+Running: asset_source_writer_restores_outer_scope_on_budget_and_cancel (OK) (8.778707 secs)
+===============================================================
+Summary: Passed: 11 Failed: 0 Total: 11 Suites: 0 Asserts: 99
+Test command wall time: 328.822s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

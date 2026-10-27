@@ -1,0 +1,7 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-package-compiler-chibi-literals
+revision 75e2e20a052a906ff458f03719094b75b8e17693 0 modified
+Running: package_compiler_reads_float_literals (OK) (143.049597 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 4090
+Test command wall time: 145.971s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

@@ -1,0 +1,14 @@
+configure-native: running (log: .chibi/logs/1793115544769414836-24337-configure-native.log)
+configure-native: ok (3.1s; log: .chibi/logs/1793115544769414836-24337-configure-native.log)
+build: running (log: .chibi/logs/1793115547935342409-24366-build.log)
+build: ok (10.4s; log: .chibi/logs/1793115547935342409-24366-build.log)
+configure-native: running (log: .chibi/logs/1793115558436446016-24409-configure-native.log)
+configure-native: ok (3.0s; log: .chibi/logs/1793115558436446016-24409-configure-native.log)
+build: running (log: .chibi/logs/1793115561491288748-24438-build.log)
+build: ok (0.2s; log: .chibi/logs/1793115561491288748-24438-build.log)
+Running: bootstrap_recovers_from_a_clean_checkout (OK) (0.555560 secs)
+Running: bootstrap_load_recovers_changed_sources_without_writing 1 compiler sources changed since revision 9122397a52df38eca4fc54cbf5e8406a3e8432d9; the artifact compiled a compiler of 10004201 bytes, sha256 342b2dce91fae794fd9436cd3a46c47dfcfeb8f2cce5a5f852e30ab51312859a, that compiles them to itself
+(OK) (465.527856 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 17
+Test command wall time: 493.740s; includes in-test fixture setup; external configuration/build excluded.

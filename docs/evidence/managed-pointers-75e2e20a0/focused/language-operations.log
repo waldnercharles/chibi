@@ -1,0 +1,27 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-operations
+revision 75e2e20a052a906ff458f03719094b75b8e17693 0 modified
+Running: operations_preserve_unknown_abi (OK) (0.000071 secs)
+Running: operations_generate_checked_bindings_and_conservative_contracts (OK) (0.002355 secs)
+Running: operations_reject_malformed_shared_declarations (OK) (0.000518 secs)
+Running: operations_reject_raw_scalar_semantic_metadata (OK) (0.001003 secs)
+Running: operations_reject_dormant_raw_metadata (OK) (0.001158 secs)
+Running: operations_reject_binding_mismatch_and_distinguish_opaque_abi (OK) (0.001136 secs)
+Running: operation_identity_invalidates_source_reuse (OK) (0.016651 secs)
+Running: operations_reject_state_access_calls (OK) (0.002734 secs)
+Running: operations_reject_custom_lowerer_binding_mismatch (OK) (0.002462 secs)
+Running: owner_alias_preserves_invocation_effects (OK) (0.002574 secs)
+Running: operations_preserve_context_and_delay_lifetimes_on_both_backends operations phase=dispatch backend=bytecode bytecode=1 sljit=0 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=dispatch backend=bytecode bytecode=1 sljit=0 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=dispatch backend=bytecode bytecode=1 sljit=0 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=resume backend=bytecode bytecode=1 sljit=0 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=dispatch backend=bytecode bytecode=1 sljit=0 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=dispatch backend=sljit bytecode=0 sljit=1 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=dispatch backend=sljit bytecode=0 sljit=1 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=dispatch backend=sljit bytecode=0 sljit=1 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=resume backend=sljit bytecode=0 sljit=1 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+operations phase=dispatch backend=sljit bytecode=0 sljit=1 wasm=0 inspected_sljit=0 inspected_wasm=0 inspection_fallback=0 size_fallback=0 overflow=0
+(OK) (0.013661 secs)
+===============================================================
+Summary: Passed: 11 Failed: 0 Total: 11 Suites: 0 Asserts: 264
+Test command wall time: 0.180s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

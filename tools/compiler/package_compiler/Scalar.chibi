@@ -322,6 +322,13 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
         if (callee >= 0) {
             return callables[callee].result;
         }
+        operator := ScalarTextOperator(forest, text, node);
+        if (operator == facts.TextSlice) {
+            return TextStorage;
+        }
+        if (operator != 0) {
+            return IntStorage;
+        }
         return NumberConversionType(forest, text, node);
     }
     if (Is(forest, node, "unary_expression")) {
@@ -511,6 +518,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     if (callee < 0 && NumberConversionType(forest, text, node) != 0) {
         return ScalarConverted(forest, text, callables, params, callable, names, types, members, constants, node, storage, output);
     }
+    if (callee < 0 && ScalarTextOperator(forest, text, node) != 0) {
+        return ScalarText(forest, text, callables, params, callable, names, types, members, constants, node, output);
+    }
     if (!Is(forest, Field(forest, node, "function"), "identifier") || callee < 0) {
         return ScalarOperands.Failed(Diagnose(forest, Field(forest, node, "function"), 0,
                                               "scalar proof calls only functions of its own source"));
@@ -559,6 +569,57 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         count += 1;
     }
     output.append(ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name));
+    return ScalarOperands.Built(output);
+}
+// The Text operator of `node` when it calls text_byte_length, text_byte_at
+// or text_slice by name, 0 otherwise. When no function of the source has
+// that name, EmitBody binds the call to that runtime native.
+ScalarTextOperator :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    function := Field(forest, node, "function");
+    if (!Is(forest, function, "identifier")) {
+        return 0;
+    }
+    name := Text(forest, text, function);
+    if (name == "text_byte_length") {
+        return facts.TextLength;
+    }
+    if (name == "text_byte_at") {
+        return facts.TextByte;
+    }
+    if (name == "text_slice") {
+        return facts.TextSlice;
+    }
+    return 0;
+}
+// Appends the rows of `node`, a text native's call, after `rows`: its string,
+// then its int index, or start and count, each converted as the call step
+// converts it, then its Text row.
+ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+               callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+               node: int, rows: facts.Row[]) -> ScalarOperands {
+    operator := ScalarTextOperator(forest, text, node);
+    expected := [TextStorage, IntStorage, IntStorage];
+    output := rows;
+    count: int = 0;
+    for (argument in Members(forest, Field(forest, node, "arguments"))) {
+        if (Is(forest, argument, "named_argument")) {
+            return ScalarOperands.Failed(Diagnose(forest, argument, 0,
+                                                  "scalar proof passes a text native's arguments in order"));
+        }
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, argument,
+                             argument, expected[count], expected[count], facts.Clamp, output) {
+            case .Failed(diagnostic):
+                return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                output = built;
+        }
+        count += 1;
+    }
+    type := facts.IntType;
+    if (operator == facts.TextSlice) {
+        type = facts.StringType;
+    }
+    output.append(ScalarAt(forest, node, facts.TextRow, type, operator, count, ""));
     return ScalarOperands.Built(output);
 }
 // Appends the rows of `node`, the variant `U.V` or `U.V(payloads)` of union
@@ -1442,15 +1503,65 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[]) -> bool {
     }
     return true;
 }
-// Whether every host call builds a record from its fields, copies one or
-// writes a field through a reference to it, or makes a union, tests its
-// variant or reads a payload, the only host calls a record or union of this
-// subset takes, and every traced root is a record or union.
+// Whether `native` is the runtime's text_byte_length, text_byte_at or
+// text_slice.
+ScalarTextNative :: (native: ResolvedNative) -> bool {
+    return NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
+           NativeNameMatches(native, "text_slice");
+}
+// The text natives of `natives`, each with its ports at their place among
+// ScalarTextPorts's.
+ScalarTextNatives :: (natives: ResolvedNative[]) -> ResolvedNative[] {
+    kept: ResolvedNative[] = [];
+    first: int = 0;
+    for (native in natives) {
+        if (ScalarTextNative(native)) {
+            row := native;
+            row.first = first;
+            kept.append(row);
+            first += native.parameters + native.results;
+        }
+    }
+    return kept;
+}
+// The ports of the text natives of `natives`, in order.
+ScalarTextPorts :: (natives: ResolvedNative[], ports: ResolvedPort[]) -> ResolvedPort[] {
+    kept: ResolvedPort[] = [];
+    for (native in natives) {
+        if (ScalarTextNative(native)) {
+            count := native.parameters + native.results;
+            for (index in 0..<count) {
+                kept.append(ports[native.first + index]);
+            }
+        }
+    }
+    return kept;
+}
+// The identity pairs of the text natives of `natives`, in order.
+ScalarTextIdentities :: (natives: ResolvedNative[], identities: u64[]) -> u64[] {
+    kept: u64[] = [];
+    for (index in 0..<length(natives)) {
+        if (ScalarTextNative(natives[index])) {
+            kept.append(identities[2 * index]);
+            kept.append(identities[2 * index + 1]);
+        }
+    }
+    return kept;
+}
+// Whether every host call reads a string's bytes through a text native,
+// builds a record from its fields, copies one or writes a field through a
+// reference to it, or makes a union, tests its variant or reads a payload,
+// the only host calls a string, record or union of this subset takes, and
+// every traced root is a record or union.
 ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
     admitted := [ConstructIntrinsic, SnapshotIntrinsic, ReferenceMakeIntrinsic, ReferenceFieldIntrinsic,
                  ReferenceWriteIntrinsic, UnionMakeIntrinsic, UnionKeepIntrinsic, UnionTestIntrinsic,
                  UnionGetIntrinsic];
     for (host in hosts) {
+        // A text native, the only natives EmitBody is given.
+        if (host.intrinsic == 0 && host.linked >= 0) {
+            continue;
+        }
         intrinsic := host.intrinsic;
         if (intrinsic >= InResult) {
             intrinsic -= InResult;
@@ -1478,18 +1589,18 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
 // authored calls' arguments and results.
 ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
                 types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
-                ops: Ops, target: Target) -> syntax.Diagnostic {
-    natives: ResolvedNative[] = [];
-    ports: ResolvedPort[] = [];
-    identities: u64[] = [];
+                ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
+                identities: u64[]) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
     aliases: Name[] = [];
     empty_names: string[] = [];
+    // No native writes: the text natives are pure.
+    writes := resize([int(0)], length(natives));
     switch EmitBody(forest, text, 0, callables, params, types, members, constants, natives, ports, identities,
                     operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
-                    empty_names, indices, BodyContext.Known([]), indices, ops, target) {
+                    empty_names, indices, BodyContext.Known(writes), indices, ops, target) {
         case .Failed(diagnostic):
             return diagnostic;
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
@@ -1505,7 +1616,8 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
 // The functions of the module, each checked as a whole before the next.
 ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[],
                  params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], ops: Ops,
-                 target: Target, is_library: bool) -> ScalarOperands {
+                 target: Target, natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[],
+                 is_library: bool) -> ScalarOperands {
     for (callable in callables) {
         rejected := ScalarSignature(forest, types, params, callable);
         if (rejected >= 0) {
@@ -1532,7 +1644,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     }
     for (function in 0..<length(callables)) {
         emitted := ScalarEmits(forest, text, key, callables, params, types, members, constants, solid, function,
-                               ops, target);
+                               ops, target, natives, ports, identities);
         if (emitted.message != "") {
             return ScalarOperands.Failed(emitted);
         }
@@ -1670,7 +1782,8 @@ ScalarNul :: (text: string) -> syntax.Diagnostic {
 // prepared module records, so a native object compiled from the rows can be
 // bound to that module. No rows when the source has syntax errors, which the
 // package snapshot reports, or declares no library.
-ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target) -> facts.Row[] {
+ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives: ResolvedNative[],
+                  ports: ResolvedPort[], identities: u64[]) -> facts.Row[] {
     forest: snapshot.SnapshotNode[] = [];
     top: int = -1;
     switch raw.Parse(text) {
@@ -1718,7 +1831,8 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target) -> facts
     }
     members: TypeMember[] = [];
     constants: ConstDecl[] = [];
-    switch ScalarModule(forest, text, path, callables, params, empty_types, members, constants, ops, target, true) {
+    switch ScalarModule(forest, text, path, callables, params, empty_types, members, constants, ops, target, natives,
+                        ports, identities, true) {
         case .Failed(diagnostic):
             return ScalarFailure(path, text, diagnostic);
         case .Built(rows):
@@ -1739,16 +1853,29 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target) -> facts
     }
 }
 
-pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[]) -> facts.Row[] {
+// The facts rows of `text` at `path`. `names`, `natives`, `ports` and
+// `identities` are the host's instruction names and native catalog, as
+// Compile takes them. Its text_byte_length, text_byte_at and text_slice are
+// the only natives the source calls; any other is an unknown function.
+pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[], natives: Native[],
+                      ports: Port[], identities: u64[]) -> facts.Row[] {
     ops := ResolveOps(names, false);
     if (!Complete(ops)) {
         return ScalarFailure(path, text, ScalarStart("scalar proof requires a complete instruction catalog"));
     }
+    resolved := LegacyNatives(natives, names);
+    resolved_ports := LegacyPorts(ports);
+    if (!NativeInputValid(resolved, resolved_ports, identities, resize([int(0)], length(natives)))) {
+        return ScalarFailure(path, text, ScalarStart("scalar proof requires a complete native catalog"));
+    }
+    text_natives := ScalarTextNatives(resolved);
+    text_ports := ScalarTextPorts(resolved, resolved_ports);
+    text_identities := ScalarTextIdentities(resolved, identities);
     nul := ScalarNul(text);
     if (nul.message != "") {
         return ScalarFailure(path, text, nul);
     }
-    library_rows := ScalarLibrary(path, text, ops, target);
+    library_rows := ScalarLibrary(path, text, ops, target, text_natives, text_ports, text_identities);
     if (length(library_rows) > 0) {
         return library_rows;
     }
@@ -1779,7 +1906,7 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
                             return ScalarFailure(path, text, diagnostic);
                         case .Collected(callables, params, types, members, constants):
                             switch ScalarModule(nodes, text, document.key, callables, params, types, members,
-                                                constants, ops, target, false) {
+                                                constants, ops, target, text_natives, text_ports, text_identities, false) {
                                 case .Failed(diagnostic):
                                     return ScalarFailure(path, text, diagnostic);
                                 case .Built(rows):

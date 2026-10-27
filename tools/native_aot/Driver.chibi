@@ -708,7 +708,8 @@ Native :: () -> int {
     collect := Join([work, "/collect.json"]);
     rows := Join([work, "/rows.json"]);
     module := Join([work, "/module.ll"]);
-    request := Join(["[\"/project\",", Quote(names[0]), ",", Quote(text), ",", facts[0], ",", facts[2], "]"]);
+    request := Join(["[\"/project\",", Quote(names[0]), ",", Quote(text), ",", facts[0], ",", facts[2], ",",
+                     facts[3], ",", facts[4], ",", facts[5], "]"]);
     if (!build.write_file(collect, request) ||
         Invoke(host, artifact, "0xebbc43e46769862a", collect, "", "120000") != 0 ||
         !build.write_file(rows, build.last_stdout())) {

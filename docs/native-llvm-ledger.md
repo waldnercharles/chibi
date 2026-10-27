@@ -52,7 +52,7 @@ the last milestones to the toolchain plan's acceptance and deletion rules.
 | M1 Comparisons and guarded returns | done | The 96-source corpus, `language-scalar-native` | none |
 | M2 Numeric semantics and scalar types | done | Every integer width under D1, `number` and `f64` under D3 | none |
 | M3 Structured control flow and calls | in progress | Loops, integer switches, recursion under D4, literal parameter defaults (#704) | named arguments (W1), multiple and named results (W2) |
-| M4 Aggregates and native ownership | in progress | Records of number and bool fields; unions of number and bool payloads; string values and equality (W3); package constants (W12) | text natives and allocating text (W4 to W6), arrays (W7) and maps (W8) after pointers (#695) and collections (#694), managed fields (W9), pointers (W10), failure reporting (W11), under D9 and D10 |
+| M4 Aggregates and native ownership | in progress | Records of number and bool fields; unions of number and bool payloads; string values and equality (W3); package constants (W12); text natives (W4) | allocating text (W5, W6), arrays (W7) and maps (W8) after pointers (#695) and collections (#694), managed fields (W9), pointers (W10), failure reporting (W11), under D9 and D10 |
 | M5 Modules and platform ABI | in progress | Scalar modules on macOS arm64 and Windows x64 (W15) | imports (W13), native catalog calls (W14), calls from the VM into native code (W16) |
 | M6 AoT driver and diagnostics | in progress | `Driver.Object` and `Driver.Build`; `chibi build --native` (W17, #736); linking with `ld.lld` and no `cc` on Linux x86-64 (W18, #735), and cross-linking macOS arm64 and Windows x64 programs on Linux (`--target`); DWARF line tables with `-g` (W19) | workloads for strings and arrays (W20) |
 | M7 Native self-hosting | not started | | the compiler-source census (W21), native stage one and two (W22), recovery without `cmake`, `clang` or `gcc` (W23) |
@@ -74,7 +74,7 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W1 | Named arguments | stage one's authored named arguments, which it rejects as unsupported syntax | Call rows' argument order | LLVM lane | no | corpus `named_argument` accepted; a module calling with names in every order and with defaults agrees with both VMs at O0 and O2, in the order the call step evaluates them | no | none | decided: follow the call step |
 | W2 | Multiple and named results | records (done) | Return rows with several values; an internal struct return | LLVM lane | no | corpus `named_result` accepted; a module returning and destructuring two to four results of mixed types agrees at O0 and O2 | no | none | decided: an internal LLVM struct, as records are |
 | W3 | String values: literals, parameters, results, locals, `==` and `!=` | none | `native_abi.TextType`, the runtime's `pin_string` layout | LLVM lane | no | corpus `string_equality` accepted; a strings module (escapes, UTF-8, embedded NUL, empty, prefixes) agrees at O0 and O2; O2 objects have no undefined symbols; a C test pins `pin_string`'s layout | yes (#740) | none | decided: D10, by-value `{ ptr, i32 }` descriptors, no allocation |
-| W4 | Text natives: byte length, byte reads, slices, `for` over a string | W3 | native catalog input to `CollectScalar` | LLVM lane | no | `core:strings` functions copied into a module (Compare, HasPrefix, Index, Split's counting) agree at O0 and O2 | no | none | proposed: a slice is a view of its source's bytes |
+| W4 | Text natives: byte length, byte reads, slices | W3 | native catalog input to `CollectScalar` | LLVM lane | no | 17 `core:strings` functions copied into a module (Compare, HasPrefix, Index, LastIndex, Count, EqualFold and others) agree with both VMs at O0 and O2 | yes (#764) | none | decided: a slice is a view of its source's bytes, as Odin's and Rust's string slices are; a byte outside is -1 and a slice clamps, as the runtime's natives do. `for` over a string waits: no census function uses it |
 | W5 | Native runtime library and context | W3 | `chibi_rt_*` symbol inventory, versioned with the prepared ABI; hidden context parameter | LLVM lane with the runtime owner | partly: the runtime side once the symbol list is fixed | an allocating object links against the runtime library; an inventory test lists exactly the reviewed symbols; ASan leak and use-after-free cases; an out-of-range index ends the program with its named message | no | none | decided: D9, D10 |
 | W6 | Allocating text: `format_text`, joins, case conversion | W4, W5 | W5's allocation calls | LLVM lane | no | the same `core:strings` functions that build strings agree at O0 and O2, with no leak under ASan | no | none | open: which text natives are lowered inline and which call the runtime |
 | W7 | Arrays (M4d) | #694, #695 merged; W5 | #694's copy, drop and make-unique operations; runtime spans | LLVM lane | no | copy independence, growth, empty arrays, out-of-range panics, `for` over arrays, at O0 and O2 and under ASan | no | #694, #695 (dependencies) | decided: D10 spans |
@@ -104,7 +104,7 @@ Lanes:
 - Ready now, beside the LLVM lane: W16 (VM-to-native calls),
   W17 and W18 (driver and linking), W20 (measurements), W21 (census) and W24
   (game scenarios). Each touches files the LLVM lane does not.
-- In the LLVM lane, in order: W3, W12 and W27 (done), then W4, W2, W5, W6,
+- In the LLVM lane, in order: W3, W12, W27 and W4 (done), then W2, W5, W6,
   W11 and W19. W1 follows stage one's named arguments.
   W5's runtime side may split off once its symbol list is fixed.
 - After #694 and #695 land: W7, W10, W8 and W9, in that order; W14 and W13
@@ -114,29 +114,27 @@ Lanes:
 
 ## Census
 
-The [census](native-compiler-census.md) (W21) gives each of the 639 functions
+The [census](native-compiler-census.md) (W21) gives each of the 645 functions
 in the self-hosted compiler's bootstrap closure the first rejection the
 producer gives it, after flattening imports (W13) and constants (W12) into one
-package. With the producer's size limits removed (W27) on top of native
-strings (W3, #740), constants (W12, #751) and native libraries (#753), 27
-October 2026:
+package. With text natives (W4, #764) on top of native strings (W3, #740),
+constants (W12, #751), native libraries (#753) and the producer's size limits
+removed (W27, #754), 27 October 2026:
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 437 |
-| none | passes the producer | 81 |
-| W9 | strings and arrays in records and unions | 68 |
-| W4 | text natives | 39 |
+| W7 | array parameters, results and natives | 442 |
+| none | passes the producer | 120 |
+| W9 | strings and arrays in records and unions | 69 |
 | W6 | `format_text` | 9 |
 | none yet | other forms | 5 |
 
-W27 removed all 119 of its first blockers. Of those, 11 now pass and the rest
-stop at the next package's feature: 81 at W7's arrays, 21 at W9's managed
-fields, 5 at W4's text natives and 1 at another form. The closure also lost
-four functions that were W7's, the producer's helpers for the bounds. The 5 others build a
-`string[]` literal, which waits for W7. Of the 81 that pass, 33 need neither
-flattening. In all, 322 functions name another package and 265 a package
-constant.
+All 39 functions whose first blocker was a text native now pass: the
+`core:strings` readers and their callers. The closure gained W4's six producer
+functions, five at W7's arrays and one at W9's managed fields. The 5 others
+build a `string[]` literal, which waits for W7. Of the 120 that pass, 63 need
+neither flattening. In all, 324 functions name another package and 267 a
+package constant.
 
 The producer checks every signature before any body, so a count shows the
 first blocker only, and the next one appears when its package lands. Rerun
@@ -167,7 +165,7 @@ and update this table.
 | Records of number and bool fields: literals in any field order, copies, field reads, field and compound field writes, record parameters, results and locals | `Steps.chibi` struct literal and member steps, `src/types/record.c` | native | none in the subset: a record is an LLVM value of its fields in declaration order, so a copy is a value and needs no allocator | none | `language-scalar-native`: the records module builds, copies, writes and passes `number`, `bool`, `u8`, `f64` and `i64` fields through calls, nested calls and a loop, and `nested_records` passes one through 50 nested calls, against both VMs at O0 and O2; `language-package-compiler-chibi-scalar` checks the record rows and 22 malformed variants; `llvm_native` IR checks and 8 changed-plan rejections; corpus `struct` rejects a `string` field |
 | Unions of number and bool payloads: variants with and without payloads made, passed, returned and assigned, `is` and `is not` tests, switches on a union variable whose arms bind payloads, with a default arm or covering every variant | `Steps.chibi` union make and `MatchStep`, `Body.chibi` switch arms, `IsStep`, `src/types/union.c` | native | none in the subset: a union is an LLVM value of its int tag then all its variants' payloads, so a copy is a value and needs no allocator | none | `language-scalar-native`: the unions module makes, passes, returns, assigns, tests and switches on `number`, `int`, `bool`, `f64` and `u8` payloads, in a loop with `break` and `continue`, against both VMs at O0 and O2; `language-package-compiler-chibi-scalar` checks the union rows, 25 malformed variants and the subset's union rejections |
 | Unions with string, array, union or record payloads, `is` bindings, switches on union expressions, and records with string, array, union or record fields | `Steps.chibi`, `src/types/record.c`, `union.c` | stage one | managed fields (M4) | allocator, copy | corpus `struct` rejects; `language-package-compiler-chibi-scalar` rejects each union form |
-| Strings | `src/types/text.c`, `Facts.chibi` `StringType` | native: literals, parameters, results, locals, assignments, defaults and `==`/`!=` | text natives (W4), allocating text (W6), strings in records and unions (W9), and exported string signatures (D5) | none for W4; the runtime library (W5) for W6 | corpus `string_equality` accepted and `string_result` rejects a string entry; `language-scalar-native`'s strings module (escapes, UTF-8, an embedded NUL, empty text, prefixes, a default and a loop) at O0 and O2 against both VMs, with no undefined symbol; `language-package-compiler-chibi-scalar` checks the string rows and 10 malformed variants, and rejects a string record field and union payload, and `llvm_native`'s text constants, comparison and 5 changed-plan rejections; a C static assertion pins `pin_string` to `native_abi.TextType()` |
+| Strings | `src/types/text.c`, `Facts.chibi` `StringType` | native: literals, parameters, results, locals, assignments, defaults, `==`/`!=` and the text natives `text_byte_length`, `text_byte_at` and `text_slice` (W4) | `for` over a string, allocating text (W6), strings in records and unions (W9), and exported string signatures (D5) | the runtime library (W5) for W6 | corpus `string_equality` accepted and `string_result` rejects a string entry; `language-scalar-native`'s strings module (escapes, UTF-8, an embedded NUL, empty text, prefixes, a default and a loop) at O0 and O2 against both VMs, with no undefined symbol; `language-package-compiler-chibi-scalar` checks the string rows and 10 malformed variants, and rejects a string record field and union payload, and `llvm_native`'s text constants, comparison and 5 changed-plan rejections; the same selector checks the text rows and 11 malformed variants, a named argument and another native, and `llvm_native`'s text reads and 7 changed-plan rejections; `language-package-compiler-chibi-native` runs `core:strings` functions over byte reads inside and outside a string, slices clamped at each end and slices of slices; a C static assertion pins `pin_string` to `native_abi.TextType()` |
 | Arrays, bounds checks | `Steps.chibi`, `src/types/array.c` | stage one | managed arrays, bounds traps (M4) | allocator | corpus `array_result` rejects |
 | Maps | `Maps.chibi` | stage one (restricted) | managed maps (M4) | hashing, allocator | corpus `map_result` rejects |
 | References and `ref` loops | `References.chibi`, `src/execution/borrow.c` | stage one (partial) | borrow lowering (M4) | borrow checks | corpus `reference` rejects |

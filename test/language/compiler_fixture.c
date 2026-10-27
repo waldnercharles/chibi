@@ -870,3 +870,107 @@ bool compiler_fixture_pack_nodes(
     }
     return true;
 }
+/* A zeroed row of `identity`'s record `name`. */
+static pin_value record_row(
+    const compiler_fixture *fixture,
+    int backend,
+    const char *identity,
+    const char *name,
+    arena *input
+)
+{
+    const pin_record *shape = compiler_fixture_record(fixture, backend, identity, name, input);
+    assert(shape);
+    pin_value row = { .type = PIN_STRUCT,
+                      .ptr = arena_alloc(input, shape->type.size),
+                      .record = shape,
+                      .type_name = shape->type.name };
+    memset(row.ptr, 0, shape->type.size);
+    return row;
+}
+static pin_value rows(arena *input, const pin_value *items, int count, pin_type type)
+{
+    const pin_record *shape = count && type == PIN_STRUCT ? items[0].record : NULL;
+    pin_array *
+        array = pin_array_snapshot_allocate(input, type, shape ? shape->type.name : NULL, count);
+    array->record = shape;
+    for (int i = 0; i < count; i++) {
+        array->items[i] = items[i];
+    }
+    return (pin_value){ .type = type,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = array,
+                        .record = shape,
+                        .type_name = shape ? shape->type.name : NULL };
+}
+/* A port's storage as Compile takes it: a generic port's type is the one its
+ * call infers (0), a wildcard takes each argument's own type (-2), and -1 is
+ * a type the compiler cannot pass. */
+static int port_storage(script_type type)
+{
+    unsigned inferred = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC;
+    if (type.flags & SCRIPT_TYPE_UNTYPED) {
+        if (type.flags & ~inferred) {
+            return -1;
+        }
+        return type.flags & SCRIPT_TYPE_GENERIC ? 0 : -2;
+    }
+    return type.flags || type.nominal || type.storage == PIN_FLOW ? -1
+                                                                  : (int)type.storage;
+}
+bool compiler_fixture_natives(
+    const compiler_fixture *fixture,
+    int backend,
+    const char *identity,
+    const script_catalog *catalog,
+    arena *input,
+    pin_value out[3],
+    pin_value *effects
+)
+{
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL, *masks = NULL;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
+            c->flow.kind != SCRIPT_FLOW_ACCESS_NONE || c->outcome_count ||
+            (c->effects & SCRIPT_EFFECT_SUSPEND)) {
+            continue;
+        }
+        pin_value function = record_row(fixture, backend, identity, "Native", input);
+        REQUIRE(put(input, &function, "name", text(input, c->name)));
+        REQUIRE(put(input, &function, "first", integer(acount(ports))));
+        REQUIRE(put(input, &function, "parameters", integer(c->parameter_count)));
+        REQUIRE(put(input, &function, "results", integer(c->result_count)));
+        REQUIRE(put(input, &function, "variadic", boolean(c->variadic || c->variadic_optional)));
+        apush(functions, function);
+        apush(masks, integer((int)c->effects));
+        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
+            const script_catalog_parameter *declared = j < c->parameter_count
+                                                         ? &c->parameters[j]
+                                                         : &c->results[j - c->parameter_count];
+            pin_value port = record_row(fixture, backend, identity, "Port", input);
+            REQUIRE(
+                put(input, &port, "name", text(input, declared->name ? declared->name : ""))
+            );
+            REQUIRE(put(input, &port, "storage", integer(port_storage(declared->type))));
+            REQUIRE(put(input, &port, "container", integer((int)declared->type.container)));
+            REQUIRE(put(input, &port, "c_string", boolean(declared->c_string)));
+            apush(ports, port);
+        }
+        apush(identities, ((pin_value){ .type = PIN_U64, .u64 = c->id }));
+        apush(
+            identities,
+            ((pin_value){ .type = PIN_U64,
+                          .u64 = script_catalog_capability_abi(catalog, c) })
+        );
+    }
+    out[0] = rows(input, functions, acount(functions), PIN_STRUCT);
+    out[1] = rows(input, ports, acount(ports), PIN_STRUCT);
+    out[2] = rows(input, identities, acount(identities), PIN_U64);
+    *effects = rows(input, masks, acount(masks), PIN_I32);
+    afree(functions);
+    afree(ports);
+    afree(identities);
+    afree(masks);
+    return true;
+}

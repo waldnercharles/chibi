@@ -1013,7 +1013,10 @@ ScalarDeclared :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, value,
                                     InferredNumberStorage(forest, text, value));
     }
-    resolved := ReadType(forest, text, types, names, callable.package, declared);
+    // Reading a type may add an optional or pointer type; this analysis
+    // keeps none of them.
+    table := types;
+    resolved := ReadType(forest, text, &table, names, callable.package, declared);
     if (resolved.container != 0) {
         return 0;
     }
@@ -1032,7 +1035,8 @@ ScalarDeclaredRecord :: (forest: snapshot.SnapshotNode[], text: string, callable
         }
         return ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
     }
-    return ReadType(forest, text, types, names, callable.package, declared).record;
+    table := types;
+    return ReadType(forest, text, &table, names, callable.package, declared).record;
 }
 // The operand rows of the assignment `node` to field `field` of a variable
 // of record `record` after `rows`, as StatementStep writes a field: a read of
@@ -1326,7 +1330,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     }
                     rows.append(ScalarAt(forest, binding, facts.LocalRow, type, variables, 2, name));
                     rows.extend(read);
-                    bound: Name = {name: name, place: LocalPlace, index: variables, storage: members[field].storage,
+                    bound: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: members[field].storage,
                                    container: 0, record: -1, writable: false, node: binding};
                     names.append(bound);
                     variables += 1;
@@ -1409,7 +1413,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     row.literal += i64(facts.RangeReverse);
                 }
                 // As the range step binds it, read-only, for the body alone.
-                binding: Name = {name: name, place: LocalPlace, index: variables, storage: IntStorage, container: 0,
+                binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: IntStorage, container: 0,
                                  record: -1, writable: false, node: declared};
                 names.append(binding);
                 variables += 1;
@@ -1476,7 +1480,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             type := ScalarValueType(types, storage, 0, record);
             row = ScalarAt(forest, statement, facts.LocalRow, type, variables, count, name);
             // As StatementStep binds it, after its value.
-            binding: Name = {name: name, place: LocalPlace, index: variables, storage: storage, container: 0,
+            binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: storage, container: 0,
                              record: record, writable: true, node: declared};
             names.append(binding);
             variables += 1;

@@ -300,8 +300,8 @@ Object :: () -> int {
 // same inputs reuse it and a changed input never replaces a prior program.
 // Compiler host entries are FNV-1a hashes of their package symbols:
 // package_compiler's CompileClosure (0x140a9546d9e8c296) and CollectScalar
-// (0xebbc43e46769862a), and native_emitter's Emit (0xcd64c452c8ed1e6f) and
-// Diagnose (0x6ae396cf0d691de).
+// (0xebbc43e46769862a), and native_emitter's Emit (0xcd64c452c8ed1e6f),
+// EmitLines (0xaf22e1821461cc9c) and Diagnose (0x6ae396cf0d691de).
 EmitterPackages :: () -> string[] {
     return ["scalar_facts", "scalar_llvm", "llvm_native", "native_abi"];
 }
@@ -404,8 +404,8 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
 // Removes the work directory's known files, then the directory.
 Finish :: (work: string, status: int) -> int {
     ok := true;
-    for (name in ["target.json", "compile.json", "emitter.chibip", "collect.json", "rows.json", "module.ll",
-                  "diagnostic.txt"]) {
+    for (name in ["target.json", "compile.json", "emitter.chibip", "collect.json", "rows.json", "lines.json",
+                  "module.ll", "diagnostic.txt"]) {
         ok = build.remove(Join([work, "/", name])) && ok;
     }
     if (!build.remove(work) || !ok) {
@@ -495,8 +495,8 @@ EmitterKey :: (host: string, artifact: string, compiler: string, core: string) -
 
 Native :: () -> int {
     arguments := build.arguments();
-    if (length(arguments) != 6) {
-        build.report("usage: COMPILER_HOST COMPILER CORE ROOT LLVM 0|2 (absolute paths)");
+    if (length(arguments) != 7) {
+        build.report("usage: COMPILER_HOST COMPILER CORE ROOT LLVM 0|2 lines|none (absolute paths)");
         return 2;
     }
     host := Tool(arguments[0]);
@@ -504,10 +504,11 @@ Native :: () -> int {
     core := arguments[2];
     root := arguments[3];
     mode := arguments[5];
+    debug := arguments[6];
     artifact := Join([compiler, "/bootstrap/compiler.chibip"]);
     if (host == "" || !Path(compiler) || !Path(core) || build.file_kind(artifact) != "file" || !Path(root) ||
-        build.file_kind(root) != "directory" || (mode != "0" && mode != "2")) {
-        build.report("native: a compiler host, the SDK's compiler and core, a package folder and 0 or 2 are required");
+        build.file_kind(root) != "directory" || (mode != "0" && mode != "2") || (debug != "lines" && debug != "none")) {
+        build.report("native: a compiler host, the SDK's compiler and core, a package folder, 0 or 2 and lines or none are required");
         return 2;
     }
     opt := Tool(Join([arguments[4], "/opt"]));
@@ -531,10 +532,15 @@ Native :: () -> int {
     source := Join([root, "/", names[0]]);
     text := build.read_file(source);
     emitter_key := EmitterKey(host, artifact, compiler, core);
+    // Line tables name the source's directory, so a moved package rebuilds.
+    directory := "";
+    if (debug == "lines") {
+        directory = root;
+    }
     key := build.hash_text(strings.Join([
         "chibi-native 1", names[0], build.hash_text(text), emitter_key,
         build.hash_file(Join([build.root(), "/Driver.chibi"])), build.hash_file(opt), build.hash_file(llc),
-        build.hash_file(lld), mode
+        build.hash_file(lld), mode, debug, directory
     ], "\n"));
     folder := Join([root, "/build/native"]);
     output := Join([folder, "/O", mode, "-", strings.Slice(key, 0, 16)]);
@@ -584,7 +590,20 @@ Native :: () -> int {
         build.report(Join(["native: the compiler did not read ", source, ": ", build.last_stderr()]));
         return Finish(work, 1);
     }
-    if (Invoke(host, emitter, "0xcd64c452c8ed1e6f", rows, module, "120000") != 0) {
+    // With line tables, the emitter also takes the source's directory.
+    callable := "0xcd64c452c8ed1e6f";
+    input := rows;
+    if (debug == "lines") {
+        callable = "0xaf22e1821461cc9c";
+        input = Join([work, "/lines.json"]);
+        listed := build.trim(build.read_file(rows));
+        if (!build.write_file(input, Join([strings.Slice(listed, 0, strings.ByteLength(listed) - 1), ",", Quote(root),
+                                           "]"]))) {
+            build.report(Join(["native: cannot write ", input]));
+            return Finish(work, 1);
+        }
+    }
+    if (Invoke(host, emitter, callable, input, module, "120000") != 0) {
         diagnostic := Join([work, "/diagnostic.txt"]);
         if (Invoke(host, emitter, "0x6ae396cf0d691de", rows, diagnostic, "120000") != 0) {
             build.report(Join(["native: ", source, " has no native module: ", build.last_stderr()]));

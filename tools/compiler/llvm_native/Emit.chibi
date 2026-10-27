@@ -42,6 +42,12 @@ pub Record :: struct {
     count: int;
 }
 pub RecordType: int : 32;
+// The source file of a module's line tables and its directory. An empty file
+// emits no debug information, and the module is the same text as without it.
+pub Source :: struct {
+    file: string;
+    directory: string;
+}
 
 // output = literal: a scalar's value or encoding, a record's zero, or a
 // string's text, texts[literal] of the module's text table.
@@ -891,8 +897,8 @@ Declarations :: (code: Instruction[]) -> string {
     return out;
 }
 pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
-             code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[], main: bool,
-             step_budget: int) -> Result {
+             code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
+             source: Source, names: string[], lines: int[], columns: int[], main: bool, step_budget: int) -> Result {
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
     }
@@ -907,6 +913,12 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     }
     if (length(texts) > MaxTexts) {
         return Result.Rejected(-1, format_text("native module holds more than {} texts", MaxTexts));
+    }
+    if (source.file != "" && abi.DebugFormat(target) == "") {
+        return Result.Rejected(-1, "native line tables are Linux x86-64 only");
+    }
+    if (source.file != "" && !Placed(names, lines, columns, length(functions), length(code))) {
+        return Result.Rejected(-1, "native line table differs from its module");
     }
     for (function in 0..<length(functions)) {
         switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, texts,
@@ -936,15 +948,133 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
                           strings.ByteLength(texts[index]) + 1, Escaped(texts[index]));
     }
     out = format_text("{}declare void @llvm.trap()\n{}", out, Declarations(code));
+    debug := source.file != "";
+    compares := Compares(code);
     for (function in 0..<length(functions)) {
-        out = format_text("{}\n{}", out, EmitFunction(functions, function, parameters, slots, locals, code,
-                                                      arguments, records, fields, texts, main, step_budget));
+        text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
+                             texts, main, step_budget);
+        if (debug) {
+            text = Located(text, Subprogram(function), Location(length(functions), compares,
+                                                                functions[function].first_code));
+        }
+        out = format_text("{}\n{}", out, text);
     }
-    if (Compares(code)) {
-        out = format_text("{}\n{}", out, TextEqual());
+    if (compares) {
+        text := TextEqual();
+        if (debug) {
+            text = Located(text, Subprogram(length(functions)), Location(length(functions), true, length(code)));
+        }
+        out = format_text("{}\n{}", out, text);
     }
     // Recursion is unchecked, as Rust's is: each function probes every page
     // of its frame, so running out of stack faults in the guard page below
     // it, which the host reports as a stack overflow.
-    return Result.Emitted(format_text("{}\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n", out));
+    out = format_text("{}\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n", out);
+    if (debug) {
+        out = format_text("{}\n{}", out, Metadata(target, functions, source, names, lines, columns, main, compares));
+    }
+    return Result.Emitted(out);
+}
+
+// Whether line tables name every function and place every instruction.
+Placed :: (names: string[], lines: int[], columns: int[], functions: int, code: int) -> bool {
+    if (length(names) != functions || length(lines) != code || length(columns) != code) {
+        return false;
+    }
+    for (name in names) {
+        if (name == "") {
+            return false;
+        }
+    }
+    for (index in 0..<code) {
+        if (lines[index] < 0 || columns[index] < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+// Debug metadata numbers: the compile unit and its file, the two module flags,
+// the one subroutine type and its empty tuple, a subprogram for each function
+// then the string comparison helper, and a location for each code
+// instruction then the helper's.
+FirstSubprogram: int : 6;
+Subprogram :: (function: int) -> int {
+    return FirstSubprogram + function;
+}
+Location :: (functions: int, compares: bool, instruction: int) -> int {
+    first := Subprogram(functions);
+    if (compares) {
+        first += 1;
+    }
+    return first + instruction;
+}
+// One function's IR with each instruction at its source position. The
+// function is in its subprogram; label p<pc> starts code instruction pc's
+// position, and the entry and trap blocks are at its first instruction's. A
+// helper without p labels is wholly at `first`.
+Located :: (text: string, scope: int, first: int) -> string {
+    out: string[] = [];
+    at := first;
+    pc := 0;
+    for (line in strings.Split(text, "\n")) {
+        placed := line;
+        if (strings.HasPrefix(line, "define ")) {
+            placed = strings.Join([strings.TrimSuffix(line, " {"), format_text(" !dbg !{} ", scope), "{"], "");
+        } else if (strings.HasPrefix(line, "p") && strings.HasSuffix(line, ":")) {
+            at = first + pc;
+            pc += 1;
+        } else if (line == "trap:") {
+            at = first;
+        } else if (strings.HasPrefix(line, "  ")) {
+            placed = format_text("{}, !dbg !{}", line, at);
+        }
+        out.append(placed);
+    }
+    return strings.Join(out, "\n");
+}
+// The line tables' metadata. DWARF names no Chibi language, so the unit is
+// C99's, as Odin's is; only line tables are emitted, as rustc's
+// line-tables-only does, so the subroutine type lists no types. The exported
+// entry is external and every other function local to the unit; the string
+// comparison helper is artificial, at line 0.
+Metadata :: (target: abi.Target, functions: Function[], source: Source, names: string[], lines: int[], columns: int[],
+             main: bool, compares: bool) -> string {
+    out := "!llvm.dbg.cu = !{!0}\n!llvm.module.flags = !{!2, !3}\n";
+    out = format_text("{}!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: \"chibi\", isOptimized: false, runtimeVersion: 0, emissionKind: LineTablesOnly)\n",
+                      out);
+    out = format_text("{}!1 = !DIFile(filename: \"{}\", directory: \"{}\")\n!2 = {}\n", out, Escaped(source.file),
+                      Escaped(source.directory), abi.DebugFormat(target));
+    out = strings.Join([out, "!3 = !{i32 2, !\"Debug Info Version\", i32 3}\n!4 = !DISubroutineType(types: !5)\n",
+                        "!5 = !{}\n"], "");
+    for (function in 0..<length(functions)) {
+        line := lines[functions[function].first_code];
+        flags := "DISPFlagDefinition";
+        if (function != 0) {
+            flags = "DISPFlagLocalToUnit | DISPFlagDefinition";
+        }
+        out = format_text("{}!{} = distinct !DISubprogram(name: \"{}\", linkageName: \"{}\", scope: !1, file: !1, line: {}, type: !4, scopeLine: {}, spFlags: {}, unit: !0)\n",
+                          out, Subprogram(function), Escaped(names[function]), Symbol(function, main), line, line,
+                          flags);
+    }
+    if (compares) {
+        out = format_text("{}!{} = distinct !DISubprogram(name: \"chibi_scalar.text_equal\", scope: !1, file: !1, line: 0, type: !4, scopeLine: 0, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition, unit: !0)\n",
+                          out, Subprogram(length(functions)));
+    }
+    for (function in 0..<length(functions)) {
+        shape := functions[function];
+        for (pc in shape.first_code..<shape.first_code + shape.code) {
+            out = format_text("{}!{} = !DILocation(line: {}, column: {}, scope: !{})\n", out,
+                              Location(length(functions), compares, pc), lines[pc], columns[pc],
+                              Subprogram(function));
+        }
+    }
+    if (compares) {
+        code := 0;
+        for (shape in functions) {
+            code += shape.code;
+        }
+        out = format_text("{}!{} = !DILocation(line: 0, scope: !{})\n", out, Location(length(functions), true, code),
+                          Subprogram(length(functions)));
+    }
+    return out;
 }

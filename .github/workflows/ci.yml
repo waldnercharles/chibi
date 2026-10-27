@@ -121,7 +121,12 @@ jobs:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
         run: python3 tools/test_policy.py --timeout 180 tool build-timings
       - name: Tooling and process integrations
-        run: make test-tools TOOLS_C_COMPILER=clang-18
+        env:
+          CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
+        run: |
+          mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
+          make test-tools TOOLS_C_COMPILER=clang-18
+          ./build-tools/test_tools --case-timings
       # Release helpers are already built. Avoid their repeated planner entry;
       # retain the selected-profile Build.chibi invocation for Linux coverage.
       # Keep groups sequential: they share fixtures and build outputs.
@@ -159,6 +164,7 @@ jobs:
             ${{ runner.temp }}/native-profile.json
             ${{ runner.temp }}/native-build.log
             ${{ runner.temp }}/build-timings/
+            ${{ runner.temp }}/case-timings/
           if-no-files-found: warn
           retention-days: 7
       - name: Report compiler cache statistics
@@ -247,7 +253,12 @@ jobs:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
         run: python3 tools/test_policy.py --timeout 180 tool build-timings
       - name: Tooling and process integrations
-        run: make test-tools TOOLS_C_COMPILER="$CC"
+        env:
+          CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings
+        run: |
+          mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
+          make test-tools TOOLS_C_COMPILER="$CC"
+          ./build-tools/test_tools --case-timings
       # The selected-profile build and Release helpers above already produced
       # these drivers. Run the same groups without re-entering either planner.
       # Keep groups sequential: they share fixtures and build outputs.
@@ -270,6 +281,7 @@ jobs:
             ${{ runner.temp }}/native-profile.json
             ${{ runner.temp }}/native-build.log
             ${{ runner.temp }}/build-timings/
+            ${{ runner.temp }}/case-timings/
           if-no-files-found: warn
           retention-days: 7
       - name: Report compiler cache statistics

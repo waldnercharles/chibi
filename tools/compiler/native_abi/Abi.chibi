@@ -22,6 +22,17 @@ pub WindowsX64 :: () -> Target {
 Same :: (target: Target, supported: Target) -> bool {
     return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
 }
+// The module flag that selects the target's debug information format: DWARF
+// 4 on Linux, as rustc emits there. Line tables are Linux-only so far, so
+// other targets have no format. Line tables also need LLVM's own
+// "Debug Info Version" flag, which no target changes.
+pub DebugFormat :: (target: Target) -> string {
+    if (!Same(target, LinuxX64())) {
+        return "";
+    }
+    return "!{i32 7, !\"Dwarf Version\", i32 4}";
+}
+
 // Reject other targets rather than silently applying another target's ABI.
 // The backend supplies its data layout; no unverified layout is embedded here.
 pub Supported :: (target: Target) -> bool {

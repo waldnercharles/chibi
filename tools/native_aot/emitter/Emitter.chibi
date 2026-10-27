@@ -4,11 +4,15 @@ import facts "project:scalar_facts"
 import scalar "project:scalar_llvm"
 import strings "core:strings"
 
-// `chibi build --native`'s entries over CollectScalar's rows. Both return raw
-// bytes the compiler host writes unchanged: the module's IR, or why it has
+// `chibi build --native`'s entries over CollectScalar's rows. Each returns
+// raw bytes the compiler host writes unchanged: the module's IR, or why it has
 // none.
 pub Emit :: (rows: facts.Row[]) -> u8[] {
     return scalar.EmitBytes(rows);
+}
+// Emit with line tables, for a source in `directory`.
+pub EmitLines :: (rows: facts.Row[], directory: string) -> u8[] {
+    return scalar.EmitLinesBytes(rows, directory);
 }
 
 pub Diagnose :: (rows: facts.Row[]) -> u8[] {

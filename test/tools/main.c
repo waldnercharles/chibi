@@ -1,7 +1,11 @@
+#if !defined(__EMSCRIPTEN__)
+#define pu_run_test tool_pico_run_test
+#endif
 #define PICO_UNIT_IMPLEMENTATION
 #include "test/tools/fixture.h"
 #include "test/tools/graph_dispatch.h"
 #include "third_party/pico_headers/pico_unit.h"
+#undef pu_run_test
 
 #include <stdio.h>
 #include <string.h>
@@ -547,8 +551,20 @@ bool test_model_import_active()
 }
 #endif
 
+void test_tool_case_timings(const char *self);
+int tool_case_timing_probe(const char *mode);
+
 int main(int argc, char **argv)
 {
+    if (argc == 3 && !strcmp(argv[1], "--case-timing-probe")) {
+        return tool_case_timing_probe(argv[2]);
+    }
+    if (argc == 2 && !strcmp(argv[1], "--case-timings")) {
+        tool_init();
+        test_tool_case_timings(argv[0]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc == 3 && !strcmp(argv[1], "--native-aot-driver")) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();

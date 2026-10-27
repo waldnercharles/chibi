@@ -1,9 +1,0 @@
-$ python3 tools/test_policy.py tool language-package-compiler-chibi
-revision 4690dd69b330ed60f2a4769b4f40d0885c460080 0 modified
-Running: package_compiler_compound_diagnostics_match_stage_zero (OK) (97.646171 secs)
-Running: package_compiler_builds_runnable_packages (OK) (127.484089 secs)
-Running: package_compiler_asserts_without_native_capability (OK) (95.067079 secs)
-===============================================================
-Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 17290
-Test command wall time: 324.823s; includes in-test fixture setup; external configuration/build excluded.
-exit 0

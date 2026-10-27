@@ -1,0 +1,14 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool native-catalog
+revision 509acba10b9e12220e61ec0f58f2cf13a5d0b559 0 modified
+Running: native_application_catalog_links_generated_kernels_and_input_reads (OK) (0.019633 secs)
+Running: native_catalog_ranges_come_from_validated_target_layouts (OK) (0.000098 secs)
+Running: native_catalog_preserves_builtin_relationship_identity_and_traits (OK) (0.000051 secs)
+Running: native_catalog_identity_lookup_preserves_order_and_duplicate_errors (OK) (0.001697 secs)
+Running: language_catalog_identity_lookup_keeps_namespaces_zero_and_order (OK) (0.001711 secs)
+Running: language_catalog_retains_and_validates_merged_relationships (OK) (0.000157 secs)
+Running: language_catalog_preserves_owned_template_and_specialization_metadata (OK) (0.000108 secs)
+Running: native_project_migration_finalizes_generated_accessors_retryably (OK) (0.166117 secs)
+===============================================================
+Summary: Passed: 8 Failed: 0 Total: 8 Suites: 0 Asserts: 386
+Test command wall time: 0.387s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

@@ -50,6 +50,7 @@
 #include <string.h>
 #include <unistd.h>
 #if defined(__linux__) && defined(__x86_64__)
+#include "host/native_libraries.h"
 #include "host/process.h"
 #include "host/stack_overflow.h"
 #include "native_calls.h"
@@ -16838,9 +16839,45 @@ static bool exports_small_alone(const execution_native_manifest *manifest)
     REQUIRE(result == 19);
     return true;
 }
-/* NATIVE_CALLS_LIBRARY compiled natively at O0 and O2: its object's
+/* `library` loaded as the only library of a game's natives folder: its
  * manifest names every function an entry can take, and bound to the
- * library's module it gives a running Probe the VM's states. */
+ * library's module it gives a running Probe the VM's states. A missing
+ * folder holds no libraries, and a file not named for its manifest fails. */
+static bool library_loads_and_agrees(const char *directory, const char *library)
+{
+    char folder[PATH_MAX], misnamed[PATH_MAX], shipped[PATH_MAX],
+        reason[PATH_MAX + 64], error[PATH_MAX + 64] = "";
+    snprintf(folder, sizeof folder, "%s/natives", directory);
+    snprintf(misnamed, sizeof misnamed, "%s/Other.so", folder);
+    snprintf(shipped, sizeof shipped, "%s/Native.so", folder);
+    snprintf(reason, sizeof reason, "native library %s has no chibi_natives_Other", misnamed);
+    native_file(misnamed);
+    native_file(shipped);
+    native_file(folder);
+    native_libraries *libraries = native_libraries_open(folder, error, sizeof error);
+    REQUIRE(libraries);
+    int count = 1;
+    native_libraries_manifests(libraries, &count);
+    REQUIRE(!count);
+    native_libraries_close(libraries);
+    REQUIRE(!mkdir(folder, 0700) && !rename(library, misnamed));
+    REQUIRE(!native_libraries_open(folder, error, sizeof error) && !strcmp(error, reason));
+    REQUIRE(!rename(misnamed, shipped));
+    libraries = native_libraries_open(folder, error, sizeof error);
+    if (!libraries) {
+        fprintf(stderr, "%s\n", error);
+    }
+    count = 0;
+    const execution_native_manifest *const
+        *manifests = libraries ? native_libraries_manifests(libraries, &count) : NULL;
+    bool agreed = count == 1 && manifests[0]->abi == EXECUTION_NATIVE_ABI &&
+                  manifests[0]->count == 5 && exports_small_alone(manifests[0]) &&
+                  native_calls_agree(manifests[0]);
+    native_libraries_close(libraries);
+    REQUIRE(!remove(shipped) && !rmdir(folder) && agreed);
+    return true;
+}
+/* NATIVE_CALLS_LIBRARY compiled natively at O0 and O2 runs in a scene. */
 static bool library_runs_in_a_scene(const char *directory)
 {
     pin_value rows;
@@ -16855,16 +16892,8 @@ static bool library_runs_in_a_scene(const char *directory)
     bool agreed = true;
     for (int level = 0; agreed && level <= 2; level += 2) {
         char library[PATH_MAX];
-        agreed = native_library(directory, "library", ir, "", level, library);
-        void *opened = agreed ? dlopen(library, RTLD_NOW | RTLD_LOCAL) : NULL;
-        const execution_native_manifest *manifest = opened ? dlsym(opened, "chibi_natives_Native")
-                                                           : NULL;
-        agreed = manifest && manifest->abi == EXECUTION_NATIVE_ABI &&
-                 manifest->count == 5 && exports_small_alone(manifest) &&
-                 native_calls_agree(manifest);
-        if (opened) {
-            dlclose(opened);
-        }
+        agreed = native_library(directory, "library", ir, "", level, library) &&
+                 library_loads_and_agrees(directory, library);
     }
     free(ir);
     REQUIRE(agreed);

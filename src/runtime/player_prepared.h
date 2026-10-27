@@ -20,6 +20,9 @@ typedef struct
 {
     ecs_component_catalog components;
     const execution_prepared_linker *linker;
+    /* The game's native library manifests (see player_spec). */
+    const execution_native_manifest *const *natives;
+    int native_count;
     execution_log_service log;
     player_resource_host resources;
     size_t decoded_budget; /* Zero selects 64 MiB; otherwise caller-selected. */

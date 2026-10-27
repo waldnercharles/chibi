@@ -14019,8 +14019,9 @@ static const struct
     /* Named results: two to four of mixed types, assigned, returned in
      * order, each value assigned before the next is evaluated, by a bare
      * return or at the end, read by name from a call or a local; and one
-     * named result, a number or a record, which is its call's value:
-     * 132 + 146 + 10012 + 22 + 108 + 30 + 49. */
+     * named result, a number or a record, which is its call's value and
+     * also projected by name, returned and read through:
+     * 132 + 146 + 10012 + 22 + 108 + 30 + 37649. */
     { "named_results",
       "package scalar\n"
       "Vec :: struct { x: int; y: int; }\n"
@@ -14075,9 +14076,14 @@ static const struct
       "    return t + t.doubled + Twice(1).doubled + int(w) + w.doubled;\n"
       "}\n"
       "Make :: (v: int) -> (p: Vec) { p.x = v; p.y = v + 1; return; }\n"
-      "Records :: () -> int { m := Make(3); return m.x + m.y * 10 + Make(5).y; "
+      "Forward :: () -> Vec { return Make(7).p; }\n"
+      "Records :: () -> int {\n"
+      "    m := Make(3);\n"
+      "    q := Make(2).p;\n"
+      "    return m.x + m.y * 10 + Make(5).y + Make(5).p.y * 100 + Forward().x "
+      "* 1000 + q.y * 10000;\n"
       "}\n",
-      10499 },
+      48099 },
     /* A record through 50 nested calls. Each call takes one compiler frame,
      * as an int call does, so this stays within the 64 frames stage zero
      * gives the compiler; two frames per call would exceed them. */

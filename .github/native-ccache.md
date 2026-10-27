@@ -77,3 +77,24 @@ References:
 - [Separate restore/save actions](https://github.com/actions/cache/blob/v4/caching-strategies.md)
 - [GitHub cache scope and security](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching)
 - [ccache configuration and hashed inputs](https://ccache.dev/manual/latest.html)
+
+## Let trusted main snapshots finish
+
+CI keeps its existing concurrency group, including workflow, ref, event and
+fast/sanitizer profile. An incoming push to `main` does not cancel the active
+run in that group: it can complete tests and reach the unchanged success-only
+native cache saves. The default single pending slot retains the newest queued
+run, replacing older pending work; this does not run every main push in parallel
+or introduce a long queue. No paid capacity or runner count is added.
+
+PR runs still cancel superseded runs. Manual and scheduled runs retain their
+previous cancellation behavior in their separate event/profile groups, so they
+do not interrupt the main-push group. A failed or timed-out main run still cannot
+save. Completing an older active main run can cost its remaining runner minutes
+and delay validation of the newest main commit; the benefit is avoiding repeated
+partial cold builds whose cancellation prevents publishing reusable objects.
+This is not a measured cost or speed claim.
+
+The offline native-profile fixture checks the expression's event/ref truth table
+and preserves group isolation. GitHub owns pending-slot scheduling; no local
+fixture claims to execute the service queue. See [official concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).

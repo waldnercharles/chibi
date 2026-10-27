@@ -48,6 +48,28 @@ class ProfileTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 profile.settings(value)
 
+    def test_concurrency_finishes_main_push_but_cancels_superseded_other_runs(self):
+        text = (ROOT / '.github/workflows/ci.yml').read_text()
+        block = text.split('\nconcurrency:\n', 1)[1].split('\nenv:', 1)[0]
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ (github.event_name == 'schedule' || inputs.sanitizers == true) && 'sanitizer' || 'fast' }}", block)
+        self.assertNotIn('queue:', block)  # Default: one running and newest pending, not queue:max.
+        line = next(line for line in block.splitlines() if 'cancel-in-progress:' in line)
+        expression = line.split('${{', 1)[1].split('}}', 1)[0]
+        tokens = shlex.split(expression)
+        self.assertEqual(tokens, ['github.event_name', '!=', 'push', '||',
+                                  'github.ref', '!=', 'refs/heads/main'])
+        for event, ref, expected in (
+                ('push', 'refs/heads/main', False),
+                ('push', 'refs/heads/topic', True),
+                ('pull_request', 'refs/pull/733/merge', True),
+                ('workflow_dispatch', 'refs/heads/main', True),
+                ('schedule', 'refs/heads/main', True)):
+            with self.subTest(event=event, ref=ref):
+                context = {'github.event_name': event, 'github.ref': ref}
+                actual = any(context[field] != value
+                             for field, _, value in (tokens[:3], tokens[4:]))
+                self.assertEqual(actual, expected)
+
     def test_workflow_preserves_shared_jobs_and_groups(self):
         text = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn("cron: '0 8 * * *'", text)
@@ -64,15 +86,28 @@ class ProfileTests(unittest.TestCase):
             block = block.split('\n  windows:', 1)[0] if job == 'native-macos' else block.split('\n  native-macos:', 1)[0]
             self.assertIn('timeout-minutes: 45', block)
             self.assertIn('make test-tools', block)
-            self.assertIn('make -j1 test-native test-materials test-projects test-language-all', block)
+            groups = ['python3 tools/test_policy.py group ' + name
+                      for name in ('native', 'materials', 'projects', 'language')]
+            positions = [block.index(command) for command in groups]
+            self.assertEqual(positions, sorted(positions))
+            self.assertTrue(all(block.count(command) == 1 for command in groups))
+            selectors = block.split('- name: Native, material, project and language selectors', 1)[1].split('      - name:', 1)[0]
+            self.assertIn('shell: bash', selectors)
+            self.assertIn('set -e', selectors)
+            self.assertNotIn('if:', selectors)  # Default success gate must not be weakened.
+            if job == 'native':
+                self.assertLess(block.index('make test-build'), positions[0])
+            else:
+                self.assertNotIn('make test-build', block)
             self.assertIn('run: python3 .github/verify-native-profile.py', block)
             release = block.index('run: make build-release')
             build = block.index('make build BUILD_TARGET=')
             verify = block.index('run: python3 .github/verify-native-profile.py')
             self.assertLess(release, build)
             self.assertLess(build, verify)
+            self.assertLess(verify, positions[0])
             self.assertIn('chibi-compiler-host', block[release:build])
-            self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 2)
+            self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 2 if job == 'native' else 1)
         self.assertNotIn('continue-on-error:', text.split('  native:\n')[1].split('  windows:\n')[0])
 
 

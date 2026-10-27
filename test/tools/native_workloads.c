@@ -1,4 +1,5 @@
 #include "host/process.h"
+#include "support/array.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -12,6 +13,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -41,7 +43,6 @@ enum
     RUNS = 3,
     BUILD_SECONDS = 300,
     RUN_SECONDS = 60,
-    STOP_SECONDS = 2,
 };
 
 static char suite[256], launcher[1024], llvm[1024];
@@ -59,49 +60,113 @@ typedef struct
     long peak_kb;
 } measured;
 
-/* Runs `executable` in a process group of its own, so wait4 reports the peak
- * resident memory of the largest process in it. The group is the fixture's
- * owned process while it runs, so an interrupt kills it; a timeout sends it
- * SIGTERM, then SIGKILL, and whatever it leaves behind is killed on exit.
- * The status is -1 unless the executable exits within `seconds`. */
+/* Signals every descendant of this process, found through the parents /proc
+ * lists, so a process that moved to a group or session of its own is found
+ * too. */
+static void signal_descendants(int sig)
+{
+    int *pids = NULL, *parents = NULL, *tree = NULL;
+    DIR *proc = opendir("/proc");
+    assert(proc);
+    for (struct dirent *entry; (entry = readdir(proc));) {
+        int pid = atoi(entry->d_name), parent;
+        char name[64], line[1024];
+        snprintf(name, sizeof name, "/proc/%d/stat", pid);
+        FILE *file = pid > 0 ? fopen(name, "r") : NULL;
+        if (!file) {
+            continue;
+        }
+        char *end = fgets(line, sizeof line, file) ? strrchr(line, ')') : NULL;
+        fclose(file);
+        if (end && sscanf(end + 1, " %*c %d", &parent) == 1) {
+            apush(pids, pid);
+            apush(parents, parent);
+        }
+    }
+    closedir(proc);
+    apush(tree, getpid());
+    for (int i = 0; i < acount(tree); i++) {
+        for (int j = 0; j < acount(pids); j++) {
+            if (parents[j] == tree[i]) {
+                apush(tree, pids[j]);
+                kill(pids[j], sig);
+            }
+        }
+    }
+    afree(pids);
+    afree(parents);
+    afree(tree);
+}
+
+/* Kills and reaps every descendant. As a subreaper this process adopts the
+ * orphans of each one it kills, so the tree is gone once nothing is left to
+ * reap. */
+static void reap_descendants()
+{
+    for (;;) {
+        signal_descendants(SIGKILL);
+        pid_t reaped = waitpid(-1, NULL, WNOHANG);
+        if (reaped < 0) {
+            assert(errno == ECHILD);
+            return;
+        }
+        if (!reaped) {
+            struct timespec pause = { .tv_nsec = 1000000 };
+            nanosleep(&pause, NULL);
+        }
+    }
+}
+
+/* Runs `executable` as a child of a subreaper, so wait4 reports the peak
+ * resident memory of the largest process the child waited for, and every
+ * process it starts, in any process group, stays a descendant. A timeout,
+ * SIGINT or SIGTERM kills them all, and so does the executable's exit; an
+ * interrupt is raised again once they are gone. The status is -1 unless the
+ * executable exits within `seconds`. */
 static measured supervise(const char *executable, const char *const *argv, double seconds)
 {
     const char *envp[] = { "PATH=", NULL };
-    double start = chibi_process_now(), stopping = 0;
+    sigset_t stop, mask;
+    sigemptyset(&stop);
+    sigaddset(&stop, SIGINT);
+    sigaddset(&stop, SIGTERM);
+    assert(!sigprocmask(SIG_BLOCK, &stop, &mask));
+    assert(!prctl(PR_SET_CHILD_SUBREAPER, 1));
+    double start = chibi_process_now();
     pid_t child = fork();
     assert(child >= 0);
     if (!child) {
-        setpgid(0, 0);
         int quiet = open("/dev/null", O_RDWR);
         if (quiet < 0 || dup2(quiet, STDIN_FILENO) < 0 ||
-            dup2(quiet, STDOUT_FILENO) < 0 || dup2(quiet, STDERR_FILENO) < 0) {
+            dup2(quiet, STDOUT_FILENO) < 0 || dup2(quiet, STDERR_FILENO) < 0 ||
+            sigprocmask(SIG_SETMASK, &mask, NULL)) {
             _exit(127);
         }
         execve(executable, (char *const *)argv, (char *const *)envp);
         _exit(127);
     }
-    setpgid(child, child);
-    tool_own_process(child);
-    int status = 0;
+    int status = 0, interrupt = 0;
+    bool stopped = false;
     struct rusage usage;
     pid_t waited;
-    while ((waited = wait4(child, &status, WNOHANG, &usage)) <= 0) {
-        assert(waited == 0 || errno == EINTR);
-        double now = chibi_process_now();
-        if (!stopping && now - start >= seconds) {
-            stopping = now;
-            kill(-child, SIGTERM);
-        }
-        if (stopping && now - stopping >= STOP_SECONDS) {
-            kill(-child, SIGKILL);
-        }
+    while (!(waited = wait4(child, &status, WNOHANG, &usage))) {
         struct timespec pause = { .tv_nsec = 1000000 };
-        nanosleep(&pause, NULL);
+        int caught = sigtimedwait(&stop, NULL, &pause);
+        interrupt = caught > 0 ? caught : interrupt;
+        if (!stopped && (interrupt || chibi_process_now() - start >= seconds)) {
+            stopped = true;
+            signal_descendants(SIGKILL);
+        }
     }
-    kill(-child, SIGKILL);
-    tool_release_process(child);
-    measured result = { .status = !stopping && WIFEXITED(status) ? WEXITSTATUS(status)
-                                                                 : -1,
+    assert(waited == child);
+    reap_descendants();
+    assert(!prctl(PR_SET_CHILD_SUBREAPER, 0));
+    assert(!sigprocmask(SIG_SETMASK, &mask, NULL));
+    if (interrupt) {
+        raise(interrupt);
+    }
+    measured result = { .status = !stopped && WIFEXITED(status) ? WEXITSTATUS(status)
+                                                                : -1,
                         .seconds = chibi_process_now() - start,
                         .peak_kb = usage.ru_maxrss };
     return result;
@@ -234,15 +299,30 @@ static void pause_for(double seconds)
     }
 }
 
-/* A fake launcher leaves a background child that would touch a marker a
- * second later. Supervision must kill it both when the launcher hangs past
- * its timeout and when the launcher exits first. */
+/* A fake launcher leaves two background children that would each touch a
+ * marker a second later: one in the launcher's process group and one that
+ * starts a session of its own, as the build host's children start groups of
+ * their own. Supervision must kill both when the launcher hangs past its
+ * timeout and when the launcher exits first. */
 TEST_CASE(native_workloads_supervision_leaves_no_descendants)
 {
-    char script[1024], marker[1024], text[4096];
+    static const char SETSID[] = "/usr/bin/setsid";
+    REQUIRE(!access(SETSID, X_OK));
+    char script[1024], grouped[1024], detached[1024], text[4096];
     path(script, suite, "launcher.sh");
-    path(marker, suite, "survivor");
-    snprintf(text, sizeof text, "#!/bin/sh\n(/bin/sleep 1; : > '%s') &\nif [ \"$1\" = hang ]; then exec /bin/sleep 30; fi\n", marker);
+    path(grouped, suite, "grouped");
+    path(detached, suite, "detached");
+    snprintf(
+        text,
+        sizeof text,
+        "#!/bin/sh\n"
+        "(/bin/sleep 1; : > '%s') &\n"
+        "%s /bin/sh -c \"/bin/sleep 1; : > '%s'\" &\n"
+        "if [ \"$1\" = hang ]; then exec /bin/sleep 30; fi\n",
+        grouped,
+        SETSID,
+        detached
+    );
     tool_write(script, text);
     REQUIRE(!chmod(script, 0700));
     const char *hang[] = { script, "hang", NULL };
@@ -252,7 +332,8 @@ TEST_CASE(native_workloads_supervision_leaves_no_descendants)
     REQUIRE(supervise(script, leave, 10).status == 0);
     pause_for(1.5);
     struct stat info;
-    REQUIRE(stat(marker, &info) && errno == ENOENT);
+    REQUIRE(stat(grouped, &info) && errno == ENOENT);
+    REQUIRE(stat(detached, &info) && errno == ENOENT);
     return true;
 }
 

@@ -751,9 +751,9 @@ same C selectors and identical build flags, retaining their timing output.
 `test/native_aot/workloads` with `chibi build --native` and the LLVM tools in
 `CHIBI_LLVM_BIN`, checks each program's status against the VM's, and prints the
 build time, peak memory, size and median run time at O0 and O2. Each build
-runs in a process group the fixture owns, so a timeout or an interrupt kills
-everything the launcher started, and a fake-launcher case checks that no
-descendant survives. It runs on Linux x86-64, the one target the driver admits,
+runs under a Linux subreaper, so a timeout, an interrupt or the launcher's exit
+kills every process the build started, including those in groups or sessions of
+their own; a fake-launcher case checks that no descendant survives. It runs on Linux x86-64, the one target the driver admits,
 and skips the builds without `CHIBI_LLVM_BIN`. `make benchmark` passes the Release launcher and
 `NATIVE_LLVM_BIN`. It takes about 70 seconds.
 

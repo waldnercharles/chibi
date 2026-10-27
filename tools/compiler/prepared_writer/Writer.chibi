@@ -574,7 +574,7 @@ Gather :: (module: Module) -> Gathered {
     switch module {
         case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
-                     sources, results, data, hosts, calls, references, components, points, watches, states,
+                     sources, results, data, hosts, commands, calls, references, components, points, watches, states,
                      entries, queries, query_root, query_variable_count, query_filter, descriptions, system_description):
             // Each step is a value Write writes, or -1 - n for named[n].
             named: string[] = [];
@@ -884,7 +884,7 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
                         while (item < last) {
                             command := commands[item];
                             bytes.extend(Words([wide[command.capability], wide[command.abi], 0, 0]));
-                            bytes.extend(Text("", false));
+                            bytes.extend(Text("", false, items, slots));
                             bytes.extend(Words([Zig(command.first), Zig(command.count), wide[command.node], 0,
                                                 Zig(command.result_first), Zig(command.result_count), 0]));
                             item += 1;

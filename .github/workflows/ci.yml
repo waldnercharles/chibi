@@ -87,20 +87,20 @@ jobs:
         run: |
           ccache --show-config
           ccache --zero-stats
+      # validate-project runs chibi_ctl dozens of times, and published-docs and
+      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi launcher target also builds chibi-compile and chibi-player.
+      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Build products and test drivers (selected Debug profile)
         env:
           VERBOSE: '1'
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
-      # validate-project runs chibi_ctl dozens of times, and published-docs and
-      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile and chibi-player.
-      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
-        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host' LIBCLANG_ROOT=/usr/lib/llvm-18
       # Run authored command generation on the Release helper; test_tools and
       # the reference profile remain the selected Debug profile. No products are compiled.
       - name: Graph Debug optimization and command parity (commands only)
@@ -116,8 +116,9 @@ jobs:
         env:
           UBSAN_OPTIONS: halt_on_error=1
         # Keep the default host: scheduled/manual sanitizer runs also exercise
-        # Build.chibi under instrumentation, not only the native products.
-        run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
+        # Build.chibi under instrumentation, not only the native products. Keep
+        # the Release asset generator hosts so the resource is not regenerated.
+        run: make -j1 test-native test-materials test-projects test-language-all ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
       - name: Preserve native profile evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -180,17 +181,17 @@ jobs:
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the Debug builds use.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
-        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
+        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
       # The Release build host runs the outer Build and Graph programs, which
-      # plan the selected Debug build. Products, test drivers and asset compiler
-      # generation use the same profile in fast and sanitizer runs.
+      # plan the selected Debug build. Release hosts also generate the asset
+      # compiler resource; products and test drivers retain the selected profile.
       - name: Build products and test drivers (selected Debug profile)
         env:
           VERBOSE: '1'
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       - name: Preserve failed macOS Graph stage log
@@ -208,7 +209,7 @@ jobs:
       # One make process shares test-build across these targets. Keep groups
       # sequential so they cannot race over fixtures or build outputs.
       - name: Native, material, project and language selectors
-        run: make -j1 test-native test-materials test-projects test-language-all BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT="$LLVM"
+        run: make -j1 test-native test-materials test-projects test-language-all BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM"
       - name: Preserve native profile evidence
         if: always()
         uses: actions/upload-artifact@v4

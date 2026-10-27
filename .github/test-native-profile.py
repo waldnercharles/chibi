@@ -35,11 +35,13 @@ class ProfileTests(unittest.TestCase):
         result = subprocess.check_output(
             ['make', '-n', 'build-release', 'GRAPH_BUILD=1', 'BUILD_HOST=/nonexistent',
              'BUILD_TARGET=chibi-build-host'], cwd=ROOT, text=True,
-            env=dict(os.environ, BUILD_DEBUG_OPTIMIZATION='1', BUILD_DEBUG_FRAME_POINTERS='on'))
+            env=dict(os.environ, BUILD_DEBUG_OPTIMIZATION='1', BUILD_DEBUG_FRAME_POINTERS='on',
+                     ASSET_GENERATOR_HOSTS='/tmp/borrowed-generator-hosts'))
         self.assertIn('BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION=', result)
         self.assertIn('--profile "release"', result)
         self.assertNotIn('--debug-optimization "1"', result)
         self.assertNotIn('--debug-frame-pointers "on"', result)
+        self.assertNotIn('--asset-generator-hosts', result)
 
     def test_invalid_profile_fails_closed(self):
         for value in ('', 'true', 'off', None):
@@ -64,6 +66,13 @@ class ProfileTests(unittest.TestCase):
             self.assertIn('make test-tools', block)
             self.assertIn('make -j1 test-native test-materials test-projects test-language-all', block)
             self.assertIn('run: python3 .github/verify-native-profile.py', block)
+            release = block.index('run: make build-release')
+            build = block.index('make build BUILD_TARGET=')
+            verify = block.index('run: python3 .github/verify-native-profile.py')
+            self.assertLess(release, build)
+            self.assertLess(build, verify)
+            self.assertIn('chibi-compiler-host', block[release:build])
+            self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 2)
         self.assertNotIn('continue-on-error:', text.split('  native:\n')[1].split('  windows:\n')[0])
 
 

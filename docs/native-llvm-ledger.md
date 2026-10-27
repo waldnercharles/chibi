@@ -34,6 +34,23 @@ Each feature has one of these states:
   ([current limits](code-language.md#current-limits));
 - **decision**: blocked on a decision in the register below.
 
+## Milestones
+
+The milestones are the LLVM delivery plan's. This table records where each one
+stands; the rows below it record each feature.
+
+| Milestone | State | What landed | Still open |
+| --- | --- | --- | --- |
+| M0 Inventory and baseline | done | This ledger, the dependency register and the baseline below | none |
+| M1 Comparisons and guarded returns | done | The 96-source corpus, `language-scalar-native` | none |
+| M2 Numeric semantics and scalar types | done | Every integer width under D1, `number` and `f64` under D3 | none |
+| M3 Structured control flow and calls | done | Loops, integer switches, recursion under D4, literal parameter defaults (#704) | named arguments |
+| M4 Aggregates and native ownership | in progress | Records of number and bool fields; unions of number and bool payloads | strings (M4c, next), multiple results, arrays (M4d) and maps (M4e) after pointers (#695) and collections (#694), then strings and arrays inside records and unions (M4f), under D9 and D10 |
+| M5 Modules and platform ABI | not started | | imports, natives, target layout owned in Chibi |
+| M6 AoT driver and diagnostics | not started | | |
+| M7 Native self-hosting | not started | | |
+| M8 Game SDK and default adoption | not started | | |
+
 ## Features
 
 | Feature | Semantic owner | State | Native gap | Runtime need | Selector and evidence |
@@ -112,6 +129,8 @@ decision.
 | D6 | Failure handling | Observable errors, effects and cleanup are preserved. | Native diagnostics, unwinding, status and termination. A provisional trap is not the final answer. | open |
 | D7 | Targets and defaults | Prove each target, and keep current behavior working. | The pinned LLVM (the driver measured LLVM 19's layout, and Ubuntu LLVM 18.1.3 gives the same one), the final linker, and when native output becomes a default. | open, M6 and M8 |
 | D8 | Regression budget | `Run.ps1` caps at 96 sources and 240 seconds (#683 raised it from 180), and M1 reaches 96. M2's folded-constant sources and its generated width and floating modules go in the C selector (`FOLDED_SOURCES`, `widths_agree`, `floats_agree`), and its corpus edits keep 96. | A measured larger cap. | M2 cases in the C selector; cap open |
+| D9 | Out-of-range indexes | Native code panics, as Rust's and Odin's does: it ends the program with a named message. The VM keeps its recoverable error for the editor. The owner declined reading a zero value and dropping the write. (Owner, 26 October 2026.) | The message and the host hook it reports through, with D6. | decided for M4 |
+| D10 | Native ownership | Native code has no ownership scheme of its own. It calls the runtime's value operations (copy, drop, make unique, allocate) as internal `chibi_rt_*` symbols, versioned with the prepared ABI, at the copies and drops the compiler certifies. It reads strings inline and arrays only through runtime spans. A hidden first context parameter carries the heap and the failure slot, and native functions never suspend, so the heap collects only while execution is quiescent. | Lands with M4c; arrays and maps wait for #695 and #694. | set for M4c |
 
 ## Baseline and measurements
 
@@ -169,3 +188,24 @@ After M2's compile rules (24 October 2026, same container):
   The selector now asserts that stage two's compiler marks no function but
   the listed ones as copying its arguments. That reads the module's sharing
   metadata; it neither counts allocations nor proves the timing.
+
+After M3 and M4's records and unions (25 and 26 October 2026, same container):
+
+- `Run.ps1` passed 96 sources on four crossings in 211 s locally with M3
+  and native recursion, and in 255 s with records. Main took 241 s locally
+  and 177 s in CI, so this container runs about 1.36 times slower than CI.
+
+After string interning (#719, 27 October 2026, same container):
+
+- #714 raised the bound on bootstrap closures to 32 MiB. #719 then stores
+  each metadata string once per module in prepared format 22, and the
+  bootstrap closure went from 17,139,143 to 9,112,577 bytes, about half the
+  16 MiB result bound.
+- `language-package-compiler-chibi-bootstrap` takes 62 to 64 s in Release,
+  as before interning. Peak memory went from 4,389 to 4,352 MiB, and from
+  2,025 to 1,964 MiB for a bootstrap load.
+- `Run.ps1` passed 96 sources on four crossings in 195 s locally, and both
+  recovery stages reproduced the checked-in closure.
+- The runtime pin is `compiler-runtime-prepared22-7b151ebc5`. The `ci-seed`
+  label built, published and pinned it on the PR branch (see
+  [starting CI with labels](testing.md#starting-ci-with-labels)).

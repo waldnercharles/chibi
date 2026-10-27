@@ -187,13 +187,8 @@ static void libclang(char include[GRAPH_PATH], char library[GRAPH_PATH])
     free(cache);
 }
 
-/* Runs the graph's Libraries entry over root into build_dir with the options
- * after it; the number of sources it compiled, 0 when it only wrote commands,
- * or -1 when it failed. */
-/* Runs the graph's Libraries entry over root into build_dir with the options
- * in options and then extra; the number of sources it compiled, 0 when it
- * only wrote commands, or -1 when it failed. */
-static int run_graph(
+/* Runs the production Libraries entry and preserves its exact CLI status. */
+static int graph_status(
     const char *root,
     const char *build_dir,
     const char *const *options,
@@ -227,7 +222,17 @@ static int run_graph(
     }
     argv[count] = NULL;
     /* A run compiles up to 27 sources with the profile's sanitizers. */
-    int status = tool_run_within(argv, root, log_path, GRAPH_RUN_SECONDS);
+    return tool_run_within(argv, root, log_path, GRAPH_RUN_SECONDS);
+}
+/* The number of sources compiled, 0 for commands-only, or -1 on failure. */
+static int run_graph(
+    const char *root,
+    const char *build_dir,
+    const char *const *options,
+    const char *const *extra
+)
+{
+    int status = graph_status(root, build_dir, options, extra);
     char *text = tool_read(log_path);
     if (status) {
         fprintf(stderr, "graph failed: %s\n", text ? text : "");
@@ -238,6 +243,178 @@ static int run_graph(
     int compiled = at ? atoi(at + strlen("compiled ")) : 0;
     free(text);
     return compiled;
+}
+
+/* Only explicit rejection cases share an invocation. They return before any
+ * discovery, child process or output write. Native values live until the host
+ * exits, with its original storage/instruction/time limits, so command-writing
+ * and build/rebuild cases still run independently. */
+#define GRAPH_BATCH_CASES 14
+typedef struct
+{
+    const char *build_dir;
+    const char *const *options, *const *extra;
+    int status;
+    const char *diagnostic;
+} graph_case;
+
+static int run_graph_batch(const graph_case *cases, int count)
+{
+    assert(count > 0 && count <= GRAPH_BATCH_CASES);
+    char path[GRAPH_PATH], source[GRAPH_PATH];
+    join(path, CHIBI_SOURCE_ROOT, "tools/toolchain/Graph.chibi");
+    char *graph_source = tool_read(path);
+    assert(graph_source);
+    join(source, suite, "GraphVerification.chibi");
+    FILE *file = fopen(source, "wb");
+    assert(file);
+    assert(fputs(graph_source, file) >= 0);
+    free(graph_source);
+    /* Length-prefixed argv preserves empty values, missing final values and
+     * repetitions exactly; no shell splitting, escaping or sentinel options. */
+    assert(
+        fprintf(
+            file,
+            "\nVerifyGraph :: () -> int {\n"
+            "    input := build.arguments(); at := 0; index := 0;\n"
+            "    while (at < length(input)) {\n"
+            "        if (at + 2 > length(input)) { return 3; }\n"
+            "        count := Count(input[at]); expected := Count(input[at + "
+            "1]);\n"
+            "        at = at + 2;\n"
+            "        if (count < 1 || at + count > length(input) || index >= "
+            "%d) { return 3; }\n"
+            "        arguments: string[] = [];\n"
+            "        for (i in 0..<count) { arguments.append(input[at + i]); "
+            "}\n"
+            "        build.report(format_text(\"graph-case {0} begin\", "
+            "index));\n"
+            "        status := LibrariesWithArguments(arguments);\n"
+            "        build.report(format_text(\"graph-case {0} returned {1}\", "
+            "index, status));\n"
+            "        if (status != expected) { return 1; }\n"
+            "        at = at + count; index = index + 1;\n"
+            "    }\n"
+            "    if (index == 0) { return 3; }\n"
+            "    return 0;\n"
+            "}\n",
+            GRAPH_BATCH_CASES
+        ) >= 0
+    );
+    assert(!fclose(file));
+    const char *argv[256] = { host_path,
+                              "--root",
+                              CHIBI_SOURCE_ROOT,
+                              "--source",
+                              source,
+                              "--core",
+                              "packages/core",
+                              "--collection",
+                              "graph=tools/graph",
+                              "--entry",
+                              "VerifyGraph",
+                              "--timeout-ms",
+                              "50000",
+                              "--" };
+    char lengths[GRAPH_BATCH_CASES][16], statuses[GRAPH_BATCH_CASES][16];
+    int argc = 14;
+    for (int i = 0; i < count; i++) {
+        assert(argc + 6 < 256);
+        assert(cases[i].status == 0 || cases[i].status == 2);
+        int start = argc;
+        argv[argc++] = lengths[i];
+        snprintf(statuses[i], sizeof statuses[i], "%d", cases[i].status);
+        argv[argc++] = statuses[i];
+        argv[argc++] = "--build";
+        argv[argc++] = cases[i].build_dir;
+        argv[argc++] = "--jobs";
+        argv[argc++] = "8";
+        for (int j = 0; cases[i].options[j]; j++) {
+            assert(argc < 255);
+            argv[argc++] = cases[i].options[j];
+        }
+        for (int j = 0; cases[i].extra[j]; j++) {
+            assert(argc < 255);
+            argv[argc++] = cases[i].extra[j];
+        }
+        snprintf(lengths[i], sizeof lengths[i], "%d", argc - start - 2);
+    }
+    argv[argc] = NULL;
+    return tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
+}
+
+/* Every case owns its diagnostic interval. A previous rejection cannot make a
+ * later case pass, and a missing/reordered case cannot match this transcript. */
+static bool graph_batch_transcript_matches(const graph_case *cases, int count, const char *log)
+{
+    const char *at = log;
+    bool matches = true;
+    for (int i = 0; i < count && matches; i++) {
+        char expected[512];
+        snprintf(
+            expected,
+            sizeof expected,
+            "graph-case %d begin\n%s%sgraph-case %d returned %d\n",
+            i,
+            cases[i].diagnostic ? cases[i].diagnostic : "",
+            cases[i].diagnostic ? "\n" : "",
+            i,
+            cases[i].status
+        );
+        size_t length = strlen(expected);
+        matches = !strncmp(at, expected, length);
+        if (matches) {
+            at += length;
+        }
+    }
+    return matches && !*at;
+}
+static bool graph_batch_matches(const graph_case *cases, int count)
+{
+    char *log = tool_read(log_path);
+    if (!log) {
+        return false;
+    }
+    bool matches = graph_batch_transcript_matches(cases, count, log);
+    if (!matches) {
+        fprintf(stderr, "unexpected graph batch transcript: %s\n", log);
+    }
+    free(log);
+    return matches;
+}
+
+TEST_CASE(graph_batch_transcripts_are_case_local)
+{
+    const graph_case cases[] = { { .status = 2, .diagnostic = "first" },
+                                 { .status = 2, .diagnostic = "second" } };
+    const char
+        *complete = "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
+                    "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n";
+    REQUIRE(graph_batch_transcript_matches(cases, 2, complete));
+    REQUIRE(!graph_batch_transcript_matches(cases, 1, complete));
+    REQUIRE(!graph_batch_transcript_matches(cases, 2, ""));
+    REQUIRE(
+        !graph_batch_transcript_matches(cases, 2, "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n")
+    );
+    REQUIRE(!graph_batch_transcript_matches(
+        cases,
+        2,
+        "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
+        "graph-case 1 begin\nfirst\ngraph-case 1 returned 2\n"
+    ));
+    REQUIRE(!graph_batch_transcript_matches(
+        cases,
+        2,
+        "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n"
+        "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
+    ));
+    REQUIRE(!graph_batch_transcript_matches(
+        cases,
+        2,
+        "graph-case 0 begin\nfirst\ngraph-case 0 returned 0\n"
+        "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n"
+    ));
+    return true;
 }
 /* A run with every profile value given, so nothing is discovered, and no
  * launcher. */
@@ -1371,18 +1548,66 @@ TEST_CASE(debug_optimization_rejects_invalid_profiles)
         { "--build-type", "Release", "--debug-frame-pointers", "on", NULL },
         { "--build-type", "RelWithDebInfo", "--debug-frame-pointers", "off", NULL }
     };
-    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
-        char build_dir[GRAPH_PATH];
-        join(build_dir, suite, "invalid optimization");
-        REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, cases[i]) == -1);
+    const int count = (int)(sizeof cases / sizeof *cases);
+    char build_dirs[sizeof cases / sizeof *cases][GRAPH_PATH];
+    for (int first = 0; first < count; first += GRAPH_BATCH_CASES) {
+        graph_case batch[GRAPH_BATCH_CASES];
+        int size = count - first < GRAPH_BATCH_CASES ? count - first : GRAPH_BATCH_CASES;
+        for (int j = 0; j < size; j++) {
+            int i = first + j;
+            char name[64];
+            snprintf(name, sizeof name, "invalid optimization %d", i);
+            join(build_dirs[i], suite, name);
+            const char *expected = !strcmp(cases[i][2], "--debug-optimization") ? "graph: --debug-optimization requires 0 or 1 and build type Debug"
+                                                                                : "graph: --debug-frame-pointers requires on or off and build type Debug";
+            batch[j] = (graph_case){ build_dirs[i], options, cases[i], 2, expected };
+        }
+        REQUIRE(!run_graph_batch(batch, size));
+        REQUIRE(graph_batch_matches(batch, size));
+        for (int j = 0; j < size; j++) {
+            REQUIRE(access(batch[j].build_dir, F_OK));
+        }
+    }
+    /* Keep real Libraries CLI argv-end rejection and exit-status coverage for
+     * both options, not just the test-only batched invocation's success. */
+    const int cli_cases[] = { 3, 10 };
+    for (int j = 0; j < 2; j++) {
+        int i = cli_cases[j];
+        REQUIRE(graph_status(CHIBI_SOURCE_ROOT, build_dirs[i], options, cases[i]) == 2);
         char *log = tool_read(log_path);
-        const char *expected = !strcmp(cases[i][2], "--debug-optimization") ? "--debug-optimization requires 0 or 1 and build type Debug"
-                                                                            : "--debug-frame-pointers requires on or off and build type Debug";
-        bool diagnostic = log && strstr(log, expected);
+        const char *expected = j == 0
+                                 ? "graph: --debug-optimization requires 0 or "
+                                   "1 and build type Debug\n"
+                                 : "graph: --debug-frame-pointers requires on "
+                                   "or off and build type Debug\n";
+        bool diagnostic = log && !strcmp(log, expected);
         free(log);
         REQUIRE(diagnostic);
-        REQUIRE(access(build_dir, F_OK));
+        REQUIRE(access(build_dirs[i], F_OK));
     }
+    return true;
+}
+
+/* An unexpected result must stop the batch: a later rejection must not hide
+ * the first mismatch. The ordinary rejection matrix tests continuation after
+ * each expected status 2, with distinct paths and exact per-case diagnostics. */
+TEST_CASE(graph_batch_stops_on_unexpected_result)
+{
+    const char *const options[] = { "--profile", "explicit", NULL };
+    const char *const optimization[] = { "--build-type", "Debug", "--debug-optimization", NULL };
+    const char *const frames[] = { "--build-type", "Debug", "--debug-frame-pointers", NULL };
+    const char *diagnostic = "graph: --debug-optimization requires 0 or 1 and "
+                             "build type Debug";
+    char rejected[GRAPH_PATH], never[GRAPH_PATH];
+    join(rejected, suite, "batch unexpected result");
+    join(never, suite, "batch never reached");
+    graph_case cases[] = { { rejected, options, optimization, 0, diagnostic },
+                           { never, options, frames, 2, NULL } };
+    REQUIRE(run_graph_batch(cases, 2) == 1);
+    cases[0].status = 2;
+    REQUIRE(graph_batch_matches(cases, 1));
+    REQUIRE(access(rejected, F_OK));
+    REQUIRE(access(never, F_OK));
     return true;
 }
 
@@ -1586,6 +1811,8 @@ void test_build_graph_debug_optimization(const char *host, const char *cmake_bui
     RUN_TEST_CASE(explicit_commands_match_cmake);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
+    RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
+    RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
     tool_remove_tree(suite);
 }
 
@@ -1599,6 +1826,8 @@ void test_build_graph_programs(const char *host, const char *cmake_build)
     RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
+    RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
+    RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
     RUN_TEST_CASE(authored_dependency_files_list_prerequisites);
     tool_remove_tree(suite);
 }

@@ -89,7 +89,12 @@ Selected :: (arguments: string[], target: string) -> bool {
 }
 
 Libraries :: () -> int {
-    arguments := build.arguments();
+    return LibrariesWithArguments(build.arguments());
+}
+
+// Keep argument evaluation independent so bounded verification cases can share
+// compilation without sharing a profile or a build result.
+LibrariesWithArguments :: (arguments: string[]) -> int {
     targets := engine.Targets();
     if (!TargetsValid(arguments, targets)) {
         return 2;

@@ -36,7 +36,7 @@ static ecs_world *world;
 static bool unsafe_link;
 static char error[256];
 static const type_field value_fields[] = {
-    { .name = "value", .type = PIN_F64, .size = sizeof(double), .type_name = "double" },
+    { .name = "value", .type = PIN_F64, .size = sizeof(double), .type_name = "f64" },
 };
 static const type_desc value_type = { .name = "query.scalar",
                                       .size = sizeof(double),

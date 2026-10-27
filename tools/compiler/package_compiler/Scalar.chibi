@@ -58,9 +58,9 @@ ScalarAt :: (forest: snapshot.SnapshotNode[], node: int, kind: int, type: int, v
 }
 // A Literal row of `type` holding `bits`, an integer's bits sign-extended when
 // it is signed, or a float's or double's encoding.
-ScalarLiteral :: (forest: snapshot.SnapshotNode[], node: int, type: int, bits: uint64) -> facts.Row {
+ScalarLiteral :: (forest: snapshot.SnapshotNode[], node: int, type: int, bits: u64) -> facts.Row {
     row := ScalarAt(forest, node, facts.LiteralRow, type, 0, 0, "");
-    row.literal = int64(wrap: bits);
+    row.literal = i64(wrap: bits);
     return row;
 }
 // The scalar type of a storage, 0 for any other. The facts types are
@@ -444,7 +444,7 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     if (Is(forest, node, "boolean")) {
-        value: uint64 = 0;
+        value: u64 = 0;
         if (Text(forest, text, node) == "true") {
             value = 1;
         }
@@ -626,7 +626,7 @@ ScalarIs :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[
         operator = facts.NotEqual;
     }
     tested := [ScalarAt(forest, value, facts.TagRow, facts.IntType, 0, 1, ""),
-               ScalarLiteral(forest, pattern, facts.IntType, uint64(variant - types[held].first)),
+               ScalarLiteral(forest, pattern, facts.IntType, u64(variant - types[held].first)),
                ScalarAt(forest, node, facts.CompareRow, facts.BoolType, operator, 2, "")];
     return ScalarExtend(forest, node, tested, output);
 }
@@ -769,7 +769,7 @@ ScalarShifted :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     } else {
         if (Signed(counted)) {
             return ScalarOperands.Failed(Diagnose(forest, Unparenthesized(forest, right), 0,
-                                                  "Shift count must be unsigned; convert it with uint(value)"));
+                                                  "Shift count must be unsigned; convert it with u32(value)"));
         }
         switch ScalarConvert(forest, text, callables, params, callable, names, types, members, right, right, counted, storage,
                              facts.Clamp, output) {
@@ -1283,7 +1283,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             if (variant >= 0 && statement != current.fallback) {
                 name := Field(forest, pattern, "name");
                 tested = ScalarAppend(forest, name, ScalarLiteral(forest, name, facts.IntType,
-                                                                  uint64(variant - types[current.held].first)),
+                                                                  u64(variant - types[current.held].first)),
                                       operands);
             } else if (pattern >= 0 && current.held < 0) {
                 tested = ScalarConvert(forest, text, callables, params, callable, names, types, members, pattern,
@@ -1403,10 +1403,10 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 name := Text(forest, text, declared);
                 row = ScalarAt(forest, statement, facts.ForRow, facts.IntType, variables, count, name);
                 if (Text(forest, text, Field(forest, statement, "bound")) == "..<") {
-                    row.literal += int64(facts.RangeExclusive);
+                    row.literal += i64(facts.RangeExclusive);
                 }
                 if (Field(forest, statement, "reverse") >= 0) {
-                    row.literal += int64(facts.RangeReverse);
+                    row.literal += i64(facts.RangeReverse);
                 }
                 // As the range step binds it, read-only, for the body alone.
                 binding: Name = {name: name, place: LocalPlace, index: variables, storage: IntStorage, container: 0,
@@ -1550,7 +1550,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                 ops: Ops, target: Target) -> syntax.Diagnostic {
     natives: ResolvedNative[] = [];
     ports: ResolvedPort[] = [];
-    identities: uint64[] = [];
+    identities: u64[] = [];
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
@@ -1772,7 +1772,7 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
                                  has_files: true, has_collections: false, file_count: 1, collection_count: 0};
     collections: routes.Collection[] = [];
-    switch snapshot.Build(options, collections, [input], [uint64(strings.ByteLength(text))]) {
+    switch snapshot.Build(options, collections, [input], [u64(strings.ByteLength(text))]) {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return ScalarFailure(path, text, diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):

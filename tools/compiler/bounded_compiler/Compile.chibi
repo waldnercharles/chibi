@@ -17,7 +17,7 @@ import strings "core:strings"
 // entry; only the raw parser is native. Stage zero still builds this closure.
 pub Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) |
-    Compiled(module: uint64, function_id: uint64, bytes: byte[])
+    Compiled(module: u64, function_id: u64, bytes: u8[])
 }
 ScalarSignature :: union {
     Accepted(storage: int) | Rejected(diagnostic: syntax.Diagnostic)
@@ -52,12 +52,12 @@ LexicalEnvironment :: (keys: string[]) -> binding.Environment {
                             line: 1, column: 1, document: 0};
     symbols: binding.Symbol[] = [];
     functions: binding.Function[] = [];
-    ids: uint64[] = [];
+    ids: u64[] = [];
     return binding.Environment.Tables([scope], symbols, functions, ids, keys);
 }
 SignatureEnvironment :: (lexical: binding.Environment, identity: string, pointer_size: int) -> reader.Environment {
     types: named.Type[] = [];
-    ids: uint64[] = [];
+    ids: u64[] = [];
     entries: named.Entry[] = [];
     indices: int[] = [];
     imports: named.Import[] = [];
@@ -101,7 +101,7 @@ ReadSignature :: (environment: reader.Environment, tree: reader.Tree, node: int,
 
 CompileFunction :: (tree: reader.Tree, function: int, document: int,
                     identity: string, keys: string[], abi: lower.Target,
-                    prepared_abi: uint64, opcodes: int[]) -> Result {
+                    prepared_abi: u64, opcodes: int[]) -> Result {
     name_node := reader.Field(tree, function, "name");
     name := reader.Text(tree, name_node);
     if (!reader.Kind(tree, name_node, "identifier") || name == "_" || strings.ByteLength(name) > 240) {
@@ -121,7 +121,7 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
     place := reader.Request(tree, name_node, 0, document, name);
     request: binding.Request = {name: name, kind: binding.FunctionKind,
                                 start: place.start, end: place.end, line: place.line, column: place.column, document: document};
-    function_id: uint64 = 0;
+    function_id: u64 = 0;
     switch binding.Declare(lexical, context, request) {
         case .Existing(symbol, diagnostics):
             return Result.Rejected(diagnostics[0]);
@@ -172,7 +172,7 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
             integer: lower.Type = {storage: 6, container: 0, flags: 0, nominal_slot: -1, parameter_slot: -1};
             symbols: lower.Symbol[] = [];
             variables: lower.Variable[] = [];
-            ids: uint64[] = [];
+            ids: u64[] = [];
             output: lower.Result = {expression: result, type: result_type};
             ranges := append(expression_ranges, ExpressionRange(tree, function, document));
             facts := lower.Request.Tables([boolean, integer], expressions, symbols, variables,
@@ -187,7 +187,7 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
                     if (length(prepared) == 0 || length(prepared) > 65536) {
                         return SourceFailure(tree, function, document, "bounded prepared payload exceeds its output limit");
                     }
-                    ids: uint64[] = [module];
+                    ids: u64[] = [module];
                     names: string[] = [identity];
                     starts: int[] = [0];
                     lengths: int[] = [length(prepared)];
@@ -198,7 +198,7 @@ CompileFunction :: (tree: reader.Tree, function: int, document: int,
 }
 
 CompileSnapshot :: (source: snapshot.Result, abi: lower.Target,
-                    prepared_abi: uint64, opcodes: int[]) -> Result {
+                    prepared_abi: u64, opcodes: int[]) -> Result {
     switch source {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return Result.Rejected(diagnostic);
@@ -266,7 +266,7 @@ CompileSnapshot :: (source: snapshot.Result, abi: lower.Target,
 // `prepared_abi` is the target's prepared header ABI, and `opcodes` the
 // instruction each scalar wire opcode names on it.
 pub Compile :: (project: string, paths: string[], sources: string[], abi: lower.Target,
-                prepared_abi: uint64, opcodes: int[]) -> Result {
+                prepared_abi: u64, opcodes: int[]) -> Result {
     if (length(paths) < 1 || length(paths) > 3 || length(sources) != length(paths)) {
         return InputFailure(-1, "bounded compiler requires one to three complete source files");
     }
@@ -276,7 +276,7 @@ pub Compile :: (project: string, paths: string[], sources: string[], abi: lower.
         return InputFailure(-1, "unsupported bounded compiler root or target");
     }
     inputs: snapshot.Input[] = [];
-    sizes: uint64[] = [];
+    sizes: u64[] = [];
     index: int = 0;
     while (index < length(paths)) {
         if (strings.ByteLength(paths[index]) == 0 || strings.ByteLength(paths[index]) > 240 ||
@@ -285,7 +285,7 @@ pub Compile :: (project: string, paths: string[], sources: string[], abi: lower.
         }
         input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
         inputs.append(input);
-        sizes.append(uint64(strings.ByteLength(sources[index])));
+        sizes.append(u64(strings.ByteLength(sources[index])));
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,

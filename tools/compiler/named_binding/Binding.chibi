@@ -58,29 +58,29 @@ pub Request :: struct {
     document: int;
 }
 pub TypeUse :: union {
-    Absent | Reference(symbol: int, member: uint64, start: int, end: int, line: int, column: int, document: int)
+    Absent | Reference(symbol: int, member: u64, start: int, end: int, line: int, column: int, document: int)
 }
 pub Resolution :: union {
-    Resolved(storage: int, container: int, flags: int, nominal: uint64,
-             parameter: uint64, use: TypeUse, diagnostics: syntax.Diagnostic[])
+    Resolved(storage: int, container: int, flags: int, nominal: u64,
+             parameter: u64, use: TypeUse, diagnostics: syntax.Diagnostic[])
 }
 pub Environment :: union {
-    Tables(lexical: binding.Environment, types: Type[], ids: uint64[],
+    Tables(lexical: binding.Environment, types: Type[], ids: u64[],
            merged: Entry[], own: Entry[], native: Entry[], symbol_types: int[],
            imports: Import[], exports: Export[], uses: Use[], identity: string,
-           package_scope: int, has_native: bool, has_documents: bool, entity_id: uint64)
+           package_scope: int, has_native: bool, has_documents: bool, entity_id: u64)
 }
 pub Value :: union {
-    Typed(storage: int, container: int, flags: int, nominal: uint64, parameter: uint64)
+    Typed(storage: int, container: int, flags: int, nominal: u64, parameter: u64)
 }
 
-pub IDAt :: (ids: uint64[], slot: int) -> uint64 {
+pub IDAt :: (ids: u64[], slot: int) -> u64 {
     if (slot < 0) {
         return 0;
     }
     return ids[slot];
 }
-pub TypeAt :: (types: Type[], ids: uint64[], index: int) -> Value {
+pub TypeAt :: (types: Type[], ids: u64[], index: int) -> Value {
     type := types[index];
     return Value.Typed(type.storage, type.container, type.flags,
                        IDAt(ids, type.nominal_slot), IDAt(ids, type.parameter_slot));
@@ -89,8 +89,8 @@ pub Builtin :: (name: string) -> Value {
     if (name == "Cancelled") {
         return Value.Typed(18, 0, 512, 0x63616e63656c6c65, 0);
     }
-    names: string[] = ["void", "bool", "int8", "byte", "int16", "uint16", "int", "uint",
-                       "int64", "uint64", "float", "double", "name", "string", "handle", "struct", "enum"];
+    names: string[] = ["void", "bool", "i8", "u8", "i16", "u16", "int", "u32",
+                       "i64", "u64", "number", "f64", "name", "string", "handle", "struct", "enum"];
     index: int = 0;
     while (index < length(names)) {
         if (names[index] == name) {
@@ -98,8 +98,12 @@ pub Builtin :: (name: string) -> Value {
         }
         index += 1;
     }
-    if (name == "number") {
-        return Value.Typed(11, 0, 0, 0, 0);
+    // Odin's sized names for the two game spellings.
+    if (name == "i32") {
+        return Value.Typed(6, 0, 0, 0, 0);
+    }
+    if (name == "f32") {
+        return Value.Typed(10, 0, 0, 0, 0);
     }
     if (name == "exec" || name == "flow") {
         return Value.Typed(0, 0, 0, 0, 0);
@@ -121,7 +125,7 @@ pub Bad :: (value: Value) -> bool {
             return (flags & 1) != 0;
     }
 }
-WithNominal :: (value: Value, id: uint64) -> Value {
+WithNominal :: (value: Value, id: u64) -> Value {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             return Value.Typed(storage, container, flags, id, parameter);
@@ -194,7 +198,7 @@ FindCatalog :: (entries: Entry[], name: string) -> int {
     }
     return found;
 }
-pub TypeIndex :: (entries: Entry[], ids: uint64[], id: uint64) -> int {
+pub TypeIndex :: (entries: Entry[], ids: u64[], id: u64) -> int {
     index: int = 0;
     while (index < length(entries)) {
         if (IDAt(ids, entries[index].id_slot) == id) {
@@ -288,7 +292,7 @@ pub FindType :: (environment: Environment, scope: int, document: int, name: stri
             return found;
     }
 }
-UseAt :: (environment: Environment, request: Request, symbol: int, nominal: uint64) -> TypeUse {
+UseAt :: (environment: Environment, request: Request, symbol: int, nominal: u64) -> TypeUse {
     if (symbol < 0 && nominal == 0) {
         return TypeUse.Absent;
     }

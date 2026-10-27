@@ -773,7 +773,7 @@ fills, as Odin does.
 
 ## Stage one cannot negate a float
 
-Language. Stage one rejects `-x` for a `float` or `double` with "operator does
+Language. Stage one rejects `-x` for a `number` or `f64` with "operator does
 not apply to this operand", although the runtime's `BF_NEG` negates floats
 and both VMs implement it. The native scalar path (M2) rejects it too. `0.0 - x` is not a
 substitute: it gives +0 for x = +0 where negation gives -0, and IEEE leaves

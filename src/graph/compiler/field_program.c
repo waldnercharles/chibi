@@ -390,7 +390,7 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
         behavior_variable v = asset->variables[i];
         float value;
         if (!scalar(v.default_value, &value)) {
-            fail(error, size, "Field parameters must be finite float, int, or uint scalars");
+            fail(error, size, "Field parameters must be finite number, int, or u32 scalars");
             plan_free(p);
             return NULL;
         }

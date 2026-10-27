@@ -24,9 +24,9 @@ interface, or the complete allocation/memory/output/free native island.
 - A module of at most 32 functions, each a consecutive range of the parameter,
   slot, local, code and argument tables. Function 0 is the exported entry,
   `chibi_scalar`, or `main` for a zero-argument `int` entry; the others are
-  `internal` `chibi_scalar.N`. Each takes plain integer, `float`, `double`
-  and `bool` parameters (`int8` through `uint64` as `iN` with no sign, and
-  `float` and `double` as themselves) and returns one scalar result. Foreign bool ABI is not promised. Storage
+  `internal` `chibi_scalar.N`. Each takes plain integer, `number`, `f64`
+  and `bool` parameters (`i8` through `u64` as `iN` with no sign, and
+  `number` and `f64` as LLVM `float` and `double`) and returns one scalar result. Foreign bool ABI is not promised. Storage
   ordinals are backend-internal, not public semantic IDs.
 - A module declares at most 16 records, each a range of at most 16 scalar
   field types in the field table, emitted in that order as
@@ -70,20 +70,20 @@ interface, or the complete allocation/memory/output/free native island.
   and 1 keeps its low bits. The value is first extended to `i65`, which holds
   every value of every integer type, so a clamp never becomes a plain
   truncation.
-- `float` and `double` follow IEEE at their width, with no fast-math flags:
+- `number` and `f64` follow IEEE at their width, with no fast-math flags:
   `+`, `-`, `*` and `/` round to nearest. There is no floating negation or
   remainder: stage one rejects both before they reach this lowering, although
   the runtime computes them (`BF_NEG`, `BF_MOD_F32` and `BF_MOD_F64`).
   `<`, `<=`, `>`, `>=` and `==` are ordered, so NaN makes them false, and
   `!=` is unordered, so NaN makes it true. A constant's `literal` is its encoding's bits, a
-  `float`'s zero-extended, emitted through `bitcast` so NaN payloads and
+  `number`'s zero-extended, emitted through `bitcast` so NaN payloads and
   signed zeros stay exact.
-- A `float` or `double` converts to an integer type through
+- A `number` or `f64` converts to an integer type through
   `llvm.fpto{s,u}i.sat`, in either `literal` mode: it truncates toward zero,
   saturates at the type's bounds and gives 0 for NaN, as the runtime's casts
-  do. An integer or a `float` converts to `double`, and a `double` to `float`,
-  rounding to nearest. An integer reaches `float` only through `double`, as
-  the runtime converts it, so a direct integer-to-`float` conversion is
+  do. An integer or a `number` converts to `f64`, and an `f64` to `number`,
+  rounding to nearest. An integer reaches `number` only through `f64`, as
+  the runtime converts it, so a direct integer-to-`number` conversion is
   rejected. Each intrinsic is declared once.
 - Control may cycle without a CHECK: native loops run unchecked, as Odin's
   do, and no `mustprogress` attribute lets LLVM remove an endless one.

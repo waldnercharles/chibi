@@ -3,8 +3,8 @@ package asset_source
 import data "game:assets"
 import strings "core:strings"
 
-ColumnValue :: (kinds: int[], parents: int[], keys: string[], texts: string[], signed: int64[],
-                unsigned: uint64[], reals: double[], booleans: bool[]) -> data.Value {
+ColumnValue :: (kinds: int[], parents: int[], keys: string[], texts: string[], signed: i64[],
+                unsigned: u64[], reals: f64[], booleans: bool[]) -> data.Value {
     count := length(kinds);
     first: int[] = [];
     last: int[] = [];
@@ -67,9 +67,9 @@ ValueSource :: (value: data.Value, alias: string) -> string {
     parents: int[] = [];
     keys: string[] = [];
     texts: string[] = [];
-    signed: int64[] = [];
-    unsigned: uint64[] = [];
-    reals: double[] = [];
+    signed: i64[] = [];
+    unsigned: u64[] = [];
+    reals: f64[] = [];
     booleans: bool[] = [];
     pending: data.Value[] = [value];
     owners: int[] = [-1];
@@ -164,7 +164,7 @@ FunctionReplacement :: (source: string, name: string, value: data.Value) -> Repl
     }
 }
 
-ComputedChanges :: (source: string, old_value: data.Value, new_value: data.Value) -> byte[] {
+ComputedChanges :: (source: string, old_value: data.Value, new_value: data.Value) -> u8[] {
     switch old_value {
         case .Object(keys, values):
             index: int = 0;

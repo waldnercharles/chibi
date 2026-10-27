@@ -98,7 +98,7 @@ static bool inspect_result()
 }
 TEST_CASE(source_expression_edits_validate_value_scope_and_generation)
 {
-    REQUIRE(project("Edit :: behavior { count:double=1; on Tick :: () { count=2; } }"));
+    REQUIRE(project("Edit :: behavior { count:f64=1; on Tick :: () { count=2; } }"));
     const source_presentation_origin *o = find(SOURCE_PRESENTATION_EXPRESSION, "2;");
     REQUIRE(o);
     node *n = graph_node_by_id(
@@ -209,7 +209,7 @@ TEST_CASE(source_expression_edits_validate_value_scope_and_generation)
 }
 TEST_CASE(source_setter_value_edits_preserve_the_destination)
 {
-    REQUIRE(project("Edit :: behavior { count:double=0; on Tick :: () { saved:=5; count=7; } }"));
+    REQUIRE(project("Edit :: behavior { count:f64=0; on Tick :: () { saved:=5; count=7; } }"));
     const source_presentation_origin *statement = find(SOURCE_PRESENTATION_STATEMENT, "count=7;");
     const source_presentation_origin *producer = find(SOURCE_PRESENTATION_SYMBOL, "saved:=5;");
     REQUIRE(statement && producer);
@@ -243,11 +243,11 @@ TEST_CASE(source_setter_value_edits_preserve_the_destination)
 TEST_CASE(source_variable_get_set_creation_uses_declared_state_and_checked_values)
 {
     REQUIRE(project(
-        "Variables :: behavior { count: double = 1; text: string = \"hello\"; "
-        "countValue: double = 0;"
-        " on Tick :: () { count = 7; } Shadow :: (count: double) {} }"
+        "Variables :: behavior { count: f64 = 1; text: string = \"hello\"; "
+        "countValue: f64 = 0;"
+        " on Tick :: () { count = 7; } Shadow :: (count: f64) {} }"
     ));
-    const source_presentation_origin *state = find(SOURCE_PRESENTATION_SYMBOL, "count: double");
+    const source_presentation_origin *state = find(SOURCE_PRESENTATION_SYMBOL, "count: f64");
     const source_presentation_origin *handler = find(SOURCE_PRESENTATION_FUNCTION, "on Tick");
     const source_presentation_origin *target = find(SOURCE_PRESENTATION_EXPRESSION, "7;");
     REQUIRE(state && handler && target);
@@ -291,8 +291,8 @@ TEST_CASE(source_variable_get_set_creation_uses_declared_state_and_checked_value
 }
 TEST_CASE(source_variable_creation_uses_identifiers_and_keeps_nonliteral_defaults_editable)
 {
-    REQUIRE(project("Variables :: behavior { Player_Name: double = 1; on Tick :: () {} }"));
-    const source_presentation_origin *state = find(SOURCE_PRESENTATION_SYMBOL, "Player_Name: double");
+    REQUIRE(project("Variables :: behavior { Player_Name: f64 = 1; on Tick :: () {} }"));
+    const source_presentation_origin *state = find(SOURCE_PRESENTATION_SYMBOL, "Player_Name: f64");
     const source_presentation_origin *handler = find(SOURCE_PRESENTATION_FUNCTION, "on Tick");
     REQUIRE(state && handler);
     authoring_edit_request r = request(AUTHORING_EDIT_CREATE_VARIABLE_GET, handler);
@@ -309,16 +309,16 @@ TEST_CASE(source_variable_creation_uses_identifiers_and_keeps_nonliteral_default
     REQUIRE(strstr(result.text, "state.Player_Name = state.Player_Name;"));
     cleanup();
     REQUIRE(project(
-        "Variables :: behavior { Player_Name: double = 1; other: double = 0;"
+        "Variables :: behavior { Player_Name: f64 = 1; other: f64 = 0;"
         " on Tick :: () { state.Player_Name = state.Player_Name + 1;"
         " other = state.Player_Name; } }"
     ));
-    state = find(SOURCE_PRESENTATION_SYMBOL, "Player_Name: double");
+    state = find(SOURCE_PRESENTATION_SYMBOL, "Player_Name: f64");
     REQUIRE(state);
     r = request(AUTHORING_EDIT_RENAME_DECLARATION, state);
     r.name = "playerSpeed";
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "playerSpeed: double = 1;"));
+    REQUIRE(strstr(result.text, "playerSpeed: f64 = 1;"));
     REQUIRE(strstr(result.text, "state.playerSpeed = state.playerSpeed + 1;"));
     REQUIRE(strstr(result.text, "other = state.playerSpeed;"));
     REQUIRE(!strstr(result.text, "Player Name"));
@@ -377,11 +377,11 @@ TEST_CASE(source_created_handlers_list_payload_fields)
                                          .capability_count = 2 };
     const char *names[] = { "Impulse", "Tick" };
     const char *headers[] = {
-        "on Impulse :: (amount: double charge, step: double s) {}",
+        "on Impulse :: (amount: f64 charge, step: f64 s) {}",
         "on Tick :: () {}"
     };
     for (int i = 0; i < 2; i++) {
-        syntax = script_parse("Edit :: behavior { total:double=0; }");
+        syntax = script_parse("Edit :: behavior { total:f64=0; }");
         analysis = script_analyze_document(syntax, &with, "tests/source-edit");
         view = authoring_source_presentation_new(analysis, &with, NULL);
         REQUIRE(analysis->valid && view);
@@ -413,7 +413,7 @@ TEST_CASE(source_connections_read_listed_payload_fields)
                                                        .parameter_count = 2 };
     static const script_catalog events = { .capabilities = &impulse,
                                            .capability_count = 1 };
-    syntax = script_parse("Edit :: behavior { total:double=0; on Impulse :: (scale: double) { total=7; } }");
+    syntax = script_parse("Edit :: behavior { total:f64=0; on Impulse :: (scale: f64) { total=7; } }");
     analysis = script_analyze_document(syntax, &events, "tests/source-edit");
     view = authoring_source_presentation_new(analysis, &events, NULL);
     REQUIRE(analysis->valid && view);
@@ -446,7 +446,7 @@ TEST_CASE(source_connections_read_listed_payload_fields)
 TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effects)
 {
     REQUIRE(
-        project("Edit :: behavior { count:double=0; Pair :: () -> (total:double,message:string) { count+=1; return (count,\"snapshot\"); } Identity :: (amount:double)->(answer:double) { return amount; } on Tick :: () { saved:=Pair(); count=7; } }")
+        project("Edit :: behavior { count:f64=0; Pair :: () -> (total:f64,message:string) { count+=1; return (count,\"snapshot\"); } Identity :: (amount:f64)->(answer:f64) { return amount; } on Tick :: () { saved:=Pair(); count=7; } }")
     );
     const source_presentation_origin *target = find(SOURCE_PRESENTATION_EXPRESSION, "7;");
     const source_presentation_origin *producer = find(SOURCE_PRESENTATION_EXPRESSION, "Pair(); count");
@@ -500,7 +500,7 @@ TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effe
     REQUIRE(!edit(r) && error[0] && !result.text);
     cleanup();
     REQUIRE(
-        project("Edit :: behavior { count:double=0; Next :: ()->(answer:double) { count+=1; return count; } on Tick :: () { count=7; count=Next()+1; } }")
+        project("Edit :: behavior { count:f64=0; Next :: ()->(answer:f64) { count+=1; return count; } on Tick :: () { count=7; count=Next()+1; } }")
     );
     target = find(SOURCE_PRESENTATION_EXPRESSION, "7;");
     producer = find(SOURCE_PRESENTATION_EXPRESSION, "Next()+1;");
@@ -510,7 +510,7 @@ TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effe
     REQUIRE(!edit(r) && strstr(error, "evaluate it twice"));
     cleanup();
     REQUIRE(
-        project("Edit :: behavior { count:double=1; on Tick :: () { saved:=count+2; if (true) { saved:double=10; count=7; } } }")
+        project("Edit :: behavior { count:f64=1; on Tick :: () { saved:=count+2; if (true) { saved:f64=10; count=7; } } }")
     );
     target = find(SOURCE_PRESENTATION_EXPRESSION, "7;");
     producer = find(SOURCE_PRESENTATION_EXPRESSION, "count+2;");
@@ -523,7 +523,7 @@ TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effe
 TEST_CASE(source_statement_moves_keep_comments_and_validate_declaration_order)
 {
     REQUIRE(
-        project("Edit :: behavior { count:double=0; on Tick :: () {\n // first\n count=1; // attached\n count=2;\n } }")
+        project("Edit :: behavior { count:f64=0; on Tick :: () {\n // first\n count=1; // attached\n count=2;\n } }")
     );
     const source_presentation_origin *first = find(SOURCE_PRESENTATION_STATEMENT, "count=1;");
     const source_presentation_origin *second = find(SOURCE_PRESENTATION_STATEMENT, "count=2;");
@@ -541,9 +541,7 @@ TEST_CASE(source_statement_moves_keep_comments_and_validate_declaration_order)
         strstr(result.text, "count=2;")
     );
     cleanup();
-    REQUIRE(
-        project("Edit :: behavior { count:double=0; on Tick :: () { current:=1; count=current; } }")
-    );
+    REQUIRE(project("Edit :: behavior { count:f64=0; on Tick :: () { current:=1; count=current; } }"));
     first = find(SOURCE_PRESENTATION_STATEMENT, "current:=1;");
     second = find(SOURCE_PRESENTATION_STATEMENT, "count=current;");
     REQUIRE(first && second);
@@ -555,7 +553,7 @@ TEST_CASE(source_statement_moves_keep_comments_and_validate_declaration_order)
 TEST_CASE(source_fused_call_edits_select_expression_or_statement_by_operation)
 {
     REQUIRE(project(
-        "Edit :: behavior { count:double=0; Add :: (amount:double)->() { "
+        "Edit :: behavior { count:f64=0; Add :: (amount:f64)->() { "
         "count+=amount; } "
         "on Tick :: () {\n // first call\n Add(1.0); // attached\n "
         "count=2.0;\n "
@@ -605,7 +603,7 @@ TEST_CASE(source_fused_call_edits_select_expression_or_statement_by_operation)
 TEST_CASE(source_fused_action_call_mute_edits_its_owned_declaration)
 {
     REQUIRE(project(
-        "Edit :: behavior { Count :: ()->(value:double) { return 1.0; } "
+        "Edit :: behavior { Count :: ()->(value:f64) { return 1.0; } "
         "action act=Count(); on Tick :: () { act(); } }"
     ));
     const source_presentation_origin *call = find(SOURCE_PRESENTATION_EXPRESSION, "act();");
@@ -618,7 +616,7 @@ TEST_CASE(source_fused_action_call_mute_edits_its_owned_declaration)
     cleanup();
 
     REQUIRE(project(
-        "Edit :: behavior { Count :: ()->(value:double) { return 1.0; } "
+        "Edit :: behavior { Count :: ()->(value:f64) { return 1.0; } "
         "disabled action act=Count(); on Tick :: () { act(); } }"
     ));
     call = find(SOURCE_PRESENTATION_EXPRESSION, "act();");
@@ -633,7 +631,7 @@ TEST_CASE(source_fused_action_call_mute_edits_its_owned_declaration)
 TEST_CASE(source_selection_transactions_preserve_names_and_comments)
 {
     REQUIRE(
-        project("Edit :: behavior { count:double=0; on Tick :: () {\n // snapshot\n current:=1;\n count=current;\n count=2;\n } }")
+        project("Edit :: behavior { count:f64=0; on Tick :: () {\n // snapshot\n current:=1;\n count=current;\n count=2;\n } }")
     );
     const source_presentation_origin *local = find(SOURCE_PRESENTATION_STATEMENT, "current:=1;");
     const source_presentation_origin *use = find(SOURCE_PRESENTATION_STATEMENT, "count=current;");
@@ -692,7 +690,7 @@ TEST_CASE(source_selection_transactions_preserve_names_and_comments)
 TEST_CASE(source_optional_arguments_and_typed_values_are_checked_atomically)
 {
     REQUIRE(
-        project("Edit :: behavior { count:double=0; Add :: (a:double=2,b:double=3)->(total:double) { return a+b; } on Tick :: () { current:=Add(a:1,b:4); count=current; } }")
+        project("Edit :: behavior { count:f64=0; Add :: (a:f64=2,b:f64=3)->(total:f64) { return a+b; } on Tick :: () { current:=Add(a:1,b:4); count=current; } }")
     );
     const source_presentation_origin *first = find(SOURCE_PRESENTATION_EXPRESSION, "1,b:4");
     const source_presentation_origin *second = find(SOURCE_PRESENTATION_EXPRESSION, "4);");
@@ -721,7 +719,7 @@ TEST_CASE(source_optional_arguments_and_typed_values_are_checked_atomically)
     REQUIRE(!edit(r) && error[0]);
     cleanup();
     REQUIRE(
-        project("Edit :: behavior { count:double=0; Required :: (a:double)->(total:double) { return a; } on Tick :: () { count=Required(1); } }")
+        project("Edit :: behavior { count:f64=0; Required :: (a:f64)->(total:f64) { return a; } on Tick :: () { count=Required(1); } }")
     );
     first = find(SOURCE_PRESENTATION_EXPRESSION, "1);");
     REQUIRE(first);
@@ -731,7 +729,7 @@ TEST_CASE(source_optional_arguments_and_typed_values_are_checked_atomically)
 }
 TEST_CASE(source_extraction_preserves_ref_inputs_and_escaping_locals)
 {
-    REQUIRE(project("Edit :: behavior { count:double=0; on Tick :: () { x:=1.0; x+=2.0; count=x; } }"));
+    REQUIRE(project("Edit :: behavior { count:f64=0; on Tick :: () { x:=1.0; x+=2.0; count=x; } }"));
     const source_presentation_origin *first = find(SOURCE_PRESENTATION_STATEMENT, "x:=1.0;");
     const source_presentation_origin *second = find(SOURCE_PRESENTATION_STATEMENT, "x+=2.0;");
     REQUIRE(first && second);
@@ -747,14 +745,14 @@ TEST_CASE(source_extraction_preserves_ref_inputs_and_escaping_locals)
     REQUIRE(strstr(result.text, "x := refactor_result_1;"));
     REQUIRE(strstr(analysis->text, "x:=1.0; x+=2.0; count=x;"));
     cleanup();
-    REQUIRE(project("Edit :: behavior { count:double=0; on Tick :: () { x:=1.0; x+=2.0; count=x; } }"));
+    REQUIRE(project("Edit :: behavior { count:f64=0; on Tick :: () { x:=1.0; x+=2.0; count=x; } }"));
     second = find(SOURCE_PRESENTATION_STATEMENT, "x+=2.0;");
     REQUIRE(second);
     r = request(AUTHORING_EDIT_EXTRACT_MACRO, second);
     r.name = "Advance";
     REQUIRE(edit(r));
     REQUIRE(inspect_result());
-    REQUIRE(strstr(result.text, "refactor_input_1_0: ref double"));
+    REQUIRE(strstr(result.text, "refactor_input_1_0: ref number"));
     REQUIRE(strstr(result.text, "after entry"));
     REQUIRE(strstr(result.text, "exit Then;"));
     cleanup();
@@ -797,7 +795,7 @@ TEST_CASE(source_inline_spells_char_parameters)
 TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return)
 {
     REQUIRE(
-        project("Edit :: behavior { count:double=0; Add :: (input:double)->(amount:double) { temp:=input+1.0; if(input>0.0) { return temp; } return 0.0; } on Tick :: () { temp:=9.0; count=Add(2.0); } }")
+        project("Edit :: behavior { count:f64=0; Add :: (input:f64)->(amount:f64) { temp:=input+1.0; if(input>0.0) { return temp; } return 0.0; } on Tick :: () { temp:=9.0; count=Add(2.0); } }")
     );
     const source_presentation_origin *call = find(SOURCE_PRESENTATION_EXPRESSION, "Add(2.0)");
     REQUIRE(call);
@@ -824,7 +822,7 @@ TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return)
     REQUIRE(inspect_result());
     REQUIRE(strstr(result.text, "goto Add_Completed;"));
     REQUIRE(strstr(result.text, "Add_Completed:"));
-    REQUIRE(strstr(result.text, "input: double"));
+    REQUIRE(strstr(result.text, "input: f64"));
     REQUIRE(strstr(result.text, "temp_2:=input+1.0;"));
     REQUIRE(!strstr(result.text, "inline_"));
     REQUIRE(strstr(result.text, "temp:=9.0;"));
@@ -832,8 +830,8 @@ TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return)
     REQUIRE(strstr(analysis->text, "count=Add(2.0)"));
     cleanup();
     REQUIRE(project(
-        "Edit :: behavior { count:double=0;"
-        " Scale :: (input_speed:double,_return:double)->(sum_total:double) {"
+        "Edit :: behavior { count:f64=0;"
+        " Scale :: (input_speed:f64,_return:f64)->(sum_total:f64) {"
         " local_value:=input_speed+_return; return "
         "local_value; }"
         " on Tick :: () { local_value:=9.0; count=Scale(2.0,1.0); } }"
@@ -843,15 +841,15 @@ TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return)
     r = request(AUTHORING_EDIT_INLINE_CALL, call);
     REQUIRE(edit(r));
     REQUIRE(inspect_result());
-    REQUIRE(strstr(result.text, "input_speed: double"));
-    REQUIRE(strstr(result.text, "_return: double"));
+    REQUIRE(strstr(result.text, "input_speed: f64"));
+    REQUIRE(strstr(result.text, "_return: f64"));
     REQUIRE(strstr(result.text, "local_value_2:=input_speed+_return;"));
     REQUIRE(strstr(result.text, "count=sum_total;"));
     REQUIRE(!strstr(result.text, "goto ") && !strstr(result.text, "Completed"));
     REQUIRE(!strstr(result.text, "inline_"));
     cleanup();
     REQUIRE(
-        project("Edit :: behavior { count:double=0; Add :: (input:double)->(amount:double) { return input; } on Tick :: () { count=1.0+Add(2.0); } }")
+        project("Edit :: behavior { count:f64=0; Add :: (input:f64)->(amount:f64) { return input; } on Tick :: () { count=1.0+Add(2.0); } }")
     );
     call = find(SOURCE_PRESENTATION_EXPRESSION, "Add(2.0)");
     REQUIRE(call);
@@ -859,7 +857,7 @@ TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return)
     REQUIRE(!edit(r) && error[0] && !result.text);
     cleanup();
     REQUIRE(
-        project("Edit :: behavior { count:double=1; Read :: (input:double)->(amount:double) { return count; } on Tick :: () { count:=9.0; current:=Read(0.0); } }")
+        project("Edit :: behavior { count:f64=1; Read :: (input:f64)->(amount:f64) { return count; } on Tick :: () { count:=9.0; current:=Read(0.0); } }")
     );
     call = find(SOURCE_PRESENTATION_EXPRESSION, "Read(0.0)");
     REQUIRE(call);
@@ -885,21 +883,21 @@ TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return)
 TEST_CASE(source_signatures_and_bindings_preserve_resolved_body_and_scope)
 {
     REQUIRE(
-        project("Edit :: behavior { a:double=0.5; count:double=0; Add :: (a:double)->(amount:double) { return a; } on Tick :: () { count=Add(2); } }")
+        project("Edit :: behavior { a:f64=0.5; count:f64=0; Add :: (a:f64)->(amount:f64) { return a; } on Tick :: () { count=Add(2); } }")
     );
     const source_presentation_origin *fn = find(SOURCE_PRESENTATION_FUNCTION, "Add :: ");
     const source_presentation_origin *target = find(SOURCE_PRESENTATION_EXPRESSION, "2);");
-    const source_presentation_origin *state = find(SOURCE_PRESENTATION_SYMBOL, "a:double=0.5");
+    const source_presentation_origin *state = find(SOURCE_PRESENTATION_SYMBOL, "a:f64=0.5");
     REQUIRE(fn && target && state);
     authoring_edit_request r = request(AUTHORING_EDIT_SIGNATURE, fn);
-    r.signature = "(a:float)->(amount:double)";
+    r.signature = "(a:number)->(amount:f64)";
     REQUIRE(edit(r));
     REQUIRE(
-        strstr(result.text, "Add :: (a:float)->(amount:double)") &&
+        strstr(result.text, "Add :: (a:number)->(amount:f64)") &&
         strstr(result.text, "{ return a; }")
     );
     authoring_edit_result_free(&result);
-    r.signature = "(b:double)->(amount:double)";
+    r.signature = "(b:f64)->(amount:f64)";
     REQUIRE(!edit(r) && error[0] && !result.text);
     r.signature = "()->() {} Escaped :: ()->()";
     REQUIRE(!edit(r) && error[0] && !result.text);
@@ -910,10 +908,8 @@ TEST_CASE(source_signatures_and_bindings_preserve_resolved_body_and_scope)
     REQUIRE(strstr(result.text, "count=Add(a)"));
     authoring_edit_result_free(&result);
     cleanup();
-    REQUIRE(
-        project("Edit :: behavior { a:double=1; count:double=0; on Tick :: () { a:=9; count=2; } }")
-    );
-    state = find(SOURCE_PRESENTATION_SYMBOL, "a:double=1;");
+    REQUIRE(project("Edit :: behavior { a:f64=1; count:f64=0; on Tick :: () { a:=9; count=2; } }"));
+    state = find(SOURCE_PRESENTATION_SYMBOL, "a:f64=1;");
     target = find(SOURCE_PRESENTATION_EXPRESSION, "2;");
     REQUIRE(state && target);
     r = request(AUTHORING_EDIT_BIND_INPUT, target);
@@ -949,9 +945,9 @@ TEST_CASE(source_variable_types_preserve_comments_values_and_checked_uses)
     state = find(SOURCE_PRESENTATION_SYMBOL, "amount:=");
     REQUIRE(state);
     retype = request(AUTHORING_EDIT_RETYPE_VARIABLE, state);
-    retype.signature = "float";
+    retype.signature = "number";
     REQUIRE(edit(retype));
-    REQUIRE(strstr(result.text, "amount: float = /* keep inferred */ 3"));
+    REQUIRE(strstr(result.text, "amount: number = /* keep inferred */ 3"));
     REQUIRE(strstr(result.text, "amount=amount+1"));
     REQUIRE(inspect_result());
     authoring_edit_result_free(&result);
@@ -966,9 +962,9 @@ TEST_CASE(source_variable_types_preserve_comments_values_and_checked_uses)
     state = find(SOURCE_PRESENTATION_SYMBOL, "values:[string: int]");
     REQUIRE(state);
     retype = request(AUTHORING_EDIT_RETYPE_VARIABLE, state);
-    retype.signature = "[string: float]";
+    retype.signature = "[string: number]";
     REQUIRE(edit(retype));
-    REQUIRE(strstr(result.text, "values:[string: float]"));
+    REQUIRE(strstr(result.text, "values:[string: number]"));
     REQUIRE(inspect_result());
     cleanup();
     static const script_catalog_field fields[] = {
@@ -1223,13 +1219,13 @@ TEST_CASE(source_capability_creation_uses_properties_operators_and_positional_ar
                                     .entity_type = 40,
                                     .capabilities = capabilities,
                                     .capability_count = 7 };
-    syntax = script_parse("Edit :: behavior { amount: double = 2; on Tick :: () {} }");
+    syntax = script_parse("Edit :: behavior { amount: f64 = 2; on Tick :: () {} }");
     analysis = script_analyze_document(syntax, &active, "tests/source-edit");
     REQUIRE(analysis->valid);
     view = authoring_source_presentation_new(analysis, &active, NULL);
     REQUIRE(view);
     const source_presentation_origin *handler = find(SOURCE_PRESENTATION_FUNCTION, "on Tick");
-    const source_presentation_origin *producer = find(SOURCE_PRESENTATION_SYMBOL, "amount: double");
+    const source_presentation_origin *producer = find(SOURCE_PRESENTATION_SYMBOL, "amount: f64");
     REQUIRE(handler && producer);
     for (int id = 31; id <= 36; id++) {
         authoring_edit_request r = request(AUTHORING_EDIT_CREATE_CAPABILITY, handler);
@@ -1249,7 +1245,7 @@ TEST_CASE(source_capability_creation_uses_properties_operators_and_positional_ar
             REQUIRE(!strstr(result.text, "Identity(Value:"));
         } else if (id == 34) {
             REQUIRE(strstr(result.text, ") + ("));
-            REQUIRE(strstr(result.text, "(double("));
+            REQUIRE(strstr(result.text, "(f64("));
             REQUIRE(!strstr(result.text, "Add("));
         } else if (id == 35) {
             REQUIRE(strstr(result.text, " := self;"));

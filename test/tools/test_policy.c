@@ -231,6 +231,55 @@ static const char driver_ci_build
          "                print('jobs=' + arguments[arguments.index('--jobs') "
          "+ 1])\n"
          "    sys.exit(0)\n";
+/* Inject only the expensive workload; exercise the experiment's real CLI
+ * handlers and policy supervisor over the existing native worker. */
+static const char driver_experiment
+    [] = "if sys.argv[2].startswith('experiment-'):\n"
+         "    import debug_optimization_experiment as experiment\n"
+         "    action, worker, root = sys.argv[2:5]\n"
+         "    if action == 'experiment-flags':\n"
+         "        options = json.loads(sys.argv[5])\n"
+         "        experiment.flags(**options)\n"
+         "        sys.exit(0)\n"
+         "    if action == 'experiment-verify':\n"
+         "        experiment.verify(Path(root) / 'build', Path(root), 1)\n"
+         "        sys.exit(0)\n"
+         "    if action == 'experiment-inner':\n"
+         "        signal.signal(signal.SIGTERM, signal.SIG_DFL)\n"
+         "        signal.signal(signal.SIGINT, signal.SIG_DFL)\n"
+         "        def workload():\n"
+         "            detached = '1' if sys.platform == 'linux' else '0'\n"
+         "            orphan = '1' if sys.argv[5] == 'error' else '0'\n"
+         "            deadline = time.monotonic() + (.3 if sys.argv[5] == "
+         "'timeout' else 4)\n"
+         "            experiment.run_phase(Path(root), deadline, sys.argv[5],\n"
+         "                [worker, 'descendant', root, detached, orphan], "
+         "dict(os.environ))\n"
+         "            if orphan == '1':\n"
+         "                experiment.run_phase(Path(root), deadline, "
+         "'error-failure',\n"
+         "                    [worker, 'exit', '7'], dict(os.environ))\n"
+         "        experiment.main = workload\n"
+         "        sys.exit(experiment.cli())\n"
+         "    child = subprocess.Popen([sys.executable, __file__, "
+         "sys.argv[1],\n"
+         "        'experiment-inner', worker, root, sys.argv[5]])\n"
+         "    try:\n"
+         "        if sys.argv[5] == 'cancel':\n"
+         "            deadline = time.monotonic() + 4\n"
+         "            while not os.path.exists(root + '/started'):\n"
+         "                if child.poll() is not None or time.monotonic() >= "
+         "deadline:\n"
+         "                    raise RuntimeError('experiment worker did not "
+         "start')\n"
+         "                time.sleep(.001)\n"
+         "            child.send_signal(signal.SIGTERM)\n"
+         "        status = child.wait(timeout=4)\n"
+         "        subprocess.run([worker, 'cleanup-probe', root], check=True)\n"
+         "        sys.exit(status)\n"
+         "    finally:\n"
+         "        if child.poll() is None: child.terminate()\n"
+         "        child.wait(timeout=4)\n";
 /* Keep each concatenated literal below ISO C's 4095-byte minimum limit.
  * Writing these chunks in order preserves the generated Python byte-for-byte. */
 static const char *const driver_parallel[] = {
@@ -1708,7 +1757,136 @@ TEST_CASE(pending_termination_still_cleans_up)
 }
 #endif
 
-void test_tool_test_policy()
+/* Fixed native assertions over the opt-in runner's validation functions. */
+TEST_CASE(debug_experiment_flags)
+{
+    const char *valid = "{\"arguments\":[\"-g\",\"-O1\",\"-fsanitize=address,"
+                        "undefined\","
+                        "\"-fno-omit-frame-pointer\",\"-UNDEBUG\"],\"level\":1,"
+                        "\"assertions\":true}";
+    REQUIRE(run("experiment-flags", valid) == 0);
+    REQUIRE(
+        run("experiment-flags", "{\"arguments\":[\"-g\",\"-O0\",\"-fsanitize=address,undefined\",\"-fno-omit-frame-pointer\",\"-UNDEBUG\"],\"level\":0,\"assertions\":true}") ==
+        0
+    );
+    const char *bad[] = { "-O3", "-DNDEBUG", "-g0", "-fomit-frame-pointer", "-fno-sanitize=undefined" };
+    for (int i = 0; i < 5; i++) {
+        char arguments[512];
+        snprintf(
+            arguments,
+            sizeof arguments,
+            "{\"arguments\":[\"-g\",\"-O1\",\"-fsanitize=address,undefined\","
+            "\"-fno-omit-frame-pointer\",\"-UNDEBUG\",\"%s\"],\"level\":1,"
+            "\"assertions\":true}",
+            bad[i]
+        );
+        REQUIRE(run("experiment-flags", arguments) != 0);
+    }
+    return true;
+}
+
+static void experiment_evidence(bool complete, bool exported, bool database)
+{
+    char name[PATH_MAX];
+    path(name, "build/test/tools/testing/include");
+    const char *mkdir_argv[] = { "mkdir", "-p", name, NULL };
+    assert(tool_run(mkdir_argv, tool_root(), logpath) == 0);
+    const char *targets[] = { "chibi_engine",
+                              "chibi_compiler",
+                              "test_tools",
+                              "test_language",
+                              "chibi_ui_host" };
+    const char *sources[] = { "src/runtime/engine.c",
+                              "src/language/lower.c",
+                              "test/tools/main.c",
+                              "test/language/main.c",
+                              "src/ui/rml.cpp" };
+    path(name, "build/compile_commands.json");
+    FILE *db = fopen(name, "w");
+    path(name, "o1-build.log");
+    FILE *log = fopen(name, "w");
+    assert(db && log);
+    fprintf(db, "[");
+    for (int i = 0; i < 5; i++) {
+        const char *flags = "-g -O1 -fsanitize=address,undefined "
+                            "-fno-omit-frame-pointer -UNDEBUG";
+        if (database || i < 4) {
+            fprintf(
+                db,
+                "%s{\"file\":\"/source/%s\",\"command\":\"/usr/bin/clang-18 %s "
+                "-o CMakeFiles/%s.dir/a.o -c /source/%s\"}",
+                i ? "," : "",
+                sources[i],
+                flags,
+                targets[i],
+                sources[i]
+            );
+        }
+        if (complete || i) {
+            fprintf(
+                log,
+                "cd /build && /usr/bin/clang-18 %s -MD -MT a.o -MF a.d -o "
+                "CMakeFiles/%s.dir/a.o -c /source/%s\n",
+                flags,
+                targets[i],
+                sources[i]
+            );
+        }
+    }
+    fprintf(db, "]\n");
+    assert(!fclose(db) && !fclose(log));
+    path(name, "build/test/tools/testing/include/export_compiler.h");
+    FILE *header = fopen(name, "w");
+    assert(header);
+    fprintf(header, "\"/usr/bin/clang-18\",\n\"-g\",\n\"-O1\",\n\"-fsanitize=address,undefined\",\n\"-fno-omit-frame-pointer\",\n%s", exported ? "\"-UNDEBUG\",\n" : "");
+    assert(!fclose(header));
+    path(name, "build/CMakeCache.txt");
+    tool_write(name, "CHIBI_THIRD_PARTY_DIR:INTERNAL=/same/archive\n");
+}
+
+TEST_CASE(debug_experiment_compilation_evidence)
+{
+    experiment_evidence(true, true, true);
+    REQUIRE(run("experiment-verify", NULL) == 0);
+    experiment_evidence(false, true, true);
+    REQUIRE(run("experiment-verify", NULL) != 0);
+    experiment_evidence(true, false, true);
+    REQUIRE(run("experiment-verify", NULL) != 0);
+    experiment_evidence(true, true, false);
+    REQUIRE(run("experiment-verify", NULL) != 0);
+    return true;
+}
+
+TEST_CASE(debug_experiment_cancellation_and_failure_clean_up)
+{
+    reset_markers();
+    REQUIRE(run("experiment-process", "cancel") == 130);
+    REQUIRE(exists("started") && !exists("escaped"));
+    REQUIRE(exists("cancel.log"));
+    char file[PATH_MAX];
+    path(file, "timings.jsonl");
+    char *timings = tool_read(file);
+    REQUIRE(timings && strstr(timings, "\"exit\": 130"));
+    free(timings);
+    reset_markers();
+    REQUIRE(run("experiment-process", "error") == 2);
+    REQUIRE(exists("started") && !exists("escaped"));
+    REQUIRE(exists("error-failure.log"));
+    timings = tool_read(file);
+    REQUIRE(timings && strstr(timings, "\"exit\": 7"));
+    free(timings);
+    reset_markers();
+    REQUIRE(run("experiment-process", "timeout") == 2);
+    REQUIRE(exists("started") && !exists("escaped"));
+    REQUIRE(exists("timeout.log"));
+    timings = tool_read(file);
+    REQUIRE(timings && strstr(timings, "\"exit\": 124"));
+    free(timings);
+    reset_markers();
+    return true;
+}
+
+static void set_up()
 {
     strcpy(directory, "/tmp/chibi-policy-XXXXXX");
     assert(mkdtemp(directory));
@@ -1721,11 +1899,20 @@ void test_tool_test_policy()
     assert(fputs(driver_routes, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
+    assert(fputs(driver_experiment, script) >= 0);
     for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
         assert(fputs(driver_parallel[i], script) >= 0);
     }
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
+}
+
+void test_tool_test_policy()
+{
+    set_up();
+    RUN_TEST_CASE(debug_experiment_flags);
+    RUN_TEST_CASE(debug_experiment_compilation_evidence);
+    RUN_TEST_CASE(debug_experiment_cancellation_and_failure_clean_up);
     RUN_TEST_CASE(asset_language_cases_are_in_the_actual_ci_group);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);

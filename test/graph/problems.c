@@ -23,7 +23,10 @@ static behavior_asset *shader_library(const char *name, const char *function, gr
     behavior_asset *asset = behavior_asset_new(name);
     asset->domain = BEHAVIOR_DOMAIN_SHADER_LIBRARY;
     graph *g = behavior_asset_add_function(asset, function, 1);
-    pin_spec result = { .name = "Value", .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" };
+    pin_spec result = { .name = "Value",
+                        .kind = PIN_DATA,
+                        .type = PIN_F32,
+                        .type_name = "number" };
     int declared = graph_signature_add(asset, g, true, &result);
     assert(declared == 0);
     (void)declared;

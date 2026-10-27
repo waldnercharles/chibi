@@ -4,16 +4,16 @@ package constant_scalar
 // text. Presence preserves NULL literal strings independently of empty text.
 pub Value :: union {
     Bool(value: bool)
-    | I8(value: int8)
-    | U8(value: byte)
-    | I16(value: int16)
-    | U16(value: uint16)
+    | I8(value: i8)
+    | U8(value: u8)
+    | I16(value: i16)
+    | U16(value: u16)
     | I32(value: int)
-    | U32(value: uint)
-    | I64(value: int64)
-    | U64(value: uint64)
-    | F32(value: float)
-    | F64(value: double)
+    | U32(value: u32)
+    | I64(value: i64)
+    | U64(value: u64)
+    | F32(value: number)
+    | F64(value: f64)
     | Name(value: string, has_value: bool)
     | Text(value: string, has_value: bool)
 }
@@ -86,25 +86,25 @@ ToDouble :: (value: Value) -> Conversion {
             }
             return Conversion.Accepted(Value.F64(0.0));
         case .I8(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .U8(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .I16(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .U16(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .I32(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .U32(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .I64(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .U64(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .F32(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .F64(item):
-            return Conversion.Accepted(Value.F64(double(item)));
+            return Conversion.Accepted(Value.F64(f64(item)));
         case .Name(item, present):
             return Conversion.Rejected;
         case .Text(item, present):
@@ -114,7 +114,7 @@ ToDouble :: (value: Value) -> Conversion {
 
 // Integer storage bounds, matching the runtime cast range checks. Unsigned
 // values compare as int64 bit patterns, so High stops at int64's maximum.
-Low :: (storage: int) -> int64 {
+Low :: (storage: int) -> i64 {
     if (storage == 2) {
         return -128;
     }
@@ -129,7 +129,7 @@ Low :: (storage: int) -> int64 {
     }
     return 0;
 }
-High :: (storage: int) -> int64 {
+High :: (storage: int) -> i64 {
     if (storage == 2) {
         return 127;
     }
@@ -177,7 +177,7 @@ pub CommonInteger :: (x: int, y: int) -> int {
     }
     return 0;
 }
-Published :: (bits: uint64, target: int) -> Conversion {
+Published :: (bits: u64, target: int) -> Conversion {
     published := Publish(bits, target);
     switch published {
         case .Folded(item):
@@ -189,7 +189,7 @@ Published :: (bits: uint64, target: int) -> Conversion {
 // Modes match the runtime: 0 exact, 1 wrap (low bits), 2 clamp (saturate).
 IntegerConvert :: (value: Value, target: int, mode: int) -> Conversion {
     bits := Bits(value);
-    signed := int64(wrap: bits);
+    signed := i64(wrap: bits);
     negative := Signed(Storage(value)) && signed < 0;
     below := negative && signed < Low(target);
     // A nonnegative value with the sign bit set is an unsigned value >= 2^63.
@@ -201,35 +201,35 @@ IntegerConvert :: (value: Value, target: int, mode: int) -> Conversion {
         return Conversion.Unfit;
     }
     if (below) {
-        return Published(uint64(wrap: Low(target)), target);
+        return Published(u64(wrap: Low(target)), target);
     }
-    return Published(uint64(wrap: High(target)), target);
+    return Published(u64(wrap: High(target)), target);
 }
 // Floating sources round toward zero, saturate and map NaN to zero.
-FloatConvert :: (item: double, target: int) -> Conversion {
+FloatConvert :: (item: f64, target: int) -> Conversion {
     if (target == 2) {
-        return Conversion.Accepted(Value.I8(int8(item)));
+        return Conversion.Accepted(Value.I8(i8(item)));
     }
     if (target == 3) {
-        return Conversion.Accepted(Value.U8(byte(item)));
+        return Conversion.Accepted(Value.U8(u8(item)));
     }
     if (target == 4) {
-        return Conversion.Accepted(Value.I16(int16(item)));
+        return Conversion.Accepted(Value.I16(i16(item)));
     }
     if (target == 5) {
-        return Conversion.Accepted(Value.U16(uint16(item)));
+        return Conversion.Accepted(Value.U16(u16(item)));
     }
     if (target == 6) {
         return Conversion.Accepted(Value.I32(int(item)));
     }
     if (target == 7) {
-        return Conversion.Accepted(Value.U32(uint(item)));
+        return Conversion.Accepted(Value.U32(u32(item)));
     }
     if (target == 8) {
-        return Conversion.Accepted(Value.I64(int64(item)));
+        return Conversion.Accepted(Value.I64(i64(item)));
     }
     if (target == 9) {
-        return Conversion.Accepted(Value.U64(uint64(item)));
+        return Conversion.Accepted(Value.U64(u64(item)));
     }
     return Conversion.Rejected;
 }
@@ -243,7 +243,7 @@ pub Convert :: (value: Value, target: int, mode: int) -> Conversion {
     if (target == 10) {
         converted := ToDouble(value);
         if (converted is .Accepted(wide) && wide is .F64(item)) {
-            return Conversion.Accepted(Value.F32(float(item)));
+            return Conversion.Accepted(Value.F32(number(item)));
         }
         return Conversion.Rejected;
     }
@@ -276,36 +276,36 @@ StringValue :: (value: string, present: bool) -> string {
 // expression: a value is a sign and a 64-bit magnitude, and only the result
 // must fit its storage.
 Exact :: union {
-    Number(negative: bool, magnitude: uint64) | Failed(message: string)
+    Number(negative: bool, magnitude: u64) | Failed(message: string)
 }
 NotFit :: "integer constant does not fit its type";
 Reported :: "integer constant divides by zero, shifts by a negative count or negates an unsigned value";
 // The most a constant shift count may be, as in stage zero's exact numbers.
-ShiftLimit: uint64 : 4096;
+ShiftLimit: u64 : 4096;
 
 Negative :: (value: Value) -> bool {
-    return Signed(Storage(value)) && int64(wrap: Bits(value)) < 0;
+    return Signed(Storage(value)) && i64(wrap: Bits(value)) < 0;
 }
-Magnitude :: (value: Value) -> uint64 {
+Magnitude :: (value: Value) -> u64 {
     if (Negative(value)) {
-        return uint64(0) - Bits(value);
+        return u64(0) - Bits(value);
     }
     return Bits(value);
 }
-Number :: (negative: bool, magnitude: uint64) -> Exact {
+Number :: (negative: bool, magnitude: u64) -> Exact {
     return Exact.Number(negative && magnitude != 0, magnitude);
 }
 // The two's complement word of a value whose higher bits all equal its sign.
-Word :: (negative: bool, magnitude: uint64) -> uint64 {
+Word :: (negative: bool, magnitude: u64) -> u64 {
     if (negative) {
-        return uint64(0) - magnitude;
+        return u64(0) - magnitude;
     }
     return magnitude;
 }
-Mask :: (storage: int) -> uint64 {
-    return ~uint64(0) >> uint64(64 - Width(storage));
+Mask :: (storage: int) -> u64 {
+    return ~u64(0) >> u64(64 - Width(storage));
 }
-Sum :: (xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
+Sum :: (xn: bool, x: u64, yn: bool, y: u64) -> Exact {
     if (xn == yn) {
         sum := x + y;
         if (sum < x) {
@@ -318,7 +318,7 @@ Sum :: (xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
     }
     return Number(yn, y - x);
 }
-Product :: (xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
+Product :: (xn: bool, x: u64, yn: bool, y: u64) -> Exact {
     product := x * y;
     if (x != 0 && product / x != y) {
         return Exact.Failed(NotFit);
@@ -326,7 +326,7 @@ Product :: (xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
     return Number(xn != yn, product);
 }
 // Division truncates toward zero; a remainder takes the dividend's sign.
-Quotient :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
+Quotient :: (op: int, xn: bool, x: u64, yn: bool, y: u64) -> Exact {
     if (y == 0) {
         return Exact.Failed(Reported);
     }
@@ -336,7 +336,7 @@ Quotient :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
     return Number(xn, x % y);
 }
 // A right shift rounds toward negative infinity.
-Shifted :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
+Shifted :: (op: int, xn: bool, x: u64, yn: bool, y: u64) -> Exact {
     if (yn) {
         return Exact.Failed("integer constant shift count must not be negative");
     }
@@ -347,7 +347,7 @@ Shifted :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
         return Number(xn, x);
     }
     if (op == OpShiftLeft) {
-        if (y >= 64 || (x >> (uint64(64) - y)) != 0) {
+        if (y >= 64 || (x >> (u64(64) - y)) != 0) {
             return Exact.Failed(NotFit);
         }
         return Number(xn, x << y);
@@ -364,7 +364,7 @@ Shifted :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
     }
     return Number(xn, quotient);
 }
-Bitwise :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
+Bitwise :: (op: int, xn: bool, x: u64, yn: bool, y: u64) -> Exact {
     left := Word(xn, x);
     right := Word(yn, y);
     word := left ^ right;
@@ -383,7 +383,7 @@ Bitwise :: (op: int, xn: bool, x: uint64, yn: bool, y: uint64) -> Exact {
     if (word == 0) {
         return Exact.Failed(NotFit);
     }
-    return Number(true, uint64(0) - word);
+    return Number(true, u64(0) - word);
 }
 Fitted :: (exact: Exact, storage: int) -> Result {
     switch exact {
@@ -392,7 +392,7 @@ Fitted :: (exact: Exact, storage: int) -> Result {
         case .Number(negative, magnitude):
             limit := Mask(storage);
             if (Signed(storage)) {
-                limit = limit >> uint64(1);
+                limit = limit >> u64(1);
                 if (negative) {
                     limit += 1;
                 }
@@ -644,22 +644,22 @@ PhysicalOperation :: (op: int, left: Value, right: Value) -> Result {
 // Integer storage publication retains the complete C intermediate word before
 // truncating to the destination width: signed values sign-extend into it and
 // publication keeps its low bits.
-Bits :: (value: Value) -> uint64 {
+Bits :: (value: Value) -> u64 {
     switch value {
         case .I8(item):
-            return uint64(wrap: item);
+            return u64(wrap: item);
         case .U8(item):
             return item;
         case .I16(item):
-            return uint64(wrap: item);
+            return u64(wrap: item);
         case .U16(item):
             return item;
         case .I32(item):
-            return uint64(wrap: item);
+            return u64(wrap: item);
         case .U32(item):
             return item;
         case .I64(item):
-            return uint64(wrap: item);
+            return u64(wrap: item);
         case .U64(item):
             return item;
         case .Bool(item):
@@ -675,27 +675,27 @@ Bits :: (value: Value) -> uint64 {
     }
 }
 
-Publish :: (bits: uint64, storage: int) -> Result {
+Publish :: (bits: u64, storage: int) -> Result {
     if (storage == 2) {
-        return Result.Folded(Value.I8(int8(wrap: bits)));
+        return Result.Folded(Value.I8(i8(wrap: bits)));
     }
     if (storage == 3) {
-        return Result.Folded(Value.U8(byte(wrap: bits)));
+        return Result.Folded(Value.U8(u8(wrap: bits)));
     }
     if (storage == 4) {
-        return Result.Folded(Value.I16(int16(wrap: bits)));
+        return Result.Folded(Value.I16(i16(wrap: bits)));
     }
     if (storage == 5) {
-        return Result.Folded(Value.U16(uint16(wrap: bits)));
+        return Result.Folded(Value.U16(u16(wrap: bits)));
     }
     if (storage == 6) {
         return Result.Folded(Value.I32(int(wrap: bits)));
     }
     if (storage == 7) {
-        return Result.Folded(Value.U32(uint(wrap: bits)));
+        return Result.Folded(Value.U32(u32(wrap: bits)));
     }
     if (storage == 8) {
-        return Result.Folded(Value.I64(int64(wrap: bits)));
+        return Result.Folded(Value.I64(i64(wrap: bits)));
     }
     if (storage == 9) {
         return Result.Folded(Value.U64(bits));

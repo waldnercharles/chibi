@@ -996,13 +996,13 @@ TEST_CASE(field_links_source_library)
 /* A call added for a lowered function takes its parameters' defaults. */
 TEST_CASE(field_source_library_keeps_parameter_defaults)
 {
-    const char
-        *text = "Discs :: library {\n"
-                "    Disc :: (X: float = 0.0, Y: float = 0.0, Radius: float = "
-                "40.0) -> (Value: float = 0.0) {\n"
-                "        return field_circle(X, Y, Radius)\n"
-                "    }\n"
-                "}\n";
+    const char *text = "Discs :: library {\n"
+                       "    Disc :: (X: number = 0.0, Y: number = 0.0, Radius: "
+                       "number = "
+                       "40.0) -> (Value: number = 0.0) {\n"
+                       "        return field_circle(X, Y, Radius)\n"
+                       "    }\n"
+                       "}\n";
     test_source_fixture fixture = test_source_prepare("content/libraries/Discs.chibi", text);
     behavior_asset **projections[2] = { authoring_source_graph_libraries(fixture.sources),
                                         NULL };
@@ -1042,15 +1042,16 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
 TEST_CASE(field_source_library_calls_follow_names)
 {
     static const char *sources[] = {
-        "Values :: library {Other :: () -> (Value: float) { return 111.0 "
-        "}Difference :: (X: float = 10.0, Y: float = 3.0) -> (Value: float) { "
+        "Values :: library {Other :: () -> (Value: number) { return 111.0 "
+        "}Difference :: (X: number = 10.0, Y: number = 3.0) -> (Value: number) "
+        "{ "
         "return field_subtract(X, Y) } }",
-        "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
-        "}Other :: () -> (Value: float) { return 111.0 }Difference :: (Y: "
-        "float = 30.0, X: float = 100.0) -> (Value: float) { return "
+        "Values :: library {Inserted :: () -> (Value: number) { return 999.0 "
+        "}Other :: () -> (Value: number) { return 111.0 }Difference :: (Y: "
+        "number = 30.0, X: number = 100.0) -> (Value: number) { return "
         "field_subtract(X, Y) } }",
-        "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
-        "}Other :: () -> (Value: float) { return 111.0 } }",
+        "Values :: library {Inserted :: () -> (Value: number) { return 999.0 "
+        "}Other :: () -> (Value: number) { return 111.0 } }",
     };
     test_source_fixture fixture = test_source_prepare("content/libraries/Values.chibi", sources[0]);
     behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
@@ -1204,7 +1205,7 @@ TEST_CASE(field_source_library_calls_every_field_node)
         length += snprintf(
             text + length,
             sizeof text - (size_t)length,
-            "    Node%d :: () -> (Value: float) { return %s }\n",
+            "    Node%d :: () -> (Value: number) { return %s }\n",
             i,
             NODE_CALLS[i].call
         );
@@ -1262,34 +1263,34 @@ TEST_CASE(field_source_library_functions_call_functions)
     const source_catalog_edit sources[] = {
         { .path = "content/libraries/Cave.chibi",
           .text = "Cave :: library {\n"
-                  "Rock :: (X: float = 0.0, Y: float = 0.0)\n"
-                  "    -> (Value: float) {\n"
+                  "Rock :: (X: number = 0.0, Y: number = 0.0)\n"
+                  "    -> (Value: number) {\n"
                   "    return field_negate(Shapes.Pair(X, Y))\n"
                   "}\n"
-                  "Bad :: (X: float = 0.0) -> (Value: float) {\n"
+                  "Bad :: (X: number = 0.0) -> (Value: number) {\n"
                   "    return field_abs(Shapes.Twice(X))\n"
                   "}\n"
                   "}\n" },
         { .path = "content/libraries/Shapes.chibi",
           .text = "Shapes :: library {\n"
-                  "Pair :: (X: float = 0.0, Y: float = 0.0)\n"
-                  "    -> (Value: float) {\n"
+                  "Pair :: (X: number = 0.0, Y: number = 0.0)\n"
+                  "    -> (Value: number) {\n"
                   "    return field_min(\n"
                   "        Disc(field_subtract(X, 3.0), Y),\n"
                   "        Ring(X, Y))\n"
                   "}\n"
-                  "Disc :: (X: float = 0.0, Y: float = 0.0,\n"
-                  "    Radius: float = 4.0) -> (Value: float) {\n"
+                  "Disc :: (X: number = 0.0, Y: number = 0.0,\n"
+                  "    Radius: number = 4.0) -> (Value: number) {\n"
                   "    return field_circle(X, Y, Radius)\n"
                   "}\n"
-                  "Ring :: (X: float = 0.0, Y: float = 0.0)\n"
-                  "    -> (Value: float) {\n"
+                  "Ring :: (X: number = 0.0, Y: number = 0.0)\n"
+                  "    -> (Value: number) {\n"
                   "    return field_abs(Disc(X, Y, 2.0))\n"
                   "}\n"
-                  "Loop :: (X: float = 0.0) -> (Value: float) {\n"
+                  "Loop :: (X: number = 0.0) -> (Value: number) {\n"
                   "    return field_abs(Loop(X))\n"
                   "}\n"
-                  "Twice :: (X: float = 0.0) -> (Value: float) {\n"
+                  "Twice :: (X: number = 0.0) -> (Value: number) {\n"
                   "    return X * 2.0\n"
                   "}\n"
                   "}\n" },
@@ -1364,11 +1365,11 @@ TEST_CASE(field_source_catalog_reports_invalid_library_body)
 {
     test_source_fixture fixture = test_source_prepare(
         "content/libraries/Shape.chibi",
-        "Shape :: library { Read :: () -> float { return 0.0; } }"
+        "Shape :: library { Read :: () -> number { return 0.0; } }"
     );
     const source_catalog_edit edit = {
         .path = "content/libraries/Shape.chibi",
-        .text = "Shape :: library { Read :: () -> float { return Missing(); } "
+        .text = "Shape :: library { Read :: () -> number { return Missing(); } "
                 "}",
     };
     source_catalog *catalog = source_catalog_replaced(

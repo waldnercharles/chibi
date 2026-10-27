@@ -1,3 +1,3 @@
-Cool :: system(heat: Heat) on Tick :: (dt: float s) {
+Cool :: system(heat: Heat) on Tick :: (dt: number s) {
     heat.level -= heat.rate * dt
 }

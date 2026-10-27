@@ -17,15 +17,15 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
                 id 57
                 type "Function Entry"
                 (array)outputs {
-                    - id=61 name="Time" type="float" kind="data"
-                    - id=62 name="Speed" type="float" kind="data"
+                    - id=61 name="Time" type="number" kind="data"
+                    - id=62 name="Speed" type="number" kind="data"
                 }
             }
             - {
                 id 59
                 type "Return"
                 (array)inputs {
-                    - id=63 name="Brightness" type="float" kind="data"
+                    - id=63 name="Brightness" type="number" kind="data"
                 }
             }
             - {
@@ -33,11 +33,11 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
                 type "Behavior Expression"
                 reference_name "(sin(time * speed) + 1) * 0.5"
                 inputs {
-                    time id=191 type="float"
-                    speed id=192 type="float"
+                    time id=191 type="number"
+                    speed id=192 type="number"
                 }
                 outputs {
-                    Result id=193 type="float"
+                    Result id=193 type="number"
                 }
             }
         }
@@ -67,15 +67,15 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
                         kind "data"
                         default x=0.0 y=0.0
                     }
-                    - id=105 name="Radius" type="float" kind="data" default=35.0
-                    - id=106 name="Width" type="float" kind="data" default=3.0
+                    - id=105 name="Radius" type="number" kind="data" default=35.0
+                    - id=106 name="Width" type="number" kind="data" default=3.0
                 }
             }
             - {
                 id 107
                 type "Return"
                 (array)inputs {
-                    - id=108 name="Mask" type="float" kind="data"
+                    - id=108 name="Mask" type="number" kind="data"
                 }
             }
             - {
@@ -92,11 +92,11 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
                 type "Behavior Expression"
                 reference_name "saturate(1 - abs(distance) / max(width, 0.001))"
                 inputs {
-                    distance id=306 type="float"
-                    width id=307 type="float"
+                    distance id=306 type="number"
+                    width id=307 type="number"
                 }
                 outputs {
-                    Result id=308 type="float"
+                    Result id=308 type="number"
                 }
             }
         }
@@ -123,7 +123,7 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
                 type "Function Entry"
                 (array)outputs {
                     - id=404 name="Color" type="struct" type_name="ShaderVec3" kind="data"
-                    - id=405 name="Flash" type="float" kind="data"
+                    - id=405 name="Flash" type="number" kind="data"
                 }
             }
             - {
@@ -140,7 +140,7 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
                 reference_name "mix(color, vec3(0.75, 0.95, 1), saturate(flash))"
                 inputs {
                     color id=436 type="struct" type_name="ShaderVec3"
-                    flash id=437 type="float"
+                    flash id=437 type="number"
                 }
                 outputs {
                     Result id=438 type="struct" type_name="ShaderVec3"
@@ -151,7 +151,7 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
                 type "Behavior Expression"
                 reference_name "vec3(0.75, 0.95, 1) * flash"
                 inputs {
-                    flash id=516 type="float"
+                    flash id=516 type="number"
                 }
                 outputs {
                     Result id=517 type="struct" type_name="ShaderVec3"

@@ -16,7 +16,7 @@ import strings "core:strings"
 // few Words or Ints calls as it can, since a call that returns an array costs
 // far more than a field.
 
-Magic: uint64 : 0x4348494249505245;
+Magic: u64 : 0x4348494249505245;
 Version: int : 22;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
@@ -272,7 +272,7 @@ pub Entry :: struct {
     subscription: int;
 }
 pub Module :: union {
-    Tables(id: uint64, owner_type: uint64, abi: uint64, pointer_size: int, wide: uint64[], values: Value[], ints: int[],
+    Tables(id: u64, owner_type: u64, abi: u64, pointer_size: int, wide: u64[], values: Value[], ints: int[],
            requirements: Requirement[], fields: Field[], event_declarations: Event[],
            event_fields: EventField[], imports: Import[], functions: Function[], spans: Span[], roots: Root[],
            instructions: Instruction[], locals: Local[], parameters: Parameter[], frames: Frame[],
@@ -283,60 +283,60 @@ pub Module :: union {
 
 // Varints of 64-bit words: seven bits at a time from the low end, the high bit
 // marking that more follow.
-Words :: (words: uint64[]) -> byte[] {
-    bytes: byte[] = [];
+Words :: (words: u64[]) -> u8[] {
+    bytes: u8[] = [];
     for (word in words) {
         rest := word;
         while ((rest >> 7) != 0) {
-            bytes.append(byte(wrap: rest | 128));
+            bytes.append(u8(wrap: rest | 128));
             rest = rest >> 7;
         }
-        bytes.append(byte(wrap: rest));
+        bytes.append(u8(wrap: rest));
     }
     return bytes;
 }
 // Zigzag varints of ints, which keep small negative values, such as -1 for
 // none, one byte long.
-Ints :: (values: int[]) -> byte[] {
-    bytes: byte[] = [];
+Ints :: (values: int[]) -> u8[] {
+    bytes: u8[] = [];
     for (value in values) {
-        wide := int64(value);
-        rest := uint64(wrap: wide << 1) ^ uint64(wrap: wide >> 63);
+        wide := i64(value);
+        rest := u64(wrap: wide << 1) ^ u64(wrap: wide >> 63);
         while ((rest >> 7) != 0) {
-            bytes.append(byte(wrap: rest | 128));
+            bytes.append(u8(wrap: rest | 128));
             rest = rest >> 7;
         }
-        bytes.append(byte(wrap: rest));
+        bytes.append(u8(wrap: rest));
     }
     return bytes;
 }
 // An int as its zigzag word, for a row of Words.
-Zig :: (value: int) -> uint64 {
-    wide := int64(value);
-    return uint64(wrap: wide << 1) ^ uint64(wrap: wide >> 63);
+Zig :: (value: int) -> u64 {
+    wide := i64(value);
+    return u64(wrap: wide << 1) ^ u64(wrap: wide >> 63);
 }
-Flag :: (value: bool) -> uint64 {
+Flag :: (value: bool) -> u64 {
     if (value) {
         return 1;
     }
     return 0;
 }
 // The bytes of a string.
-Raw :: (value: string) -> byte[] {
-    bytes: byte[] = [];
+Raw :: (value: string) -> u8[] {
+    bytes: u8[] = [];
     for (code in strings.Bytes(value)) {
-        bytes.append(byte(wrap: code));
+        bytes.append(u8(wrap: code));
     }
     return bytes;
 }
 // The slot an open-addressed table of mask + 1 slots starts probing for
 // `value` at: FNV-1a over its bytes.
 Slot :: (value: string, mask: int) -> int {
-    hash: uint64 = 14695981039346656037;
+    hash: u64 = 14695981039346656037;
     for (code in strings.Bytes(value)) {
-        hash = (hash ^ uint64(code)) * 1099511628211;
+        hash = (hash ^ u64(code)) * 1099511628211;
     }
-    return int(hash & uint64(mask));
+    return int(hash & u64(mask));
 }
 // A power of two of at least twice `count` slots, which keeps probes short.
 SlotCount :: (count: int) -> int {
@@ -379,17 +379,17 @@ TableSlots :: (items: string[]) -> int[] {
     return slots;
 }
 // The table's count, then each string's byte length plus one and its bytes.
-TableBytes :: (items: string[]) -> byte[] {
+TableBytes :: (items: string[]) -> u8[] {
     bytes := Ints([length(items)]);
     for (item in items) {
         raw := Raw(item);
-        bytes.extend(Words([uint64(length(raw) + 1)]));
+        bytes.extend(Words([u64(length(raw) + 1)]));
         bytes.extend(raw);
     }
     return bytes;
 }
 // Absent text is 0; otherwise its 1-based index in the table, which holds it.
-Text :: (value: string, present: bool, items: string[], slots: int[]) -> byte[] {
+Text :: (value: string, present: bool, items: string[], slots: int[]) -> u8[] {
     if (!present) {
         return [0];
     }
@@ -398,13 +398,13 @@ Text :: (value: string, present: bool, items: string[], slots: int[]) -> byte[] 
     while (items[slots[at] - 1] != value) {
         at = (at + 1) & mask;
     }
-    return Words([uint64(slots[at])]);
+    return Words([u64(slots[at])]);
 }
-Zeros :: (count: int) -> byte[] {
-    return resize([byte(0)], count);
+Zeros :: (count: int) -> u8[] {
+    return resize([u8(0)], count);
 }
 // A value's own bytes; its nested values follow them. `bits` is its wide entry.
-ValueHead :: (v: Value, bits: uint64, items: string[], slots: int[]) -> byte[] {
+ValueHead :: (v: Value, bits: u64, items: string[], slots: int[]) -> u8[] {
     bytes := extend(Ints([v.tag, v.container]), Text(v.type_name, v.has_type_name, items, slots));
     if (v.container != 0) {
         if (!v.present) {
@@ -423,7 +423,7 @@ ValueHead :: (v: Value, bits: uint64, items: string[], slots: int[]) -> byte[] {
     }
     if (v.tag == TextTag) {
         raw := Raw(v.text);
-        bytes.extend(Words([Flag(v.authored), uint64(length(raw))]));
+        bytes.extend(Words([Flag(v.authored), u64(length(raw))]));
         return extend(bytes, raw);
     }
     if (v.tag == NameTag) {
@@ -434,8 +434,8 @@ ValueHead :: (v: Value, bits: uint64, items: string[], slots: int[]) -> byte[] {
 }
 // A value's bytes: its own, then those of the values nested in it, which
 // `pool` already holds from starts[i] for sizes[i] bytes.
-ValueBytes :: (v: Value, wide: uint64[], pool: byte[], starts: int[], sizes: int[], items: string[],
-               slots: int[]) -> byte[] {
+ValueBytes :: (v: Value, wide: u64[], pool: u8[], starts: int[], sizes: int[], items: string[],
+               slots: int[]) -> u8[] {
     bytes := ValueHead(v, wide[v.wide], items, slots);
     aggregate := v.container != 0 || v.tag == StructTag || v.tag == UnionTag;
     if (!aggregate || !v.present) {
@@ -449,11 +449,11 @@ ValueBytes :: (v: Value, wide: uint64[], pool: byte[], starts: int[], sizes: int
     return bytes;
 }
 // A zero flow value, as an empty observer type is written.
-FlowValue :: () -> byte[] {
+FlowValue :: () -> u8[] {
     return Ints([FlowTag, 0, 0, 0, 0]);
 }
 // A source with its asset's text already encoded; an absent asset is 0.
-SourceBytes :: (v: Source, wide: uint64[], asset: byte[]) -> byte[] {
+SourceBytes :: (v: Source, wide: u64[], asset: u8[]) -> u8[] {
     if (!v.has_asset) {
         bytes := Words([wide[v.graph], wide[v.call], Zig(v.parent), 0]);
         return extend(bytes, Ints([v.start, v.end, v.line, v.column]));
@@ -461,18 +461,18 @@ SourceBytes :: (v: Source, wide: uint64[], asset: byte[]) -> byte[] {
     bytes := extend(Words([wide[v.graph], wide[v.call], Zig(v.parent)]), asset);
     return extend(bytes, Ints([v.start, v.end, v.line, v.column]));
 }
-ReferenceBytes :: (v: Reference, wide: uint64[]) -> byte[] {
+ReferenceBytes :: (v: Reference, wide: u64[]) -> u8[] {
     return Words([Zig(v.imported), Zig(v.own), wide[v.function], Zig(v.role)]);
 }
-PointBytes :: (v: Point, wide: uint64[]) -> byte[] {
+PointBytes :: (v: Point, wide: u64[]) -> u8[] {
     return Words([wide[v.occurrence], wide[v.meaning], Zig(v.start), Zig(v.end), Zig(v.line), Zig(v.column),
                   Zig(v.kind), Flag(v.completion)]);
 }
 // An instruction with its value, layout and message.
-InstructionBytes :: (v: Instruction, wide: uint64[], pool: byte[], starts: int[], sizes: int[], items: string[],
-                     slots: int[]) -> byte[] {
+InstructionBytes :: (v: Instruction, wide: u64[], pool: u8[], starts: int[], sizes: int[], items: string[],
+                     slots: int[]) -> u8[] {
     bytes := Ints([v.op, v.type, v.output, v.left, v.right, v.target, v.frame, v.source, v.stack, v.pin]);
-    bytes.extend(Words([uint64(v.offset), Flag(v.indirect), Zig(v.component_index), wide[v.node]]));
+    bytes.extend(Words([u64(v.offset), Flag(v.indirect), Zig(v.component_index), wide[v.node]]));
     bytes.extend(slice(pool, starts[v.value], sizes[v.value]));
     if (!v.has_message) {
         return extend(bytes, Words([wide[v.layout], 0]));
@@ -480,28 +480,28 @@ InstructionBytes :: (v: Instruction, wide: uint64[], pool: byte[], starts: int[]
     bytes.extend(Words([wide[v.layout]]));
     return extend(bytes, Text(v.message, true, items, slots));
 }
-LocalBytes :: (v: Local, wide: uint64[], pool: byte[], starts: int[], sizes: int[]) -> byte[] {
+LocalBytes :: (v: Local, wide: u64[], pool: u8[], starts: int[], sizes: int[]) -> u8[] {
     bytes := extend(Ints([v.kind]), slice(pool, starts[v.initial], sizes[v.initial]));
-    return extend(bytes, Words([Zig(v.frame), wide[v.node], Zig(v.pin), uint64(v.offset), Flag(v.parameter),
+    return extend(bytes, Words([Zig(v.frame), wide[v.node], Zig(v.pin), u64(v.offset), Flag(v.parameter),
                                 Flag(v.array_default), Zig(v.data_index)]));
 }
-HostBytes :: (v: Host, wide: uint64[]) -> byte[] {
+HostBytes :: (v: Host, wide: u64[]) -> u8[] {
     bytes := Words([wide[v.capability], wide[v.abi], Zig(v.first), Zig(v.result_first), Zig(v.result_count),
                     Zig(v.outcome_count)]);
     return extend(bytes, Words(slice(wide, v.outcome_first, v.outcome_count)));
 }
-CallBytes :: (v: Call, target: Reference, wide: uint64[]) -> byte[] {
+CallBytes :: (v: Call, target: Reference, wide: u64[]) -> u8[] {
     bytes := ReferenceBytes(target, wide);
     return extend(bytes, Words([Zig(v.first), Zig(v.count), Zig(v.result_first), Zig(v.result_count), Flag(v.task)]));
 }
-FunctionHead :: (v: Function) -> byte[] {
-    return Words([Zig(v.argument_count), Zig(v.result_count), Zig(v.variable_count), uint64(v.root_steps),
-                  uint64(v.child_budget), uint64(v.depth_bound), uint64(v.pure_depth_limit), Flag(v.breakpoints),
+FunctionHead :: (v: Function) -> u8[] {
+    return Words([Zig(v.argument_count), Zig(v.result_count), Zig(v.variable_count), u64(v.root_steps),
+                  u64(v.child_budget), u64(v.depth_bound), u64(v.pure_depth_limit), Flag(v.breakpoints),
                   Flag(v.batchable), Flag(v.managed), Flag(v.custom_lowering), Flag(v.checkpoints),
-                  Flag(v.pin_watches), uint64(v.watch_size), Flag(v.component_bindings), Flag(v.component_access)]);
+                  Flag(v.pin_watches), u64(v.watch_size), Flag(v.component_bindings), Flag(v.component_access)]);
 }
 // An entry before its body and subscription references.
-EntryHead :: (v: Entry, wide: uint64[], items: string[], slots: int[]) -> byte[] {
+EntryHead :: (v: Entry, wide: u64[], items: string[], slots: int[]) -> u8[] {
     // Event, event ABI, the observer's component, layout, field and offset,
     // then its type.
     bytes := extend(Words([wide[v.id], wide[v.event_id], wide[v.event_abi], 0, 0, 0, 0]), FlowValue());
@@ -512,8 +512,8 @@ EntryHead :: (v: Entry, wide: uint64[], items: string[], slots: int[]) -> byte[]
     return extend(bytes, Words([wide[v.effects]]));
 }
 // An event declaration with its payload fields.
-EventBytes :: (v: Event, fields: EventField[], wide: uint64[], pool: byte[], starts: int[], sizes: int[],
-               items: string[], slots: int[]) -> byte[] {
+EventBytes :: (v: Event, fields: EventField[], wide: u64[], pool: u8[], starts: int[], sizes: int[],
+               items: string[], slots: int[]) -> u8[] {
     bytes := extend(Words([wide[v.id], wide[v.abi]]), Text(v.name, true, items, slots));
     bytes.extend(Ints([v.count]));
     index := v.first;
@@ -699,13 +699,13 @@ Gather :: (module: Module) -> Gathered {
 }
 
 // The complete inner module.
-pub Write :: (module: Module) -> byte[] {
+pub Write :: (module: Module) -> u8[] {
     switch Gather(module) {
         case .Of(texts, used):
             return WriteTables(module, Table(texts), used);
     }
 }
-WriteTables :: (module: Module, items: string[], used: bool[]) -> byte[] {
+WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
     slots := TableSlots(items);
     switch module {
         case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
@@ -714,7 +714,7 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> byte[] {
                      entries):
             // Nested values follow their parent, so encoding from the last
             // value back finds every nested value already in the pool.
-            pool: byte[] = [];
+            pool: u8[] = [];
             starts := resize([int(0)], length(values));
             sizes := resize([int(0)], length(values));
             at := length(values) - 1;
@@ -728,13 +728,13 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> byte[] {
                 at -= 1;
             }
 
-            bytes := Words([Magic, uint64(Version), uint64(pointer_size), abi, id, owner_type,
+            bytes := Words([Magic, u64(Version), u64(pointer_size), abi, id, owner_type,
                             Zig(length(requirements))]);
             for (requirement in requirements) {
                 bytes.extend(Words([wide[requirement.id], wide[requirement.layout],
                                     Zig(requirement.storage)]));
                 bytes.extend(Text(requirement.name, true, items, slots));
-                bytes.extend(Words([uint64(requirement.size), Flag(requirement.authored)]));
+                bytes.extend(Words([u64(requirement.size), Flag(requirement.authored)]));
                 if (requirement.authored) {
                     bytes.extend(Ints([requirement.count]));
                     index: int = 0;
@@ -760,7 +760,7 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> byte[] {
 
             // Consecutive sources of one asset share its encoded text.
             asset := "";
-            asset_bytes: byte[] = [];
+            asset_bytes: u8[] = [];
             bytes.extend(Ints([length(functions)]));
             for (function in functions) {
                 bytes.extend(FunctionHead(function));
@@ -828,7 +828,7 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> byte[] {
                         while (item < last) {
                             bytes.extend(Ints([data[item].kind]));
                             bytes.extend(slice(pool, starts[data[item].initial], sizes[data[item].initial]));
-                            bytes.extend(Words([uint64(data[item].size)]));
+                            bytes.extend(Words([u64(data[item].size)]));
                             item += 1;
                         }
                     } else if (table == Hosts) {
@@ -897,15 +897,15 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> byte[] {
             bytes.extend(Ints([0, -1, 0, 0, 0, 0]));
             strings_at := length(bytes);
             bytes.extend(TableBytes(items));
-            return extend(bytes, Word(uint64(strings_at)));
+            return extend(bytes, Word(u64(strings_at)));
     }
 }
 
 // FNV-1a over the module bytes, as import fingerprints use; zero becomes one.
-pub Fingerprint :: (bytes: byte[]) -> uint64 {
-    hash: uint64 = 14695981039346656037;
+pub Fingerprint :: (bytes: u8[]) -> u64 {
+    hash: u64 = 14695981039346656037;
     for (item in bytes) {
-        hash = (hash ^ uint64(item)) * 1099511628211;
+        hash = (hash ^ u64(item)) * 1099511628211;
     }
     if (hash == 0) {
         return 1;
@@ -913,12 +913,12 @@ pub Fingerprint :: (bytes: byte[]) -> uint64 {
     return hash;
 }
 
-Word :: (value: uint64) -> byte[] {
-    bytes: byte[] = [];
+Word :: (value: u64) -> u8[] {
+    bytes: u8[] = [];
     index: int = 0;
     rest := value;
     while (index < 8) {
-        bytes.append(byte(wrap: rest));
+        bytes.append(u8(wrap: rest));
         rest = rest >> 8;
         index += 1;
     }
@@ -927,8 +927,8 @@ Word :: (value: uint64) -> byte[] {
 // CHIBICLO v1: header words "CHIBICLO", version, root id and row count, then
 // rows sorted bytewise by name: id, name length, module length, name, module.
 // Module bytes are data[starts[i], starts[i] + lengths[i]).
-pub Closure :: (root: uint64, ids: uint64[], names: string[], data: byte[],
-                starts: int[], lengths: int[]) -> byte[] {
+pub Closure :: (root: u64, ids: u64[], names: string[], data: u8[],
+                starts: int[], lengths: int[]) -> u8[] {
     order: int[] = [];
     index: int = 0;
     while (index < length(names)) {
@@ -941,17 +941,17 @@ pub Closure :: (root: uint64, ids: uint64[], names: string[], data: byte[],
         order[at] = index;
         index += 1;
     }
-    magic: byte[] = [67, 72, 73, 66, 73, 67, 76, 79];
+    magic: u8[] = [67, 72, 73, 66, 73, 67, 76, 79];
     bytes := magic;
     bytes.extend(Word(1));
     bytes.extend(Word(root));
-    bytes.extend(Word(uint64(length(names))));
+    bytes.extend(Word(u64(length(names))));
     for (row in order) {
         name := names[row];
         size := strings.ByteLength(name);
         bytes.extend(Word(ids[row]));
-        bytes.extend(Word(uint64(size)));
-        bytes.extend(Word(uint64(lengths[row])));
+        bytes.extend(Word(u64(size)));
+        bytes.extend(Word(u64(lengths[row])));
         bytes.extend(Raw(name));
         bytes.extend(slice(data, starts[row], lengths[row]));
     }

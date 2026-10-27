@@ -95,8 +95,8 @@ Cases :: () -> Case[] {
         Accepted("comments", "// 雪\npackage scalar\n\npub Main :: () -> int {\n    // λ\n    return 42; // trailing\n}\n", 42, "Main", "return 42"),
         Rejected("overflow", "package scalar\nMain :: () -> int { return 2147483648; }", "Numeric literal is outside the range of int", "2147483648"),
         Rejected("u64_overflow", "package scalar\nMain :: () -> int { return 18446744073709551616; }", "only integer literals of 64 bits are supported", "18446744073709551616"),
-        Rejected("fraction", "package scalar\nMain :: () -> int { return 42.5; }", "only integer literals of 64 bits are supported", "42.5"),
-        Rejected("exponent", "package scalar\nMain :: () -> int { return 1e2; }", "only integer literals of 64 bits are supported", "1e2"),
+        Rejected("fraction", "package scalar\nMain :: () -> int { return 42.5; }", "Numeric literal has a fraction, which int cannot hold", "42.5"),
+        Accepted("exponent", "package scalar\nMain :: () -> int { return 1e2; }", 100, "Main", "return 1e2"),
         Accepted("negative", "package scalar\nMain :: () -> int { return -1; }", -1, "Main", "return -1"),
         Accepted("parentheses", "package scalar\nMain :: () -> int { return (42); }", 42, "Main", "return 42"),
         // The constant folds exactly, as the ordinary compiler folds it, to one
@@ -110,7 +110,7 @@ Cases :: () -> Case[] {
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
         Rejected("reference", "package scalar\nMain :: (x: ref int) -> int { return 42; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "x: ref int"),
         Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
-        Rejected("int64_result", "package scalar\nMain :: () -> int64 { return 42; }", "scalar proof requires its first function to return int", "int64"),
+        Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int", "i64"),
         Rejected("array_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "int[]"),
         Rejected("nominal_result", "package scalar\nMain :: () -> Missing { return 42; }", "result type is not supported yet", "Missing"),
         Rejected("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "(x: int)"),
@@ -130,8 +130,8 @@ Cases :: () -> Case[] {
         Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "[int: int]"),
         Rejected("assert_before", "package scalar\nMain :: () -> int { assert(false); return 42; }", "scalar proof supports only locals, assignments, if statements, switches, loops and returns", "assert(false);"),
         Rejected("return_outcome", "package scalar\nMain :: () -> int { return .Done 42; }", "scalar proof does not support return outcomes", "Done"),
-        Rejected("float_one", "package scalar\nMain :: () -> int { return 1.0; }", "only integer literals of 64 bits are supported", "1.0"),
-        Rejected("exponent_one", "package scalar\nMain :: () -> int { return 1e0; }", "only integer literals of 64 bits are supported", "1e0"),
+        Accepted("float_one", "package scalar\nMain :: () -> int { return 1.0; }", 1, "Main", "return 1.0"),
+        Accepted("exponent_one", "package scalar\nMain :: () -> int { return 1e0; }", 1, "Main", "return 1e0"),
         Rejected("nul_comment", "// 雪\npackage scalar\n// before\u0000after\nMain :: () -> int { return 42; }", "Package source contains NUL bytes", "\u0000"),
         Accepted("identity", "package scalar\nMain :: () -> int { return Id(7); }\nId :: (x: int) -> int { return x; }", 7, "Main,Id", "return 7 ; Id(7) | return x"),
         Accepted("first_argument", "package scalar\nMain :: () -> int { return Pick(5, true, 9); }\nPick :: (a: int, flag: bool, c: int) -> int { return a; }", 5, "Main,Pick", "return 5 ; true ; 9 ; Pick(5, true, 9) | return a"),
@@ -153,7 +153,7 @@ Cases :: () -> Case[] {
         Rejected("argument_type", "package scalar\nMain :: () -> int { return Id(true); }\nId :: (x: int) -> int { return x; }", "argument differs from its parameter type", "Id(true)"),
         Rejected("call_result_type", "package scalar\nMain :: () -> int { return Yes(); }\nYes :: () -> bool { return true; }", "returned value differs from the result type", "return Yes();"),
         Rejected("function_value", "package scalar\nMain :: () -> int { return Id; }\nId :: (x: int) -> int { return x; }", "Unknown name 'Id'", "Id"),
-        Accepted("conversion", "package scalar\nMain :: () -> int { return Low(298); }\nLow :: (x: int) -> int { return int(byte(wrap: x)); }", 42, "Main,Low", "return 298 ; Low(298) | return x ; byte(wrap: x) ; int(byte(wrap: x))"),
+        Accepted("conversion", "package scalar\nMain :: () -> int { return Low(298); }\nLow :: (x: int) -> int { return int(u8(wrap: x)); }", 42, "Main,Low", "return 298 ; Low(298) | return x ; u8(wrap: x) ; int(u8(wrap: x))"),
         Rejected("named_argument", "package scalar\nMain :: () -> int { return Id(x: 1); }\nId :: (x: int) -> int { return x; }", "unsupported syntax 'named_argument'", "x: 1"),
         Accepted("default_parameter", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int = 7) -> int { return x; }", 7, "Main,Id", "return Id() ; Id() | return x"),
         Rejected("string_parameter", "package scalar\nMain :: () -> int { return Size(\"a\"); }\nSize :: (text: string) -> int { return 1; }", "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result", "text: string"),
@@ -234,30 +234,30 @@ Heads :: (rows: facts.Row[]) -> int[] {
     return heads;
 }
 // `value` as a value of `type`: its low bits, sign-extended when the type is
-// signed. The values are int64, which holds every type but uint64, and Check
-// rejects rows of uint64 rather than evaluate them.
-Wrapped :: (value: int64, type: int) -> int64 {
+// signed. The values are i64, which holds every type but u64, and Check
+// rejects rows of u64 rather than evaluate them.
+Wrapped :: (value: i64, type: int) -> i64 {
     bits := facts.Bits(type);
     if (bits == 0 || bits == 64) {
         return value;
     }
-    low := value & ((int64(1) << uint(bits)) - 1);
-    if (!facts.Unsigned(type) && (low >> uint(bits - 1)) == 1) {
-        return low - (int64(1) << uint(bits));
+    low := value & ((i64(1) << u32(bits)) - 1);
+    if (!facts.Unsigned(type) && (low >> u32(bits - 1)) == 1) {
+        return low - (i64(1) << u32(bits));
     }
     return low;
 }
 // `value` clamped to the range of `type`.
-Clamped :: (value: int64, type: int) -> int64 {
+Clamped :: (value: i64, type: int) -> i64 {
     bits := facts.Bits(type);
     if (bits == 64) {
         return value;
     }
-    least: int64 = 0;
-    greatest := (int64(1) << uint(bits)) - 1;
+    least: i64 = 0;
+    greatest := (i64(1) << u32(bits)) - 1;
     if (!facts.Unsigned(type)) {
-        least = 0 - (int64(1) << uint(bits - 1));
-        greatest = (int64(1) << uint(bits - 1)) - 1;
+        least = 0 - (i64(1) << u32(bits - 1));
+        greatest = (i64(1) << u32(bits - 1)) - 1;
     }
     if (value < least) {
         return least;
@@ -268,7 +268,7 @@ Clamped :: (value: int64, type: int) -> int64 {
     return value;
 }
 // The value a comparison operator gives for `left` and `right`.
-Compared :: (operator: int, left: int64, right: int64) -> bool {
+Compared :: (operator: int, left: i64, right: i64) -> bool {
     if (operator == facts.Less) {
         return left < right;
     }
@@ -290,7 +290,7 @@ Compared :: (operator: int, left: int64, right: int64) -> bool {
 // wraps to their type, as the integer contract defines it: nothing fails,
 // x / 0 is 0, x % 0 is x, MIN / -1 is MIN and MIN % -1 is 0, and a count at or
 // past the width shifts out every bit or gives the sign fill.
-Computed :: (operator: int, left: int64, right: int64) -> int64 {
+Computed :: (operator: int, left: i64, right: i64) -> i64 {
     if (operator == facts.Add) {
         return left + right;
     }
@@ -310,10 +310,10 @@ Computed :: (operator: int, left: int64, right: int64) -> int64 {
         return left ^ right;
     }
     if (operator == facts.ShiftLeft) {
-        return left << uint(right);
+        return left << u32(right);
     }
     if (operator == facts.ShiftRight) {
-        return left >> uint(right);
+        return left >> u32(right);
     }
     if (right == 0) {
         if (operator == facts.Divide) {
@@ -353,9 +353,9 @@ Skipped :: (rows: facts.Row[], at: int) -> int {
 // operands are read as the evaluation they record, operand by operand, with
 // `variables` the values of the function's variables by ordinal; a logical
 // whose left operand decides it skips its right rows. Bools are 0 and 1, and
-// each integer is the int64 its type's value is. Only calls recurse, one
+// each integer is the i64 its type's value is. Only calls recurse, one
 // frame each, so the depth is the call chain's.
-Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int64[]) -> int64 {
+Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: i64[]) -> i64 {
     head := heads[function];
     variables := arguments;
     at := head + 1 + rows[head].count;
@@ -370,7 +370,7 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int64[])
             at = Skipped(rows, at + 1);
             continue;
         }
-        stack: int64[] = [];
+        stack: i64[] = [];
         index := at + 1;
         while (index < at + 1 + rows[at].count) {
             operand := rows[index];
@@ -415,7 +415,7 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int64[])
                 stack.append(converted);
             } else if (operand.kind == facts.CompareRow) {
                 base := length(stack) - 2;
-                compared: int64 = 0;
+                compared: i64 = 0;
                 if (Compared(operand.value, stack[base], stack[base + 1])) {
                     compared = 1;
                 }
@@ -423,7 +423,7 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int64[])
                 stack.append(compared);
             } else {
                 base := length(stack) - operand.count;
-                passed: int64[] = [];
+                passed: i64[] = [];
                 for (argument in base..<length(stack)) {
                     passed.append(stack[argument]);
                 }
@@ -444,7 +444,7 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: int64[])
         } else if (row.kind != facts.IfRow) {
             // A local of a branch that did not run has no value.
             while (length(variables) <= row.value) {
-                variables.append(int64(0));
+                variables.append(i64(0));
             }
             variables[row.value] = value;
         }
@@ -545,10 +545,10 @@ pub Check :: (rows: facts.Row[]) -> int {
     for (row in rows) {
         if (row.type == facts.WordType) {
             return -12;
-        } // "the evaluation does not model uint64"
+        } // "the evaluation does not model u64"
     }
-    empty: int64[] = [];
-    if (Evaluate(rows, Heads(rows), 0, empty) != int64(expected.value)) {
+    empty: i64[] = [];
+    if (Evaluate(rows, Heads(rows), 0, empty) != i64(expected.value)) {
         return -9;
     } // "the recorded evaluation differs"
     if (expected.trace != "" && Trace(rows) != expected.trace) {

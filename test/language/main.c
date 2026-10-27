@@ -5,6 +5,7 @@
 #include "package_compiler_chibi.h"
 #include "prepared_writer_chibi.h"
 #include "record_members_chibi.h"
+#include "test/parallel.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "type_relations_chibi.h"
 #include "union_members_chibi.h"
@@ -13,6 +14,7 @@
 #include <string.h>
 
 void test_language_syntax();
+void test_language_parallel();
 void test_language_inferred_string_arrays(bool repro);
 void test_language_outliner_projection();
 void test_language_row_array();
@@ -131,6 +133,15 @@ void test_language_native_census_flattening();
 
 int main(int argc, char **argv)
 {
+    if (!test_parallel_init()) {
+        return 2;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--test-parallel")) {
+        test_language_parallel();
+        test_parallel_finish();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc >= 3 && !strcmp(argv[1], "--package-compiler-chibi-native-call")) {
         return test_language_package_compiler_chibi_native_call(argc - 2, argv + 2);
     }
@@ -369,7 +380,8 @@ int main(int argc, char **argv)
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
-            "Usage: %s --syntax [--corpus manifest] | --execution | "
+            "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
+            "--execution | "
             "--execution-scope | --semantic "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
@@ -741,6 +753,7 @@ int main(int argc, char **argv)
             test_language_corpus(argv[3]);
         }
     }
+    test_parallel_finish();
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }

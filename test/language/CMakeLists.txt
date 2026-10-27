@@ -16,6 +16,8 @@ configure_file("${CHIBI_LANGUAGE_TEST_ROOT}/third_party/pico_headers/pico_unit.h
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/third_party/pico_headers/pico_unit.h" COPYONLY)
 configure_file("${CHIBI_LANGUAGE_TEST_ROOT}/test/prepared_fixture.h"
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/prepared_fixture.h" COPYONLY)
+configure_file("${CHIBI_LANGUAGE_TEST_ROOT}/test/parallel.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/parallel.h" COPYONLY)
 # Compile the shipped core source in the fixture, including installed consumers.
 if(CHIBI_INSTALLED_SDK)
     set(core_strings_source "${Chibi_CORE_SOURCE_DIR}/strings/Strings.chibi")
@@ -317,6 +319,13 @@ target_sources(test_language PRIVATE numeric.c)
 set_source_files_properties(numeric.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_include_directories(test_language PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+target_sources(test_language PRIVATE "${CHIBI_LANGUAGE_TEST_ROOT}/test/parallel.c" parallel.c)
+if(TARGET Chibi::task_scheduler AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # SDK language activation does not activate the parent's link rules.
+    enable_language(CXX)
+    target_link_libraries(test_language PRIVATE Chibi::task_scheduler)
+    target_compile_definitions(test_language PRIVATE CHIBI_TEST_ENKITS=1)
+endif()
 target_sources(test_language PRIVATE effects.c maps.c generic.c symbol_references.c packed.c iteration.c)
 target_link_libraries(test_language PRIVATE Chibi::math_capabilities)
 set_source_files_properties(generic.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

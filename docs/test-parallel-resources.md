@@ -27,9 +27,10 @@ anchors.
 
 ## Limits and scheduling policy
 
-- Separate process ownership is essential: pico_unit, fixture arenas, published
-  type catalogs, JIT state and cache statistics are not safe to share through
-  concurrent C test threads.
+- Separate process ownership remains essential for unaudited selectors: fixture
+  arenas, published type catalogs, JIT state and cache statistics must not be
+  shared through concurrent C test threads. The small audited in-process scopes
+  below are the exception, not a claim that compiler or runtime fixtures are safe.
 - Unreviewed selectors run exclusively, including those that may mutate fixtures
   below absolute `CHIBI_SOURCE_ROOT`. TMPDIR and cwd alone are not isolation proof.
 - Do not infer that the similarly named `package-compiler-chibi-bootstrap`
@@ -203,3 +204,69 @@ NULL-output bootstrap recovery paths are unchanged. This introduces no new
 shared file/cache/process resources. Allocation and compiler behavior did
 change, so prior-head engine results are not integration validation; rerun the
 current combined candidate rather than treating the old CI as current evidence.
+
+## Native C case pool
+
+`test_language` runs the audited syntax (21 cases), format/minimizer (60 cases),
+and focused root-state (3 cases) scopes in parallel by default when the native
+SDK provides enkiTS. This is actual in-process case parallelism, not selector
+subprocess scheduling. The runner owns a separate enkiTS instance; it does not
+acquire the engine's process-global shared task pool. Its budget is at most eight
+threads including the submitting thread, capped to enkiTS's hardware count.
+`CHIBI_TEST_THREADS=1` reproduces serial case execution; values 1–8 are accepted,
+and malformed values fail before execution. Builds without the native scheduler,
+including current web test drivers, run the same cases serially.
+
+Each scope registers existing pico cases and captures their setup/teardown and
+display options. A bounded 64-case queue flushes synchronously. Every case has a
+separate pico context and two owned temporary log streams; the controller joins
+the batch, replays output and errors in registration order, and merges counters.
+No worker redirects process stdout/stderr. Converted fixture owners are
+thread-local and their existing teardown runs after success and failure. Syntax
+corpus I/O remains serial, after the scope barrier. Every other C fixture remains
+exclusive: scheduling a scope is an explicit source-audited choice, not an
+inference from a selector name. Nested scopes are rejected; the audited scopes
+call no runtime scheduler or process-global mutation.
+
+The current pool-enabled selectors are **not** in `PARALLEL_RESOURCES`, so the
+outer process scheduler runs them exclusively. This prevents multiplying outer
+selector workers by inner case workers for this migration. Adding another scope
+requires reviewing that admission rule as well as its fixture ownership, nested
+work, shared catalogs/caches, native calls and output. Existing process-group
+cleanup, group deadlines, assertions and full selector coverage are unchanged.
+Thread failures are not retried; a crash still fails the owning selector.
+An unfinished batch has not replayed its logs when its process is killed;
+previous batches remain visible. Buffering changes log delivery, not timeouts.
+
+`language-test-parallel` covers overlap, worker bounds, more than one queue batch,
+fixture reuse, captured hooks, deterministic failure ordering, counters and
+case-local display settings. Run it with the default and with
+`CHIBI_TEST_THREADS=1`. Compare real syntax/format case and assertion totals in
+both modes. The language driver supplies a monotonic wall clock for passive
+case timing; the other pico drivers retain their existing clock unless they
+configure one. Per-case timing excludes queue wait and hooks, just as the
+previous body timing did. Use external selector wall time to measure speedup.
+
+This first migration does **not** parallelize the expensive package compiler
+fixtures or claim a material full-language CI reduction. Those require explicit
+compiler fixture ownership, catalog/cache/host-probe review, and program
+inspection generation state isolation; converting their file globals to TLS
+alone is not a safety proof.
+
+### Initial in-process safety audit
+
+- Syntax allocates a fresh Tree-sitter parser/tree per case; the generated
+  language tables and fixture corpus tables are immutable. Parser/scanner and
+  syntax-diagnostic owners are not shared. Corpus manifest I/O is outside the
+  parallel scope.
+- Formatter/minimizer cases own their syntax snapshots, generated strings, edit
+  map, semantic analysis and any constructed native capability catalog in TLS.
+  Existing teardown frees and resets each owner before its worker is reused.
+- The reached semantic/formatting implementation has invocation-owned arenas
+  and read-only descriptor tables. Native capability generation allocation and
+  xalloc counters are atomic; these cases do not assert process-wide allocation
+  deltas. Type catalogs are only read, never installed or removed here.
+- No migrated case compiles or executes SLJIT, creates an execution inspector,
+  calls a runtime task pool, changes locale/environment/current directory,
+  writes a shared fixture or launches a child. Fixture diagnostics use the
+  current pico context's streams rather than raw process streams.

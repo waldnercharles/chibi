@@ -1916,6 +1916,16 @@ TEST_CASE(language_delivery_registrations_match)
         snprintf(source, sizeof source, "test/language/%s", sources[i]);
         REQUIRE(registration("tools/graph/engine/Targets.chibi", source));
     }
+    REQUIRE(registration("test/language/main.c", "test_language_parallel"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "test/parallel.c"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "parallel.c)"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "test/parallel.h"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "CHIBI_TEST_ENKITS=1"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "Chibi::task_scheduler"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/parallel.c"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/language/parallel.c"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/parallel.h=test/parallel.h"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "CHIBI_TEST_ENKITS=1"));
     const char *owners[] = { "conversion_capabilities",
                              "tasks",
                              "task_pool_runtime",

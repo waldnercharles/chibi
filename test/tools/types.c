@@ -5,6 +5,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
@@ -233,9 +234,14 @@ type_catalog_pack type_catalog_pack_at(int index)
 static arena snapshots;
 static pin_array *source;
 static av_doc *source_document;
+static bool pointer_project_catalog;
 
 static void release_values()
 {
+    if (pointer_project_catalog) {
+        type_catalog_set_project(NULL);
+        pointer_project_catalog = false;
+    }
     pin_array_free(source);
     source = NULL;
     arena_free(&snapshots);
@@ -377,6 +383,28 @@ TEST_CASE(types_collection_follows_values_across_arenas)
     REQUIRE(first.allocated == 0 && second.allocated == 0);
     arena_free(&first);
     arena_free(&second);
+    return true;
+}
+
+/* A packed native-struct array whose type has left the catalog: tracing keeps
+ * the array and its data without resolving an element layout. */
+TEST_CASE(types_collection_traces_packed_arrays_of_unknown_native_types)
+{
+    arena storage;
+    arena_init_collectable(&storage);
+    pin_array *array = pin_array_snapshot_allocate(&storage, PIN_STRUCT, "test.trace.missing", 0);
+    array->count = array->capacity = 2;
+    array->items = NULL;
+    array->stride = 8;
+    array->data = arena_alloc(&storage, 2 * array->stride);
+    memset(array->data, 0, 2 * array->stride);
+    arena *arenas[] = { &storage };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 1);
+    arena_collect_mark(&collection, array);
+    arena_collect_end(&collection);
+    REQUIRE(arena_contains(&storage, array) && arena_contains(&storage, array->data));
+    arena_free(&storage);
     return true;
 }
 
@@ -1207,15 +1235,49 @@ TEST_CASE(types_authored_record_document_uses_nested_native_layout)
     );
     return true;
 }
+TEST_CASE(types_nested_pointer_records_require_owned_layout_support)
+{
+    typedef struct
+    {
+        pin_pointer *alias;
+    } pointer_row;
+    static const type_field nested_fields[] = {
+        { .name = "alias",
+          .type = PIN_POINTER,
+          .type_name = "test.pointer.string",
+          .offset = offsetof(pointer_row, alias),
+          .size = sizeof(pin_pointer *) }
+    };
+    static const type_desc nested = { .name = "test.pointer.row",
+                                      .size = sizeof(pointer_row),
+                                      .fields = nested_fields,
+                                      .field_count = 1 };
+    static const type_desc *const types[] = { &nested };
+    static const type_catalog_pack pack = { .types = types, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    pointer_project_catalog = true;
+    const type_field fields[] = {
+        { .name = "nested", .type = PIN_STRUCT, .type_name = "test.pointer.row" }
+    };
+    REQUIRE(!pin_record_create(&snapshots, "test.pointer.outer", 9872, fields, 1));
+    REQUIRE(!type_is_plain(&nested));
+    /* A flat record owns its pointer-field spelling and layout without a
+     * mutable nested catalog descriptor. This supported case still succeeds. */
+    const pin_record *flat = pin_record_create(&snapshots, "test.pointer.flat", 9873, nested_fields, 1);
+    REQUIRE(flat && pin_record_valid(flat));
+    return true;
+}
 void test_tool_types()
 {
     pu_setup(NULL, release_values);
+    RUN_TEST_CASE(types_nested_pointer_records_require_owned_layout_support);
     RUN_TEST_CASE(types_document_array_collection_retains_split_payloads);
     RUN_TEST_CASE(types_authored_record_document_uses_nested_native_layout);
     RUN_TEST_CASE(types_catalog_composes_ordered_packs);
     RUN_TEST_CASE(types_nested_reflection_reads_writes_and_checks_layout);
     RUN_TEST_CASE(types_array_snapshot_owns_strings_and_names);
     RUN_TEST_CASE(types_collection_follows_values_across_arenas);
+    RUN_TEST_CASE(types_collection_traces_packed_arrays_of_unknown_native_types);
     RUN_TEST_CASE(types_union_snapshots_and_heap_copies_own_nested_values);
     RUN_TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays);
     RUN_TEST_CASE(types_plain_struct_array_codecs_preserve_inline_values_and_nulls);

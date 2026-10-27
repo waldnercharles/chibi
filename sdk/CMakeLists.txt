@@ -161,7 +161,7 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/value_wire.c")
 add_library(Chibi::types ALIAS chibi_types)
 set_target_properties(chibi_types PROPERTIES EXPORT_NAME types)
-chibi_sdk_headers(chibi_types PUBLIC types/value.h types/text.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/map.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
+chibi_sdk_headers(chibi_types PUBLIC types/value.h types/text.h types/pointer.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/map.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
 configure_file("${CHIBI_SDK_ROOT}/src/types/array_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/types/types/array_internal.h" COPYONLY)
 configure_file("${CHIBI_SDK_ROOT}/src/types/copy_internal.h"
@@ -203,7 +203,7 @@ add_library(chibi_execution_contract INTERFACE)
 add_library(Chibi::execution_contract ALIAS chibi_execution_contract)
 set_target_properties(chibi_execution_contract PROPERTIES EXPORT_NAME execution_contract)
 chibi_sdk_headers(chibi_execution_contract INTERFACE execution/host.h execution/status.h
-    execution/service.h execution/log.h execution/instruction.h execution/operation.h execution/state.h execution/function.h
+    execution/service.h execution/log.h execution/instruction.h execution/operation.h execution/state.h execution/function.h execution/managed.h
     execution/diagnostic.h execution/backend.h execution/component.h execution/scalar.h execution/borrow.h
     execution/request.h execution/source_debug.h execution/value_kind.h execution/arguments.h execution/random.h)
 target_link_libraries(chibi_execution_contract INTERFACE chibi_types chibi_capabilities)

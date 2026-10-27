@@ -1346,7 +1346,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
     aliases: Name[] = [];
     empty_names: string[] = [];
     names: Name[] = [];
-    switch Prologue(forest, text, params, callable, aliases, key, solid, 0, empty_names, empty_names, ops, target) {
+    switch Prologue(forest, text, params, callable, aliases, key, solid, 0, empty_names, empty_names, empty_names, ops, target) {
         case .Begun(work, begun_names, slots, locals, cells, hosts, code, points, named):
             names = begun_names;
     }

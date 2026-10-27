@@ -27,6 +27,7 @@ PROCESS_GROUP = 'CHIBI_RUNNER_PROCESS_GROUP'
 # inspection separately from the caller's test timeout.
 PROCESS_INSPECTION_SECONDS = 5
 TOOLS = {
+    'types': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--types'],
     'execution-scope': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--execution-scope'],
     'fixture-format': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fixture-format',

@@ -115,6 +115,17 @@ int script_analyzer_authored_parameter_index(
     }
     return -1;
 }
+/* Keep an explicit ref wrapper until its parameter has been resolved. */
+TSNode script_analyzer_call_argument(TSNode argument)
+{
+    if (!script_analyzer_is(argument, "named_argument") &&
+        !script_analyzer_is(argument, "typed_argument")) {
+        return argument;
+    }
+    TSNode value = script_analyzer_field(argument, "value");
+    return ts_node_is_null(value) ? script_analyzer_field(argument, "source") : value;
+}
+
 int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter)
 {
     char *name = script_analyzer_qualified_name(a, node);
@@ -322,6 +333,13 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         );
     }
     int left = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+    for (int depth = 0;
+         depth < SCRIPT_MAX_DEPTH &&
+         script_analyzer_expr_type(a, left).storage == PIN_POINTER &&
+         script_analyzer_expr_type(a, left).container == PIN_CONTAINER_SINGLE;
+         depth++) {
+        left = script_analyzer_dereference(a, object, left);
+    }
     script_expression receiver = a->out->expressions[left];
     script_expression result = { .kind = SCRIPT_EXPR_MEMBER,
                                  .range = script_analyzer_range(a, node),
@@ -648,7 +666,7 @@ static int fallback_expression(analyzer *a, TSNode node, script_type expected)
             continue;
         }
         TSNode name_node = script_analyzer_field(argument, "name");
-        TSNode value = script_analyzer_field(argument, "value");
+        TSNode value = script_analyzer_call_argument(argument);
         int ordinal = 0;
         if (!ts_node_is_null(name_node)) {
             char *name = script_analyzer_name_copy(a, name_node);
@@ -757,6 +775,19 @@ static bool field_argument(
     script_type type = capability
                          ? capability->parameters[parameter].type
                          : a->out->symbols[function->parameters[parameter]].type;
+    if (type.flags & SCRIPT_TYPE_REFERENCE) {
+        TSNode value = script_analyzer_call_argument(argument);
+        bool explicit_ref = script_analyzer_is(value, "reference_argument");
+        script_analyzer_diagnostic(
+            a,
+            value,
+            explicit_ref
+                ? "Reference argument requires a writable value"
+                : "Reference parameter requires an explicit ref argument"
+        );
+        seen[parameter] = true;
+        return true;
+    }
     if ((type.flags & SCRIPT_TYPE_UNTYPED) ||
         (type.storage == PIN_STRUCT && !type.nominal)) {
         for (int i = 0; capability && i < acount(call->arguments); i++) {
@@ -810,7 +841,7 @@ static bool field_argument(
         script_analyzer_diagnostic(a, argument, "Whole and field arguments cannot be combined");
         return true;
     }
-    TSNode value = script_analyzer_field(argument, "value");
+    TSNode value = script_analyzer_call_argument(argument);
     if (ts_node_is_null(value)) {
         value = script_analyzer_field(argument, "source");
     }
@@ -898,6 +929,9 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
                     if (ts_node_is_null(value)) {
                         value = script_analyzer_field(argument, "source");
                     }
+                    if (script_analyzer_is(value, "reference_argument")) {
+                        value = script_analyzer_field(value, "value");
+                    }
                     (*values)[i] = script_analyzer_expression(
                         a,
                         value,
@@ -939,6 +973,22 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
         }
     }
     return found;
+}
+
+static void require_reference_type(analyzer *a, TSNode node, script_type expected, script_type actual)
+{
+    if (((expected.flags | actual.flags) & SCRIPT_TYPE_ERROR) ||
+        script_type_equal(
+            script_catalog_canonical_type(a->catalog, expected),
+            script_catalog_canonical_type(a->catalog, actual)
+        )) {
+        return;
+    }
+    if (!script_catalog_type_assignable(a->catalog, expected, actual)) {
+        script_analyzer_require(a, node, expected, actual);
+        return;
+    }
+    script_analyzer_diagnostic(a, node, "Reference argument requires the exact parameter type");
 }
 
 /* The local a reference argument names, or -1. A task can outlive the
@@ -1146,6 +1196,24 @@ bool script_analyzer_array_changer(const script_catalog_capability *function)
     }
     return false;
 }
+static bool requires_pointer_value(const script_catalog *catalog, script_type type, int depth)
+{
+    if (type.container != PIN_CONTAINER_SINGLE || depth >= SCRIPT_MAX_DEPTH) {
+        return false;
+    }
+    if (type.storage == PIN_POINTER) {
+        return !(type.flags & SCRIPT_TYPE_OPTIONAL);
+    }
+    const script_catalog_type *record = type.storage == PIN_STRUCT
+                                          ? script_catalog_type_by_id(catalog, type.nominal)
+                                          : NULL;
+    for (int i = 0; record && i < record->field_count; i++) {
+        if (requires_pointer_value(catalog, record->fields[i].type, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
 static bool migrated_self(const analyzer *a, const script_catalog_capability *capability)
 {
     if (!a->migration_import || a->out->kind == SCRIPT_PROGRAM_LIBRARY ||
@@ -1299,6 +1367,13 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             }
             if (!capability && function_index < 0) {
                 receiver = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+                for (int depth = 0;
+                     depth < SCRIPT_MAX_DEPTH &&
+                     script_analyzer_expr_type(a, receiver).storage == PIN_POINTER &&
+                     script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_SINGLE;
+                     depth++) {
+                    receiver = script_analyzer_dereference(a, object, receiver);
+                }
                 char *method = script_analyzer_name_copy(a, script_analyzer_field(target, "member"));
                 uint64_t receiver_type = script_analyzer_expr_type(a, receiver).nominal;
                 for (int i = 0; i < a->catalog->capability_count; i++) {
@@ -1458,7 +1533,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             continue;
         }
         TSNode name_node = script_analyzer_field(argument, "name"),
-               value = script_analyzer_field(argument, "value");
+               value = script_analyzer_call_argument(argument);
         int parameter = ordinal++;
         if (!ts_node_is_null(name_node)) {
             char *argument_name = script_analyzer_qualified_name(a, name_node);
@@ -1509,11 +1584,29 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 type.nominal = component->id;
             }
         }
+        bool requires_ref = (type.flags & SCRIPT_TYPE_REFERENCE) != 0;
+        bool explicit_ref = script_analyzer_is(value, "reference_argument");
+        if (explicit_ref != requires_ref) {
+            script_analyzer_diagnostic(
+                a,
+                value,
+                requires_ref
+                    ? "Reference parameter requires an explicit ref argument"
+                    : "ref argument requires a reference parameter"
+            );
+        }
+        if (explicit_ref) {
+            value = script_analyzer_field(value, "value");
+        }
         TSNode annotation = script_analyzer_field(argument, "type");
         if (!ts_node_is_null(annotation)) {
             script_type annotated = script_analyzer_type_node(a, annotation);
-            script_analyzer_require(a, annotation, type, annotated);
-            type = annotated;
+            if (requires_ref) {
+                require_reference_type(a, annotation, type, annotated);
+            } else {
+                script_analyzer_require(a, annotation, type, annotated);
+                type = annotated;
+            }
         }
         bool reference = capability && parameter >= 0 && parameter < parameter_count &&
                          capability->parameters[parameter].reference_kind !=
@@ -1573,7 +1666,19 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 script_analyzer_diagnostic(a, argument, "Argument supplied more than once");
             }
             seen[parameter] = true;
-            script_analyzer_require(a, value, type, script_analyzer_expr_type(a, expression_index));
+            script_type actual = script_analyzer_expr_type(a, expression_index);
+            if (requires_ref && actual.storage == PIN_POINTER &&
+                a->out->expressions[expression_index].kind == SCRIPT_EXPR_SYMBOL) {
+                int referenced = a->out->expressions[expression_index].symbol;
+                if (referenced >= 0) {
+                    actual = a->out->symbols[referenced].type;
+                }
+            }
+            if (requires_ref) {
+                require_reference_type(a, value, type, actual);
+            } else {
+                script_analyzer_require(a, value, type, actual);
+            }
             if ((type.flags & SCRIPT_TYPE_REFERENCE) &&
                 !a->out->expressions[expression_index].writable) {
                 script_analyzer_diagnostic(a, value, "Reference argument requires a writable value");
@@ -1696,6 +1801,19 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                      !ts_node_eq(node, a->awaited) &&
                      !script_analyzer_is(unparenthesized_parent(node), "action_declaration") &&
                      !(symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION);
+    if (capability && script_name_matches(capability->name, "Resize")) {
+        for (int i = 0; i < acount(result.arguments); i++) {
+            if (result.arguments[i].parameter != 0) {
+                continue;
+            }
+            script_type array = script_analyzer_expr_type(a, result.arguments[i].value);
+            script_type element = script_catalog_element_type(a->catalog, array);
+            if (array.container == PIN_CONTAINER_ARRAY &&
+                requires_pointer_value(a->catalog, element, 0)) {
+                script_analyzer_diagnostic(a, node, "Resizing this array requires an explicit non-null element value");
+            }
+        }
+    }
     bool authored_task = spawnable && function && !capability &&
                          function->kind == SCRIPT_FUNCTION_AUTHORED &&
                          script_analyzer_function_waits(a, function_index);
@@ -1870,5 +1988,6 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     (void)expected;
     free(name);
     afree(selected_parameters);
+    script_analyzer_invalidate_pointers(a);
     return script_analyzer_expr_add(a, result);
 }

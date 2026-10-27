@@ -483,6 +483,26 @@ script_type script_analyzer_collection_type(analyzer *a, pin_container container
     return definition.type;
 }
 
+void script_analyzer_invalidate_pointers(analyzer *a)
+{
+    for (int i = 0; i < acount(a->out->symbols); i++) {
+        if (a->out->symbols[i].addressed) {
+            a->out->symbols[i].mutations++;
+        }
+    }
+}
+script_type script_analyzer_pointer_type(analyzer *a, script_type pointee)
+{
+    script_catalog_type definition = script_constructor_pointer(
+        &a->out->constants,
+        pointee,
+        sizeof(void *)
+    );
+    if (!script_catalog_type_by_id(a->catalog, definition.id)) {
+        script_analyzer_publish_type(a, definition);
+    }
+    return definition.type;
+}
 script_type script_analyzer_type_node(analyzer *a, TSNode node)
 {
     return script_analyzer_read_type(a, node, false, NULL);
@@ -517,6 +537,7 @@ int script_analyzer_initializer_find(const analyzer *a, int symbol)
 static bool starts_empty(script_type type)
 {
     return (type.flags & SCRIPT_TYPE_TASK) || type.storage == PIN_HANDLE ||
+           (type.storage == PIN_POINTER && (type.flags & SCRIPT_TYPE_OPTIONAL)) ||
            type.container != PIN_CONTAINER_SINGLE;
 }
 bool script_analyzer_compile_time_value(analyzer *a, int index, int *steps, bool scalar)

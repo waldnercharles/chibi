@@ -406,6 +406,12 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
             valid = false;
             continue;
         }
+        if (script_analyzer_is(value, "reference_argument")) {
+            if (!ts_node_is_null(script_analyzer_field(parameter, "comptime"))) {
+                script_analyzer_diagnostic(a, value, "ref argument requires a reference parameter");
+            }
+            value = script_analyzer_field(value, "value");
+        }
         TSNode type = script_analyzer_field(parameter, "type");
         TSNode type_binder = binder(type);
         char *name = script_analyzer_name_copy(
@@ -1103,6 +1109,12 @@ static const script_catalog_specialization *import_request(
                          : script_analyzer_field(argument, "value");
         if (ts_node_is_null(value)) {
             value = argument;
+        }
+        if (script_analyzer_is(value, "reference_argument")) {
+            if (parameter->comptime || parameter->type_value) {
+                script_analyzer_diagnostic(a, value, "ref argument requires a reference parameter");
+            }
+            value = script_analyzer_field(value, "value");
         }
         if (evaluate || parameter->comptime || parameter->type_value) {
             compile_value constant = { 0 };

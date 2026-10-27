@@ -346,6 +346,7 @@ const char *script_reference_type_name(script_reference_kind);
 script_type script_catalog_canonical_type(const script_catalog *, script_type);
 bool script_catalog_type_assignable(const script_catalog *, script_type expected, script_type actual);
 bool script_type_equal(script_type a, script_type b);
+script_type script_catalog_pointee_type(const script_catalog *, script_type);
 script_type script_catalog_element_type(const script_catalog *, script_type);
 script_type script_catalog_key_type(const script_catalog *, script_type);
 bool script_type_numeric(script_type type);

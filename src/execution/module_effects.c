@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/record.h"
 #include "types/scalar.h"
 #include "types/union.h"
 
@@ -77,6 +78,11 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
             }
             break;
         }
+        case EXECUTION_INTRINSIC_POINTER_MAKE: expected = 3; break;
+        case EXECUTION_INTRINSIC_POINTER_READ:
+        case EXECUTION_INTRINSIC_POINTER_WRITE: expected = 2; break;
+        case EXECUTION_INTRINSIC_POINTER_FIELD: expected = 5; break;
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE: expected = 1; break;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: expected = 9; break;
         case EXECUTION_INTRINSIC_REFERENCE_FIELD: expected = 4; break;
         case EXECUTION_INTRINSIC_REFERENCE_READ:
@@ -495,6 +501,13 @@ static bool predicate_host(const behavior_function *f, int pc)
     }
     int steps = EFFECT_STEPS;
     switch (execution_intrinsic_kind(id)) {
+        /* Managed cells can be shared with persistent state or other calls.
+         * Query predicates cannot observe or mutate that heap. */
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+        case EXECUTION_INTRINSIC_POINTER_READ:
+        case EXECUTION_INTRINSIC_POINTER_WRITE:
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE: return false;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: {
             origin kind = bank_origin(f, pc, host->first + 2, 0, &steps);
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
@@ -1117,6 +1130,13 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                     break;
                 }
+                if (execution_intrinsic_kind(id) >= EXECUTION_INTRINSIC_POINTER_MAKE &&
+                    execution_intrinsic_kind(id) <= EXECUTION_INTRINSIC_POINTER_REFERENCE) {
+                    /* The owner heap is mutable across invocations. Its access
+                     * cannot be attributed to one ECS column or worker. */
+                    unknown(e);
+                    break;
+                }
                 if (id) {
                     unknown(e);
                     break;
@@ -1457,9 +1477,10 @@ static bool snapshot_storage(pin_value value)
 
 static bool managed_value(pin_value value)
 {
-    return value.container != PIN_CONTAINER_SINGLE || value.type == PIN_STRUCT ||
-           value.type == PIN_STR || value.type == PIN_NAME ||
-           value.type == PIN_UNION || value.type == PIN_TASK;
+    return value.container != PIN_CONTAINER_SINGLE ||
+           value.type == PIN_STRUCT || value.type == PIN_STR ||
+           value.type == PIN_NAME || value.type == PIN_UNION ||
+           value.type == PIN_TASK || value.type == PIN_POINTER;
 }
 
 static void cost_host(costs *c, const behavior_function *f, int pc)
@@ -1472,6 +1493,21 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         return;
     }
     switch (execution_intrinsic_kind(id)) {
+        case EXECUTION_INTRINSIC_POINTER_MAKE:
+            cost_add(c, f, pc, id, allocate_copy | EXECUTION_COST_ESCAPE, 0, "Managed cell construction retains an initializer in the owner heap");
+            return;
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+            cost_add(c, f, pc, id, allocate_copy, 0, "Managed field projection retains a location and its type metadata");
+            return;
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+            cost_add(c, f, pc, id, EXECUTION_COST_ALLOCATE, 0, "Managed pointee reference allocates an invocation descriptor");
+            return;
+        case EXECUTION_INTRINSIC_POINTER_READ:
+            cost_add(c, f, pc, id, 0, allocate_copy, "Managed pointee read snapshots its value and type metadata");
+            return;
+        case EXECUTION_INTRINSIC_POINTER_WRITE:
+            cost_add(c, f, pc, id, EXECUTION_COST_ESCAPE, allocate_copy, "Managed pointee write retains a snapshot in the owner heap");
+            return;
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_ITEM:
             cost_add(c, f, pc, id, allocate_copy, 0, "String iteration snapshots its cursor or one Unicode scalar");
@@ -1781,8 +1817,8 @@ typedef struct
 static bool pointer_value(pin_value v, behavior_value_kind kind)
 {
     return kind != BEHAVIOR_VALUE || v.container != PIN_CONTAINER_SINGLE ||
-           v.type == BF_POINTER_TYPE || v.type == PIN_STRUCT ||
-           v.type == PIN_STR || v.type == PIN_NAME || v.type == PIN_UNION;
+           v.type == BF_POINTER_TYPE || v.type == PIN_STRUCT || v.type == PIN_STR ||
+           v.type == PIN_NAME || v.type == PIN_UNION || v.type == PIN_POINTER;
 }
 static bool text_type(pin_type type)
 {
@@ -1916,6 +1952,39 @@ static int share_target(const share_flow *s, int cell)
     int target = s->contents[cell];
     return target >= 0 && !s->cells[target] ? target : -1;
 }
+/* Snapshotting containers or records copies their ordinary payloads, but
+ * managed pointer fields retain identity. Unknown union payloads may carry
+ * such pointers too. */
+static bool snapshot_aliases(pin_value value, int depth)
+{
+    if (value.type == PIN_POINTER || value.type == PIN_UNION || depth >= EFFECT_DEPTH) {
+        return true;
+    }
+    if (value.type != PIN_STRUCT) {
+        return false;
+    }
+    value.container = PIN_CONTAINER_SINGLE;
+    const type_desc *type = pin_value_type(&value);
+    if (!type) {
+        return true;
+    }
+    if (type->alias_of) {
+        return snapshot_aliases(
+            (pin_value){ .type = PIN_STRUCT, .type_name = type->alias_of },
+            depth + 1
+        );
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (snapshot_aliases(
+                (pin_value){ .type = field->type, .type_name = field->type_name },
+                depth + 1
+            )) {
+            return true;
+        }
+    }
+    return false;
+}
 static void share_host(share_flow *s, int pc)
 {
     const behavior_function *f = s->f;
@@ -1964,9 +2033,37 @@ static void share_host(share_flow *s, int pc)
              * bits of a pointer instead of copying what it points to. */
             case EXECUTION_INTRINSIC_SNAPSHOT:
             case EXECUTION_INTRINSIC_CONSTRUCT:
-            case EXECUTION_INTRINSIC_UNION_MAKE:
             case EXECUTION_INTRINSIC_REFERENCE_READ:
                 output = s->retyped && inputs;
+                for (int k = 0; k < host->result_count; k++) {
+                    output |= inputs &&
+                              snapshot_aliases(
+                                  f->data_values[host->result_first + k].initial,
+                                  0
+                              );
+                }
+                break;
+            case EXECUTION_INTRINSIC_UNION_MAKE:
+                /* The constructor exposes every payload header, unlike an
+                 * arbitrary union snapshot. Ordinary payload copies sever
+                 * aliases; only pointer-bearing payloads keep them. */
+                output = s->retyped && inputs;
+                for (int cell = host->first + 1; cell < host->result_first; cell++) {
+                    output |= share_cell(s, cell) &&
+                              snapshot_aliases(f->data_values[cell].initial, 0);
+                }
+                break;
+            case EXECUTION_INTRINSIC_POINTER_MAKE:
+            case EXECUTION_INTRINSIC_POINTER_READ:
+            case EXECUTION_INTRINSIC_POINTER_FIELD:
+            case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+                /* A pointer is an alias, including when nested in a copied
+                 * record. Its pointee never becomes private call storage. */
+                output = true;
+                break;
+            case EXECUTION_INTRINSIC_POINTER_WRITE:
+                s->unsafe = true;
+                output = false;
                 break;
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
@@ -1979,7 +2076,11 @@ static void share_host(share_flow *s, int pc)
                 output = s->retyped && inputs;
                 for (int k = 0; k < host->result_first - host->first - 2; k++) {
                     bool kept = keep < 0 || (k < 31 && (keep >> k & 1));
-                    output |= kept && share_cell(s, host->first + 2 + k);
+                    output |= (kept || snapshot_aliases(
+                                           f->data_values[host->first + 2 + k].initial,
+                                           0
+                                       )) &&
+                              share_cell(s, host->first + 2 + k);
                 }
                 break;
             }

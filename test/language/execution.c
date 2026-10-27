@@ -4,6 +4,7 @@
 #include "execution/integer_report.h"
 #include "execution/intrinsics.h"
 #include "execution/log.h"
+#include "execution/managed.h"
 #include "execution/module_effects.h"
 #include "execution/preparation_budget.h"
 #include "execution/prepared_internal.h"
@@ -11,6 +12,7 @@
 #include "execution/service.h"
 #include "execution/status.h"
 #include "graph/shader/shader_graph.h"
+#include "runtime/arrays.h"
 #include "runtime/behaviors/package.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -18,6 +20,8 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/pointer.h"
+#include "types/record.h"
 #include "types/text.h"
 #include "types/union.h"
 
@@ -49,7 +53,12 @@ static const type_desc c_text_type = { .name = "fixture.c_text",
                                        .size = sizeof(fixture_c_text),
                                        .fields = &c_text_field,
                                        .field_count = 1 };
-static const type_desc *const types[] = { &box_type, &c_text_type };
+static const type_field narrow_enum_field = { .name = "mode", .type = PIN_ENUM, .size = 1 };
+static const type_desc narrow_enum_type = { .name = "fixture.narrow_enum",
+                                            .size = 1,
+                                            .fields = &narrow_enum_field,
+                                            .field_count = 1 };
+static const type_desc *const types[] = { &box_type, &c_text_type, &narrow_enum_type };
 type_catalog_pack test_program_types();
 type_catalog_pack test_reductions_types();
 type_catalog_pack test_graph_model_types();
@@ -77,7 +86,7 @@ type_catalog_pack type_catalog_pack_at(int index)
                                     .enums = SHADER_PACK.enums,
                                     .enum_count = SHADER_PACK.enum_count };
     }
-    return (type_catalog_pack){ .types = types, .type_count = 2 };
+    return (type_catalog_pack){ .types = types, .type_count = 3 };
 }
 
 static behavior_function_builder *builder;
@@ -85,6 +94,10 @@ static behavior_function *function, *callee;
 static behavior_function_context context;
 static behavior_function_activation activation;
 static arena storage, managed;
+static behavior_managed_heap pointer_heap;
+static behavior_managed_heap secondary_pointer_heap;
+static pin_value pointer_root;
+static bool pointer_root_registered;
 static int host_calls;
 static service_binding *log_services;
 static execution_module_plan *prepared_plan;
@@ -102,6 +115,13 @@ static void release_invocation()
 static void cleanup()
 {
     release_invocation();
+    if (pointer_root_registered) {
+        behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
+        pointer_root_registered = false;
+    }
+    behavior_managed_heap_free(&pointer_heap);
+    behavior_managed_heap_free(&secondary_pointer_heap);
+    pointer_root = (pin_value){ 0 };
     execution_module_plan_free(prepared_plan);
     execution_module_free(prepared_module);
     execution_module_free(imported_module);
@@ -3202,10 +3222,646 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
     return true;
 }
 
+/* Five fixed address pairs on two backends: ten calls, budget 100 each. */
+TEST_CASE(execution_pointer_comparisons_use_location_identity)
+{
+    builder = behavior_function_builder_new();
+    pin_value headers[] = { { .type = PIN_POINTER }, { .type = PIN_POINTER } };
+    pin_value results[] = { { .type = PIN_BOOL }, { .type = PIN_BOOL } };
+    behavior_function_builder_signature(builder, headers, 2, results, 2, NULL, 0);
+    int left = slot(PIN_POINTER), right = slot(PIN_POINTER);
+    int equal = slot(PIN_BOOL), different = slot(PIN_BOOL);
+    emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                          .type = PIN_POINTER,
+                                          .left = 0,
+                                          .output = left,
+                                          .value = headers[0] });
+    emit((behavior_function_instruction){ .op = BF_ARGUMENT,
+                                          .type = PIN_POINTER,
+                                          .left = 1,
+                                          .output = right,
+                                          .value = headers[1] });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_EQ, .type = PIN_POINTER, .left = left, .right = right, .output = equal });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_NE, .type = PIN_POINTER, .left = left, .right = right, .output = different });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_RESULT, .type = PIN_BOOL, .target = 0, .left = equal });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_RESULT, .type = PIN_BOOL, .target = 1, .left = different });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    pin_pointer root = { 0 }, other = { 0 };
+    pin_pointer first = { .base = &root, .offset = 4 };
+    pin_pointer same = { .base = &root, .offset = 4 };
+    pin_pointer next = { .base = &root, .offset = 8 };
+    pin_pointer separate = { .base = &other, .offset = 4 };
+    const struct
+    {
+        pin_pointer *left, *right;
+        bool equal;
+    } cases[] = {
+        { &first, &same, true },      { &first, &next, false },
+        { &first, &separate, false }, { NULL, NULL, true },
+        { &first, NULL, false },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        pin_value args[] = { { .type = PIN_POINTER, .ptr = cases[i].left },
+                             { .type = PIN_POINTER, .ptr = cases[i].right } };
+        for (int backend = 0; backend < 2; backend++) {
+            REQUIRE(run(args, 2, NULL, results, backend != 0, 100) == FLOW_OK);
+            REQUIRE(results[0].b == cases[i].equal && results[1].b != cases[i].equal);
+        }
+    }
+    return true;
+}
+static const char *count_native_boundary(void *, const pin_value *, pin_value *)
+{
+    host_calls++;
+    return NULL;
+}
+/* Nine fixed union payloads and two backends, eighteen total invocations. */
+TEST_CASE(execution_native_boundary_rejects_hidden_managed_pointers)
+{
+    for (int variant = 0; variant < 9; variant++) {
+        cleanup();
+        pin_value payload = { .type = variant ? PIN_POINTER : PIN_I32 };
+        pin_array array = { .element_type = PIN_POINTER,
+                            .count = 1,
+                            .capacity = 1,
+                            .items = &payload };
+        pin_value nested = variant == 2
+                             ? (pin_value){ .type = PIN_POINTER,
+                                            .container = PIN_CONTAINER_ARRAY,
+                                            .ptr = &array }
+                             : payload;
+        int32_t plain_rows[] = { 3, 7 };
+        pin_pointer *pointer_rows[] = { NULL, NULL };
+        if (variant >= 3 && variant < 5) {
+            type_field field = { .name = "value",
+                                 .type = variant == 3 ? PIN_I32 : PIN_POINTER,
+                                 .type_name = variant == 3 ? NULL : "^int" };
+            const pin_record *
+                record = pin_record_create(&managed, "fixture.boundary_rows", 431, &field, 1);
+            REQUIRE(record);
+            array = (pin_array){ .element_type = PIN_STRUCT,
+                                 .type_name = record->type.name,
+                                 .record = record,
+                                 .count = 2,
+                                 .capacity = 2,
+                                 .stride = record->type.size,
+                                 .data = variant == 3 ? (void *)plain_rows
+                                                      : (void *)pointer_rows };
+            nested = (pin_value){ .type = PIN_STRUCT,
+                                  .container = PIN_CONTAINER_ARRAY,
+                                  .type_name = record->type.name,
+                                  .record = record,
+                                  .ptr = &array };
+            REQUIRE(pin_array_valid(&array));
+        }
+        pin_value boxed[2];
+        const pin_string text[] = { { "first", 5 }, { "second", 6 } };
+        const pin_string *text_rows[] = { &text[0], &text[1] };
+        if (variant >= 5 && variant < 7) {
+            const type_field field = { .name = "text",
+                                       .type = PIN_STR,
+                                       .text_descriptor = true };
+            const pin_record *
+                record = pin_record_create(&managed, "fixture.boundary_text", 432, &field, 1);
+            REQUIRE(record);
+            for (int i = 0; i < 2; i++) {
+                boxed[i] = (pin_value){ .type = PIN_STRUCT,
+                                        .type_name = record->type.name,
+                                        .record = record,
+                                        .ptr = &text_rows[i] };
+            }
+            array = (pin_array){ .element_type = PIN_STRUCT,
+                                 .type_name = record->type.name,
+                                 .record = record,
+                                 .count = 2,
+                                 .capacity = 2,
+                                 .items = boxed };
+            nested = (pin_value){ .type = PIN_STRUCT,
+                                  .container = PIN_CONTAINER_ARRAY,
+                                  .type_name = record->type.name,
+                                  .record = record,
+                                  .ptr = &array };
+            REQUIRE(pin_array_valid(&array));
+        }
+        uint8_t mode[] = { 1, 2 };
+        if (variant >= 7) {
+            nested = (pin_value){ .type = PIN_STRUCT,
+                                  .type_name = narrow_enum_type.name,
+                                  .ptr = mode };
+            if (variant == 8) {
+                for (int i = 0; i < 2; i++) {
+                    boxed[i] = nested;
+                    boxed[i].ptr = &mode[i];
+                }
+                array = (pin_array){ .element_type = PIN_STRUCT,
+                                     .type_name = narrow_enum_type.name,
+                                     .count = 2,
+                                     .capacity = 2,
+                                     .items = boxed };
+                nested.container = PIN_CONTAINER_ARRAY;
+                nested.ptr = &array;
+            }
+        }
+        bool rejected = variant == 1 || variant == 2 || variant == 4 || variant == 6;
+        pin_value argument;
+        REQUIRE(!pin_union_value(&managed, 1, &nested, 1, &argument));
+        builder = behavior_function_builder_new();
+        const node_host_call call = { .invoke = count_native_boundary };
+        const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+        int host = behavior_function_builder_host(builder, &call, &access, &argument, 1, NULL, 0);
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        if (variant == 6) {
+            /* A dynamic bank value can disagree with its array's declaration;
+             * the native boundary must inspect that element's actual header. */
+            pin_union *value = function
+                                   ->data_values[function->host_calls[host].first]
+                                   .initial.ptr;
+            pin_array *actual = value->values[0].ptr;
+            REQUIRE(actual && !actual->stride && actual->count == 2);
+            actual->items[1] = (pin_value){ .type = PIN_POINTER, .type_name = "^int" };
+        }
+        REQUIRE(behavior_function_compile(function));
+        for (int backend = 0; backend < 2; backend++) {
+            host_calls = 0;
+            int status = run(NULL, 0, NULL, NULL, backend != 0, 100);
+            REQUIRE(rejected ? status != FLOW_OK : status == FLOW_OK);
+            REQUIRE(host_calls == (rejected ? 0 : 1));
+            if (rejected) {
+                REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA);
+                REQUIRE(
+                    context.error_message &&
+                    !strcmp(context.error_message, "Native calls cannot retain managed pointer arguments")
+                );
+            }
+        }
+    }
+    return true;
+}
+/* Four malformed dynamic payloads, two instructions and two backends each.
+ * They enter an otherwise valid bank after definition freeze, so the boundary
+ * itself must reject before any callback or invalid memory access. */
+TEST_CASE(execution_native_boundary_rejects_malformed_aggregate_storage)
+{
+    for (int variant = 0; variant < 4; variant++) {
+        cleanup();
+        pin_value payload = { .type = PIN_I32 }, argument;
+        REQUIRE(!pin_union_value(&managed, 1, &payload, 1, &argument));
+        builder = behavior_function_builder_new();
+        const node_host_call call = { .invoke = count_native_boundary };
+        const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+        int host = behavior_function_builder_host(builder, &call, &access, &argument, 1, NULL, 0);
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        pin_union *actual = function
+                                ->data_values[function->host_calls[host].first]
+                                .initial.ptr;
+        pin_array malformed = { .element_type = variant ? PIN_I32 : PIN_POINTER,
+                                .count = 1,
+                                .capacity = 1,
+                                .stride = variant ? sizeof(int32_t) : sizeof(void *) };
+        type_field field = { .name = "value",
+                             .type = variant == 2 ? PIN_POINTER : PIN_UNION,
+                             .offset = variant == 2 ? SIZE_MAX : 0,
+                             .size = variant == 2 ? sizeof(void *) : 1 };
+        pin_record record = { .type = { .name = "fixture.invalid_boundary",
+                                        .size = sizeof(void *),
+                                        .fields = &field,
+                                        .field_count = 1 },
+                              .id = 433 };
+        void *record_payload = NULL;
+        actual->values[0] = variant < 2
+                              ? (pin_value){ .type = PIN_I32,
+                                             .container = PIN_CONTAINER_ARRAY,
+                                             .ptr = &malformed }
+                              : (pin_value){ .type = PIN_STRUCT,
+                                             .type_name = record.type.name,
+                                             .record = &record,
+                                             .ptr = &record_payload };
+        REQUIRE(behavior_function_compile(function));
+        for (int backend = 0; backend < 2; backend++) {
+            host_calls = 0;
+            REQUIRE(run(NULL, 0, NULL, NULL, backend != 0, 100) != FLOW_OK);
+            REQUIRE(host_calls == 0 && context.failure == BEHAVIOR_FUNCTION_DATA);
+            REQUIRE(
+                context.error_message &&
+                !strcmp(context.error_message, "Cannot retain language value")
+            );
+        }
+    }
+    return true;
+}
+static const char *rebound_kernel(arena *, const pin_value *, int, pin_value *results)
+{
+    host_calls++;
+    results[0] = (pin_value){ .type = PIN_I32, .i = -1 };
+    return NULL;
+}
+/* One pointer array, its own and a rebound callback, two backends each. A
+ * borrowing kernel skips the argument walk only through its own callback; any
+ * other callback is checked like a native call and fails before it runs. */
+TEST_CASE(execution_rebound_borrowing_call_checks_its_arguments)
+{
+    cleanup();
+    pin_value payload = { .type = PIN_POINTER };
+    pin_array array = { .element_type = PIN_POINTER,
+                        .count = 1,
+                        .capacity = 1,
+                        .items = &payload };
+    pin_value argument = { .type = PIN_POINTER,
+                           .container = PIN_CONTAINER_ARRAY,
+                           .ptr = &array };
+    pin_value output = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    int host = behavior_function_builder_host(
+        builder,
+        &NATIVE_ARRAY_length_CALL,
+        &NATIVE_ARRAY_ACCESS,
+        &argument,
+        1,
+        &output,
+        1
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    int result = function->host_calls[host].result_first;
+    for (int rebound = 0; rebound < 2; rebound++) {
+        for (int backend = 0; backend < 2; backend++) {
+            release_invocation();
+            host_calls = 0;
+            context = (behavior_function_context){ .budget = 100 };
+            behavior_function_bind_storage(&context, &storage);
+            REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+            behavior_function_prepare_data(function, NULL, &context.data);
+            context.owned_data = true;
+            if (rebound) {
+                context.data->calls[host].value = rebound_kernel;
+            }
+            int status = behavior_function_run(function, &context, backend != 0);
+            if (!rebound) {
+                REQUIRE(status == FLOW_OK && context.data->values[result].i == 1);
+                continue;
+            }
+            REQUIRE(
+                status != FLOW_OK && host_calls == 0 &&
+                context.data->values[result].i == 0
+            );
+            REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA);
+            REQUIRE(
+                context.error_message &&
+                !strcmp(context.error_message, "Native calls cannot retain managed pointer arguments")
+            );
+        }
+    }
+    return true;
+}
+/* Two malformed arguments to one borrowing kernel: a top-level array and one
+ * nested in a boxed array's union. Bank values enter at definition freeze,
+ * which validates their whole storage, so the call never runs on them. */
+TEST_CASE(execution_borrowing_call_arguments_validate_at_definition)
+{
+    for (int variant = 0; variant < 2; variant++) {
+        cleanup();
+        int32_t rows[] = { 1, 2 };
+        pin_array malformed = { .element_type = PIN_I32,
+                                .count = 1,
+                                .capacity = 1,
+                                .stride = 2 * sizeof(int32_t),
+                                .data = rows };
+        pin_value array = { .type = PIN_I32,
+                            .container = PIN_CONTAINER_ARRAY,
+                            .ptr = &malformed };
+        pin_value inner = { .type = PIN_I32 }, item;
+        REQUIRE(!pin_union_value(&managed, 1, &inner, 1, &item));
+        ((pin_union *)item.ptr)->values[0] = array;
+        pin_array boxed = { .element_type = PIN_UNION,
+                            .count = 1,
+                            .capacity = 1,
+                            .items = &item };
+        pin_value argument = variant ? (pin_value){ .type = PIN_UNION,
+                                                    .container = PIN_CONTAINER_ARRAY,
+                                                    .ptr = &boxed }
+                                     : array;
+        pin_value output = { .type = PIN_I32 };
+        builder = behavior_function_builder_new();
+        behavior_function_builder_host(
+            builder,
+            &NATIVE_ARRAY_length_CALL,
+            &NATIVE_ARRAY_ACCESS,
+            &argument,
+            1,
+            &output,
+            1
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = 0,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        REQUIRE(!function && !strcmp(error, "function value ownership is invalid"));
+    }
+    return true;
+}
+/* Two fixed canonical intrinsic bodies; inspect metadata without executing. */
+TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe)
+{
+    const node_host_call *calls[] = { &EXECUTION_pointer_read_call,
+                                      &EXECUTION_pointer_write_call };
+    for (int i = 0; i < 2; i++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value args[] = { { .type = PIN_POINTER }, { .type = PIN_I32 } };
+        pin_value output = { .type = i ? PIN_BOOL : PIN_I32 };
+        int host = behavior_function_builder_host(
+            builder,
+            calls[i],
+            &EXECUTION_value_access,
+            args,
+            2,
+            &output,
+            1
+        );
+        uint64_t id = execution_intrinsic_id(calls[i]);
+        REQUIRE(
+            behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        REQUIRE(!execution_query_predicate_valid(function, 0));
+        execution_module_function entry = { .id = 1,
+                                            .kind = EXECUTION_FUNCTION_SYSTEM,
+                                            .body = function };
+        execution_module module = { .plan = { .functions = &entry,
+                                              .function_count = 1 } };
+        REQUIRE(execution_module_build_effects(&module));
+        REQUIRE(!execution_module_effects(&module).parallel_safe);
+        free(module.effect_ids);
+        if (i) {
+            execution_prepare_argument_sharing(function);
+            REQUIRE(function->argument_sharing == BEHAVIOR_SHARING_COPY);
+            REQUIRE(!execution_builds_safely(function));
+        }
+    }
+    return true;
+}
+/* Two flat record layouts share their first field's type and offset. Five
+ * direct calls, one refused root and two bounded backend calls check layouts. */
+TEST_CASE(execution_pointer_fields_require_the_full_base_layout)
+{
+    behavior_managed_heap_init(&pointer_heap);
+    const type_field fields[] = { { .name = "x", .type = PIN_I32 },
+                                  { .name = "tail", .type = PIN_I32 } };
+    type_field changed[] = { fields[0], fields[1] };
+    changed[1].type = PIN_F32;
+    const pin_record *record = pin_record_create(&managed, "fixture.projected", 101, fields, 2);
+    const pin_record *stale = pin_record_create(&managed, "fixture.projected", 101, changed, 2);
+    REQUIRE(record && stale && record->layout != stale->layout);
+    REQUIRE(record->type.fields[0].offset == stale->type.fields[0].offset);
+    REQUIRE(record->type.fields[0].type == stale->type.fields[0].type);
+    struct
+    {
+        int32_t x, tail;
+    } value = { 17, 23 };
+    pin_value base = { .type = PIN_STRUCT, .type_name = record->type.name, .record = record };
+    behavior_function_context owner = { .managed_heap = &pointer_heap };
+    pin_value make[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&owner }, base, base };
+    make[2].ptr = &value;
+    pointer_root = (pin_value){ .type = PIN_POINTER, .type_name = "^fixture.projected" };
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &pointer_root));
+    pin_value field[] = { pointer_root,
+                          { .type = PIN_I32 },
+                          { .type = PIN_U64, .u64 = record->type.fields[0].offset },
+                          { .type = PIN_BOOL },
+                          base };
+    pin_value projected = { .type = PIN_POINTER, .type_name = "^int" };
+    REQUIRE(!EXECUTION_pointer_field_call.value(&managed, field, 5, &projected));
+    pin_value read[] = { projected, { .type = PIN_I32 } },
+              result = { .type = PIN_I32 };
+    REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &result) && result.i == 17);
+    field[4].record = stale;
+    size_t before, capacity, after;
+    arena_usage(&pointer_heap.storage, &before, &capacity);
+    void *previous = projected.ptr;
+    const char *error = EXECUTION_pointer_field_call.value(&managed, field, 5, &projected);
+    REQUIRE(error && !strcmp(error, "Managed pointer base differs from its expected record layout"));
+    arena_usage(&pointer_heap.storage, &after, &capacity);
+    REQUIRE(projected.ptr == previous && before == after);
+    builder = behavior_function_builder_new();
+    int host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_pointer_field_call,
+        &EXECUTION_value_access,
+        field,
+        5,
+        &projected,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_pointer_field_call);
+    REQUIRE(
+        behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    for (int backend = 0; backend < 2; backend++) {
+        int status = run(NULL, 0, NULL, NULL, backend != 0, 100);
+        if (context.failure != BEHAVIOR_FUNCTION_HOST_DATA) {
+            fprintf(
+                stderr,
+                "pointer projection backend=%d status=%d failure=%d "
+                "message=%s\n",
+                backend,
+                status,
+                context.failure,
+                context.error_message ? context.error_message : ""
+            );
+        }
+        REQUIRE(status != FLOW_OK);
+        REQUIRE(context.failure == BEHAVIOR_FUNCTION_HOST_DATA);
+        REQUIRE(
+            context.error_message &&
+            !strcmp(context.error_message, "Managed pointer base differs from its expected record layout")
+        );
+    }
+    pin_value native = { .type = PIN_STRUCT, .type_name = "NativeOnly" };
+    make[1] = make[2] = native;
+    previous = projected.ptr;
+    error = EXECUTION_pointer_make_call.value(&managed, make, 3, &projected);
+    REQUIRE(error && !strcmp(error, "Managed values require authored record layouts"));
+    REQUIRE(projected.ptr == previous);
+    error = behavior_managed_heap_root(&pointer_heap, &native);
+    REQUIRE(error && !strcmp(error, "Managed values require authored record layouts"));
+    REQUIRE(native.type == PIN_STRUCT && !native.ptr && !native.record);
+    REQUIRE(!strcmp(native.type_name, "NativeOnly") && !acount(pointer_heap.roots));
+    return true;
+}
+/* Two heaps, one cell each, five direct intrinsic calls and one refused root. */
+TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation)
+{
+    behavior_managed_heap_init(&pointer_heap);
+    behavior_managed_heap_init(&secondary_pointer_heap);
+    behavior_function_context first = { .managed_heap = &pointer_heap };
+    behavior_function_context second = { .managed_heap = &secondary_pointer_heap };
+    const pin_value header = { .type = PIN_POINTER, .type_name = "fixture.owner" };
+    pin_value make[] = { { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&first },
+                         header,
+                         header };
+    pin_value local = header, foreign = header, output = header;
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &local));
+    make[0].u64 = (uintptr_t)&second;
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &foreign));
+    pin_value rooted = foreign;
+    const char *error = behavior_managed_heap_root(&pointer_heap, &rooted);
+    REQUIRE(error && !strcmp(error, "Managed pointers cannot cross heap owners"));
+    REQUIRE(rooted.ptr == foreign.ptr && !acount(pointer_heap.roots));
+    make[0].u64 = (uintptr_t)&first;
+    make[2] = foreign;
+    output.ptr = local.ptr;
+    error = EXECUTION_pointer_make_call.value(&managed, make, 3, &output);
+    REQUIRE(error && !strcmp(error, "Managed pointers cannot cross heap owners"));
+    REQUIRE(output.ptr == local.ptr);
+    pin_value write[] = { local, foreign }, written = { 0 };
+    error = EXECUTION_pointer_write_call.value(&managed, write, 2, &written);
+    REQUIRE(error && !strcmp(error, "Managed pointers cannot cross heap owners"));
+    REQUIRE(written.type == PIN_BOOL && !written.b);
+    pin_value read[] = { local, header };
+    REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &output));
+    REQUIRE(output.type == PIN_POINTER && !output.ptr);
+    return true;
+}
+/* Three cyclic cells and one final scalar cell. Four quiescent collections,
+ * one registered-header reassignment, then heap destruction; no unbounded walks. */
+TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles)
+{
+    behavior_managed_heap_init(&pointer_heap);
+    behavior_function_context owner = { .managed_heap = &pointer_heap };
+    const pin_value link_type = { .type = PIN_POINTER,
+                                  .type_name = "fixture.cyclic_pointer" };
+    pin_value make[] = {
+        { .type = BF_POINTER_TYPE, .u64 = (uintptr_t)&owner },
+        link_type,
+        link_type,
+    };
+    pointer_root = link_type;
+    pin_value other = link_type, self = link_type;
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &pointer_root));
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &other));
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &self));
+    REQUIRE(pointer_root.ptr && other.ptr && self.ptr);
+    REQUIRE(
+        pointer_root.ptr != other.ptr && other.ptr != self.ptr &&
+        pointer_root.ptr != self.ptr
+    );
+    pin_value write[] = { pointer_root, other }, written = { 0 };
+    REQUIRE(
+        !EXECUTION_pointer_write_call.value(&managed, write, 2, &written) &&
+        written.b
+    );
+    write[0] = other;
+    write[1] = pointer_root;
+    REQUIRE(
+        !EXECUTION_pointer_write_call.value(&managed, write, 2, &written) &&
+        written.b
+    );
+    write[0] = self;
+    write[1] = self;
+    REQUIRE(
+        !EXECUTION_pointer_write_call.value(&managed, write, 2, &written) &&
+        written.b
+    );
+    REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+    pointer_root_registered = true;
+    behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
+    REQUIRE(arena_contains(&pointer_heap.storage, pointer_root.ptr));
+    REQUIRE(arena_contains(&pointer_heap.storage, other.ptr));
+    REQUIRE(!arena_contains(&pointer_heap.storage, self.ptr));
+    pin_value read[] = { pointer_root, link_type }, next = link_type;
+    REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &next));
+    REQUIRE(next.ptr == other.ptr);
+    read[0] = next;
+    REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &next));
+    REQUIRE(next.ptr == pointer_root.ptr);
+    behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
+    REQUIRE(arena_contains(&pointer_heap.storage, other.ptr));
+    void *unrooted = pointer_root.ptr;
+    behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
+    pointer_root_registered = false;
+    REQUIRE(!pointer_root.ptr && !pointer_root.type);
+    behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
+    size_t bytes, capacity;
+    arena_usage(&pointer_heap.storage, &bytes, &capacity);
+    REQUIRE(bytes == 0);
+    REQUIRE(!arena_contains(&pointer_heap.storage, unrooted));
+    REQUIRE(!arena_contains(&pointer_heap.storage, other.ptr));
+    make[1] = (pin_value){ .type = PIN_I32 };
+    make[2] = (pin_value){ .type = PIN_I32, .i = 17 };
+    REQUIRE(!EXECUTION_pointer_make_call.value(&managed, make, 3, &pointer_root));
+    char first_label[] = "^fixture.first_int";
+    char second_label[] = "^fixture.second_int";
+    pointer_root.type_name = first_label;
+    REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+    pointer_root_registered = true;
+    void *cell = pointer_root.ptr;
+    pointer_root.type_name = second_label;
+    REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+    memset(first_label, 'x', sizeof first_label - 1);
+    memset(second_label, 'y', sizeof second_label - 1);
+    REQUIRE(acount(pointer_heap.roots) == 1);
+    REQUIRE(!strcmp(pointer_root.type_name, "^fixture.second_int"));
+    behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
+    REQUIRE(pointer_root.ptr == cell && arena_contains(&pointer_heap.storage, cell));
+    REQUIRE(!strcmp(pointer_root.type_name, "^fixture.second_int"));
+    behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
+    pointer_root_registered = false;
+    REQUIRE(!acount(pointer_heap.roots));
+    REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
+    pointer_root_registered = true;
+    behavior_managed_heap_free(&pointer_heap);
+    pointer_root_registered = false;
+    REQUIRE(pointer_root.type == PIN_FLOW && !pointer_root.ptr);
+    return true;
+}
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
+    RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
+    RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);
+    RUN_TEST_CASE(execution_pointer_comparisons_use_location_identity);
+    RUN_TEST_CASE(execution_native_boundary_rejects_hidden_managed_pointers);
+    RUN_TEST_CASE(execution_native_boundary_rejects_malformed_aggregate_storage);
+    RUN_TEST_CASE(execution_rebound_borrowing_call_checks_its_arguments);
+    RUN_TEST_CASE(execution_borrowing_call_arguments_validate_at_definition);
+    RUN_TEST_CASE(execution_managed_pointer_access_is_not_query_or_parallel_safe);
+    RUN_TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles);
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
     RUN_TEST_CASE(execution_intrinsics_build_in_result_storage);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);

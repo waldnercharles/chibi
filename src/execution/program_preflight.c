@@ -3,6 +3,7 @@
 #include "execution/intrinsics.h"
 #include "execution/program_internal.h"
 #include "support/array.h"
+#include "types/record.h"
 
 static bool installed(const ecs_world *world, uint64_t id)
 {
@@ -62,6 +63,32 @@ static void add_function(const behavior_function ***functions, const behavior_fu
     }
     apush(*functions, function);
 }
+/* Native services do not own the program's managed heap. A nominal record
+ * cannot hide a pointer field when it crosses a service boundary. */
+static bool managed_shape(pin_value value, int depth)
+{
+    if (value.type == PIN_POINTER || depth >= 64) {
+        return true;
+    }
+    if (value.type != PIN_STRUCT) {
+        return false;
+    }
+    value.container = PIN_CONTAINER_SINGLE;
+    const type_desc *type = pin_value_type(&value);
+    if (!type) {
+        return false;
+    }
+    if (type->alias_of) {
+        return managed_shape((pin_value){ .type = PIN_STRUCT, .type_name = type->alias_of }, depth + 1);
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (managed_shape((pin_value){ .type = field->type, .type_name = field->type_name }, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
 static bool function_valid(const behavior_function *f, const ecs_world *world)
 {
     for (int i = 0; i < acount(f->components); i++) {
@@ -92,6 +119,25 @@ static bool function_valid(const behavior_function *f, const ecs_world *world)
         const behavior_function_host_call *host = &f->host_calls[i];
         if (!access_valid(world, host->access)) {
             return false;
+        }
+        /* Only canonical intrinsics and borrowing kernels have a managed-heap
+         * lifetime contract. Host services must opt into a distinct contract
+         * before accepting managed pointer inputs or publishing such outputs. */
+        const node_host_call *canonical = execution_intrinsic_resolve(host->capability_id);
+        bool intrinsic = canonical &&
+                         host->capability_abi ==
+                             execution_intrinsic_abi(host->capability_id) &&
+                         host->call->invoke == canonical->invoke &&
+                         host->call->value == canonical->value &&
+                         host->call->context == canonical->context &&
+                         host->call->action == canonical->action;
+        if (!intrinsic && !host->call->borrows) {
+            for (int bank = host->first; bank < host->result_first + host->result_count;
+                 bank++) {
+                if (managed_shape(f->data_values[bank].initial, 0)) {
+                    return false;
+                }
+            }
         }
         if (host->call != &EXECUTION_query_source_call &&
             host->call != &EXECUTION_query_target_call &&

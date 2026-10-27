@@ -15,6 +15,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
 
@@ -305,6 +306,10 @@ static const script_symbol *action_symbol(lower *l, const script_expression *exp
 static int retain_bank(lower *, int, script_type, script_range);
 static int reference(lower *, int);
 static int reference_expression(lower *, const script_expression *, bool written);
+static int reference_read(lower *, int descriptor, script_type, script_range);
+static int local_address(lower *, int);
+static int managed_address(lower *, const script_expression *);
+
 static void statement(lower *, int);
 static void assign(lower *, const script_statement *);
 static void assign_value(lower *, const script_statement *, int);
@@ -621,6 +626,7 @@ static int binary(lower *l, script_operator op, int left, int right, script_type
         *nominal = script_catalog_type_by_id(l->catalog, operand.nominal);
     if ((op == SCRIPT_OP_EQ || op == SCRIPT_OP_NE) &&
         (operand.container == PIN_CONTAINER_MAP ||
+         (operand.storage == PIN_POINTER && operand.container == PIN_CONTAINER_SINGLE) ||
          (operand.container == PIN_CONTAINER_SINGLE && nominal &&
           nominal->authored_record))) {
         pin_value headers[] = { initial(l, operand), initial(l, operand) };
@@ -763,8 +769,9 @@ static int host_result(lower *l, int bank, script_type type, script_range range)
 static bool contains_handles(script_type type)
 {
     return !(type.flags & SCRIPT_TYPE_REFERENCE) &&
-           (type.storage == PIN_TASK || type.storage == PIN_UNION ||
-            type.storage == PIN_STRUCT || type.container != PIN_CONTAINER_SINGLE ||
+           (type.storage == PIN_POINTER || type.storage == PIN_TASK ||
+            type.storage == PIN_UNION || type.storage == PIN_STRUCT ||
+            type.container != PIN_CONTAINER_SINGLE ||
             (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL));
 }
 static void clear_value(lower *l, int bank, script_type type, script_range range)
@@ -823,6 +830,7 @@ static int linked_host(
                         kind = BEHAVIOR_REFERENCE;
                         break;
                     case EXECUTION_INTRINSIC_REFERENCE_MAKE:
+                    case EXECUTION_INTRINSIC_POINTER_MAKE:
                     case EXECUTION_INTRINSIC_ACTION_READ:
                     case EXECUTION_INTRINSIC_ACTION_COMPLETE:
                     case EXECUTION_INTRINSIC_COMPONENT_HAS:
@@ -862,6 +870,7 @@ static int linked_host(
             (void)set;
         }
         if (intrinsic == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
+            intrinsic == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
             intrinsic == EXECUTION_INTRINSIC_REFERENCE_FIELD ||
             intrinsic == EXECUTION_INTRINSIC_REFERENCE_KEY) {
             bool set = behavior_function_builder_kind(
@@ -1163,6 +1172,119 @@ static int bank_reference(lower *l, int bank, script_type type, script_range ran
         (script_type){ .storage = BF_POINTER_TYPE },
         range
     );
+}
+static script_type managed_type(lower *l, script_type pointee)
+{
+    for (int i = 0; i < l->catalog->type_count; i++) {
+        const script_catalog_type *type = &l->catalog->types[i];
+        if (type->type.storage == PIN_POINTER &&
+            type->type.container == PIN_CONTAINER_SINGLE &&
+            script_type_equal(type->element_type, pointee)) {
+            return type->type;
+        }
+    }
+    assert(!"Managed pointee type was not published");
+    return (script_type){ .flags = SCRIPT_TYPE_ERROR };
+}
+static int managed_read(lower *l, int pointer, script_type pointee, script_range range)
+{
+    pin_value headers[] = { initial(l, managed_type(l, pointee)), initial(l, pointee) };
+    int slots[] = { pointer, -1 };
+    return primitive(
+        l,
+        &EXECUTION_pointer_read_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        2,
+        pointee,
+        range
+    );
+}
+static void managed_write(lower *l, int pointer, int value, script_type pointee, script_range range)
+{
+    pin_value headers[] = { initial(l, managed_type(l, pointee)), initial(l, pointee) };
+    int slots[] = { pointer, value };
+    primitive(
+        l,
+        &EXECUTION_pointer_write_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        2,
+        (script_type){ .storage = PIN_BOOL },
+        range
+    );
+}
+static int managed_local(lower *l, int symbol, script_range range)
+{
+    if (l->captured && l->captured[symbol] >= 0) {
+        int descriptor = value_op(
+            l,
+            (behavior_function_instruction){ .op = BF_ARGUMENT,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = l->parameters[symbol],
+                                             .value = { .type = BF_POINTER_TYPE } },
+            range
+        );
+        return reference_read(
+            l,
+            descriptor,
+            managed_type(l, l->a->symbols[symbol].type),
+            range
+        );
+    }
+    return host_result(
+        l,
+        local_address(l, symbol),
+        managed_type(l, l->a->symbols[symbol].type),
+        range
+    );
+}
+static int managed_reference(lower *l, int pointer, script_type pointee, script_range range)
+{
+    pin_value header = initial(l, managed_type(l, pointee));
+    return primitive(
+        l,
+        &EXECUTION_pointer_reference_call,
+        &EXECUTION_value_access,
+        &header,
+        &pointer,
+        1,
+        (script_type){ .storage = BF_POINTER_TYPE },
+        range
+    );
+}
+static int managed_address(lower *l, const script_expression *e)
+{
+    if (e->kind == SCRIPT_EXPR_DEREFERENCE) {
+        return expression(l, e->left);
+    }
+    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+        l->a->symbols[e->symbol].addressed) {
+        return managed_local(l, e->symbol, e->range);
+    }
+    if (e->kind == SCRIPT_EXPR_MEMBER) {
+        const script_expression *parent = &l->a->expressions[e->left];
+        pin_value headers[] = { initial(l, managed_type(l, parent->type)),
+                                initial(l, e->type),
+                                { .type = PIN_U64, .u64 = e->offset },
+                                { .type = PIN_BOOL },
+                                initial(l, parent->type) };
+        int slots[] = { managed_address(l, parent), -1, -1, -1, -1 };
+        return primitive(
+            l,
+            &EXECUTION_pointer_field_call,
+            &EXECUTION_value_access,
+            headers,
+            slots,
+            5,
+            managed_type(l, e->type),
+            e->range
+        );
+    }
+    error(l, e->range, "Managed pointer requires a writable local or record field");
+    return -1;
 }
 static int reference_read(lower *l, int descriptor, script_type type, script_range range)
 {
@@ -3580,6 +3702,10 @@ static int component_value(lower *l, const script_expression *e, bool presence)
 /* Whether an optional value holds one: a nil optional is all zero. */
 static int present(lower *l, int value, script_type type, script_range range)
 {
+    if (type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE) {
+        int zero = constant(l, initial(l, type), range);
+        return binary(l, SCRIPT_OP_NE, value, zero, (script_type){ .storage = PIN_BOOL }, type, range);
+    }
     pin_type slot = slot_type(type);
     int zero = kind_op(
         l,
@@ -3676,6 +3802,10 @@ static int system_step(lower *l, const script_symbol *s, script_range range)
 static int symbol_value(lower *l, const script_expression *e)
 {
     const script_symbol *s = &l->a->symbols[e->symbol];
+    if (s->addressed && (l->parameters[e->symbol] < 0 ||
+                         (l->captured && l->captured[e->symbol] >= 0))) {
+        return managed_read(l, managed_local(l, e->symbol, e->range), s->type, e->range);
+    }
     if (s->kind == SCRIPT_CONSTANT) {
         pin_value value = l->constant_values[e->symbol];
         if (value.type != PIN_FLOW) {
@@ -4045,6 +4175,19 @@ static int array_item(lower *l, int array, int index, script_type type, script_r
 }
 static int reference_expression(lower *l, const script_expression *e, bool written)
 {
+    if (e->kind == SCRIPT_EXPR_DEREFERENCE) {
+        return managed_reference(l, expression(l, e->left), e->type, e->range);
+    }
+    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+        l->a->symbols[e->symbol].addressed &&
+        (l->parameters[e->symbol] < 0 || (l->captured && l->captured[e->symbol] >= 0))) {
+        return managed_reference(
+            l,
+            managed_local(l, e->symbol, e->range),
+            l->a->symbols[e->symbol].type,
+            e->range
+        );
+    }
     if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
         (l->a->symbols[e->symbol].type.flags & SCRIPT_TYPE_REFERENCE) &&
         l->locals[e->symbol] >= 0) {
@@ -4493,6 +4636,10 @@ static int expression_value(lower *l, int index)
         }
         case SCRIPT_EXPR_FALLBACK: return expression(l, e->left);
         case SCRIPT_EXPR_NIL:
+            if (e->type.storage == PIN_POINTER &&
+                e->type.container == PIN_CONTAINER_SINGLE) {
+                return constant(l, initial(l, e->type), e->range);
+            }
             if (e->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) {
                 return constant(l, (pin_value){ .type = PIN_UNION }, e->range);
             }
@@ -4518,6 +4665,10 @@ static int expression_value(lower *l, int index)
             }
             return constant(l, e->constant, e->range);
         case SCRIPT_EXPR_SYMBOL: return symbol_value(l, e);
+        case SCRIPT_EXPR_ADDRESS:
+            return managed_address(l, &l->a->expressions[e->left]);
+        case SCRIPT_EXPR_DEREFERENCE:
+            return managed_read(l, expression(l, e->left), e->type, e->range);
         case SCRIPT_EXPR_CALL: return call(l, e);
         case SCRIPT_EXPR_YIELD: return task_command(l, &EXECUTION_Yield, -1, e);
         case SCRIPT_EXPR_JOIN:
@@ -4960,7 +5111,11 @@ static void store_tuple(lower *l, int symbol, int value, int source, script_rang
 static int local_address(lower *l, int symbol)
 {
     if (l->addresses[symbol] < 0) {
-        pin_value header = initial(l, l->a->symbols[symbol].type);
+        script_type type = l->a->symbols[symbol].type;
+        if (l->a->symbols[symbol].addressed) {
+            type = managed_type(l, type);
+        }
+        pin_value header = initial(l, type);
         int host = linked_host(
             l->builder,
             &EXECUTION_snapshot_call,
@@ -5007,8 +5162,37 @@ static void release_tuple(lower *l, int symbol, script_range range)
 static void declare_symbol(lower *l, int symbol, int value, script_range range)
 {
     const script_symbol *s = &l->a->symbols[symbol];
-    if (s->boxed && s->writable && l->variables[symbol] < 0 &&
-        l->parameters[symbol] < 0) {
+    if (s->addressed && l->parameters[symbol] < 0) {
+        script_type pointer = managed_type(l, s->type);
+        release(l, bank_reference(l, local_address(l, symbol), pointer, range), range);
+        pin_value headers[] = { { .type = BF_POINTER_TYPE },
+                                initial(l, s->type),
+                                initial(l, s->type) };
+        int slots[] = { value_op(
+                            l,
+                            (behavior_function_instruction){ .op = BF_CONTEXT,
+                                                             .type = BF_POINTER_TYPE,
+                                                             .target = 1 },
+                            range
+                        ),
+                        -1,
+                        value };
+        int cell = primitive(
+            l,
+            &EXECUTION_pointer_make_call,
+            &EXECUTION_value_access,
+            headers,
+            slots,
+            3,
+            pointer,
+            range
+        );
+        host_argument(l, local_address(l, symbol), cell, pointer, range);
+        debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, range);
+        return;
+    }
+    if ((s->boxed || s->type.storage == PIN_POINTER) && s->writable &&
+        l->variables[symbol] < 0 && l->parameters[symbol] < 0) {
         local_address(l, symbol);
         int descriptor = reference_expression(
             l,
@@ -5029,10 +5213,30 @@ static void declare_symbol(lower *l, int symbol, int value, script_range range)
  * their task-owned boxes. Saved immutable locals use suspension liveness. */
 static void leave_scope(lower *l, int scope, script_range range)
 {
+    bool continuation = false;
+    for (int i = 0; i < l->a->function_count; i++) {
+        const script_function *child = &l->a->functions[i];
+        if (child->parent == l->function && child->kind == SCRIPT_FUNCTION_CONTINUATION) {
+            continuation = true;
+            break;
+        }
+    }
     for (int symbol = 0; symbol < l->a->symbol_count; symbol++) {
         const script_symbol *s = &l->a->symbols[symbol];
         if (s->scope != scope || s->kind != SCRIPT_LOCAL ||
             (l->captured && l->captured[symbol] >= 0)) {
+            continue;
+        }
+        /* Continuations capture every parent local bank when the action
+         * completes, after this lexical scope may have exited. Their retained
+         * parent frame keeps those banks rooted until completion. */
+        if (continuation && l->addresses[symbol] >= 0) {
+            continue;
+        }
+        if (s->addressed && l->addresses[symbol] >= 0) {
+            script_type pointer = managed_type(l, s->type);
+            release(l, bank_reference(l, l->addresses[symbol], pointer, range), range);
+            clear_value(l, l->addresses[symbol], pointer, range);
             continue;
         }
         if (s->type.flags & SCRIPT_TYPE_RESULTS) {
@@ -5046,7 +5250,7 @@ static void leave_scope(lower *l, int scope, script_range range)
             }
         } else if (l->addresses[symbol] >= 0 && contains_handles(s->type)) {
             int bank = l->addresses[symbol];
-            if (s->boxed) {
+            if (s->boxed || s->type.storage == PIN_POINTER) {
                 release(l, bank_reference(l, bank, s->type, range), range);
             }
             clear_value(l, bank, s->type, range);
@@ -5068,6 +5272,11 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
     }
     const script_symbol *s = &l->a->symbols[symbol];
     debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, range);
+    if (s->addressed &&
+        (l->parameters[symbol] < 0 || (l->captured && l->captured[symbol] >= 0))) {
+        managed_write(l, managed_local(l, symbol, range), value, s->type, range);
+        return;
+    }
     if ((s->type.flags & SCRIPT_TYPE_REFERENCE) && l->locals[symbol] >= 0) {
         int descriptor = value_op(
             l,
@@ -5193,7 +5402,8 @@ static void assign_value(lower *l, const script_statement *s, int value)
         store_symbol(l, target->symbol, value, s->range);
         return;
     }
-    if (target->kind == SCRIPT_EXPR_COMPONENT || target->kind == SCRIPT_EXPR_INDEX ||
+    if (target->kind == SCRIPT_EXPR_DEREFERENCE ||
+        target->kind == SCRIPT_EXPR_COMPONENT || target->kind == SCRIPT_EXPR_INDEX ||
         (target->kind == SCRIPT_EXPR_MEMBER &&
          (!target->write || native_reference_member(l, target)))) {
         int parent = s->expression;
@@ -5227,7 +5437,8 @@ static bool direct_target(lower *l, const script_expression *e)
         return false;
     }
     const script_symbol *s = &l->a->symbols[e->symbol];
-    if ((s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) ||
+    if (s->addressed ||
+        (s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) ||
         (l->captured && l->captured[e->symbol] >= 0)) {
         return false;
     }
@@ -5246,7 +5457,7 @@ static bool owned_local(lower *l, int expression, pin_container container)
     }
     const script_symbol *s = &l->a->symbols[e->symbol];
     return s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT) &&
-           s->type.container == container && !s->boxed &&
+           s->type.container == container && !s->boxed && !s->addressed &&
            !(s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS |
                               SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL)) &&
            l->variables[e->symbol] < 0 && l->parameters[e->symbol] < 0 &&
@@ -6805,7 +7016,7 @@ static void isolate_parameters(lower *l, script_range range)
         const script_symbol *symbol = &l->a->symbols[i];
         if (symbol->kind != SCRIPT_PARAMETER || l->parameters[i] < 0 ||
             l->captured[i] >= 0 || (symbol->type.flags & SCRIPT_TYPE_REFERENCE) ||
-            !parameter_needs_storage(l, i)) {
+            (!symbol->addressed && !parameter_needs_storage(l, i))) {
             continue;
         }
         script_expression input = { .kind = SCRIPT_EXPR_SYMBOL,
@@ -6813,8 +7024,12 @@ static void isolate_parameters(lower *l, script_range range)
                                     .type = symbol->type,
                                     .range = range };
         int value = symbol_value(l, &input);
-        host_argument(l, local_address(l, i), value, symbol->type, range);
         l->parameters[i] = -1;
+        if (symbol->addressed) {
+            declare_symbol(l, i, value, range);
+        } else {
+            host_argument(l, local_address(l, i), value, symbol->type, range);
+        }
     }
 }
 static void lower_function(lower *l, int index)
@@ -6878,7 +7093,10 @@ static void lower_function(lower *l, int index)
             for (int j = 0; j < count; j++) {
                 pin_value type = initial(
                     l,
-                    tuple ? tuple->results[j] : l->a->symbols[i].type
+                    tuple ? tuple->results[j]
+                    : l->a->symbols[i].addressed
+                        ? managed_type(l, l->a->symbols[i].type)
+                        : l->a->symbols[i].type
                 );
                 pin_value owned;
                 if (pin_value_snapshot_to_arena(&l->module->storage, &owned, &type)) {
@@ -6986,7 +7204,8 @@ static void lower_function(lower *l, int index)
         const script_symbol *result_symbol = &l->a->symbols[symbol];
         script_type type = result_symbol->type;
         if (result_symbol->initializer >= 0 &&
-            (type.storage == PIN_UNION || (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL))) {
+            (type.storage == PIN_UNION || type.storage == PIN_POINTER ||
+             (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL))) {
             int value = expression(l, result_symbol->initializer);
             value = convert(
                 l,
@@ -7384,7 +7603,7 @@ static execution_module_plan *lower_analysis(
     m->id = script_catalog_id("module", a->identity);
     for (int i = 0; i < catalog->type_count; i++) {
         const script_catalog_type *type = &catalog->types[i];
-        if (type->internal ||
+        if ((type->internal && type->type.storage != PIN_POINTER) ||
             (type->type.flags & (SCRIPT_TYPE_NAMESPACE | SCRIPT_TYPE_UNION))) {
             continue;
         }

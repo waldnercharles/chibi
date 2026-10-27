@@ -57,6 +57,9 @@ static const char
                 "g: int, h: int, i: int) -> int {\n"
                 "        return a + i;\n"
                 "    }\n"
+                "    Bump :: (value: ref int) -> int { value += 1; return "
+                "value; }\n"
+                "    Read :: (value: ^int) -> int { return value^; }\n"
                 "    UnusedRef :: (value: ref int) -> int { return 7; }\n"
                 "}\n";
 static const char PROBE[] = "Probe :: behavior {\n"
@@ -399,6 +402,9 @@ TEST_CASE(native_calls_reject_mismatched_exports)
     const execution_native_export waits[] = { exported("Pause", INT_INT, 1, reward) };
     const execution_native_export twice[] = { EXPORTS[0], EXPORTS[1], EXPORTS[0] };
     const execution_native_export wide[] = { exported("Wide", INT9_INT, 9, reward) };
+    /* A reference or pointer parameter passes an address, not an int. */
+    const execution_native_export lent[] = { exported("Bump", INT_INT, 1, reward) };
+    const execution_native_export pointed[] = { exported("Read", INT_INT, 1, reward) };
     const execution_native_manifest manifests[] = {
         { EXECUTION_NATIVE_ABI + 1, 4, EXPORTS },
         { EXECUTION_NATIVE_ABI, 2, typed },
@@ -408,6 +414,8 @@ TEST_CASE(native_calls_reject_mismatched_exports)
         { EXECUTION_NATIVE_ABI, 1, waits },
         { EXECUTION_NATIVE_ABI, 3, twice },
         { EXECUTION_NATIVE_ABI, 1, wide },
+        { EXECUTION_NATIVE_ABI, 1, lent },
+        { EXECUTION_NATIVE_ABI, 1, pointed },
     };
     static const char *const reasons[] = {
         "native library ABI 2 differs from 1",
@@ -424,6 +432,10 @@ TEST_CASE(native_calls_reject_mismatched_exports)
         "native export Reward is exported twice",
         "native export Wide has more parameters or results than a native entry "
         "takes",
+        "native export Bump has no pure function of its signature in the "
+        "library",
+        "native export Read has no pure function of its signature in the "
+        "library",
     };
     for (int i = 0; i < (int)(sizeof manifests / sizeof *manifests); i++) {
         REQUIRE(rejects(&manifests[i], reasons[i]));

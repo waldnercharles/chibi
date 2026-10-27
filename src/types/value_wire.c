@@ -477,7 +477,8 @@ static bool same_name(const char *a, const char *b)
 }
 static bool valid_field(const type_desc *type, const type_field *field)
 {
-    if (field->type < PIN_BOOL || field->type > PIN_ENUM ||
+    if (!((field->type >= PIN_BOOL && field->type <= PIN_ENUM) ||
+          field->type == PIN_POINTER) ||
         field->offset > type->size || field->size > type->size - field->offset) {
         return false;
     }
@@ -866,7 +867,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     if (!w->reading && v->record && !c->resolve) {
         fail(w, "Authored record requires a prepared layout table");
     }
-    if (!w->reading && (v->type < PIN_FLOW || v->type > PIN_UNION ||
+    if (!w->reading && (v->type < PIN_FLOW || v->type > PIN_POINTER ||
                         v->container < PIN_CONTAINER_SINGLE ||
                         v->container > PIN_CONTAINER_MAP ||
                         (v->type == PIN_FLOW && v->container))) {
@@ -893,7 +894,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     if (w->error) {
         return;
     }
-    if (tag < PIN_FLOW || tag > PIN_UNION || container < PIN_CONTAINER_SINGLE ||
+    if (tag < PIN_FLOW || tag > PIN_POINTER || container < PIN_CONTAINER_SINGLE ||
         container > PIN_CONTAINER_MAP || (tag == PIN_FLOW && container)) {
         fail(w, "Prepared value tag is invalid");
         return;
@@ -967,6 +968,10 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     if (w->error) {
         return;
     }
+    if (tag == PIN_POINTER && bits) {
+        fail(w, "Managed pointers cannot be persisted");
+        return;
+    }
     if ((tag == PIN_HANDLE || tag == PIN_TASK || tag == PIN_FLOW) && bits) {
         fail(w, "Prepared handles and flow values must be zero");
         return;
@@ -995,6 +1000,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
                 memcpy(&decoded.e, &narrow, sizeof narrow);
                 break;
             }
+            case PIN_POINTER: decoded.ptr = NULL; break;
             case PIN_HANDLE:
             case PIN_TASK: decoded.u64 = 0; break;
             default: fail(w, "Prepared scalar type is invalid"); return;

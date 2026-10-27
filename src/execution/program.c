@@ -18,8 +18,10 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/record.h"
 #include "types/text.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -347,6 +349,8 @@ static execution_program *program_new(
     p->enabled = true;
     p->module = m;
     p->owner_program = p;
+    p->managed = xcalloc(1, sizeof *p->managed);
+    behavior_managed_heap_init(p->managed);
     p->registration_state = registration;
     execution_module_retain(m);
     p->world = world;
@@ -425,6 +429,13 @@ static execution_program *program_new(
                 return NULL;
             }
             child->owner_program = p;
+            behavior_managed_heap *tail = p->managed;
+            while (tail->previous) {
+                tail = tail->previous;
+            }
+            tail->previous = child->managed;
+            child->managed->owner = p->managed;
+            child->managed = NULL;
             apush(p->imports, child);
         }
         afree(modules);
@@ -452,6 +463,10 @@ static execution_program *program_new(
                          !effects.host_sink &&
                          stream_function(m->plan.functions[p->stream_system].body, 0, &stream_steps);
     return p;
+}
+behavior_managed_heap *execution_program_managed_heap(execution_program *program)
+{
+    return program->owner_program->managed;
 }
 execution_program *execution_program_new(execution_module *m, ecs_world *world, const service_binding *services)
 {
@@ -933,11 +948,23 @@ void execution_program_detach(execution_program *p, uint64_t owner)
         i++;
     }
 }
+static void replacement_unroot(execution_program *p)
+{
+    if (p->replacement_of) {
+        behavior_managed_heap *heap = p->replacement_of->owner_program->managed;
+        for (int i = 0; i < p->replacement_root_count; i++) {
+            behavior_managed_heap_unroot(heap, &p->replacement_roots[i]);
+        }
+    }
+    afree(p->replacement_roots);
+    p->replacement_root_count = 0;
+}
 void execution_program_free(execution_program *p)
 {
     if (!p) {
         return;
     }
+    replacement_unroot(p);
     if (p->system_prepared) {
         assert(paused_system(p));
         execution_program_cancel_system(p);
@@ -984,6 +1011,10 @@ void execution_program_free(execution_program *p)
     }
     afree(p->pending_services);
     arena_free(&p->service_names);
+    if (p->managed) {
+        behavior_managed_heap_free(p->managed);
+        free(p->managed);
+    }
     program_activation_cache_free(p);
     execution_module_free(p->module);
     free(p->name);
@@ -1441,6 +1472,21 @@ static int subscription_matches(
     program_activation_free(a);
     return matches;
 }
+static bool arguments_owned(execution_program *program, const pin_value *arguments, int count)
+{
+    if (count < 0 || (count && !arguments)) {
+        return false;
+    }
+    for (int i = 0; i < count; i++) {
+        if (behavior_managed_storage_owner_error(
+                &program->owner_program->managed->storage,
+                &arguments[i]
+            )) {
+            return false;
+        }
+    }
+    return true;
+}
 int program_dispatch_handler(
     execution_instance *instance,
     const execution_module_function *function,
@@ -1531,6 +1577,9 @@ int execution_instance_dispatch(
     unsigned budget
 )
 {
+    if (!arguments_owned(instance->program, arguments, count)) {
+        return FLOW_ERR_ARGUMENT;
+    }
     int status = dispatch_to(instance, event, instance->owner, arguments, count, now, delta, budget);
     program_apply_services(instance->program->owner_program);
     program_collect_states(instance->program);
@@ -1547,6 +1596,9 @@ const pin_value *execution_instance_state(const execution_instance *instance, ui
 }
 int execution_instance_set_state(execution_instance *instance, uint64_t id, pin_value value)
 {
+    if (!arguments_owned(instance->program, &value, 1)) {
+        return FLOW_ERR_ARGUMENT;
+    }
     for (int i = 0; i < instance->program->module->plan.state_count; i++) {
         if (instance->program->module->plan.states[i].id == id) {
             if (!program_same_type(instance->program->module->plan.states[i].initial, value)) {
@@ -1578,7 +1630,7 @@ int execution_program_emit(
     int count
 )
 {
-    if (!event || count < 0) {
+    if (!event || !arguments_owned(p, arguments, count)) {
         return FLOW_ERR_ARGUMENT;
     }
     queued_event e = { .event = event, .owner = owner, .count = count };
@@ -2182,6 +2234,8 @@ static int dispatch_events(execution_program *p)
 {
     queued_event *events = p->events;
     p->events = NULL;
+    queued_event_batch batch = { .previous = p->dispatch_events, .events = events };
+    p->dispatch_events = &batch;
     for (int i = 0; i < acount(events); i++) {
         queued_event *e = &events[i];
         int failure = FLOW_OK;
@@ -2207,6 +2261,7 @@ static int dispatch_events(execution_program *p)
         }
         free(e->arguments);
         arena_free(&e->storage);
+        batch.first = i + 1;
         if (failure < 0) {
             queued_event *later = p->events;
             p->events = NULL;
@@ -2217,10 +2272,12 @@ static int dispatch_events(execution_program *p)
                 apush(p->events, later[j]);
             }
             afree(later);
+            p->dispatch_events = batch.previous;
             afree(events);
             return failure;
         }
     }
+    p->dispatch_events = batch.previous;
     afree(events);
     return FLOW_OK;
 }
@@ -2640,13 +2697,15 @@ static void preserve_state(
             registration_state(before, index)) {
             continue;
         }
-        int status = execution_instance_set_state(
-            instance,
-            next->module->plan.states[i].id,
-            old->states[index].value
+        /* A staged candidate deliberately retains the original family's
+         * identities; its stable root snapshots pin them until adoption. */
+        int status = state_assign(
+            instance_storage(instance, i),
+            &old->states[index].value
         );
         assert(!status);
         (void)status;
+        sync_state(instance);
     }
 }
 static bool query_shape_equal(const execution_module *a, const execution_module *b)
@@ -2699,6 +2758,67 @@ static void preserve_changes(execution_instance *next, const execution_instance 
         }
     }
     next->query_started = true;
+}
+/* Roots each pointer the candidate preserved, rather than the state value
+ * holding it: a root must not carry inline record fields (see
+ * behavior_managed_heap_root), while ordinary state may. */
+static void replacement_root(execution_program *candidate, pin_value root)
+{
+    pin_value *pending = NULL;
+    apush(pending, root);
+    while (acount(pending)) {
+        pin_value value = apop(pending);
+        if (value.container == PIN_CONTAINER_SINGLE && value.type == PIN_POINTER) {
+            if (value.ptr) {
+                apush(candidate->replacement_roots, value);
+            }
+        } else if (value.container == PIN_CONTAINER_MAP) {
+            const pin_map *map = value.ptr;
+            for (int i = 0; map && i < map->count; i++) {
+                apush(pending, map->entries[i].key);
+                apush(pending, map->entries[i].value);
+            }
+        } else if (value.container != PIN_CONTAINER_SINGLE) {
+            const pin_array *array = value.ptr;
+            for (int i = 0; array && i < array->count; i++) {
+                apush(pending, pin_array_get(array, i));
+            }
+        } else if (value.type == PIN_UNION) {
+            const pin_union *sum = value.ptr;
+            for (int i = 0; sum && i < sum->count; i++) {
+                apush(pending, sum->values[i]);
+            }
+        } else if (value.type == PIN_STRUCT && value.ptr) {
+            const type_desc *layout = pin_value_type(&value);
+            for (int i = 0; layout && i < layout->field_count; i++) {
+                const type_field *field = &layout->fields[i];
+                if (field->type != PIN_STRUCT && field->type != PIN_POINTER &&
+                    field->type != PIN_UNION) {
+                    continue;
+                }
+                pin_value member;
+                if (!pin_read_field(NULL, value.ptr, field, &member)) {
+                    apush(pending, member);
+                }
+            }
+        }
+    }
+    afree(pending);
+}
+static void replacement_scope_roots(execution_program *candidate, const execution_program *scope)
+{
+    for (int i = 0; i < scope->module->plan.state_count; i++) {
+        replacement_root(candidate, scope->shared[i].value);
+    }
+    for (int i = 0; i < acount(scope->instances); i++) {
+        const execution_instance *instance = scope->instances[i];
+        for (int j = 0; j < scope->module->plan.state_count; j++) {
+            replacement_root(candidate, instance->states[j].value);
+        }
+        for (int j = 0; j < acount(instance->node_states); j++) {
+            replacement_root(candidate, instance->node_states[j]);
+        }
+    }
 }
 execution_program *execution_program_prepare_replace(
     const execution_program *p,
@@ -2797,6 +2917,19 @@ execution_program *execution_program_prepare_replace_services(
     }
     next->replacement_of = p;
     next->replacement_module = p->module;
+    replacement_scope_roots(next, next);
+    for (int i = 0; i < acount(next->imports); i++) {
+        replacement_scope_roots(next, next->imports[i]);
+    }
+    /* Finish the vector before registering addresses: growth must never move
+     * slots that the original heap visits while the candidate is staged. */
+    for (int i = 0; i < acount(next->replacement_roots); i++) {
+        if (behavior_managed_heap_root(p->owner_program->managed, &next->replacement_roots[i])) {
+            execution_program_free(next);
+            return NULL;
+        }
+        next->replacement_root_count++;
+    }
     return next;
 }
 void execution_program_commit_replace(execution_program *p, execution_program *next)
@@ -2808,8 +2941,16 @@ void execution_program_commit_replace(execution_program *p, execution_program *n
     );
     assert(next->replacement_of == p && next->replacement_module == p->module);
     execution_program_cancel_system(p);
+    replacement_unroot(next);
     next->replacement_of = NULL;
     next->replacement_module = NULL;
+    behavior_managed_heap *tail = next->managed;
+    while (tail->previous) {
+        tail = tail->previous;
+    }
+    tail->previous = p->managed;
+    p->managed->owner = next->managed;
+    p->managed = NULL;
     execution_program old = *p;
     *p = *next;
     p->observer = old.observer;

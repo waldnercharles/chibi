@@ -1314,6 +1314,26 @@ TEST_CASE(private_programs_import_core_packages_and_format_text)
     return true;
 }
 
+/* A build entry takes the address of a local and writes through it on each
+ * backend: the host gives the entry a managed heap for the cell. */
+TEST_CASE(private_programs_allocate_managed_pointers)
+{
+    static const char
+        *source = "package pointers\n"
+                  "Build :: () -> int { x := 2; p := &x; p^ += 1; "
+                  "return x; }";
+    for (int b = 0; b < 2; b++) {
+        chibi_build_options options = primitive_options(source, b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE);
+        chibi_build_result result;
+        bool invoked = chibi_build_invoke(&options, &result);
+        if (!invoked) {
+            fprintf(stderr, "managed pointer build: backend=%d %s\n", b, result.diagnostic);
+        }
+        REQUIRE(invoked && result.value == 3);
+    }
+    return true;
+}
+
 /* A program imports a named collection's packages as NAME:path. */
 TEST_CASE(private_programs_import_named_collections)
 {
@@ -2570,6 +2590,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
     RUN_TEST_CASE(private_programs_import_named_collections);
+    RUN_TEST_CASE(private_programs_allocate_managed_pointers);
     RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
     RUN_TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation);
     RUN_TEST_CASE(private_runtime_failures_name_their_cause);

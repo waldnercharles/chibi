@@ -232,6 +232,7 @@ execution_activation *program_activation_new(
         .variable_storage = instance->layouts,
         .value_owner = instance,
         .value_storage = &a->payload,
+        .managed_heap = instance->program->owner_program->managed,
         .result_storage = &a->payload,
 
         .arguments = args,

@@ -99,6 +99,62 @@ static const script_diagnostic *diagnostic(const char *message)
     }
     return NULL;
 }
+/* Sixteen fixed sources, each parsed and analyzed once, without execution. */
+TEST_CASE(language_managed_pointers_reject_invalid_storage_and_types)
+{
+    const struct
+    {
+        const char *source, *message;
+    } cases[] = {
+        { "L :: library { F :: () { p: ^int = nil; } }", "A non-null pointer cannot be nil" },
+        { "B :: behavior { p: ^int; }", "A non-null pointer requires an initializer" },
+        { "L :: library { R :: struct { p: ^int; } F :: () { value: R = {}; } "
+          "}",
+          "Missing required record field 'p'" },
+        { "L :: library { F :: () { n: int = 1; p: ^int = &n; text: string = "
+          "\"x\"; p = &text; } }",
+          NULL },
+        { "L :: library { F :: () { xs: int[] = [1]; p := &xs[0]; } }",
+          "Managed pointer requires a writable local or record field" },
+        { "L :: library { F :: () { xs: [int: int] = [1: 2]; p := &xs[1]; } }",
+          "Managed pointer requires a writable local or record field" },
+        { "L :: library { F :: () -> int { n: int = 1; p := &n; return int(p); "
+          "} }",
+          "Conversion requires numeric values or the value's own type" },
+        { "L :: library { F :: () { p: ^int = 1; } }", NULL },
+        { "L :: library { F :: () { p := &(1 + 2); } }",
+          "Managed pointer requires a writable local or record field" },
+        { "L :: library { F :: () { n: int : 1; p := &n; } }",
+          "Managed pointer requires a writable local or record field" },
+        { "L :: library { F :: (p: ^int?) -> int { return p^; } }",
+          "Nullable pointer requires a presence guard before dereference" },
+        { "L :: library { F :: (n: int) -> int { return n^; } }",
+          "Dereference requires a managed pointer" },
+        { "L :: library { F :: () -> ^int { x := 1; p: ^int? = &x; "
+          "if p != nil { q := &p; q^ = nil; return p; } return &x; } }",
+          NULL },
+        { "L :: library { Take :: (p: ref ^int) {} F :: () { x := 1; "
+          "p: ^int? = &x; if p != nil { Take(ref p); } } }",
+          NULL },
+        { "L :: library { I :: struct { x: int; } O :: struct { inner: I; y: "
+          "int; } "
+          "F :: () { o: O = {inner: {x: 1}, y: 2}; p := &o; } }",
+          "Managed pointers require records without inline record fields" },
+        { "L :: library { I :: struct { x: int; } O :: struct { inner: I; y: "
+          "int; } "
+          "F :: () { o: O = {inner: {x: 1}, y: 2}; p := &o.y; } }",
+          "Managed pointers require records without inline record fields" },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        parse(cases[i].source);
+        REQUIRE(!syntax->diagnostic_count);
+        REQUIRE(!analysis->valid && analysis->diagnostic_count > 0);
+        if (cases[i].message) {
+            REQUIRE(diagnostic(cases[i].message));
+        }
+    }
+    return true;
+}
 TEST_CASE(language_shadowing_resolves_nearest_declaration)
 {
     const char *source = "Scope :: behavior {\ndt := 1;\non Tick :: (dt: "
@@ -181,6 +237,77 @@ TEST_CASE(language_pub_marks_only_package_declarations)
     }
     return true;
 }
+TEST_CASE(language_ref_calls_require_explicit_mutable_arguments)
+{
+    parse(
+        "Refs :: library { Bump :: (value: ref int) { value += 1; } "
+        "Relay :: (value: ref int) { Bump(value: ref value); } "
+        "Run :: () -> int { value := 4; Relay(ref value); return value; } }"
+    );
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    static const struct
+    {
+        const char *source, *message, *argument;
+        int offset;
+    } cases[] = {
+        { "R :: library { F :: (n: ref int) {} Run :: () { n := 1; F(n); } }",
+          "Reference parameter requires an explicit ref argument",
+          "F(n)",
+          2 },
+        { "R :: library { Value :: (n: int) {} Run :: () { n := 1; Value(ref "
+          "n); } }",
+          "ref argument requires a reference parameter",
+          "Value(ref n)",
+          6 },
+        { "R :: library { F :: (n: ref int) {} Run :: () { F(ref 1); } }",
+          "Reference argument requires a writable value",
+          "F(ref 1)",
+          6 },
+        { "R :: library { F :: (n: ref int) {} Run :: () { Frozen :: 1; F(ref "
+          "Frozen); } }",
+          "Reference argument requires a writable value",
+          "F(ref Frozen)",
+          6 },
+        { "R :: library { F :: (n: ref int) {} Run :: () { flag := true; F(ref "
+          "flag); } }",
+          "Incompatible types: expected int, got bool",
+          "F(ref flag)",
+          6 },
+        { "R :: library { F :: (n: ref i64) {} Run :: () { n: int = 1; F(ref "
+          "n); } }",
+          "Reference argument requires the exact parameter type",
+          "F(ref n)",
+          6 },
+        { "R :: library { F :: (n: ref i64) {} Run :: () { n: int = 1; F(n: "
+          "int = ref n); } }",
+          "Reference argument requires the exact parameter type",
+          "F(n: int = ref n)",
+          5 },
+        { "R :: library { F :: (row: ref Position) {} Run "
+          ":: () { F(row.x: 1.0); } }",
+          "Reference parameter requires an explicit ref argument",
+          "F(row.x: 1.0)",
+          9 },
+        { "R :: library { F :: (row: ref Position) {} Run "
+          ":: () { n: number = 1; F(row.x: ref n); } }",
+          "Reference argument requires a writable value",
+          "F(row.x: ref n)",
+          9 },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        parse(cases[i].source);
+        REQUIRE(!syntax->diagnostic_count && !analysis->valid);
+        const script_diagnostic *error = diagnostic(cases[i].message);
+        REQUIRE(error);
+        const char *argument = strstr(cases[i].source, cases[i].argument);
+        REQUIRE(
+            argument && error->range.start ==
+                            (int)(argument - cases[i].source) + cases[i].offset
+        );
+    }
+    return true;
+}
+
 /* `has` names a map method only on a value; an authored `has` stays a call. */
 TEST_CASE(language_authored_map_method_names_preserve_callable_identity)
 {
@@ -2050,7 +2177,8 @@ TEST_CASE(language_units_reject_callable_mismatches)
           "distance "
           "= elapsed; } }",
           "Units differ: u = s" },
-        { "M :: library { Bad :: (body: Body) { Later(body.speed); } Later :: "
+        { "M :: library { Bad :: (body: Body) { Later(ref body.speed); } Later "
+          ":: "
           "(distance: ref number u) {} }",
           "Units differ: u argument u/s" },
         { "M :: library { Bad :: (elapsed: ref number s) -> ref number u { "
@@ -2546,10 +2674,12 @@ void test_language_semantic()
     RUN_TEST_CASE(language_switch_exhaustiveness_respects_narrowed_tags);
     RUN_TEST_CASE(language_type_patterns_narrow_and_invalidate);
     RUN_TEST_CASE(language_constants_reject_runtime_dependencies_and_writes);
+    RUN_TEST_CASE(language_managed_pointers_reject_invalid_storage_and_types);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_pub_marks_only_package_declarations);
     RUN_TEST_CASE(language_literals_are_typed_by_spelling);
     RUN_TEST_CASE(language_authored_map_method_names_preserve_callable_identity);
+    RUN_TEST_CASE(language_ref_calls_require_explicit_mutable_arguments);
     RUN_TEST_CASE(language_retained_bindings_preserve_owner_and_value_type);
     RUN_TEST_CASE(language_system_retention_rejects_non_system_owners_and_tasks);
     RUN_TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments);

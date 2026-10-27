@@ -400,7 +400,7 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
     static const char exposed_consumer
         [] = "Rows :: library { " ROW
              "Change :: (row: Row, rows: Row[], count: int) -> Row { "
-             "Mutate(row, rows, count); row.depth += count; "
+             "Mutate(ref row, ref rows, ref count); row.depth += count; "
              "if rows[0].label != \"exposed-array\" { row.depth = -100; } "
              "return row; } "
              "Mutate :: (row: ref Row, rows: ref Row[], count: ref int) { "

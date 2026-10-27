@@ -753,8 +753,18 @@ TEST_CASE(source_extraction_preserves_ref_inputs_and_escaping_locals)
     REQUIRE(edit(r));
     REQUIRE(inspect_result());
     REQUIRE(strstr(result.text, "refactor_input_1_0: ref number"));
+    REQUIRE(strstr(result.text, "Advance(ref x)"));
     REQUIRE(strstr(result.text, "after entry"));
     REQUIRE(strstr(result.text, "exit Then;"));
+    cleanup();
+    REQUIRE(project("Edit :: behavior { count:f64=0; on Tick :: () { x:=1.0; x+=2.0; count=x; } }"));
+    second = find(SOURCE_PRESENTATION_STATEMENT, "x+=2.0;");
+    REQUIRE(second);
+    r = request(AUTHORING_EDIT_EXTRACT_FUNCTION, second);
+    r.name = "Advance";
+    REQUIRE(edit(r) && inspect_result());
+    REQUIRE(strstr(result.text, "refactor_input_1_0: ref number"));
+    REQUIRE(strstr(result.text, "Advance(ref x)"));
     cleanup();
     REQUIRE(project("Edit :: behavior { Early :: ()->() { return; } on Tick :: () {} }"));
     const source_presentation_origin *ret = find(SOURCE_PRESENTATION_STATEMENT, "return;");
@@ -777,6 +787,31 @@ TEST_CASE(source_extraction_preserves_ref_inputs_and_escaping_locals)
         r.name = "Moved";
         REQUIRE(!edit(r) && strstr(error, "storage identity") && !result.text);
     }
+    return true;
+}
+TEST_CASE(source_ref_calls_are_created_and_inlining_is_rejected)
+{
+    REQUIRE(
+        project("Edit :: behavior { count:f64=0; Bump :: (value:ref f64) { value+=1; } on Tick :: () {} }")
+    );
+    const source_presentation_origin *handler = find(SOURCE_PRESENTATION_FUNCTION, "on Tick");
+    const source_presentation_origin *producer = find(SOURCE_PRESENTATION_SYMBOL, "count:f64");
+    REQUIRE(handler && producer);
+    authoring_edit_request r = request(AUTHORING_EDIT_CREATE_CAPABILITY, handler);
+    r.capability_name = "Bump";
+    r.producer = producer->identity;
+    REQUIRE(edit(r) && inspect_result());
+    REQUIRE(strstr(result.text, "Bump(ref count)"));
+    cleanup();
+    REQUIRE(
+        project("Edit :: behavior { count:f64=0; Bump :: (value:ref f64) { value+=1; } on Tick :: () { Bump(value:ref count); } }")
+    );
+    const source_presentation_origin *call = find(SOURCE_PRESENTATION_EXPRESSION, "Bump(value:ref count)");
+    REQUIRE(call);
+    REQUIRE(!edit(request(AUTHORING_EDIT_INLINE_CALL, call)));
+    REQUIRE(strstr(error, "Inlining reference parameters requires local reference aliases"));
+    REQUIRE(!result.text && !result.metadata);
+    REQUIRE(strstr(analysis->text, "Bump(value:ref count);"));
     return true;
 }
 /* Inlining spells a char parameter as char. */
@@ -1289,6 +1324,7 @@ void test_source_edit()
     RUN_TEST_CASE(source_selection_transactions_preserve_names_and_comments);
     RUN_TEST_CASE(source_optional_arguments_and_typed_values_are_checked_atomically);
     RUN_TEST_CASE(source_extraction_preserves_ref_inputs_and_escaping_locals);
+    RUN_TEST_CASE(source_ref_calls_are_created_and_inlining_is_rejected);
     RUN_TEST_CASE(source_inline_spells_char_parameters);
     RUN_TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return);
     RUN_TEST_CASE(source_signatures_and_bindings_preserve_resolved_body_and_scope);

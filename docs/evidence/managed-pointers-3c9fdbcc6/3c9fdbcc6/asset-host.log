@@ -1,0 +1,15 @@
+authored rejection: game:assets/Assets.chibi:24:21 Assertion failed: Duplicate asset object field
+compile rejection: :2:36 Unknown function 'Missing'
+Running: asset_source_public_scene_build_and_reuse (OK) (16.407241 secs)
+Running: asset_source_authored_validation_rejects_duplicate_field (OK) (16.495068 secs)
+Running: asset_source_malformed_build_reports_position (OK) (8.694731 secs)
+Running: asset_source_native_scene_values_own_their_storage (OK) (32.934150 secs)
+Running: asset_source_native_prototype_owns_name_and_identity (OK) (16.056739 secs)
+Running: asset_source_native_readers_keep_kind_shape_and_catalog_checks (OK) (48.992784 secs)
+Running: asset_source_public_writer_preserves_kinds_and_owned_source (OK) (23.423217 secs)
+Running: asset_source_writer_and_reader_reject_nul_without_mutation (OK) (34.275404 secs)
+Running: asset_source_writer_canonical_scene_reaches_owned_native_reader (OK) (23.427309 secs)
+Running: asset_source_writer_restores_outer_scope_on_budget_and_cancel (OK) (7.106069 secs)
+===============================================================
+Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 96
+Test command wall time: 229.864s; includes in-test fixture setup; external configuration/build excluded.

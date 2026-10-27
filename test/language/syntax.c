@@ -81,6 +81,54 @@ static void parse(const char *text)
     }
 }
 
+static TSNode find_node(TSNode root, const char *kind, const char *text)
+{
+    if (!strcmp(ts_node_type(root), kind) && node_text(root, text)) {
+        return root;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
+        TSNode found = find_node(ts_node_named_child(root, i), kind, text);
+        if (!ts_node_is_null(found)) {
+            return found;
+        }
+    }
+    return (TSNode){ 0 };
+}
+
+TEST_CASE(language_managed_pointer_syntax_preserves_xor)
+{
+    parse(
+        "Demo :: behavior { a:^int[]; b:^int?; c:^(int[]); d:^(int?); "
+        "on Tick :: () { p:=&value; x:=p^ + 1; y:=p ^ +q; z:=p ^ q; "
+        "a:=p^^; b:=p^.field; c:=p^[i]; d:=&p^; F(ref p^); "
+        "last:=p^\nnext:=1; } }"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode root = ts_tree_root_node(original->tree);
+    TSNode pointers = find_node(root, "type", "^int[]");
+    TSNode pointer = find_node(pointers, "pointer_type", "^int");
+    REQUIRE(!ts_node_is_null(pointer));
+    REQUIRE(node_text(field(pointer, "target"), "int"));
+    pointer = find_node(root, "pointer_type", "^(int[])");
+    REQUIRE(node_text(field(pointer, "target"), "(int[])"));
+    REQUIRE(!ts_node_is_null(find_node(root, "parenthesized_type", "(int?)")));
+    REQUIRE(!ts_node_is_null(find_node(root, "type", "^int?")));
+    REQUIRE(!ts_node_is_null(find_node(root, "address_expression", "&value")));
+    REQUIRE(!ts_node_is_null(find_node(root, "dereference_expression", "p^^")));
+    TSNode sum = find_node(root, "binary_expression", "p^ + 1");
+    REQUIRE(node_text(field(sum, "operator"), "+"));
+    REQUIRE(!strcmp(ts_node_type(field(sum, "left")), "dereference_expression"));
+    TSNode xor = find_node(root, "binary_expression", "p ^ +q");
+    REQUIRE(node_text(field(xor, "operator"), "^"));
+    REQUIRE(!strcmp(ts_node_type(field(xor, "right")), "unary_expression"));
+    REQUIRE(node_text(field(find_node(root, "binary_expression", "p ^ q"), "operator"), "^"));
+    REQUIRE(!ts_node_is_null(find_node(root, "member_expression", "p^.field")));
+    REQUIRE(!ts_node_is_null(find_node(root, "index_expression", "p^[i]")));
+    REQUIRE(!ts_node_is_null(find_node(root, "address_expression", "&p^")));
+    REQUIRE(!ts_node_is_null(find_node(root, "reference_argument", "ref p^")));
+    return true;
+}
+
 TEST_CASE(language_declarations_actions_and_bindings)
 {
     parse(
@@ -569,6 +617,21 @@ TEST_CASE(language_query_generators_preserve_authored_order)
     return true;
 }
 
+TEST_CASE(language_ref_arguments_are_only_call_values)
+{
+    static const char *invalid[] = {
+        "R :: library { F :: () { x := ref y; } }",
+        "R :: library { F :: () { return ref y; } }",
+        "R :: library { F :: () { G(x: int from ref y = z); } }",
+        "R :: library { F :: () { G(x: int split ref y = z); } }",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        parse(invalid[i]);
+        REQUIRE(original->diagnostic_count);
+    }
+    return true;
+}
+
 TEST_CASE(language_obsolete_declaration_tokens_rejected)
 {
     parse("Old :: library { function Compute() { return 1 } }");
@@ -855,6 +918,7 @@ void test_language_syntax()
 {
     test_parallel_begin();
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(language_managed_pointer_syntax_preserves_xor);
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
     RUN_TEST_CASE(language_handlers_name_payload_fields);
     RUN_TEST_CASE(language_systems_name_their_step);
@@ -872,6 +936,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_query_header_and_cancel_deadline);
     RUN_TEST_CASE(language_query_generators_preserve_authored_order);
     RUN_TEST_CASE(language_obsolete_declaration_tokens_rejected);
+    RUN_TEST_CASE(language_ref_arguments_are_only_call_values);
     RUN_TEST_CASE(language_expressions_precedence_and_continuation);
     RUN_TEST_CASE(language_invalid_source_has_positioned_diagnostics);
     RUN_TEST_CASE(language_incremental_snapshot_matches_fresh);

@@ -328,21 +328,25 @@ These counts describe coverage and do not record a pass.
   atomic NUL rejection, retained bytes, ranges and collectable-arena rejection;
   it adds no loops or child processes. One partial native record copy adds
   three assertions for preserved opaque bytes and owned text after mutation.
-- `language-execution`: twenty-nine cases. The added five-instruction function
+- `language-execution`: thirty-six cases. The added five-instruction function
   runs eight times across two backends with a 100-instruction budget; four
   iterator calls cover NUL and malformed UTF-8. A fixed one-field native record
   checks read ownership and rejection before reference/constructor publication.
+  Seven pointer cases cover owner isolation, complete base layouts, location
+  identity, native-boundary rejection, malformed aggregate storage, effect
+  restrictions and cycle collection.
 - `language-package-core`: seven cases and 386 calls, retaining the existing
   10,000-instruction per-call budget.
 - `language-record-document`: five cases, adding three tiny JSON roundtrips,
   four malformed byte tags and one rejected NUL name.
-- `language-record-prepared`: eleven cases, including a four-byte wire roundtrip,
+- `language-record-prepared`: fourteen cases, including a four-byte wire roundtrip,
   budget failure, metadata rejection and invalid field markers. Shared-layout
   validation uses one 128-field record and 256 headers under the default work
   limit; tiny decoded definitions check distinct invalid layouts, later headers,
-  retries and native catalog replacement. A native-field size check uses an
-  81-byte stack string and a nearly exhausted logical budget with a hash sink;
-  it allocates no large output buffer.
+  retries and native catalog replacement. Repeated authored headers reuse one
+  twelve-field layout under a 32 KiB work budget; an 8 KiB budget still rejects
+  the input. A native-field size check uses an 81-byte stack string and a nearly
+  exhausted logical budget with a hash sink; it allocates no large output buffer.
 - `build-process`: thirty-seven cases. The new helper case adds seven operations
   on at most seven bytes and no processes. Existing invocation and child limits
   remain unchanged; binary-output and file assertions replace text rejection.
@@ -364,7 +368,7 @@ process launches.
 The independently reviewed compiler integration has 137 fixed samples: 90 base,
 13 types, 20 imports and 14 collections, with imports using Release. The Release
 bootstrap also compares all 137 samples between stages and 59 fixed floating
-literals with both signs. Seed verification runs one fixed-point compile with a 16 MiB output
+literals with both signs. Seed verification runs one fixed-point compile with the 32 MiB artifact output
 limit and writes only its closure and manifest; a failed compile may make one
 diagnostic call.
 
@@ -474,17 +478,26 @@ the optimizer's treatment of failing shifts. Twenty invocations, each capped at
 constant counts on both backends. An unused invalid shift must still fail and
 preserve a prior persistent write; a valid shift reaches the subsequent write.
 
-`python3 tools/test_policy.py tool language-program` selects twelve independently
-reviewed source/runtime cases on VM and SLJIT. Besides typed events, systems,
+`python3 tools/test_policy.py tool language-program` selects 167 cases, including
+the earlier twelve-case source/runtime workload on VM and SLJIT. Besides typed
+events, systems,
 bindings, imports, cancellation and failure records, it exercises eager tuple
 copies and declaration-scope lazy tuple initialization. Four tiny lazy consumers
 check one producer call, sibling initialization on a field write, complete
 replacement suppressing the producer, and continuation capture. The managed
 payload case uses root/outlined variants, 256 supplied-time pumps and strings up
 to 2,624 bytes, checking retained values and bounded live/cached storage. Invocation
-budgets remain 1,000 steps. There are no engine frames, processes, sleeps or GPU
-work. Debug Clang 23 with ASan/UBSan passed 12 cases and 1,638 assertions in 0.881
-seconds on 2026-10-07 (`.chibi/architecture/language-program-fields.log`).
+budgets for that workload remain 1,000 steps, with no engine frames, processes,
+sleeps or GPU work. Pointer regressions cover captured-local aliases, detached event arguments,
+staged replacement roots and foreign-owner rejection at public ingress.
+The historical Debug Clang 23 run with ASan/UBSan passed 12 cases and 1,638
+assertions in 0.881 seconds on 2026-10-07 (`.chibi/architecture/language-program-fields.log`).
+
+The authored package-compiler collections sample includes twelve fixed
+scalar-result pointer calls. They cover aliases and `ref` mutation, escaped
+locals and parameters, field projections, record/array value copies containing
+pointers, separate allocation identity, nullable/grouped types, numeric widening,
+whole-array replacement and a two-node cycle.
 
 `python3 tools/test_policy.py tool script-benchmark` measures default compiler
 execution of equivalent inline arithmetic and authored scalar helper calls on
@@ -1907,22 +1920,28 @@ runtime files, children, services or GPU operations. Build separately; this rout
 is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-type-constructors-chibi` compares
-structural union, task and await construction. Three pico cases run sixteen raw
-requests and four requests from actual analyzer facts, with forty authored calls
-across bytecode and SLJIT capped at 200,000 instructions each. Five compiler
+structural union, task, await and pointer construction. Four pico cases run
+twenty raw requests and four requests from actual analyzer facts, with
+forty-eight authored calls across bytecode and SLJIT capped at 200,000
+instructions each. Five compiler
 sources per backend, each below 32 KiB, plus four fact sources below 256 bytes
 total fourteen parses. The imported named-binding package requires the private
 JSON binding during preparation, but these entries make no JSON calls.
 
 Inputs contain at most 64 types, 128 IDs, eight definitions/variants, two
 capabilities, four functions, 32 symbols, eight result indices and four members.
-Outputs contain at most four variants, two fields and one diagnostic. Twenty C
-plans and twenty-one materialization attempts produce nineteen snapshots,
+Outputs contain at most four variants, two fields and one diagnostic. Twenty-four
+C plans and twenty-five materialization attempts produce twenty-two snapshots,
 including an extra metadata ownership witness. Fixed checks cover unsigned tag
 ordering across high and low bits, first-match deduplication, cache hits, native
-empty-result precedence, diagnostics and copied fields/defaults. Retained outputs survive source and
-module retirement. Sorting uses at most six comparisons of 64 scalar bit steps
-each. There are no runtime files, children, services or GPU work.
+empty-result precedence, diagnostics, copied fields/defaults and complete pointer
+pointee metadata (including optional flags, nominal/parameter IDs and a nonzero
+collection ID). Four fixed pointer requests include a cache hit and distinct
+identities for otherwise equal pointees with different collection IDs. An
+existing array-member request also checks collection identity through union
+selection and publication. Retained outputs survive source and module
+retirement. Sorting uses at most six comparisons of 64 scalar bit steps each.
+There are no runtime files, children, services or GPU work.
 Build separately; this route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-type-relations-chibi` selects four
@@ -1965,13 +1984,16 @@ There are no runtime files, children, services or GPU work. Build separately;
 this route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-signature-reader-chibi` compares raw
-annotation and signature reading. Four pico cases run seventeen Type and eight
-Signature requests, totaling 50 authored calls across bytecode and SLJIT at
-500,000 instructions each. Seven compiler sources per backend, each below
-48 KiB, and 25 raw Tree-sitter inputs total 39 parses. Quoted names make four
-private JSON callbacks. The original 24 sources are below 256 bytes with at most
-256 nodes at depth 32. One fixed 65-array annotation stays below 512 bytes,
-512 nodes and depth 256, checking helper call depth beyond the default limit.
+annotation and signature reading. Four pico cases run sixteen Type and thirteen
+Signature requests, plus one deep Type request: 60 authored calls across
+bytecode and SLJIT at 500,000 instructions each. Seven compiler sources per
+backend, each below 48 KiB, and 30 raw Tree-sitter inputs total 44 parses.
+Quoted names make four private JSON callbacks. The 29 ordinary sources are below
+256 bytes with at most 256 nodes at depth 32. One fixed 65-array annotation
+stays below 640 bytes, 512 nodes and depth 256, checking helper call depth
+beyond the default limit. Five pointer requests distinguish optional pointers,
+arrays of pointers and pointers to arrays, and preserve a named pointee's full
+map metadata, including its nonzero collection and parameter IDs.
 Raw fields, named/extra flags and source text are preserved.
 
 Input tables contain two scopes, two symbols, one function, two documents, three

@@ -40,10 +40,11 @@ typedef struct
     script_range declaration;
     int scope, initializer, function;
     bool writable, disabled, resolving, outcome;
-    bool pub;           /* Package declaration other packages import. */
-    bool boxed;         /* A task keeps this local by reference. */
-    bool mixed_tasks;   /* Holds tasks of different functions. */
-    unsigned mutations; /* Invalidates proofs after assignments. */
+    bool pub;         /* Package declaration other packages import. */
+    bool addressed;   /* A managed cell owns this local from its declaration. */
+    bool boxed;       /* A task keeps this local by reference. */
+    bool mixed_tasks; /* Holds tasks of different functions. */
+    unsigned mutations;           /* Invalidates proofs after assignments. */
     uint64_t source_relationship; /* Query component provider; zero is self. */
     int source_traversal;         /* script_query_source */
     int source_variable;          /* Query row variable; zero is self. */
@@ -95,6 +96,8 @@ typedef enum
     SCRIPT_EXPR_IS,
     SCRIPT_EXPR_AS,
     SCRIPT_EXPR_UNWRAP,
+    SCRIPT_EXPR_ADDRESS,
+    SCRIPT_EXPR_DEREFERENCE,
 } script_expression_kind;
 typedef enum
 {

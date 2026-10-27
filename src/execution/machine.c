@@ -9,6 +9,7 @@
 #include "execution/status.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/pointer.h"
 #include "types/text.h"
 
 #include <assert.h>
@@ -406,6 +407,11 @@ int execution_machine_step(execution_machine *m, int pc)
         case BF_HOST_CALL: {
             const behavior_function_host_call *spec = &f->host_calls[i->target];
             behavior_data_binding *call = &ctx->data->calls[i->target];
+            ctx->error_message = behavior_function_host_arguments(ctx, i->target);
+            if (ctx->error_message) {
+                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
+                goto done;
+            }
             if (call->action) {
                 ctx->error_message = behavior_function_host_action(ctx, i->target, i->node_id);
                 if (ctx->error_message) {
@@ -819,7 +825,9 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             if ((i->op == BF_EQ || i->op == BF_NE) && a.type != PIN_F32 &&
                 a.type != PIN_F64) {
-                bool equal = behavior_scalar_bits(a) == behavior_scalar_bits(b);
+                bool equal = a.type == PIN_POINTER
+                               ? pin_pointer_equal(a.ptr, b.ptr)
+                               : behavior_scalar_bits(a) == behavior_scalar_bits(b);
                 out->b = i->op == BF_EQ ? equal : !equal;
                 break;
             }

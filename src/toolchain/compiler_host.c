@@ -512,6 +512,7 @@ static bool invoke(
     av_doc *input = NULL, *output = NULL;
     yyjson_mut_doc *encoded = NULL;
     arena storage = { 0 };
+    behavior_managed_heap managed = { 0 };
     behavior_function_activation activation = { 0 };
     behavior_function_context context = { 0 };
     pin_value *arguments = NULL, *results = NULL;
@@ -621,7 +622,9 @@ static bool invoke(
     if (resumable) {
         behavior_function_activation_init(function, &activation);
     }
-    context = (behavior_function_context){ .activation = resumable ? &activation : NULL,
+    behavior_managed_heap_init(&managed);
+    context = (behavior_function_context){ .managed_heap = &managed,
+                                           .activation = resumable ? &activation : NULL,
                                            .arguments = arguments,
                                            .argument_count = argument_count,
                                            .results = results,
@@ -707,6 +710,7 @@ done:
     av_doc_free(output);
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&managed);
     arena_free(&storage);
     free(arguments);
     free(results);

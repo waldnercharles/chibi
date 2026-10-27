@@ -335,7 +335,8 @@ const char *pin_write_struct_resolved(
             break;
         }
         pin_type type = target->fields[i].type;
-        if ((type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE) &&
+        if ((type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE ||
+             type == PIN_POINTER) &&
             strcmp(
                 target->fields[i].type_name ? target->fields[i].type_name : "",
                 source->fields[i].type_name ? source->fields[i].type_name : ""
@@ -423,6 +424,12 @@ const char *pin_write_field_resolved(arena *storage, void *base, const type_fiel
         }
         case PIN_HANDLE:
         case PIN_TASK: *(uint64_t *)dst = v.u64; break;
+        case PIN_POINTER:
+            if (strcmp(f->type_name ? f->type_name : "", v.type_name ? v.type_name : "")) {
+                return "Field pointer type differs";
+            }
+            *(void **)dst = v.ptr;
+            break;
         case PIN_UNION: *(void **)dst = v.ptr; break;
         case PIN_ENUM:
             memcpy(dst, &v.e, f->size < sizeof v.e ? f->size : sizeof v.e);
@@ -486,6 +493,7 @@ const char *pin_read_field(arena *storage, const void *base, const type_field *f
         }
         case PIN_HANDLE:
         case PIN_TASK: out->u64 = *(const uint64_t *)src; break;
+        case PIN_POINTER:
         case PIN_UNION: out->ptr = *(void *const *)src; break;
         case PIN_ENUM: {
             out->e = 0;
@@ -601,7 +609,7 @@ static bool plain(const type_desc *type, int depth)
         const type_field *f = &type->fields[i];
         if (f->offset > type->size || f->size > type->size - f->offset ||
             f->type == PIN_FLOW || f->type == PIN_STR || f->type == PIN_NAME ||
-            f->type == PIN_UNION) {
+            f->type == PIN_UNION || f->type == PIN_POINTER) {
             return false;
         }
         if (f->type == PIN_STRUCT) {

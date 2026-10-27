@@ -454,7 +454,8 @@ static const char *resize_error(const pin_value *inputs)
     const node_host_call NATIVE_ARRAY_##KERNEL##_HOST = { .value = KERNEL##_owned,                              \
                                                           .variadic = VARIADIC };                               \
     const node_host_call NATIVE_ARRAY_##KERNEL##_CALL = { .value = KERNEL##_snapshot,                           \
-                                                          .variadic = VARIADIC };
+                                                          .variadic = VARIADIC,                                 \
+                                                          .borrows = true };
 #define ADD(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                      \
     const node_host_call NATIVE_ARRAY_add_HOST = { .value = pin_array_add_call }; \
     const node_host_call NATIVE_ARRAY_add_CALL = { .value = pin_array_add_call };

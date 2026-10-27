@@ -514,7 +514,7 @@ PromoteRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         count += 1;
                         item = NextMember(forest, item);
                     }
-                    if (count == 0 || count != declared.count || LayoutHash(declared, members, target) != declared.layout) {
+                    if (count == 0 || count != declared.count || LayoutHash(declared, members, types, target) != declared.layout) {
                         return SourceTypes.Failed(Diagnose(forest, member, file, "library record layout differs from the declaration catalog"));
                     }
                     declared.name = name;

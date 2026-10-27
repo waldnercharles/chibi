@@ -125,12 +125,15 @@ module.exports = grammar({
   conflicts: ($) => [
     [$._common_declaration, $._statement],
     [$._single_type],
+    [$.parameter, $.type_name],
+    [$.parameter, $.type_binder],
     [$.type_name],
     [$.query_parameter_list],
     [$.record_declaration, $._name],
     [$._public_record, $._name],
     [$.event_declaration, $.builtin_reference],
     [$._single_type, $._expression],
+    [$._single_type, $.reference_argument],
     [$.argument_list, $.parenthesized_expression],
     [$.parameter, $._expression],
     [$.constant_declaration, $.local_declaration, $.label_statement],
@@ -401,32 +404,21 @@ module.exports = grammar({
       field("member", alias($._single_type, $.type)),
       repeat1(seq("|", field("member", alias($._single_type, $.type)))),
     )),
-    _single_type: ($) =>
-      seq(
-        choice(
-          seq(
-            repeat(
-              field(
-                "trait",
-                choice(
-                  K.plain,
-                  K.ref,
-                  K.service,
-                  "self",
-                  K.setting,
-                  seq(K.wildcard, "(", $.number, ")"),
-                ),
-              ),
-            ),
-            choice(
-              field("name", choice($.type_name, $.type_binder)),
-              $.type_application,
-            ),
-          ),
-          field("map", $.map_type),
-        ),
-        repeat(choice(seq("[", "]"), "?")),
-      ),
+    _single_type: ($) => seq(
+      repeat(field("trait", choice(K.plain, K.ref, K.service, "self", K.setting,
+        seq(K.wildcard, "(", $.number, ")")))),
+      $._type_primary,
+      repeat(choice(seq("[", "]"), "?")),
+    ),
+    _type_primary: ($) => choice(
+      field("name", choice($.type_name, $.type_binder)),
+      $.type_application,
+      field("map", $.map_type),
+      $.pointer_type,
+      $.parenthesized_type,
+    ),
+    pointer_type: ($) => seq("^", field("target", alias($._type_primary, $.type))),
+    parenthesized_type: ($) => seq("(", field("type", $.type), ")"),
     // `[string: int]` maps keys of one type to values of another.
     map_type: ($) => seq("[", field("key", $.type), ":", field("value", $.type), "]"),
     type_name: ($) => seq($._name, repeat(seq(".", $._name))),
@@ -571,6 +563,8 @@ module.exports = grammar({
         $.as_expression,
         $.parenthesized_expression,
         $.unary_expression,
+        $.address_expression,
+        $.dereference_expression,
         $.binary_expression,
         $.array_expression,
         $.map_expression,
@@ -625,14 +619,15 @@ module.exports = grammar({
       seq(
         "(",
         optional(
-          comma(choice($.named_argument, $.typed_argument, $._expression)),
+          comma(choice($.named_argument, $.typed_argument, $.reference_argument, $._expression)),
         ),
         ")",
       ),
+    reference_argument: ($) => seq(K.ref, field("value", $._expression)),
     named_argument: ($) =>
       // A bare identifier after ':' is a value. Type annotations with '=' or
       // 'from'/'split' remain unambiguous even when the value is also a type name.
-      prec.dynamic(1, seq(field("name", $.argument_name), ":", field("value", $._expression))),
+      prec.dynamic(1, seq(field("name", $.argument_name), ":", field("value", choice($.reference_argument, $._expression)))),
     typed_argument: ($) =>
       prec.dynamic(2, seq(
         field("name", $.argument_name),
@@ -640,8 +635,8 @@ module.exports = grammar({
         field("type", $.type),
         choice(
           seq(choice(K.from, K.split), field("source", $._expression),
-            optional(seq("=", field("value", $._expression)))),
-          seq("=", field("value", $._expression)),
+            optional(seq("=", field("value", choice($.reference_argument, $._expression))))),
+          seq("=", field("value", choice($.reference_argument, $._expression))),
         ),
       )),
     argument_name: ($) => seq($._member_name, repeat(seq(".", $._member_name))),
@@ -663,6 +658,10 @@ module.exports = grammar({
       seq("(", field("expression", $._expression), ")"),
     await_expression: ($) =>
       prec(P.unary, seq(K.await, field("value", $._expression))),
+    address_expression: ($) => prec(P.unary,
+      seq("&", field("operand", $._expression))),
+    dereference_expression: ($) => prec.left(P.member,
+      seq(field("operand", $._expression), token.immediate(prec(1, "^")))),
     unary_expression: ($) =>
       prec(
         P.unary,

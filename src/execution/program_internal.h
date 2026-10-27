@@ -124,6 +124,12 @@ typedef struct
     int count;
     arena storage;
 } queued_event;
+typedef struct queued_event_batch
+{
+    struct queued_event_batch *previous;
+    queued_event *events;
+    int first;
+} queued_event_batch;
 typedef struct
 {
     uint64_t entity, component;
@@ -162,6 +168,7 @@ struct execution_program
     const struct execution_natives *natives;
     service_binding *pending_services;
     arena service_names;
+    behavior_managed_heap *managed;
     eval_component_reader reader;
     state_value *shared;
     bool registration_state; /* Inherited by libraries before state initialization. */
@@ -190,6 +197,7 @@ struct execution_program
     struct execution_program **imports;
     struct execution_program *owner_program;
     queued_event *events;
+    queued_event_batch *dispatch_events; /* Stack-owned batches remain GC roots. */
     observer_edge *field_edges;
     ecs_query_plan *query_plan;
     int *binding_order;
@@ -204,6 +212,8 @@ struct execution_program
     bool system_prepared, system_ran, system_update;
     int system_status;
     const execution_program *replacement_of;
+    pin_value *replacement_roots; /* Stable slots pinned in the original heap. */
+    int replacement_root_count;   /* Successfully registered prefix only. */
     execution_inspector *inspector;
     const execution_module *replacement_module;
 };

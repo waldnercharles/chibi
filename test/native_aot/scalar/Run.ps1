@@ -348,7 +348,7 @@ try {
             $request.Add((String-Node 'Scalar.chibi'))
             $request.Add((String-Node ($sources[$index].GetValue[string]())))
             $request.Add((Copy-Node $manifest['target'][0]))
-            $request.Add((Copy-Node $manifest['target'][2]))
+            foreach ($fact in 2..5) { $request.Add((Copy-Node $manifest['target'][$fact])) }
             $inputPath = Join-Path $output ("case-$index.json")
             Write-Node $inputPath $request
             $inputs += $inputPath

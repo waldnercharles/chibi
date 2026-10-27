@@ -4971,6 +4971,78 @@ TEST_CASE(program_task_collection_indexes_handles_across_many_owners)
     return true;
 }
 
+static pin_pointer *managed_cell(arena *heap, pin_value value)
+{
+    pin_pointer *cell = arena_alloc(heap, sizeof *cell);
+    *cell = (pin_pointer){ .value = value, .storage = heap };
+    pin_arena_trace_pointer(heap, cell);
+    return cell;
+}
+/* A long chain of managed cells holds the only handle to a finished task, and
+ * a long ring of cells sits beside it. Authored records with pointer fields
+ * reach a task through the same pointer steps; cells that hold cells give the
+ * longest chain this catalog can state. Collection follows every link without
+ * native recursion, visits the ring once, and releases the task once the
+ * chain is unreachable. */
+TEST_CASE(program_task_collection_follows_long_pointer_chains)
+{
+    enum
+    {
+        LINKS = 200000
+    };
+    const char *source = "Keeper :: behavior { saved: ^task?; loop: ^task?; "
+                         "held: task; "
+                         "Work :: () -> (value: f64) { yield; return 7; } "
+                         "on Impulse :: () { held = Work(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 1);
+        uint64_t saved = state_id("saved"), loop = state_id("loop"),
+                 held = state_id("held");
+        const pin_value task = *execution_instance_state(instance, held);
+        REQUIRE(task.type == PIN_TASK && task.u64);
+        /* Each state write collects, so build each structure just before
+         * the write that roots it. */
+        arena *heap = &program->managed->storage;
+        pin_pointer *first = managed_cell(heap, (pin_value){ .type = PIN_POINTER });
+        pin_pointer *ring = first;
+        for (int i = 0; i < LINKS; i++) {
+            ring = managed_cell(heap, (pin_value){ .type = PIN_POINTER, .ptr = ring });
+        }
+        first->value.ptr = ring;
+        /* A state write frees the state's previous type name, so each write
+         * starts from a fresh read. */
+        pin_value root = *execution_instance_state(instance, loop);
+        root.ptr = ring;
+        REQUIRE(execution_instance_set_state(instance, loop, root) == FLOW_OK);
+        pin_pointer *chain = managed_cell(heap, task);
+        for (int i = 0; i < LINKS; i++) {
+            chain = managed_cell(heap, (pin_value){ .type = PIN_POINTER, .ptr = chain });
+        }
+        root = *execution_instance_state(instance, saved);
+        root.ptr = chain;
+        REQUIRE(execution_instance_set_state(instance, saved, root) == FLOW_OK);
+        REQUIRE(
+            execution_instance_set_state(instance, held, (pin_value){ .type = PIN_TASK }) == FLOW_OK
+        );
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 1);
+        root = *execution_instance_state(instance, saved);
+        root.ptr = NULL;
+        REQUIRE(execution_instance_set_state(instance, saved, root) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 0);
+    }
+    return true;
+}
+
 TEST_CASE(program_task_results_keep_nested_task_handles_alive)
 {
     const char
@@ -11601,6 +11673,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_result_snapshot_outlives_the_last_handle);
     RUN_TEST_CASE(program_task_await_copies_large_payload_once);
     RUN_TEST_CASE(program_task_collection_indexes_handles_across_many_owners);
+    RUN_TEST_CASE(program_task_collection_follows_long_pointer_chains);
     RUN_TEST_CASE(program_task_results_keep_nested_task_handles_alive);
     RUN_TEST_CASE(program_prepared_tasks_preserve_cancellation_union_and_deadlines);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);

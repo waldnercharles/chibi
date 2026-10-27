@@ -39,7 +39,15 @@ anchors.
   only that worker's owned descendants. Compiler-bootstrap and scalar-native can
   leave temporary files when killed, so runner cleanup must own the parent
   scratch directory after process cleanup.
-- This audit establishes no peak-RSS values or safe memory-per-worker estimate.
+- Measured peak RSS under ASan and UBSan (Linux x86-64, `ru_maxrss` of the
+  selector's process tree, main `80d533c`): `language-package-compiler-chibi-scalar`
+  1413 MB, `-behaviors` 1358 MB, `-behaviors-rest` 1384 MB,
+  `language-asset-compiler-host` 664 MB, `compiler-bootstrap` 641 MB and
+  `language-asset-packaging-chibi` 526 MB. This is one measurement, not a
+  bound. Two workers stayed below 3 GB, so the macOS CI job runs the language
+  group with `TEST_JOBS=2`; its runner's vm_stat admission would otherwise
+  allow one.
+- The source audit establishes no peak-RSS values or safe memory-per-worker estimate.
   Compiler/JIT allocations can be substantial. Sequential child launches do not
   prove that LLVM/linker internals are single-threaded. Concurrency bounds must
   remain conservative and must not claim measured memory safety.

@@ -95,7 +95,8 @@ jobs:
       - name: Native, material, project and language selectors
         env:
           UBSAN_OPTIONS: halt_on_error=1
-        run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
+        # test-build plans with the Release build host, as on macOS.
+        run: make -j1 test-native test-materials test-projects test-language-all BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
       - name: Report compiler cache statistics
         if: always() && steps.ccache-config.outcome == 'success'
         run: ccache --show-stats --verbose
@@ -141,8 +142,17 @@ jobs:
         run: |
           ccache --show-config
           ccache --zero-stats
+      # validate-project runs chibi_ctl dozens of times, and published-docs and
+      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi launcher target also builds chibi-compile and chibi-player, and
+      # the Graph build adds the Release build host the sanitized builds use.
+      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
+      # The Release build host only plans and runs the Graph: under sanitizers
+      # compiling the Graph program takes about two minutes of every build.
+      # The sanitized build still builds and uses its own tools and products.
       - name: Build products and test drivers (ASan and UBSan)
-        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT="$LLVM"
+        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT="$LLVM"
       - name: Preserve failed macOS Graph stage log
         if: failure()
         uses: actions/upload-artifact@v4
@@ -152,18 +162,16 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
-      # validate-project runs chibi_ctl dozens of times, and published-docs and
-      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile and chibi-player.
-      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
-        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER="$CC"
       # One make process shares test-build across these targets. Keep groups
       # sequential so they cannot race over fixtures or build outputs.
+      # vm_stat counts about 3.7 GB of the runner's 7 GB as free, which the
+      # automatic 2 GB-per-worker admission rounds down to one worker. Two
+      # parallel selectors peak below 3 GB (docs/test-parallel-resources.md).
       - name: Native, material, project and language selectors
-        run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT="$LLVM"
+        run: make -j1 test-native test-materials test-projects test-language-all TEST_JOBS=2 BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT="$LLVM"
       - name: Report compiler cache statistics
         if: always() && steps.ccache-config.outcome == 'success'
         run: ccache --show-stats --verbose

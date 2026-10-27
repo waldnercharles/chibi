@@ -645,11 +645,12 @@ Operated :: (rows: facts.Row[], at: int) -> int {
 // statement's, switch's or loop's range. A variable is visible from its declaration to the end of the
 // statements it is declared among, a For row's only in its body, and the
 // body ends in a terminating statement.
-ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int) -> string {
+ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int,
+                  is_library: bool) -> string {
     head := heads[function];
     declaration := rows[head];
     if (declaration.name == "" || declaration.text != "" || !Valued(records, declaration.type) || declaration.value != 0 ||
-        declaration.literal != 0 || !Located(declaration, starts, size)) {
+        (declaration.literal != 0) != is_library || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
     variables: int[] = [];
@@ -851,9 +852,10 @@ pub Validate :: (rows: facts.Row[]) -> string {
     }
     document := rows[1];
     if (document.kind != facts.DocumentRow || document.type != 0 || document.value != 0 || document.count != 0 ||
-        document.literal != 0 || document.name == "" || document.text != "" || !Unlocated(document)) {
+        document.literal != 0 || document.name == "" || !Unlocated(document)) {
         return "noncanonical accepted scalar module";
     }
+    is_library := document.text != "";
     records := Records(rows);
     error := ValidRecords(rows, records, starts, size);
     if (error != "") {
@@ -864,11 +866,11 @@ pub Validate :: (rows: facts.Row[]) -> string {
         return "invalid scalar module layout";
     }
     first := rows[heads[0]];
-    if (first.count != 0 || first.type != facts.IntType) {
+    if (!is_library && (first.count != 0 || first.type != facts.IntType)) {
         return "scalar module entry must take no parameters and return int";
     }
     for (function in 0..<length(heads)) {
-        failure := ValidFunction(rows, records, heads, function, starts, size);
+        failure := ValidFunction(rows, records, heads, function, starts, size, is_library);
         if (failure != "") {
             return failure;
         }
@@ -962,16 +964,16 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // payloads: a Make row inserts its tag and payloads into the zero constant,
 // and a Tag or Payload row extracts its field. A string literal is a
 // constant of the module's text table, one entry per distinct text.
-pub Emit :: (rows: facts.Row[]) -> Result {
-    return Lower(rows, "", false);
+pub EmitFor :: (target: abi.Target, rows: facts.Row[]) -> Result {
+    return Lower(target, rows, "", false);
 }
 // Emit with line tables: each instruction is at the position of the
 // statement row it lowers, the function's own row before its first, and the
 // source row names the file, which is in `directory`.
 pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
-    return Lower(rows, directory, true);
+    return Lower(abi.LinuxX64(), rows, directory, true);
 }
-Lower :: (rows: facts.Row[], directory: string, debug: bool) -> Result {
+Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool) -> Result {
     error := Validate(rows);
     if (error != "") {
         return Result.Invalid(error);
@@ -989,6 +991,7 @@ Lower :: (rows: facts.Row[], directory: string, debug: bool) -> Result {
     fields: int[] = [];
     texts: string[] = [];
     names: string[] = [];
+    ids: i64[] = [];
     lines: int[] = [];
     columns: int[] = [];
     declared := Records(rows);
@@ -1010,6 +1013,7 @@ Lower :: (rows: facts.Row[], directory: string, debug: bool) -> Result {
     for (function in 0..<length(heads)) {
         head := heads[function];
         declaration := rows[head];
+        ids.append(declaration.literal);
         result := NativeType(declaration.type);
         shape: native.Function = {result: result, first_parameter: length(parameters),
                                   parameters: declaration.count, first_slot: length(slots), slots: 0,
@@ -1440,8 +1444,16 @@ Lower :: (rows: facts.Row[], directory: string, debug: bool) -> Result {
     if (debug) {
         source = {file: rows[0].name, directory: directory};
     }
-    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields, texts,
-                       source, names, lines, columns, false, 1) {
+    // A library's Document row names it.
+    emitted: native.Result = native.Result.Rejected(-1, "");
+    if (rows[1].text == "") {
+        emitted = native.Emit(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
+                              source, names, lines, columns, false, 1);
+    } else {
+        emitted = native.EmitLibrary(target, rows[1].text, names, ids, functions, parameters, slots, locals,
+                                     code, arguments, records, fields, texts, 1);
+    }
+    switch emitted {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
@@ -1449,10 +1461,18 @@ Lower :: (rows: facts.Row[], directory: string, debug: bool) -> Result {
     }
 }
 
+// Emit and EmitBytes are the Linux x86-64 entries `chibi build` calls.
+pub Emit :: (rows: facts.Row[]) -> Result {
+    return EmitFor(abi.LinuxX64(), rows);
+}
+pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
+    return EmitBytesFor(abi.LinuxX64(), rows);
+}
+
 // Existing compiler-host --output-bytes rejects an empty result before file
 // publication. Emit retains typed diagnostics; this entry adds no host codec.
-pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
-    return Bytes(Emit(rows));
+pub EmitBytesFor :: (target: abi.Target, rows: facts.Row[]) -> u8[] {
+    return Bytes(EmitFor(target, rows));
 }
 pub EmitLinesBytes :: (rows: facts.Row[], directory: string) -> u8[] {
     return Bytes(EmitLines(rows, directory));

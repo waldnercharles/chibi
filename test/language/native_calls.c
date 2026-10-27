@@ -1,3 +1,5 @@
+#include "native_calls.h"
+
 #include "authoring/source_collection.h"
 #include "backend.h"
 #include "execution/inspection.h"
@@ -31,18 +33,23 @@ static const script_catalog catalog = { .capabilities = &tick, .capability_count
 static const script_lower_bindings bindings = { .generation = 1 };
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
 
+/* The functions the Probe calls, which native code can compile. */
+#define PURE_FUNCTIONS                                                         \
+    "    Reward :: (points: int, bonus: int = 5) -> int { return points * 2 "  \
+    "+ bonus; }\n"                                                             \
+    "    Positive :: (x: number) -> bool { return x > 0; }\n"                  \
+    "    Wrap :: (x: u8) -> u8 { return x + 200; }\n"                          \
+    "    Mix :: (a: int, b: bool, c: u8, d: i64, e: u64, f: number, g: f64) "  \
+    "-> f64 {\n"                                                               \
+    "        if (b) { return f64(a) + f64(c) + f64(d) + f64(e) + f * g; }\n"   \
+    "        return g - f64(a);\n"                                             \
+    "    }\n"
+const char NATIVE_CALLS_LIBRARY[] = "Native :: library {\n" PURE_FUNCTIONS
+                                    "}\n";
+/* With a function that waits and one with more parameters than an entry
+ * takes, which no export can bind. */
 static const char
-    LIBRARY[] = "Native :: library {\n"
-                "    Reward :: (points: int, bonus: int = 5) -> int { return "
-                "points * 2 + bonus; }\n"
-                "    Positive :: (x: number) -> bool { return x > 0; }\n"
-                "    Wrap :: (x: u8) -> u8 { return x + 200; }\n"
-                "    Mix :: (a: int, b: bool, c: u8, d: i64, e: u64, f: "
-                "number, g: f64) -> f64 {\n"
-                "        if (b) { return f64(a) + f64(c) + f64(d) + f64(e) + f "
-                "* g; }\n"
-                "        return g - f64(a);\n"
-                "    }\n"
+    LIBRARY[] = "Native :: library {\n" PURE_FUNCTIONS
                 "    Pause :: (x: int) -> int { yield; return x; }\n"
                 "    Wide :: (a: int, b: int, c: int, d: int, e: int, f: int, "
                 "g: int, h: int, i: int) -> int {\n"
@@ -181,12 +188,12 @@ static const authoring_source *source(const char *name)
     }
     return NULL;
 }
-static bool prepare(behavior_backend backend)
+static bool prepare_library(const char *text, behavior_backend backend)
 {
     char library[256], probe[256];
     snprintf(library, sizeof library, "%s/libraries/Native.chibi", root);
     snprintf(probe, sizeof probe, "%s/behaviors/Probe.chibi", root);
-    const source_catalog_edit edits[] = { { .path = library, .text = LIBRARY },
+    const source_catalog_edit edits[] = { { .path = library, .text = text },
                                           { .path = probe, .text = PROBE } };
     sources = authoring_sources_prepare_catalog(
         source_catalog_replaced(root, &catalog, edits, 2),
@@ -202,6 +209,10 @@ static bool prepare(behavior_backend backend)
     REQUIRE(authoring_sources_valid(sources));
     natives = execution_natives_new();
     return true;
+}
+static bool prepare(behavior_backend backend)
+{
+    return prepare_library(LIBRARY, backend);
 }
 static uint64_t state_id(const char *name)
 {
@@ -275,29 +286,55 @@ static bool same_states(const probe_states *a, const probe_states *b)
     return true;
 }
 
-TEST_CASE(native_calls_match_the_vm)
+/* Whether the Probe, compiled with `library` on backend b, reaches the
+ * same states with `manifest` bound as in the VM, every call running
+ * natively; `vm` receives the VM's. */
+static bool agrees(
+    const char *library,
+    const execution_native_manifest *manifest,
+    int b,
+    probe_states vm[TICKS]
+)
 {
     char error[256] = "";
+    REQUIRE(behavior_backend_available(backends[b]));
+    REQUIRE(prepare_library(library, backends[b]));
+    bool bound = execution_natives_bind(natives, source("Native")->module, manifest, error, sizeof error);
+    if (!bound) {
+        fprintf(stderr, "native bind: %s\n", error);
+    }
+    REQUIRE(bound);
+    probe_states native[TICKS];
+    uint64_t vm_entries = 1, native_entries = 0;
+    REQUIRE(run(false, false, vm, &vm_entries) && !vm_entries);
+    REQUIRE(run(true, false, native, &native_entries));
+    REQUIRE(native_entries == TICK_CALLS * TICKS);
+    REQUIRE(same_states(vm, native));
+    clear();
+    return true;
+}
+bool native_calls_agree(const execution_native_manifest *manifest)
+{
+    setup();
+    probe_states vm[TICKS];
+    bool agreed = agrees(NATIVE_CALLS_LIBRARY, manifest, 0, vm) &&
+                  agrees(NATIVE_CALLS_LIBRARY, manifest, 1, vm);
+    cleanup();
+    return agreed;
+}
+
+TEST_CASE(native_calls_match_the_vm)
+{
     for (int b = 0; b < 2; b++) {
-        REQUIRE(behavior_backend_available(backends[b]));
-        REQUIRE(prepare(backends[b]));
-        REQUIRE(
-            execution_natives_bind(natives, source("Native")->module, &MANIFEST, error, sizeof error)
-        );
-        probe_states vm[TICKS], native[TICKS];
-        uint64_t vm_entries = 1, native_entries = 0;
+        probe_states vm[TICKS];
         calls = 0;
-        REQUIRE(run(false, false, vm, &vm_entries));
-        REQUIRE(!vm_entries && !calls);
-        REQUIRE(run(true, false, native, &native_entries));
-        REQUIRE(native_entries == TICK_CALLS * TICKS && calls == TICK_CALLS * TICKS);
-        REQUIRE(same_states(vm, native));
+        REQUIRE(agrees(LIBRARY, &MANIFEST, b, vm));
+        REQUIRE(calls == TICK_CALLS * TICKS);
         /* Reward's bonus defaults to 5, Positive is false for -2 and 0, Wrap
          * wraps its u8, and Mix takes either branch. */
         REQUIRE(vm[0].total == 11 && vm[0].flag && vm[0].small == 200 && vm[0].wide == 231.25);
         REQUIRE(vm[1].total == 51 && !vm[1].flag && vm[1].small == 144 && vm[1].wide == -53);
         REQUIRE(!vm[2].flag && vm[3].flag);
-        clear();
     }
     return true;
 }

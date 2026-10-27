@@ -193,6 +193,66 @@ TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings)
     return true;
 }
 
+/* Driver.Target admits each native_abi target's triple with the layout LLVM
+ * 18 gives it, and nothing else: no crossed pair, no other LLVM major's arm64
+ * layout, and exactly one of each line. */
+TEST_CASE(target_admits_each_triple_with_its_own_layout)
+{
+    reset("target admission");
+    static const char *const triples[] = { "x86_64-unknown-linux-gnu",
+                                           "arm64-apple-macosx11.0.0",
+                                           "x86_64-pc-windows-msvc" };
+    static const char *const layouts[] = {
+        "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:"
+        "32:64-S128",
+        "e-m:o-i64:64-i128:128-n32:64-S128",
+        "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:"
+        "32:64-S128"
+    };
+    static const char *const rejected[] = {
+        /* LLVM 19's arm64 layout. */
+        "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128-Fn32\"\n"
+        "target triple = \"arm64-apple-macosx11.0.0\"\n",
+        "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128\"\n"
+        "target triple = \"aarch64-apple-darwin\"\n",
+        "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128\"\n",
+        "target triple = \"arm64-apple-macosx11.0.0\"\n",
+        "target datalayout = \"e-m:o-i64:64-i128:128-n32:64-S128\"\n"
+        "target triple = \"arm64-apple-macosx11.0.0\"\n"
+        "target triple = \"arm64-apple-macosx11.0.0\"\n",
+    };
+    enum
+    {
+        PAIRS = 9,
+        MODULES = PAIRS + (int)(sizeof rejected / sizeof *rejected)
+    };
+    /* One invocation inspects every module: compiling the driver dominates. */
+    char modules[MODULES][1024];
+    const char *arguments[MODULES];
+    int expected = 0;
+    for (int i = 0; i < MODULES; i++) {
+        char name[32], text[512];
+        snprintf(name, sizeof name, "module %d.ll", i);
+        path(modules[i], root, name);
+        arguments[i] = modules[i];
+        if (i >= PAIRS) {
+            tool_write(modules[i], rejected[i - PAIRS]);
+            continue;
+        }
+        snprintf(
+            text,
+            sizeof text,
+            "target datalayout = \"%s\"\ntarget triple = \"%s\"\n",
+            layouts[i % 3],
+            triples[i / 3]
+        );
+        tool_write(modules[i], text);
+        expected |= i % 3 == i / 3 ? 1 << i : 0;
+    }
+    REQUIRE(invoke("InspectTargets", arguments, MODULES, true) && result.value == expected);
+    return true;
+}
+
 static void cancel(int signal)
 {
     (void)signal;
@@ -529,6 +589,7 @@ void test_native_aot_driver(const char *source)
     free(adapters);
     RUN_TEST_CASE(tool_admission_resolves_aliases_and_rejects_unusable_paths);
     RUN_TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings);
+    RUN_TEST_CASE(target_admits_each_triple_with_its_own_layout);
     RUN_TEST_CASE(stage_cancellation_requires_the_cancellation_diagnostic);
     RUN_TEST_CASE(optimizer_trace_distinguishes_passes_and_snapshot_paths);
 #ifdef __linux__

@@ -52,10 +52,12 @@
 #if defined(__linux__) && defined(__x86_64__)
 #include "host/process.h"
 #include "host/stack_overflow.h"
+#include "native_calls.h"
 
 #include <dlfcn.h>
 #include <limits.h>
 #include <signal.h>
+#include <sys/stat.h>
 extern char **environ;
 #endif
 
@@ -11094,15 +11096,31 @@ static void write_row(const pin_value *rows, int index, const char *name, pin_va
     assert(field);
     assert(!pin_write_field(&detached, row->ptr, field, value));
 }
+/* native_abi's target `function`, such as "LinuxX64", on VM b. */
+static bool native_target(int b, const char *function, pin_value *out)
+{
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:native_abi", function, NULL, 0, COMPILE_BUDGET, &input, out)
+    );
+    return true;
+}
+/* scalar_llvm's EmitBytesFor of `rows` and native_abi's target `function`. */
+static bool emit_bytes(int b, const char *function, const pin_value *rows, pin_value *emitted)
+{
+    pin_value args[2] = { { 0 }, *rows };
+    REQUIRE(native_target(b, function, &args[0]));
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytesFor", args, 2, COMPILE_BUDGET, &input, emitted)
+    );
+    return true;
+}
 static bool validated(int b, pin_value *rows, const char *message)
 {
     pin_value error, emitted;
     REQUIRE(
         compiler_fixture_call(&consumer, b, "project:scalar_llvm", "Validate", rows, 1, COMPILE_BUDGET, &input, &error)
     );
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
-    );
+    REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
     bool valid = pin_text_equal(pin_text(error), (pin_string){ message, strlen(message) });
     if (!valid) {
         fprintf(
@@ -11427,17 +11445,7 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         REQUIRE(scalar_field(&rows->items[6], "count").i == 2);
         REQUIRE(retained_text(&rows->items[7], "name", "Pick"));
         pin_value emitted;
-        REQUIRE(compiler_fixture_call(
-            &consumer,
-            b,
-            "project:scalar_llvm",
-            "EmitBytes",
-            &produced[b],
-            1,
-            COMPILE_BUDGET,
-            &input,
-            &emitted
-        ));
+        REQUIRE(emit_bytes(b, "LinuxX64", &produced[b], &emitted));
         const pin_array *bytes = emitted.ptr;
         REQUIRE(emitted.container == PIN_CONTAINER_ARRAY && bytes->count > 0);
         char *ir = xmalloc((size_t)bytes->count + 1);
@@ -11691,21 +11699,19 @@ static bool native_record_table(int b, const native_record *records, int count, 
     free(values);
     return built;
 }
-/* Emits m as a module of internal functions under budget 1. */
-static bool native_emit(int b, const native_module *m, const pin_union **out)
+static pin_value native_ids(const int64_t *values, int count)
 {
-    pin_value args[16];
-    REQUIRE(compiler_fixture_call(
-        &consumer,
-        b,
-        "project:native_abi",
-        "LinuxX64",
-        NULL,
-        0,
-        COMPILE_BUDGET,
-        &input,
-        &args[0]
-    ));
+    pin_array *array = pin_array_snapshot_allocate(&input, PIN_I64, NULL, count);
+    for (int i = 0; i < count; i++) {
+        array->items[i] = (pin_value){ .type = PIN_I64, .i64 = values[i] };
+    }
+    return (pin_value){ .type = PIN_I64, .container = PIN_CONTAINER_ARRAY, .ptr = array };
+}
+/* native_abi's target `function` and m's tables, the arguments Emit and
+ * EmitLibrary share. */
+static bool native_tables(int b, const char *function, const native_module *m, pin_value args[10])
+{
+    REQUIRE(native_target(b, function, &args[0]));
     REQUIRE(native_functions(b, m->functions, m->function_count, &args[1]));
     args[2] = native_ints(m->parameters, m->parameter_count);
     args[3] = native_ints(m->slots, m->slot_count);
@@ -11715,6 +11721,24 @@ static bool native_emit(int b, const native_module *m, const pin_union **out)
     REQUIRE(native_record_table(b, m->records, m->record_count, &args[7]));
     args[8] = native_ints(m->fields, m->field_count);
     args[9] = strings(m->texts, m->text_count);
+    return true;
+}
+static bool native_result(int b, const char *function, pin_value *args, int count, const pin_union **out)
+{
+    pin_value result;
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, function, args, count, COMPILE_BUDGET, &input, &result)
+    );
+    REQUIRE(result.type == PIN_UNION && result.ptr);
+    *out = result.ptr;
+    return true;
+}
+/* Emits m for native_abi's target `function` as a module of internal
+ * functions under budget 1. */
+static bool native_target_emit(int b, const char *function, const native_module *m, const pin_union **out)
+{
+    pin_value args[16];
+    REQUIRE(native_tables(b, function, m, args));
     args[10] = record_row(&consumer, b, NATIVE_PACKAGE, "Source");
     REQUIRE(put_value(&args[10], "file", text(m->file ? m->file : "")));
     REQUIRE(put_value(&args[10], "directory", text(m->directory ? m->directory : "")));
@@ -11724,13 +11748,36 @@ static bool native_emit(int b, const native_module *m, const pin_union **out)
     args[13] = native_ints(m->columns, placed);
     args[14] = (pin_value){ .type = PIN_BOOL, .b = false };
     args[15] = (pin_value){ .type = PIN_I32, .i = 1 };
-    pin_value result;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 16, COMPILE_BUDGET, &input, &result)
-    );
-    REQUIRE(result.type == PIN_UNION && result.ptr);
-    *out = result.ptr;
-    return true;
+    return native_result(b, "Emit", args, 16, out);
+}
+/* Emits m for native_abi's target `function` as the library `name` under
+ * budget 1, its functions named and identified by `names` and `ids`, `count`
+ * of each. */
+static bool native_emit_library(
+    int b,
+    const char *function,
+    const native_module *m,
+    const char *name,
+    const char *const *names,
+    const int64_t *ids,
+    int count,
+    const pin_union **out
+)
+{
+    pin_value tables[10], args[14];
+    REQUIRE(native_tables(b, function, m, tables));
+    args[0] = tables[0];
+    args[1] = text(name);
+    args[2] = strings(names, count);
+    args[3] = native_ids(ids, count);
+    memcpy(&args[4], &tables[1], sizeof tables - sizeof *tables);
+    args[13] = (pin_value){ .type = PIN_I32, .i = 1 };
+    return native_result(b, "EmitLibrary", args, 14, out);
+}
+/* Emits m for Linux x86-64. */
+static bool native_emit(int b, const native_module *m, const pin_union **out)
+{
+    return native_target_emit(b, "LinuxX64", m, out);
 }
 static bool native_rejects(int b, const native_module *m, const char *message)
 {
@@ -11799,6 +11846,82 @@ static bool native_calls_emit_definitions(int b)
         contains(text, "%c4_0 = load i32, ptr %s0\n  %c4_1 = load i1, ptr %s1\n  %c4_2 = load i32, ptr %s2")
     );
     REQUIRE(contains(text, "store i32 %arg2, ptr %s0"));
+    return true;
+}
+/* The call module as the library Lib: every function internal, one wrapper
+ * per word signature, and the manifest the only exported symbol. */
+static bool native_libraries_export_words(int b)
+{
+    native_module m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
+    static const char *const names[] = { "Main", "Pick" };
+    static const int64_t ids[] = { 11, -5 };
+    const pin_union *value;
+    REQUIRE(native_emit_library(b, "LinuxX64", &m, "Lib", names, ids, 2, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string text = pin_text(value->values[0]);
+    REQUIRE(!contains(text, "define i32"));
+    REQUIRE(contains(text, "define internal i32 @chibi_scalar.0() #0 {"));
+    REQUIRE(contains(text, "define internal void @chibi_scalar.export.1(ptr %in, ptr %out) #0 {"));
+    REQUIRE(
+        contains(text, "@chibi_scalar.export.types.1 = private unnamed_addr constant [4 x i8] [i8 1, i8 2, i8 1, i8 1]")
+    );
+    REQUIRE(
+        contains(text, "@chibi_scalar.export.name.1 = private unnamed_addr constant [5 x i8] c\"Pick\\00\"")
+    );
+    REQUIRE(contains(
+        text,
+        "%chibi.export { ptr @chibi_scalar.export.name.1, i64 -5, ptr "
+        "@chibi_scalar.export.types.1, i32 3, "
+        "i32 1, ptr @chibi_scalar.export.1 }"
+    ));
+    REQUIRE(
+        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 1, i32 2, ptr @chibi_scalar.exports }")
+    );
+    static const char malformed[] = "native library needs an identifier and a "
+                                    "name and ID for each function";
+    static const char *const repeated[] = { "Main", "Main" };
+    static const int64_t shared[] = { 11, 11 };
+    /* Libraries are Linux-only: other targets reject them rather than export
+     * Linux's word ABI. */
+    static const char linux_only[] = "native libraries are Linux x86-64 only";
+    static const struct
+    {
+        const char *function;
+        const char *name;
+        const char *const *names;
+        const int64_t *ids;
+        int count;
+        const char *message;
+    } rejected[] = {
+        { "LinuxX64", "1Lib", names, ids, 2, malformed },
+        { "LinuxX64", "", names, ids, 2, malformed },
+        { "LinuxX64", "Lib", names, ids, 1, malformed },
+        { "LinuxX64", "Lib", repeated, ids, 2, "native library names each function once" },
+        { "LinuxX64", "Lib", names, shared, 2, "native library names each function once" },
+        { "MacOSArm64", "Lib", names, ids, 2, linux_only },
+        { "WindowsX64", "Lib", names, ids, 2, linux_only },
+    };
+    for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
+        REQUIRE(native_emit_library(
+            b,
+            rejected[i].function,
+            &m,
+            rejected[i].name,
+            rejected[i].names,
+            rejected[i].ids,
+            rejected[i].count,
+            &value
+        ));
+        REQUIRE(
+            value->tag ==
+            fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected")
+        );
+        pin_string message = pin_text(value->values[1]);
+        REQUIRE(pin_text_equal(
+            message,
+            (pin_string){ rejected[i].message, strlen(rejected[i].message) }
+        ));
+    }
     return true;
 }
 typedef struct native_change
@@ -12180,6 +12303,22 @@ static bool native_lines_place_code(int b)
         REQUIRE(contains(ir, expected[i]));
     }
     REQUIRE(located(ir) && !contains(ir, "!19 ="));
+    /* Line tables are Linux-only: other targets reject a source file rather
+     * than borrow Linux's DWARF flag. */
+    static const char *const others[] = { "MacOSArm64", "WindowsX64" };
+    static const char
+        unsupported[] = "native line tables are Linux x86-64 only";
+    for (size_t i = 0; i < sizeof others / sizeof *others; i++) {
+        const pin_union *value;
+        REQUIRE(native_target_emit(b, others[i], &m, &value));
+        REQUIRE(
+            value->tag ==
+            fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected")
+        );
+        REQUIRE(
+            pin_text_equal(pin_text(value->values[1]), (pin_string){ unsupported, strlen(unsupported) })
+        );
+    }
     /* A function without a name, or a position before the source, has no
      * line table. */
     static const char *const unnamed[] = { "Main", "" };
@@ -12283,6 +12422,19 @@ static bool native_strings_emit(int b)
                             .texts = TEXTS,
                             .text_count = 1 };
     REQUIRE(native_rejects(b, &alone, TABLES));
+    /* A library keeps such a function internal and exports no wrapper. */
+    static const char *const name[] = { "Named" };
+    static const int64_t id[] = { 3 };
+    const pin_union *library;
+    REQUIRE(native_emit_library(b, "LinuxX64", &alone, "Texts", name, id, 1, &library));
+    REQUIRE(library->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string kept = pin_text(library->values[0]);
+    REQUIRE(contains(kept, "define internal { ptr, i32 } @chibi_scalar.0() #0 {"));
+    REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
+    REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
+    REQUIRE(
+        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 1, i32 0, ptr @chibi_scalar.exports }")
+    );
     static const native_code published[] = {
         { .op = NATIVE_CHECK },
         { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL },
@@ -12462,6 +12614,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_calls_emit_definitions(b));
+        REQUIRE(native_libraries_export_words(b));
         REQUIRE(native_rejects_malformed_calls(b));
         REQUIRE(native_recursion_probes_the_stack(b));
         REQUIRE(native_records_emit(b));
@@ -12525,9 +12678,8 @@ static const struct
 };
 /* Each of UNION_REJECTIONS is a located rejection on both VMs, its source
  * and diagnostic and nothing else. */
-TEST_CASE(package_compiler_scalar_rejects_unsupported_unions)
+static bool scalar_rejects_unsupported_unions()
 {
-    REQUIRE(prepare());
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < (int)(sizeof UNION_REJECTIONS / sizeof *UNION_REJECTIONS);
              i++) {
@@ -12559,6 +12711,92 @@ TEST_CASE(package_compiler_scalar_rejects_unsupported_unions)
             arena_free(&detached);
         }
     }
+    return true;
+}
+/* CollectScalar's rows of `source` at libraries/Tools.chibi on VM b. */
+static bool library_rows(int b, const char *source, pin_value *rows)
+{
+    pin_value args[] = { text("/project"),
+                         text("libraries/Tools.chibi"),
+                         text(source),
+                         { 0 },
+                         instruction_names() };
+    REQUIRE(target(b, &args[3]));
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, rows)
+    );
+    return true;
+}
+/* Library sources that are not one library of plain functions, each with
+ * its message. A source holds at most one library, so the grammar rejects
+ * anything after it. */
+static const struct
+{
+    const char *source, *message;
+} LIBRARY_REJECTIONS[] = {
+    { "Tools :: library {\n    Point :: struct { x: int; }\n}\n",
+      "a native library holds only functions without attributes" },
+    { "Tools :: library {\n}\n", "scalar proof requires at least one function" },
+    { "Tools :: library {\n    One :: () -> int { return 1; }\n}\n"
+      "More :: library {\n    Two :: () -> int { return 2; }\n}\n",
+      "Unexpected syntax" },
+    { "Tools :: library {\n    One :: () -> int { return 1; }\n"
+      "    One :: () -> int { return 2; }\n}\n",
+      "Duplicate declaration 'One'" },
+};
+/* A library's Document row names it, and each Function row's literal is the
+ * stable symbol ID the runtime binds the function by. */
+static bool scalar_collects_libraries()
+{
+    static const char
+        source[] = "Tools :: library {\n"
+                   "    Add :: (a: int, b: int) -> int { return a + b; }\n"
+                   "    Name :: () -> string { return \"tools\"; }\n"
+                   "}\n";
+    const int64_t ids[] = {
+        (int64_t)script_catalog_id("symbol", "libraries/Tools.chibi:1:Add:callable"),
+        (int64_t)script_catalog_id("symbol", "libraries/Tools.chibi:1:Name:callable"),
+    };
+    for (int b = 0; b < 2; b++) {
+        pin_value rows;
+        REQUIRE(library_rows(b, source, &rows));
+        const pin_array *array = rows.ptr;
+        REQUIRE(scalar_field(guard_row(&rows, 1), "kind").i == SCALAR_DOCUMENT_ROW);
+        REQUIRE(retained_text(guard_row(&rows, 1), "text", "Tools"));
+        int functions = 0;
+        for (int i = 2; i < array->count; i++) {
+            pin_value *row = guard_row(&rows, i);
+            if (scalar_field(row, "kind").i != SCALAR_FUNCTION_ROW) {
+                continue;
+            }
+            REQUIRE(functions < 2 && scalar_field(row, "literal").i64 == ids[functions]);
+            functions++;
+        }
+        REQUIRE(functions == 2);
+        arena_free(&detached);
+        for (size_t i = 0; i < sizeof LIBRARY_REJECTIONS / sizeof *LIBRARY_REJECTIONS;
+             i++) {
+            REQUIRE(library_rows(b, LIBRARY_REJECTIONS[i].source, &rows));
+            array = rows.ptr;
+            REQUIRE(array->count == 2);
+            pin_value *rejection = guard_row(&rows, 1);
+            REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
+            pin_string message = pin_text(scalar_field(rejection, "text"));
+            if (strcmp(message.bytes, LIBRARY_REJECTIONS[i].message)) {
+                fprintf(stderr, "library rejection %zu: %s\n", i, message.bytes);
+            }
+            REQUIRE(!strcmp(message.bytes, LIBRARY_REJECTIONS[i].message));
+            arena_free(&detached);
+        }
+    }
+    return true;
+}
+/* One fixture load serves both, since each load takes minutes. */
+TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries)
+{
+    REQUIRE(prepare());
+    REQUIRE(scalar_rejects_unsupported_unions());
+    REQUIRE(scalar_collects_libraries());
     return true;
 }
 TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
@@ -12608,9 +12846,10 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
  * value, and so must each probe's. A probe reaches an internal function
  * through a validation-only IR adapter that passes it int64 arguments and
  * returns an int64, which is how every integer type and bool reaches it; the
- * adapter is not a foreign ABI. Linux x86-64 is the one target the emitter
- * admits. CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
- * nothing is found through PATH. */
+ * adapter is not a foreign ABI. The modules run on Linux x86-64 here, and
+ * the other targets the emitter admits run them from a bundle (see
+ * test/native_aot/targets). CHIBI_LLVM_BIN names the directory of opt, llc,
+ * ld.lld and llvm-nm; nothing is found through PATH. */
 /* The corpus's accepted cases. */
 enum
 {
@@ -12909,29 +13148,28 @@ static void native_file(const char *path)
     strcpy(copy, path);
     apush(native_files, copy);
 }
-/* `ir` and then `adapter`, built at `level` with the driver's exact object
- * arguments, then linked as `directory`/`name`.so, which `library` names. */
-static bool native_library(
+/* `ir` and then `adapter`, built at `level` with the driver's exact opt and
+ * llc arguments into `object`. `module` receives the path of the optimized
+ * module in `directory`, and `undefined` the object's undefined symbols,
+ * one per line. */
+static bool native_object(
     const char *directory,
     const char *name,
     const char *ir,
     const char *adapter,
     int level,
-    char library[PATH_MAX]
+    const char *object,
+    char module[PATH_MAX],
+    char undefined[NATIVE_OUTPUT]
 )
 {
-    char opt[PATH_MAX], llc[PATH_MAX], nm[PATH_MAX], lld[PATH_MAX];
-    REQUIRE(llvm_tool("opt", opt) && llvm_tool("llc", llc));
-    REQUIRE(llvm_tool("llvm-nm", nm) && llvm_tool("ld.lld", lld));
-    char source[PATH_MAX], module[PATH_MAX], object[PATH_MAX];
+    char opt[PATH_MAX], llc[PATH_MAX], nm[PATH_MAX];
+    REQUIRE(llvm_tool("opt", opt) && llvm_tool("llc", llc) && llvm_tool("llvm-nm", nm));
+    char source[PATH_MAX];
     snprintf(source, sizeof source, "%s/%s-%d.ll", directory, name, level);
-    snprintf(module, sizeof module, "%s/%s-%d.opt.ll", directory, name, level);
-    snprintf(object, sizeof object, "%s/%s-%d.o", directory, name, level);
-    snprintf(library, PATH_MAX, "%s/%s-%d.so", directory, name, level);
-    const char *const outputs[] = { source, module, object, library };
-    for (int i = 0; i < 4; i++) {
-        native_file(outputs[i]);
-    }
+    snprintf(module, PATH_MAX, "%s/%s-%d.opt.ll", directory, name, level);
+    native_file(source);
+    native_file(module);
     REQUIRE(write_text(source, ir, adapter));
     const char *passes = level ? "-passes=verify,default<O2>,verify" : "-passes=verify";
     const char *const optimize[] = { opt,  "-S",   passes, source,
@@ -12944,15 +13182,34 @@ static bool native_library(
                                  "-o",
                                  object,
                                  NULL };
-    const char *const symbols[] = { nm, "--undefined-only", object, NULL };
-    const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
-    char out[NATIVE_OUTPUT];
-    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
-    REQUIRE(run_tool(symbols, directory, out));
+    const char *const symbols[] = { nm, "--undefined-only", "--just-symbol-name", object, NULL };
+    REQUIRE(run_tool(optimize, directory, undefined) && run_tool(emit, directory, undefined));
+    REQUIRE(run_tool(symbols, directory, undefined));
+    return true;
+}
+/* `ir` and then `adapter`, built at `level` with the driver's exact object
+ * arguments, then linked as `directory`/`name`.so, which `library` names. */
+static bool native_library(
+    const char *directory,
+    const char *name,
+    const char *ir,
+    const char *adapter,
+    int level,
+    char library[PATH_MAX]
+)
+{
+    char lld[PATH_MAX], object[PATH_MAX], module[PATH_MAX], out[NATIVE_OUTPUT];
+    REQUIRE(llvm_tool("ld.lld", lld));
+    snprintf(object, sizeof object, "%s/%s-%d.o", directory, name, level);
+    snprintf(library, PATH_MAX, "%s/%s-%d.so", directory, name, level);
+    native_file(object);
+    native_file(library);
+    REQUIRE(native_object(directory, name, ir, adapter, level, object, module, out));
     if (*out) {
         fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
     }
     REQUIRE(!*out);
+    const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
     REQUIRE(run_tool(link, directory, out));
     return true;
 }
@@ -13526,6 +13783,147 @@ static int library_child(const char *library, int count, char **specs)
     }
     return 0;
 }
+/* The other targets native_abi admits. When CHIBI_NATIVE_BUNDLE names a
+ * directory, each module the native tests run is also emitted for each of
+ * them and built with the driver's opt and llc arguments into the bundle,
+ * whose runner (test/native_aot/targets) links and runs it on that target.
+ * Each has native_abi's function, the bundle's subdirectory, the triple and
+ * the data layout LLVM 18 gives it, which the driver admits, and the one
+ * symbol its objects may leave undefined, or NULL: Windows code that uses
+ * floating point references _fltused, which the platform runtime defines. */
+static const struct
+{
+    const char *function, *directory, *triple, *layout, *runtime;
+} BUNDLE_TARGETS[] = {
+    { "MacOSArm64", "macos-arm64", "arm64-apple-macosx11.0.0", "e-m:o-i64:64-i128:128-n32:64-S128", NULL },
+    { "WindowsX64", "windows-x64", "x86_64-pc-windows-msvc", "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128", "_fltused" },
+};
+enum
+{
+    BUNDLE_TARGET_COUNT = (int)(sizeof BUNDLE_TARGETS / sizeof *BUNDLE_TARGETS)
+};
+/* The modules bundled so far, which number each one's objects: generated
+ * modules share some corpus cases' names. */
+static int bundled_modules;
+static const char *bundle_root()
+{
+    const char *root = getenv("CHIBI_NATIVE_BUNDLE");
+    return root && *root ? root : NULL;
+}
+/* Whether the module at `path` declares exactly target t's triple and
+ * layout. */
+static bool bundle_module_targets(const char *path, int t)
+{
+    char *text = file_read_text(path);
+    REQUIRE(text);
+    char triple[128], layout[256];
+    snprintf(
+        triple,
+        sizeof triple,
+        "\ntarget triple = \"%s\"\n",
+        BUNDLE_TARGETS[t].triple
+    );
+    snprintf(
+        layout,
+        sizeof layout,
+        "\ntarget datalayout = \"%s\"\n",
+        BUNDLE_TARGETS[t].layout
+    );
+    bool declared = strstr(text, triple) && strstr(text, layout) &&
+                    !strstr(strstr(text, triple) + 1, "\ntarget triple");
+    free(text);
+    if (!declared) {
+        fprintf(
+            stderr,
+            "%s does not declare %s's triple and layout\n",
+            path,
+            BUNDLE_TARGETS[t].directory
+        );
+    }
+    return declared;
+}
+/* Builds `ir`, emitted for bundle target t, and `adapter` at O0 and O2 into
+ * the bundle, and lists each of `calls` after its object with the value
+ * both VMs and the native Linux runs gave. */
+static bool bundle_module(
+    const char *directory,
+    int t,
+    const char *name,
+    const char *ir,
+    const char *adapter,
+    const scalar_call *calls,
+    int count
+)
+{
+    char path[PATH_MAX], label[128];
+    snprintf(
+        path,
+        sizeof path,
+        "%s/%s/modules.txt",
+        bundle_root(),
+        BUNDLE_TARGETS[t].directory
+    );
+    snprintf(label, sizeof label, "%s-%s", BUNDLE_TARGETS[t].directory, name);
+    FILE *list = fopen(path, "a");
+    REQUIRE(list);
+    bool built = true;
+    for (int level = 0; level < 3; level += 2) {
+        char file[128], object[PATH_MAX], module[PATH_MAX],
+            undefined[NATIVE_OUTPUT], allowed[64] = "";
+        snprintf(file, sizeof file, "%d-%s-%d.o", bundled_modules, name, level);
+        snprintf(
+            object,
+            sizeof object,
+            "%s/%s/%s",
+            bundle_root(),
+            BUNDLE_TARGETS[t].directory,
+            file
+        );
+        if (BUNDLE_TARGETS[t].runtime) {
+            snprintf(allowed, sizeof allowed, "%s\n", BUNDLE_TARGETS[t].runtime);
+        }
+        built = native_object(directory, label, ir, adapter, level, object, module, undefined) &&
+                bundle_module_targets(module, t);
+        if (built && *undefined && strcmp(undefined, allowed)) {
+            fprintf(stderr, "%s has undefined symbols: %s\n", object, undefined);
+            built = false;
+        }
+        if (!built) {
+            break;
+        }
+        fprintf(list, "module %s\n", file);
+        for (int i = 0; i < count; i++) {
+            const scalar_probe *probe = &calls[i].probe;
+            fprintf(
+                list,
+                "call %s %" PRId64 " %d",
+                calls[i].symbol,
+                probe->expected,
+                probe->count
+            );
+            for (int a = 0; a < probe->count; a++) {
+                fprintf(list, " %" PRId64, probe->arguments[a]);
+            }
+            fputc('\n', list);
+        }
+    }
+    bundled_modules++;
+    REQUIRE(!fclose(list) && built);
+    return true;
+}
+/* An adapter for each function `calls` probe after the entry. */
+static bool call_adapters(const pin_value *rows, const scalar_call *calls, int count, char **adapter)
+{
+    *adapter = xmalloc(1);
+    **adapter = 0;
+    for (int i = 1; i < count; i++) {
+        if (i > 1 && !strcmp(calls[i].probe.function, calls[i - 1].probe.function)) {
+            continue;
+        }
+        REQUIRE(append_adapter(rows, calls[i].probe.function, adapter));
+    }
+    return true;
+}
 /* Each call's value natively: `ir` with an adapter for each probed function,
  * built at O0 and at O2. */
 static bool native_values(
@@ -13537,14 +13935,8 @@ static bool native_values(
     int count
 )
 {
-    char *adapter = xmalloc(1);
-    *adapter = 0;
-    for (int i = 1; i < count; i++) {
-        if (i > 1 && !strcmp(calls[i].probe.function, calls[i - 1].probe.function)) {
-            continue;
-        }
-        REQUIRE(append_adapter(rows, calls[i].probe.function, &adapter));
-    }
+    char *adapter;
+    REQUIRE(call_adapters(rows, calls, count, &adapter));
     for (int level = 0; level < 2; level++) {
         char library[PATH_MAX];
         REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
@@ -13713,13 +14105,12 @@ static bool calls_agree(const char *name, const scalar_call *calls, int count)
     }
     return true;
 }
-/* The IR EmitBytes gives for `rows`, NUL-terminated, or NULL for none. */
-static bool emitted_ir(int b, pin_value *rows, char **ir)
+/* The IR EmitBytesFor gives for `rows` and native_abi's target `function`,
+ * NUL-terminated, or NULL for none. */
+static bool target_ir(int b, const char *function, const pin_value *rows, char **ir)
 {
     pin_value emitted;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
-    );
+    REQUIRE(emit_bytes(b, function, rows, &emitted));
     const pin_array *bytes = emitted.ptr;
     REQUIRE(emitted.container == PIN_CONTAINER_ARRAY);
     *ir = NULL;
@@ -13733,14 +14124,15 @@ static bool emitted_ir(int b, pin_value *rows, char **ir)
     (*ir)[bytes->count] = 0;
     return true;
 }
-/* `source`'s producer rows from CollectScalar on VM b. */
-static bool collected_rows(int b, const char *case_name, pin_value source, pin_value *rows)
+/* The Linux x86-64 IR EmitBytesFor gives for `rows`, or NULL for none. */
+static bool emitted_ir(int b, pin_value *rows, char **ir)
 {
-    pin_value args[] = { text("/project"),
-                         text("Scalar.chibi"),
-                         source,
-                         { 0 },
-                         instruction_names() };
+    return target_ir(b, "LinuxX64", rows, ir);
+}
+/* `source`'s producer rows at `path` from CollectScalar on VM b. */
+static bool collected_at(int b, const char *path, const char *case_name, pin_value source, pin_value *rows)
+{
+    pin_value args[] = { text("/project"), text(path), source, { 0 }, instruction_names() };
     REQUIRE(target(b, &args[3]));
     bool collected = compiler_fixture_call(
         &fixture,
@@ -13759,9 +14151,40 @@ static bool collected_rows(int b, const char *case_name, pin_value source, pin_v
     REQUIRE(collected);
     return true;
 }
-/* Each of `calls` of an accepted module, `ir` its IR, gives its expected value
- * on both VMs, from the authored compiler's closure of `source` on VM b, and
- * natively at O0 and O2. */
+/* With a bundle, the module of `rows` for each other target, with `calls`,
+ * whose values every run agreed on. */
+static bool bundled(
+    const char *directory,
+    int b,
+    const char *name,
+    const pin_value *rows,
+    const scalar_call *calls,
+    int count
+)
+{
+    if (!bundle_root()) {
+        return true;
+    }
+    char *adapter;
+    REQUIRE(call_adapters(rows, calls, count, &adapter));
+    bool built = true;
+    for (int t = 0; built && t < BUNDLE_TARGET_COUNT; t++) {
+        char *ir = NULL;
+        built = target_ir(b, BUNDLE_TARGETS[t].function, rows, &ir) && ir &&
+                bundle_module(directory, t, name, ir, adapter, calls, count);
+        free(ir);
+    }
+    free(adapter);
+    REQUIRE(built);
+    return true;
+}
+static bool collected_rows(int b, const char *case_name, pin_value source, pin_value *rows)
+{
+    return collected_at(b, "Scalar.chibi", case_name, source, rows);
+}
+/* Each of `calls` of an accepted module, `ir` its IR, gives its expected
+ * value on both VMs, from the authored compiler's closure of `source` on VM
+ * b, and natively at O0 and O2. */
 static bool runs_everywhere(
     const char *directory,
     int b,
@@ -13778,7 +14201,8 @@ static bool runs_everywhere(
     REQUIRE(vm_closure(b, source, &closure, &length));
     bool agree = vm_values(closure, length, rows, calls, count) &&
                  native_values(directory, name, rows, ir, calls, count) &&
-                 calls_agree(name, calls, count);
+                 calls_agree(name, calls, count) &&
+                 bundled(directory, b, name, rows, calls, count);
     free(closure);
     REQUIRE(agree);
     return true;
@@ -13880,11 +14304,13 @@ static const struct
       1073741825 },
     /* In an argument, a guard's condition and its arm. */
     { "folded_guard",
-      "package scalar\nMain :: () -> int { return Pick(Id((2147483647 + 1) / "
+      "package scalar\nMain :: () -> int { return Pick(Id((2147483647 + 1) "
+      "/ "
       "2)); }\n"
       "Id :: (x: int) -> int { return x; }\n"
       "Pick :: (x: int) -> int {\n"
-      "    if (x > (2147483647 + 1) / 4) { return (2147483647 * 2147483647) / "
+      "    if (x > (2147483647 + 1) / 4) { return (2147483647 * "
+      "2147483647) / "
       "2147483647; }\n"
       "    return 0;\n"
       "}\n",
@@ -13904,9 +14330,11 @@ static const struct
     /* A default of every kind of type, and a call that gives some
      * arguments and omits the rest: 6 + 20 + 10 + (-1 + 255 + 15 + 2 - 9). */
     { "defaults",
-      "package scalar\nMain :: () -> int { return Mix() + Mix(10) + Mix(10, "
+      "package scalar\nMain :: () -> int { return Mix() + Mix(10) + "
+      "Mix(10, "
       "false) + Small(); }\n"
-      "Mix :: (a: int = 3, twice: bool = true) -> int { if (twice) { return a "
+      "Mix :: (a: int = 3, twice: bool = true) -> int { if (twice) { "
+      "return a "
       "* 2; } "
       "return a; }\n"
       "Small :: (b: i8 = -1, u: u8 = 255, w: u64 = "
@@ -13926,7 +14354,8 @@ static const struct
       "Cell :: struct { alive: bool; count: u8; weight: f64; id: i64; "
       "}\n"
       "Main :: () -> int { return Vectors() + Cells() + Walk(); }\n"
-      "Add :: (p: Vec, q: Vec) -> Vec { return {x: p.x + q.x, y: p.y + q.y}; "
+      "Add :: (p: Vec, q: Vec) -> Vec { return {x: p.x + q.x, y: p.y + "
+      "q.y}; "
       "}\n"
       "Vectors :: () -> int {\n"
       "    a: Vec = {x: 1.5, y: -2.0};\n"
@@ -13945,7 +14374,8 @@ static const struct
       "    return next;\n"
       "}\n"
       "Cells :: () -> int {\n"
-      "    c := Grow(Grow({alive: true, count: 200, weight: 0.25, id: -7}));\n"
+      "    c := Grow(Grow({alive: true, count: 200, weight: 0.25, id: "
+      "-7}));\n"
       "    total: int = 0;\n"
       "    if (c.alive) { total += int(c.count) + int(c.weight * 8.0) + "
       "int(c.id); }\n"
@@ -14033,16 +14463,19 @@ static const struct
      * operand recursion stays shallow. */
     { "widest_union",
       "package scalar\n"
-      "Wide :: union { Empty | All(a: int, b: int, c: int, d: int, e: int, f: "
+      "Wide :: union { Empty | All(a: int, b: int, c: int, d: int, e: int, "
+      "f: "
       "int, g: int, h: int, i: int, j: int,\n"
       "    k: int, l: int, m: int, n: int, o: int) }\n"
-      "Main :: () -> int { return Sum(Wide.All(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "
+      "Main :: () -> int { return Sum(Wide.All(1, 2, 3, 4, 5, 6, 7, 8, 9, "
+      "10, "
       "11, 12, 13, 14, 15)); }\n"
       "Sum :: (w: Wide) -> int {\n"
       "    switch w {\n"
       "        case .Empty: return 0;\n"
       "        case .All(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o):\n"
-      "            return (a + b + c + d + e) + (f + g + h + i + j) + (k + l + "
+      "            return (a + b + c + d + e) + (f + g + h + i + j) + (k + "
+      "l + "
       "m + n + o);\n"
       "    }\n"
       "}\n",
@@ -14072,18 +14505,22 @@ static const struct
       "    t: string = \"\";\n"
       "    empty := t == \"\";\n"
       "    t = s;\n"
-      "    return Bit(s == \"one\", 1) + Bit(s != \"one\", 2) + Bit(empty, 4) "
+      "    return Bit(s == \"one\", 1) + Bit(s != \"one\", 2) + Bit(empty, "
+      "4) "
       "+ Bit(Same(t, s), 8) +\n"
-      "        Bit(Same(Greet(), \"world\"), 16) + Bit(Greet(\"x\") == \"x\", "
+      "        Bit(Same(Greet(), \"world\"), 16) + Bit(Greet(\"x\") == "
+      "\"x\", "
       "32);\n"
       "}\n"
       "Escapes :: () -> int {\n"
       "    quote := \"say \\\"hi\\\"\\\\\\n\";\n"
-      "    return Bit(quote == \"say \\\"hi\\\"\\\\\\n\", 1) + Bit(quote != "
+      "    return Bit(quote == \"say \\\"hi\\\"\\\\\\n\", 1) + Bit(quote "
+      "!= "
       "\"say \\\"hi\\\"\\\\\\t\", 2) +\n"
       "        Bit(\"é\U0001F408\" == \"é\U0001F408\", 4) + Bit(\"on\" "
       "!= \"one\", 8) + Bit(\"onf\" != \"one\", 16) +\n"
-      "        Bit(\"\" != \"a\", 32) + Bit(\"a\\u0000b\" == \"a\\u0000b\" && "
+      "        Bit(\"\" != \"a\", 32) + Bit(\"a\\u0000b\" == \"a\\u0000b\" "
+      "&& "
       "\"a\\u0000b\" != \"a\", 64);\n"
       "}\n"
       "Loops :: () -> int {\n"
@@ -14430,8 +14867,8 @@ static scalar_call width_call(const char *function, int count, int64_t a, int64_
 {
     return (scalar_call){ .probe = { "widths", function, count, { a, b }, expected } };
 }
-/* The entry, then each operation of `w` on every pair of its samples, or each
- * sample with every shift count, or each sample alone. */
+/* The entry, then each operation of `w` on every pair of its samples, or
+ * each sample with every shift count, or each sample alone. */
 static int width_operation_calls(const scalar_width *w, scalar_call calls[MAX_WIDTH_CALLS])
 {
     int64_t samples[6], counts[7];
@@ -14508,7 +14945,8 @@ static void width_conversions_source(const scalar_width *to, char source[WIDTH_S
         n += snprintf(
             source + n,
             WIDTH_SOURCE_BYTES - (size_t)n,
-            "Clamp%s :: (a: %s) -> %s { return %s(a); }\nWrap%s :: (a: %s) -> "
+            "Clamp%s :: (a: %s) -> %s { return %s(a); }\nWrap%s :: (a: %s) "
+            "-> "
             "%s { return %s(wrap: a); }\n",
             from->title,
             from->name,
@@ -14723,8 +15161,10 @@ static void floating_operations_source(int type, char source[WIDTH_SOURCE_BYTES]
     n += snprintf(
         source + n,
         WIDTH_SOURCE_BYTES - (size_t)n,
-        "Mixed :: (a: %s, n: int) -> %s { return a + n; }\nSigned :: () -> %s "
-        "{ return -1.5; }\nPlus :: () -> %s { return +1.5; }\nRounded :: () -> "
+        "Mixed :: (a: %s, n: int) -> %s { return a + n; }\nSigned :: () -> "
+        "%s "
+        "{ return -1.5; }\nPlus :: () -> %s { return +1.5; }\nRounded :: "
+        "() -> "
         "%s { return %s; }\nHalf :: (a: %s) -> bool { return a != 0.5; }\n",
         name,
         name,
@@ -14815,8 +15255,8 @@ static int floating_operation_calls(int type, scalar_call calls[MAX_WIDTH_CALLS]
     return count;
 }
 /* The values floats convert to integers from: each integer type's edges,
- * with fractions on either side, past every type, the infinities, NaN and the
- * least subnormals. */
+ * with fractions on either side, past every type, the infinities, NaN and
+ * the least subnormals. */
 static const double TRUNCATED[] = { 0.0,
                                     -0.0,
                                     0.9,
@@ -14871,21 +15311,21 @@ static int64_t truncated(const scalar_width *to, double value)
     return to->is_unsigned ? (int64_t)(uint64_t)whole : (int64_t)whole;
 }
 /* The ints converted to float through double rounding: below 2^53 and 2^24
- * they are exact, and past them each rounds to nearest, with 2^60 + 2^36 + 1
- * rounding twice. */
+ * they are exact, and past them each rounds to nearest, with 2^60 + 2^36 +
+ * 1 rounding twice. */
 static const int64_t FLOATED[] = { INT64_C(16777217),
                                    INT64_C(9007199254740993),
                                    INT64_C(0x1000001000000001) };
-/* The integer `value` of `from` as floating `type`: an int becomes a double,
- * then a float. */
+/* The integer `value` of `from` as floating `type`: an int becomes a
+ * double, then a float. */
 static int64_t floated(int type, const scalar_width *from, int64_t value)
 {
     double wide = from->is_unsigned ? (double)(uint64_t)value : (double)value;
     return floating_bits(type, type == SCALAR_FLOAT ? (float)wide : wide);
 }
-/* The conversions module of floating `type`: Main, To<T> and From<T> between
- * it and each integer type T, and Narrow from double to float or Widen from
- * float to double. */
+/* The conversions module of floating `type`: Main, To<T> and From<T>
+ * between it and each integer type T, and Narrow from double to float or
+ * Widen from float to double. */
 static void floating_conversions_source(int type, char source[WIDTH_SOURCE_BYTES])
 {
     const char *name = floating_name(type);
@@ -14895,7 +15335,8 @@ static void floating_conversions_source(int type, char source[WIDTH_SOURCE_BYTES
         n += snprintf(
             source + n,
             WIDTH_SOURCE_BYTES - (size_t)n,
-            "To%s :: (a: %s) -> %s { return %s(a); }\nFrom%s :: (a: %s) -> %s "
+            "To%s :: (a: %s) -> %s { return %s(a); }\nFrom%s :: (a: %s) -> "
+            "%s "
             "{ "
             "return %s(a); }\n",
             w->title,
@@ -15450,8 +15891,8 @@ static int64_t loop_int(const char *function, int64_t a, int64_t b)
     return (int32_t)hash;
 }
 /* The entry, each range function on every pair of RANGE_ENDS at most 16
- * apart, which includes every empty range, Bytes on every pair of bytes, and
- * the while loops on their samples. */
+ * apart, which includes every empty range, Bytes on every pair of bytes,
+ * and the while loops on their samples. */
 static int loop_calls(scalar_call calls[MAX_WIDTH_CALLS])
 {
     static const char *const RANGES[] = { "Up", "Through", "Down", "DownThrough" };
@@ -15528,8 +15969,8 @@ static bool loops_agree(const char *directory)
 }
 /* Switches: arms that all return, a default arm written first that runs
  * last, a byte and an int64 value, arm values that are calls and
- * expressions, one repeated so only its first arm can run, break and continue
- * through a switch to its loop, and a switch nested in an arm. */
+ * expressions, one repeated so only its first arm can run, break and
+ * continue through a switch to its loop, and a switch nested in an arm. */
 static const char
     SWITCH_SOURCE[] = "package scalar\n"
                       "Main :: () -> int { return Grade(85) + Late(2); }\n"
@@ -15725,16 +16166,18 @@ static bool widest_loops_agree(const char *directory)
     int at = snprintf(
         source,
         sizeof source,
-        "package scalar\nMain :: () -> int { return Wide(1, 3, true, 0, 0, 0, "
+        "package scalar\nMain :: () -> int { return Wide(1, 3, true, 0, 0, "
+        "0, "
         "0, 0); }\n"
-        "Wide :: (a: int, b: int, c: bool, d: int, e: int, f: int, g: int, h: "
+        "Wide :: (a: int, b: int, c: bool, d: int, e: int, f: int, g: int, "
+        "h: "
         "int) -> int {\n"
     );
     for (int i = 0; i < SCALAR_MAX_LOCALS; i++) {
         at += snprintf(source + at, sizeof source - (size_t)at, "    for < i in a..<b {}\n");
     }
-    /* Each range has two operands, the chain 2k - 1 for k reads of c, and the
-     * return one. */
+    /* Each range has two operands, the chain 2k - 1 for k reads of c, and
+     * the return one. */
     at += snprintf(source + at, sizeof source - (size_t)at, "    c = c");
     for (int i = 1; i < (SCALAR_MAX_OPERANDS - 2 * SCALAR_MAX_LOCALS) / 2; i++) {
         at += snprintf(source + at, sizeof source - (size_t)at, " && c");
@@ -15850,8 +16293,8 @@ static bool endless_loops_hang(const char *directory)
     return true;
 }
 /* Direct, mutual and two-way recursion, recursion through a loop, and a
- * function that only ever calls itself. Forever's subtraction keeps its call
- * from being a tail call, which O2 would turn into an endless loop. */
+ * function that only ever calls itself. Forever's subtraction keeps its
+ * call from being a tail call, which O2 would turn into an endless loop. */
 static const char RECURSION_SOURCE
     [] = "package scalar\n"
          "Main :: () -> int { return Sum(10) + Even(7); }\n"
@@ -16047,8 +16490,8 @@ static bool statement_bounds_agree()
             REQUIRE(BOUNDS[i].message ? !ir && !strcmp(message, BOUNDS[i].message) : ir != NULL);
             free(ir);
             if (!BOUNDS[i].message) {
-                /* An assignment and its literal, after the source, document,
-                 * function and each local's two rows. */
+                /* An assignment and its literal, after the source,
+                 * document, function and each local's two rows. */
                 pin_value longer;
                 REQUIRE(repeated_rows(&rows, 3 + 2 * SCALAR_MAX_LOCALS, &longer));
                 REQUIRE(
@@ -16083,8 +16526,8 @@ static bool remove_native_files(const char *directory)
     REQUIRE(!rmdir(directory) && removed);
     return true;
 }
-/* Whether process `pid` has exited: it is gone, or a zombie whose parent has
- * not reaped it yet. Waits up to `seconds` for its kill to land. */
+/* Whether process `pid` has exited: it is gone, or a zombie whose parent
+ * has not reaped it yet. Waits up to `seconds` for its kill to land. */
 static bool process_ended(pid_t pid, double seconds)
 {
     char path[64];
@@ -16109,6 +16552,54 @@ static bool process_ended(pid_t pid, double seconds)
  * which allows for a slow sanitized host. */
 static const double PROMPT_SECONDS = 10;
 
+/* Starts the bundle, creating its directory if needed: an empty list of
+ * modules for each target, and for a target whose objects reference a
+ * runtime symbol, an object that defines it, which its runner links into
+ * each library. */
+TEST_CASE(native_bundle_starts_empty)
+{
+    if (!bundle_root()) {
+        return true;
+    }
+    char directory[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    bool started = !mkdir(bundle_root(), 0700) || errno == EEXIST;
+    for (int t = 0; started && t < BUNDLE_TARGET_COUNT; t++) {
+        char path[PATH_MAX];
+        snprintf(path, sizeof path, "%s/%s", bundle_root(), BUNDLE_TARGETS[t].directory);
+        started = !mkdir(path, 0700) || errno == EEXIST;
+        snprintf(
+            path,
+            sizeof path,
+            "%s/%s/modules.txt",
+            bundle_root(),
+            BUNDLE_TARGETS[t].directory
+        );
+        started = started && write_text(path, "", "");
+        if (!started || !BUNDLE_TARGETS[t].runtime) {
+            continue;
+        }
+        char ir[256], object[PATH_MAX], module[PATH_MAX], undefined[NATIVE_OUTPUT];
+        snprintf(
+            ir,
+            sizeof ir,
+            "target triple = \"%s\"\n@%s = dso_local global i32 0\n",
+            BUNDLE_TARGETS[t].triple,
+            BUNDLE_TARGETS[t].runtime
+        );
+        snprintf(
+            object,
+            sizeof object,
+            "%s/%s/runtime.o",
+            bundle_root(),
+            BUNDLE_TARGETS[t].directory
+        );
+        started = native_object(directory, "runtime", ir, "", 0, object, module, undefined) &&
+                  !*undefined && bundle_module_targets(module, t);
+    }
+    REQUIRE(remove_native_files(directory) && started);
+    return true;
+}
 /* A dense switch, which O2 lowers through a table, links into a shared
  * library and runs: the driver's objects are position independent. */
 static bool lookup_tables_link(const char *directory)
@@ -16234,7 +16725,7 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
 }
 /* A module whose entry returns 0 and whose function k + 1 applies operation
  * k to its parameters. */
-static bool total_ir(char **ir)
+static bool total_ir(const char *function, char **ir)
 {
     native_code code[4 + TOTAL_OPERATION_COUNT * 6];
     native_function functions[1 + TOTAL_OPERATION_COUNT];
@@ -16275,7 +16766,7 @@ static bool total_ir(char **ir)
                         code,       c,
                         NULL,       0 };
     const pin_union *value;
-    REQUIRE(native_emit(0, &m, &value));
+    REQUIRE(native_target_emit(0, function, &m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, 0, NATIVE_PACKAGE, "Result", "Emitted"));
     pin_string text = pin_text(value->values[0]);
     REQUIRE(
@@ -16287,8 +16778,8 @@ static bool total_ir(char **ir)
     (*ir)[text.length] = 0;
     return true;
 }
-/* The validation-only adapter probe_NAME(ptr) of each operation, which takes
- * and returns int64 as append_adapter's do. */
+/* The validation-only adapter probe_NAME(ptr) of each operation, which
+ * takes and returns int64 as append_adapter's do. */
 static char *total_adapters()
 {
     char *adapters = xmalloc(1);
@@ -16309,7 +16800,8 @@ static char *total_adapters()
         snprintf(
             text + n,
             sizeof text - (size_t)n,
-            "  %%r = call i32 @chibi_scalar.%d(i32 %%a0%s)\n  %%z = sext i32 "
+            "  %%r = call i32 @chibi_scalar.%d(i32 %%a0%s)\n  %%z = sext "
+            "i32 "
             "%%r to i64\n  ret i64 %%z\n}\n",
             k + 1,
             binary ? ", i32 %a1" : ""
@@ -16349,6 +16841,30 @@ static int total_calls(int k, scalar_call calls[MAX_CASE_CALLS])
     return count;
 }
 
+/* With a bundle, the total module for each other target, with every
+ * operation's calls. */
+static bool total_bundled(const char *directory, const char *adapters)
+{
+    if (!bundle_root()) {
+        return true;
+    }
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = 0;
+    for (int k = 0; k < TOTAL_OPERATION_COUNT; k++) {
+        count += total_calls(k, calls + count);
+    }
+    assert(count <= MAX_WIDTH_CALLS);
+    bool built = true;
+    for (int t = 0; built && t < BUNDLE_TARGET_COUNT; t++) {
+        char *ir = NULL;
+        built = total_ir(BUNDLE_TARGETS[t].function, &ir) &&
+                bundle_module(directory, t, "total", ir, adapters, calls, count);
+        free(ir);
+    }
+    free(calls);
+    REQUIRE(built);
+    return true;
+}
 TEST_CASE(package_compiler_native_arithmetic_is_total)
 {
     const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
@@ -16356,7 +16872,7 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
         compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
     );
     char *ir;
-    REQUIRE(total_ir(&ir));
+    REQUIRE(total_ir("LinuxX64", &ir));
     char *adapters = total_adapters(), directory[PATH_MAX];
     REQUIRE(native_directory(directory));
     bool agreed = true;
@@ -16389,8 +16905,40 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
         }
     }
     free(ir);
+    agreed = agreed && total_bundled(directory, adapters);
     free(adapters);
     REQUIRE(remove_native_files(directory) && agreed);
+    return true;
+}
+/* NATIVE_CALLS_LIBRARY compiled natively at O0 and O2: its object's
+ * manifest names every function, and bound to the library's module it gives
+ * a running Probe the VM's states. */
+static bool library_runs_in_a_scene(const char *directory)
+{
+    pin_value rows;
+    char *ir;
+    REQUIRE(
+        collected_at(1, "libraries/Native.chibi", "library", text(NATIVE_CALLS_LIBRARY), &rows)
+    );
+    if (row_int(&rows, 1, "kind") != 2) {
+        report_rejection(1, "library", &rows);
+    }
+    REQUIRE(row_int(&rows, 1, "kind") == 2 && emitted_ir(1, &rows, &ir) && ir);
+    bool agreed = true;
+    for (int level = 0; agreed && level <= 2; level += 2) {
+        char library[PATH_MAX];
+        agreed = native_library(directory, "library", ir, "", level, library);
+        void *opened = agreed ? dlopen(library, RTLD_NOW | RTLD_LOCAL) : NULL;
+        const execution_native_manifest *manifest = opened ? dlsym(opened, "chibi_natives_Native")
+                                                           : NULL;
+        agreed = manifest && manifest->abi == EXECUTION_NATIVE_ABI &&
+                 manifest->count == 4 && native_calls_agree(manifest);
+        if (opened) {
+            dlclose(opened);
+        }
+    }
+    free(ir);
+    REQUIRE(agreed);
     return true;
 }
 TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
@@ -16420,7 +16968,8 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
              statement_bounds_agree() && loops_agree(directory) &&
              widest_loops_agree(directory) && switches_agree(directory) &&
              endless_loops_hang(directory) && recursion_agrees(directory) &&
-             recursion_overflows_by_name(directory);
+             recursion_overflows_by_name(directory) &&
+             library_runs_in_a_scene(directory);
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");
@@ -16540,7 +17089,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
-    RUN_TEST_CASE(package_compiler_scalar_rejects_unsupported_unions);
+    RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)
@@ -16568,6 +17117,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGINT, &cancel, &interrupt);
     sigaction(SIGTERM, &cancel, &terminate);
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_bundle_starts_empty);
     RUN_TEST_CASE(stack_overflow_leaves_other_faults);
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
     RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
@@ -16576,7 +17126,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGINT, &interrupt, NULL);
     sigaction(SIGTERM, &terminate, NULL);
 #else
-    fprintf(stderr, "native scalar execution needs Linux x86-64, the one target the emitter admits\n");
+    fprintf(stderr, "native scalar execution runs on Linux x86-64; other targets run its bundle\n");
     abort();
 #endif
 }
@@ -16600,19 +17150,21 @@ void test_language_package_compiler_chibi_libraries()
     pu_clear_setup();
 }
 
-/* Fixed primitive-native argument association, checked against literal results
- * and the independent stage-zero reference. */
+/* Fixed primitive-native argument association, checked against literal
+ * results and the independent stage-zero reference. */
 static const sample native_argument_samples[] = {
     { .name = "native positional control",
       .source = "package facts\nRun :: () -> string { return "
                 "text_slice(\"abcd\", 1, 2); }",
       .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
     { .name = "native names in declaration order",
-      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(Value: "
                 "\"abcd\", Start: 1, Count: 2); }",
       .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
     { .name = "native reordered names",
-      .source = "package facts\nRun :: () -> string { return text_slice(Count: "
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(Count: "
                 "2, Value: \"abcd\", Start: 1); }",
       .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
     { .name = "native mixed arguments",
@@ -16624,14 +17176,17 @@ static const sample native_argument_samples[] = {
                 "text_byte_length(Value: \"abcd\"); }",
       .calls = { { "Run", "[]", "[4]", NULL } } },
     { .name = "native loose label match",
-      .source = "package facts\nRun :: () -> string { return text_slice(count: "
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(count: "
                 "2, value: \"abcd\", start: 1); }",
       .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
     { .name = "native arguments evaluate in source order",
       .source = "package facts\n"
-                "Number :: (order: ref int, digit: int, value: int) -> int { "
+                "Number :: (order: ref int, digit: int, value: int) -> int "
+                "{ "
                 "order = order * 10 + digit; return value; }\n"
-                "Text :: (order: ref int) -> string { order = order * 10 + 2; "
+                "Text :: (order: ref int) -> string { order = order * 10 + "
+                "2; "
                 "return \"abcd\"; }\n"
                 "Run :: () -> int {\n"
                 "  order: int = 0;\n"
@@ -16641,13 +17196,15 @@ static const sample native_argument_samples[] = {
                 "  return order;\n}",
       .calls = { { "Run", "[]", "[321]", NULL } } },
     { .name = "native unknown name",
-      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(Value: "
                 "\"abcd\", Start: 1, Missing: 2); }",
       .message = "Unknown argument 'Missing'",
       .line = 2,
       .column = 66 },
     { .name = "native duplicate name",
-      .source = "package facts\nRun :: () -> string { return text_slice(Value: "
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(Value: "
                 "\"abcd\", Start: 1, Start: 2, Count: 2); }",
       .message = "Argument supplied more than once",
       .line = 2,
@@ -16659,20 +17216,23 @@ static const sample native_argument_samples[] = {
       .line = 2,
       .column = 49 },
     { .name = "native named CString expression location",
-      .source = "package facts\nRun :: () -> int { return cstring_probe(value: "
+      .source = "package facts\nRun :: () -> int { return "
+                "cstring_probe(value: "
                 "(\"a\\u0000b\")); }",
       .c_string_probe = true,
       .message = "C-string boundary 'value' cannot accept NUL at byte 1",
       .line = 2,
       .column = 48 },
     { .name = "native named positional duplicate",
-      .source = "package facts\nRun :: () -> string { return text_slice(Start: "
+      .source = "package facts\nRun :: () -> string { return "
+                "text_slice(Start: "
                 "1, 2, Value: \"abcd\"); }",
       .message = "Argument supplied more than once",
       .line = 2,
       .column = 51 },
     { .name = "native reordered CString expression location",
-      .source = "package facts\nRun :: () -> int { return cstring_pair(value: "
+      .source = "package facts\nRun :: () -> int { return "
+                "cstring_pair(value: "
                 "(\"a\\u0000b\"), prefix: 1); }",
       .c_string_probe = true,
       .message = "C-string boundary 'value' cannot accept NUL at byte 1",
@@ -16727,24 +17287,36 @@ TEST_CASE(native_overload_reference_contract)
         int column;
     } cases[] = {
         { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
-        { "package facts\nRun :: () -> int { return native.overload((-(2))); }", PIN_I32 },
-        { "package facts\nRun :: () -> int { return native.overload(2.0); }", PIN_I32 },
-        { "package facts\nRun :: () -> int { return native.overload(1e0); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return "
+          "native.overload((-(2))); }",
+          PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(2.0); "
+          "}",
+          PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(1e0); "
+          "}",
+          PIN_I32 },
         { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
-        { "package facts\nRun :: (v: int) -> int { return native.kernel(v * "
+        { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
+          "* "
           "2); }",
           PIN_F32 },
-        { "package facts\nRun :: (v: i64) -> int { return native.kernel(v * "
+        { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
+          "* "
           "2); }",
           PIN_F64 },
-        { "package facts\nRun :: (v: f64) -> int { return native.kernel(v); }", PIN_F64 },
-        { "package facts\nRun :: (v: int) -> int { return native.overload(v); "
+        { "package facts\nRun :: (v: f64) -> int { return "
+          "native.kernel(v); }",
+          PIN_F64 },
+        { "package facts\nRun :: (v: int) -> int { return "
+          "native.overload(v); "
           "}",
           PIN_I32 },
         { "package facts\nRun :: () -> int { return "
           "native.overload(\"three\"); }",
           PIN_STR },
-        { "package facts\nRun :: () -> int { return native.overload(2.5); }",
+        { "package facts\nRun :: () -> int { return native.overload(2.5); "
+          "}",
           PIN_FLOW,
           "Numeric literal has a fraction, which int cannot hold",
           43 },

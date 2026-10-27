@@ -14,7 +14,7 @@
         NATIVE_CONVERSION_PORT(NATIVE_PORT, RESULT, OUTPUT, OUTPUT_NAME)          \
     };
 #define VECTOR(TYPE, WIDTH, NAME, SOURCE, DESCRIPTION)                         \
-    SCALAR(Splat_##TYPE, NAME, SOURCE, PIN_F64, "double", "Vector", PIN_STRUCT, #TYPE)
+    SCALAR(Splat_##TYPE, NAME, SOURCE, PIN_F64, "f64", "Vector", PIN_STRUCT, #TYPE)
 NATIVE_CONVERSION_SCALARS(SCALAR)
 NATIVE_CONVERSION_VECTORS(VECTOR)
 #undef SCALAR
@@ -30,7 +30,7 @@ NATIVE_CONVERSION_VECTORS(VECTOR)
       .completion_output = -1,                                                    \
       .pure = true },
 #define VECTOR(TYPE, WIDTH, NAME, SOURCE, DESCRIPTION)                         \
-    SCALAR(Splat_##TYPE, NAME, SOURCE, PIN_F64, "double", "Vector", PIN_STRUCT, #TYPE)
+    SCALAR(Splat_##TYPE, NAME, SOURCE, PIN_F64, "f64", "Vector", PIN_STRUCT, #TYPE)
 static const native_capability_definition DEFINITIONS[] = {
     NATIVE_CONVERSION_SCALARS(SCALAR) NATIVE_CONVERSION_VECTORS(VECTOR)
 };
@@ -41,7 +41,7 @@ static const native_capability_definition DEFINITIONS[] = {
       .implementation = { .call = &NATIVE_CONVERSION_##KEY##_CALL,                \
                           .access = &NATIVE_CONVERSION_ACCESS } },
 #define VECTOR(TYPE, WIDTH, NAME, SOURCE, DESCRIPTION)                         \
-    SCALAR(Splat_##TYPE, NAME, SOURCE, PIN_F64, "double", "Vector", PIN_STRUCT, #TYPE)
+    SCALAR(Splat_##TYPE, NAME, SOURCE, PIN_F64, "f64", "Vector", PIN_STRUCT, #TYPE)
 static const native_definition_binding BINDINGS[] = {
     NATIVE_CONVERSION_SCALARS(SCALAR) NATIVE_CONVERSION_VECTORS(VECTOR)
 };

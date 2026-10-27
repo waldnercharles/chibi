@@ -310,7 +310,7 @@
     X("Duration",                                                              \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_F64,                                                                 \
-      "double",                                                                \
+      "f64",                                                                   \
       PIN_CONTAINER_SINGLE,                                                    \
       0,                                                                       \
       0,                                                                       \

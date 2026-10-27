@@ -1,6 +1,6 @@
 // Behavior state that survives between steps, written to a component.
 Counter :: behavior {
-    steps: int = 0
+    steps := 0
 
     on Tick :: () {
         steps += 1

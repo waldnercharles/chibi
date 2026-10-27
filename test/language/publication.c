@@ -52,7 +52,7 @@ static const script_catalog_field ghost_field = { .id = 1152,
                                                   .writable = true };
 static const type_field reflected_field = { .name = "value",
                                             .type = PIN_F64,
-                                            .type_name = "double",
+                                            .type_name = "f64",
                                             .size = sizeof(double) };
 static const type_desc ghost_desc = { .name = "PublicationGhost",
                                       .size = sizeof(double),
@@ -208,16 +208,16 @@ static bool setup(behavior_backend backend)
                                 .types = &ghost_type,
                                 .type_count = 1 };
     REQUIRE(
-        compile(0, "Alpha :: behavior { count:double=0; on Begin :: () {count+=1;} on Pulse :: () {count+=1;} on Wait :: () {await timer(10);count+=100;} }", backend)
+        compile(0, "Alpha :: behavior { count:f64=0; on Begin :: () {count+=1;} on Pulse :: () {count+=1;} on Wait :: () {await timer(10);count+=100;} }", backend)
     );
     REQUIRE(
-        compile(1, "Beta :: behavior { count:double=5; on Begin :: () {count+=2;} on Pulse :: () {count+=2;} }", backend)
+        compile(1, "Beta :: behavior { count:f64=5; on Begin :: () {count+=2;} on Pulse :: () {count+=2;} }", backend)
     );
     REQUIRE(
-        compile(2, "Alpha :: behavior { count:double=999; on Begin :: () {count+=100;} on Pulse :: () {count+=10;} on Wait :: () {await timer(10);count+=1000;} }", backend)
+        compile(2, "Alpha :: behavior { count:f64=999; on Begin :: () {count+=100;} on Pulse :: () {count+=10;} on Wait :: () {await timer(10);count+=1000;} }", backend)
     );
     REQUIRE(
-        compile(3, "Beta :: behavior { count:double=555; on Begin :: () {count+=200;} on Pulse :: () {count+=20;} }", backend)
+        compile(3, "Beta :: behavior { count:f64=555; on Begin :: () {count+=200;} on Pulse :: () {count+=20;} }", backend)
     );
     REQUIRE(compile(4, "Service :: behavior {on Begin :: () {Touch();}}", backend));
     REQUIRE(compile(5, "Schema :: behavior {bind self.PublicationGhost.value=1;}", backend));
@@ -333,15 +333,15 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
                                     .capability_count = 6 };
         REQUIRE(compile(
             0,
-            "SharedChild :: system() { total:retain double=0; Next :: "
-            "()->(amount:double){total+=2;return(total);} }",
+            "SharedChild :: system() { total:retain f64=0; Next :: "
+            "()->(amount:f64){total+=2;return(total);} }",
             backends[b]
         ));
         imported = modules[0];
         REQUIRE(compile(
             1,
-            "SharedRoot :: system() { total:retain double=0; observed: "
-            "retain double=0; on Pulse :: () {total+=1; v:=await "
+            "SharedRoot :: system() { total:retain f64=0; observed: "
+            "retain f64=0; on Pulse :: () {total+=1; v:=await "
             "shared_read(); "
             "observed=v.amount;} }",
             backends[b]
@@ -349,15 +349,15 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
         REQUIRE(execution_module_import_count(modules[1]) == 1);
         REQUIRE(compile(
             2,
-            "SharedChild :: system() { total:retain double=500; Next "
-            ":: ()->(amount:double){total+=20;return(total);} }",
+            "SharedChild :: system() { total:retain f64=500; Next "
+            ":: ()->(amount:f64){total+=20;return(total);} }",
             backends[b]
         ));
         imported = modules[2];
         REQUIRE(compile(
             3,
-            "SharedRoot :: system() { total:retain double=999; "
-            "observed: retain double=999; on Pulse :: () {total+=10; v:=await "
+            "SharedRoot :: system() { total:retain f64=999; "
+            "observed: retain f64=999; on Pulse :: () {total+=10; v:=await "
             "shared_read(); observed=v.amount;} }",
             backends[b]
         ));
@@ -422,7 +422,7 @@ TEST_CASE(publication_profile_counts_actual_execution_and_retains_origins)
                                     .entity_type = 700 };
         REQUIRE(compile(
             0,
-            "Alpha :: behavior { count:double=0; on Begin :: () {count+=1;} on "
+            "Alpha :: behavior { count:f64=0; on Begin :: () {count+=1;} on "
             "Pulse :: () "
             "{count+=1;} on Wait :: () {await timer(10);count+=100;} }",
             backends[b]

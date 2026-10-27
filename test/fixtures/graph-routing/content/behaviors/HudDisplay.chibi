@@ -9,9 +9,9 @@ HudDisplay :: behavior {
             current := get_component(Component: Health, Entity: player).Value.current
             maximum := get_component(Component: Health, Entity: player).Value.maximum
             hull := current_max_maximum_1(current: int = current, maximum: int = maximum)
-            await set_ui_value(Entity: 0, Element: "#hull .bar", Value: float(hull));
+            await set_ui_value(Entity: 0, Element: "#hull .bar", Value: number(hull));
             await set_ui_text(Entity: 0, Element: "#hull .readout", Text: format_text(Format: "{} / {}", Arg0: int = current, Arg1: plain int = maximum));
-            await set_ui_value(Entity: 0, Element: "#speed", Value: float(length_vec2_velocity_x_velocity_y(velocity: Velocity = get_component(Component: Velocity, Entity: player))));
+            await set_ui_value(Entity: 0, Element: "#speed", Value: number(length_vec2_velocity_x_velocity_y(velocity: Velocity = get_component(Component: Velocity, Entity: player))));
             if (hull < 0.3) {
                 set_ui_class(Entity: 0, Element: "#hull", Class: "critical", On: true);
             } else {
@@ -31,11 +31,11 @@ HudDisplay :: behavior {
         } else {
         }
     }
-    current_max_maximum_1 :: (current: int = 0, maximum: int = 0) -> (Result: double = 0.0) {
+    current_max_maximum_1 :: (current: int = 0, maximum: int = 0) -> (Result: f64 = 0.0) {
 
-        return divide(A: double = To_Real(current), B: double = max(A: double = To_Real(maximum), B: double = real(Value: 1.0)))
+        return divide(A: f64 = To_Real(current), B: f64 = max(A: f64 = To_Real(maximum), B: f64 = real(Value: 1.0)))
     }
-    length_vec2_velocity_x_velocity_y :: (velocity: Velocity = null) -> (Result: double = 0.0) {
+    length_vec2_velocity_x_velocity_y :: (velocity: Velocity = null) -> (Result: f64 = 0.0) {
 
         return vector_length(Value: make_vec2(x: velocity.x, y: velocity.y))
     }

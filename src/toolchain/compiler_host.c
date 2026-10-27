@@ -537,7 +537,7 @@ static bool invoke(
     if (max_bytes &&
         (result_count != 1 || !byte_type(&returns[0], PIN_CONTAINER_ARRAY))) {
         failure = "compiler byte entry must return exactly one primitive "
-                  "byte[]";
+                  "u8[]";
         goto done;
     }
     parsed = yyjson_read(json, length, READ_FLAGS);

@@ -11,16 +11,16 @@ pub Document :: struct {
 }
 
 pub Origin :: struct {
-    source_id: uint64;
-    occurrence: uint64;
-    call_site: uint64;
+    source_id: u64;
+    occurrence: u64;
+    call_site: u64;
     document: int;
     start: int;
     end: int;
 }
 
 pub SourceResult :: struct {
-    source_id: uint64;
+    source_id: u64;
     node: int;
     // -1 is a scalar/vector result; nonnegative values identify aggregate fields.
     field: int;
@@ -28,7 +28,7 @@ pub SourceResult :: struct {
 
 pub Failure :: struct {
     // A source ID is never an IR node index. Zero means no source ID is known.
-    source_id: uint64;
+    source_id: u64;
     // -1 means no node is implicated. A bad result binding can name a bad index.
     node: int;
     // -1 means no safe source range is available; document failures use [0, 0).
@@ -54,12 +54,12 @@ OriginLimit: int : 1024;
 ResultLimit: int : 1024;
 NodeLimit: int : 1024;
 
-WithoutRange :: (source_id: uint64, node: int, message: string) -> Failure {
+WithoutRange :: (source_id: u64, node: int, message: string) -> Failure {
     return {source_id: source_id, node: node, document: -1, start: 0, end: 0, message: message};
 }
 
 FromDocument :: (document: int, message: string) -> Failure {
-    failure := WithoutRange(uint64(0), -1, message);
+    failure := WithoutRange(u64(0), -1, message);
     failure.document = document;
     return failure;
 }
@@ -70,8 +70,8 @@ FromOrigin :: (origin: Origin, message: string) -> Failure {
             start: origin.start, end: origin.end, message: message};
 }
 
-pub OriginIndex :: (origins: Origin[], source_id: uint64) -> int {
-    if (source_id == uint64(0)) {
+pub OriginIndex :: (origins: Origin[], source_id: u64) -> int {
+    if (source_id == u64(0)) {
         return -1;
     }
     index: int = 0;
@@ -86,7 +86,7 @@ pub OriginIndex :: (origins: Origin[], source_id: uint64) -> int {
 
 CheckDocuments :: (documents: Document[]) -> Failure {
     if (length(documents) > DocumentLimit) {
-        return WithoutRange(uint64(0), -1, "Shader source document limit exceeded");
+        return WithoutRange(u64(0), -1, "Shader source document limit exceeded");
     }
     total: int = 0;
     index: int = 0;
@@ -113,17 +113,17 @@ CheckDocuments :: (documents: Document[]) -> Failure {
         }
         index += 1;
     }
-    return WithoutRange(uint64(0), -1, "");
+    return WithoutRange(u64(0), -1, "");
 }
 
 CheckOrigins :: (documents: Document[], origins: Origin[]) -> Failure {
     if (length(origins) > OriginLimit) {
-        return WithoutRange(uint64(0), -1, "Shader source origin limit exceeded");
+        return WithoutRange(u64(0), -1, "Shader source origin limit exceeded");
     }
     index: int = 0;
     while (index < length(origins)) {
         origin := origins[index];
-        if (origin.source_id == uint64(0) || origin.document < 0 || origin.document >= length(documents)) {
+        if (origin.source_id == u64(0) || origin.document < 0 || origin.document >= length(documents)) {
             return WithoutRange(origin.source_id, -1, "Shader source origin has an invalid identity or document");
         }
         if (origin.start < 0 || origin.end <= origin.start ||
@@ -139,7 +139,7 @@ CheckOrigins :: (documents: Document[], origins: Origin[]) -> Failure {
         }
         index += 1;
     }
-    return WithoutRange(uint64(0), -1, "");
+    return WithoutRange(u64(0), -1, "");
 }
 
 CheckCalls :: (origins: Origin[]) -> Failure {
@@ -147,7 +147,7 @@ CheckCalls :: (origins: Origin[]) -> Failure {
     parents: int[] = [];
     for (origin in origins) {
         parent: int = -1;
-        if (origin.call_site != uint64(0)) {
+        if (origin.call_site != u64(0)) {
             parent = OriginIndex(origins, origin.call_site);
             if (parent < 0) {
                 return FromOrigin(origin, "Shader source call chain has a missing origin");
@@ -173,12 +173,12 @@ CheckCalls :: (origins: Origin[]) -> Failure {
         }
         index += 1;
     }
-    return WithoutRange(uint64(0), -1, "");
+    return WithoutRange(u64(0), -1, "");
 }
 
 CheckResults :: (origins: Origin[], results: SourceResult[], node_count: int) -> Failure {
     if (length(results) > ResultLimit) {
-        return WithoutRange(uint64(0), -1, "Shader source result limit exceeded");
+        return WithoutRange(u64(0), -1, "Shader source result limit exceeded");
     }
     index: int = 0;
     while (index < length(results)) {
@@ -201,14 +201,14 @@ CheckResults :: (origins: Origin[], results: SourceResult[], node_count: int) ->
         }
         index += 1;
     }
-    return WithoutRange(uint64(0), -1, "");
+    return WithoutRange(u64(0), -1, "");
 }
 
 // Node sources describe the same immutable program generation as these tables.
 // This checks provenance, not shader operations, types or aggregate member IDs.
 // Results may alias nodes carrying another source ID, or a synthetic zero ID.
 pub Validate :: (documents: Document[], origins: Origin[], results: SourceResult[],
-                 node_sources: uint64[]) -> Validation {
+                 node_sources: u64[]) -> Validation {
     failure := CheckDocuments(documents);
     if (failure.message != "") {
         return Validation.Failed(failure);
@@ -222,12 +222,12 @@ pub Validate :: (documents: Document[], origins: Origin[], results: SourceResult
         return Validation.Failed(failure);
     }
     if (length(node_sources) > NodeLimit) {
-        return Validation.Failed(WithoutRange(uint64(0), -1, "Shader source node limit exceeded"));
+        return Validation.Failed(WithoutRange(u64(0), -1, "Shader source node limit exceeded"));
     }
     index: int = 0;
     while (index < length(node_sources)) {
         source_id := node_sources[index];
-        if (source_id != uint64(0) && OriginIndex(origins, source_id) < 0) {
+        if (source_id != u64(0) && OriginIndex(origins, source_id) < 0) {
             return Validation.Failed(WithoutRange(source_id, index, "Shader operation has no source origin"));
         }
         index += 1;
@@ -259,13 +259,13 @@ pub DocumentsMatch :: (captured: Document[], current: Document[]) -> bool {
     return true;
 }
 
-pub GenerationMatches :: (captured: uint64, current: uint64) -> bool {
-    return captured != uint64(0) && current != uint64(0) && captured == current;
+pub GenerationMatches :: (captured: u64, current: u64) -> bool {
+    return captured != u64(0) && current != u64(0) && captured == current;
 }
 
 // A mechanical host can compare one document pair at a time, then reduce the
 // ordered results here without sending two entire source closures in one call.
-pub ClosureMatches :: (captured_program: uint64, current_program: uint64,
+pub ClosureMatches :: (captured_program: u64, current_program: u64,
                        captured_count: int, current_count: int, matches: bool[]) -> bool {
     if (!GenerationMatches(captured_program, current_program) || captured_count < 0 ||
         captured_count > DocumentLimit || current_count != captured_count || length(matches) != captured_count) {
@@ -280,8 +280,8 @@ pub ClosureMatches :: (captured_program: uint64, current_program: uint64,
 }
 
 // Lookups use tables accepted by Validate and return -1 when absent.
-pub ResultNode :: (results: SourceResult[], source_id: uint64, field: int) -> int {
-    if (source_id == uint64(0) || field < -1) {
+pub ResultNode :: (results: SourceResult[], source_id: u64, field: int) -> int {
+    if (source_id == u64(0) || field < -1) {
         return -1;
     }
     for (result in results) {
@@ -292,8 +292,8 @@ pub ResultNode :: (results: SourceResult[], source_id: uint64, field: int) -> in
     return -1;
 }
 
-pub FindNode :: (node_sources: uint64[], source_id: uint64, after_node: int) -> int {
-    if (source_id == uint64(0) || after_node < -1 || after_node >= length(node_sources)) {
+pub FindNode :: (node_sources: u64[], source_id: u64, after_node: int) -> int {
+    if (source_id == u64(0) || after_node < -1 || after_node >= length(node_sources)) {
         return -1;
     }
     index := after_node + 1;
@@ -309,7 +309,7 @@ pub FindNode :: (node_sources: uint64[], source_id: uint64, after_node: int) -> 
 // Returns owned origin copies, requested origin first and outermost caller
 // last. Origin-only callers are retained. Validate supplies range/uniqueness
 // guarantees; this query also rejects missing links and cycles on its own.
-pub CallChain :: (origins: Origin[], source_id: uint64) -> ChainResult {
+pub CallChain :: (origins: Origin[], source_id: u64) -> ChainResult {
     if (length(origins) > OriginLimit) {
         return ChainResult.Failed(WithoutRange(source_id, -1, "Shader source origin limit exceeded"));
     }
@@ -326,7 +326,7 @@ pub CallChain :: (origins: Origin[], source_id: uint64) -> ChainResult {
         }
         seen[at] = true;
         chain.append(origin);
-        if (origin.call_site == uint64(0)) {
+        if (origin.call_site == u64(0)) {
             return ChainResult.Found(chain);
         }
         at = OriginIndex(origins, origin.call_site);

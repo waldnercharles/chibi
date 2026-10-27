@@ -906,16 +906,24 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
                 }
                 actual = script_analyzer_expr_type(a, (*values)[i]);
             }
-            matches = wanted.container == actual.container &&
+            /* An untyped number never converts to text, so it cannot pick a
+             * text overload. */
+            bool text = wanted.storage == PIN_STR &&
+                        script_type_numeric(actual) && !script_type_char(actual) &&
+                        (actual.flags & SCRIPT_TYPE_UNTYPED);
+            matches = !text && wanted.container == actual.container &&
                       script_catalog_type_assignable(a->catalog, wanted, actual);
             if (matches && script_type_numeric(wanted) &&
                 script_type_numeric(actual) && wanted.storage != actual.storage) {
-                /* Concrete operand widths choose the kernel first. Literal
+                /* Concrete operand widths choose the kernel first: 64-bit
+                 * integers prefer f64 and the rest prefer number. Literal
                  * defaults break ties without widening a typed float operand. */
+                bool wide = actual.storage == PIN_I64 || actual.storage == PIN_U64;
+                pin_type preferred = wide ? PIN_F64 : PIN_F32;
                 if (actual.flags & SCRIPT_TYPE_UNTYPED) {
-                    literal_cost += wanted.storage == PIN_F64 ? 0 : 1;
+                    literal_cost += wanted.storage == PIN_F32 ? 0 : 1;
                 } else {
-                    cost += wanted.storage == PIN_F64 ? 1 : 2;
+                    cost += wanted.storage == preferred ? 1 : 2;
                 }
             }
         }
@@ -1528,6 +1536,11 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                        &capability->parameters[parameter]
                                    )
                                  : script_analyzer_expression(a, value, type);
+        /* Overload resolution read the argument without a type; a literal
+         * takes the chosen parameter's, so an f64 one keeps every digit. */
+        if (!reference && resolved_arguments && resolved_arguments[i] >= 0) {
+            script_analyzer_contextual_numeric(a, expression_index, type);
+        }
         if (capability && parameter >= 0 && parameter < parameter_count &&
             capability->parameters[parameter].c_string) {
             script_analyzer_c_string_argument(

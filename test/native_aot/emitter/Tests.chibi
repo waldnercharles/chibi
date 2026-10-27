@@ -5,7 +5,7 @@ import native "project:llvm_native"
 import abi "project:native_abi"
 import strings "core:strings"
 
-Code :: (op: int, type: int, output: int, left: int, right: int, target: int, literal: int64) -> native.Instruction {
+Code :: (op: int, type: int, output: int, left: int, right: int, target: int, literal: i64) -> native.Instruction {
     return {op: op, type: type, output: output, left: left, right: right, target: target, literal: literal};
 }
 // One function's tables, as the module's only function.

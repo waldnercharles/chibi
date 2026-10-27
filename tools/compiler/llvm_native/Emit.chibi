@@ -13,7 +13,7 @@ pub Instruction :: struct {
     left: int;
     right: int;
     target: int;
-    literal: int64;
+    literal: i64;
 }
 // One function of a module: consecutive ranges of the module's parameter,
 // slot, local, code and argument tables, in function order. A call's argument
@@ -121,9 +121,9 @@ Integer :: (type: int) -> bool {
 // Whether `literal` is a value of `type`: 0 or 1 for bool, for an integer
 // type its range, except that a 64-bit unsigned value is its bit pattern, and
 // for a float or double its IEEE encoding.
-Fits :: (literal: int64, type: int) -> bool {
+Fits :: (literal: i64, type: int) -> bool {
     if (type == abi.FloatStorage) {
-        return literal >= 0 && literal < int64(1) << uint(32);
+        return literal >= 0 && literal < i64(1) << u32(32);
     }
     if (type == abi.DoubleStorage) {
         return true;
@@ -136,9 +136,9 @@ Fits :: (literal: int64, type: int) -> bool {
         return true;
     }
     if (abi.Unsigned(type)) {
-        return literal >= 0 && literal < (int64(1) << uint(bits));
+        return literal >= 0 && literal < (i64(1) << u32(bits));
     }
-    half := int64(1) << uint(bits - 1);
+    half := i64(1) << u32(bits - 1);
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
@@ -157,12 +157,12 @@ TypeName :: (type: int) -> string {
 }
 // The type of field `field` of record type `type`, or 0 when `type` is no
 // record of the module or has no such field.
-FieldType :: (records: Record[], fields: int[], type: int, field: int64) -> int {
+FieldType :: (records: Record[], fields: int[], type: int, field: i64) -> int {
     if (!Index(type - RecordType, length(records))) {
         return 0;
     }
     record := records[type - RecordType];
-    if (field < 0 || field >= int64(record.count)) {
+    if (field < 0 || field >= i64(record.count)) {
         return 0;
     }
     return fields[record.first + int(field)];
@@ -624,7 +624,7 @@ Conversion :: (item: Instruction, pc: int) -> string {
 }
 // A float or double constant as `name`, from its encoding's bits, so every
 // value, NaN and signed zero included, is exact.
-Encoded :: (literal: int64, type: int, name: string) -> string {
+Encoded :: (literal: i64, type: int, name: string) -> string {
     if (type == abi.FloatStorage) {
         return format_text("  %{} = bitcast i32 {} to float\n", name, Spelled(literal, abi.UintStorage));
     }
@@ -642,12 +642,12 @@ Zero :: (type: int) -> string {
     return "0";
 }
 // A literal as LLVM spells it: the signed value of its bits at its width.
-Spelled :: (literal: int64, type: int) -> int64 {
+Spelled :: (literal: i64, type: int) -> i64 {
     bits := abi.IntegerBits(type);
-    if (bits == 0 || bits == 64 || !abi.Unsigned(type) || literal < (int64(1) << uint(bits - 1))) {
+    if (bits == 0 || bits == 64 || !abi.Unsigned(type) || literal < (i64(1) << u32(bits - 1))) {
         return literal;
     }
-    return literal - (int64(1) << uint(bits));
+    return literal - (i64(1) << u32(bits));
 }
 EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[]) -> string {
     out := format_text("p{}:\n", pc);

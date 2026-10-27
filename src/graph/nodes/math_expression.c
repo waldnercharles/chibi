@@ -704,7 +704,7 @@ static pin_spec generic_pin(const char *name, int group)
 {
     return (pin_spec){ .name = expression_pin_name(name),
                        .type = PIN_F64,
-                       .type_name = "double",
+                       .type_name = "f64",
                        .kind = PIN_DATA,
                        .flags = PIN_FLAG_WILDCARD,
                        .group = group,
@@ -1730,7 +1730,7 @@ static int connect_number(graph *g, value_source from, node *to, int pin)
        stays double. */
     return rc || !widened || conversion
              ? rc
-             : graph_set_pin_type(g, to, 0, pin, PIN_F64, "double");
+             : graph_set_pin_type(g, to, 0, pin, PIN_F64, "f64");
 }
 
 /* A double result reaching an integer or float input, such as an int field
@@ -1959,7 +1959,7 @@ static behavior_asset *generate(
                     1,
                     symbol_pins[i],
                     symbol_types[i],
-                    symbol_types[i] == PIN_BOOL ? "bool" : "double"
+                    symbol_types[i] == PIN_BOOL ? "bool" : "f64"
                 );
                 assert(rc == 0);
             }
@@ -2118,7 +2118,7 @@ static behavior_asset *generate(
                     0,
                     j,
                     logical || boolean_equality ? PIN_BOOL : PIN_F64,
-                    logical || boolean_equality ? "bool" : "double"
+                    logical || boolean_equality ? "bool" : "f64"
                 );
                 assert(rc == 0);
                 (void)rc;
@@ -2131,7 +2131,7 @@ static behavior_asset *generate(
                     1,
                     0,
                     logical || comparison ? PIN_BOOL : PIN_F64,
-                    logical || comparison ? "bool" : "double"
+                    logical || comparison ? "bool" : "f64"
                 );
                 assert(rc == 0);
                 (void)rc;
@@ -2224,7 +2224,7 @@ static behavior_asset *generate(
         if (compound) {
             /* count += 1 on an int adds in double like the rest. */
             pin_type type = scalar_number(left) ? PIN_F64 : left->type;
-            const char *type_name = scalar_number(left) ? "double" : left->type_name;
+            const char *type_name = scalar_number(left) ? "f64" : left->type_name;
             for (int pin = 0; pin < compound->input_count; pin++) {
                 rc = graph_set_pin_type(target, compound, 0, pin, type, type_name);
                 assert(rc == 0);
@@ -2783,7 +2783,7 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
                 0,
                 parameter,
                 entry_pin->flags & PIN_FLAG_WILDCARD ? PIN_F64 : entry_pin->type,
-                entry_pin->flags & PIN_FLAG_WILDCARD ? "double" : entry_pin->type_name
+                entry_pin->flags & PIN_FLAG_WILDCARD ? "f64" : entry_pin->type_name
             );
             assert(rc == 0);
             (void)rc;

@@ -30,7 +30,7 @@ OutputName :: (name: string) -> bool {
 
 // Filesystem confinement, including symlinks, belongs to the explicit doc build
 // host. The pure declaration checks its schema and output names before encoding.
-pub Encode :: (title: string, sections: Section[]) -> byte[] {
+pub Encode :: (title: string, sections: Section[]) -> u8[] {
     assert(title != "" && length(sections) > 0, "the site needs a title and sections");
     groups: data.Value[] = [];
     outputs: string[] = [];

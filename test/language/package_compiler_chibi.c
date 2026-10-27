@@ -113,13 +113,16 @@ typedef enum
  * functions build the arrays they return in their caller's storage, and its
  * Copied function, which assigns its array, does not. A `debug_metadata`
  * sample compares source points and watches with stage zero on both compiler
- * backends. */
+ * backends. A `traced` sample's calls take no arguments and deliver the
+ * watches stage zero's do, in its order and with its values; a traced
+ * `c_string_probe` sample's calls run only that way, because the compiler
+ * host does not link the probe natives, and return int. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
+    bool core, updates, boxed, game, moves, aliases, variants, built, same_rejection,
+        c_string_probe, host_effects, update_order, debug_metadata, traced;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -164,6 +167,32 @@ static const char *cstring_pair(arena *storage, const pin_value *arguments, int 
 {
     return cstring_probe(storage, arguments + 1, count - 1, result);
 }
+/* Overloads that report which one ran: number or f64, and an int and an f64
+ * in either order. */
+static const char *first_kernel(arena *, const pin_value *, int, pin_value *result)
+{
+    result->i = 1;
+    return NULL;
+}
+static const char *second_kernel(arena *, const pin_value *, int, pin_value *result)
+{
+    result->i = 2;
+    return NULL;
+}
+static const native_parameter_definition NUMBER_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
+};
+static const native_parameter_definition DOUBLE_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+};
+static const native_parameter_definition INTEGER_DOUBLE_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+};
+static const native_parameter_definition DOUBLE_INTEGER_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
@@ -172,7 +201,7 @@ static const native_parameter_definition CSTRING_OUTPUT[] = {
       .source_name = SOURCE,                                                   \
       .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
       .inputs = INPUT,                                                         \
-      .input_count = 1,                                                        \
+      .input_count = sizeof INPUT / sizeof *INPUT,                             \
       .outputs = CSTRING_OUTPUT,                                               \
       .output_count = 1,                                                       \
       .completion_output = -1,                                                 \
@@ -194,11 +223,17 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
     PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
     PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
     PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Number Kernel", "native.kernel", NUMBER_INPUT, true),
+    PROBE_DEFINITION("Double Kernel", "native.kernel", DOUBLE_INPUT, true),
+    PROBE_DEFINITION("Integer Double Pair", "native.pair", INTEGER_DOUBLE_INPUT, true),
+    PROBE_DEFINITION("Double Integer Pair", "native.pair", DOUBLE_INTEGER_INPUT, true),
 };
 #undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
 static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
 static const node_host_call INTEGER_CALL = { .value = integer_probe };
+static const node_host_call FIRST_CALL = { .value = first_kernel };
+static const node_host_call SECOND_CALL = { .value = second_kernel };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
 #define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
@@ -217,6 +252,10 @@ static const native_definition_binding CSTRING_BINDINGS[] = {
     PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Number Kernel", FIRST_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Double Kernel", SECOND_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Integer Double Pair", FIRST_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Double Integer Pair", SECOND_CALL, CSTRING_ACCESS),
 };
 #undef PROBE_BINDING
 static const native_definition_pack CSTRING_PACK = {
@@ -237,7 +276,7 @@ typedef struct
 static action_record action_records[8];
 static int action_trace[32], action_record_count, action_trace_count;
 static int action_kind_calls[5];
-static int action_number_calls[2];
+static int action_number_calls[2], action_default_calls[2];
 static const pin_string ACTION_TEXT = { .bytes = "a\0\xff"
                                                  "b",
                                         .length = 4 },
@@ -365,12 +404,30 @@ static const char *action_tiny(void *, const pin_value *arguments, pin_value *re
 }
 static const char *action_real(void *, const pin_value *arguments, pin_value *results)
 {
-    if (arguments[0].type != PIN_F64 || arguments[0].d != 256 ||
+    if (arguments[0].type != PIN_F32 || arguments[0].f != 256 ||
         results[0].type != PIN_I32) {
         return "real numeric overload value or header differs";
     }
     action_number_calls[1]++;
-    results[0].i = (int)arguments[0].d;
+    results[0].i = (int)arguments[0].f;
+    return NULL;
+}
+/* default_pair's overloads: an int then an f64 that defaults to 5, and the
+ * reverse. Each reports which one ran. */
+static const char *action_default_first(void *, const pin_value *arguments, pin_value *results)
+{
+    if (arguments[0].type != PIN_I32 || arguments[1].type != PIN_F64 ||
+        arguments[1].d != 5) {
+        return "default pair's first overload value or header differs";
+    }
+    action_default_calls[0]++;
+    results[0].i = 1;
+    return NULL;
+}
+static const char *action_default_second(void *, const pin_value *, pin_value *results)
+{
+    action_default_calls[1]++;
+    results[0].i = 2;
     return NULL;
 }
 static const char *action_ambiguous(void *, const pin_value *arguments, pin_value *)
@@ -415,6 +472,8 @@ static const node_host_call ACTION_CALL = { .invoke = action_probe },
                             ACTION_ASSERT = { .invoke = action_assert },
                             ACTION_TINY = { .invoke = action_tiny },
                             ACTION_REAL = { .invoke = action_real },
+                            ACTION_DEFAULT_FIRST = { .invoke = action_default_first },
+                            ACTION_DEFAULT_SECOND = { .invoke = action_default_second },
                             ACTION_AMBIGUOUS = { .invoke = action_ambiguous },
                             ACTION_AGGREGATE = { .invoke = action_aggregate },
                             ACTION_FAIL = { .context = action_fail };
@@ -440,7 +499,7 @@ static const native_parameter_definition ACTION_INPUT[] = {
             "Gain",
             NATIVE_PARAMETER_DATA,
             PIN_F64,
-            "double",
+            "f64",
             PIN_CONTAINER_SINGLE,
             0,
             0,
@@ -464,7 +523,7 @@ static const native_parameter_definition ACTION_INPUT[] = {
                     "Count",
                     NATIVE_PARAMETER_DATA,
                     PIN_U64,
-                    "uint64",
+                    "u64",
                     PIN_CONTAINER_SINGLE,
                     0,
                     0,
@@ -548,9 +607,25 @@ static const native_parameter_definition ACTION_EXEC[] = { CORE_EXEC_INPUTS(NATI
     CORE_EXEC_INPUTS(NATIVE_PORT)
     { .name = "Condition", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_BOOL, .type_name = "bool" },
 }, ACTION_TINY_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I8, .type_name = "int8" },
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I8, .type_name = "i8" },
 }, ACTION_REAL_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "double" },
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
+}, ACTION_DEFAULT_FIRST_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "second",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_F64,
+      .type_name = "f64",
+      .has_default = true,
+      .default_value = { .type = PIN_F64, .d = 5 } },
+}, ACTION_DEFAULT_SECOND_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+    { .name = "second",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_I32,
+      .type_name = "int",
+      .has_default = true,
+      .default_value = { .type = PIN_I32, .i = 5 } },
 };
 static const native_capability_definition ACTION_DEFINITIONS[] = {
     { .canonical_name = "Fixture Synchronous Action",
@@ -708,6 +783,24 @@ static const native_capability_definition ACTION_DEFINITIONS[] = {
       .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
       .completion_output = -1,
       .effects = SCRIPT_EFFECT_HOST },
+    { .canonical_name = "fixture.default_first",
+      .source_name = "default_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = ACTION_DEFAULT_FIRST_INPUT,
+      .input_count = NATIVE_COUNT(ACTION_DEFAULT_FIRST_INPUT),
+      .outputs = CSTRING_OUTPUT,
+      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_HOST },
+    { .canonical_name = "fixture.default_second",
+      .source_name = "default_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = ACTION_DEFAULT_SECOND_INPUT,
+      .input_count = NATIVE_COUNT(ACTION_DEFAULT_SECOND_INPUT),
+      .outputs = CSTRING_OUTPUT,
+      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_HOST },
 };
 static const native_definition_binding ACTION_BINDINGS[] = {
     { .canonical_name = "Fixture Synchronous Action",
@@ -744,6 +837,10 @@ static const native_definition_binding ACTION_BINDINGS[] = {
       .implementation = { .call = &ACTION_TINY, .access = &HOST_ACCESS } },
     { .canonical_name = "fixture.numeric_real",
       .implementation = { .call = &ACTION_REAL, .access = &HOST_ACCESS } },
+    { .canonical_name = "fixture.default_first",
+      .implementation = { .call = &ACTION_DEFAULT_FIRST, .access = &HOST_ACCESS } },
+    { .canonical_name = "fixture.default_second",
+      .implementation = { .call = &ACTION_DEFAULT_SECOND, .access = &HOST_ACCESS } },
 };
 static const native_global_definition ACTION_GLOBALS[] = {
     { .canonical_name = "Fixture Action Self", .source_name = "self", .type = ACTION_ENTITY },
@@ -799,25 +896,25 @@ static const sample samples[] = {
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
                 "Sign: int : -1 << 31;\n"
-                "Small: int8 : (64 << 1) - 1;\n"
-                "Unsigned: uint : 4294967295 >> 1;\n"
+                "Small: i8 : (64 << 1) - 1;\n"
+                "Unsigned: u32 : 4294967295 >> 1;\n"
                 "Floor: int : -3 >> 1;\n"
-                "Wide: int64 : -1 << 63;\n"
-                "Mask: uint64 : ~0;\n"
-                "Low: byte : ~byte(15);\n"
+                "Wide: i64 : -1 << 63;\n"
+                "Mask: u64 : ~0;\n"
+                "Low: u8 : ~u8(15);\n"
                 "Big: int : (1 << 100) >> 98;\n"
-                "Half: int8 : (127 + 1) / 2;\n"
-                "Wrapped: byte : byte(wrap: 300);\n"
+                "Half: i8 : (127 + 1) / 2;\n"
+                "Wrapped: u8 : u8(wrap: 300);\n"
                 "ReadSign :: () -> int { return Sign; }\n"
-                "ReadSmall :: () -> int8 { return Small; }\n"
-                "ReadUnsigned :: () -> uint { return Unsigned; }\n"
+                "ReadSmall :: () -> i8 { return Small; }\n"
+                "ReadUnsigned :: () -> u32 { return Unsigned; }\n"
                 "ReadFloor :: () -> int { return Floor; }\n"
-                "ReadWide :: () -> int64 { return Wide; }\n"
-                "ReadMask :: () -> uint64 { return Mask; }\n"
-                "ReadLow :: () -> byte { return Low; }\n"
+                "ReadWide :: () -> i64 { return Wide; }\n"
+                "ReadMask :: () -> u64 { return Mask; }\n"
+                "ReadLow :: () -> u8 { return Low; }\n"
                 "ReadBig :: () -> int { return Big; }\n"
-                "ReadHalf :: () -> int8 { return Half; }\n"
-                "ReadWrapped :: () -> byte { return Wrapped; }",
+                "ReadHalf :: () -> i8 { return Half; }\n"
+                "ReadWrapped :: () -> u8 { return Wrapped; }",
       .calls = { { .function = "ReadSign", .arguments = "[]", .expected = "[-2147483648]" },
                  { .function = "ReadSmall", .arguments = "[]", .expected = "[127]" },
                  { .function = "ReadUnsigned", .arguments = "[]", .expected = "[2147483647]" },
@@ -856,7 +953,7 @@ static const sample samples[] = {
     { .name = "constant signed shift count",
       .group = TYPE_SAMPLES,
       .source = "package facts\nCount: int : 3;\nBad: int : 1 << Count;",
-      .message = "Shift count must be unsigned; convert it with uint(value)",
+      .message = "Shift count must be unsigned; convert it with u32(value)",
       .line = 3,
       .column = 17 },
     { .name = "comparisons of untyped literals",
@@ -1017,8 +1114,8 @@ static const sample samples[] = {
     { .name = "widened named projection",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Tiny :: () -> (value: int8) { return 7; }\n"
-                "Narrow :: (n: int8) -> int { return int(n); }\n"
+                "Tiny :: () -> (value: i8) { return 7; }\n"
+                "Narrow :: (n: i8) -> int { return int(n); }\n"
                 "Use :: () -> int { n: int = Tiny(); return Narrow(n.value); "
                 "}\n"
                 "Alias :: () -> int { n: int = Tiny(); q := n; "
@@ -1324,13 +1421,13 @@ static const sample samples[] = {
      * stored there converts as stage zero converts it. */
     { .name = "floating fields",
       .source = "package facts\n"
-                "V :: struct { x: float; y: double; n: int; }\n"
-                "Shape :: union { Circle(radius: double) | Dot }\n"
-                "Make :: (x: float, n: int) -> double {\n"
+                "V :: struct { x: number; y: f64; n: int; }\n"
+                "Shape :: union { Circle(radius: f64) | Dot }\n"
+                "Make :: (x: number, n: int) -> f64 {\n"
                 "    v: V = {x: x, y: 2.5, n: n};\n    v.y += v.x;\n    v.x = "
                 "n;\n"
                 "    return v.y + v.x;\n}\n"
-                "Area :: (r: double) -> double {\n"
+                "Area :: (r: f64) -> f64 {\n"
                 "    switch Shape.Circle(r) { case .Circle(radius): return "
                 "radius * radius; case .Dot: return 0.0; }\n"
                 "}\n",
@@ -1340,16 +1437,16 @@ static const sample samples[] = {
      * operands widen to the type that holds both, and records hold them. */
     { .name = "narrow integers",
       .source = "package facts\n"
-                "P :: struct { a: int8; b: uint16; }\n"
-                "Narrow :: (a: int8, b: uint16, c: uint, d: int16) -> int64 {\n"
-                "    x: int8 = a - 1;\n    y: uint = c / 2;\n"
-                "    return int64(x) + int64(b) * 2 + int64(y) - int64(d);\n}\n"
-                "Mixed :: (a: int8, b: byte) -> int { return int(a) + int(b); "
+                "P :: struct { a: i8; b: u16; }\n"
+                "Narrow :: (a: i8, b: u16, c: u32, d: i16) -> i64 {\n"
+                "    x: i8 = a - 1;\n    y: u32 = c / 2;\n"
+                "    return i64(x) + i64(b) * 2 + i64(y) - i64(d);\n}\n"
+                "Mixed :: (a: i8, b: u8) -> int { return int(a) + int(b); "
                 "}\n"
-                "Big :: (a: uint, b: int) -> int64 { return int64(a) + "
-                "int64(b); }\n"
-                "Store :: () -> uint16 { v: uint16 = 65535; return v; }\n"
-                "Make :: (a: int8) -> int { p: P = {a: a, b: 7}; return "
+                "Big :: (a: u32, b: int) -> i64 { return i64(a) + "
+                "i64(b); }\n"
+                "Store :: () -> u16 { v: u16 = 65535; return v; }\n"
+                "Make :: (a: i8) -> int { p: P = {a: a, b: 7}; return "
                 "int(p.a) + int(p.b); }\n",
       .calls = { { .function = "Narrow", .arguments = "[-5,300,9,-7]", .expected = "[605]" },
                  { .function = "Mixed", .arguments = "[-3,200]", .expected = "[197]" },
@@ -1358,44 +1455,44 @@ static const sample samples[] = {
                  { .function = "Make", .arguments = "[-2]", .expected = "[5]" } } },
     { .name = "clamp label",
       .group = TYPE_SAMPLES,
-      .source = "package facts\nClamp :: (v: int) -> byte { return byte(clamp: "
+      .source = "package facts\nClamp :: (v: int) -> u8 { return u8(clamp: "
                 "v); }\n",
       .message = "A conversion argument may only be named wrap",
       .line = 2,
-      .column = 41 },
+      .column = 37 },
     { .name = "mixed integer types",
-      .source = "package facts\nMixed :: (a: int8, b: byte) -> int { return a "
+      .source = "package facts\nMixed :: (a: i8, b: u8) -> int { return a "
                 "+ b; }\n",
-      .message = "Mismatched integer types int8 and byte; convert one operand",
+      .message = "Mismatched integer types i8 and u8; convert one operand",
       .line = 2,
-      .column = 45 },
+      .column = 41 },
     /* Compound arithmetic rejects differing typed integers before assignment
      * widening, both for a local and for a stored field. */
     { .name = "mixed compound assignment",
-      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a += b; "
+      .source = "package facts\nGrow :: (b: u8) -> int { a: int = 1; a += b; "
                 "return a; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 40 },
+      .column = 38 },
     { .name = "mixed compound field assignment",
       .source = "package facts\nNote :: struct { count: int; }\n"
-                "Grow :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "Grow :: (b: u8) -> int { n: Note = {count: 1}; n.count += "
                 "b; return n.count; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 50 },
+      .column = 48 },
     { .name = "compound assignment preserves contextual and explicit operands",
       .debug_metadata = true,
       .source = "package facts\nNote :: struct { count: int; }\n"
-                "Plain :: (b: byte) -> int { a: int = 1; a = b; return a; }\n"
-                "Local :: (b: byte) -> int { a: int = 1; a += int(b); return "
+                "Plain :: (b: u8) -> int { a: int = 1; a = b; return a; }\n"
+                "Local :: (b: u8) -> int { a: int = 1; a += int(b); return "
                 "a; }\n"
                 "Literal :: () -> int { a: int = 1; a += 2; return a; }\n"
-                "Field :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "Field :: (b: u8) -> int { n: Note = {count: 1}; n.count += "
                 "int(b); return n.count; }\n"
                 "FieldLiteral :: () -> int { n: Note = {count: 1}; n.count += "
                 "2; return n.count; }\n"
-                "Shift :: (a: int, count: byte) -> int { return a << count; "
+                "Shift :: (a: int, count: u8) -> int { return a << count; "
                 "}\n",
       .calls = { { .function = "Plain", .arguments = "[2]", .expected = "[2]" },
                  { .function = "Local", .arguments = "[2]", .expected = "[3]" },
@@ -1406,56 +1503,56 @@ static const sample samples[] = {
     { .name = "mixed compound reference assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
-                "Grow :: (a: ref int, b: byte) { a += b; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+                "Grow :: (a: ref int, b: u8) { a += b; }\n",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 33 },
+      .column = 31 },
     { .name = "mixed compound reference field assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Note :: struct { count: int; }\n"
-                "Grow :: (n: ref Note, b: byte) { n.count += b; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+                "Grow :: (n: ref Note, b: u8) { n.count += b; }\n",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 34 },
+      .column = 32 },
     { .name = "mixed compound boxed local assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Touch :: (v: ref int) { v += 0; }\n"
-                "Grow :: (b: byte) -> int { a: int = 1; Touch(a); a += b; "
+                "Grow :: (b: u8) -> int { a: int = 1; Touch(a); a += b; "
                 "return a; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 50 },
+      .column = 48 },
     { .name = "mixed compound boxed parameter assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Touch :: (v: ref int) { v += 0; }\n"
-                "Grow :: (a: int, b: byte) -> int { Touch(a); a += b; return "
+                "Grow :: (a: int, b: u8) -> int { Touch(a); a += b; return "
                 "a; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 46 },
+      .column = 44 },
     { .name = "compound reference and boxed operands preserve effects",
       .debug_metadata = true,
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Note :: struct { count: int; }\n"
                 "Touch :: (v: ref int) { v += 0; }\n"
-                "Bump :: (v: ref int, b: byte) { v += int(b); }\n"
-                "BumpField :: (n: ref Note, b: byte) { n.count += int(b); }\n"
+                "Bump :: (v: ref int, b: u8) { v += int(b); }\n"
+                "BumpField :: (n: ref Note, b: u8) { n.count += int(b); }\n"
                 "Source :: (calls: ref int) -> int { calls += 1; return 2; }\n"
-                "Ref :: () -> int { n: int = 1; Bump(n, byte(2)); return n; }\n"
+                "Ref :: () -> int { n: int = 1; Bump(n, u8(2)); return n; }\n"
                 "RefField :: () -> int { n: Note = {count: 1}; BumpField(n, "
-                "byte(2)); return n.count; }\n"
-                "Box :: () -> int { n: int = 1; Touch(n); n += int(byte(2)); "
+                "u8(2)); return n.count; }\n"
+                "Box :: () -> int { n: int = 1; Touch(n); n += int(u8(2)); "
                 "return n; }\n"
                 "BoxParam :: (n: int) -> int { Touch(n); n += 2; return n; }\n"
                 "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
                 "n.count += Source(calls); return n.count * 10 + calls; }\n"
                 "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
                 "return n; }\n"
-                "Clamp :: (v: int) -> byte { return byte(v); }\n",
+                "Clamp :: (v: int) -> u8 { return u8(v); }\n",
       .calls = { { .function = "Ref", .arguments = "[]", .expected = "[3]" },
                  { .function = "RefField", .arguments = "[]", .expected = "[3]" },
                  { .function = "Box", .arguments = "[]", .expected = "[3]" },
@@ -1464,11 +1561,11 @@ static const sample samples[] = {
                  { .function = "Bits", .arguments = "[3]", .expected = "[11]" },
                  { .function = "Clamp", .arguments = "[300]", .expected = "[255]" } } },
     { .name = "mixed compound bitwise assignment",
-      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a &= b; "
+      .source = "package facts\nGrow :: (b: u8) -> int { a: int = 1; a &= b; "
                 "return a; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 40 },
+      .column = 38 },
     { .name = "constant division by zero",
       .group = TYPE_SAMPLES,
       .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
@@ -1491,21 +1588,21 @@ static const sample samples[] = {
       .column = 27 },
     { .name = "conversion outside its type",
       .group = TYPE_SAMPLES,
-      .source = "package facts\nBad: byte : byte(300);\n",
-      .message = "Constant does not fit in byte; use byte(wrap: value)",
+      .source = "package facts\nBad: u8 : u8(300);\n",
+      .message = "Constant does not fit in u8; use u8(wrap: value)",
       .line = 2,
-      .column = 13 },
+      .column = 11 },
     { .name = "negated unsigned constant",
       .group = TYPE_SAMPLES,
-      .source = "package facts\nBad: byte : -byte(1);\n",
+      .source = "package facts\nBad: u8 : -u8(1);\n",
       .message = "Cannot negate an unsigned constant",
       .line = 2,
-      .column = 13 },
+      .column = 11 },
     { .name = "signed shift count",
       .group = TYPE_SAMPLES,
       .source = "package facts\nShift :: (a: int, n: int) -> int { return a << "
                 "n; }\n",
-      .message = "Shift count must be unsigned; convert it with uint(value)",
+      .message = "Shift count must be unsigned; convert it with u32(value)",
       .line = 2,
       .column = 48 },
     /* Integer operations never fail at run time: unsigned negation wraps, a
@@ -1513,8 +1610,8 @@ static const sample samples[] = {
     { .name = "total integer operations",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Negate :: (a: byte) -> byte { return -a; }\n"
-                "Wide :: (a: uint64) -> uint64 { return -a; }\n"
+                "Negate :: (a: u8) -> u8 { return -a; }\n"
+                "Wide :: (a: u64) -> u64 { return -a; }\n"
                 "Far :: (a: int) -> int { return a << 40; }\n"
                 "Fill :: (a: int) -> int { return a >> 40; }\n"
                 "Divide :: (a: int, b: int) -> int { return a / b + a % b; }\n",
@@ -1529,9 +1626,9 @@ static const sample samples[] = {
     { .name = "untyped constant expressions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Count: uint : 3;\n"
-                "Eight :: (x: int64) -> bool { return x == (1 << Count); }\n"
-                "Huge :: (f: double) -> bool { return f / 0 > 1000000.0; }\n",
+                "Count: u32 : 3;\n"
+                "Eight :: (x: i64) -> bool { return x == (1 << Count); }\n"
+                "Huge :: (f: f64) -> bool { return f / 0 > 1000000.0; }\n",
       .calls = { { .function = "Eight", .arguments = "[8]", .expected = "[true]" },
                  { .function = "Huge", .arguments = "[1]", .expected = "[true]" } } },
     /* A shift has its left operand's type, and a count past that type's
@@ -1539,9 +1636,9 @@ static const sample samples[] = {
     { .name = "shift counts clamp",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Literal :: (a: byte) -> byte { return a << 300; }\n"
-                "Counted :: (a: byte, n: uint) -> byte { return a << n; }\n"
-                "Signed :: (a: int8, n: uint64) -> int8 { return a >> n; }\n",
+                "Literal :: (a: u8) -> u8 { return a << 300; }\n"
+                "Counted :: (a: u8, n: u32) -> u8 { return a << n; }\n"
+                "Signed :: (a: i8, n: u64) -> i8 { return a >> n; }\n",
       .calls = { { .function = "Literal", .arguments = "[1]", .expected = "[0]" },
                  { .function = "Counted", .arguments = "[1,300]", .expected = "[0]" },
                  { .function = "Counted", .arguments = "[1,7]", .expected = "[128]" },
@@ -1549,14 +1646,13 @@ static const sample samples[] = {
     /* uint64 and byte have every operator, unsigned ordering and division
      * included, as stage zero computes them. */
     { .name = "unsigned arithmetic",
-      .source =
-          "package facts\n"
-          "Diff :: (a: uint64, b: uint64) -> uint64 { return a - b; }\n"
-          "Less :: (a: uint64, b: uint64) -> bool { return a < b; }\n"
-          "Div :: (a: uint64, b: uint64) -> uint64 { return a / b + a % b; }\n"
-          "Bytes :: (a: byte, b: byte) -> byte { return a + b * 2 - 1; }\n"
-          "Order :: (a: byte, b: byte) -> bool { return a > b && a >= 3; }\n"
-          "Shift :: (a: byte) -> byte { return (a << 1) >> 2; }\n",
+      .source = "package facts\n"
+                "Diff :: (a: u64, b: u64) -> u64 { return a - b; }\n"
+                "Less :: (a: u64, b: u64) -> bool { return a < b; }\n"
+                "Div :: (a: u64, b: u64) -> u64 { return a / b + a % b; }\n"
+                "Bytes :: (a: u8, b: u8) -> u8 { return a + b * 2 - 1; }\n"
+                "Order :: (a: u8, b: u8) -> bool { return a > b && a >= 3; }\n"
+                "Shift :: (a: u8) -> u8 { return (a << 1) >> 2; }\n",
       .calls = { { .function = "Diff", .arguments = "[10,3]", .expected = "[7]" },
                  { .function = "Less", .arguments = "[9223372036854775808,1]", .expected = "[false]" },
                  { .function = "Less", .arguments = "[1,9223372036854775808]", .expected = "[true]" },
@@ -1575,24 +1671,24 @@ static const sample samples[] = {
                 "Area :: Width * Height;\n"
                 "Width :: (Unit << 2) + 1;\n"
                 "Height: int : -(Width - 7) / 2 % 3;\n"
-                "Mask: int64 : ~lib.Bits & 0xFFFF;\n"
-                "Small: byte : 0x10 | 2;\n"
-                "Low: byte : ~0x0F;\n"
+                "Mask: i64 : ~lib.Bits & 0xFFFF;\n"
+                "Small: u8 : 0x10 | 2;\n"
+                "Low: u8 : ~0x0F;\n"
                 "Unit :: 2;\n"
-                "Folded :: () -> int64 { return int64(Area) * 1000 + Mask + "
-                "int64(Small) + int64(Low); }\n",
-      .library = "package lib\npub Bits: int64 : 1 << 40 | 0xF0;\n",
+                "Folded :: () -> i64 { return i64(Area) * 1000 + Mask + "
+                "i64(Small) + i64(Low); }\n",
+      .library = "package lib\npub Bits: i64 : 1 << 40 | 0xF0;\n",
       .calls = { { .function = "Folded", .arguments = "[]", .expected = "[56553]" } } },
     /* An omitted argument takes its parameter's literal default. */
     { .name = "defaults",
       .source = "package facts\n"
-                "Add :: (a: int, b: int = -10, c: int64 = 0x10) -> int64 { "
-                "return int64(a + b) + c; }\n"
+                "Add :: (a: int, b: int = -10, c: i64 = 0x10) -> i64 { "
+                "return i64(a + b) + c; }\n"
                 "Greet :: (name: string = \"you\", loud: bool = true) -> "
                 "string {\n"
                 "    if (loud) { return format_text(\"HI {}\", name); }\n"
                 "    return name;\n}\n"
-                "Use :: () -> int64 { return Add(1) + Add(1, 2) + Add(1, 2, "
+                "Use :: () -> i64 { return Add(1) + Add(1, 2) + Add(1, 2, "
                 "3); }\n"
                 "Hello :: () -> string { return Greet(); }\n",
       .calls = { { .function = "Add", .arguments = "[5,6,7]", .expected = "[18]" },
@@ -1613,7 +1709,7 @@ static const sample samples[] = {
                 "Spaces :: (xs: int[]) -> int {\n"
                 "    total: int = 0;\n"
                 "    for x in xs {\n"
-                "        b := byte(x);\n"
+                "        b := u8(x);\n"
                 "        switch b { case 32: total += 1; case 10: total += "
                 "100; }\n"
                 "    }\n"
@@ -1650,7 +1746,7 @@ static const sample samples[] = {
                 "}\n"
                 "    for < i in first..last { count += 1; }\n"
                 "    return count;\n}\n"
-                "Small :: (b: byte) -> int {\n"
+                "Small :: (b: u8) -> int {\n"
                 "    total: int = 0;\n    for i in 0..b { total += 1; }\n"
                 "    return total;\n}\n"
                 "Keys :: (xs: int[]) -> int {\n"
@@ -1841,10 +1937,10 @@ static const sample samples[] = {
     { .name = "reference type",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "n: int64 = 1; Bump(n); }",
+                "n: i64 = 1; Bump(n); }",
       .message = "reference argument differs from the parameter's type",
       .line = 3,
-      .column = 32 },
+      .column = 30 },
     { .name = "unions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -2084,26 +2180,26 @@ static const sample samples[] = {
     { .name = "integers",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Mask: uint64 : 0xFF00000000000000;\n"
-                "Small: byte : 200;\n"
-                "Hash :: (bytes: byte[]) -> uint64 {\n"
-                "    hash: uint64 = 1469598103934665603;\n"
-                "    for (item in bytes) { hash = (hash ^ uint64(item)) * "
+                "Mask: u64 : 0xFF00000000000000;\n"
+                "Small: u8 : 200;\n"
+                "Hash :: (bytes: u8[]) -> u64 {\n"
+                "    hash: u64 = 1469598103934665603;\n"
+                "    for (item in bytes) { hash = (hash ^ u64(item)) * "
                 "1099511628211; }\n"
                 "    return hash;\n}\n"
-                "Bytes :: (n: int) -> byte[] {\n"
-                "    out: byte[] = [1, 2, 255];\n"
-                "    out = append(out, byte(wrap: n));\n"
+                "Bytes :: (n: int) -> u8[] {\n"
+                "    out: u8[] = [1, 2, 255];\n"
+                "    out = append(out, u8(wrap: n));\n"
                 "    out = append(out, Small);\n"
                 "    return out;\n}\n"
                 "High :: (n: int) -> int { mask := Mask; return int(wrap: "
-                "(mask >> 56) + uint64(n)); }\n"
-                "Mixed :: (a: int, b: int64) -> int64 { return int64(a) + b; "
+                "(mask >> 56) + u64(n)); }\n"
+                "Mixed :: (a: int, b: i64) -> i64 { return i64(a) + b; "
                 "}\n"
-                "Store :: (a: int) -> int64 { x: int64 = a; x += 10; x "
+                "Store :: (a: int) -> i64 { x: i64 = a; x += 10; x "
                 "*= 3; return x; }\n"
-                "Narrow :: (v: int64) -> int { return int(v); }\n"
-                "Clamp :: (v: int) -> byte { return byte(v); }",
+                "Narrow :: (v: i64) -> int { return int(v); }\n"
+                "Clamp :: (v: int) -> u8 { return u8(v); }",
       .calls = { { .function = "Hash", .arguments = "[[1,2,3]]", .expected = "[11570874782335668893]" },
                  { .function = "Bytes", .arguments = "[300]", .expected = "[[1,2,255,44,200]]" },
                  { .function = "High", .arguments = "[1]", .expected = "[256]" },
@@ -2116,17 +2212,17 @@ static const sample samples[] = {
     { .name = "wide values",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Wide: int64 : -5000000000;\n"
-                "Tag :: union { Bits(value: uint64) | None }\n"
-                "Shifts :: (n: int) -> uint64 { v := uint64(n); return "
+                "Wide: i64 : -5000000000;\n"
+                "Tag :: union { Bits(value: u64) | None }\n"
+                "Shifts :: (n: int) -> u64 { v := u64(n); return "
                 "(v << 4) | (v >> 60) & 0xF; }\n"
-                "Equal :: (a: int, b: int) -> bool { return uint64(a) "
-                "== uint64(b) && uint64(a) != 0; }\n"
-                "Twice :: () -> int64 { wide := Wide; return wide * 2; }\n"
-                "Negative :: (n: int64) -> bool { return n < 0; }\n"
-                "Mk :: (v: uint64) -> Tag { return Tag.Bits(v); }\n"
-                "Pick :: (n: int) -> uint64 {\n"
-                "    t := Mk(uint64(n) * 1000000007);\n"
+                "Equal :: (a: int, b: int) -> bool { return u64(a) "
+                "== u64(b) && u64(a) != 0; }\n"
+                "Twice :: () -> i64 { wide := Wide; return wide * 2; }\n"
+                "Negative :: (n: i64) -> bool { return n < 0; }\n"
+                "Mk :: (v: u64) -> Tag { return Tag.Bits(v); }\n"
+                "Pick :: (n: int) -> u64 {\n"
+                "    t := Mk(u64(n) * 1000000007);\n"
                 "    switch t { case .Bits(value): return value; case .None: "
                 "return 0; }\n"
                 "    return 0;\n}",
@@ -2138,23 +2234,23 @@ static const sample samples[] = {
     { .name = "wide records",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Entry :: struct { flag: bool; id: uint64; small: byte; "
-                "count: int; delta: int64; name: string; }\n"
+                "Entry :: struct { flag: bool; id: u64; small: u8; "
+                "count: int; delta: i64; name: string; }\n"
                 "Make :: (n: int) -> Entry {\n"
-                "    e: Entry = {flag: n > 0, id: uint64(n) * 1000000007, "
-                "small: byte(wrap: n), count: n, delta: int64(n) - "
+                "    e: Entry = {flag: n > 0, id: u64(n) * 1000000007, "
+                "small: u8(wrap: n), count: n, delta: i64(n) - "
                 "5000000000, name: \"e\"};\n"
                 "    return e;\n}\n"
-                "Mix :: (e: Entry) -> uint64 { return (e.id ^ "
-                "uint64(e.small)) + uint64(e.count); }\n"
+                "Mix :: (e: Entry) -> u64 { return (e.id ^ "
+                "u64(e.small)) + u64(e.count); }\n"
                 "Bump :: (e: Entry) -> Entry {\n"
                 "    out := e;\n    out.id += 1;\n    out.small = 7;\n"
                 "    out.delta *= 2;\n    return out;\n}\n"
-                "Total :: (n: int) -> int64 {\n"
+                "Total :: (n: int) -> i64 {\n"
                 "    es: Entry[] = [];\n    i: int = 0;\n"
                 "    while (i < n) { es = append(es, Make(i)); i += 1; }\n"
-                "    total: int64 = 0;\n"
-                "    for (e in es) { total += e.delta + int64(e.small); }\n"
+                "    total: i64 = 0;\n"
+                "    for (e in es) { total += e.delta + i64(e.small); }\n"
                 "    return total;\n}",
       .calls = { { .function = "Make",
                    .arguments = "[3]",
@@ -2193,7 +2289,7 @@ static const sample samples[] = {
                 "\"yy\", \"zzz\"]; return length(words); }\n"
                 "Points :: () -> int { p: Point = {x: 1, y: 2}; points "
                 ":= [p, p]; return points[1].y + length(points); }\n"
-                "Wide :: () -> uint64 { one: uint64 = 1; bits := [one, 2, "
+                "Wide :: () -> u64 { one: u64 = 1; bits := [one, 2, "
                 "0xFF]; "
                 "return bits[1] + bits[2]; }",
       .calls = { { .function = "Sizes", .arguments = "[3]", .expected = "[73]" },
@@ -2259,8 +2355,8 @@ static const sample samples[] = {
                 "format_text(\"{}:{}\", n, name); }\n"
                 "Plain :: () -> string { return format_text(\"plain\"); "
                 "}\n"
-                "Mixed :: (flag: bool) -> string { big: uint64 = "
-                "0xFFFFFFFFFFFFFFFF; small: int64 = -3; return "
+                "Mixed :: (flag: bool) -> string { big: u64 = "
+                "0xFFFFFFFFFFFFFFFF; small: i64 = -3; return "
                 "format_text(\"{} {} {}\", flag, big, small); }",
       .calls = { { .function = "Label", .arguments = "[3,\"x\"]", .expected = "[\"3:x\"]" },
                  { .function = "Plain", .arguments = "[]", .expected = "[\"plain\"]" },
@@ -2312,7 +2408,7 @@ static const sample samples[] = {
                 "    note.count *= 2;\n"
                 "    note.open = true;\n"
                 "    stamped := Stamp(note, 7);\n"
-                "    b: byte = 3;\n"
+                "    b: u8 = 3;\n"
                 "    copy.count = b;\n"
                 "    copy.count += int(b);\n"
                 "    return format_text(\"{} {} {} {} {} {}\", note.text, "
@@ -2455,8 +2551,8 @@ static const sample samples[] = {
     { .name = "untyped array",
       .source = "package facts\nOne :: () -> int { xs := [1]; return 0; "
                 "}",
-      .message = "an untyped number is a double; give the array an integer "
-                 "type",
+      .message = "an untyped number needs a type; give the array an "
+                 "integer type",
       .line = 2,
       .column = 27 },
     { .name = "unknown function",
@@ -2505,10 +2601,10 @@ static const sample samples[] = {
       .line = 3,
       .column = 27 },
     { .name = "multiplication overflow",
-      .source = "package facts\nA: int64 : -1 * -9223372036854775808;",
-      .message = "Constant value is outside the range of int64",
+      .source = "package facts\nA: i64 : -1 * -9223372036854775808;",
+      .message = "Constant value is outside the range of i64",
       .line = 2,
-      .column = 12 },
+      .column = 10 },
     { .name = "range assignment",
       .source = "package facts\nOne :: () -> int { for i in 0..3 { i = 1; } "
                 "return 0; }",
@@ -2689,23 +2785,23 @@ static const sample samples[] = {
       .message = "Duplicate declaration 'n'",
       .line = 3,
       .column = 56 },
-    { .name = "signed with uint64",
-      .source = "package facts\nOne :: (a: int, b: uint64) -> uint64 { "
+    { .name = "signed with u64",
+      .source = "package facts\nOne :: (a: int, b: u64) -> u64 { "
                 "return a + b; }",
-      .message = "Mismatched integer types int and uint64; convert one operand",
+      .message = "Mismatched integer types int and u64; convert one operand",
       .line = 2,
-      .column = 47 },
-    { .name = "byte literal range",
-      .source = "package facts\nOne :: () -> byte { return 256; }",
-      .message = "Numeric literal is outside the range of byte",
+      .column = 41 },
+    { .name = "u8 literal range",
+      .source = "package facts\nOne :: () -> u8 { return 256; }",
+      .message = "Numeric literal is outside the range of u8",
       .line = 2,
-      .column = 28 },
-    { .name = "negative uint64",
-      .source = "package facts\nOne :: () -> uint64 { x: uint64 = -1; "
+      .column = 26 },
+    { .name = "negative u64",
+      .source = "package facts\nOne :: () -> u64 { x: u64 = -1; "
                 "return x; }",
-      .message = "Numeric literal is outside the range of uint64",
+      .message = "Numeric literal is outside the range of u64",
       .line = 2,
-      .column = 35 },
+      .column = 29 },
     { .name = "inferred numeric locals",
       .source = "package facts\n"
                 "Bump :: (x: ref int) { x += 1; }\n"
@@ -2714,11 +2810,11 @@ static const sample samples[] = {
                 "Index :: () -> int { x := 0; xs: int[] = [4, 7]; x += 1; "
                 "xs[x] = 9; return xs[x] + x; }\n"
                 "Negative :: () -> int { x := -1; x += 2; return x; }\n"
-                "Wide :: () -> int64 { x := 2147483648; x += 1; return x; }\n"
-                "Maximum :: () -> uint64 { x := 18446744073709551615; return "
+                "Wide :: () -> i64 { x := 2147483648; x += 1; return x; }\n"
+                "Maximum :: () -> u64 { x := 18446744073709551615; return "
                 "x; }\n"
-                "Decimal :: () -> double { x := 0.5; x += 0.25; return x; }\n"
-                "Exponent :: () -> double { x := 1e3; return x; }",
+                "Decimal :: () -> number { x := 0.5; x += 0.25; return x; }\n"
+                "Exponent :: () -> number { x := 1e3; return x; }",
       .calls = { { .function = "ByReference", .arguments = "[]", .expected = "[1]" },
                  { .function = "One", .arguments = "[]", .expected = "[5]" },
                  { .function = "Index", .arguments = "[]", .expected = "[10]" },
@@ -2727,35 +2823,35 @@ static const sample samples[] = {
                  { .function = "Maximum", .arguments = "[]", .expected = "[18446744073709551615]" },
                  { .function = "Decimal", .arguments = "[]", .expected = "[0.75]" },
                  { .function = "Exponent", .arguments = "[]", .expected = "[1000.0]" } } },
-    { .name = "inferred integer refuses float assignment",
+    { .name = "inferred integer refuses number assignment",
       .source = "package facts\nOne :: () -> int { x := 0; fraction := 0.5; x "
                 "= fraction; return x; }",
       .message = "assigned value differs from its local",
       .line = 2,
       .column = 45 },
     { .name = "conversion arity",
-      .source = "package facts\nOne :: () -> byte { return byte(1, 2); "
+      .source = "package facts\nOne :: () -> u8 { return u8(1, 2); "
                 "}",
       .message = "Conversion takes one value",
       .line = 2,
-      .column = 28 },
+      .column = 26 },
     { .name = "conversion name",
-      .source = "package facts\nOne :: () -> byte { return byte(round: "
+      .source = "package facts\nOne :: () -> u8 { return u8(round: "
                 "1); }",
       .message = "A conversion argument may only be named wrap",
       .line = 2,
-      .column = 33 },
+      .column = 29 },
     { .name = "floating constant",
       .source = "package facts\nHalf :: 0.5;",
       .message = "only integer constants are supported yet",
       .line = 2,
       .column = 9 },
-    { .name = "negative zero byte",
-      .source = "package facts\nOne :: () -> byte { x: byte = -0; "
+    { .name = "negative zero u8",
+      .source = "package facts\nOne :: () -> u8 { x: u8 = -0; "
                 "return x; }",
-      .message = "Numeric literal is outside the range of byte",
+      .message = "Numeric literal is outside the range of u8",
       .line = 2,
-      .column = 31 },
+      .column = 27 },
     /* Unary complements are classified as literal-shaped for debug metadata.
      * Their folded value still needs one watch, including through grouping. */
     { .name = "folded complement retains its watch",
@@ -2916,41 +3012,236 @@ static const sample samples[] = {
                 "cstring_probe((\"\\u0000b\")); }",
       .message = "C-string boundary 'value' cannot accept NUL at byte 0",
       .same_rejection = true },
+    /* A grouped or signed literal takes a floating type as a literal does,
+     * and each sign around it is watched. */
+    { .name = "grouped signed floating literals",
+      .source = "package facts\n"
+                "Scale :: (x: f64) -> f64 { return x * -(1.5) + x * (-(-2.5)); "
+                "}\n"
+                "Half :: (x: number) -> number { return x * -(+(-(-(0.5)))); "
+                "}\n",
+      .calls = { { .function = "Scale", .arguments = "[2]", .expected = "[2.0]" },
+                 { .function = "Half", .arguments = "[4]", .expected = "[-2.0]" } } },
+    /* A floating literal's outer signs are each watched once; stage zero
+     * folds an integer one, a whole decimal too, to one constant. */
+    { .name = "grouped signed literal results",
+      .traced = true,
+      .source = "package facts\n"
+                "Half :: () -> f64 { return -(1.5); }\n"
+                "Back :: () -> f64 { return -(-(1.5)); }\n"
+                "Two :: () -> int { return -(2); }\n"
+                "Three :: () -> int { return -(+(-(3))); }\n"
+                "Plus :: () -> int { return +(-(4)); }\n"
+                "Whole :: () -> int { return -(+(2.0)); }\n"
+                "Unsigned :: () -> u8 { return +(2e0); }\n",
+      .calls = { { .function = "Half", .arguments = "[]", .expected = "[-1.5]" },
+                 { .function = "Back", .arguments = "[]", .expected = "[1.5]" },
+                 { .function = "Two", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Three", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Plus", .arguments = "[]", .expected = "[-4]" },
+                 { .function = "Whole", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Unsigned", .arguments = "[]", .expected = "[2]" } } },
+    /* An overloaded native's untyped literal argument takes the overload
+     * stage zero picks (native_overload_reference_contract) and that
+     * overload's type, grouped, signed or a whole decimal. Stage zero folds a
+     * grouped one and its signs to one constant. */
+    { .name = "untyped literal overload argument",
+      .c_string_probe = true,
+      .traced = true,
+      .source = "package facts\n"
+                "Run :: () -> int { return native.overload(2); }\n"
+                "Grouped :: () -> int { return native.overload((-(2))); }\n"
+                "Whole :: () -> int { return native.overload(2.0); }\n"
+                "Exponent :: () -> int { return native.overload(1e0); }\n"
+                "Zero :: () -> int { return native.overload(0.0); }\n"
+                "Signed :: () -> int { return native.overload(-0.0); }\n"
+                "Signs :: () -> int { return native.overload(+(-(-(2)))); }\n"
+                "Decimal :: () -> int { return native.overload(-(2.0)); }\n",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Grouped", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Signs", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Whole", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Exponent", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Zero", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Signed", .arguments = "[]", .expected = "[0]" } } },
+    /* Typed arguments choose the kernel their width prefers, i64 the f64
+     * one and the rest number, and literals take the number one. */
+    { .name = "typed overload kernels",
+      .c_string_probe = true,
+      .traced = true,
+      .source =
+          "package facts\n"
+          "Literal :: () -> int { return native.kernel(2); }\n"
+          "Decimal :: () -> int { return native.kernel(2.5); }\n"
+          "Integer :: () -> int { v: int = 3; return native.kernel(v * 2); }\n"
+          "Wide :: () -> int { v: i64 = 3; return native.kernel(v * 2); }\n"
+          "Single :: () -> int { v: number = 1.5; return native.kernel(v); }\n"
+          "Double :: () -> int { v: f64 = 1.5; return native.kernel(v); }\n",
+      .calls = { { .function = "Literal", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Integer", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Single", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Double", .arguments = "[]", .expected = "[2]" } } },
+    /* An argument before a call the overload depends on is still typed,
+     * converted and watched first, when the call has an effect and when it
+     * fails. */
+    { .name = "overload argument order",
+      .c_string_probe = true,
+      .traced = true,
+      .source = "package facts\n"
+                "Later :: () -> int { return native.probe(\"ab\"); }\n"
+                "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
+                "Before :: () -> int { return native.pair(2, Later()); }\n"
+                "After :: () -> int { return native.pair(Later(), 2); }\n"
+                "Stops :: () -> int { return native.pair(-(2), Fails()); }\n"
+                "Floating :: () -> int { return native.pair(+(-(2.5)), "
+                "Later()); }\n"
+                "Local :: () -> int { v: f64 = 2.5; return native.pair(v, "
+                "Later()); }\n"
+                "Widened :: () -> int { v: number = 1.5; return native.pair(v, "
+                "Later()); }\n",
+      .calls = { { .function = "Before", .arguments = "[]", .expected = "[2]" },
+                 { .function = "After", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Stops", .arguments = "[]" },
+                 { .function = "Floating", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Widened", .arguments = "[]", .expected = "[2]" } } },
+    /* Parentheses produce no value: a grouped argument is typed, converted
+     * and watched once the expression inside has produced it. */
+    { .name = "grouped overload arguments",
+      .c_string_probe = true,
+      .traced = true,
+      .source =
+          "package facts\n"
+          "Later :: () -> int { return native.probe(\"ab\"); }\n"
+          "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
+          "Typed :: () -> int { v: number = 1.5; return "
+          "native.kernel((v)); }\n"
+          "Converted :: () -> int { v: int = 3; return native.kernel((v)); "
+          "}\n"
+          "Wide :: () -> int { v: i64 = 3; return native.kernel(((v))); }\n"
+          "Effect :: () -> int { return native.pair(2, (Later())); }\n"
+          "First :: () -> int { return native.pair((Later()), (2)); }\n"
+          "Stops :: () -> int { return native.pair((-(2)), (Fails())); }\n"
+          "Local :: () -> int { v: f64 = 2.5; return native.pair((v), "
+          "(Later())); }\n",
+      .calls = { { .function = "Typed", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Converted", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Effect", .arguments = "[]", .expected = "[2]" },
+                 { .function = "First", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Stops", .arguments = "[]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[2]" } } },
+    /* Both stages read a decimal at an integer type exactly, digit by digit:
+     * no floating rounding drops a fraction, an integer unit or the range. */
+    { .name = "exact whole decimals",
+      .traced = true,
+      .source = "package facts\n"
+                "Sum :: () -> i64 { x: i64 = 0; return x + 9007199254740993.0; "
+                "}\n"
+                "Negative :: () -> i64 { return -9007199254740993.0; }\n"
+                "Largest :: () -> u64 { return 18446744073709551615.0; }\n"
+                "Scaled :: () -> i64 { return 9007199254740993e0; }\n"
+                "Least :: () -> i64 { return -9223372036854775808.0; }\n",
+      .calls = { { .function = "Sum", .arguments = "[]", .expected = "[9007199254740993]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[-9007199254740993]" },
+                 { .function = "Largest", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[9007199254740993]" },
+                 { .function = "Least", .arguments = "[]", .expected = "[-9223372036854775808]" } } },
+    /* Zero is whole however it is spelled. */
+    { .name = "zero decimals",
+      .traced = true,
+      .source = "package facts\n"
+                "Zero :: () -> int { return 0.0; }\n"
+                "Negative :: () -> int { return -0.0; }\n"
+                "Scaled :: () -> int { return 0e-1; }\n"
+                "Places :: () -> i64 { return 0.000; }\n",
+      .calls = { { .function = "Zero", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Places", .arguments = "[]", .expected = "[0]" } } },
+    { .name = "decimal past the least integer",
+      .source = "package facts\nRun :: () -> i64 { return "
+                "-9223372036854775809.0; }",
+      .message = "Numeric literal is outside the range of i64",
+      .same_rejection = true },
+    { .name = "decimal past the largest integer",
+      .source = "package facts\nRun :: () -> u64 { return "
+                "18446744073709551616.0; }",
+      .message = "Numeric literal is outside the range of u64",
+      .same_rejection = true },
+    { .name = "small fraction overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.0000000000000001); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "smaller fraction overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.0000000000000000001); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "small fraction integer",
+      .source = "package facts\nRun :: () -> i64 { x: i64 = 0; return x + "
+                "9007199254740992.5; }",
+      .message = "Numeric literal has a fraction, which i64 cannot hold",
+      .same_rejection = true },
+    { .name = "ambiguous literal overload",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return native.pair(2, 3); }",
+      .message = "Ambiguous function 'native.pair'",
+      .line = 2,
+      .column = 34 },
+    { .name = "decimal overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.5); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "wide overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(4294967296); }",
+      .message = "Numeric literal is outside the range of int",
+      .same_rejection = true },
     /* Authored constant support boundaries. Stage zero accepts some of these
      * forms; require the authored diagnostic at the operand, not parity with
      * stage zero or an earlier unsupported-declaration failure. */
     { .name = "floating constant cannot become integer bits",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nWide: double : 1.5;\nBad: uint64 : "
-                "uint64(Wide);\n",
+      .source = "package facts\nWide: f64 : 1.5;\nBad: u64 : "
+                "u64(Wide);\n",
       .message = "floating-to-integer constant conversion is not supported yet",
       .line = 3,
-      .column = 22 },
+      .column = 16 },
     { .name = "floating constant cannot wrap into integer bits",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nWide: double : 1.5;\nBad: int : int(wrap: "
+      .source = "package facts\nWide: f64 : 1.5;\nBad: int : int(wrap: "
                 "Wide);\n",
       .message = "floating-to-integer constant conversion is not supported yet",
       .line = 3,
       .column = 22 },
     { .name = "floating conversion cannot become integer bits",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nBad: uint64 : uint64(double(1.5));\n",
+      .source = "package facts\nBad: u64 : u64(f64(1.5));\n",
       .message = "floating-to-integer constant conversion is not supported yet",
       .line = 2,
-      .column = 22 },
+      .column = 16 },
     { .name = "floating shift count cannot become integer bits",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nWide: double : 1.5;\nBad: int : 1 << Wide;\n",
+      .source = "package facts\nWide: f64 : 1.5;\nBad: int : 1 << Wide;\n",
       .message = "constant value must be an integer expression",
       .line = 3,
       .column = 17 },
     { .name = "floating binary constant initializer remains unsupported",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nBad: double : 1.0 + 2.0;\n",
+      .source = "package facts\nBad: f64 : 1.0 + 2.0;\n",
       .message = "floating constant initializer is not supported yet",
       .line = 2,
-      .column = 15 },
+      .column = 12 },
 };
 enum
 {
@@ -4433,7 +4724,9 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length, bool h
 }
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
-static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
+/* Stage zero's packages for the sample, linked against the fixture's
+ * natives, and its facts package. */
+static authoring_packages *oracle_packages(const sample *s, const authoring_package **root)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
@@ -4441,7 +4734,7 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
                                                 .files = inputs,
                                                 .file_count = count };
     source_package_snapshot *snapshot = source_package_snapshot_new(&options);
-    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
+    assert(snapshot && !source_package_snapshot_error_at(snapshot));
     script_lower_bindings bindings = authoring_native_bindings(fixture.native);
     authoring_packages *packages = authoring_packages_prepare(
         snapshot,
@@ -4450,15 +4743,23 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
         BEHAVIOR_BYTECODE,
         NULL
     );
-    REQUIRE(packages && !authoring_packages_valid(packages));
-    const authoring_package *root = NULL;
+    assert(packages);
+    *root = NULL;
     for (int p = 0; p < authoring_packages_count(packages); p++) {
         const authoring_package *candidate = authoring_packages_at(packages, p);
         if (!strcmp(candidate->identity, "project:facts")) {
-            root = candidate;
+            *root = candidate;
         }
     }
-    REQUIRE(root && root->diagnostic_count);
+    assert(*root);
+    return packages;
+}
+static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
+{
+    const authoring_package *root;
+    authoring_packages *packages = oracle_packages(s, &root);
+    REQUIRE(!authoring_packages_valid(packages));
+    REQUIRE(root->diagnostic_count);
     const script_diagnostic *expected = &root->diagnostics[0];
     bool same = !strcmp(expected->message, s->oracle_message ? s->oracle_message : message) &&
                 expected->range.line == line && expected->range.column == column;
@@ -4520,6 +4821,218 @@ static bool rejects_malformed_effects()
         arena_free(&detached);
     }
     return true;
+}
+enum
+{
+    TRACED_WATCHES = 64
+};
+typedef struct
+{
+    int start, end, ordinal;
+    bool output;
+    pin_type type;
+    uint64_t bits;
+} traced_watch;
+/* The watches one call delivers, in order, with each scalar payload's bits. */
+typedef struct
+{
+    traced_watch watches[TRACED_WATCHES];
+    int count;
+    bool overflow;
+} watch_trace;
+static uint64_t payload_bits(const pin_value *value)
+{
+    if (value->container != PIN_CONTAINER_SINGLE) {
+        return 0;
+    }
+    uint32_t single;
+    switch (value->type) {
+        case PIN_BOOL: return value->b;
+        case PIN_I32: return (uint32_t)value->i;
+        case PIN_F32: memcpy(&single, &value->f, sizeof single); return single;
+        case PIN_I64:
+        case PIN_U64:
+        case PIN_F64: return value->u64;
+        default: return 0;
+    }
+}
+static void trace_watch(
+    void *user,
+    behavior_function_context *,
+    const behavior_source_watch *watch,
+    const pin_value *value
+)
+{
+    watch_trace *trace = user;
+    if (trace->count == TRACED_WATCHES) {
+        trace->overflow = true;
+        return;
+    }
+    trace->watches[trace->count++] = (traced_watch){
+        .start = watch->origin.start,
+        .end = watch->origin.end,
+        .ordinal = watch->ordinal,
+        .output = watch->output,
+        .type = value ? value->type : PIN_FLOW,
+        .bits = value ? payload_bits(value) : 0,
+    };
+}
+/* Runs `function`, which takes no arguments and returns one value, from a
+ * closure linked with the probe natives, tracing the watches it delivers. */
+static bool traced_call(
+    const unsigned char *bytes,
+    size_t length,
+    const char *function,
+    int backend,
+    watch_trace *trace,
+    int *status,
+    pin_value *output
+)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    const behavior_function *body = NULL;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int f = 0; f < execution_module_function_count(module); f++) {
+            execution_module_function_info info = execution_module_function_at(module, f);
+            if (info.id == function_id(function)) {
+                body = info.body;
+            }
+        }
+    }
+    REQUIRE(body && body->argument_count == 0 && body->result_count == 1);
+    arena storage = { 0 };
+    behavior_function_activation activation = { 0 };
+    bool resumable = behavior_function_resumable(body);
+    if (resumable) {
+        behavior_function_activation_init(body, &activation);
+    }
+    *output = body->result_defaults[0];
+    behavior_function_prepare_results(body, output, &storage);
+    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                          .results = output,
+                                          .budget = TARGET_BUDGET,
+                                          .source_debug_user = trace,
+                                          .source_capture = trace_watch };
+    behavior_function_bind_storage(&context, &storage);
+    bool bound = behavior_function_bind(body, &context, NULL, 0);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    *status = bound ? behavior_function_run(body, &context, backend != 0)
+                    : FLOW_ERR_ARGUMENT;
+    behavior_run_scope_end(&runs);
+    if (*status == FLOW_OK && !context.returned) {
+        *status = FLOW_ERR_ARGUMENT;
+    }
+    *output = (pin_value){ .type = output->type, .u64 = payload_bits(output) };
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(bound && !trace->overflow);
+    /* The call ran on the backend it selected, inspected, with no fallback. */
+    const behavior_run_counts *n = &runs.counts;
+    uint64_t compiled = n->sljit_entries + n->wasm_entries;
+    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
+    REQUIRE(
+        backend ? compiled > 0 && !n->bytecode_entries &&
+                      n->inspected_sljit_entries + n->inspected_wasm_entries == compiled
+                : n->bytecode_entries > 0 && !compiled
+    );
+    return true;
+}
+static bool same_traced(const traced_watch *x, const traced_watch *y)
+{
+    return x->start == y->start && x->end == y->end && x->ordinal == y->ordinal &&
+           x->output == y->output && x->type == y->type && x->bits == y->bits;
+}
+static void print_traced(const char *compiler, int index, const traced_watch *w)
+{
+    fprintf(
+        stderr,
+        "  %s watch %d at %d..%d ordinal %d%s type %d bits %llx\n",
+        compiler,
+        index,
+        w->start,
+        w->end,
+        w->ordinal,
+        w->output ? " output" : "",
+        (int)w->type,
+        (unsigned long long)w->bits
+    );
+}
+static bool same_trace(const watch_trace *expected, const watch_trace *actual)
+{
+    bool same = expected->count == actual->count;
+    for (int i = 0; same && i < expected->count; i++) {
+        same = same_traced(&expected->watches[i], &actual->watches[i]);
+    }
+    for (int i = 0; !same && i < expected->count; i++) {
+        print_traced("stage zero", i, &expected->watches[i]);
+    }
+    for (int i = 0; !same && i < actual->count; i++) {
+        print_traced("stage one", i, &actual->watches[i]);
+    }
+    return same;
+}
+/* Each traced call returns what stage zero's does and delivers its watches,
+ * on both backends. */
+static bool traces_like_oracle(const unsigned char *bytes, size_t length, const sample *s)
+{
+    unsigned char *expected = NULL;
+    size_t expected_length = 0;
+    REQUIRE(oracle_closure(s, &expected, &expected_length));
+    bool same = true;
+    for (int c = 0; same && c < CALLS && s->calls[c].function; c++) {
+        const sample_call *call = &s->calls[c];
+        REQUIRE(!strcmp(call->arguments, "[]"));
+        for (int backend = 0; same && backend < 2; backend++) {
+            watch_trace traces[2] = { 0 };
+            int statuses[2];
+            pin_value results[2];
+            REQUIRE(traced_call(
+                expected,
+                expected_length,
+                call->function,
+                backend,
+                &traces[0],
+                &statuses[0],
+                &results[0]
+            ));
+            REQUIRE(
+                traced_call(bytes, length, call->function, backend, &traces[1], &statuses[1], &results[1])
+            );
+            char returned[32] = "";
+            if (results[1].type == PIN_I32) {
+                snprintf(returned, sizeof returned, "[%d]", results[1].i);
+            }
+            bool result = call->expected ? statuses[1] == FLOW_OK &&
+                                               results[0].type == results[1].type &&
+                                               results[0].u64 == results[1].u64 &&
+                                               (!s->c_string_probe ||
+                                                !strcmp(returned, call->expected))
+                                         : statuses[1] != FLOW_OK;
+            same = traces[0].count > 0 && statuses[0] == statuses[1] &&
+                   result && same_trace(&traces[0], &traces[1]);
+            if (!same) {
+                fprintf(
+                    stderr,
+                    "package compiler traced %s on backend %d: status %d and "
+                    "%d, %s\n",
+                    call->function,
+                    backend,
+                    statuses[0],
+                    statuses[1],
+                    returned
+                );
+            }
+        }
+    }
+    free(expected);
+    return same;
 }
 static bool run_samples(sample_group group, int b)
 {
@@ -4613,12 +5126,14 @@ static bool run_samples(sample_group group, int b)
                    ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
-        for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
+        bool hosted = !s->traced || !s->c_string_probe;
+        for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
             }
             ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
         }
+        ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
         if (ran && s->update_order) {
             ran = (b || array_update_order(expected, expected_length, s)) &&
                   array_update_order(bytes, length, s) &&
@@ -5336,7 +5851,7 @@ static const behavior_sample behavior_samples[] = {
       "        count += 1\n"
       "        angle += 0.5\n"
       "        if active { self.Spot.x = count; } else { self.Spot.x = "
-      "float(angle); "
+      "number(angle); "
       "}\n"
       "    }\n}\n" },
     { "EntityState",
@@ -5389,7 +5904,7 @@ static const behavior_sample behavior_samples[] = {
       "    Ready :: () -> (Result: bool = false) { return self.Spot.w > 0; }\n"
       "    Read :: () -> (Point: Spot) { Point.x = 3; Point.y = 4; return; }\n"
       "    Bare :: () -> (Point: Spot) { return; }\n"
-      "    Field :: (value: Spot) -> float { return value.x; }\n"
+      "    Field :: (value: Spot) -> number { return value.x; }\n"
       "    Has :: (value: Spot) -> bool { return value.resolved == self; }\n"
       "    on Tick :: () { if Ready() { self.Spot = Read().Point; } }\n"
       "}\n" },
@@ -5409,7 +5924,7 @@ static const behavior_sample behavior_samples[] = {
       "        if !active && label == \"\" { self.Spot.x = count; }\n"
       "    }\n}\n" },
     { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick :: () {\n        steps = 7\n    }\n}\n" },
-    { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
+    { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: number) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
     { "Mark", "Mark :: behavior {\n    on tick :: () {\n        self.Spot.x = 3\n    }\n}\n" },
     { "Sink", "Sink :: behavior {\n    on Tick :: () {\n        self.Spot.y = -2.5\n    }\n}\n" },
     { "Copy", "Copy :: behavior {\n    on Tick :: () {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
@@ -5434,16 +5949,17 @@ static const behavior_sample behavior_samples[] = {
       "        other.Spot = other.Spot\n"
       "    }\n}\n" },
     { "Turn",
-      "Turn :: behavior {\n    angle: float = 0.5\n    on Tick :: "
-      "(DeltaSeconds: float) {\n        "
+      "Turn :: behavior {\n    angle: number = 0.5\n    on Tick :: "
+      "(DeltaSeconds: number) {\n        "
       "angle += DeltaSeconds * 2\n"
       "        self.Spot.x = angle\n    }\n}\n" },
     { "Fold",
-      "Fold :: behavior {\n    Wrap :: (value: float, limit: float) -> float "
+      "Fold :: behavior {\n    Wrap :: (value: number, limit: number) -> "
+      "number "
       "{\n"
       "        if value > limit {\n            return value - limit * 2\n      "
       "  }\n        return value\n    }\n"
-      "    Split :: (value: float) -> (whole: int, rest: float) {\n        "
+      "    Split :: (value: number) -> (whole: int, rest: number) {\n        "
       "whole = int(value)\n"
       "        rest = value - whole\n        return (whole, rest)\n    }\n    "
       "on Tick :: () {\n"
@@ -5451,7 +5967,7 @@ static const behavior_sample behavior_samples[] = {
       "Split(self.Spot.x)\n"
       "        self.Spot.y = parts.whole * 2 + parts.rest\n    }\n}\n" },
     { "Halve",
-      "Halve :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        "
+      "Halve :: behavior {\n    on Tick :: (DeltaSeconds: number) {\n        "
       "self.Spot.y = "
       "self.Spot.w / 2 - DeltaSeconds\n"
       "        if self.Spot.w > 3 {\n            self.Spot.x *= 2.5\n        "
@@ -5463,9 +5979,9 @@ static const behavior_sample behavior_samples[] = {
       "        b = a - 1\n        self.Spot.x = b\n        self.Spot.y = a\n   "
       " }\n}\n" },
     { "Steer",
-      "Steer :: behavior {\n    on Move :: (y: float, x: float) {\n        "
+      "Steer :: behavior {\n    on Move :: (y: number, x: number) {\n        "
       "self.Spot.x = x - y\n        self.Spot.y = y\n    }\n}\n" },
-    { "Lift", "Lift :: behavior {\n    on Move :: (y: float) {\n        self.Spot.y += y\n    }\n}\n" },
+    { "Lift", "Lift :: behavior {\n    on Move :: (y: number) {\n        self.Spot.y += y\n    }\n}\n" },
     { "KeyedEntityState",
       "KeyedEntityState :: behavior {\n"
       "    target: entity\n"
@@ -5515,14 +6031,17 @@ static const behavior_rejection behavior_rejections[] = {
     { "Nonzero :: behavior { target: entity = 1; }",
       "entity default requires null or zero",
       false },
-    { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: float, more: float) "
+    { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: number, more: "
+      "number) "
       "{\n    }\n}\n",
       "Tick has no payload field 'more'",
       true },
-    { "Drift :: behavior {\n    on Move :: (z: float, x: float) {\n    }\n}\n",
+    { "Drift :: behavior {\n    on Move :: (z: number, x: number) {\n    "
+      "}\n}\n",
       "Move has no payload field 'z'",
       true },
-    { "Twice :: behavior {\n    on Move :: (x: float, X: float) {\n    }\n}\n",
+    { "Twice :: behavior {\n    on Move :: (x: number, X: number) {\n    "
+      "}\n}\n",
       "Payload field 'x' is listed twice",
       true },
     { "Scale :: behavior {\n    on Tick :: () {\n        self.Spot *= 2\n    "
@@ -5564,17 +6083,17 @@ typedef struct
 static const type_field spot_fields[] = {
     { .name = "x",
       .type = PIN_F32,
-      .type_name = "float",
+      .type_name = "number",
       .offset = offsetof(spot, x),
       .size = sizeof(float) },
     { .name = "y",
       .type = PIN_F32,
-      .type_name = "float",
+      .type_name = "number",
       .offset = offsetof(spot, y),
       .size = sizeof(float) },
     { .name = "w",
       .type = PIN_F32,
-      .type_name = "float",
+      .type_name = "number",
       .offset = offsetof(spot, w),
       .size = sizeof(float) },
     { .name = "owner",
@@ -6951,11 +7470,11 @@ static bool native_catalog_named_results(const script_catalog *base)
              "        from_record := select_spot(self.Spot)\n"
              "        from_entity := select_spot(entity_seed())\n"
              "        clash := collision_spot(self.Spot)\n"
-             "        small: int8 = 7\n"
+             "        small: i8 = 7\n"
              "        inferred := inferred_number(small)\n"
              "        inferred_copy := inferred\n"
              "        p := select_spot(self.Spot)\n"
-             "        shadowed: float = 0\n"
+             "        shadowed: number = 0\n"
              "        if true {\n"
              "            saved := p\n"
              "            p := select_spot(entity_seed())\n"
@@ -7766,14 +8285,14 @@ TEST_CASE(package_compiler_links_executable_libraries)
         "if Middle.CheckText(label) { self.Spot.y += 1; } } }",
         "Middle :: library { Make :: () -> (point: Leaf.Row) { return "
         "Leaf.Make(); } "
-        "Amount :: () -> float { return Leaf.Amount(); } "
+        "Amount :: () -> number { return Leaf.Amount(); } "
         "OwnerMatches :: () -> bool { return Leaf.OwnerMatches(); } "
         "CheckText :: (value: string) -> bool { return value == \"a\\u0000b\"; "
         "} }",
         "Leaf :: library { Row :: struct { text: string; count: int; } "
         "Make :: (n: int = 7) -> (value: Row) { return {text: \"a\\u0000b\", "
         "count: n}; } "
-        "Amount :: (n: float = 2.5) -> float { return n; } "
+        "Amount :: (n: number = 2.5) -> number { return n; } "
         "OwnerMatches :: () -> bool { return self == globals.Terrain; } }",
         "Unused :: library { Answer :: () -> int { return 19; } }"
     };
@@ -7996,7 +8515,7 @@ TEST_CASE(package_compiler_folds_constants_as_stage_zero_does)
     const char *identity = "behaviors/Nested.chibi";
     const char
         *source = "Nested :: behavior { observed: int = 0; Read :: () -> int { "
-                  "x: int = int(byte(9)) + int(byte(wrap: 300)); "
+                  "x: int = int(u8(9)) + int(u8(wrap: 300)); "
                   "y: int = (4 - 1); return x + y + int(-3) + (2 * 3); } "
                   "on Tick :: () { observed = Read(); } }";
     const library_result result = { identity, 59, 0, 0 };
@@ -8155,16 +8674,16 @@ TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
 {
     REQUIRE(prepare());
     const char *identities[] = { "behaviors/Unsupported.chibi", "libraries/Leaf.chibi" };
+    /* number is f32, so number(7) is a supported conversion; char is the
+     * conversion name stage one still rejects. */
     const char *behaviors[] = { "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return char(65) == char(65); } }",
-                                "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return number(7) == number(7); } }" };
+                                "{ return char(65) == char(65); } }" };
     const char
         *library = "Leaf :: library { char :: (value: int) -> int { return "
                    "value + 5; } "
                    "number :: (value: int) -> int { return value + 6; } "
-                   "float :: (value: int) -> int { return value + 7; } "
-                   "double :: (value: int) -> int { return value + 8; } }";
+                   "f32 :: (value: int) -> int { return value + 7; } "
+                   "f64 :: (value: int) -> int { return value + 8; } }";
     native_capability_definition primitive_definitions[2] = {
         LIBRARY_ALIAS_DEFINITIONS[0],
         LIBRARY_ALIAS_DEFINITIONS[1]
@@ -8211,7 +8730,7 @@ TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
     /* A floating conversion converts, ahead of a library's function. */
     const char *converted[] = {
         "Unsupported :: behavior { observed: int = 0; "
-        "on Tick :: () { observed = int(double(7)) + int(float(1)); } }",
+        "on Tick :: () { observed = int(f64(7)) + int(number(1)); } }",
         library
     };
     const library_result result = { identities[0], 8, 0, 0 };
@@ -8820,6 +9339,120 @@ TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected
         execution_module_free(expected[b]);
     }
     REQUIRE(alike);
+    return true;
+}
+/* Whether `actual` delivers `expected`'s watches, and those of each source
+ * span in the same order. Stage one watches a native's arguments as the
+ * call's inputs after its omitted defaults, where stage zero watches each
+ * argument after its value, so the spans interleave differently. */
+static bool same_trace_by_span(const watch_trace *expected, const watch_trace *actual)
+{
+    bool same = expected->count == actual->count;
+    for (int i = 0; same && i < expected->count; i++) {
+        const traced_watch *x = &expected->watches[i];
+        int before = 0, at = -1;
+        for (int j = 0; j < i; j++) {
+            before += expected->watches[j].start == x->start &&
+                      expected->watches[j].end == x->end;
+        }
+        for (int k = 0; at < 0 && k < actual->count; k++) {
+            const traced_watch *y = &actual->watches[k];
+            if (y->start == x->start && y->end == x->end && !before--) {
+                at = k;
+            }
+        }
+        same = at >= 0 && same_traced(x, &actual->watches[at]);
+    }
+    if (!same) {
+        same_trace(expected, actual);
+    }
+    return same;
+}
+/* Runs default_pair(2), whose omitted f64 default is 5, on the backend the
+ * module selects with no fallback, and traces its watches in order. The trace
+ * has the default as the call's ordinal-1 input and as its own output. */
+static bool action_default_play(execution_module *module, const char *source, bool compiled, watch_trace *trace)
+{
+    const behavior_function *body = module->plan.functions[0].body;
+    arena storage = { 0 };
+    behavior_function_activation activation = { 0 };
+    behavior_function_activation_init(body, &activation);
+    pin_value *variables = xcalloc((size_t)body->variable_count + 1, sizeof *variables);
+    *trace = (watch_trace){ 0 };
+    behavior_function_context context = { .activation = &activation,
+                                          .variables = variables,
+                                          .budget = 1000,
+                                          .source_debug_user = trace,
+                                          .source_capture = trace_watch };
+    behavior_function_bind_storage(&context, &storage);
+    REQUIRE(behavior_function_bind(body, &context, NULL, UINT64_C(0x1234567800000042)));
+    action_record_count = action_trace_count = 0;
+    memset(action_default_calls, 0, sizeof action_default_calls);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    int status = behavior_function_run(body, &context, compiled);
+    behavior_run_scope_end(&runs);
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    free(variables);
+    REQUIRE(status == FLOW_OK && action_record_count == 1 && action_records[0].first == 1);
+    REQUIRE(action_default_calls[0] == 1 && !action_default_calls[1]);
+    const behavior_run_counts *n = &runs.counts;
+    uint64_t entries = n->sljit_entries + n->wasm_entries;
+    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
+    REQUIRE(
+        compiled ? entries > 0 && !n->bytecode_entries &&
+                       n->inspected_sljit_entries + n->inspected_wasm_entries == entries
+                 : n->bytecode_entries > 0 && !entries
+    );
+    double five = 5;
+    uint64_t bits;
+    memcpy(&bits, &five, sizeof bits);
+    int call = (int)(strstr(source, "default_pair") - source), input = 0, output = 0;
+    REQUIRE(!trace->overflow);
+    for (int i = 0; i < trace->count; i++) {
+        const traced_watch *w = &trace->watches[i];
+        if (w->type == PIN_F64 && w->bits == bits) {
+            input += w->start == call && !w->output && w->ordinal == 1;
+            output += w->output;
+        }
+    }
+    REQUIRE(input == 1 && output == 1);
+    return true;
+}
+TEST_CASE(package_compiler_watches_overloaded_native_defaults)
+{
+    REQUIRE(action_table());
+    const char *source = "NativeDefault :: behavior { on Tick :: () { "
+                         "sync_probe(First: default_pair(2)); } }";
+    execution_module *expected[2] = { 0 };
+    watch_trace traces[2];
+    for (int b = 0; b < 2; b++) {
+        expected[b] = action_oracle(source, b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
+        REQUIRE(expected[b] && action_default_play(expected[b], source, b, &traces[b]));
+    }
+    REQUIRE(prepare());
+    bool alike = true;
+    watch_trace backend;
+    for (int b = 0; b < 2; b++) {
+        execution_module *actual = NULL;
+        watch_trace trace;
+        REQUIRE(action_module(b, "NativeDefault", source, &actual));
+        REQUIRE(action_default_play(actual, source, b, &trace));
+        alike &= same_declarations(expected[b], actual) &&
+                 same_points(expected[b], actual) &&
+                 same_watches(expected[b], actual) &&
+                 same_trace_by_span(&traces[b], &trace);
+        /* Both backends deliver stage one's watches in one order. */
+        if (b) {
+            alike &= same_trace(&backend, &trace);
+        }
+        backend = trace;
+        execution_module_free(actual);
+        execution_module_free(expected[b]);
+    }
+    REQUIRE(alike && same_trace(&traces[0], &traces[1]));
     return true;
 }
 typedef struct
@@ -9467,7 +10100,7 @@ static const char GUARD_SOURCE[] = "package scalar\n"
 static const char
     WIDTH_SOURCE[] = "package scalar\n"
                      "Main :: () -> int { return int(Low(298)); }\n"
-                     "Low :: (x: int) -> byte { return byte(wrap: x) << 1; }\n";
+                     "Low :: (x: int) -> u8 { return u8(wrap: x) << 1; }\n";
 /* Calc(3, 4) is -(3 + 4) * ~4, which is 35. */
 static const char ARITHMETIC_SOURCE
     [] = "package scalar\n"
@@ -9692,7 +10325,7 @@ enum
  * returns that field: Make(3) gives 4. */
 static const char RECORD_ROWS_SOURCE
     [] = "package scalar\n"
-         "Point :: struct { x: int; y: float; }\n"
+         "Point :: struct { x: int; y: number; }\n"
          "Main :: () -> int { p := Make(3); p.x += 1; return p.x; }\n"
          "Make :: (x: int) -> Point { return {y: 0.5, x: x}; }\n";
 /* The kind of each of RECORD_ROWS_SOURCE's rows, and the rows edited. */
@@ -9728,7 +10361,7 @@ enum
  * arm is the switch's default, since it has none. */
 static const char UNION_ROWS_SOURCE
     [] = "package scalar\n"
-         "Shape :: union { Dot | Box(w: int, h: float) }\n"
+         "Shape :: union { Dot | Box(w: int, h: number) }\n"
          "Main :: () -> int {\n"
          "    s := Make(3);\n"
          "    if (s is .Dot) { return 0; }\n"
@@ -11337,7 +11970,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 47
+    SCALAR_ACCEPTED_CASES = 50
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -12616,13 +13249,13 @@ static const struct
      * function's result type, also inside an expression and as a built-in
      * conversion's argument. */
     { "shadowed_conversion",
-      "package scalar\nMain :: () -> int { return int8(1); }\n"
-      "int8 :: (v: int) -> int { return v + 1; }\n",
+      "package scalar\nMain :: () -> int { return i8(1); }\n"
+      "i8 :: (v: int) -> int { return v + 1; }\n",
       2 },
     { "shadowed_nested_conversion",
-      "package scalar\nMain :: () -> int { return int(int8(127)) + int8(100) * "
+      "package scalar\nMain :: () -> int { return int(i8(127)) + i8(100) * "
       "2; }\n"
-      "int8 :: (v: int) -> int { return v + 1; }\n",
+      "i8 :: (v: int) -> int { return v + 1; }\n",
       330 },
     /* A default of every kind of type, and a call that gives some
      * arguments and omits the rest: 6 + 20 + 10 + (-1 + 255 + 15 + 2 - 9). */
@@ -12632,21 +13265,21 @@ static const struct
       "Mix :: (a: int = 3, twice: bool = true) -> int { if (twice) { return a "
       "* 2; } "
       "return a; }\n"
-      "Small :: (b: int8 = -1, u: byte = 255, w: uint64 = "
-      "18446744073709551615, f: float = 0.5,\n"
-      "          d: double = -2.25) -> int {\n"
+      "Small :: (b: i8 = -1, u: u8 = 255, w: u64 = "
+      "18446744073709551615, f: number = 0.5,\n"
+      "          d: f64 = -2.25) -> int {\n"
       "    return int(b) + int(u) + int(w >> 60) + int(f * 4.0) + int(d * "
       "4.0);\n"
       "}\n",
       298 },
     /* Records: literals in any field order, copies that leave their source
      * alone, field writes and compound writes, record parameters and
-     * results, nested calls, and a byte field that wraps:
+     * results, nested calls, and a u8 field that wraps:
      * 50 + (206 + 8 - 9 + 1 + 1000) + 5. */
     { "records",
       "package scalar\n"
-      "Vec :: struct { x: float; y: float; }\n"
-      "Cell :: struct { alive: bool; count: byte; weight: double; id: int64; "
+      "Vec :: struct { x: number; y: number; }\n"
+      "Cell :: struct { alive: bool; count: u8; weight: f64; id: i64; "
       "}\n"
       "Main :: () -> int { return Vectors() + Cells() + Walk(); }\n"
       "Add :: (p: Vec, q: Vec) -> Vec { return {x: p.x + q.x, y: p.y + q.y}; "
@@ -12679,7 +13312,7 @@ static const struct
       "}\n"
       "Walk :: () -> int {\n"
       "    a: Vec = {y: -2.0, x: 1.5};\n"
-      "    for (i in 0..<3) { a = Add(a, {y: 1.0, x: float(i)}); }\n"
+      "    for (i in 0..<3) { a = Add(a, {y: 1.0, x: number(i)}); }\n"
       "    return int(a.x) + int(a.y);\n"
       "}\n",
       1261 },
@@ -12697,9 +13330,9 @@ static const struct
      * a loop that breaks and continues: 123 + 111 + (250 + 251 + 252 + 253). */
     { "unions",
       "package scalar\n"
-      "Shape :: union { Empty | Circle(r: float) | Rect(w: int, h: int) | "
-      "Flag(lit: bool, weight: double) }\n"
-      "Step :: union { Stop | Go(n: byte) }\n"
+      "Shape :: union { Empty | Circle(r: number) | Rect(w: int, h: int) | "
+      "Flag(lit: bool, weight: f64) }\n"
+      "Step :: union { Stop | Go(n: u8) }\n"
       "Main :: () -> int { return Areas() + Tests() + Steps(); }\n"
       "Area :: (s: Shape) -> int {\n"
       "    switch s {\n"
@@ -12881,14 +13514,14 @@ typedef struct scalar_width
     bool is_unsigned;
 } scalar_width;
 static const scalar_width WIDTHS[] = {
-    { "int8", "Int8", SCALAR_INT8, 8, false },
-    { "byte", "Byte", SCALAR_BYTE, 8, true },
-    { "int16", "Int16", SCALAR_INT16, 16, false },
-    { "uint16", "Uint16", SCALAR_UINT16, 16, true },
+    { "i8", "Int8", SCALAR_INT8, 8, false },
+    { "u8", "Byte", SCALAR_BYTE, 8, true },
+    { "i16", "Int16", SCALAR_INT16, 16, false },
+    { "u16", "Uint16", SCALAR_UINT16, 16, true },
     { "int", "Int", SCALAR_INT, 32, false },
-    { "uint", "Uint", SCALAR_UINT, 32, true },
-    { "int64", "Int64", SCALAR_INT64, 64, false },
-    { "uint64", "Uint64", SCALAR_WORD, 64, true },
+    { "u32", "Uint", SCALAR_UINT, 32, true },
+    { "i64", "Int64", SCALAR_INT64, 64, false },
+    { "u64", "Uint64", SCALAR_WORD, 64, true },
 };
 enum
 {
@@ -13064,7 +13697,7 @@ static void width_operations_source(const scalar_width *w, char source[WIDTH_SOU
         if (WIDTH_OPERATION[op].parameters == 1) {
             snprintf(parameters, sizeof parameters, "a: %s", w->name);
         } else if (op == WIDTH_SHL || op == WIDTH_SHR) {
-            snprintf(parameters, sizeof parameters, "a: %s, n: uint", w->name);
+            snprintf(parameters, sizeof parameters, "a: %s, n: u32", w->name);
         } else {
             snprintf(parameters, sizeof parameters, "a: %s, b: %s", w->name, w->name);
         }
@@ -13302,7 +13935,7 @@ enum
 };
 static const char *floating_name(int type)
 {
-    return type == SCALAR_FLOAT ? "float" : "double";
+    return type == SCALAR_FLOAT ? "number" : "f64";
 }
 /* The values a floating module's operations take: both zeros, a finite value
  * of each sign, one that rounds, the extremes, both infinities and NaN. */
@@ -13393,8 +14026,8 @@ static void floating_operations_source(int type, char source[WIDTH_SOURCE_BYTES]
         n += snprintf(
             source + n,
             WIDTH_SOURCE_BYTES - (size_t)n,
-            "Widen :: (a: float) -> double { return a; }\nAddDouble :: (a: "
-            "float, b: double) -> double { return a + b; }\n"
+            "Widen :: (a: number) -> f64 { return a; }\nAddDouble :: (a: "
+            "number, b: f64) -> f64 { return a + b; }\n"
         );
     }
     assert(n < WIDTH_SOURCE_BYTES);
@@ -13567,8 +14200,8 @@ static void floating_conversions_source(int type, char source[WIDTH_SOURCE_BYTES
         source + n,
         WIDTH_SOURCE_BYTES - (size_t)n,
         type == SCALAR_FLOAT
-            ? "Narrow :: (a: double) -> float { return float(a); }\n"
-            : "Widen :: (a: float) -> double { return double(a); }\n"
+            ? "Narrow :: (a: f64) -> number { return number(a); }\n"
+            : "Widen :: (a: number) -> f64 { return f64(a); }\n"
     );
     assert(n < WIDTH_SOURCE_BYTES);
 }
@@ -13721,14 +14354,14 @@ static const char CONTROL_SOURCE
          "    a &= 255;\n"
          "    return a;\n"
          "}\n"
-         "Low :: (a: byte, b: byte) -> byte {\n"
+         "Low :: (a: u8, b: u8) -> u8 {\n"
          "    x := a;\n"
          "    x += b;\n"
          "    x *= 3;\n"
          "    x = x >> 1;\n"
          "    return x;\n"
          "}\n"
-         "Far :: (a: byte, n: uint) -> byte {\n"
+         "Far :: (a: u8, n: u32) -> u8 {\n"
          "    x := a;\n"
          "    x = x << n;\n"
          "    y := a;\n"
@@ -13975,7 +14608,7 @@ static const char LOOP_SOURCE
          "    for < i in a..b { h = h * 31 + i; }\n"
          "    return h;\n"
          "}\n"
-         "Bytes :: (a: byte, b: byte) -> int {\n"
+         "Bytes :: (a: u8, b: u8) -> int {\n"
          "    sum := 0;\n"
          "    for i in a..<b { sum += i; }\n"
          "    return sum;\n"
@@ -14207,14 +14840,14 @@ static const char
                       "    }\n"
                       "    return r;\n"
                       "}\n"
-                      "Narrow :: (b: byte) -> int {\n"
+                      "Narrow :: (b: u8) -> int {\n"
                       "    switch b {\n"
                       "        case 0: return 1;\n"
                       "        case 255: return 2;\n"
                       "    }\n"
                       "    return 3;\n"
                       "}\n"
-                      "Long :: (v: int64) -> int {\n"
+                      "Long :: (v: i64) -> int {\n"
                       "    switch v {\n"
                       "        case -1: return 1;\n"
                       "        case 4294967296: return 2;\n"
@@ -15163,6 +15796,7 @@ void test_language_package_compiler_chibi_actions()
     RUN_TEST_CASE(package_compiler_rejects_nonzero_handle_defaults);
     RUN_TEST_CASE(package_compiler_calls_native_actions);
     RUN_TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected);
+    RUN_TEST_CASE(package_compiler_watches_overloaded_native_defaults);
     RUN_TEST_CASE(package_compiler_rejects_native_action_arguments);
     RUN_TEST_CASE(package_compiler_rejects_native_name_collisions);
     RUN_TEST_CASE(package_compiler_watches_native_owner_arguments);
@@ -15367,6 +16001,106 @@ TEST_CASE(native_arguments_reference_contract)
     return true;
 }
 
+/* Stage zero picks native.overload's integer or text overload by the
+ * argument; an untyped number never converts to text, so it cannot pick the
+ * text one. native.kernel's number overload takes literals and typed values
+ * other than i64, which takes the f64 one. */
+TEST_CASE(native_overload_reference_contract)
+{
+    static const struct
+    {
+        const char *source;
+        pin_type parameter;
+        const char *message;
+        int column;
+    } cases[] = {
+        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload((-(2))); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(2.0); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(1e0); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
+        { "package facts\nRun :: (v: int) -> int { return native.kernel(v * "
+          "2); }",
+          PIN_F32 },
+        { "package facts\nRun :: (v: i64) -> int { return native.kernel(v * "
+          "2); }",
+          PIN_F64 },
+        { "package facts\nRun :: (v: f64) -> int { return native.kernel(v); }", PIN_F64 },
+        { "package facts\nRun :: (v: int) -> int { return native.overload(v); "
+          "}",
+          PIN_I32 },
+        { "package facts\nRun :: () -> int { return "
+          "native.overload(\"three\"); }",
+          PIN_STR },
+        { "package facts\nRun :: () -> int { return native.overload(2.5); }",
+          PIN_FLOW,
+          "Numeric literal has a fraction, which int cannot hold",
+          43 },
+        { "package facts\nRun :: () -> int { return "
+          "native.overload(4294967296); }",
+          PIN_FLOW,
+          "Numeric literal is outside the range of int",
+          43 },
+    };
+    native_definition_pack packs[] = { CSTRING_PACK };
+    source_package_input inputs[SAMPLE_INPUTS];
+    sample first = { .source = cases[0].source };
+    int count = sample_inputs(&first, inputs);
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
+    const script_catalog *catalog = native_capabilities_catalog(fixture.native);
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        sample s = { .source = cases[i].source };
+        const authoring_package *root;
+        authoring_packages *packages = oracle_packages(&s, &root);
+        if (cases[i].message) {
+            const script_diagnostic *d = root->diagnostic_count
+                                           ? &root->diagnostics[0]
+                                           : NULL;
+            if (d) {
+                fprintf(
+                    stderr,
+                    "native overload %zu: %s at %d:%d\n",
+                    i,
+                    d->message,
+                    d->range.line,
+                    d->range.column
+                );
+            }
+            bool same = d && !strcmp(d->message, cases[i].message) &&
+                        d->range.line == 2 && d->range.column == cases[i].column;
+            authoring_packages_free(packages);
+            REQUIRE(same);
+            continue;
+        }
+        const script_analysis *analysis = root->analysis;
+        int chosen = 0;
+        for (int e = 0; e < analysis->expression_count; e++) {
+            const script_expression *expression = &analysis->expressions[e];
+            const script_catalog_capability *capability = expression->kind == SCRIPT_EXPR_CALL
+                                                            ? script_catalog_capability_by_id(
+                                                                  catalog,
+                                                                  expression->capability
+                                                              )
+                                                            : NULL;
+            if (capability && capability->parameter_count == 1 &&
+                capability->parameters[0].type.storage == cases[i].parameter) {
+                chosen++;
+            }
+        }
+        bool valid = root->valid && chosen == 1;
+        if (!valid) {
+            fprintf(
+                stderr,
+                "native overload %zu: %s\n",
+                i,
+                root->diagnostic_count ? root->diagnostics[0].message : "other overload"
+            );
+        }
+        authoring_packages_free(packages);
+        REQUIRE(valid);
+    }
+    return true;
+}
 TEST_CASE(native_arguments_authored_contract)
 {
     REQUIRE(prepare());
@@ -15441,6 +16175,7 @@ void test_language_package_compiler_chibi_native_arguments_oracle()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(native_arguments_reference_contract);
+    RUN_TEST_CASE(native_overload_reference_contract);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_native_arguments()

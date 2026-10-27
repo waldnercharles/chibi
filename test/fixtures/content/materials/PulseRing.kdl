@@ -70,11 +70,11 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                         type_name "ShaderVec2"
                         default x=0.0 y=0.0
                     }
-                    Radius id=17 declaration_id=105 type="float" default=35.0
-                    Width id=18 declaration_id=106 type="float" default=3.0
+                    Radius id=17 declaration_id=105 type="number" default=35.0
+                    Width id=18 declaration_id=106 type="number" default=3.0
                 }
                 outputs {
-                    Mask id=19 declaration_id=108 type="float"
+                    Mask id=19 declaration_id=108 type="number"
                 }
             }
             - {
@@ -122,11 +122,11 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                 reference_name "Pulse"
                 reference_asset "ShaderMath"
                 inputs {
-                    Time id=29 declaration_id=61 type="float"
-                    Speed id=30 declaration_id=62 type="float"
+                    Time id=29 declaration_id=61 type="number"
+                    Speed id=30 declaration_id=62 type="number"
                 }
                 outputs {
-                    Brightness id=31 declaration_id=63 type="float"
+                    Brightness id=31 declaration_id=63 type="number"
                 }
             }
             - {

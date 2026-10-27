@@ -596,7 +596,7 @@ TEST_CASE(source_format_component_measures)
 {
     REQUIRE(format(
         "// Fired.\nProjectile :: component{speed : 0 .. 600 u / s\n"
-        "// Pull.\naccel:u/s ^ 2;drift:- 1..1 rad\nlevel:float}"
+        "// Pull.\naccel:u/s ^ 2;drift:- 1..1 rad\nlevel:number}"
     ));
     REQUIRE(!strcmp(
         text,
@@ -606,7 +606,7 @@ TEST_CASE(source_format_component_measures)
         "    // Pull.\n"
         "    accel: u/s^2;\n"
         "    drift: -1..1 rad\n"
-        "    level: float\n"
+        "    level: number\n"
         "}\n"
     ));
     return true;
@@ -617,13 +617,13 @@ TEST_CASE(source_format_measured_signatures)
     REQUIRE(format(
         "Measures :: library{Travel::(speed:number u / s,elapsed:s)->u{return "
         "speed*elapsed;}"
-        "Borrow::(value:ref float charge)->ref float charge{return value;}}"
+        "Borrow::(value:ref number charge)->ref number charge{return value;}}"
     ));
     REQUIRE(strstr(text, "speed: number u/s"));
     REQUIRE(strstr(text, "elapsed: s"));
     REQUIRE(strstr(text, "-> u"));
-    REQUIRE(strstr(text, "value: ref float charge"));
-    REQUIRE(strstr(text, "-> ref float charge"));
+    REQUIRE(strstr(text, "value: ref number charge"));
+    REQUIRE(strstr(text, "-> ref number charge"));
     return true;
 }
 
@@ -664,14 +664,14 @@ TEST_CASE(source_format_system_types_and_control_flow)
 {
     REQUIRE(format(
         "Move :: system(p:Position) without Disabled{query p;\n"
-        "on Tick :: (dt:float){for(i in 0..3){p.x+=float(i);}\n"
+        "on Tick :: (dt:number){for(i in 0..3){p.x+=number(i);}\n"
         "while p.x>0{p.x-=1;} switch (p.mode){case 1: {continue;} "
         "case: {break;}}}\n"
         "F :: (x:int[])->(r:int){return(g(x[0]));}}"
     ));
     REQUIRE(strstr(text, "x: int[]"));
     REQUIRE(strstr(text, "g(x[0])"));
-    REQUIRE(strstr(text, "float(i)"));
+    REQUIRE(strstr(text, "number(i)"));
     return true;
 }
 
@@ -791,17 +791,17 @@ TEST_CASE(source_minimize_drops_redundant_text)
 {
     REQUIRE(minimize(
         "Demo :: library {\n"
-        "    Scale :: (a: float = 0.0, b: float = 2.0) -> (r: float = "
+        "    Scale :: (a: number = 0.0, b: number = 2.0) -> (r: number = "
         "0.0) {\n"
         "        r = a * b;\n"
         "        return;\n"
         "    }\n"
-        "    Twice :: (a: float = 0.0) -> (r: float = 0.0) {\n"
+        "    Twice :: (a: number = 0.0) -> (r: number = 0.0) {\n"
         "        return(a * 2.0);\n"
         "    }\n"
         "    Use :: () -> () {\n"
-        "        x: float = Scale(a: 1.0, b: 2.0);\n"
-        "        y: float = Scale(b: 3.0);\n"
+        "        x: number = Scale(a: 1.0, b: 2.0);\n"
+        "        y: number = Scale(b: 3.0);\n"
         "        if (x > 0) {\n"
         "            x = 1.0;\n"
         "        } else {\n"
@@ -810,12 +810,12 @@ TEST_CASE(source_minimize_drops_redundant_text)
         "    }\n"
         "}\n",
         "Demo :: library {\n"
-        "    Scale :: (a: float = 0.0, b: float = 2.0) -> (r: float = "
+        "    Scale :: (a: number = 0.0, b: number = 2.0) -> (r: number = "
         "0.0) {\n"
         "        r = a * b\n"
         "        return\n"
         "    }\n"
-        "    Twice :: (a: float = 0.0) -> (r: float = 0.0) {\n"
+        "    Twice :: (a: number = 0.0) -> (r: number = 0.0) {\n"
         "        return a * 2.0\n"
         "    }\n"
         "    Use :: () {\n"
@@ -860,12 +860,12 @@ TEST_CASE(source_minimize_reaches_a_fixed_point)
     /* Each round drops only the outermost of nested redundant parentheses. */
     REQUIRE(minimize(
         "Demo :: library {\n"
-        "    Use :: (a: float = 0.0) -> (r: float = 0.0) {\n"
+        "    Use :: (a: number = 0.0) -> (r: number = 0.0) {\n"
         "        return ((((((((((((a))))))))))))\n"
         "    }\n"
         "}\n",
         "Demo :: library {\n"
-        "    Use :: (a: float = 0.0) -> (r: float = 0.0) {\n"
+        "    Use :: (a: number = 0.0) -> (r: number = 0.0) {\n"
         "        return a\n"
         "    }\n"
         "}\n"
@@ -893,24 +893,24 @@ static bool minimize_valid(const script_catalog *in, const char *input, const ch
 
 TEST_CASE(source_minimize_preserves_wrapper_comments)
 {
-    const char *input = "Demo :: library { F :: (a: float) -> (r: float) { "
+    const char *input = "Demo :: library { F :: (a: number) -> (r: number) { "
                         "r = (/* before hé */ a /* after */); return } }";
     REQUIRE(minimize_valid(&catalog, input, input));
     cleanup();
     REQUIRE(minimize_valid(
         &catalog,
-        "Demo :: library { F :: (a: float) -> (r: float) { "
+        "Demo :: library { F :: (a: number) -> (r: number) { "
         "r = (// before\r\n a // after\r\n); return; } }",
-        "Demo :: library { F :: (a: float) -> (r: float) { "
+        "Demo :: library { F :: (a: number) -> (r: number) { "
         "r = (// before\r\n a // after\r\n); return } }"
     ));
     cleanup();
     /* Copied operand comments do not prevent removing outer parentheses. */
     REQUIRE(minimize_valid(
         &catalog,
-        "Demo :: library { F :: (a: float) -> (r: float) { "
+        "Demo :: library { F :: (a: number) -> (r: number) { "
         "r = ((a /* same */ + a /* same */ + a)); return; } }",
-        "Demo :: library { F :: (a: float) -> (r: float) { "
+        "Demo :: library { F :: (a: number) -> (r: number) { "
         "r = a /* same */ + a /* same */ + a; return } }"
     ));
     return true;
@@ -920,22 +920,26 @@ TEST_CASE(source_minimize_preserves_declaration_and_argument_comments)
 {
     REQUIRE(minimize_valid(
         &catalog,
-        "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
+        "Demo :: library { F :: (a: number = 1.0, b: number = 2.0) -> (r: "
+        "number) "
         "{ r = a + b; return } "
-        "Use :: () { x: /* type */ float = F(a: /* label */ 1.0, b: /* "
+        "Use :: () { x: /* type */ number = F(a: /* label */ 1.0, b: /* "
         "default */ 2.0); } }",
-        "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
+        "Demo :: library { F :: (a: number = 1.0, b: number = 2.0) -> (r: "
+        "number) "
         "{ r = a + b; return } "
-        "Use :: () { x: /* type */ float = F(a: /* label */ 1.0, b: /* "
+        "Use :: () { x: /* type */ number = F(a: /* label */ 1.0, b: /* "
         "default */ 2.0) } }"
     ));
     cleanup();
     REQUIRE(minimize_valid(
         &catalog,
-        "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
+        "Demo :: library { F :: (a: number = 1.0, b: number = 2.0) -> (r: "
+        "number) "
         "{ r = a + b; return } "
         "Use :: () { x := F(a: 1.0, /* separator */ b: 2.0); } }",
-        "Demo :: library { F :: (a: float = 1.0, b: float = 2.0) -> (r: float) "
+        "Demo :: library { F :: (a: number = 1.0, b: number = 2.0) -> (r: "
+        "number) "
         "{ r = a + b; return } "
         "Use :: () { x := F(1.0, /* separator */ 2.0) } }"
     ));
@@ -946,11 +950,11 @@ TEST_CASE(source_minimize_preserves_cast_and_storage_comments)
 {
     REQUIRE(minimize_valid(
         &catalog,
-        "Demo :: library { total: retain /* declared */ float = 0.0\n"
-        "F :: () -> (r: float) { r = float(/* cast */ state./* member "
+        "Demo :: library { total: retain /* declared */ number = 0.0\n"
+        "F :: () -> (r: number) { r = number(/* cast */ state./* member "
         "*/total); return; } }",
-        "Demo :: library { total: /* declared */ float = 0.0\n"
-        "F :: () -> (r: float) { r = float(/* cast */ state./* member "
+        "Demo :: library { total: /* declared */ number = 0.0\n"
+        "F :: () -> (r: number) { r = number(/* cast */ state./* member "
         "*/total); return } }"
     ));
     return true;
@@ -966,7 +970,7 @@ TEST_CASE(source_minimize_distinguishes_comments_from_strings)
 
 TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer)
 {
-    const char *input = "Demo :: library { F :: (a: float) -> (r: float) { "
+    const char *input = "Demo :: library { F :: (a: number) -> (r: number) { "
                         "r = (/* before hé */ a /* after */); return } }";
     char *minimized = authoring_source_minimize(input, &catalog, "Demo");
     REQUIRE(minimized && !strcmp(input, minimized));
@@ -1018,20 +1022,20 @@ TEST_CASE(source_minimize_keeps_named_payload_fields)
 {
     REQUIRE(minimize(
         "Demo :: behavior {\n"
-        "    angle: float = 0.0\n"
-        "    on Tick :: (dt: float) {\n"
+        "    angle: number = 0.0\n"
+        "    on Tick :: (dt: number) {\n"
         "        angle = angle + dt\n"
         "    }\n"
-        "    on Tick :: (dt: float s) {\n"
+        "    on Tick :: (dt: number s) {\n"
         "        angle = angle - dt\n"
         "    }\n"
         "}\n",
         "Demo :: behavior {\n"
-        "    angle: float = 0.0\n"
-        "    on Tick :: (dt: float) {\n"
+        "    angle := 0.0\n"
+        "    on Tick :: (dt: number) {\n"
         "        angle = angle + dt\n"
         "    }\n"
-        "    on Tick :: (dt: float s) {\n"
+        "    on Tick :: (dt: number s) {\n"
         "        angle = angle - dt\n"
         "    }\n"
         "}\n"
@@ -1043,26 +1047,26 @@ TEST_CASE(source_minimize_keeps_argument_order)
     /* Arguments run in source order, so out-of-order labels stay. */
     REQUIRE(minimize(
         "Demo :: library {\n"
-        "    Pair :: (a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
+        "    Pair :: (a: number = 0.0, b: number = 0.0) -> (r: number = 0.0) "
         "{\n"
         "        return a - b\n"
         "    }\n"
-        "    Next :: () -> (r: float = 0.0) {\n"
+        "    Next :: () -> (r: number = 0.0) {\n"
         "        return 1.0\n"
         "    }\n"
-        "    Use :: () -> (r: float = 0.0) {\n"
+        "    Use :: () -> (r: number = 0.0) {\n"
         "        return Pair(b: Next(), a: Next())\n"
         "    }\n"
         "}\n",
         "Demo :: library {\n"
-        "    Pair :: (a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
+        "    Pair :: (a: number = 0.0, b: number = 0.0) -> (r: number = 0.0) "
         "{\n"
         "        return a - b\n"
         "    }\n"
-        "    Next :: () -> (r: float = 0.0) {\n"
+        "    Next :: () -> (r: number = 0.0) {\n"
         "        return 1.0\n"
         "    }\n"
-        "    Use :: () -> (r: float = 0.0) {\n"
+        "    Use :: () -> (r: number = 0.0) {\n"
         "        return Pair(b: Next(), a: Next())\n"
         "    }\n"
         "}\n"
@@ -1122,7 +1126,7 @@ TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges)
 
 static const script_catalog_field velocity_field = { .id = 81,
                                                      .name = "x",
-                                                     .type = { .storage = PIN_F64 },
+                                                     .type = { .storage = PIN_F32 },
                                                      .writable = true };
 static const script_catalog_type velocity_type = {
     .id = 80,
@@ -1130,7 +1134,7 @@ static const script_catalog_type velocity_type = {
     .type = { .storage = PIN_STRUCT, .nominal = 80 },
     .fields = &velocity_field,
     .field_count = 1,
-    .size = sizeof(double),
+    .size = sizeof(float),
     .component = true,
     .component_id = 90,
 };
@@ -1141,7 +1145,7 @@ static const script_catalog_parameter present[] = {
     { .name = "Value", .type = { .storage = PIN_BOOL } }
 };
 static const script_catalog_parameter field_write[] = {
-    { .name = "Value", .type = { .storage = PIN_F64 } },
+    { .name = "Value", .type = { .storage = PIN_F32 } },
     { .name = "Target",
       .type = { .storage = PIN_HANDLE, .nominal = 40 },
       .has_default = true,
@@ -1157,15 +1161,15 @@ static const script_catalog_parameter selector[] = {
       .default_owner = true },
 };
 static const script_catalog_parameter reals[] = {
-    { .name = "A", .type = { .storage = PIN_F64 } },
-    { .name = "B", .type = { .storage = PIN_F64 } }
-};
-static const script_catalog_parameter floats[] = {
     { .name = "A", .type = { .storage = PIN_F32 } },
     { .name = "B", .type = { .storage = PIN_F32 } }
 };
+static const script_catalog_parameter wides[] = {
+    { .name = "A", .type = { .storage = PIN_F64 } },
+    { .name = "B", .type = { .storage = PIN_F64 } }
+};
 static const script_catalog_parameter real_result[] = {
-    { .name = "Result", .type = { .storage = PIN_F64 } }
+    { .name = "Result", .type = { .storage = PIN_F32 } }
 };
 static const char *const setter_completion[] = { "Completed" };
 static const script_catalog_capability component_capabilities[] = {
@@ -1240,10 +1244,10 @@ static const script_catalog_capability component_capabilities[] = {
       .result_count = 1,
       .pure = true },
     { .id = 36,
-      .name = "less_float",
+      .name = "less_wide",
       .operator_name = "<",
       .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .parameters = floats,
+      .parameters = wides,
       .parameter_count = 2,
       .results = present,
       .result_count = 1,
@@ -1278,9 +1282,8 @@ static const script_catalog measure_catalog = { .capabilities = measure_capabili
                                                 .capability_count = 2 };
 TEST_CASE(source_minimize_drops_repeated_result_lists)
 {
-    const char
-        *prefix = "Demo :: behavior { saved: double = 0; action update = "
-                  "Measure(); on Tick :: () { update() } ";
+    const char *prefix = "Demo :: behavior { saved: f64 = 0; action update = "
+                         "Measure(); on Tick :: () { update() } ";
     char input[512], expected[512];
     snprintf(input, sizeof input, "%safter update(Value) { saved = Value } }", prefix);
     snprintf(expected, sizeof expected, "%safter update { saved = Value } }", prefix);
@@ -1322,9 +1325,8 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
                  "        e := self\n"
                  "        set_velocity_x(get_velocity().Value.x, e)\n"
                  "        lifted := has_velocity()\n"
-                 "        narrowed := less_float("
-                 "float(get_velocity().Value.x), "
-                 "float(get_velocity().Value.x))\n"
+                 "        widened := less_wide(get_velocity().Value.x, "
+                 "get_velocity().Value.x)\n"
                  "    }\n"
                  "}\n";
     /* Native setters evaluate a non-self entity first, unlike authored calls. */
@@ -1356,7 +1358,7 @@ TEST_CASE(source_migration_preserves_deferred_setter_actions_and_results)
     capabilities[3].parameters = parameters;
     script_catalog native = component_catalog;
     native.capabilities = capabilities;
-    const char *input = "Demo :: behavior { saved: double = 0; "
+    const char *input = "Demo :: behavior { saved: number = 0; "
                         "action update = set_velocity_x(Target: self, Value: "
                         "saved + 1); "
                         "on Tick :: () { update(); } after update { saved = "
@@ -1502,7 +1504,7 @@ TEST_CASE(source_migration_preserves_other_invocation_sensitive_calls)
     caps[multiply].effects = SCRIPT_EFFECT_INVOCATION_READ;
     script_catalog catalog = component_catalog;
     catalog.capabilities = caps;
-    const char *input = "Demo :: behavior { on Tick :: (dt: float) { v := "
+    const char *input = "Demo :: behavior { on Tick :: (dt: number) { v := "
                         "multiply(2.0, 3.0); } }";
     script_analysis_free(state_before);
     script_syntax_free(source);
@@ -1814,11 +1816,12 @@ TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes)
         &catalog,
         "Demo :: system() { total: retain number = 0\n"
         "F :: () -> number { count: retain number = 1\n"
-        "integer: retain int = 1\nfractional: retain float = 1\nreturn count } "
+        "integer: retain int = 1\nfractional: retain number = 1\nreturn count "
+        "} "
         "}",
         "Demo :: system() { total: retain number = 0\n"
         "F :: () -> number { count: retain number = 1\n"
-        "integer: retain = 1\nfractional: retain float = 1\nreturn count } "
+        "integer: retain = 1\nfractional: retain number = 1\nreturn count } "
         "}"
     ));
     cleanup();

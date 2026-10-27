@@ -1,0 +1,9 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-named-binding-chibi
+revision b43d01b1321abfb3ddfe6294314a078bf1f1e38c 0 modified
+Running: named_binding_raw_facts_match (OK) (1.237513 secs)
+Running: named_binding_analyzer_annotations_match (OK) (0.034841 secs)
+Running: named_binding_results_outlive_owners (OK) (0.009874 secs)
+===============================================================
+Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 54246
+Test command wall time: 1.478s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

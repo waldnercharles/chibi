@@ -50,7 +50,10 @@ Unknown or impure host closures remain serial barriers.
 The first eighteen authored tests preserve call definitions/argument order,
 eleven malformed call plans, exact float and NaN payload encodings, unordered
 comparison, saturating conversions and declaration uniqueness, and five rejected
-float/conversion plans. They inspect emitted LLVM text; they do not replace
+float/conversion plans. Thirteen record tests additionally preserve field layout,
+zero initialization, insert/extract and internal value calls, eight malformed
+instructions, exported-record rejection, and overrun/nested/wrapped field tables.
+All thirty-one inspect emitted LLVM text; they do not replace
 native machine-code execution, ABI binding, detached ownership or C harness
 anti-false-consensus checks. The scalar and compiler-fixture selectors remain
 outer-exclusive because they own an authored pool. Correctness cases are fixed,

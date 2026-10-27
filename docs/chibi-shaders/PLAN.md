@@ -58,8 +58,7 @@ them into Opacity.
 
 ```chibi
 Materials :: library {
-    PulseRing :: (sample: Sample, radius: number = 35, width: number = 3,
-                  color: vec3 = vec3(0.05, 0.6, 1)) -> Surface {
+    PulseRing :: (sample: Sample, radius = 35.0, width = 3.0, color = vec3(0.05, 0.6, 1)) -> Surface {
         ring := ShaderMath.RingMask(sample.position, radius, width)
         return {emission: color * ring * ShaderMath.Pulse(sample.time, 2)}
     }
@@ -78,9 +77,18 @@ ShaderMath :: library {
 }
 ```
 
-The `-> Surface` annotation is needed because an untyped record literal has no
-type of its own for the result to be inferred from. Helpers like `Pulse` infer
-their results as usual.
+Two annotations remain, and current `.chibi` requires both:
+
+- Parameter types. Today every callable parameter needs one ("Callable
+  parameters and results require a type", `src/language/callable_headers.c`).
+  The grammar already parses `radius = 35.0`, so S2b infers a parameter's type
+  from its default, as `:=` does for locals. That is inference, not new syntax,
+  and it applies to every function. `sample` has no default, so it keeps
+  `: Sample`.
+- `-> Surface`. A function's result is inferred from its first `return`, but a
+  `{...}` record literal has no type of its own, so the result type cannot be
+  inferred from it. The annotation also marks the function as a material.
+  Helpers like `Pulse` return numbers and infer their results as usual.
 
 `ShaderMath` is an ordinary library. Gameplay code can call `Pulse` too; the
 shader pass checks only the functions a material reaches. The separate
@@ -90,10 +98,10 @@ A shape is a function whose result is `Shape`, a record with the signed
 `distance` and the constant half-extent `bounds` that today's shape assets
 author.
 
-A `material` declaration kind, like `behavior`, would drop the parameter
-annotations and the `-> Surface`, but it adds a keyword that the function form
-does not need. It is listed as P2 in case the function form hits a concrete
-gap.
+A `material` declaration kind, like `behavior`, would supply `Sample` and
+`Surface` from its contract and so drop `: Sample` and `-> Surface` too, but it
+adds a keyword the function form does not need. It is listed as P2 in case the
+function form hits a concrete gap.
 
 ## Shader backend options
 
@@ -116,6 +124,7 @@ measured compile times justify it. C is not recommended.
 | S0 | CPU inspection foundation | `source_debug.[ch]`: source-mapped CPU snapshots of shader IR, with call-site chains and nonfinite flags (#663). Authored provenance policy and a scalar facts-to-IR prototype in `shader_source/` (#671). | none | done |
 | S1 | Compiler facts export | The stage-one compiler exports resolved facts for a reachable function closure: types, ranges, expressions, calls and constants ([typed-facts.md](typed-facts.md)). No private records or bytecode decoding. | Compiler owner. Not the LLVM lane. | not started |
 | S2 | Vector types | `vec2`/`vec3`/`vec4` with arithmetic, `vec * number`, swizzles and the common functions. Needed before any material reads naturally. | stdlib decision D2 (built-in types or library records), pending | decision |
+| S2b | Parameter types from defaults | A parameter with a default and no annotation takes its default's type, in stage zero and stage one, so materials write `radius = 35.0`. An untyped `35` would infer `int` from its spelling. | none | not started |
 | S3 | Shader-domain pass | Checks reachable functions are pure and use shader-supported types and calls; lowers them to `shader_graph` IR with a source map; ranged diagnostics for everything else. Replaces #671's supplied-facts prototype. | S1, S2 | not started |
 | S4 | Material and shape functions | The shader pass recognizes `-> Surface` and `-> Shape` functions, and ordinary libraries replace `shader-libraries/`. In the same package, glTF import writes `.chibi` materials instead of KDL graphs, and a project migration rewrites the 13 KDL graph assets in this repository. Then the KDL graph format and `shader_adapter.c` are removed, and the graph becomes a derived view. | S3 | not started |
 | S5 | Studio | Materials open in the code editor with diagnostics and a live preview; the graph view and parameter overrides keep working; CPU watches come from `source_debug`. Shared navigation in SDK authoring modules. | S4 | not started |

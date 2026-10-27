@@ -21,6 +21,7 @@ on:
       - 'LICENSE.md'
       - 'docs/distribution-licensing.md'
       - '.github/workflows/publish.yml'
+      - '.github/install-ubuntu-dependencies.py'
 
 permissions:
   contents: write
@@ -80,8 +81,7 @@ jobs:
       - name: Install build dependencies
         if: steps.release.outputs.complete != 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          python3 .github/install-ubuntu-dependencies.py --no-install-recommends \
             ninja-build ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev \
             libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev \
             libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev

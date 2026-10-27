@@ -1,8 +1,8 @@
 # Hosted Ubuntu dependency downloads
 
 `install-ubuntu-dependencies.py` changes mirror preference for the three Linux
-dependency steps in `ci.yml`. It copies the runner's sources and mirror list to
-a unique owned `/tmp/chibi-apt-*` directory, preferring
+dependency steps in `ci.yml` and web publishing in `publish.yml`. It copies the
+runner's sources and mirror list to a unique owned `/tmp/chibi-apt-*` directory, preferring
 `https://archive.ubuntu.com/ubuntu/`, then
 `https://security.ubuntu.com/ubuntu/`, and retaining Azure as the last fallback.
 It does not edit `/etc`, change timeouts, remove packages, or change test gates.
@@ -77,3 +77,13 @@ all ordinary gates and independent review; no extra benchmark dispatch is
 needed for this checkpoint. A fast run demonstrates viability, not a guaranteed
 speedup or elimination of the intermittent download tail. Fresh index downloads
 add work on healthy runners; unrelated build and test latency is outside scope.
+
+Web publishing uses the same helper with its existing package list and
+`--no-install-recommends`; its CMake pin, caches and release behavior are unchanged.
+The motivating [web publish job 122074850978](https://github.com/waldnercharles/chibi/actions/runs/40470057262/job/122074850978)
+on main `88ec9dc` spent 11m42s installing dependencies: APT update fetched
+12.6 MB in 1s, but package downloads fetched 38.4 MB in 11min 24s (56.1 kB/s)
+from Azure. Pip installed CMake 4.2.3 in about 1.5s. The workflow runs only on
+main; ordinary PR CI exercises helper fixtures but does not prove the actual
+web publishing install path. Compare its next main run using the same inventory
+and download evidence above before claiming a measured improvement.

@@ -13,6 +13,7 @@
 #include "execution/status.h"
 #include "float_conversion_cases.h"
 #include "language/lower.h"
+#include "language/semantic.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
@@ -41,6 +42,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -49,6 +51,7 @@
 #include <unistd.h>
 #if defined(__linux__) && defined(__x86_64__)
 #include "host/process.h"
+#include "host/stack_overflow.h"
 
 #include <dlfcn.h>
 #include <limits.h>
@@ -110,13 +113,16 @@ typedef enum
  * functions build the arrays they return in their caller's storage, and its
  * Copied function, which assigns its array, does not. A `debug_metadata`
  * sample compares source points and watches with stage zero on both compiler
- * backends. */
+ * backends. A `traced` sample's calls take no arguments and deliver the
+ * watches stage zero's do, in its order and with its values; a traced
+ * `c_string_probe` sample's calls run only that way, because the compiler
+ * host does not link the probe natives, and return int. */
 typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built,
-        same_rejection, c_string_probe, host_effects, update_order, debug_metadata;
+    bool core, updates, boxed, game, moves, aliases, variants, built, same_rejection,
+        c_string_probe, host_effects, update_order, debug_metadata, traced;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -161,6 +167,32 @@ static const char *cstring_pair(arena *storage, const pin_value *arguments, int 
 {
     return cstring_probe(storage, arguments + 1, count - 1, result);
 }
+/* Overloads that report which one ran: number or f64, and an int and an f64
+ * in either order. */
+static const char *first_kernel(arena *, const pin_value *, int, pin_value *result)
+{
+    result->i = 1;
+    return NULL;
+}
+static const char *second_kernel(arena *, const pin_value *, int, pin_value *result)
+{
+    result->i = 2;
+    return NULL;
+}
+static const native_parameter_definition NUMBER_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
+};
+static const native_parameter_definition DOUBLE_INPUT[] = {
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+};
+static const native_parameter_definition INTEGER_DOUBLE_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+};
+static const native_parameter_definition DOUBLE_INTEGER_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+    { .name = "second", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
@@ -169,7 +201,7 @@ static const native_parameter_definition CSTRING_OUTPUT[] = {
       .source_name = SOURCE,                                                   \
       .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
       .inputs = INPUT,                                                         \
-      .input_count = 1,                                                        \
+      .input_count = sizeof INPUT / sizeof *INPUT,                             \
       .outputs = CSTRING_OUTPUT,                                               \
       .output_count = 1,                                                       \
       .completion_output = -1,                                                 \
@@ -191,11 +223,17 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
     PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
     PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
     PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
+    PROBE_DEFINITION("Number Kernel", "native.kernel", NUMBER_INPUT, true),
+    PROBE_DEFINITION("Double Kernel", "native.kernel", DOUBLE_INPUT, true),
+    PROBE_DEFINITION("Integer Double Pair", "native.pair", INTEGER_DOUBLE_INPUT, true),
+    PROBE_DEFINITION("Double Integer Pair", "native.pair", DOUBLE_INTEGER_INPUT, true),
 };
 #undef PROBE_DEFINITION
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
 static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
 static const node_host_call INTEGER_CALL = { .value = integer_probe };
+static const node_host_call FIRST_CALL = { .value = first_kernel };
+static const node_host_call SECOND_CALL = { .value = second_kernel };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
 static const node_access HOST_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
 #define PROBE_BINDING(CANONICAL, CALL, ACCESS)                                 \
@@ -214,6 +252,10 @@ static const native_definition_binding CSTRING_BINDINGS[] = {
     PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Number Kernel", FIRST_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Double Kernel", SECOND_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Integer Double Pair", FIRST_CALL, CSTRING_ACCESS),
+    PROBE_BINDING("Double Integer Pair", SECOND_CALL, CSTRING_ACCESS),
 };
 #undef PROBE_BINDING
 static const native_definition_pack CSTRING_PACK = {
@@ -234,7 +276,7 @@ typedef struct
 static action_record action_records[8];
 static int action_trace[32], action_record_count, action_trace_count;
 static int action_kind_calls[5];
-static int action_number_calls[2];
+static int action_number_calls[2], action_default_calls[2];
 static const pin_string ACTION_TEXT = { .bytes = "a\0\xff"
                                                  "b",
                                         .length = 4 },
@@ -362,12 +404,30 @@ static const char *action_tiny(void *, const pin_value *arguments, pin_value *re
 }
 static const char *action_real(void *, const pin_value *arguments, pin_value *results)
 {
-    if (arguments[0].type != PIN_F64 || arguments[0].d != 256 ||
+    if (arguments[0].type != PIN_F32 || arguments[0].f != 256 ||
         results[0].type != PIN_I32) {
         return "real numeric overload value or header differs";
     }
     action_number_calls[1]++;
-    results[0].i = (int)arguments[0].d;
+    results[0].i = (int)arguments[0].f;
+    return NULL;
+}
+/* default_pair's overloads: an int then an f64 that defaults to 5, and the
+ * reverse. Each reports which one ran. */
+static const char *action_default_first(void *, const pin_value *arguments, pin_value *results)
+{
+    if (arguments[0].type != PIN_I32 || arguments[1].type != PIN_F64 ||
+        arguments[1].d != 5) {
+        return "default pair's first overload value or header differs";
+    }
+    action_default_calls[0]++;
+    results[0].i = 1;
+    return NULL;
+}
+static const char *action_default_second(void *, const pin_value *, pin_value *results)
+{
+    action_default_calls[1]++;
+    results[0].i = 2;
     return NULL;
 }
 static const char *action_ambiguous(void *, const pin_value *arguments, pin_value *)
@@ -412,6 +472,8 @@ static const node_host_call ACTION_CALL = { .invoke = action_probe },
                             ACTION_ASSERT = { .invoke = action_assert },
                             ACTION_TINY = { .invoke = action_tiny },
                             ACTION_REAL = { .invoke = action_real },
+                            ACTION_DEFAULT_FIRST = { .invoke = action_default_first },
+                            ACTION_DEFAULT_SECOND = { .invoke = action_default_second },
                             ACTION_AMBIGUOUS = { .invoke = action_ambiguous },
                             ACTION_AGGREGATE = { .invoke = action_aggregate },
                             ACTION_FAIL = { .context = action_fail };
@@ -437,7 +499,7 @@ static const native_parameter_definition ACTION_INPUT[] = {
             "Gain",
             NATIVE_PARAMETER_DATA,
             PIN_F64,
-            "double",
+            "f64",
             PIN_CONTAINER_SINGLE,
             0,
             0,
@@ -461,7 +523,7 @@ static const native_parameter_definition ACTION_INPUT[] = {
                     "Count",
                     NATIVE_PARAMETER_DATA,
                     PIN_U64,
-                    "uint64",
+                    "u64",
                     PIN_CONTAINER_SINGLE,
                     0,
                     0,
@@ -545,9 +607,25 @@ static const native_parameter_definition ACTION_EXEC[] = { CORE_EXEC_INPUTS(NATI
     CORE_EXEC_INPUTS(NATIVE_PORT)
     { .name = "Condition", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_BOOL, .type_name = "bool" },
 }, ACTION_TINY_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I8, .type_name = "int8" },
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I8, .type_name = "i8" },
 }, ACTION_REAL_INPUT[] = {
-    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "double" },
+    { .name = "value", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F32, .type_name = "number" },
+}, ACTION_DEFAULT_FIRST_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+    { .name = "second",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_F64,
+      .type_name = "f64",
+      .has_default = true,
+      .default_value = { .type = PIN_F64, .d = 5 } },
+}, ACTION_DEFAULT_SECOND_INPUT[] = {
+    { .name = "first", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_F64, .type_name = "f64" },
+    { .name = "second",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_I32,
+      .type_name = "int",
+      .has_default = true,
+      .default_value = { .type = PIN_I32, .i = 5 } },
 };
 static const native_capability_definition ACTION_DEFINITIONS[] = {
     { .canonical_name = "Fixture Synchronous Action",
@@ -705,6 +783,24 @@ static const native_capability_definition ACTION_DEFINITIONS[] = {
       .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
       .completion_output = -1,
       .effects = SCRIPT_EFFECT_HOST },
+    { .canonical_name = "fixture.default_first",
+      .source_name = "default_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = ACTION_DEFAULT_FIRST_INPUT,
+      .input_count = NATIVE_COUNT(ACTION_DEFAULT_FIRST_INPUT),
+      .outputs = CSTRING_OUTPUT,
+      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_HOST },
+    { .canonical_name = "fixture.default_second",
+      .source_name = "default_pair",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = ACTION_DEFAULT_SECOND_INPUT,
+      .input_count = NATIVE_COUNT(ACTION_DEFAULT_SECOND_INPUT),
+      .outputs = CSTRING_OUTPUT,
+      .output_count = NATIVE_COUNT(CSTRING_OUTPUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_HOST },
 };
 static const native_definition_binding ACTION_BINDINGS[] = {
     { .canonical_name = "Fixture Synchronous Action",
@@ -741,6 +837,10 @@ static const native_definition_binding ACTION_BINDINGS[] = {
       .implementation = { .call = &ACTION_TINY, .access = &HOST_ACCESS } },
     { .canonical_name = "fixture.numeric_real",
       .implementation = { .call = &ACTION_REAL, .access = &HOST_ACCESS } },
+    { .canonical_name = "fixture.default_first",
+      .implementation = { .call = &ACTION_DEFAULT_FIRST, .access = &HOST_ACCESS } },
+    { .canonical_name = "fixture.default_second",
+      .implementation = { .call = &ACTION_DEFAULT_SECOND, .access = &HOST_ACCESS } },
 };
 static const native_global_definition ACTION_GLOBALS[] = {
     { .canonical_name = "Fixture Action Self", .source_name = "self", .type = ACTION_ENTITY },
@@ -796,25 +896,25 @@ static const sample samples[] = {
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
                 "Sign: int : -1 << 31;\n"
-                "Small: int8 : (64 << 1) - 1;\n"
-                "Unsigned: uint : 4294967295 >> 1;\n"
+                "Small: i8 : (64 << 1) - 1;\n"
+                "Unsigned: u32 : 4294967295 >> 1;\n"
                 "Floor: int : -3 >> 1;\n"
-                "Wide: int64 : -1 << 63;\n"
-                "Mask: uint64 : ~0;\n"
-                "Low: byte : ~byte(15);\n"
+                "Wide: i64 : -1 << 63;\n"
+                "Mask: u64 : ~0;\n"
+                "Low: u8 : ~u8(15);\n"
                 "Big: int : (1 << 100) >> 98;\n"
-                "Half: int8 : (127 + 1) / 2;\n"
-                "Wrapped: byte : byte(wrap: 300);\n"
+                "Half: i8 : (127 + 1) / 2;\n"
+                "Wrapped: u8 : u8(wrap: 300);\n"
                 "ReadSign :: () -> int { return Sign; }\n"
-                "ReadSmall :: () -> int8 { return Small; }\n"
-                "ReadUnsigned :: () -> uint { return Unsigned; }\n"
+                "ReadSmall :: () -> i8 { return Small; }\n"
+                "ReadUnsigned :: () -> u32 { return Unsigned; }\n"
                 "ReadFloor :: () -> int { return Floor; }\n"
-                "ReadWide :: () -> int64 { return Wide; }\n"
-                "ReadMask :: () -> uint64 { return Mask; }\n"
-                "ReadLow :: () -> byte { return Low; }\n"
+                "ReadWide :: () -> i64 { return Wide; }\n"
+                "ReadMask :: () -> u64 { return Mask; }\n"
+                "ReadLow :: () -> u8 { return Low; }\n"
                 "ReadBig :: () -> int { return Big; }\n"
-                "ReadHalf :: () -> int8 { return Half; }\n"
-                "ReadWrapped :: () -> byte { return Wrapped; }",
+                "ReadHalf :: () -> i8 { return Half; }\n"
+                "ReadWrapped :: () -> u8 { return Wrapped; }",
       .calls = { { .function = "ReadSign", .arguments = "[]", .expected = "[-2147483648]" },
                  { .function = "ReadSmall", .arguments = "[]", .expected = "[127]" },
                  { .function = "ReadUnsigned", .arguments = "[]", .expected = "[2147483647]" },
@@ -853,7 +953,7 @@ static const sample samples[] = {
     { .name = "constant signed shift count",
       .group = TYPE_SAMPLES,
       .source = "package facts\nCount: int : 3;\nBad: int : 1 << Count;",
-      .message = "Shift count must be unsigned; convert it with uint(value)",
+      .message = "Shift count must be unsigned; convert it with u32(value)",
       .line = 3,
       .column = 17 },
     { .name = "comparisons of untyped literals",
@@ -1014,8 +1114,8 @@ static const sample samples[] = {
     { .name = "widened named projection",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Tiny :: () -> (value: int8) { return 7; }\n"
-                "Narrow :: (n: int8) -> int { return int(n); }\n"
+                "Tiny :: () -> (value: i8) { return 7; }\n"
+                "Narrow :: (n: i8) -> int { return int(n); }\n"
                 "Use :: () -> int { n: int = Tiny(); return Narrow(n.value); "
                 "}\n"
                 "Alias :: () -> int { n: int = Tiny(); q := n; "
@@ -1321,13 +1421,13 @@ static const sample samples[] = {
      * stored there converts as stage zero converts it. */
     { .name = "floating fields",
       .source = "package facts\n"
-                "V :: struct { x: float; y: double; n: int; }\n"
-                "Shape :: union { Circle(radius: double) | Dot }\n"
-                "Make :: (x: float, n: int) -> double {\n"
+                "V :: struct { x: number; y: f64; n: int; }\n"
+                "Shape :: union { Circle(radius: f64) | Dot }\n"
+                "Make :: (x: number, n: int) -> f64 {\n"
                 "    v: V = {x: x, y: 2.5, n: n};\n    v.y += v.x;\n    v.x = "
                 "n;\n"
                 "    return v.y + v.x;\n}\n"
-                "Area :: (r: double) -> double {\n"
+                "Area :: (r: f64) -> f64 {\n"
                 "    switch Shape.Circle(r) { case .Circle(radius): return "
                 "radius * radius; case .Dot: return 0.0; }\n"
                 "}\n",
@@ -1337,16 +1437,16 @@ static const sample samples[] = {
      * operands widen to the type that holds both, and records hold them. */
     { .name = "narrow integers",
       .source = "package facts\n"
-                "P :: struct { a: int8; b: uint16; }\n"
-                "Narrow :: (a: int8, b: uint16, c: uint, d: int16) -> int64 {\n"
-                "    x: int8 = a - 1;\n    y: uint = c / 2;\n"
-                "    return int64(x) + int64(b) * 2 + int64(y) - int64(d);\n}\n"
-                "Mixed :: (a: int8, b: byte) -> int { return int(a) + int(b); "
+                "P :: struct { a: i8; b: u16; }\n"
+                "Narrow :: (a: i8, b: u16, c: u32, d: i16) -> i64 {\n"
+                "    x: i8 = a - 1;\n    y: u32 = c / 2;\n"
+                "    return i64(x) + i64(b) * 2 + i64(y) - i64(d);\n}\n"
+                "Mixed :: (a: i8, b: u8) -> int { return int(a) + int(b); "
                 "}\n"
-                "Big :: (a: uint, b: int) -> int64 { return int64(a) + "
-                "int64(b); }\n"
-                "Store :: () -> uint16 { v: uint16 = 65535; return v; }\n"
-                "Make :: (a: int8) -> int { p: P = {a: a, b: 7}; return "
+                "Big :: (a: u32, b: int) -> i64 { return i64(a) + "
+                "i64(b); }\n"
+                "Store :: () -> u16 { v: u16 = 65535; return v; }\n"
+                "Make :: (a: i8) -> int { p: P = {a: a, b: 7}; return "
                 "int(p.a) + int(p.b); }\n",
       .calls = { { .function = "Narrow", .arguments = "[-5,300,9,-7]", .expected = "[605]" },
                  { .function = "Mixed", .arguments = "[-3,200]", .expected = "[197]" },
@@ -1355,44 +1455,44 @@ static const sample samples[] = {
                  { .function = "Make", .arguments = "[-2]", .expected = "[5]" } } },
     { .name = "clamp label",
       .group = TYPE_SAMPLES,
-      .source = "package facts\nClamp :: (v: int) -> byte { return byte(clamp: "
+      .source = "package facts\nClamp :: (v: int) -> u8 { return u8(clamp: "
                 "v); }\n",
       .message = "A conversion argument may only be named wrap",
       .line = 2,
-      .column = 41 },
+      .column = 37 },
     { .name = "mixed integer types",
-      .source = "package facts\nMixed :: (a: int8, b: byte) -> int { return a "
+      .source = "package facts\nMixed :: (a: i8, b: u8) -> int { return a "
                 "+ b; }\n",
-      .message = "Mismatched integer types int8 and byte; convert one operand",
+      .message = "Mismatched integer types i8 and u8; convert one operand",
       .line = 2,
-      .column = 45 },
+      .column = 41 },
     /* Compound arithmetic rejects differing typed integers before assignment
      * widening, both for a local and for a stored field. */
     { .name = "mixed compound assignment",
-      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a += b; "
+      .source = "package facts\nGrow :: (b: u8) -> int { a: int = 1; a += b; "
                 "return a; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 40 },
+      .column = 38 },
     { .name = "mixed compound field assignment",
       .source = "package facts\nNote :: struct { count: int; }\n"
-                "Grow :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "Grow :: (b: u8) -> int { n: Note = {count: 1}; n.count += "
                 "b; return n.count; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 50 },
+      .column = 48 },
     { .name = "compound assignment preserves contextual and explicit operands",
       .debug_metadata = true,
       .source = "package facts\nNote :: struct { count: int; }\n"
-                "Plain :: (b: byte) -> int { a: int = 1; a = b; return a; }\n"
-                "Local :: (b: byte) -> int { a: int = 1; a += int(b); return "
+                "Plain :: (b: u8) -> int { a: int = 1; a = b; return a; }\n"
+                "Local :: (b: u8) -> int { a: int = 1; a += int(b); return "
                 "a; }\n"
                 "Literal :: () -> int { a: int = 1; a += 2; return a; }\n"
-                "Field :: (b: byte) -> int { n: Note = {count: 1}; n.count += "
+                "Field :: (b: u8) -> int { n: Note = {count: 1}; n.count += "
                 "int(b); return n.count; }\n"
                 "FieldLiteral :: () -> int { n: Note = {count: 1}; n.count += "
                 "2; return n.count; }\n"
-                "Shift :: (a: int, count: byte) -> int { return a << count; "
+                "Shift :: (a: int, count: u8) -> int { return a << count; "
                 "}\n",
       .calls = { { .function = "Plain", .arguments = "[2]", .expected = "[2]" },
                  { .function = "Local", .arguments = "[2]", .expected = "[3]" },
@@ -1403,37 +1503,37 @@ static const sample samples[] = {
     { .name = "mixed compound reference assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
-                "Grow :: (a: ref int, b: byte) { a += b; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+                "Grow :: (a: ref int, b: u8) { a += b; }\n",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 33 },
+      .column = 31 },
     { .name = "mixed compound reference field assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Note :: struct { count: int; }\n"
-                "Grow :: (n: ref Note, b: byte) { n.count += b; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+                "Grow :: (n: ref Note, b: u8) { n.count += b; }\n",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 34 },
+      .column = 32 },
     { .name = "mixed compound boxed local assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Touch :: (v: ref int) { v += 0; }\n"
-                "Grow :: (b: byte) -> int { a: int = 1; Touch(ref a); a += b; "
+                "Grow :: (b: u8) -> int { a: int = 1; Touch(ref a); a += b; "
                 "return a; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 54 },
+      .column = 52 },
     { .name = "mixed compound boxed parameter assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Touch :: (v: ref int) { v += 0; }\n"
-                "Grow :: (a: int, b: byte) -> int { Touch(ref a); a += b; "
+                "Grow :: (a: int, b: u8) -> int { Touch(ref a); a += b; "
                 "return "
                 "a; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 50 },
+      .column = 48 },
     { .name = "compound reference and boxed operands preserve effects",
       .debug_metadata = true,
       .group = COLLECTION_SAMPLES,
@@ -1441,20 +1541,20 @@ static const sample samples[] = {
           "package facts\n"
           "Note :: struct { count: int; }\n"
           "Touch :: (v: ref int) { v += 0; }\n"
-          "Bump :: (v: ref int, b: byte) { v += int(b); }\n"
-          "BumpField :: (n: ref Note, b: byte) { n.count += int(b); }\n"
+          "Bump :: (v: ref int, b: u8) { v += int(b); }\n"
+          "BumpField :: (n: ref Note, b: u8) { n.count += int(b); }\n"
           "Source :: (calls: ref int) -> int { calls += 1; return 2; }\n"
-          "Ref :: () -> int { n: int = 1; Bump(ref n, byte(2)); return n; }\n"
+          "Ref :: () -> int { n: int = 1; Bump(ref n, u8(2)); return n; }\n"
           "RefField :: () -> int { n: Note = {count: 1}; BumpField(ref n, "
-          "byte(2)); return n.count; }\n"
-          "Box :: () -> int { n: int = 1; Touch(ref n); n += int(byte(2)); "
+          "u8(2)); return n.count; }\n"
+          "Box :: () -> int { n: int = 1; Touch(ref n); n += int(u8(2)); "
           "return n; }\n"
           "BoxParam :: (n: int) -> int { Touch(ref n); n += 2; return n; }\n"
           "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
           "n.count += Source(ref calls); return n.count * 10 + calls; }\n"
           "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
           "return n; }\n"
-          "Clamp :: (v: int) -> byte { return byte(v); }\n",
+          "Clamp :: (v: int) -> u8 { return u8(v); }\n",
       .calls = { { .function = "Ref", .arguments = "[]", .expected = "[3]" },
                  { .function = "RefField", .arguments = "[]", .expected = "[3]" },
                  { .function = "Box", .arguments = "[]", .expected = "[3]" },
@@ -1463,11 +1563,11 @@ static const sample samples[] = {
                  { .function = "Bits", .arguments = "[3]", .expected = "[11]" },
                  { .function = "Clamp", .arguments = "[300]", .expected = "[255]" } } },
     { .name = "mixed compound bitwise assignment",
-      .source = "package facts\nGrow :: (b: byte) -> int { a: int = 1; a &= b; "
+      .source = "package facts\nGrow :: (b: u8) -> int { a: int = 1; a &= b; "
                 "return a; }\n",
-      .message = "Mismatched integer types int and byte; convert one operand",
+      .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 40 },
+      .column = 38 },
     { .name = "constant division by zero",
       .group = TYPE_SAMPLES,
       .source = "package facts\nRest :: (a: int) -> int { return a % (2 - 2); "
@@ -1490,21 +1590,21 @@ static const sample samples[] = {
       .column = 27 },
     { .name = "conversion outside its type",
       .group = TYPE_SAMPLES,
-      .source = "package facts\nBad: byte : byte(300);\n",
-      .message = "Constant does not fit in byte; use byte(wrap: value)",
+      .source = "package facts\nBad: u8 : u8(300);\n",
+      .message = "Constant does not fit in u8; use u8(wrap: value)",
       .line = 2,
-      .column = 13 },
+      .column = 11 },
     { .name = "negated unsigned constant",
       .group = TYPE_SAMPLES,
-      .source = "package facts\nBad: byte : -byte(1);\n",
+      .source = "package facts\nBad: u8 : -u8(1);\n",
       .message = "Cannot negate an unsigned constant",
       .line = 2,
-      .column = 13 },
+      .column = 11 },
     { .name = "signed shift count",
       .group = TYPE_SAMPLES,
       .source = "package facts\nShift :: (a: int, n: int) -> int { return a << "
                 "n; }\n",
-      .message = "Shift count must be unsigned; convert it with uint(value)",
+      .message = "Shift count must be unsigned; convert it with u32(value)",
       .line = 2,
       .column = 48 },
     /* Integer operations never fail at run time: unsigned negation wraps, a
@@ -1512,8 +1612,8 @@ static const sample samples[] = {
     { .name = "total integer operations",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Negate :: (a: byte) -> byte { return -a; }\n"
-                "Wide :: (a: uint64) -> uint64 { return -a; }\n"
+                "Negate :: (a: u8) -> u8 { return -a; }\n"
+                "Wide :: (a: u64) -> u64 { return -a; }\n"
                 "Far :: (a: int) -> int { return a << 40; }\n"
                 "Fill :: (a: int) -> int { return a >> 40; }\n"
                 "Divide :: (a: int, b: int) -> int { return a / b + a % b; }\n",
@@ -1528,9 +1628,9 @@ static const sample samples[] = {
     { .name = "untyped constant expressions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Count: uint : 3;\n"
-                "Eight :: (x: int64) -> bool { return x == (1 << Count); }\n"
-                "Huge :: (f: double) -> bool { return f / 0 > 1000000.0; }\n",
+                "Count: u32 : 3;\n"
+                "Eight :: (x: i64) -> bool { return x == (1 << Count); }\n"
+                "Huge :: (f: f64) -> bool { return f / 0 > 1000000.0; }\n",
       .calls = { { .function = "Eight", .arguments = "[8]", .expected = "[true]" },
                  { .function = "Huge", .arguments = "[1]", .expected = "[true]" } } },
     /* A shift has its left operand's type, and a count past that type's
@@ -1538,9 +1638,9 @@ static const sample samples[] = {
     { .name = "shift counts clamp",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Literal :: (a: byte) -> byte { return a << 300; }\n"
-                "Counted :: (a: byte, n: uint) -> byte { return a << n; }\n"
-                "Signed :: (a: int8, n: uint64) -> int8 { return a >> n; }\n",
+                "Literal :: (a: u8) -> u8 { return a << 300; }\n"
+                "Counted :: (a: u8, n: u32) -> u8 { return a << n; }\n"
+                "Signed :: (a: i8, n: u64) -> i8 { return a >> n; }\n",
       .calls = { { .function = "Literal", .arguments = "[1]", .expected = "[0]" },
                  { .function = "Counted", .arguments = "[1,300]", .expected = "[0]" },
                  { .function = "Counted", .arguments = "[1,7]", .expected = "[128]" },
@@ -1548,14 +1648,13 @@ static const sample samples[] = {
     /* uint64 and byte have every operator, unsigned ordering and division
      * included, as stage zero computes them. */
     { .name = "unsigned arithmetic",
-      .source =
-          "package facts\n"
-          "Diff :: (a: uint64, b: uint64) -> uint64 { return a - b; }\n"
-          "Less :: (a: uint64, b: uint64) -> bool { return a < b; }\n"
-          "Div :: (a: uint64, b: uint64) -> uint64 { return a / b + a % b; }\n"
-          "Bytes :: (a: byte, b: byte) -> byte { return a + b * 2 - 1; }\n"
-          "Order :: (a: byte, b: byte) -> bool { return a > b && a >= 3; }\n"
-          "Shift :: (a: byte) -> byte { return (a << 1) >> 2; }\n",
+      .source = "package facts\n"
+                "Diff :: (a: u64, b: u64) -> u64 { return a - b; }\n"
+                "Less :: (a: u64, b: u64) -> bool { return a < b; }\n"
+                "Div :: (a: u64, b: u64) -> u64 { return a / b + a % b; }\n"
+                "Bytes :: (a: u8, b: u8) -> u8 { return a + b * 2 - 1; }\n"
+                "Order :: (a: u8, b: u8) -> bool { return a > b && a >= 3; }\n"
+                "Shift :: (a: u8) -> u8 { return (a << 1) >> 2; }\n",
       .calls = { { .function = "Diff", .arguments = "[10,3]", .expected = "[7]" },
                  { .function = "Less", .arguments = "[9223372036854775808,1]", .expected = "[false]" },
                  { .function = "Less", .arguments = "[1,9223372036854775808]", .expected = "[true]" },
@@ -1574,24 +1673,24 @@ static const sample samples[] = {
                 "Area :: Width * Height;\n"
                 "Width :: (Unit << 2) + 1;\n"
                 "Height: int : -(Width - 7) / 2 % 3;\n"
-                "Mask: int64 : ~lib.Bits & 0xFFFF;\n"
-                "Small: byte : 0x10 | 2;\n"
-                "Low: byte : ~0x0F;\n"
+                "Mask: i64 : ~lib.Bits & 0xFFFF;\n"
+                "Small: u8 : 0x10 | 2;\n"
+                "Low: u8 : ~0x0F;\n"
                 "Unit :: 2;\n"
-                "Folded :: () -> int64 { return int64(Area) * 1000 + Mask + "
-                "int64(Small) + int64(Low); }\n",
-      .library = "package lib\npub Bits: int64 : 1 << 40 | 0xF0;\n",
+                "Folded :: () -> i64 { return i64(Area) * 1000 + Mask + "
+                "i64(Small) + i64(Low); }\n",
+      .library = "package lib\npub Bits: i64 : 1 << 40 | 0xF0;\n",
       .calls = { { .function = "Folded", .arguments = "[]", .expected = "[56553]" } } },
     /* An omitted argument takes its parameter's literal default. */
     { .name = "defaults",
       .source = "package facts\n"
-                "Add :: (a: int, b: int = -10, c: int64 = 0x10) -> int64 { "
-                "return int64(a + b) + c; }\n"
+                "Add :: (a: int, b: int = -10, c: i64 = 0x10) -> i64 { "
+                "return i64(a + b) + c; }\n"
                 "Greet :: (name: string = \"you\", loud: bool = true) -> "
                 "string {\n"
                 "    if (loud) { return format_text(\"HI {}\", name); }\n"
                 "    return name;\n}\n"
-                "Use :: () -> int64 { return Add(1) + Add(1, 2) + Add(1, 2, "
+                "Use :: () -> i64 { return Add(1) + Add(1, 2) + Add(1, 2, "
                 "3); }\n"
                 "Hello :: () -> string { return Greet(); }\n",
       .calls = { { .function = "Add", .arguments = "[5,6,7]", .expected = "[18]" },
@@ -1612,7 +1711,7 @@ static const sample samples[] = {
                 "Spaces :: (xs: int[]) -> int {\n"
                 "    total: int = 0;\n"
                 "    for x in xs {\n"
-                "        b := byte(x);\n"
+                "        b := u8(x);\n"
                 "        switch b { case 32: total += 1; case 10: total += "
                 "100; }\n"
                 "    }\n"
@@ -1649,7 +1748,7 @@ static const sample samples[] = {
                 "}\n"
                 "    for < i in first..last { count += 1; }\n"
                 "    return count;\n}\n"
-                "Small :: (b: byte) -> int {\n"
+                "Small :: (b: u8) -> int {\n"
                 "    total: int = 0;\n    for i in 0..b { total += 1; }\n"
                 "    return total;\n}\n"
                 "Keys :: (xs: int[]) -> int {\n"
@@ -1871,7 +1970,7 @@ static const sample samples[] = {
           "ReadGrouped :: (values: (^int)[]) -> int { return values[0]^; }\n"
           "Grouped :: () -> int { value: int = 4; return "
           "ReadGrouped([&value]); }\n"
-          "Widened :: () -> int64 { small: int = 3; wide: int64 = small; "
+          "Widened :: () -> i64 { small: int = 3; wide: i64 = small; "
           "p := &wide; p^ += 2; return p^; }\n"
           "WholeArray :: () -> int { values: int[] = [1, 2]; "
           "p: ^(int[]) = &values; p^ = [8, 9, 10]; "
@@ -1928,9 +2027,9 @@ static const sample samples[] = {
     { .name = "managed pointer widening",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
-                "Widened :: () -> int64 { x: int64 = 0; y: int = 1; p := &x; "
+                "Widened :: () -> i64 { x: i64 = 0; y: int = 1; p := &x; "
                 "x = y; p^ = y + 1; return x; }\n"
-                "Floated :: () -> double { x: double = 0; f: float = 1.5; p := "
+                "Floated :: () -> f64 { x: f64 = 0; f: number = 1.5; p := "
                 "&x; "
                 "p^ = f; return x; }\n",
       .calls = { { .function = "Widened", .arguments = "[]", .expected = "[2]" },
@@ -1940,14 +2039,14 @@ static const sample samples[] = {
     { .name = "managed pointer compound float widening",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
-                "R :: struct { v: double; }\n"
-                "Local :: () -> double { x: double = 1.0; y: float = 2.0; "
+                "R :: struct { v: f64; }\n"
+                "Local :: () -> f64 { x: f64 = 1.0; y: number = 2.0; "
                 "x += y; return x; }\n"
-                "Through :: () -> double { x: double = 1.0; y: float = 2.0; "
+                "Through :: () -> f64 { x: f64 = 1.0; y: number = 2.0; "
                 "p := &x; p^ += y; return x; }\n"
-                "Addressed :: () -> double { x: double = 1.0; y: float = 2.0; "
+                "Addressed :: () -> f64 { x: f64 = 1.0; y: number = 2.0; "
                 "p := &x; x += y; return p^; }\n"
-                "Member :: () -> double { r: R = {v: 1.0}; y: float = 2.0; "
+                "Member :: () -> f64 { r: R = {v: 1.0}; y: number = 2.0; "
                 "p := &r; p.v += y; return r.v; }\n",
       .calls = { { .function = "Local", .arguments = "[]", .expected = "[3.0]" },
                  { .function = "Through", .arguments = "[]", .expected = "[3.0]" },
@@ -1955,8 +2054,8 @@ static const sample samples[] = {
                  { .function = "Member", .arguments = "[]", .expected = "[3.0]" } } },
     { .name = "managed pointer compound narrowing",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\nRun :: () -> float {\n    x: float = 1.0;\n"
-                "    d: double = 2.0;\n    p := &x;\n    p^ += d;\n    return "
+      .source = "package facts\nRun :: () -> number {\n    x: number = 1.0;\n"
+                "    d: f64 = 2.0;\n    p := &x;\n    p^ += d;\n    return "
                 "x;\n}",
       .message = "compound assignment needs number operands of its type",
       .line = 6,
@@ -1965,9 +2064,9 @@ static const sample samples[] = {
      * ordinary local. */
     { .name = "managed pointer compound mixed integers",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\nRun :: () -> int64 {\n    x: int64 = 0;\n"
+      .source = "package facts\nRun :: () -> i64 {\n    x: i64 = 0;\n"
                 "    y: int = 1;\n    p := &x;\n    p^ += y;\n    return x;\n}",
-      .message = "Mismatched integer types int64 and int; convert one operand",
+      .message = "Mismatched integer types i64 and int; convert one operand",
       .line = 6,
       .column = 5 },
     { .name = "nullable pointer condition observes its original type",
@@ -2031,11 +2130,11 @@ static const sample samples[] = {
       .column = 17 },
     { .name = "reference marker on conversion",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\nRun :: () -> int64 {\n    n: int = 1;\n    "
-                "return int64(ref n);\n}",
+      .source = "package facts\nRun :: () -> i64 {\n    n: int = 1;\n    "
+                "return i64(ref n);\n}",
       .message = "ref argument requires a reference parameter",
       .line = 4,
-      .column = 18 },
+      .column = 16 },
     { .name = "reference marker on native",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nRun :: () -> string {\n    n: int = 1;\n    "
@@ -2074,10 +2173,10 @@ static const sample samples[] = {
     { .name = "reference type",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "n: int64 = 1; Bump(ref n); }",
+                "n: i64 = 1; Bump(ref n); }",
       .message = "reference argument differs from the parameter's type",
       .line = 3,
-      .column = 36 },
+      .column = 34 },
     { .name = "unions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -2317,26 +2416,26 @@ static const sample samples[] = {
     { .name = "integers",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Mask: uint64 : 0xFF00000000000000;\n"
-                "Small: byte : 200;\n"
-                "Hash :: (bytes: byte[]) -> uint64 {\n"
-                "    hash: uint64 = 1469598103934665603;\n"
-                "    for (item in bytes) { hash = (hash ^ uint64(item)) * "
+                "Mask: u64 : 0xFF00000000000000;\n"
+                "Small: u8 : 200;\n"
+                "Hash :: (bytes: u8[]) -> u64 {\n"
+                "    hash: u64 = 1469598103934665603;\n"
+                "    for (item in bytes) { hash = (hash ^ u64(item)) * "
                 "1099511628211; }\n"
                 "    return hash;\n}\n"
-                "Bytes :: (n: int) -> byte[] {\n"
-                "    out: byte[] = [1, 2, 255];\n"
-                "    out = append(out, byte(wrap: n));\n"
+                "Bytes :: (n: int) -> u8[] {\n"
+                "    out: u8[] = [1, 2, 255];\n"
+                "    out = append(out, u8(wrap: n));\n"
                 "    out = append(out, Small);\n"
                 "    return out;\n}\n"
                 "High :: (n: int) -> int { mask := Mask; return int(wrap: "
-                "(mask >> 56) + uint64(n)); }\n"
-                "Mixed :: (a: int, b: int64) -> int64 { return int64(a) + b; "
+                "(mask >> 56) + u64(n)); }\n"
+                "Mixed :: (a: int, b: i64) -> i64 { return i64(a) + b; "
                 "}\n"
-                "Store :: (a: int) -> int64 { x: int64 = a; x += 10; x "
+                "Store :: (a: int) -> i64 { x: i64 = a; x += 10; x "
                 "*= 3; return x; }\n"
-                "Narrow :: (v: int64) -> int { return int(v); }\n"
-                "Clamp :: (v: int) -> byte { return byte(v); }",
+                "Narrow :: (v: i64) -> int { return int(v); }\n"
+                "Clamp :: (v: int) -> u8 { return u8(v); }",
       .calls = { { .function = "Hash", .arguments = "[[1,2,3]]", .expected = "[11570874782335668893]" },
                  { .function = "Bytes", .arguments = "[300]", .expected = "[[1,2,255,44,200]]" },
                  { .function = "High", .arguments = "[1]", .expected = "[256]" },
@@ -2349,17 +2448,17 @@ static const sample samples[] = {
     { .name = "wide values",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Wide: int64 : -5000000000;\n"
-                "Tag :: union { Bits(value: uint64) | None }\n"
-                "Shifts :: (n: int) -> uint64 { v := uint64(n); return "
+                "Wide: i64 : -5000000000;\n"
+                "Tag :: union { Bits(value: u64) | None }\n"
+                "Shifts :: (n: int) -> u64 { v := u64(n); return "
                 "(v << 4) | (v >> 60) & 0xF; }\n"
-                "Equal :: (a: int, b: int) -> bool { return uint64(a) "
-                "== uint64(b) && uint64(a) != 0; }\n"
-                "Twice :: () -> int64 { wide := Wide; return wide * 2; }\n"
-                "Negative :: (n: int64) -> bool { return n < 0; }\n"
-                "Mk :: (v: uint64) -> Tag { return Tag.Bits(v); }\n"
-                "Pick :: (n: int) -> uint64 {\n"
-                "    t := Mk(uint64(n) * 1000000007);\n"
+                "Equal :: (a: int, b: int) -> bool { return u64(a) "
+                "== u64(b) && u64(a) != 0; }\n"
+                "Twice :: () -> i64 { wide := Wide; return wide * 2; }\n"
+                "Negative :: (n: i64) -> bool { return n < 0; }\n"
+                "Mk :: (v: u64) -> Tag { return Tag.Bits(v); }\n"
+                "Pick :: (n: int) -> u64 {\n"
+                "    t := Mk(u64(n) * 1000000007);\n"
                 "    switch t { case .Bits(value): return value; case .None: "
                 "return 0; }\n"
                 "    return 0;\n}",
@@ -2371,23 +2470,23 @@ static const sample samples[] = {
     { .name = "wide records",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Entry :: struct { flag: bool; id: uint64; small: byte; "
-                "count: int; delta: int64; name: string; }\n"
+                "Entry :: struct { flag: bool; id: u64; small: u8; "
+                "count: int; delta: i64; name: string; }\n"
                 "Make :: (n: int) -> Entry {\n"
-                "    e: Entry = {flag: n > 0, id: uint64(n) * 1000000007, "
-                "small: byte(wrap: n), count: n, delta: int64(n) - "
+                "    e: Entry = {flag: n > 0, id: u64(n) * 1000000007, "
+                "small: u8(wrap: n), count: n, delta: i64(n) - "
                 "5000000000, name: \"e\"};\n"
                 "    return e;\n}\n"
-                "Mix :: (e: Entry) -> uint64 { return (e.id ^ "
-                "uint64(e.small)) + uint64(e.count); }\n"
+                "Mix :: (e: Entry) -> u64 { return (e.id ^ "
+                "u64(e.small)) + u64(e.count); }\n"
                 "Bump :: (e: Entry) -> Entry {\n"
                 "    out := e;\n    out.id += 1;\n    out.small = 7;\n"
                 "    out.delta *= 2;\n    return out;\n}\n"
-                "Total :: (n: int) -> int64 {\n"
+                "Total :: (n: int) -> i64 {\n"
                 "    es: Entry[] = [];\n    i: int = 0;\n"
                 "    while (i < n) { es = append(es, Make(i)); i += 1; }\n"
-                "    total: int64 = 0;\n"
-                "    for (e in es) { total += e.delta + int64(e.small); }\n"
+                "    total: i64 = 0;\n"
+                "    for (e in es) { total += e.delta + i64(e.small); }\n"
                 "    return total;\n}",
       .calls = { { .function = "Make",
                    .arguments = "[3]",
@@ -2426,7 +2525,7 @@ static const sample samples[] = {
                 "\"yy\", \"zzz\"]; return length(words); }\n"
                 "Points :: () -> int { p: Point = {x: 1, y: 2}; points "
                 ":= [p, p]; return points[1].y + length(points); }\n"
-                "Wide :: () -> uint64 { one: uint64 = 1; bits := [one, 2, "
+                "Wide :: () -> u64 { one: u64 = 1; bits := [one, 2, "
                 "0xFF]; "
                 "return bits[1] + bits[2]; }",
       .calls = { { .function = "Sizes", .arguments = "[3]", .expected = "[73]" },
@@ -2492,8 +2591,8 @@ static const sample samples[] = {
                 "format_text(\"{}:{}\", n, name); }\n"
                 "Plain :: () -> string { return format_text(\"plain\"); "
                 "}\n"
-                "Mixed :: (flag: bool) -> string { big: uint64 = "
-                "0xFFFFFFFFFFFFFFFF; small: int64 = -3; return "
+                "Mixed :: (flag: bool) -> string { big: u64 = "
+                "0xFFFFFFFFFFFFFFFF; small: i64 = -3; return "
                 "format_text(\"{} {} {}\", flag, big, small); }",
       .calls = { { .function = "Label", .arguments = "[3,\"x\"]", .expected = "[\"3:x\"]" },
                  { .function = "Plain", .arguments = "[]", .expected = "[\"plain\"]" },
@@ -2545,7 +2644,7 @@ static const sample samples[] = {
                 "    note.count *= 2;\n"
                 "    note.open = true;\n"
                 "    stamped := Stamp(note, 7);\n"
-                "    b: byte = 3;\n"
+                "    b: u8 = 3;\n"
                 "    copy.count = b;\n"
                 "    copy.count += int(b);\n"
                 "    return format_text(\"{} {} {} {} {} {}\", note.text, "
@@ -2688,8 +2787,8 @@ static const sample samples[] = {
     { .name = "untyped array",
       .source = "package facts\nOne :: () -> int { xs := [1]; return 0; "
                 "}",
-      .message = "an untyped number is a double; give the array an integer "
-                 "type",
+      .message = "an untyped number needs a type; give the array an "
+                 "integer type",
       .line = 2,
       .column = 27 },
     { .name = "unknown function",
@@ -2738,10 +2837,10 @@ static const sample samples[] = {
       .line = 3,
       .column = 27 },
     { .name = "multiplication overflow",
-      .source = "package facts\nA: int64 : -1 * -9223372036854775808;",
-      .message = "Constant value is outside the range of int64",
+      .source = "package facts\nA: i64 : -1 * -9223372036854775808;",
+      .message = "Constant value is outside the range of i64",
       .line = 2,
-      .column = 12 },
+      .column = 10 },
     { .name = "range assignment",
       .source = "package facts\nOne :: () -> int { for i in 0..3 { i = 1; } "
                 "return 0; }",
@@ -2922,23 +3021,23 @@ static const sample samples[] = {
       .message = "Duplicate declaration 'n'",
       .line = 3,
       .column = 56 },
-    { .name = "signed with uint64",
-      .source = "package facts\nOne :: (a: int, b: uint64) -> uint64 { "
+    { .name = "signed with u64",
+      .source = "package facts\nOne :: (a: int, b: u64) -> u64 { "
                 "return a + b; }",
-      .message = "Mismatched integer types int and uint64; convert one operand",
+      .message = "Mismatched integer types int and u64; convert one operand",
       .line = 2,
-      .column = 47 },
-    { .name = "byte literal range",
-      .source = "package facts\nOne :: () -> byte { return 256; }",
-      .message = "Numeric literal is outside the range of byte",
+      .column = 41 },
+    { .name = "u8 literal range",
+      .source = "package facts\nOne :: () -> u8 { return 256; }",
+      .message = "Numeric literal is outside the range of u8",
       .line = 2,
-      .column = 28 },
-    { .name = "negative uint64",
-      .source = "package facts\nOne :: () -> uint64 { x: uint64 = -1; "
+      .column = 26 },
+    { .name = "negative u64",
+      .source = "package facts\nOne :: () -> u64 { x: u64 = -1; "
                 "return x; }",
-      .message = "Numeric literal is outside the range of uint64",
+      .message = "Numeric literal is outside the range of u64",
       .line = 2,
-      .column = 35 },
+      .column = 29 },
     { .name = "inferred numeric locals",
       .source = "package facts\n"
                 "Bump :: (x: ref int) { x += 1; }\n"
@@ -2947,11 +3046,11 @@ static const sample samples[] = {
                 "Index :: () -> int { x := 0; xs: int[] = [4, 7]; x += 1; "
                 "xs[x] = 9; return xs[x] + x; }\n"
                 "Negative :: () -> int { x := -1; x += 2; return x; }\n"
-                "Wide :: () -> int64 { x := 2147483648; x += 1; return x; }\n"
-                "Maximum :: () -> uint64 { x := 18446744073709551615; return "
+                "Wide :: () -> i64 { x := 2147483648; x += 1; return x; }\n"
+                "Maximum :: () -> u64 { x := 18446744073709551615; return "
                 "x; }\n"
-                "Decimal :: () -> double { x := 0.5; x += 0.25; return x; }\n"
-                "Exponent :: () -> double { x := 1e3; return x; }",
+                "Decimal :: () -> number { x := 0.5; x += 0.25; return x; }\n"
+                "Exponent :: () -> number { x := 1e3; return x; }",
       .calls = { { .function = "ByReference", .arguments = "[]", .expected = "[1]" },
                  { .function = "One", .arguments = "[]", .expected = "[5]" },
                  { .function = "Index", .arguments = "[]", .expected = "[10]" },
@@ -2960,35 +3059,35 @@ static const sample samples[] = {
                  { .function = "Maximum", .arguments = "[]", .expected = "[18446744073709551615]" },
                  { .function = "Decimal", .arguments = "[]", .expected = "[0.75]" },
                  { .function = "Exponent", .arguments = "[]", .expected = "[1000.0]" } } },
-    { .name = "inferred integer refuses float assignment",
+    { .name = "inferred integer refuses number assignment",
       .source = "package facts\nOne :: () -> int { x := 0; fraction := 0.5; x "
                 "= fraction; return x; }",
       .message = "assigned value differs from its local",
       .line = 2,
       .column = 45 },
     { .name = "conversion arity",
-      .source = "package facts\nOne :: () -> byte { return byte(1, 2); "
+      .source = "package facts\nOne :: () -> u8 { return u8(1, 2); "
                 "}",
       .message = "Conversion takes one value",
       .line = 2,
-      .column = 28 },
+      .column = 26 },
     { .name = "conversion name",
-      .source = "package facts\nOne :: () -> byte { return byte(round: "
+      .source = "package facts\nOne :: () -> u8 { return u8(round: "
                 "1); }",
       .message = "A conversion argument may only be named wrap",
       .line = 2,
-      .column = 33 },
+      .column = 29 },
     { .name = "floating constant",
       .source = "package facts\nHalf :: 0.5;",
       .message = "only integer constants are supported yet",
       .line = 2,
       .column = 9 },
-    { .name = "negative zero byte",
-      .source = "package facts\nOne :: () -> byte { x: byte = -0; "
+    { .name = "negative zero u8",
+      .source = "package facts\nOne :: () -> u8 { x: u8 = -0; "
                 "return x; }",
-      .message = "Numeric literal is outside the range of byte",
+      .message = "Numeric literal is outside the range of u8",
       .line = 2,
-      .column = 31 },
+      .column = 27 },
     /* Unary complements are classified as literal-shaped for debug metadata.
      * Their folded value still needs one watch, including through grouping. */
     { .name = "folded complement retains its watch",
@@ -3149,41 +3248,236 @@ static const sample samples[] = {
                 "cstring_probe((\"\\u0000b\")); }",
       .message = "C-string boundary 'value' cannot accept NUL at byte 0",
       .same_rejection = true },
+    /* A grouped or signed literal takes a floating type as a literal does,
+     * and each sign around it is watched. */
+    { .name = "grouped signed floating literals",
+      .source = "package facts\n"
+                "Scale :: (x: f64) -> f64 { return x * -(1.5) + x * (-(-2.5)); "
+                "}\n"
+                "Half :: (x: number) -> number { return x * -(+(-(-(0.5)))); "
+                "}\n",
+      .calls = { { .function = "Scale", .arguments = "[2]", .expected = "[2.0]" },
+                 { .function = "Half", .arguments = "[4]", .expected = "[-2.0]" } } },
+    /* A floating literal's outer signs are each watched once; stage zero
+     * folds an integer one, a whole decimal too, to one constant. */
+    { .name = "grouped signed literal results",
+      .traced = true,
+      .source = "package facts\n"
+                "Half :: () -> f64 { return -(1.5); }\n"
+                "Back :: () -> f64 { return -(-(1.5)); }\n"
+                "Two :: () -> int { return -(2); }\n"
+                "Three :: () -> int { return -(+(-(3))); }\n"
+                "Plus :: () -> int { return +(-(4)); }\n"
+                "Whole :: () -> int { return -(+(2.0)); }\n"
+                "Unsigned :: () -> u8 { return +(2e0); }\n",
+      .calls = { { .function = "Half", .arguments = "[]", .expected = "[-1.5]" },
+                 { .function = "Back", .arguments = "[]", .expected = "[1.5]" },
+                 { .function = "Two", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Three", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Plus", .arguments = "[]", .expected = "[-4]" },
+                 { .function = "Whole", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Unsigned", .arguments = "[]", .expected = "[2]" } } },
+    /* An overloaded native's untyped literal argument takes the overload
+     * stage zero picks (native_overload_reference_contract) and that
+     * overload's type, grouped, signed or a whole decimal. Stage zero folds a
+     * grouped one and its signs to one constant. */
+    { .name = "untyped literal overload argument",
+      .c_string_probe = true,
+      .traced = true,
+      .source = "package facts\n"
+                "Run :: () -> int { return native.overload(2); }\n"
+                "Grouped :: () -> int { return native.overload((-(2))); }\n"
+                "Whole :: () -> int { return native.overload(2.0); }\n"
+                "Exponent :: () -> int { return native.overload(1e0); }\n"
+                "Zero :: () -> int { return native.overload(0.0); }\n"
+                "Signed :: () -> int { return native.overload(-0.0); }\n"
+                "Signs :: () -> int { return native.overload(+(-(-(2)))); }\n"
+                "Decimal :: () -> int { return native.overload(-(2.0)); }\n",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Grouped", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Signs", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[-2]" },
+                 { .function = "Whole", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Exponent", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Zero", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Signed", .arguments = "[]", .expected = "[0]" } } },
+    /* Typed arguments choose the kernel their width prefers, i64 the f64
+     * one and the rest number, and literals take the number one. */
+    { .name = "typed overload kernels",
+      .c_string_probe = true,
+      .traced = true,
+      .source =
+          "package facts\n"
+          "Literal :: () -> int { return native.kernel(2); }\n"
+          "Decimal :: () -> int { return native.kernel(2.5); }\n"
+          "Integer :: () -> int { v: int = 3; return native.kernel(v * 2); }\n"
+          "Wide :: () -> int { v: i64 = 3; return native.kernel(v * 2); }\n"
+          "Single :: () -> int { v: number = 1.5; return native.kernel(v); }\n"
+          "Double :: () -> int { v: f64 = 1.5; return native.kernel(v); }\n",
+      .calls = { { .function = "Literal", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Decimal", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Integer", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Single", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Double", .arguments = "[]", .expected = "[2]" } } },
+    /* An argument before a call the overload depends on is still typed,
+     * converted and watched first, when the call has an effect and when it
+     * fails. */
+    { .name = "overload argument order",
+      .c_string_probe = true,
+      .traced = true,
+      .source = "package facts\n"
+                "Later :: () -> int { return native.probe(\"ab\"); }\n"
+                "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
+                "Before :: () -> int { return native.pair(2, Later()); }\n"
+                "After :: () -> int { return native.pair(Later(), 2); }\n"
+                "Stops :: () -> int { return native.pair(-(2), Fails()); }\n"
+                "Floating :: () -> int { return native.pair(+(-(2.5)), "
+                "Later()); }\n"
+                "Local :: () -> int { v: f64 = 2.5; return native.pair(v, "
+                "Later()); }\n"
+                "Widened :: () -> int { v: number = 1.5; return native.pair(v, "
+                "Later()); }\n",
+      .calls = { { .function = "Before", .arguments = "[]", .expected = "[2]" },
+                 { .function = "After", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Stops", .arguments = "[]" },
+                 { .function = "Floating", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Widened", .arguments = "[]", .expected = "[2]" } } },
+    /* Parentheses produce no value: a grouped argument is typed, converted
+     * and watched once the expression inside has produced it. */
+    { .name = "grouped overload arguments",
+      .c_string_probe = true,
+      .traced = true,
+      .source =
+          "package facts\n"
+          "Later :: () -> int { return native.probe(\"ab\"); }\n"
+          "Fails :: () -> int { xs: int[] = []; return xs[0]; }\n"
+          "Typed :: () -> int { v: number = 1.5; return "
+          "native.kernel((v)); }\n"
+          "Converted :: () -> int { v: int = 3; return native.kernel((v)); "
+          "}\n"
+          "Wide :: () -> int { v: i64 = 3; return native.kernel(((v))); }\n"
+          "Effect :: () -> int { return native.pair(2, (Later())); }\n"
+          "First :: () -> int { return native.pair((Later()), (2)); }\n"
+          "Stops :: () -> int { return native.pair((-(2)), (Fails())); }\n"
+          "Local :: () -> int { v: f64 = 2.5; return native.pair((v), "
+          "(Later())); }\n",
+      .calls = { { .function = "Typed", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Converted", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Wide", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Effect", .arguments = "[]", .expected = "[2]" },
+                 { .function = "First", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Stops", .arguments = "[]" },
+                 { .function = "Local", .arguments = "[]", .expected = "[2]" } } },
+    /* Both stages read a decimal at an integer type exactly, digit by digit:
+     * no floating rounding drops a fraction, an integer unit or the range. */
+    { .name = "exact whole decimals",
+      .traced = true,
+      .source = "package facts\n"
+                "Sum :: () -> i64 { x: i64 = 0; return x + 9007199254740993.0; "
+                "}\n"
+                "Negative :: () -> i64 { return -9007199254740993.0; }\n"
+                "Largest :: () -> u64 { return 18446744073709551615.0; }\n"
+                "Scaled :: () -> i64 { return 9007199254740993e0; }\n"
+                "Least :: () -> i64 { return -9223372036854775808.0; }\n",
+      .calls = { { .function = "Sum", .arguments = "[]", .expected = "[9007199254740993]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[-9007199254740993]" },
+                 { .function = "Largest", .arguments = "[]", .expected = "[18446744073709551615]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[9007199254740993]" },
+                 { .function = "Least", .arguments = "[]", .expected = "[-9223372036854775808]" } } },
+    /* Zero is whole however it is spelled. */
+    { .name = "zero decimals",
+      .traced = true,
+      .source = "package facts\n"
+                "Zero :: () -> int { return 0.0; }\n"
+                "Negative :: () -> int { return -0.0; }\n"
+                "Scaled :: () -> int { return 0e-1; }\n"
+                "Places :: () -> i64 { return 0.000; }\n",
+      .calls = { { .function = "Zero", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Negative", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Places", .arguments = "[]", .expected = "[0]" } } },
+    { .name = "decimal past the least integer",
+      .source = "package facts\nRun :: () -> i64 { return "
+                "-9223372036854775809.0; }",
+      .message = "Numeric literal is outside the range of i64",
+      .same_rejection = true },
+    { .name = "decimal past the largest integer",
+      .source = "package facts\nRun :: () -> u64 { return "
+                "18446744073709551616.0; }",
+      .message = "Numeric literal is outside the range of u64",
+      .same_rejection = true },
+    { .name = "small fraction overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.0000000000000001); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "smaller fraction overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.0000000000000000001); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "small fraction integer",
+      .source = "package facts\nRun :: () -> i64 { x: i64 = 0; return x + "
+                "9007199254740992.5; }",
+      .message = "Numeric literal has a fraction, which i64 cannot hold",
+      .same_rejection = true },
+    { .name = "ambiguous literal overload",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return native.pair(2, 3); }",
+      .message = "Ambiguous function 'native.pair'",
+      .line = 2,
+      .column = 34 },
+    { .name = "decimal overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(2.5); }",
+      .message = "Numeric literal has a fraction, which int cannot hold",
+      .same_rejection = true },
+    { .name = "wide overload argument",
+      .c_string_probe = true,
+      .source = "package facts\nRun :: () -> int { return "
+                "native.overload(4294967296); }",
+      .message = "Numeric literal is outside the range of int",
+      .same_rejection = true },
     /* Authored constant support boundaries. Stage zero accepts some of these
      * forms; require the authored diagnostic at the operand, not parity with
      * stage zero or an earlier unsupported-declaration failure. */
     { .name = "floating constant cannot become integer bits",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nWide: double : 1.5;\nBad: uint64 : "
-                "uint64(Wide);\n",
+      .source = "package facts\nWide: f64 : 1.5;\nBad: u64 : "
+                "u64(Wide);\n",
       .message = "floating-to-integer constant conversion is not supported yet",
       .line = 3,
-      .column = 22 },
+      .column = 16 },
     { .name = "floating constant cannot wrap into integer bits",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nWide: double : 1.5;\nBad: int : int(wrap: "
+      .source = "package facts\nWide: f64 : 1.5;\nBad: int : int(wrap: "
                 "Wide);\n",
       .message = "floating-to-integer constant conversion is not supported yet",
       .line = 3,
       .column = 22 },
     { .name = "floating conversion cannot become integer bits",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nBad: uint64 : uint64(double(1.5));\n",
+      .source = "package facts\nBad: u64 : u64(f64(1.5));\n",
       .message = "floating-to-integer constant conversion is not supported yet",
       .line = 2,
-      .column = 22 },
+      .column = 16 },
     { .name = "floating shift count cannot become integer bits",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nWide: double : 1.5;\nBad: int : 1 << Wide;\n",
+      .source = "package facts\nWide: f64 : 1.5;\nBad: int : 1 << Wide;\n",
       .message = "constant value must be an integer expression",
       .line = 3,
       .column = 17 },
     { .name = "floating binary constant initializer remains unsupported",
       .group = IMPORT_SAMPLES,
-      .source = "package facts\nBad: double : 1.0 + 2.0;\n",
+      .source = "package facts\nBad: f64 : 1.0 + 2.0;\n",
       .message = "floating constant initializer is not supported yet",
       .line = 2,
-      .column = 15 },
+      .column = 12 },
 };
 enum
 {
@@ -3250,13 +3544,17 @@ static pin_value strings(const char *const *items, int count)
     }
     return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
 }
-static bool put(pin_value *row, const char *name, int value)
+/* Writes an int or int64 field. */
+static bool put(pin_value *row, const char *name, int64_t value)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
-    REQUIRE(field && field->type == PIN_I32);
-    REQUIRE(
-        !pin_write_field(&input, row->ptr, field, (pin_value){ .type = PIN_I32, .i = value })
-    );
+    REQUIRE(field && (field->type == PIN_I32 || field->type == PIN_I64));
+    pin_value v = { .type = PIN_I64, .i64 = value };
+    if (field->type == PIN_I32) {
+        REQUIRE(value >= INT32_MIN && value <= INT32_MAX);
+        v = (pin_value){ .type = PIN_I32, .i = (int32_t)value };
+    }
+    REQUIRE(!pin_write_field(&input, row->ptr, field, v));
     return true;
 }
 static bool put_value(pin_value *row, const char *name, pin_value value)
@@ -3440,16 +3738,25 @@ static uint64_t tag(int b, const char *variant)
 {
     return variant_tag(b, "Result", variant);
 }
-static bool prepare()
+static bool prepare_backends(unsigned backends)
 {
     const source_package_input sources[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK };
-    REQUIRE(
-        compiler_fixture_prepare_packs(&fixture, sources, (int)(sizeof sources / sizeof *sources), packs, 3)
-    );
+    REQUIRE(compiler_fixture_prepare_backends(
+        &fixture,
+        backends,
+        sources,
+        (int)(sizeof sources / sizeof *sources),
+        packs,
+        3
+    ));
     return true;
+}
+static bool prepare()
+{
+    return prepare_backends(COMPILER_FIXTURE_BOTH);
 }
 /* The sample's files: package facts, then lib and core:strings when it
  * uses them. */
@@ -3826,7 +4133,16 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK,
                                        CORE_DEFINITION_PACK };
-    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, s->game ? 4 : 3));
+    /* Only this bytecode owner is serialized and compared below. Each
+     * caller still chooses its original target execution backends. */
+    REQUIRE(compiler_fixture_prepare_backends(
+        &oracle,
+        COMPILER_FIXTURE_BYTECODE,
+        inputs,
+        count,
+        packs,
+        s->game ? 4 : 3
+    ));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
     REQUIRE(authoring_packages_count(owner) <= 3);
@@ -4663,7 +4979,9 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length, bool h
 }
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
-static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
+/* Stage zero's packages for the sample, linked against the fixture's
+ * natives, and its facts package. */
+static authoring_packages *oracle_packages(const sample *s, const authoring_package **root)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
@@ -4671,7 +4989,7 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
                                                 .files = inputs,
                                                 .file_count = count };
     source_package_snapshot *snapshot = source_package_snapshot_new(&options);
-    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
+    assert(snapshot && !source_package_snapshot_error_at(snapshot));
     script_lower_bindings bindings = authoring_native_bindings(fixture.native);
     authoring_packages *packages = authoring_packages_prepare(
         snapshot,
@@ -4680,15 +4998,23 @@ static bool rejects_like_oracle(const sample *s, const char *message, int line, 
         BEHAVIOR_BYTECODE,
         NULL
     );
-    REQUIRE(packages && !authoring_packages_valid(packages));
-    const authoring_package *root = NULL;
+    assert(packages);
+    *root = NULL;
     for (int p = 0; p < authoring_packages_count(packages); p++) {
         const authoring_package *candidate = authoring_packages_at(packages, p);
         if (!strcmp(candidate->identity, "project:facts")) {
-            root = candidate;
+            *root = candidate;
         }
     }
-    REQUIRE(root && root->diagnostic_count);
+    assert(*root);
+    return packages;
+}
+static bool rejects_like_oracle(const sample *s, const char *message, int line, int column)
+{
+    const authoring_package *root;
+    authoring_packages *packages = oracle_packages(s, &root);
+    REQUIRE(!authoring_packages_valid(packages));
+    REQUIRE(root->diagnostic_count);
     const script_diagnostic *expected = &root->diagnostics[0];
     bool same = !strcmp(expected->message, s->oracle_message ? s->oracle_message : message) &&
                 expected->range.line == line && expected->range.column == column;
@@ -4751,9 +5077,221 @@ static bool rejects_malformed_effects()
     }
     return true;
 }
+enum
+{
+    TRACED_WATCHES = 64
+};
+typedef struct
+{
+    int start, end, ordinal;
+    bool output;
+    pin_type type;
+    uint64_t bits;
+} traced_watch;
+/* The watches one call delivers, in order, with each scalar payload's bits. */
+typedef struct
+{
+    traced_watch watches[TRACED_WATCHES];
+    int count;
+    bool overflow;
+} watch_trace;
+static uint64_t payload_bits(const pin_value *value)
+{
+    if (value->container != PIN_CONTAINER_SINGLE) {
+        return 0;
+    }
+    uint32_t single;
+    switch (value->type) {
+        case PIN_BOOL: return value->b;
+        case PIN_I32: return (uint32_t)value->i;
+        case PIN_F32: memcpy(&single, &value->f, sizeof single); return single;
+        case PIN_I64:
+        case PIN_U64:
+        case PIN_F64: return value->u64;
+        default: return 0;
+    }
+}
+static void trace_watch(
+    void *user,
+    behavior_function_context *,
+    const behavior_source_watch *watch,
+    const pin_value *value
+)
+{
+    watch_trace *trace = user;
+    if (trace->count == TRACED_WATCHES) {
+        trace->overflow = true;
+        return;
+    }
+    trace->watches[trace->count++] = (traced_watch){
+        .start = watch->origin.start,
+        .end = watch->origin.end,
+        .ordinal = watch->ordinal,
+        .output = watch->output,
+        .type = value ? value->type : PIN_FLOW,
+        .bits = value ? payload_bits(value) : 0,
+    };
+}
+/* Runs `function`, which takes no arguments and returns one value, from a
+ * closure linked with the probe natives, tracing the watches it delivers. */
+static bool traced_call(
+    const unsigned char *bytes,
+    size_t length,
+    const char *function,
+    int backend,
+    watch_trace *trace,
+    int *status,
+    pin_value *output
+)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    const behavior_function *body = NULL;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int f = 0; f < execution_module_function_count(module); f++) {
+            execution_module_function_info info = execution_module_function_at(module, f);
+            if (info.id == function_id(function)) {
+                body = info.body;
+            }
+        }
+    }
+    REQUIRE(body && body->argument_count == 0 && body->result_count == 1);
+    arena storage = { 0 };
+    behavior_function_activation activation = { 0 };
+    bool resumable = behavior_function_resumable(body);
+    if (resumable) {
+        behavior_function_activation_init(body, &activation);
+    }
+    *output = body->result_defaults[0];
+    behavior_function_prepare_results(body, output, &storage);
+    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                          .results = output,
+                                          .budget = TARGET_BUDGET,
+                                          .source_debug_user = trace,
+                                          .source_capture = trace_watch };
+    behavior_function_bind_storage(&context, &storage);
+    bool bound = behavior_function_bind(body, &context, NULL, 0);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    *status = bound ? behavior_function_run(body, &context, backend != 0)
+                    : FLOW_ERR_ARGUMENT;
+    behavior_run_scope_end(&runs);
+    if (*status == FLOW_OK && !context.returned) {
+        *status = FLOW_ERR_ARGUMENT;
+    }
+    *output = (pin_value){ .type = output->type, .u64 = payload_bits(output) };
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(bound && !trace->overflow);
+    /* The call ran on the backend it selected, inspected, with no fallback. */
+    const behavior_run_counts *n = &runs.counts;
+    uint64_t compiled = n->sljit_entries + n->wasm_entries;
+    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
+    REQUIRE(
+        backend ? compiled > 0 && !n->bytecode_entries &&
+                      n->inspected_sljit_entries + n->inspected_wasm_entries == compiled
+                : n->bytecode_entries > 0 && !compiled
+    );
+    return true;
+}
+static bool same_traced(const traced_watch *x, const traced_watch *y)
+{
+    return x->start == y->start && x->end == y->end && x->ordinal == y->ordinal &&
+           x->output == y->output && x->type == y->type && x->bits == y->bits;
+}
+static void print_traced(const char *compiler, int index, const traced_watch *w)
+{
+    fprintf(
+        stderr,
+        "  %s watch %d at %d..%d ordinal %d%s type %d bits %llx\n",
+        compiler,
+        index,
+        w->start,
+        w->end,
+        w->ordinal,
+        w->output ? " output" : "",
+        (int)w->type,
+        (unsigned long long)w->bits
+    );
+}
+static bool same_trace(const watch_trace *expected, const watch_trace *actual)
+{
+    bool same = expected->count == actual->count;
+    for (int i = 0; same && i < expected->count; i++) {
+        same = same_traced(&expected->watches[i], &actual->watches[i]);
+    }
+    for (int i = 0; !same && i < expected->count; i++) {
+        print_traced("stage zero", i, &expected->watches[i]);
+    }
+    for (int i = 0; !same && i < actual->count; i++) {
+        print_traced("stage one", i, &actual->watches[i]);
+    }
+    return same;
+}
+/* Each traced call returns what stage zero's does and delivers its watches,
+ * on both backends. */
+static bool traces_like_oracle(const unsigned char *bytes, size_t length, const sample *s)
+{
+    unsigned char *expected = NULL;
+    size_t expected_length = 0;
+    REQUIRE(oracle_closure(s, &expected, &expected_length));
+    bool same = true;
+    for (int c = 0; same && c < CALLS && s->calls[c].function; c++) {
+        const sample_call *call = &s->calls[c];
+        REQUIRE(!strcmp(call->arguments, "[]"));
+        for (int backend = 0; same && backend < 2; backend++) {
+            watch_trace traces[2] = { 0 };
+            int statuses[2];
+            pin_value results[2];
+            REQUIRE(traced_call(
+                expected,
+                expected_length,
+                call->function,
+                backend,
+                &traces[0],
+                &statuses[0],
+                &results[0]
+            ));
+            REQUIRE(
+                traced_call(bytes, length, call->function, backend, &traces[1], &statuses[1], &results[1])
+            );
+            char returned[32] = "";
+            if (results[1].type == PIN_I32) {
+                snprintf(returned, sizeof returned, "[%d]", results[1].i);
+            }
+            bool result = call->expected ? statuses[1] == FLOW_OK &&
+                                               results[0].type == results[1].type &&
+                                               results[0].u64 == results[1].u64 &&
+                                               (!s->c_string_probe ||
+                                                !strcmp(returned, call->expected))
+                                         : statuses[1] != FLOW_OK;
+            same = traces[0].count > 0 && statuses[0] == statuses[1] &&
+                   result && same_trace(&traces[0], &traces[1]);
+            if (!same) {
+                fprintf(
+                    stderr,
+                    "package compiler traced %s on backend %d: status %d and "
+                    "%d, %s\n",
+                    call->function,
+                    backend,
+                    statuses[0],
+                    statuses[1],
+                    returned
+                );
+            }
+        }
+    }
+    free(expected);
+    return same;
+}
 static bool run_samples(sample_group group, int b)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(1u << b));
     if (group == BASE_SAMPLES && b == 0) {
         REQUIRE(rejects_malformed_effects());
     }
@@ -4856,12 +5394,14 @@ static bool run_samples(sample_group group, int b)
                    ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
-        for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
+        bool hosted = !s->traced || !s->c_string_probe;
+        for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = run(bytes, length, &s->calls[c], backend);
             }
             ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
         }
+        ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
         if (ran && s->update_order) {
             ran = (b || array_update_order(expected, expected_length, s)) &&
                   array_update_order(bytes, length, s) &&
@@ -5174,12 +5714,12 @@ TEST_CASE(package_compiler_builds_runnable_importing_packages_compiled)
 }
 TEST_CASE(package_compiler_float_constant_dependency)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(COMPILER_FIXTURE_BYTECODE));
     return approved_float_conversion_admission(0, true);
 }
 TEST_CASE(package_compiler_float_constant_dependency_compiled)
 {
-    REQUIRE(prepare());
+    REQUIRE(prepare_backends(COMPILER_FIXTURE_COMPILED));
     return approved_float_conversion_admission(1, true);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
@@ -5579,7 +6119,7 @@ static const behavior_sample behavior_samples[] = {
       "        count += 1\n"
       "        angle += 0.5\n"
       "        if active { self.Spot.x = count; } else { self.Spot.x = "
-      "float(angle); "
+      "number(angle); "
       "}\n"
       "    }\n}\n" },
     { "EntityState",
@@ -5632,7 +6172,7 @@ static const behavior_sample behavior_samples[] = {
       "    Ready :: () -> (Result: bool = false) { return self.Spot.w > 0; }\n"
       "    Read :: () -> (Point: Spot) { Point.x = 3; Point.y = 4; return; }\n"
       "    Bare :: () -> (Point: Spot) { return; }\n"
-      "    Field :: (value: Spot) -> float { return value.x; }\n"
+      "    Field :: (value: Spot) -> number { return value.x; }\n"
       "    Has :: (value: Spot) -> bool { return value.resolved == self; }\n"
       "    on Tick :: () { if Ready() { self.Spot = Read().Point; } }\n"
       "}\n" },
@@ -5652,7 +6192,7 @@ static const behavior_sample behavior_samples[] = {
       "        if !active && label == \"\" { self.Spot.x = count; }\n"
       "    }\n}\n" },
     { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick :: () {\n        steps = 7\n    }\n}\n" },
-    { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
+    { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: number) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
     { "Mark", "Mark :: behavior {\n    on tick :: () {\n        self.Spot.x = 3\n    }\n}\n" },
     { "Sink", "Sink :: behavior {\n    on Tick :: () {\n        self.Spot.y = -2.5\n    }\n}\n" },
     { "Copy", "Copy :: behavior {\n    on Tick :: () {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
@@ -5677,16 +6217,17 @@ static const behavior_sample behavior_samples[] = {
       "        other.Spot = other.Spot\n"
       "    }\n}\n" },
     { "Turn",
-      "Turn :: behavior {\n    angle: float = 0.5\n    on Tick :: "
-      "(DeltaSeconds: float) {\n        "
+      "Turn :: behavior {\n    angle: number = 0.5\n    on Tick :: "
+      "(DeltaSeconds: number) {\n        "
       "angle += DeltaSeconds * 2\n"
       "        self.Spot.x = angle\n    }\n}\n" },
     { "Fold",
-      "Fold :: behavior {\n    Wrap :: (value: float, limit: float) -> float "
+      "Fold :: behavior {\n    Wrap :: (value: number, limit: number) -> "
+      "number "
       "{\n"
       "        if value > limit {\n            return value - limit * 2\n      "
       "  }\n        return value\n    }\n"
-      "    Split :: (value: float) -> (whole: int, rest: float) {\n        "
+      "    Split :: (value: number) -> (whole: int, rest: number) {\n        "
       "whole = int(value)\n"
       "        rest = value - whole\n        return (whole, rest)\n    }\n    "
       "on Tick :: () {\n"
@@ -5694,7 +6235,7 @@ static const behavior_sample behavior_samples[] = {
       "Split(self.Spot.x)\n"
       "        self.Spot.y = parts.whole * 2 + parts.rest\n    }\n}\n" },
     { "Halve",
-      "Halve :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        "
+      "Halve :: behavior {\n    on Tick :: (DeltaSeconds: number) {\n        "
       "self.Spot.y = "
       "self.Spot.w / 2 - DeltaSeconds\n"
       "        if self.Spot.w > 3 {\n            self.Spot.x *= 2.5\n        "
@@ -5706,9 +6247,9 @@ static const behavior_sample behavior_samples[] = {
       "        b = a - 1\n        self.Spot.x = b\n        self.Spot.y = a\n   "
       " }\n}\n" },
     { "Steer",
-      "Steer :: behavior {\n    on Move :: (y: float, x: float) {\n        "
+      "Steer :: behavior {\n    on Move :: (y: number, x: number) {\n        "
       "self.Spot.x = x - y\n        self.Spot.y = y\n    }\n}\n" },
-    { "Lift", "Lift :: behavior {\n    on Move :: (y: float) {\n        self.Spot.y += y\n    }\n}\n" },
+    { "Lift", "Lift :: behavior {\n    on Move :: (y: number) {\n        self.Spot.y += y\n    }\n}\n" },
     { "KeyedEntityState",
       "KeyedEntityState :: behavior {\n"
       "    target: entity\n"
@@ -5758,14 +6299,17 @@ static const behavior_rejection behavior_rejections[] = {
     { "Nonzero :: behavior { target: entity = 1; }",
       "entity default requires null or zero",
       false },
-    { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: float, more: float) "
+    { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: number, more: "
+      "number) "
       "{\n    }\n}\n",
       "Tick has no payload field 'more'",
       true },
-    { "Drift :: behavior {\n    on Move :: (z: float, x: float) {\n    }\n}\n",
+    { "Drift :: behavior {\n    on Move :: (z: number, x: number) {\n    "
+      "}\n}\n",
       "Move has no payload field 'z'",
       true },
-    { "Twice :: behavior {\n    on Move :: (x: float, X: float) {\n    }\n}\n",
+    { "Twice :: behavior {\n    on Move :: (x: number, X: number) {\n    "
+      "}\n}\n",
       "Payload field 'x' is listed twice",
       true },
     { "Scale :: behavior {\n    on Tick :: () {\n        self.Spot *= 2\n    "
@@ -5809,17 +6353,17 @@ typedef struct
 static const type_field spot_fields[] = {
     { .name = "x",
       .type = PIN_F32,
-      .type_name = "float",
+      .type_name = "number",
       .offset = offsetof(spot, x),
       .size = sizeof(float) },
     { .name = "y",
       .type = PIN_F32,
-      .type_name = "float",
+      .type_name = "number",
       .offset = offsetof(spot, y),
       .size = sizeof(float) },
     { .name = "w",
       .type = PIN_F32,
-      .type_name = "float",
+      .type_name = "number",
       .offset = offsetof(spot, w),
       .size = sizeof(float) },
     { .name = "owner",
@@ -7375,11 +7919,11 @@ static bool native_catalog_named_results(const script_catalog *base)
              "        from_record := select_spot(self.Spot)\n"
              "        from_entity := select_spot(entity_seed())\n"
              "        clash := collision_spot(self.Spot)\n"
-             "        small: int8 = 7\n"
+             "        small: i8 = 7\n"
              "        inferred := inferred_number(small)\n"
              "        inferred_copy := inferred\n"
              "        p := select_spot(self.Spot)\n"
-             "        shadowed: float = 0\n"
+             "        shadowed: number = 0\n"
              "        if true {\n"
              "            saved := p\n"
              "            p := select_spot(entity_seed())\n"
@@ -8190,14 +8734,14 @@ TEST_CASE(package_compiler_links_executable_libraries)
         "if Middle.CheckText(label) { self.Spot.y += 1; } } }",
         "Middle :: library { Make :: () -> (point: Leaf.Row) { return "
         "Leaf.Make(); } "
-        "Amount :: () -> float { return Leaf.Amount(); } "
+        "Amount :: () -> number { return Leaf.Amount(); } "
         "OwnerMatches :: () -> bool { return Leaf.OwnerMatches(); } "
         "CheckText :: (value: string) -> bool { return value == \"a\\u0000b\"; "
         "} }",
         "Leaf :: library { Row :: struct { text: string; count: int; } "
         "Make :: (n: int = 7) -> (value: Row) { return {text: \"a\\u0000b\", "
         "count: n}; } "
-        "Amount :: (n: float = 2.5) -> float { return n; } "
+        "Amount :: (n: number = 2.5) -> number { return n; } "
         "OwnerMatches :: () -> bool { return self == globals.Terrain; } }",
         "Unused :: library { Answer :: () -> int { return 19; } }"
     };
@@ -8420,7 +8964,7 @@ TEST_CASE(package_compiler_folds_constants_as_stage_zero_does)
     const char *identity = "behaviors/Nested.chibi";
     const char
         *source = "Nested :: behavior { observed: int = 0; Read :: () -> int { "
-                  "x: int = int(byte(9)) + int(byte(wrap: 300)); "
+                  "x: int = int(u8(9)) + int(u8(wrap: 300)); "
                   "y: int = (4 - 1); return x + y + int(-3) + (2 * 3); } "
                   "on Tick :: () { observed = Read(); } }";
     const library_result result = { identity, 59, 0, 0 };
@@ -8580,16 +9124,16 @@ TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
 {
     REQUIRE(prepare());
     const char *identities[] = { "behaviors/Unsupported.chibi", "libraries/Leaf.chibi" };
+    /* number is f32, so number(7) is a supported conversion; char is the
+     * conversion name stage one still rejects. */
     const char *behaviors[] = { "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return char(65) == char(65); } }",
-                                "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return number(7) == number(7); } }" };
+                                "{ return char(65) == char(65); } }" };
     const char
         *library = "Leaf :: library { char :: (value: int) -> int { return "
                    "value + 5; } "
                    "number :: (value: int) -> int { return value + 6; } "
-                   "float :: (value: int) -> int { return value + 7; } "
-                   "double :: (value: int) -> int { return value + 8; } }";
+                   "f32 :: (value: int) -> int { return value + 7; } "
+                   "f64 :: (value: int) -> int { return value + 8; } }";
     native_capability_definition primitive_definitions[2] = {
         LIBRARY_ALIAS_DEFINITIONS[0],
         LIBRARY_ALIAS_DEFINITIONS[1]
@@ -8636,7 +9180,7 @@ TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
     /* A floating conversion converts, ahead of a library's function. */
     const char *converted[] = {
         "Unsupported :: behavior { observed: int = 0; "
-        "on Tick :: () { observed = int(double(7)) + int(float(1)); } }",
+        "on Tick :: () { observed = int(f64(7)) + int(number(1)); } }",
         library
     };
     const library_result result = { identities[0], 8, 0, 0 };
@@ -9245,6 +9789,120 @@ TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected
         execution_module_free(expected[b]);
     }
     REQUIRE(alike);
+    return true;
+}
+/* Whether `actual` delivers `expected`'s watches, and those of each source
+ * span in the same order. Stage one watches a native's arguments as the
+ * call's inputs after its omitted defaults, where stage zero watches each
+ * argument after its value, so the spans interleave differently. */
+static bool same_trace_by_span(const watch_trace *expected, const watch_trace *actual)
+{
+    bool same = expected->count == actual->count;
+    for (int i = 0; same && i < expected->count; i++) {
+        const traced_watch *x = &expected->watches[i];
+        int before = 0, at = -1;
+        for (int j = 0; j < i; j++) {
+            before += expected->watches[j].start == x->start &&
+                      expected->watches[j].end == x->end;
+        }
+        for (int k = 0; at < 0 && k < actual->count; k++) {
+            const traced_watch *y = &actual->watches[k];
+            if (y->start == x->start && y->end == x->end && !before--) {
+                at = k;
+            }
+        }
+        same = at >= 0 && same_traced(x, &actual->watches[at]);
+    }
+    if (!same) {
+        same_trace(expected, actual);
+    }
+    return same;
+}
+/* Runs default_pair(2), whose omitted f64 default is 5, on the backend the
+ * module selects with no fallback, and traces its watches in order. The trace
+ * has the default as the call's ordinal-1 input and as its own output. */
+static bool action_default_play(execution_module *module, const char *source, bool compiled, watch_trace *trace)
+{
+    const behavior_function *body = module->plan.functions[0].body;
+    arena storage = { 0 };
+    behavior_function_activation activation = { 0 };
+    behavior_function_activation_init(body, &activation);
+    pin_value *variables = xcalloc((size_t)body->variable_count + 1, sizeof *variables);
+    *trace = (watch_trace){ 0 };
+    behavior_function_context context = { .activation = &activation,
+                                          .variables = variables,
+                                          .budget = 1000,
+                                          .source_debug_user = trace,
+                                          .source_capture = trace_watch };
+    behavior_function_bind_storage(&context, &storage);
+    REQUIRE(behavior_function_bind(body, &context, NULL, UINT64_C(0x1234567800000042)));
+    action_record_count = action_trace_count = 0;
+    memset(action_default_calls, 0, sizeof action_default_calls);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    int status = behavior_function_run(body, &context, compiled);
+    behavior_run_scope_end(&runs);
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    free(variables);
+    REQUIRE(status == FLOW_OK && action_record_count == 1 && action_records[0].first == 1);
+    REQUIRE(action_default_calls[0] == 1 && !action_default_calls[1]);
+    const behavior_run_counts *n = &runs.counts;
+    uint64_t entries = n->sljit_entries + n->wasm_entries;
+    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
+    REQUIRE(
+        compiled ? entries > 0 && !n->bytecode_entries &&
+                       n->inspected_sljit_entries + n->inspected_wasm_entries == entries
+                 : n->bytecode_entries > 0 && !entries
+    );
+    double five = 5;
+    uint64_t bits;
+    memcpy(&bits, &five, sizeof bits);
+    int call = (int)(strstr(source, "default_pair") - source), input = 0, output = 0;
+    REQUIRE(!trace->overflow);
+    for (int i = 0; i < trace->count; i++) {
+        const traced_watch *w = &trace->watches[i];
+        if (w->type == PIN_F64 && w->bits == bits) {
+            input += w->start == call && !w->output && w->ordinal == 1;
+            output += w->output;
+        }
+    }
+    REQUIRE(input == 1 && output == 1);
+    return true;
+}
+TEST_CASE(package_compiler_watches_overloaded_native_defaults)
+{
+    REQUIRE(action_table());
+    const char *source = "NativeDefault :: behavior { on Tick :: () { "
+                         "sync_probe(First: default_pair(2)); } }";
+    execution_module *expected[2] = { 0 };
+    watch_trace traces[2];
+    for (int b = 0; b < 2; b++) {
+        expected[b] = action_oracle(source, b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
+        REQUIRE(expected[b] && action_default_play(expected[b], source, b, &traces[b]));
+    }
+    REQUIRE(prepare());
+    bool alike = true;
+    watch_trace backend;
+    for (int b = 0; b < 2; b++) {
+        execution_module *actual = NULL;
+        watch_trace trace;
+        REQUIRE(action_module(b, "NativeDefault", source, &actual));
+        REQUIRE(action_default_play(actual, source, b, &trace));
+        alike &= same_declarations(expected[b], actual) &&
+                 same_points(expected[b], actual) &&
+                 same_watches(expected[b], actual) &&
+                 same_trace_by_span(&traces[b], &trace);
+        /* Both backends deliver stage one's watches in one order. */
+        if (b) {
+            alike &= same_trace(&backend, &trace);
+        }
+        backend = trace;
+        execution_module_free(actual);
+        execution_module_free(expected[b]);
+    }
+    REQUIRE(alike && same_trace(&traces[0], &traces[1]));
     return true;
 }
 typedef struct
@@ -10041,6 +10699,11 @@ static const char GUARD_SOURCE[] = "package scalar\n"
                                    "    return b;\n"
                                    "}\n"
                                    "Id :: (x: int) -> int { return x; }\n";
+/* Low(298) is 298's low byte, 42, shifted left once; Main widens it to int. */
+static const char
+    WIDTH_SOURCE[] = "package scalar\n"
+                     "Main :: () -> int { return int(Low(298)); }\n"
+                     "Low :: (x: int) -> u8 { return u8(wrap: x) << 1; }\n";
 /* Calc(3, 4) is -(3 + 4) * ~4, which is 35. */
 static const char ARITHMETIC_SOURCE
     [] = "package scalar\n"
@@ -10058,23 +10721,59 @@ enum
     SCALAR_LITERAL_ROW = 6,
     SCALAR_READ_ROW = 7,
     SCALAR_CALL_ROW = 8,
-    SCALAR_GUARD_ROW = 9,
+    SCALAR_IF_ROW = 9,
     SCALAR_COMPARE_ROW = 10,
     SCALAR_ARITHMETIC_ROW = 11,
     SCALAR_UNARY_ROW = 12,
+    SCALAR_CONVERT_ROW = 13,
+    SCALAR_LOCAL_ROW = 14,
+    SCALAR_ASSIGN_ROW = 15,
+    SCALAR_ELSE_ROW = 16,
+    SCALAR_END_ROW = 17,
+    SCALAR_LOGICAL_ROW = 18,
+    SCALAR_WHILE_ROW = 19,
+    SCALAR_FOR_ROW = 20,
+    SCALAR_BREAK_ROW = 21,
+    SCALAR_CONTINUE_ROW = 22,
+    SCALAR_SWITCH_ROW = 23,
+    SCALAR_CASE_ROW = 24,
+    SCALAR_RECORD_ROW = 25,
+    SCALAR_MEMBER_ROW = 26,
+    SCALAR_ZERO_ROW = 27,
+    SCALAR_UPDATE_ROW = 28,
+    SCALAR_FIELD_ROW = 29,
+    SCALAR_UNION_ROW = 30,
+    SCALAR_VARIANT_ROW = 31,
+    SCALAR_MAKE_ROW = 32,
+    SCALAR_TAG_ROW = 33,
+    SCALAR_PAYLOAD_ROW = 34,
+    SCALAR_RANGE_EXCLUSIVE = 1,
+    SCALAR_MAX_LOCALS = 16,
+    SCALAR_MAX_STATEMENTS = 32,
+    SCALAR_MAX_OPERANDS = 64,
     SCALAR_INT = 1,
-    SCALAR_BOOL = 2
+    SCALAR_BOOL = 2,
+    SCALAR_INT8 = 3,
+    SCALAR_BYTE = 4,
+    SCALAR_INT16 = 5,
+    SCALAR_UINT16 = 6,
+    SCALAR_UINT = 7,
+    SCALAR_INT64 = 8,
+    SCALAR_WORD = 9,
+    SCALAR_FLOAT = 10,
+    SCALAR_DOUBLE = 11,
+    SCALAR_RECORD = 32
 };
 /* The kind of each of GUARD_SOURCE's rows, and the rows edited. */
 static const int GUARD_KINDS[] = {
     SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
     SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,  SCALAR_LITERAL_ROW,
     SCALAR_CALL_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
-    SCALAR_PARAMETER_ROW, SCALAR_GUARD_ROW,    SCALAR_READ_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_IF_ROW,       SCALAR_READ_ROW,
     SCALAR_READ_ROW,      SCALAR_COMPARE_ROW,  SCALAR_RETURN_ROW,
-    SCALAR_READ_ROW,      SCALAR_CALL_ROW,     SCALAR_RETURN_ROW,
-    SCALAR_READ_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
-    SCALAR_RETURN_ROW,    SCALAR_READ_ROW,
+    SCALAR_READ_ROW,      SCALAR_CALL_ROW,     SCALAR_END_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_READ_ROW,     SCALAR_FUNCTION_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_RETURN_ROW,   SCALAR_READ_ROW,
 };
 enum
 {
@@ -10083,10 +10782,235 @@ enum
     GUARD_COMPARE = 13,
     GUARD_ARM = 14,
     GUARD_ARM_READ = 15,
-    GUARD_FINAL = 17,
-    GUARD_ID_READ = 22,
+    GUARD_END = 17,
+    GUARD_FINAL = 18,
+    GUARD_ID_READ = 23,
     GUARD_ROWS = (int)(sizeof GUARD_KINDS / sizeof *GUARD_KINDS),
     GUARD_EDITS = 5
+};
+/* Pick declares x, then in an if statement whose condition is a logical
+ * and its consequence's own local y, adds y to x, and otherwise returns b.
+ * Pick(1, 2) is 3. */
+static const char
+    CONTROL_ROWS_SOURCE[] = "package scalar\n"
+                            "Main :: () -> int { return Pick(1, 2); }\n"
+                            "Pick :: (a: int, b: int) -> int {\n"
+                            "    x := a;\n"
+                            "    if (a < b && !(b < 0)) {\n"
+                            "        y := b;\n"
+                            "        x += y;\n"
+                            "    } else {\n"
+                            "        return b;\n"
+                            "    }\n"
+                            "    return x;\n"
+                            "}\n";
+/* The kind of each of CONTROL_ROWS_SOURCE's rows, and the rows edited. */
+static const int CONTROL_KINDS[] = {
+    SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,  SCALAR_LITERAL_ROW,
+    SCALAR_CALL_ROW,      SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
+    SCALAR_PARAMETER_ROW, SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,
+    SCALAR_IF_ROW,        SCALAR_READ_ROW,     SCALAR_READ_ROW,
+    SCALAR_COMPARE_ROW,   SCALAR_LOGICAL_ROW,  SCALAR_READ_ROW,
+    SCALAR_LITERAL_ROW,   SCALAR_COMPARE_ROW,  SCALAR_UNARY_ROW,
+    SCALAR_LOCAL_ROW,     SCALAR_READ_ROW,     SCALAR_ASSIGN_ROW,
+    SCALAR_READ_ROW,      SCALAR_READ_ROW,     SCALAR_ARITHMETIC_ROW,
+    SCALAR_ELSE_ROW,      SCALAR_RETURN_ROW,   SCALAR_READ_ROW,
+    SCALAR_END_ROW,       SCALAR_RETURN_ROW,   SCALAR_READ_ROW,
+};
+enum
+{
+    CONTROL_X = 10,
+    CONTROL_X_VALUE = 11,
+    CONTROL_IF = 12,
+    CONTROL_LOGICAL = 16,
+    CONTROL_NOT = 20,
+    CONTROL_Y = 21,
+    CONTROL_ASSIGN = 23,
+    CONTROL_ELSE = 27,
+    CONTROL_ELSE_READ = 29,
+    CONTROL_END = 30,
+    CONTROL_FINAL = 31,
+    CONTROL_FINAL_READ = 32,
+    CONTROL_ROWS = (int)(sizeof CONTROL_KINDS / sizeof *CONTROL_KINDS)
+};
+/* Sum sums a for loop's indices until a break, then counts up in an endless
+ * while loop whose continue returns to its head. Sum(3) is 2. */
+static const char
+    LOOP_ROWS_SOURCE[] = "package scalar\n"
+                         "Main :: () -> int { return Sum(3); }\n"
+                         "Sum :: (n: int) -> int {\n"
+                         "    total := 0;\n"
+                         "    for (i in 0..<n) {\n"
+                         "        if (i == 1) { break; }\n"
+                         "        total += i;\n"
+                         "    }\n"
+                         "    while (true) {\n"
+                         "        if (total > 1) { return total; }\n"
+                         "        total += 1;\n"
+                         "        if (total < 0) { continue; }\n"
+                         "    }\n"
+                         "}\n";
+/* The kind of each of LOOP_ROWS_SOURCE's rows, and the rows edited. */
+static const int LOOP_KINDS[] = {
+    SCALAR_SOURCE_ROW,     SCALAR_DOCUMENT_ROW,   SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,     SCALAR_LITERAL_ROW,    SCALAR_CALL_ROW,
+    SCALAR_FUNCTION_ROW,   SCALAR_PARAMETER_ROW,  SCALAR_LOCAL_ROW,
+    SCALAR_LITERAL_ROW,    SCALAR_FOR_ROW,        SCALAR_LITERAL_ROW,
+    SCALAR_READ_ROW,       SCALAR_IF_ROW,         SCALAR_READ_ROW,
+    SCALAR_LITERAL_ROW,    SCALAR_COMPARE_ROW,    SCALAR_BREAK_ROW,
+    SCALAR_END_ROW,        SCALAR_ASSIGN_ROW,     SCALAR_READ_ROW,
+    SCALAR_READ_ROW,       SCALAR_ARITHMETIC_ROW, SCALAR_END_ROW,
+    SCALAR_WHILE_ROW,      SCALAR_LITERAL_ROW,    SCALAR_IF_ROW,
+    SCALAR_READ_ROW,       SCALAR_LITERAL_ROW,    SCALAR_COMPARE_ROW,
+    SCALAR_RETURN_ROW,     SCALAR_READ_ROW,       SCALAR_END_ROW,
+    SCALAR_ASSIGN_ROW,     SCALAR_READ_ROW,       SCALAR_LITERAL_ROW,
+    SCALAR_ARITHMETIC_ROW, SCALAR_IF_ROW,         SCALAR_READ_ROW,
+    SCALAR_LITERAL_ROW,    SCALAR_COMPARE_ROW,    SCALAR_CONTINUE_ROW,
+    SCALAR_END_ROW,        SCALAR_END_ROW,
+};
+enum
+{
+    LOOP_FOR = 10,
+    LOOP_FIRST = 11,
+    LOOP_LAST = 12,
+    LOOP_GUARD = 13,
+    LOOP_BREAK = 17,
+    LOOP_ADD = 19,
+    LOOP_FOR_END = 23,
+    LOOP_WHILE = 24,
+    LOOP_TRUE = 25,
+    LOOP_COUNT_READ = 34,
+    LOOP_CONTINUE = 41,
+    LOOP_WHILE_END = 43,
+    LOOP_ROWS = (int)(sizeof LOOP_KINDS / sizeof *LOOP_KINDS)
+};
+/* Pick switches on x: its default arm, in the middle, declares y. Every arm
+ * returns, so the switch ends Pick. Pick(2) is 20. */
+static const char
+    SWITCH_ROWS_SOURCE[] = "package scalar\n"
+                           "Main :: () -> int { return Pick(2); }\n"
+                           "Pick :: (x: int) -> int {\n"
+                           "    switch x {\n"
+                           "        case 1: return 10;\n"
+                           "        case: y := x; return y;\n"
+                           "        case 2: return 20;\n"
+                           "    }\n"
+                           "}\n";
+/* The kind of each of SWITCH_ROWS_SOURCE's rows, and the rows edited. */
+static const int SWITCH_KINDS[] = {
+    SCALAR_SOURCE_ROW,   SCALAR_DOCUMENT_ROW,  SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_CALL_ROW,
+    SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW, SCALAR_SWITCH_ROW,
+    SCALAR_READ_ROW,     SCALAR_CASE_ROW,      SCALAR_LITERAL_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_CASE_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,      SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,     SCALAR_CASE_ROW,      SCALAR_LITERAL_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_END_ROW,
+};
+enum
+{
+    SWITCH_FUNCTION = 6,
+    SWITCH_ROW = 8,
+    SWITCH_VALUE = 9,
+    SWITCH_FIRST = 10,
+    SWITCH_FIRST_VALUE = 11,
+    SWITCH_FIRST_RETURN = 12,
+    SWITCH_DEFAULT = 14,
+    SWITCH_LAST = 19,
+    SWITCH_LAST_RETURN = 21,
+    SWITCH_LAST_VALUE = 22,
+    SWITCH_END = 23,
+    SWITCH_ROWS = (int)(sizeof SWITCH_KINDS / sizeof *SWITCH_KINDS)
+};
+/* Make builds a Point from its zero, its fields in another order than
+ * declared, and Main adds 1 to the x field of the copy it returns, then
+ * returns that field: Make(3) gives 4. */
+static const char RECORD_ROWS_SOURCE
+    [] = "package scalar\n"
+         "Point :: struct { x: int; y: number; }\n"
+         "Main :: () -> int { p := Make(3); p.x += 1; return p.x; }\n"
+         "Make :: (x: int) -> Point { return {y: 0.5, x: x}; }\n";
+/* The kind of each of RECORD_ROWS_SOURCE's rows, and the rows edited. */
+static const int RECORD_KINDS[] = {
+    SCALAR_SOURCE_ROW, SCALAR_DOCUMENT_ROW, SCALAR_RECORD_ROW,
+    SCALAR_MEMBER_ROW, SCALAR_MEMBER_ROW,   SCALAR_FUNCTION_ROW,
+    SCALAR_LOCAL_ROW,  SCALAR_LITERAL_ROW,  SCALAR_CALL_ROW,
+    SCALAR_ASSIGN_ROW, SCALAR_READ_ROW,     SCALAR_READ_ROW,
+    SCALAR_FIELD_ROW,  SCALAR_LITERAL_ROW,  SCALAR_ARITHMETIC_ROW,
+    SCALAR_UPDATE_ROW, SCALAR_RETURN_ROW,   SCALAR_READ_ROW,
+    SCALAR_FIELD_ROW,  SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW,
+    SCALAR_RETURN_ROW, SCALAR_ZERO_ROW,     SCALAR_LITERAL_ROW,
+    SCALAR_UPDATE_ROW, SCALAR_READ_ROW,     SCALAR_UPDATE_ROW,
+};
+enum
+{
+    RECORD_DECLARATION = 2,
+    RECORD_X = 3,
+    RECORD_Y = 4,
+    RECORD_LOCAL = 6,
+    RECORD_ASSIGN = 9,
+    RECORD_COMPOUND_FIELD = 12,
+    RECORD_COMPOUND_UPDATE = 15,
+    RECORD_READ = 17,
+    RECORD_FIELD = 18,
+    RECORD_MAKE = 19,
+    RECORD_ZERO = 22,
+    RECORD_Y_UPDATE = 24,
+    RECORD_ROWS = (int)(sizeof RECORD_KINDS / sizeof *RECORD_KINDS)
+};
+/* Make builds the Box variant of Shape, and Main tests it with `is`, then
+ * switches on it, binding the Box arm's payloads: Make(3) gives 3. The last
+ * arm is the switch's default, since it has none. */
+static const char UNION_ROWS_SOURCE
+    [] = "package scalar\n"
+         "Shape :: union { Dot | Box(w: int, h: number) }\n"
+         "Main :: () -> int {\n"
+         "    s := Make(3);\n"
+         "    if (s is .Dot) { return 0; }\n"
+         "    switch s { case .Dot: return 1; case .Box(w, h): return w; }\n"
+         "}\n"
+         "Make :: (w: int) -> Shape { return Shape.Box(w, 0.5); }\n";
+/* The kind of each of UNION_ROWS_SOURCE's rows, and the rows edited. */
+static const int UNION_KINDS[] = {
+    SCALAR_SOURCE_ROW,   SCALAR_DOCUMENT_ROW,  SCALAR_UNION_ROW,
+    SCALAR_VARIANT_ROW,  SCALAR_VARIANT_ROW,   SCALAR_MEMBER_ROW,
+    SCALAR_MEMBER_ROW,   SCALAR_FUNCTION_ROW,  SCALAR_LOCAL_ROW,
+    SCALAR_LITERAL_ROW,  SCALAR_CALL_ROW,      SCALAR_IF_ROW,
+    SCALAR_READ_ROW,     SCALAR_TAG_ROW,       SCALAR_LITERAL_ROW,
+    SCALAR_COMPARE_ROW,  SCALAR_RETURN_ROW,    SCALAR_LITERAL_ROW,
+    SCALAR_END_ROW,      SCALAR_SWITCH_ROW,    SCALAR_READ_ROW,
+    SCALAR_TAG_ROW,      SCALAR_CASE_ROW,      SCALAR_LITERAL_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_LITERAL_ROW,   SCALAR_CASE_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,      SCALAR_PAYLOAD_ROW,
+    SCALAR_LOCAL_ROW,    SCALAR_READ_ROW,      SCALAR_PAYLOAD_ROW,
+    SCALAR_RETURN_ROW,   SCALAR_READ_ROW,      SCALAR_END_ROW,
+    SCALAR_FUNCTION_ROW, SCALAR_PARAMETER_ROW, SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,     SCALAR_LITERAL_ROW,   SCALAR_MAKE_ROW,
+};
+enum
+{
+    UNION_DECLARATION = 2,
+    UNION_DOT = 3,
+    UNION_BOX = 4,
+    UNION_W = 5,
+    UNION_H = 6,
+    UNION_MAIN = 7,
+    UNION_LOCAL = 8,
+    UNION_IS_TAG = 13,
+    UNION_IS_VARIANT = 14,
+    UNION_DOT_RETURN = 17,
+    UNION_SWITCH = 19,
+    UNION_SWITCH_TAG = 21,
+    UNION_DOT_ARM = 22,
+    UNION_DOT_VARIANT = 23,
+    UNION_BOX_ARM = 26,
+    UNION_W_LOCAL = 27,
+    UNION_W_PAYLOAD = 29,
+    UNION_H_LOCAL = 30,
+    UNION_H_PAYLOAD = 32,
+    UNION_MAKE = 41,
+    UNION_ROWS = (int)(sizeof UNION_KINDS / sizeof *UNION_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -10105,8 +11029,9 @@ typedef struct malformed_guard
 } malformed_guard;
 #define EDIT(r, f, v) { .row = (r), .field = (f), .value = (v), .from = -1 }
 #define COPY(r, f, source) { .row = (r), .field = (f), .from = (source) }
-static const char LAYOUT[] = "invalid scalar module layout", COMPARISON[] = "scalar comparison differs from its int operands",
-                  SEGMENT[] = "invalid scalar return row";
+static const char LAYOUT[] = "invalid scalar module layout",
+                  COMPARISON[] = "scalar comparison differs from its operands",
+                  SEGMENT[] = "invalid scalar statement row";
 /* The kind of each of ARITHMETIC_SOURCE's rows, and the rows edited. */
 static const int ARITHMETIC_KINDS[] = {
     SCALAR_SOURCE_ROW,    SCALAR_DOCUMENT_ROW,   SCALAR_FUNCTION_ROW,
@@ -10124,19 +11049,30 @@ enum
     ARITHMETIC_LAST_READ = 15,
     ARITHMETIC_ROWS = (int)(sizeof ARITHMETIC_KINDS / sizeof *ARITHMETIC_KINDS)
 };
+static const char
+    ARITHMETIC[] = "scalar arithmetic differs from its number operands";
 static const malformed_guard MALFORMED_GUARDS[] = {
-    /* A guard with no condition, and a second guard past the bound. */
+    /* An if statement with no condition, one that never ends, and an else
+     * with no end. */
     { { EDIT(GUARD_ROW, "count", 0) }, LAYOUT },
-    { { EDIT(GUARD_FINAL, "kind", SCALAR_GUARD_ROW) }, LAYOUT },
+    { { EDIT(GUARD_FINAL, "kind", SCALAR_IF_ROW) }, LAYOUT },
+    { { EDIT(GUARD_END, "kind", SCALAR_ELSE_ROW) }, LAYOUT },
     /* A comparison's operator, arity and result. */
     { { EDIT(GUARD_COMPARE, "value", 0) }, COMPARISON },
     { { EDIT(GUARD_COMPARE, "value", 7) }, COMPARISON },
     { { EDIT(GUARD_COMPARE, "count", 1) }, COMPARISON },
     { { EDIT(GUARD_COMPARE, "type", SCALAR_INT) }, COMPARISON },
-    /* A comparison of a bool. */
+    /* A comparison of an int with a bool, and an ordering of two bools. */
     { { EDIT(GUARD_CONDITION + 1, "kind", SCALAR_LITERAL_ROW),
         EDIT(GUARD_CONDITION + 1, "type", SCALAR_BOOL),
-        EDIT(GUARD_CONDITION + 1, "value", 1) },
+        EDIT(GUARD_CONDITION + 1, "value", 0),
+        EDIT(GUARD_CONDITION + 1, "literal", 1) },
+      COMPARISON },
+    { { EDIT(GUARD_CONDITION, "kind", SCALAR_LITERAL_ROW),
+        EDIT(GUARD_CONDITION, "type", SCALAR_BOOL),
+        EDIT(GUARD_CONDITION + 1, "kind", SCALAR_LITERAL_ROW),
+        EDIT(GUARD_CONDITION + 1, "type", SCALAR_BOOL),
+        EDIT(GUARD_CONDITION + 1, "value", 0) },
       COMPARISON },
     /* A condition that leaves three ints rather than one bool: the
      * comparison becomes a read of b. */
@@ -10144,32 +11080,244 @@ static const malformed_guard MALFORMED_GUARDS[] = {
         EDIT(GUARD_COMPARE, "type", SCALAR_INT),
         EDIT(GUARD_COMPARE, "count", 0) },
       "scalar condition is not one bool" },
-    /* A guard row that carries a type, an arm that ends past its guard, a
-     * condition operand inside the arm and a final return that starts inside
-     * the guard. */
+    /* An if row that carries a type, a consequence that ends past its if
+     * statement, a condition operand inside the consequence, a final return
+     * that starts inside the if statement, and an end with another range. */
     { { EDIT(GUARD_ROW, "type", SCALAR_INT) }, SEGMENT },
     { { COPY(GUARD_ARM, "end", GUARD_FINAL) }, SEGMENT },
     { { COPY(GUARD_CONDITION, "start", GUARD_ARM_READ),
         COPY(GUARD_CONDITION, "end", GUARD_ARM_READ),
         COPY(GUARD_CONDITION, "line", GUARD_ARM_READ),
         COPY(GUARD_CONDITION, "column", GUARD_ARM_READ) },
-      "invalid scalar operand row" },
+      SEGMENT },
     { { COPY(GUARD_FINAL, "start", GUARD_ROW),
         COPY(GUARD_FINAL, "line", GUARD_ROW),
         COPY(GUARD_FINAL, "column", GUARD_ROW) },
       SEGMENT },
-    /* Id calls Main, so the arm's call closes a cycle. */
+    { { COPY(GUARD_END, "end", GUARD_FINAL) }, SEGMENT },
+    /* A read past the variables, and a body that ends in an assignment. */
+    { { EDIT(GUARD_ARM_READ, "value", 2) }, "scalar read differs from its variable" },
+    { { EDIT(GUARD_FINAL, "kind", SCALAR_ASSIGN_ROW),
+        EDIT(GUARD_FINAL, "type", SCALAR_INT),
+        EDIT(GUARD_FINAL, "value", 1) },
+      "scalar function can end without returning" },
+    /* Id calls Main, so the arm's call recurses, under another name. */
     { { EDIT(GUARD_ID_READ, "kind", SCALAR_CALL_ROW),
         EDIT(GUARD_ID_READ, "value", 0),
-        { .row = GUARD_ID_READ, .field = "name", .text = "Main", .from = -1 } },
-      "scalar module calls are recursive" },
+        { .row = GUARD_ID_READ, .field = "name", .text = "Other", .from = -1 } },
+      "scalar call differs from its callee's signature" },
+};
+static const char LOGIC[] = "scalar logic differs from its bool operands",
+                  READ[] = "scalar read differs from its variable";
+static const malformed_guard MALFORMED_CONTROL[] = {
+    /* A logical with no right rows, with right rows past its condition, whose
+     * right side is an int, or with another operator. */
+    { { EDIT(CONTROL_LOGICAL, "count", 0) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "count", 5) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "count", 1) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "value", 3) }, LOGIC },
+    { { EDIT(CONTROL_LOGICAL, "type", SCALAR_INT) }, LOGIC },
+    /* A not of an int. */
+    { { EDIT(CONTROL_NOT, "type", SCALAR_INT) }, ARITHMETIC },
+    /* x read in its own initializer, y after its consequence and in the
+     * alternative. */
+    { { EDIT(CONTROL_X_VALUE, "value", 2) }, READ },
+    { { EDIT(CONTROL_FINAL_READ, "value", 3) }, READ },
+    { { EDIT(CONTROL_ELSE_READ, "value", 3) }, READ },
+    /* A local that is not the next variable, has no name or no scalar type. */
+    { { EDIT(CONTROL_X, "value", 3) }, "invalid scalar local row" },
+    { { { .row = CONTROL_X, .field = "name", .text = "", .from = -1 } },
+      "invalid scalar local row" },
+    { { EDIT(CONTROL_X, "type", 0) }, "invalid scalar local row" },
+    /* An assignment to no visible variable, or of another type. */
+    { { EDIT(CONTROL_ASSIGN, "value", 5) }, "scalar assignment differs from its variable" },
+    { { EDIT(CONTROL_ASSIGN, "type", SCALAR_BOOL) },
+      "scalar assignment differs from its variable" },
+    /* A second else, an else outside its if statement, and an end of
+     * another range. */
+    { { EDIT(CONTROL_END, "kind", SCALAR_ELSE_ROW) }, LAYOUT },
+    { { COPY(CONTROL_ELSE, "end", CONTROL_FINAL) }, SEGMENT },
+    { { COPY(CONTROL_END, "start", CONTROL_ELSE),
+        COPY(CONTROL_END, "line", CONTROL_ELSE),
+        COPY(CONTROL_END, "column", CONTROL_ELSE) },
+      SEGMENT },
+    /* An if statement with an else whose consequence falls through ends the
+     * body only when its alternative does too: the final return becomes an
+     * assignment. */
+    { { EDIT(CONTROL_FINAL, "kind", SCALAR_ASSIGN_ROW),
+        EDIT(CONTROL_FINAL, "type", SCALAR_INT),
+        EDIT(CONTROL_FINAL, "value", 2) },
+      "scalar function can end without returning" },
+};
+static const char LOCAL[] = "invalid scalar local row",
+                  NO_RETURN[] = "scalar function can end without returning";
+static const malformed_guard MALFORMED_LOOPS[] = {
+    /* A continue that breaks out of the endless loop, an endless loop on
+     * false, and a while row that becomes an if statement, which leaves the
+     * continue outside every loop. */
+    { { EDIT(LOOP_CONTINUE, "kind", SCALAR_BREAK_ROW) }, NO_RETURN },
+    { { EDIT(LOOP_TRUE, "literal", 0) }, NO_RETURN },
+    { { EDIT(LOOP_WHILE, "kind", SCALAR_IF_ROW) }, LAYOUT },
+    /* A break with an operand, a type or a value. */
+    { { EDIT(LOOP_BREAK, "count", 1) }, LAYOUT },
+    { { EDIT(LOOP_BREAK, "type", SCALAR_INT) }, SEGMENT },
+    { { EDIT(LOOP_CONTINUE, "value", 1) }, SEGMENT },
+    /* A while condition that is an int and a range bound that is a bool. */
+    { { EDIT(LOOP_TRUE, "type", SCALAR_INT) }, "scalar condition is not one bool" },
+    { { EDIT(LOOP_FIRST, "type", SCALAR_BOOL) }, "scalar range differs from its int bounds" },
+    /* An index that is not the next variable, is not an int, has unknown
+     * flags or no name. */
+    { { EDIT(LOOP_FOR, "value", 5) }, LOCAL },
+    { { EDIT(LOOP_FOR, "type", SCALAR_BOOL) }, LOCAL },
+    { { EDIT(LOOP_FOR, "literal", 4) }, LOCAL },
+    { { { .row = LOOP_FOR, .field = "name", .text = "", .from = -1 } }, LOCAL },
+    /* An assignment to the index, and reads of the index in its own bound
+     * and after its loop. */
+    { { EDIT(LOOP_ADD, "value", 2) }, "scalar assignment differs from its variable" },
+    { { EDIT(LOOP_LAST, "value", 2) }, READ },
+    { { EDIT(LOOP_COUNT_READ, "value", 2) }, READ },
+    /* A loop end of another range, and a body statement that starts inside
+     * the bounds. */
+    { { COPY(LOOP_FOR_END, "end", LOOP_WHILE_END) }, SEGMENT },
+    { { COPY(LOOP_GUARD, "start", LOOP_LAST),
+        COPY(LOOP_GUARD, "line", LOOP_LAST),
+        COPY(LOOP_GUARD, "column", LOOP_LAST) },
+      SEGMENT },
+};
+static const char
+    SWITCH_VALUE_TYPE[] = "scalar switch value is not one integer";
+static const malformed_guard MALFORMED_SWITCHES[] = {
+    /* A statement before the first arm, an arm outside a switch, and a
+     * second default arm. */
+    { { EDIT(SWITCH_FIRST, "kind", SCALAR_RETURN_ROW) }, LAYOUT },
+    { { EDIT(SWITCH_ROW, "kind", SCALAR_IF_ROW) }, LAYOUT },
+    { { EDIT(SWITCH_FIRST, "count", 0),
+        EDIT(SWITCH_FIRST_VALUE, "kind", SCALAR_CASE_ROW),
+        EDIT(SWITCH_FIRST_VALUE, "literal", 0) },
+      SEGMENT },
+    /* A switch on a bool, on a float, and of a type its value is not. */
+    { { EDIT(SWITCH_ROW, "type", SCALAR_BOOL) }, SWITCH_VALUE_TYPE },
+    { { EDIT(SWITCH_ROW, "type", SCALAR_FLOAT) }, SWITCH_VALUE_TYPE },
+    { { EDIT(SWITCH_ROW, "type", SCALAR_INT64) }, SWITCH_VALUE_TYPE },
+    /* An arm of another type than its switch, and an arm whose value is. */
+    { { EDIT(SWITCH_FIRST, "type", SCALAR_BYTE) }, SEGMENT },
+    { { EDIT(SWITCH_FIRST_VALUE, "type", SCALAR_BOOL) },
+      "scalar case value differs from its switch value" },
+    /* An arm with a value or a name, one that ends past its switch, an arm
+     * statement inside its arm's value, and an end of another range. */
+    { { EDIT(SWITCH_LAST, "value", 1) }, SEGMENT },
+    { { { .row = SWITCH_LAST, .field = "name", .text = "x", .from = -1 } }, SEGMENT },
+    { { COPY(SWITCH_LAST, "end", SWITCH_FUNCTION) }, SEGMENT },
+    { { COPY(SWITCH_FIRST_RETURN, "start", SWITCH_FIRST_VALUE),
+        COPY(SWITCH_FIRST_RETURN, "line", SWITCH_FIRST_VALUE),
+        COPY(SWITCH_FIRST_RETURN, "column", SWITCH_FIRST_VALUE) },
+      SEGMENT },
+    { { COPY(SWITCH_END, "end", SWITCH_FUNCTION) }, SEGMENT },
+    /* The default arm's y read in the arm after it. */
+    { { EDIT(SWITCH_LAST_VALUE, "kind", SCALAR_READ_ROW),
+        EDIT(SWITCH_LAST_VALUE, "value", 1),
+        EDIT(SWITCH_LAST_VALUE, "literal", 0) },
+      READ },
+    /* An arm that does not return: its return becomes an assignment. */
+    { { EDIT(SWITCH_LAST_RETURN, "kind", SCALAR_ASSIGN_ROW),
+        EDIT(SWITCH_LAST_RETURN, "type", SCALAR_INT),
+        EDIT(SWITCH_LAST_RETURN, "value", 0) },
+      NO_RETURN },
+};
+static const char RECORD_ROW[] = "invalid scalar record row",
+                  MEMBER_ROW[] = "invalid scalar record member row",
+                  FIELD_READ[] = "scalar field read differs from its record",
+                  FIELD_WRITE[] = "scalar field write differs from its record";
+static const malformed_guard MALFORMED_RECORDS[] = {
+    /* A record whose members overrun into the function after them, one
+     * with no name, and a record that does not lie where it is declared. */
+    { { EDIT(RECORD_DECLARATION, "count", 3) }, MEMBER_ROW },
+    { { { .row = RECORD_DECLARATION, .field = "name", .text = "", .from = -1 } },
+      RECORD_ROW },
+    { { EDIT(RECORD_DECLARATION, "type", SCALAR_INT) }, RECORD_ROW },
+    /* A member of a record type, out of order, named as another, or
+     * outside its record. */
+    { { EDIT(RECORD_Y, "type", SCALAR_RECORD) }, MEMBER_ROW },
+    { { EDIT(RECORD_X, "value", 1) }, MEMBER_ROW },
+    { { { .row = RECORD_Y, .field = "name", .text = "x", .from = -1 } }, MEMBER_ROW },
+    { { COPY(RECORD_Y, "end", RECORD_MAKE) }, MEMBER_ROW },
+    /* A function returning a record the module does not declare, which
+     * its caller's call reaches first, and a local or read of another type
+     * than its value or variable. */
+    { { EDIT(RECORD_MAKE, "type", SCALAR_RECORD + 1) },
+      "scalar call differs from its callee's signature" },
+    { { EDIT(RECORD_LOCAL, "type", SCALAR_INT) }, "scalar value differs from its variable" },
+    { { EDIT(RECORD_ASSIGN, "type", SCALAR_INT) },
+      "scalar assignment differs from its variable" },
+    { { EDIT(RECORD_READ, "type", SCALAR_INT) }, READ },
+    /* A zero of a scalar type; a field read of the float field, as a float
+     * or of a scalar; a write of the int to the float field or to a
+     * scalar. */
+    { { EDIT(RECORD_ZERO, "type", SCALAR_INT) }, "scalar record zero names no record" },
+    { { EDIT(RECORD_FIELD, "value", 1) }, FIELD_READ },
+    { { EDIT(RECORD_FIELD, "value", 2) }, FIELD_READ },
+    { { EDIT(RECORD_FIELD, "type", SCALAR_FLOAT) }, FIELD_READ },
+    { { EDIT(RECORD_FIELD, "count", 2) }, FIELD_READ },
+    { { EDIT(RECORD_COMPOUND_FIELD, "value", -1) }, FIELD_READ },
+    { { EDIT(RECORD_Y_UPDATE, "value", 0) }, FIELD_WRITE },
+    { { EDIT(RECORD_COMPOUND_UPDATE, "value", 1) }, FIELD_WRITE },
+    { { EDIT(RECORD_COMPOUND_UPDATE, "type", SCALAR_INT) }, FIELD_WRITE },
+    { { EDIT(RECORD_COMPOUND_UPDATE, "count", 1) }, FIELD_WRITE },
+};
+static const char UNION_ROW[] = "invalid scalar union row",
+                  VARIANT_ROW[] = "invalid scalar union variant row",
+                  PAYLOAD_ROW[] = "invalid scalar union member row",
+                  VARIANT[] = "scalar variant differs from its union",
+                  TAG[] = "scalar tag reads no union",
+                  PAYLOAD[] = "scalar payload read differs from its union";
+static const malformed_guard MALFORMED_UNIONS[] = {
+    /* A union whose variants overrun into its payloads, one with no name,
+     * one that does not lie where it is declared, and one named as a
+     * record would be. */
+    { { EDIT(UNION_DECLARATION, "count", 3) }, UNION_ROW },
+    { { { .row = UNION_DECLARATION, .field = "name", .text = "", .from = -1 } }, UNION_ROW },
+    { { EDIT(UNION_DECLARATION, "type", SCALAR_INT) }, UNION_ROW },
+    { { EDIT(UNION_DECLARATION, "value", 1) }, UNION_ROW },
+    /* A variant out of order, named as another, outside its union, or with
+     * fewer payloads than follow it, which leaves a member where a function
+     * must start. */
+    { { EDIT(UNION_BOX, "value", 0) }, VARIANT_ROW },
+    { { { .row = UNION_BOX, .field = "name", .text = "Dot", .from = -1 } }, VARIANT_ROW },
+    { { COPY(UNION_BOX, "end", UNION_MAIN) }, VARIANT_ROW },
+    { { EDIT(UNION_BOX, "count", 1) }, LAYOUT },
+    /* A payload numbered as another, of a record type, named as another in
+     * its variant, or outside its variant. */
+    { { EDIT(UNION_H, "value", 0) }, PAYLOAD_ROW },
+    { { EDIT(UNION_H, "type", SCALAR_RECORD) }, PAYLOAD_ROW },
+    { { { .row = UNION_H, .field = "name", .text = "w", .from = -1 } }, PAYLOAD_ROW },
+    { { COPY(UNION_H, "end", UNION_MAIN) }, PAYLOAD_ROW },
+    /* A variant made with another's payloads, too few of them or as a
+     * scalar. */
+    { { EDIT(UNION_MAKE, "value", 0) }, VARIANT },
+    { { EDIT(UNION_MAKE, "count", 1) }, VARIANT },
+    { { EDIT(UNION_MAKE, "type", SCALAR_INT) }, VARIANT },
+    /* A tag of another type or arity, a payload of another type than its
+     * binding or none of its union, and a zero or field read of a union,
+     * which only a record has. */
+    { { EDIT(UNION_IS_TAG, "type", SCALAR_BOOL) }, TAG },
+    { { EDIT(UNION_IS_TAG, "count", 2) }, TAG },
+    { { EDIT(UNION_IS_TAG, "value", 1) }, TAG },
+    { { EDIT(UNION_H_PAYLOAD, "value", 0) }, PAYLOAD },
+    { { EDIT(UNION_H_PAYLOAD, "value", 2) }, PAYLOAD },
+    { { EDIT(UNION_W_PAYLOAD, "type", SCALAR_FLOAT) }, PAYLOAD },
+    { { EDIT(UNION_DOT_RETURN, "kind", SCALAR_ZERO_ROW),
+        EDIT(UNION_DOT_RETURN, "type", SCALAR_RECORD) },
+      "scalar record zero names no record" },
+    { { EDIT(UNION_IS_TAG, "kind", SCALAR_FIELD_ROW) }, FIELD_READ },
+    /* The tag as a bool, which its variant's literal no longer matches. */
+    { { EDIT(UNION_IS_VARIANT, "type", SCALAR_BOOL),
+        EDIT(UNION_IS_VARIANT, "literal", 0) },
+      "scalar comparison differs from its operands" },
 };
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
-static const char
-    ARITHMETIC[] = "scalar arithmetic differs from its int operands";
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
-    { { EDIT(ARITHMETIC_ADD, "value", 9) }, ARITHMETIC },
+    { { EDIT(ARITHMETIC_ADD, "value", 11) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_ADD, "count", 1) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_ADD, "type", SCALAR_BOOL) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_NEGATE, "value", 0) }, ARITHMETIC },
@@ -10177,12 +11325,51 @@ static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_NEGATE, "count", 2) }, ARITHMETIC },
     { { EDIT(ARITHMETIC_SECOND_READ, "kind", SCALAR_LITERAL_ROW),
         EDIT(ARITHMETIC_SECOND_READ, "type", SCALAR_BOOL),
-        EDIT(ARITHMETIC_SECOND_READ, "value", 1) },
+        EDIT(ARITHMETIC_SECOND_READ, "value", 0),
+        EDIT(ARITHMETIC_SECOND_READ, "literal", 1) },
       ARITHMETIC },
     { { EDIT(ARITHMETIC_LAST_READ, "kind", SCALAR_LITERAL_ROW),
         EDIT(ARITHMETIC_LAST_READ, "type", SCALAR_BOOL),
         EDIT(ARITHMETIC_LAST_READ, "value", 0) },
       ARITHMETIC },
+};
+/* The kind of each of WIDTH_SOURCE's rows, and the rows edited. */
+static const int WIDTH_KINDS[] = {
+    SCALAR_SOURCE_ROW,  SCALAR_DOCUMENT_ROW,   SCALAR_FUNCTION_ROW,
+    SCALAR_RETURN_ROW,  SCALAR_LITERAL_ROW,    SCALAR_CALL_ROW,
+    SCALAR_CONVERT_ROW, SCALAR_FUNCTION_ROW,   SCALAR_PARAMETER_ROW,
+    SCALAR_RETURN_ROW,  SCALAR_READ_ROW,       SCALAR_CONVERT_ROW,
+    SCALAR_LITERAL_ROW, SCALAR_ARITHMETIC_ROW,
+};
+enum
+{
+    WIDTH_WIDENED = 6,
+    WIDTH_READ = 10,
+    WIDTH_WRAPPED = 11,
+    WIDTH_SHIFT_COUNT = 12,
+    WIDTH_SHIFT = 13,
+    WIDTH_ROWS = (int)(sizeof WIDTH_KINDS / sizeof *WIDTH_KINDS)
+};
+/* A conversion's mode, arity, type and operand, a literal outside its type,
+ * a literal on another row, mixed shift operands, and a return that does not
+ * widen to its result. */
+static const char
+    CONVERSION[] = "scalar conversion is not one the runtime implements";
+static const malformed_guard MALFORMED_WIDTHS[] = {
+    { { EDIT(WIDTH_WIDENED, "value", 2) }, CONVERSION },
+    { { EDIT(WIDTH_WIDENED, "count", 2) }, CONVERSION },
+    { { EDIT(WIDTH_WRAPPED, "type", SCALAR_BOOL) }, CONVERSION },
+    { { EDIT(WIDTH_READ, "kind", SCALAR_LITERAL_ROW),
+        EDIT(WIDTH_READ, "type", SCALAR_BOOL),
+        EDIT(WIDTH_READ, "value", 0) },
+      CONVERSION },
+    { { EDIT(WIDTH_SHIFT_COUNT, "literal", 256) }, "noncanonical scalar literal" },
+    { { EDIT(WIDTH_SHIFT_COUNT, "literal", -1) }, "noncanonical scalar literal" },
+    { { EDIT(WIDTH_READ, "literal", 1) }, "invalid scalar operand row" },
+    { { EDIT(WIDTH_SHIFT_COUNT, "type", SCALAR_INT) }, ARITHMETIC },
+    { { EDIT(WIDTH_SHIFT, "value", 11) }, ARITHMETIC },
+    { { EDIT(WIDTH_WIDENED, "type", SCALAR_BYTE) },
+      "scalar return differs from its function's result" },
 };
 #undef EDIT
 #undef COPY
@@ -10232,6 +11419,9 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
     for (int i = 0; i < count; i++) {
         const row_edit *edit = &malformed->edits[i];
         pin_value value = { .type = PIN_I32, .i = edit->value };
+        if (saved[i].type == PIN_I64) {
+            value = (pin_value){ .type = PIN_I64, .i64 = edit->value };
+        }
         if (edit->text) {
             value = text(edit->text);
         }
@@ -10269,6 +11459,137 @@ static bool rejects_malformed(
     REQUIRE(validated(b, rows, ""));
     return true;
 }
+/* WIDTH_SOURCE's typed rows: 298 is an int argument that Low wraps to a byte,
+ * its shift count is a byte literal, and Main widens Low's byte to int. */
+static bool widened_rows(const pin_value *rows)
+{
+    static const struct
+    {
+        int row, type, value;
+        int64_t literal;
+    } EXPECTED[] = {
+        { 4, SCALAR_INT, 0, 298 },
+        { 5, SCALAR_BYTE, 1, 0 },
+        { WIDTH_WIDENED, SCALAR_INT, 0, 0 },
+        { WIDTH_READ, SCALAR_INT, 0, 0 },
+        { WIDTH_WRAPPED, SCALAR_BYTE, 1, 0 },
+        { WIDTH_SHIFT_COUNT, SCALAR_BYTE, 0, 1 },
+        { WIDTH_SHIFT, SCALAR_BYTE, 9, 0 },
+    };
+    for (int i = 0; i < (int)(sizeof EXPECTED / sizeof *EXPECTED); i++) {
+        pin_value *row = guard_row(rows, EXPECTED[i].row);
+        REQUIRE(scalar_field(row, "type").i == EXPECTED[i].type);
+        REQUIRE(scalar_field(row, "value").i == EXPECTED[i].value);
+        REQUIRE(scalar_field(row, "literal").i64 == EXPECTED[i].literal);
+    }
+    return true;
+}
+/* LOOP_ROWS_SOURCE's for row: an exclusive range over int bounds that
+ * declares i, Sum's third variable. */
+static bool looped_rows(const pin_value *rows)
+{
+    pin_value *row = guard_row(rows, LOOP_FOR);
+    REQUIRE(scalar_field(row, "type").i == SCALAR_INT);
+    REQUIRE(scalar_field(row, "value").i == 2);
+    REQUIRE(scalar_field(row, "count").i == 2);
+    REQUIRE(scalar_field(row, "literal").i64 == SCALAR_RANGE_EXCLUSIVE);
+    REQUIRE(retained_text(row, "name", "i"));
+    REQUIRE(scalar_field(guard_row(rows, LOOP_TRUE), "literal").i64 == 1);
+    return true;
+}
+/* SWITCH_ROWS_SOURCE's switch and arms: each of x's type, a value arm with
+ * its one literal and the default arm with none. */
+static bool switched_rows(const pin_value *rows)
+{
+    static const struct
+    {
+        int row, count;
+    } EXPECTED[] = { { SWITCH_ROW, 1 },
+                     { SWITCH_FIRST, 1 },
+                     { SWITCH_DEFAULT, 0 },
+                     { SWITCH_LAST, 1 } };
+    for (int i = 0; i < (int)(sizeof EXPECTED / sizeof *EXPECTED); i++) {
+        pin_value *row = guard_row(rows, EXPECTED[i].row);
+        REQUIRE(scalar_field(row, "type").i == SCALAR_INT);
+        REQUIRE(scalar_field(row, "count").i == EXPECTED[i].count);
+    }
+    REQUIRE(scalar_field(guard_row(rows, SWITCH_LAST_VALUE), "literal").i64 == 20);
+    return true;
+}
+/* RECORD_ROWS_SOURCE's record, its fields in declared order, and the record
+ * type of Make's result, Main's local and their rows; the literal's int
+ * field is updated last, as written. */
+static bool recorded_rows(const pin_value *rows)
+{
+    pin_value *record = guard_row(rows, RECORD_DECLARATION);
+    REQUIRE(
+        retained_text(record, "name", "Point") && scalar_field(record, "count").i == 2
+    );
+    REQUIRE(retained_text(guard_row(rows, RECORD_X), "name", "x"));
+    REQUIRE(scalar_field(guard_row(rows, RECORD_X), "type").i == SCALAR_INT);
+    REQUIRE(retained_text(guard_row(rows, RECORD_Y), "name", "y"));
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y), "value").i == 1);
+    static const int RECORD_TYPED[] = { RECORD_LOCAL, RECORD_ASSIGN,
+                                        RECORD_READ,  RECORD_MAKE,
+                                        RECORD_ZERO,  RECORD_Y_UPDATE };
+    for (int i = 0; i < (int)(sizeof RECORD_TYPED / sizeof *RECORD_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, RECORD_TYPED[i]), "type").i == SCALAR_RECORD);
+    }
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y_UPDATE), "value").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y_UPDATE + 2), "value").i == 0);
+    REQUIRE(scalar_field(guard_row(rows, RECORD_Y_UPDATE - 1), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, RECORD_FIELD), "type").i == SCALAR_INT);
+    return true;
+}
+/* UNION_ROWS_SOURCE's union, its variants and their payloads numbered across
+ * it, the union type of Make's result, Main's local and the rows that read or
+ * make one, the Tag and variant ordinals its `is` and arms test, its last
+ * arm as the default, and its bindings' locals. */
+static bool unioned_rows(const pin_value *rows)
+{
+    pin_value *declared = guard_row(rows, UNION_DECLARATION);
+    REQUIRE(
+        retained_text(declared, "name", "Shape") &&
+        scalar_field(declared, "count").i == 2
+    );
+    REQUIRE(retained_text(guard_row(rows, UNION_DOT), "name", "Dot"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_DOT), "count").i == 0);
+    REQUIRE(retained_text(guard_row(rows, UNION_BOX), "name", "Box"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX), "value").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX), "count").i == 2);
+    REQUIRE(retained_text(guard_row(rows, UNION_W), "name", "w"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_W), "type").i == SCALAR_INT);
+    REQUIRE(retained_text(guard_row(rows, UNION_H), "name", "h"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_H), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H), "value").i == 1);
+    static const int UNION_TYPED[] = { UNION_LOCAL,
+                                       UNION_LOCAL + 2,
+                                       UNION_IS_TAG - 1,
+                                       UNION_MAKE };
+    for (int i = 0; i < (int)(sizeof UNION_TYPED / sizeof *UNION_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, UNION_TYPED[i]), "type").i == SCALAR_RECORD);
+    }
+    REQUIRE(scalar_field(guard_row(rows, UNION_MAKE), "value").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_MAKE), "count").i == 2);
+    static const int INT_TYPED[] = { UNION_IS_TAG,  UNION_IS_VARIANT,
+                                     UNION_SWITCH,  UNION_SWITCH_TAG,
+                                     UNION_DOT_ARM, UNION_DOT_VARIANT,
+                                     UNION_BOX_ARM, UNION_W_LOCAL };
+    for (int i = 0; i < (int)(sizeof INT_TYPED / sizeof *INT_TYPED); i++) {
+        REQUIRE(scalar_field(guard_row(rows, INT_TYPED[i]), "type").i == SCALAR_INT);
+    }
+    REQUIRE(scalar_field(guard_row(rows, UNION_IS_VARIANT), "literal").i64 == 0);
+    REQUIRE(scalar_field(guard_row(rows, UNION_DOT_ARM), "count").i == 1);
+    REQUIRE(scalar_field(guard_row(rows, UNION_BOX_ARM), "count").i == 0);
+    REQUIRE(retained_text(guard_row(rows, UNION_W_LOCAL), "name", "w"));
+    REQUIRE(retained_text(guard_row(rows, UNION_H_LOCAL), "name", "h"));
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_LOCAL), "type").i == SCALAR_FLOAT);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_LOCAL), "value").i == 2);
+    REQUIRE(scalar_field(guard_row(rows, UNION_W_PAYLOAD), "value").i == 0);
+    REQUIRE(scalar_field(guard_row(rows, UNION_H_PAYLOAD), "value").i == 1);
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
  * them as LLVM IR that keeps the call, and validates guarded and arithmetic
@@ -10276,7 +11597,8 @@ static bool rejects_malformed(
 TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
-    pin_value produced[2], guarded[2], computed[2];
+    pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
+        looped[2], switched[2], recorded[2], unioned[2];
     for (int b = 0; b < 2; b++) {
         pin_value args[] = { text("/project"),
                              text("Scalar.chibi"),
@@ -10294,6 +11616,38 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         args[2] = text(ARITHMETIC_SOURCE);
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &computed[b])
+        );
+        args[2] = text(WIDTH_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &widened[b])
+        );
+        args[2] = text(CONTROL_ROWS_SOURCE);
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            b,
+            PACKAGE,
+            "CollectScalar",
+            args,
+            5,
+            COMPILE_BUDGET,
+            &detached,
+            &controlled[b]
+        ));
+        args[2] = text(LOOP_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &looped[b])
+        );
+        args[2] = text(SWITCH_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &switched[b])
+        );
+        args[2] = text(RECORD_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &recorded[b])
+        );
+        args[2] = text(UNION_ROWS_SOURCE);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &unioned[b])
         );
     }
     compiler_fixture_free(&fixture);
@@ -10351,6 +11705,59 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             MALFORMED_ARITHMETIC,
             (int)(sizeof MALFORMED_ARITHMETIC / sizeof *MALFORMED_ARITHMETIC)
         ));
+        REQUIRE(widened_rows(&widened[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &widened[b],
+            WIDTH_KINDS,
+            WIDTH_ROWS,
+            MALFORMED_WIDTHS,
+            (int)(sizeof MALFORMED_WIDTHS / sizeof *MALFORMED_WIDTHS)
+        ));
+        REQUIRE(rejects_malformed(
+            b,
+            &controlled[b],
+            CONTROL_KINDS,
+            CONTROL_ROWS,
+            MALFORMED_CONTROL,
+            (int)(sizeof MALFORMED_CONTROL / sizeof *MALFORMED_CONTROL)
+        ));
+        REQUIRE(looped_rows(&looped[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &looped[b],
+            LOOP_KINDS,
+            LOOP_ROWS,
+            MALFORMED_LOOPS,
+            (int)(sizeof MALFORMED_LOOPS / sizeof *MALFORMED_LOOPS)
+        ));
+        REQUIRE(switched_rows(&switched[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &switched[b],
+            SWITCH_KINDS,
+            SWITCH_ROWS,
+            MALFORMED_SWITCHES,
+            (int)(sizeof MALFORMED_SWITCHES / sizeof *MALFORMED_SWITCHES)
+        ));
+        REQUIRE(rejects_malformed(
+            b,
+            &recorded[b],
+            RECORD_KINDS,
+            RECORD_ROWS,
+            MALFORMED_RECORDS,
+            (int)(sizeof MALFORMED_RECORDS / sizeof *MALFORMED_RECORDS)
+        ));
+        REQUIRE(recorded_rows(&recorded[b]));
+        REQUIRE(unioned_rows(&unioned[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &unioned[b],
+            UNION_KINDS,
+            UNION_ROWS,
+            MALFORMED_UNIONS,
+            (int)(sizeof MALFORMED_UNIONS / sizeof *MALFORMED_UNIONS)
+        ));
     }
     return true;
 }
@@ -10359,23 +11766,40 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 enum
 {
     NATIVE_BOOL = 1,
+    NATIVE_BYTE = 3,
     NATIVE_INT = 6,
+    NATIVE_FLOAT = 10,
+    NATIVE_DOUBLE = 11,
     NATIVE_CONSTANT = 0,
     NATIVE_ARGUMENT = 1,
     NATIVE_PUBLISH = 4,
     NATIVE_RETURN = 5,
+    NATIVE_MOD = 11,
+    NATIVE_NEG = 12,
+    NATIVE_NE = 24,
+    NATIVE_BRANCH = 25,
+    NATIVE_JUMP = 26,
     NATIVE_CHECK = 27,
-    NATIVE_CALL = 28
+    NATIVE_CALL = 28,
+    NATIVE_CONVERT = 29,
+    NATIVE_INSERT = 30,
+    NATIVE_EXTRACT = 31,
+    NATIVE_RECORD = 32
 };
 typedef struct native_code
 {
-    int op, type, output, left, right, target, literal;
+    int op, type, output, left, right, target;
+    int64_t literal;
 } native_code;
 typedef struct native_function
 {
     int result, first_parameter, parameters, first_slot, slots, first_code,
         code, first_argument, arguments;
 } native_function;
+typedef struct native_record
+{
+    int first, count;
+} native_record;
 typedef struct native_module
 {
     const native_function *functions;
@@ -10388,6 +11812,10 @@ typedef struct native_module
     int code_count;
     const int *arguments;
     int argument_count;
+    const native_record *records;
+    int record_count;
+    const int *fields;
+    int field_count;
 } native_module;
 static const char NATIVE_PACKAGE[] = "project:llvm_native";
 static pin_value native_ints(const int *values, int count)
@@ -10405,19 +11833,35 @@ static const char *const FUNCTION_FIELDS[] = { "result",     "first_parameter",
                                                "slots",      "first_code",
                                                "code",       "first_argument",
                                                "arguments" };
+static const char *const RECORD_FIELDS[] = { "first", "count" };
 enum
 {
     CODE_WIDTH = (int)(sizeof CODE_FIELDS / sizeof *CODE_FIELDS),
-    FUNCTION_WIDTH = (int)(sizeof FUNCTION_FIELDS / sizeof *FUNCTION_FIELDS)
+    FUNCTION_WIDTH = (int)(sizeof FUNCTION_FIELDS / sizeof *FUNCTION_FIELDS),
+    RECORD_WIDTH = (int)(sizeof RECORD_FIELDS / sizeof *RECORD_FIELDS)
 };
-/* count Instruction or Function records whose fields, in declaration order,
- * take consecutive values. */
-static bool native_records(int b, const char *name, const int *values, int count, pin_value *out)
+/* count Instruction, Function or Record records whose fields, in declaration
+ * order, take consecutive values. No records is an empty array. */
+static bool native_records(int b, const char *name, const int64_t *values, int count, pin_value *out)
 {
-    bool code = !strcmp(name, "Instruction");
-    const char *const *fields = code ? CODE_FIELDS : FUNCTION_FIELDS;
-    int width = code ? CODE_WIDTH : FUNCTION_WIDTH;
-    assert(count > 0);
+    const char *const *fields = RECORD_FIELDS;
+    int width = RECORD_WIDTH;
+    if (!strcmp(name, "Instruction")) {
+        fields = CODE_FIELDS;
+        width = CODE_WIDTH;
+    } else if (!strcmp(name, "Function")) {
+        fields = FUNCTION_FIELDS;
+        width = FUNCTION_WIDTH;
+    }
+    if (!count) {
+        *out = rows(
+            NULL,
+            0,
+            PIN_STRUCT,
+            compiler_fixture_record(&consumer, b, NATIVE_PACKAGE, name, &input)
+        );
+        return true;
+    }
     pin_value *items = xmalloc(sizeof *items * (size_t)count);
     for (int i = 0; i < count; i++) {
         items[i] = record_row(&consumer, b, NATIVE_PACKAGE, name);
@@ -10431,12 +11875,12 @@ static bool native_records(int b, const char *name, const int *values, int count
 }
 static bool native_codes(int b, const native_code *code, int count, pin_value *out)
 {
-    int *values = xmalloc(sizeof *values * CODE_WIDTH * (size_t)count);
+    int64_t *values = xmalloc(sizeof *values * CODE_WIDTH * (size_t)count);
     for (int i = 0; i < count; i++) {
         const native_code *c = &code[i];
-        const int fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
-                                         c->left,   c->right, c->target,
-                                         c->literal };
+        const int64_t fields[CODE_WIDTH] = { c->op,     c->type,  c->output,
+                                             c->left,   c->right, c->target,
+                                             c->literal };
         memcpy(&values[i * CODE_WIDTH], fields, sizeof fields);
     }
     bool built = native_records(b, "Instruction", values, count, out);
@@ -10445,24 +11889,35 @@ static bool native_codes(int b, const native_code *code, int count, pin_value *o
 }
 static bool native_functions(int b, const native_function *functions, int count, pin_value *out)
 {
-    int *values = xmalloc(sizeof *values * FUNCTION_WIDTH * (size_t)count);
+    int64_t *values = xmalloc(sizeof *values * FUNCTION_WIDTH * (size_t)count);
     for (int i = 0; i < count; i++) {
         const native_function *f = &functions[i];
-        const int fields[FUNCTION_WIDTH] = { f->result,     f->first_parameter,
-                                             f->parameters, f->first_slot,
-                                             f->slots,      f->first_code,
-                                             f->code,       f->first_argument,
-                                             f->arguments };
+        const int64_t fields[FUNCTION_WIDTH] = {
+            f->result,     f->first_parameter, f->parameters,
+            f->first_slot, f->slots,           f->first_code,
+            f->code,       f->first_argument,  f->arguments
+        };
         memcpy(&values[i * FUNCTION_WIDTH], fields, sizeof fields);
     }
     bool built = native_records(b, "Function", values, count, out);
     free(values);
     return built;
 }
+static bool native_record_table(int b, const native_record *records, int count, pin_value *out)
+{
+    int64_t *values = xmalloc(sizeof *values * RECORD_WIDTH * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        values[i * RECORD_WIDTH] = records[i].first;
+        values[i * RECORD_WIDTH + 1] = records[i].count;
+    }
+    bool built = native_records(b, "Record", values, count, out);
+    free(values);
+    return built;
+}
 /* Emits m as a module of internal functions under budget 1. */
 static bool native_emit(int b, const native_module *m, const pin_union **out)
 {
-    pin_value args[9];
+    pin_value args[11];
     REQUIRE(compiler_fixture_call(
         &consumer,
         b,
@@ -10480,11 +11935,13 @@ static bool native_emit(int b, const native_module *m, const pin_union **out)
     args[4] = native_ints(NULL, 0);
     REQUIRE(native_codes(b, m->code, m->code_count, &args[5]));
     args[6] = native_ints(m->arguments, m->argument_count);
-    args[7] = (pin_value){ .type = PIN_BOOL, .b = false };
-    args[8] = (pin_value){ .type = PIN_I32, .i = 1 };
+    REQUIRE(native_record_table(b, m->records, m->record_count, &args[7]));
+    args[8] = native_ints(m->fields, m->field_count);
+    args[9] = (pin_value){ .type = PIN_BOOL, .b = false };
+    args[10] = (pin_value){ .type = PIN_I32, .i = 1 };
     pin_value result;
     REQUIRE(
-        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 9, COMPILE_BUDGET, &input, &result)
+        compiler_fixture_call(&consumer, b, NATIVE_PACKAGE, "Emit", args, 11, COMPILE_BUDGET, &input, &result)
     );
     REQUIRE(result.type == PIN_UNION && result.ptr);
     *out = result.ptr;
@@ -10550,8 +12007,8 @@ static bool native_calls_emit_definitions(int b)
     REQUIRE(native_emit(b, &m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
     pin_string text = pin_text(value->values[0]);
-    REQUIRE(contains(text, "define i32 @chibi_scalar() {"));
-    REQUIRE(contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) {"));
+    REQUIRE(contains(text, "define i32 @chibi_scalar() #0 {"));
+    REQUIRE(contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) #0 {"));
     REQUIRE(contains(text, "%v4 = call i32 @chibi_scalar.1(i32 %c4_0, i1 %c4_1, i32 %c4_2)"));
     REQUIRE(
         contains(text, "%c4_0 = load i32, ptr %s0\n  %c4_1 = load i1, ptr %s1\n  %c4_2 = load i32, ptr %s2")
@@ -10565,12 +12022,22 @@ typedef struct native_change
     size_t field;
     int value;
 } native_change;
+/* Sets one field of code[change.index], at the width of that field. */
+static void change_code(native_code *code, native_change change)
+{
+    native_code *item = &code[change.index];
+    if (change.field == offsetof(native_code, literal)) {
+        item->literal = change.value;
+        return;
+    }
+    memcpy((char *)item + change.field, &change.value, sizeof change.value);
+}
 /* The call module with one instruction field changed. */
 static bool native_rejects_change(int b, native_change change, const char *message)
 {
     native_code code[CALL_CODE];
     memcpy(code, CALLER_AND_CALLEE, sizeof code);
-    *(int *)((char *)&code[change.index] + change.field) = change.value;
+    change_code(code, change);
     native_module m = call_module(code, CALL_ARGUMENTS, 3);
     return native_rejects(b, &m, message);
 }
@@ -10605,7 +12072,7 @@ static bool native_rejects_malformed_calls(int b)
         { { 4, offsetof(native_code, type), NATIVE_BOOL }, OUTPUT },
         /* The call's output is an argument slot defined before it. */
         { { 4, offsetof(native_code, output), 2 }, OUTPUT },
-        { { 2, offsetof(native_code, literal), 2 }, "native bool constant is not canonical" },
+        { { 2, offsetof(native_code, literal), 2 }, "native constant is outside its type" },
     };
     for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
         REQUIRE(native_rejects_change(b, changes[i].change, changes[i].message));
@@ -10619,9 +12086,31 @@ static bool native_rejects_malformed_calls(int b)
     REQUIRE(native_rejects(b, &m, "native call argument is not defined on every path"));
     return true;
 }
-/* Direct and mutual recursion are rejected, as is a function range that
- * leaves a code row unowned. */
-static bool native_rejects_cycles(int b)
+static int occurrences(pin_string haystack, const char *needle)
+{
+    char *text = xmalloc(haystack.length + 1);
+    memcpy(text, haystack.bytes, haystack.length);
+    text[haystack.length] = 0;
+    int count = 0;
+    for (const char *at = strstr(text, needle); at; at = strstr(at + 1, needle)) {
+        count++;
+    }
+    free(text);
+    return count;
+}
+/* The IR native_emit gives for m. */
+static bool native_text(int b, const native_module *m, pin_string *ir)
+{
+    const pin_union *value;
+    REQUIRE(native_emit(b, m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    *ir = pin_text(value->values[0]);
+    return true;
+}
+/* Direct and mutual recursion call their callees' symbols, with no depth
+ * counter, and every function probes its stack. A function range that leaves
+ * a code row unowned is rejected. */
+static bool native_recursion_probes_the_stack(int b)
 {
     static const native_code recursive[] = {
         { .op = NATIVE_CHECK },
@@ -10637,13 +12126,24 @@ static bool native_rejects_cycles(int b)
     static const native_function two[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
                                            { NATIVE_INT, 0, 0, 1, 1, 4, 4, 0, 0 } };
     static const int slots[] = { NATIVE_INT, NATIVE_INT };
+    static const char
+        probes[] = "\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n";
     native_module m = { one, 1, NULL, 0, slots, 1, recursive, 4, NULL, 0 };
-    REQUIRE(native_rejects(b, &m, "native call graph is cyclic"));
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(occurrences(ir, "define i32 @chibi_scalar() #0 {\nentry:\n") == 1);
+    REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
+    REQUIRE(occurrences(ir, probes) == 1 && !occurrences(ir, "depth"));
+    /* Function 0 calls 1, which calls 0. */
     native_code mutual[8];
     memcpy(mutual, recursive, sizeof mutual);
     mutual[1].left = 1;
     m = (native_module){ two, 2, NULL, 0, slots, 2, mutual, 8, NULL, 0 };
-    REQUIRE(native_rejects(b, &m, "native call graph is cyclic"));
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(occurrences(ir, "define internal i32 @chibi_scalar.1() #0 {") == 1);
+    REQUIRE(occurrences(ir, "call i32 @chibi_scalar.1()") == 1);
+    REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
+    REQUIRE(occurrences(ir, " #0 {") == 2 && occurrences(ir, probes) == 1);
     static const native_function gap[] = { { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
                                            { NATIVE_INT, 0, 3, 4, 1, 8, 3, 3, 0 } };
     m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
@@ -10651,8 +12151,272 @@ static bool native_rejects_cycles(int b)
     REQUIRE(native_rejects(b, &m, TABLES));
     return true;
 }
-/* llvm_native's call contract: definitions, argument order, and the
- * malformed or cyclic plans it rejects before writing IR. */
+/* main() builds {3, 4.5} from its zero, passes it through the internal
+ * identity Same and returns its int field. Slots s0..s6 are main's. */
+static const native_code RECORD_CODE[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_RECORD },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 3 },
+    { .op = NATIVE_INSERT, .type = NATIVE_RECORD, .output = 2, .right = 1 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_FLOAT, .output = 3, .literal = 0x40900000 },
+    { .op = NATIVE_INSERT, .type = NATIVE_RECORD, .output = 4, .left = 2, .right = 3, .literal = 1 },
+    { .op = NATIVE_CALL, .type = NATIVE_RECORD, .output = 5, .left = 1, .target = 1 },
+    { .op = NATIVE_EXTRACT, .type = NATIVE_INT, .output = 6, .left = 5, .right = NATIVE_RECORD },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 6 },
+    { .op = NATIVE_RETURN },
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_ARGUMENT, .type = NATIVE_RECORD },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_RECORD },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    RECORD_CODE_COUNT = (int)(sizeof RECORD_CODE / sizeof *RECORD_CODE)
+};
+static const native_function RECORD_FUNCTIONS[] = {
+    { NATIVE_INT, 0, 0, 0, 7, 0, 10, 0, 1 },
+    { NATIVE_RECORD, 0, 1, 7, 1, 10, 4, 1, 0 },
+};
+static const int RECORD_PARAMETERS[] = { NATIVE_RECORD };
+static const int RECORD_SLOTS[] = { NATIVE_RECORD, NATIVE_INT,    NATIVE_RECORD,
+                                    NATIVE_FLOAT,  NATIVE_RECORD, NATIVE_RECORD,
+                                    NATIVE_INT,    NATIVE_RECORD };
+static const int RECORD_ARGUMENTS[] = { 4 };
+static const native_record RECORD_TYPES[] = { { 0, 2 } };
+static const int RECORD_FIELD_TYPES[] = { NATIVE_INT, NATIVE_FLOAT };
+static native_module record_module(const native_code *code)
+{
+    return (native_module){ RECORD_FUNCTIONS,
+                            2,
+                            RECORD_PARAMETERS,
+                            1,
+                            RECORD_SLOTS,
+                            8,
+                            code,
+                            RECORD_CODE_COUNT,
+                            RECORD_ARGUMENTS,
+                            1,
+                            RECORD_TYPES,
+                            1,
+                            RECORD_FIELD_TYPES,
+                            2 };
+}
+/* The record module with one instruction field changed. */
+static bool native_rejects_record_change(int b, native_change change, const char *message)
+{
+    native_code code[RECORD_CODE_COUNT];
+    memcpy(code, RECORD_CODE, sizeof code);
+    change_code(code, change);
+    native_module m = record_module(code);
+    return native_rejects(b, &m, message);
+}
+/* A record is a named LLVM struct of its fields, built from its zero with
+ * insertvalue, read with extractvalue, and passed and returned by value
+ * between internal functions. The exported entry takes and returns scalars
+ * only, and malformed field reads and writes are rejected. */
+static bool native_records_emit(int b)
+{
+    native_module m = record_module(RECORD_CODE);
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(contains(ir, "%record0 = type { i32, float }\n"));
+    REQUIRE(contains(ir, "store %record0 zeroinitializer, ptr %s0"));
+    REQUIRE(contains(ir, "%v3 = insertvalue %record0 %a3, i32 %b3, 0"));
+    REQUIRE(contains(ir, "%v5 = insertvalue %record0 %a5, float %b5, 1"));
+    REQUIRE(contains(ir, "%v6 = call %record0 @chibi_scalar.1(%record0 %c6_0)"));
+    REQUIRE(contains(ir, "%v7 = extractvalue %record0 %a7, 0"));
+    REQUIRE(contains(ir, "define internal %record0 @chibi_scalar.1(%record0 %arg0) #0 {"));
+    REQUIRE(contains(ir, "ret %record0 %return"));
+    static const char write[] = "native field write differs from its record",
+                      read[] = "native field read differs from its record";
+    static const struct
+    {
+        native_change change;
+        const char *message;
+    } changes[] = {
+        /* An int written to the float field, and a field past the record. */
+        { { 3, offsetof(native_code, literal), 1 }, write },
+        { { 3, offsetof(native_code, literal), 2 }, write },
+        /* A write whose record slot is the int. */
+        { { 3, offsetof(native_code, left), 1 }, write },
+        /* A read of the float field as an int, and a read of an int slot. */
+        { { 7, offsetof(native_code, literal), 1 }, read },
+        { { 7, offsetof(native_code, right), NATIVE_INT }, read },
+        { { 7, offsetof(native_code, left), 1 }, read },
+        /* A record's only constant is its zero, and record 1 is undeclared. */
+        { { 1, offsetof(native_code, literal), 1 }, "native constant is outside its type" },
+        { { 1, offsetof(native_code, type), NATIVE_RECORD + 1 }, OUTPUT },
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
+        REQUIRE(native_rejects_record_change(b, changes[i].change, changes[i].message));
+    }
+    /* Same exported alone: the entry would return a record. */
+    static const native_function exported[] = { { NATIVE_RECORD, 0, 1, 0, 1, 0, 4, 0, 0 } };
+    native_module alone = { exported,
+                            1,
+                            RECORD_PARAMETERS,
+                            1,
+                            RECORD_SLOTS + 7,
+                            1,
+                            RECORD_CODE + 10,
+                            4,
+                            NULL,
+                            0,
+                            RECORD_TYPES,
+                            1,
+                            RECORD_FIELD_TYPES,
+                            2 };
+    REQUIRE(native_rejects(b, &alone, TABLES));
+    /* A record whose fields overrun the table, or hold a record. */
+    static const native_record overrun[] = { { 0, 3 } };
+    static const int nested[] = { NATIVE_INT, NATIVE_RECORD };
+    static const char layout[] = "native records differ from their field table";
+    m = record_module(RECORD_CODE);
+    m.records = overrun;
+    REQUIRE(native_rejects(b, &m, layout));
+    m = record_module(RECORD_CODE);
+    m.fields = nested;
+    REQUIRE(native_rejects(b, &m, layout));
+    return true;
+}
+/* A loop whose back edge skips the entry CHECK is emitted: native loops run
+ * unchecked, as Odin's do. */
+static bool native_cycles_run_unchecked(int b)
+{
+    static const native_code loop[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .literal = 1 },
+        { .op = NATIVE_BRANCH, .target = 4 },
+        { .op = NATIVE_JUMP, .target = 1 },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1 },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 1 },
+        { .op = NATIVE_RETURN },
+    };
+    static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 2, 0, 7, 0, 0 } };
+    static const int slots[] = { NATIVE_BOOL, NATIVE_INT };
+    native_module m = { one, 1, NULL, 0, slots, 2, loop, 7, NULL, 0 };
+    const pin_union *value;
+    REQUIRE(native_emit(b, &m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    return true;
+}
+/* Returns float(d) for d, a double NaN with a payload: s0 is 1.5f, s2 widens
+ * it, s3 compares it with d, s4 and s5 convert d and s2 to int, s6 narrows d
+ * and s7 converts s0 to byte. */
+static const native_code FLOATS[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_FLOAT, .literal = 0x3fc00000 },
+    { .op = NATIVE_CONSTANT,
+      .type = NATIVE_DOUBLE,
+      .output = 1,
+      .literal = INT64_C(0x7ff8000000000001) },
+    { .op = NATIVE_CONVERT, .type = NATIVE_DOUBLE, .output = 2, .right = NATIVE_FLOAT },
+    { .op = NATIVE_NE, .type = NATIVE_DOUBLE, .output = 3, .left = 2, .right = 1 },
+    { .op = NATIVE_CONVERT, .type = NATIVE_INT, .output = 4, .left = 1, .right = NATIVE_DOUBLE },
+    { .op = NATIVE_CONVERT, .type = NATIVE_INT, .output = 5, .left = 2, .right = NATIVE_DOUBLE },
+    { .op = NATIVE_CONVERT, .type = NATIVE_FLOAT, .output = 6, .left = 1, .right = NATIVE_DOUBLE },
+    { .op = NATIVE_CONVERT, .type = NATIVE_BYTE, .output = 7, .right = NATIVE_FLOAT },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_FLOAT, .left = 6 },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    FLOAT_CODE = (int)(sizeof FLOATS / sizeof *FLOATS)
+};
+static const native_function FLOAT_FUNCTIONS[] = {
+    { NATIVE_FLOAT, 0, 0, 0, 8, 0, FLOAT_CODE, 0, 0 },
+};
+static const int FLOAT_SLOTS[] = { NATIVE_FLOAT, NATIVE_DOUBLE, NATIVE_DOUBLE,
+                                   NATIVE_BOOL,  NATIVE_INT,    NATIVE_INT,
+                                   NATIVE_FLOAT, NATIVE_BYTE };
+static native_module float_module(const native_code *code)
+{
+    return (native_module){
+        FLOAT_FUNCTIONS, 1, NULL, 0, FLOAT_SLOTS, 8, code, FLOAT_CODE, NULL, 0
+    };
+}
+/* Constants are their exact encodings, != is unordered, a float widens and a
+ * double narrows, and each saturating intrinsic is declared once. */
+static bool native_floats_emit(int b)
+{
+    native_module m = float_module(FLOATS);
+    const pin_union *value;
+    REQUIRE(native_emit(b, &m, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string text = pin_text(value->values[0]);
+    REQUIRE(contains(text, "store float 0.0, ptr %result0"));
+    REQUIRE(contains(text, "%v1 = bitcast i32 1069547520 to float"));
+    REQUIRE(contains(text, "%v2 = bitcast i64 9221120237041090561 to double"));
+    REQUIRE(contains(text, "%v3 = fpext float %a3 to double"));
+    REQUIRE(contains(text, "%v4 = fcmp une double %a4, %b4"));
+    REQUIRE(contains(text, "%v5 = call i32 @llvm.fptosi.sat.i32.f64(double %a5)"));
+    REQUIRE(contains(text, "%v6 = call i32 @llvm.fptosi.sat.i32.f64(double %a6)"));
+    REQUIRE(contains(text, "%v7 = fptrunc double %a7 to float"));
+    REQUIRE(contains(text, "%v8 = call i8 @llvm.fptoui.sat.i8.f32(float %a8)"));
+    REQUIRE(occurrences(text, "declare i32 @llvm.fptosi.sat.i32.f64(double)\n") == 1);
+    REQUIRE(occurrences(text, "declare i8 @llvm.fptoui.sat.i8.f32(float)\n") == 1);
+    return true;
+}
+/* The float module with instruction `index` replaced by `item`. */
+static bool native_rejects_float(int b, int index, native_code item, const char *message)
+{
+    native_code code[FLOAT_CODE];
+    memcpy(code, FLOATS, sizeof code);
+    code[index] = item;
+    native_module m = float_module(code);
+    return native_rejects(b, &m, message);
+}
+/* A float constant past 32 bits; float negation and remainder, which the
+ * runtime does not compute; and conversions it has no cast for: an integer
+ * straight to float, and bool to double. */
+static bool native_rejects_floats(int b)
+{
+    static const char OPERAND[] = "native scalar operand type mismatch",
+                      CONVERSION[] = "native conversion is not one the "
+                                     "backend implements";
+    REQUIRE(native_rejects_float(
+        b,
+        1,
+        (native_code){ .op = NATIVE_CONSTANT,
+                       .type = NATIVE_FLOAT,
+                       .literal = INT64_C(1) << 32 },
+        "native constant is outside its type"
+    ));
+    REQUIRE(native_rejects_float(
+        b,
+        3,
+        (native_code){ .op = NATIVE_NEG, .type = NATIVE_DOUBLE, .output = 2, .left = 1 },
+        OPERAND
+    ));
+    REQUIRE(native_rejects_float(
+        b,
+        3,
+        (native_code){ .op = NATIVE_MOD, .type = NATIVE_DOUBLE, .output = 2, .left = 1, .right = 1 },
+        OPERAND
+    ));
+    REQUIRE(native_rejects_float(
+        b,
+        3,
+        (
+            native_code
+        ){ .op = NATIVE_CONVERT, .type = NATIVE_FLOAT, .output = 6, .left = 4, .right = NATIVE_INT },
+        CONVERSION
+    ));
+    REQUIRE(native_rejects_float(
+        b,
+        3,
+        (native_code){ .op = NATIVE_CONVERT,
+                       .type = NATIVE_DOUBLE,
+                       .output = 2,
+                       .left = 3,
+                       .right = NATIVE_BOOL },
+        CONVERSION
+    ));
+    return true;
+}
+/* llvm_native's call and float contracts: definitions, argument order,
+ * floating encodings and conversions, and the malformed or cyclic plans it
+ * rejects before writing IR. */
 TEST_CASE(package_compiler_native_emitter_checks_calls)
 {
     const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
@@ -10660,17 +12424,101 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_calls_emit_definitions(b));
         REQUIRE(native_rejects_malformed_calls(b));
-        REQUIRE(native_rejects_cycles(b));
+        REQUIRE(native_recursion_probes_the_stack(b));
+        REQUIRE(native_records_emit(b));
+        REQUIRE(native_cycles_run_unchecked(b));
+        REQUIRE(native_floats_emit(b));
+        REQUIRE(native_rejects_floats(b));
     }
     return true;
 }
 static const char CASES_PACKAGE[] = "project:scalar_cases";
 /* A shared wrong result is not an oracle. Each executed value must match
  * the fixture's literal, including Main's value. */
-static bool scalar_results_match(const int32_t values[4], int32_t expected)
+static bool scalar_results_match(const int64_t values[4], int64_t expected)
 {
     return values[0] == expected && values[1] == expected &&
            values[2] == expected && values[3] == expected;
+}
+/* Union forms the scalar subset cannot express, each with its message and
+ * the source its diagnostic covers: a switch on a call, an `is` that binds,
+ * string and record payloads, and one payload and one variant past the
+ * bounds. */
+static const struct
+{
+    const char *source, *message, *excerpt;
+} UNION_REJECTIONS[] = {
+    { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
+      "Main :: () -> int { switch Make() { case .Dot: return 0; case .Box(w): "
+      "return w; } }\n"
+      "Make :: () -> Shape { return Shape.Dot; }\n",
+      "scalar proof switches only on union variables",
+      "Make()" },
+    { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
+      "Main :: () -> int { s := Shape.Box(1); if (s is .Box(w)) { return w; } "
+      "return 0; }\n",
+      "scalar proof binds payloads only in switch arms",
+      ".Box(w)" },
+    { "package scalar\nNamed :: union { Tag(text: string) }\nMain :: () -> int "
+      "{ return 1; }\n",
+      "scalar proof requires number and bool union payloads",
+      "text: string" },
+    { "package scalar\nPoint :: struct { x: int; }\nWrapped :: union { Of(p: "
+      "Point) }\n"
+      "Main :: () -> int { return 1; }\n",
+      "scalar proof requires number and bool union payloads",
+      "p: Point" },
+    { "package scalar\nWide :: union { A(a0: int, a1: int, a2: int, a3: int, "
+      "a4: int, a5: int, a6: int, a7: int) |\n"
+      "    B(b0: int, b1: int, b2: int, b3: int, b4: int, b5: int, b6: int, "
+      "b7: int) }\n"
+      "Main :: () -> int { return 1; }\n",
+      "scalar proof admits at most 15 payloads per union",
+      "b7: int" },
+    { "package scalar\nMany :: union { V0 | V1 | V2 | V3 | V4 | V5 | V6 | V7 | "
+      "V8 | V9 | V10 | V11 | V12 | V13 | "
+      "V14 | V15 | V16 }\nMain :: () -> int { return 1; }\n",
+      "scalar proof admits at most 16 variants per union",
+      "Many :: union { V0 | V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | "
+      "V11 | V12 | V13 | V14 | V15 | V16 }" },
+};
+/* Each of UNION_REJECTIONS is a located rejection on both VMs, its source
+ * and diagnostic and nothing else. */
+TEST_CASE(package_compiler_scalar_rejects_unsupported_unions)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < (int)(sizeof UNION_REJECTIONS / sizeof *UNION_REJECTIONS);
+             i++) {
+            const char *source = UNION_REJECTIONS[i].source;
+            pin_value args[] = { text("/project"),
+                                 text("Scalar.chibi"),
+                                 text(source),
+                                 { 0 },
+                                 instruction_names() };
+            REQUIRE(target(b, &args[3]));
+            pin_value rows;
+            REQUIRE(
+                compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &rows)
+            );
+            const pin_array *array = rows.ptr;
+            REQUIRE(array->count == 2);
+            pin_value *rejection = guard_row(&rows, 1);
+            REQUIRE(scalar_field(rejection, "kind").i == SCALAR_REJECTION_ROW);
+            int start = scalar_field(rejection, "start").i,
+                end = scalar_field(rejection, "end").i;
+            pin_string message = pin_text(scalar_field(rejection, "text"));
+            bool expected = !strcmp(message.bytes, UNION_REJECTIONS[i].message) &&
+                            end - start == (int)strlen(UNION_REJECTIONS[i].excerpt) &&
+                            !strncmp(source + start, UNION_REJECTIONS[i].excerpt, (size_t)(end - start));
+            if (!expected) {
+                fprintf(stderr, "union rejection %d: %s at %.*s\n", i, message.bytes, end - start, source + start);
+            }
+            REQUIRE(expected);
+            arena_free(&detached);
+        }
+    }
+    return true;
 }
 TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 {
@@ -10692,10 +12540,10 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
                 &literal
             ));
             REQUIRE(literal.type == PIN_I32 && literal.i == expected[i]);
-            int32_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
+            int64_t values[4] = { expected[i], expected[i], expected[i], expected[i] };
             REQUIRE(scalar_results_match(values, literal.i));
-            int32_t wrong = expected[i] == 42 ? 41 : 1;
-            const int32_t consensus[4] = { wrong, wrong, wrong, wrong };
+            int64_t wrong = expected[i] == 42 ? 41 : 1;
+            const int64_t consensus[4] = { wrong, wrong, wrong, wrong };
             REQUIRE(!scalar_results_match(consensus, literal.i));
             for (int column = 0; column < 4; column++) {
                 values[column] = wrong;
@@ -10717,15 +12565,15 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
  * trap is a status rather than the end of this test. Its entry's value on
  * both VMs and both native levels must match the fixture's literal expected
  * value, and so must each probe's. A probe reaches an internal function
- * through a validation-only IR adapter that passes it int32 arguments, which
- * is how negative values and bool parameters reach it; the adapter is not a
- * foreign ABI. Linux x86-64 is the one target the emitter admits.
- * CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
+ * through a validation-only IR adapter that passes it int64 arguments and
+ * returns an int64, which is how every integer type and bool reaches it; the
+ * adapter is not a foreign ABI. Linux x86-64 is the one target the emitter
+ * admits. CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
  * nothing is found through PATH. */
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 34
+    SCALAR_ACCEPTED_CASES = 50
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -10752,10 +12600,16 @@ typedef struct scalar_probe
 {
     const char *source_case, *function;
     int count;
-    int32_t arguments[MAX_PROBE_ARGUMENTS];
-    int32_t expected;
+    int64_t arguments[MAX_PROBE_ARGUMENTS];
+    int64_t expected;
 } scalar_probe;
 static const scalar_probe SCALAR_PROBES[] = {
+    { "recursion", "Sum", 1, { 0 }, 0 },
+    { "recursion", "Sum", 1, { 10 }, 55 },
+    { "mutual_recursion", "A", 1, { 4 }, 1 },
+    { "mutual_recursion", "B", 1, { 4 }, 2 },
+    { "recursive_guard", "Down", 1, { -1 }, -1 },
+    { "recursive_guard", "Down", 1, { 7 }, 0 },
     { "min", "Min", 2, { INT32_MIN, INT32_MAX }, INT32_MIN },
     { "min", "Min", 2, { INT32_MAX, INT32_MIN }, INT32_MIN },
     { "min", "Min", 2, { -1, -1 }, -1 },
@@ -10789,6 +12643,21 @@ static const scalar_probe SCALAR_PROBES[] = {
     { "folded_guard", "Pick", 1, { 536870913 }, INT32_MAX },
     { "wrapped_operand", "Half", 1, { 1 }, 1 },
     { "wrapped_operand", "Half", 1, { -3 }, -1 },
+    /* The low byte of an int, widened back. */
+    { "conversion", "Low", 1, { -1 }, 255 },
+    { "conversion", "Low", 1, { 256 }, 0 },
+    { "conversion", "Low", 1, { INT32_MIN }, 0 },
+    { "conversion", "Low", 1, { INT32_MAX }, 255 },
+    { "shift", "Shl", 1, { -1 }, -4 },
+    { "shift", "Shl", 1, { INT32_MIN }, 0 },
+    { "shift", "Shl", 1, { INT32_MAX }, -4 },
+    /* Each path of a && b's short circuit. */
+    { "logical_and", "Mid", 3, { 2, 1, 3 }, 2 },
+    { "logical_and", "Mid", 3, { 1, 3, 2 }, 1 },
+    { "logical_and", "Mid", 3, { 1, 2, 3 }, 2 },
+    { "bool_comparison", "Same", 2, { 1, 1 }, 1 },
+    { "bool_comparison", "Same", 2, { 0, 1 }, 0 },
+    { "helper_statement", "Id", 1, { INT32_MIN }, INT32_MIN },
 };
 /* The six comparisons of the operators case, in the order of their source
  * functions, each probed with every pair. */
@@ -10865,8 +12734,8 @@ static int case_probes(const char *name, scalar_probe probes[MAX_CASE_PROBES])
             probes[count++] = SCALAR_PROBES[i];
         }
     }
-    /* Each int operator but the shifts, which the corpus does not admit, on
-     * the first values of TOTAL_VALUES. */
+    /* Each int operator but the shifts, which the int_operators case does
+     * not declare, on the first values of TOTAL_VALUES. */
     for (int k = 0; !strcmp(name, "int_operators") && k < TOTAL_OPERATION_COUNT - 2;
          k++) {
         int n = TOTAL_OPERATIONS[k].parameters, rights = n == 2 ? INT_OPERANDS : 1;
@@ -10915,11 +12784,13 @@ static void cancel_native(int)
 }
 /* The deadlines of an LLVM tool and of a library's calls, and the output
  * kept of each. */
-static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20;
+static const double TOOL_SECONDS = 60, CALLS_SECONDS = 20, SPIN_SECONDS = 1;
 enum
 {
     NATIVE_OUTPUT = 1 << 16
 };
+/* The standard error of the last native run. */
+static char native_errors[NATIVE_OUTPUT];
 static const char *native_outcome(chibi_process_capture_result result)
 {
     switch (result.error) {
@@ -10941,9 +12812,8 @@ static chibi_process_capture_result run_native(
     char out[NATIVE_OUTPUT]
 )
 {
-    char error[NATIVE_OUTPUT];
     chibi_process_output output = { out, NATIVE_OUTPUT, 0, false },
-                         errors = { error, sizeof error, 0, false };
+                         errors = { native_errors, sizeof native_errors, 0, false };
     chibi_process_capture_result result = chibi_process_capture(
         argv[0],
         argv,
@@ -10962,7 +12832,7 @@ static chibi_process_capture_result run_native(
             native_outcome(result),
             result.status,
             out,
-            error
+            native_errors
         );
     }
     return result;
@@ -10998,17 +12868,14 @@ static void native_file(const char *path)
     strcpy(copy, path);
     apush(native_files, copy);
 }
-/* `ir` and then `adapter`, built at `level` as the driver builds an object,
- * then linked as `directory`/`name`.so, which `library` names. Only observed
- * modules request PIC for their added counter globals; ordinary modules keep
- * the driver's exact object arguments. */
+/* `ir` and then `adapter`, built at `level` with the driver's exact object
+ * arguments, then linked as `directory`/`name`.so, which `library` names. */
 static bool native_library(
     const char *directory,
     const char *name,
     const char *ir,
     const char *adapter,
     int level,
-    bool pic,
     char library[PATH_MAX]
 )
 {
@@ -11028,25 +12895,18 @@ static bool native_library(
     const char *passes = level ? "-passes=verify,default<O2>,verify" : "-passes=verify";
     const char *const optimize[] = { opt,  "-S",   passes, source,
                                      "-o", module, NULL };
-    const char *const emit[] = {
-        llc, "-filetype=obj", level ? "-O=2" : "-O=0", module, "-o", object,
-        NULL
-    };
-    const char *const observed_emit[] = { llc,
-                                          "-filetype=obj",
-                                          level ? "-O=2" : "-O=0",
-                                          "-relocation-model=pic",
-                                          module,
-                                          "-o",
-                                          object,
-                                          NULL };
+    const char *const emit[] = { llc,
+                                 "-filetype=obj",
+                                 level ? "-O=2" : "-O=0",
+                                 "-relocation-model=pic",
+                                 module,
+                                 "-o",
+                                 object,
+                                 NULL };
     const char *const symbols[] = { nm, "--undefined-only", object, NULL };
     const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
     char out[NATIVE_OUTPUT];
-    REQUIRE(
-        run_tool(optimize, directory, out) &&
-        run_tool(pic ? observed_emit : emit, directory, out)
-    );
+    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
     REQUIRE(run_tool(symbols, directory, out));
     if (*out) {
         fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
@@ -11086,13 +12946,47 @@ static int function_row(const pin_value *rows, const char *name, int *ordinal)
     }
     return -1;
 }
+/* A scalar_facts type's bits, 1 for bool, whether it is unsigned, and
+ * whether it is a float or double. */
+static int scalar_bits(int type)
+{
+    static const int BITS[] = { [SCALAR_INT] = 32,   [SCALAR_BOOL] = 1,
+                                [SCALAR_INT8] = 8,   [SCALAR_BYTE] = 8,
+                                [SCALAR_INT16] = 16, [SCALAR_UINT16] = 16,
+                                [SCALAR_UINT] = 32,  [SCALAR_INT64] = 64,
+                                [SCALAR_WORD] = 64,  [SCALAR_FLOAT] = 32,
+                                [SCALAR_DOUBLE] = 64 };
+    assert(type > 0 && type < (int)(sizeof BITS / sizeof *BITS) && BITS[type]);
+    return BITS[type];
+}
+static bool scalar_unsigned(int type)
+{
+    return type == SCALAR_BOOL || type == SCALAR_BYTE ||
+           type == SCALAR_UINT16 || type == SCALAR_UINT || type == SCALAR_WORD;
+}
+static bool scalar_floating(int type)
+{
+    return type == SCALAR_FLOAT || type == SCALAR_DOUBLE;
+}
 static const char *llvm_type(int type)
 {
-    return type == SCALAR_BOOL ? "i1" : "i32";
+    if (scalar_floating(type)) {
+        return type == SCALAR_FLOAT ? "float" : "double";
+    }
+    static const char *const NAMES[] = { [1] = "i1",
+                                         [8] = "i8",
+                                         [16] = "i16",
+                                         [32] = "i32",
+                                         [64] = "i64" };
+    return NAMES[scalar_bits(type)];
 }
 /* Appends to `adapter` the validation-only probe @probe_<name>(ptr): it reads
- * each parameter as an int32 of its argument array, truncating a bool's, and
- * returns the function's result, zero-extending a bool. */
+ * each parameter as an int64 of its argument array, truncated to the
+ * parameter's type, and returns the function's result extended to int64 as
+ * its type's value: sign-extended when signed, zero-extended otherwise. A
+ * float or double travels as its encoding's bits, zero-extended, and a NaN
+ * result as the canonical quiet NaN, since IEEE leaves a NaN's sign and
+ * payload open. */
 static bool append_adapter(const pin_value *rows, const char *name, char **adapter)
 {
     int ordinal;
@@ -11100,23 +12994,43 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
     REQUIRE(head > 0 && ordinal > 0);
     int count = row_int(rows, head, "count"), result = row_int(rows, head, "type");
     char text[4096], call[1024] = "";
-    int n = snprintf(text, sizeof text, "\ndefine i32 @probe_%s(ptr %%args) {\n", name);
+    int n = snprintf(text, sizeof text, "\ndefine i64 @probe_%s(ptr %%args) {\n", name);
     for (int i = 0; i < count; i++) {
         int type = row_int(rows, head + 1 + i, "type");
         n += snprintf(
             text + n,
             sizeof text - (size_t)n,
-            "  %%p%d = getelementptr i32, ptr %%args, i64 %d\n  %%w%d = load "
-            "i32, ptr %%p%d\n",
+            "  %%p%d = getelementptr i64, ptr %%args, i64 %d\n  %%w%d = load "
+            "i64, ptr %%p%d\n",
             i,
             i,
             i,
             i
         );
-        if (type == SCALAR_BOOL) {
-            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = trunc i32 %%w%d to i1\n", i, i);
+        if (type == SCALAR_FLOAT) {
+            n += snprintf(
+                text + n,
+                sizeof text - (size_t)n,
+                "  %%t%d = trunc i64 %%w%d to i32\n  %%a%d = bitcast i32 %%t%d "
+                "to float\n",
+                i,
+                i,
+                i,
+                i
+            );
+        } else if (type == SCALAR_DOUBLE) {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = bitcast i64 %%w%d to double\n", i, i);
+        } else if (scalar_bits(type) == 64) {
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = add i64 %%w%d, 0\n", i, i);
         } else {
-            n += snprintf(text + n, sizeof text - (size_t)n, "  %%a%d = add i32 %%w%d, 0\n", i, i);
+            n += snprintf(
+                text + n,
+                sizeof text - (size_t)n,
+                "  %%a%d = trunc i64 %%w%d to %s\n",
+                i,
+                i,
+                llvm_type(type)
+            );
         }
         size_t used = strlen(call);
         snprintf(call + used, sizeof call - used, "%s%s %%a%d", i ? ", " : "", llvm_type(type), i);
@@ -11129,10 +13043,35 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
         ordinal,
         call
     );
-    if (result == SCALAR_BOOL) {
-        n += snprintf(text + n, sizeof text - (size_t)n, "  %%z = zext i1 %%r to i32\n  ret i32 %%z\n}\n");
+    if (scalar_floating(result)) {
+        const char *type = llvm_type(result);
+        int bits = scalar_bits(result);
+        n += snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            "  %%n = fcmp uno %s %%r, 0.0\n  %%c = select i1 %%n, %s "
+            "0x7FF8000000000000, %s %%r\n  %%b = bitcast %s %%c to i%d\n",
+            type,
+            type,
+            type,
+            type,
+            bits
+        );
+        n += snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            bits == 64 ? "  ret i64 %%b\n}\n" : "  %%z = zext i32 %%b to i64\n  ret i64 %%z\n}\n"
+        );
+    } else if (scalar_bits(result) == 64) {
+        n += snprintf(text + n, sizeof text - (size_t)n, "  ret i64 %%r\n}\n");
     } else {
-        n += snprintf(text + n, sizeof text - (size_t)n, "  ret i32 %%r\n}\n");
+        n += snprintf(
+            text + n,
+            sizeof text - (size_t)n,
+            "  %%z = %s %s %%r to i64\n  ret i64 %%z\n}\n",
+            scalar_unsigned(result) ? "zext" : "sext",
+            llvm_type(result)
+        );
     }
     REQUIRE(n < (int)sizeof text);
     size_t old = strlen(*adapter);
@@ -11140,19 +13079,77 @@ static bool append_adapter(const pin_value *rows, const char *name, char **adapt
     memcpy(*adapter + old, text, (size_t)n + 1);
     return true;
 }
-/* A probe's arguments as the JSON array the compiler host takes. */
+/* The canonical quiet NaN of a float or double, which adapters return for
+ * every NaN. */
+static const int64_t FLOAT_NAN = 0x7fc00000, DOUBLE_NAN = INT64_C(0x7ff8000000000000);
+/* The bits a float or double `value` of `type` travels as: a float's
+ * zero-extended, and a NaN canonical. */
+static int64_t floating_bits(int type, double value)
+{
+    if (isnan(value)) {
+        return type == SCALAR_FLOAT ? FLOAT_NAN : DOUBLE_NAN;
+    }
+    if (type == SCALAR_FLOAT) {
+        float narrow = (float)value;
+        uint32_t bits;
+        memcpy(&bits, &narrow, sizeof bits);
+        return bits;
+    }
+    int64_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    return bits;
+}
+static double floating_value(int type, int64_t bits)
+{
+    if (type == SCALAR_FLOAT) {
+        uint32_t narrow_bits = (uint32_t)bits;
+        float narrow;
+        memcpy(&narrow, &narrow_bits, sizeof narrow);
+        return narrow;
+    }
+    double value;
+    memcpy(&value, &bits, sizeof value);
+    return value;
+}
+/* A probe's arguments as the JSON array the compiler host takes. A float or
+ * double is a JSON real, NaN or an infinity, never an integer, so -0 keeps
+ * its sign. */
 static void probe_json(const pin_value *rows, const scalar_probe *probe, char *json, size_t size)
 {
     int ordinal;
     int head = function_row(rows, probe->function, &ordinal);
     int n = snprintf(json, size, "[");
     for (int i = 0; i < probe->count; i++) {
-        bool flag = row_int(rows, head + 1 + i, "type") == SCALAR_BOOL;
+        int type = row_int(rows, head + 1 + i, "type");
         const char *separator = i ? "," : "";
-        if (flag) {
+        double value = scalar_floating(type)
+                         ? floating_value(type, probe->arguments[i])
+                         : 0;
+        if (type == SCALAR_BOOL) {
             n += snprintf(json + n, size - (size_t)n, "%s%s", separator, probe->arguments[i] ? "true" : "false");
+        } else if (scalar_floating(type) && (isnan(value) || isinf(value))) {
+            const char *special = isnan(value) ? "NaN"
+                                : value > 0    ? "Infinity"
+                                               : "-Infinity";
+            n += snprintf(json + n, size - (size_t)n, "%s%s", separator, special);
+        } else if (scalar_floating(type)) {
+            n += snprintf(json + n, size - (size_t)n, "%s%.17e", separator, value);
+        } else if (type == SCALAR_WORD) {
+            n += snprintf(
+                json + n,
+                size - (size_t)n,
+                "%s%" PRIu64,
+                separator,
+                (uint64_t)probe->arguments[i]
+            );
         } else {
-            n += snprintf(json + n, size - (size_t)n, "%s%d", separator, probe->arguments[i]);
+            n += snprintf(
+                json + n,
+                size - (size_t)n,
+                "%s%" PRId64,
+                separator,
+                probe->arguments[i]
+            );
         }
     }
     snprintf(json + n, size - (size_t)n, "]");
@@ -11174,9 +13171,10 @@ static bool vm_load(const unsigned char *bytes, size_t length, int backend)
     REQUIRE(host);
     return true;
 }
-/* The int32 the loaded closure's `function` of package scalar returns for
- * `json`, with a bool as 0 or 1. */
-static bool vm_value(const char *function, const char *json, int32_t *out)
+/* The value of `type` the loaded closure's `function` of package scalar
+ * returns for `json`, as the int64 its probe adapter gives: a bool as 0 or 1,
+ * a uint64 as its bits, and a float or double as floating_bits. */
+static bool vm_value(const char *function, const char *json, int type, int64_t *out)
 {
     char name[256];
     snprintf(name, sizeof name, "project:scalar:1:%s:callable", function);
@@ -11201,10 +13199,17 @@ static bool vm_value(const char *function, const char *json, int32_t *out)
     /* The host's result is the JSON array of the function's one result. */
     if (!strcmp(result.json, "[true]") || !strcmp(result.json, "[false]")) {
         *out = !strcmp(result.json, "[true]");
-    } else {
-        char *end;
-        long value = result.json[0] == '[' ? strtol(result.json + 1, &end, 10) : 0;
-        if (result.json[0] != '[' || strcmp(end, "]")) {
+    } else if (scalar_floating(type)) {
+        /* The host writes a float as the shortest text that reads back as
+         * it, so a float reads as one, not through a double. */
+        char *end = result.json;
+        double value = 0;
+        if (result.json[0] == '[') {
+            value = type == SCALAR_FLOAT ? strtof(result.json + 1, &end)
+                                         : strtod(result.json + 1, &end);
+        }
+        bool read = end != result.json + 1 && !strcmp(end, "]");
+        if (!read) {
             fprintf(
                 stderr,
                 "scalar closure %s%s gave %s\n",
@@ -11213,11 +13218,32 @@ static bool vm_value(const char *function, const char *json, int32_t *out)
                 result.json
             );
         }
-        REQUIRE(
-            result.json[0] == '[' && !strcmp(end, "]") && value >= INT32_MIN &&
-            value <= INT32_MAX
-        );
-        *out = (int32_t)value;
+        REQUIRE(read);
+        *out = floating_bits(type, value);
+    } else {
+        char *end = result.json;
+        errno = 0;
+        if (result.json[0] == '[') {
+            *out = type == SCALAR_WORD ? (int64_t)strtoull(result.json + 1, &end, 10)
+                                       : strtoll(result.json + 1, &end, 10);
+        }
+        bool read = end != result.json && !errno && !strcmp(end, "]") &&
+                    (type != SCALAR_WORD || result.json[1] != '-');
+        if (read && scalar_bits(type) < 64) {
+            int64_t limit = INT64_C(1)
+                         << (scalar_bits(type) - !scalar_unsigned(type));
+            read = *out < limit && *out >= (scalar_unsigned(type) ? 0 : -limit);
+        }
+        if (!read) {
+            fprintf(
+                stderr,
+                "scalar closure %s%s gave %s\n",
+                function,
+                json,
+                result.json
+            );
+        }
+        REQUIRE(read);
     }
     free(result.json);
     result = (compiler_host_result){ 0 };
@@ -11249,39 +13275,63 @@ static char *definition(const char *ir, const char *start)
     text[length] = 0;
     return text;
 }
-/* Unoptimized IR keeps what the source decides at run time. Min compares its
- * two parameters and branches on the result. Choose calls Skipped between its
- * branch and the branch's true target, and Taken only after that target, so
- * an arm's call runs only when its guard holds. */
+/* The text of `ir` from label `p<pc>` on, or NULL. */
+static const char *labelled(const char *ir, int pc)
+{
+    char label[32];
+    snprintf(label, sizeof label, "\np%d:\n", pc);
+    return strstr(ir, label);
+}
+/* Unoptimized IR keeps what the source decides at run time. Min moves its
+ * parameters to locals, compares them and branches on the result. Choose's
+ * branch goes to its consequence, which calls Taken, and otherwise jumps past
+ * it to the call of Skipped, so each runs only on its own path. Mid compares
+ * b with c only after branching on a < b. */
 static bool keeps_guards(const char *name, const char *ir)
 {
     if (!strcmp(name, "min")) {
         char *min = definition(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i32 %arg1)");
         bool kept = strstr(min, "store i32 %arg0, ptr %s0") &&
                     strstr(min, "store i32 %arg1, ptr %s1") &&
-                    strstr(min, "%a3 = load i32, ptr %s0\n  %b3 = load i32, ptr %s1\n  %v3 = icmp slt i32 %a3, %b3") &&
-                    strstr(min, "store i1 %v3, ptr %s2") &&
-                    strstr(min, "br i1 %a4, label %p");
+                    strstr(min, "%a5 = load i32, ptr %l0\n  store i32 %a5, ptr %s2") &&
+                    strstr(min, "%a7 = load i32, ptr %s2\n  %b7 = load i32, ptr %s3\n  %v7 = icmp slt i32 %a7, %b7") &&
+                    strstr(min, "store i1 %v7, ptr %s4") &&
+                    strstr(min, "br i1 %a8, label %p");
         free(min);
         REQUIRE(kept);
     }
     if (!strcmp(name, "lazy_arm")) {
         char *choose = definition(ir, "define internal i32 @chibi_scalar.1(i1 %arg0)");
-        /* The guard's branch, not a budget check's `br i1 %available`. */
+        /* The if statement's branch, not a budget check's `br i1 %available`. */
         const char *branch = strstr(choose, "  br i1 %a");
         while (branch && !isdigit((unsigned char)branch[strlen("  br i1 %a")])) {
             branch = strstr(branch + 1, "  br i1 %a");
         }
-        int target = -1;
-        REQUIRE(branch && sscanf(branch, "  br i1 %%a%*d, label %%p%d", &target) == 1);
-        char label[32];
-        snprintf(label, sizeof label, "\np%d:\n", target);
-        const char *skipped = strstr(choose, "call i32 @chibi_scalar.3()");
-        const char *arm = strstr(choose, label);
+        int consequence = -1, otherwise = -1, past = -1;
+        REQUIRE(
+            branch &&
+            sscanf(branch, "  br i1 %%a%*d, label %%p%d, label %%p%d", &consequence, &otherwise) == 2
+        );
+        const char *jump = labelled(choose, otherwise);
+        REQUIRE(jump && sscanf(strchr(jump + 1, '\n'), "\n  br label %%p%d", &past) == 1);
+        const char *arm = labelled(choose, consequence),
+                   *rest = labelled(choose, past);
         const char *taken = strstr(choose, "call i32 @chibi_scalar.2()");
-        bool lazy = skipped && arm && taken && branch < skipped && skipped < arm &&
-                    arm < taken && !strstr(taken + 1, "call i32 @chibi_scalar.2()");
+        const char *skipped = strstr(choose, "call i32 @chibi_scalar.3()");
+        bool lazy = arm && rest && taken && skipped && branch < arm &&
+                    arm < taken && taken < rest && rest < skipped &&
+                    !strstr(taken + 1, "call i32 @chibi_scalar.2()") &&
+                    !strstr(skipped + 1, "call i32 @chibi_scalar.3()");
         free(choose);
+        REQUIRE(lazy);
+    }
+    if (!strcmp(name, "logical_and")) {
+        char *mid = definition(ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i32 %arg1, i32 %arg2)");
+        const char *first = strstr(mid, "icmp slt");
+        const char *branch = first ? strstr(first, "  br i1 %a") : NULL;
+        const char *second = branch ? strstr(branch, "icmp slt") : NULL;
+        bool lazy = second && !strstr(second + 1, "icmp slt");
+        free(mid);
         REQUIRE(lazy);
     }
     return true;
@@ -11291,15 +13341,18 @@ static bool keeps_guards(const char *name, const char *ir)
 typedef struct scalar_call
 {
     scalar_probe probe;
-    char json[256], symbol[256];
-    int32_t values[4];
+    char json[128], symbol[64];
+    int64_t values[4];
 } scalar_call;
 enum
 {
-    MAX_CASE_CALLS = MAX_CASE_PROBES + 1
+    MAX_CASE_CALLS = MAX_CASE_PROBES + 1,
+    /* A width or floating module's entry and probes, the most of any
+     * module. */
+    MAX_WIDTH_CALLS = 1024
 };
 /* Case `name`'s calls: its entry, then each of its probes. */
-static int case_calls(const char *name, const pin_value *rows, int32_t expected, scalar_call calls[MAX_CASE_CALLS])
+static int case_calls(const char *name, const pin_value *rows, int64_t expected, scalar_call calls[MAX_CASE_CALLS])
 {
     scalar_probe probes[MAX_CASE_PROBES];
     int count = case_probes(name, probes);
@@ -11315,12 +13368,22 @@ static int case_calls(const char *name, const pin_value *rows, int32_t expected,
     return count + 1;
 }
 /* Each call's value from the authored compiler's closure on both VMs. */
-static bool vm_values(const unsigned char *closure, size_t length, scalar_call *calls, int count)
+static bool vm_values(
+    const unsigned char *closure,
+    size_t length,
+    const pin_value *rows,
+    scalar_call *calls,
+    int count
+)
 {
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(vm_load(closure, length, backend));
         for (int i = 0; i < count; i++) {
-            REQUIRE(vm_value(calls[i].probe.function, calls[i].json, &calls[i].values[backend]));
+            int ordinal;
+            int type = row_int(rows, function_row(rows, calls[i].probe.function, &ordinal), "type");
+            REQUIRE(
+                vm_value(calls[i].probe.function, calls[i].json, type, &calls[i].values[backend])
+            );
         }
         compiler_host_free(host);
         host = NULL;
@@ -11328,15 +13391,16 @@ static bool vm_values(const unsigned char *closure, size_t length, scalar_call *
     return true;
 }
 typedef int32_t (*scalar_entry)();
-typedef int32_t (*scalar_adapter)(const int32_t *);
+typedef int64_t (*scalar_adapter)(const int64_t *);
 enum
 {
     CALL_SPEC = 160
 };
 /* Runs each call of `library` in order, in a child run of this binary (see
  * test_language_package_compiler_chibi_native_call) that must finish within
- * `seconds`, and stores each value in its call's `column`. The first call is
- * the entry; the others are probe adapters. */
+ * `seconds`, and stores each value in its call's `column`. A call of a
+ * probe_ symbol is a probe adapter, with or without arguments; any other,
+ * such as the entry, takes none and returns an int32. */
 static chibi_process_capture_result library_calls(
     const char *directory,
     const char *library,
@@ -11346,19 +13410,24 @@ static chibi_process_capture_result library_calls(
     double seconds
 )
 {
-    char self[PATH_MAX], specs[MAX_CASE_CALLS][CALL_SPEC], out[NATIVE_OUTPUT];
+    char self[PATH_MAX], out[NATIVE_OUTPUT];
     ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
-    assert(length > 0 && count <= MAX_CASE_CALLS);
+    assert(length > 0 && count <= MAX_WIDTH_CALLS);
     self[length] = 0;
-    const char *argv[MAX_CASE_CALLS + 4] = { self, "--package-compiler-chibi-native-call", library };
+    char (*specs)[CALL_SPEC] = xmalloc(sizeof *specs * (size_t)count);
+    const char **argv = xmalloc(sizeof *argv * (size_t)(count + 4));
+    argv[0] = self;
+    argv[1] = "--package-compiler-chibi-native-call";
+    argv[2] = library;
     for (int i = 0; i < count; i++) {
-        int n = snprintf(specs[i], CALL_SPEC, "%s", calls[i].symbol);
-        for (int a = 0; i && a < calls[i].probe.count; a++) {
+        bool adapter = !strncmp(calls[i].symbol, "probe_", strlen("probe_"));
+        int n = snprintf(specs[i], CALL_SPEC, "%s%s", calls[i].symbol, adapter ? ":" : "");
+        for (int a = 0; adapter && a < calls[i].probe.count; a++) {
             n += snprintf(
                 specs[i] + n,
                 CALL_SPEC - (size_t)n,
-                "%c%d",
-                a ? ',' : ':',
+                "%s%" PRId64,
+                a ? "," : "",
                 calls[i].probe.arguments[a]
             );
         }
@@ -11367,21 +13436,24 @@ static chibi_process_capture_result library_calls(
     }
     argv[3 + count] = NULL;
     chibi_process_capture_result result = run_native(argv, directory, seconds, out);
+    free(argv);
+    free(specs);
     const char *at = out;
     for (int i = 0; native_passed(result) && i < count; i++) {
         char *end;
-        long value = strtol(at, &end, 10);
-        assert(end != at && *end == '\n' && value >= INT32_MIN && value <= INT32_MAX);
-        calls[i].values[column] = (int32_t)value;
+        errno = 0;
+        calls[i].values[column] = strtoll(at, &end, 10);
+        assert(end != at && *end == '\n' && !errno);
         at = end + 1;
     }
     return result;
 }
 /* The child of library_calls: opens `library`, then calls each spec in order,
- * `symbol` for the entry or `symbol:a,b` for an adapter, and prints each value
- * on its own line as it returns. */
+ * `symbol` for the entry or `symbol:a,b` for an adapter, `symbol:` for one of
+ * no arguments, and prints each value on its own line as it returns. */
 static int library_child(const char *library, int count, char **specs)
 {
+    stack_overflow_init();
     void *opened = dlopen(library, RTLD_NOW | RTLD_LOCAL);
     if (!opened) {
         fprintf(stderr, "native scalar load: %s\n", dlerror());
@@ -11389,25 +13461,26 @@ static int library_child(const char *library, int count, char **specs)
     }
     for (int i = 0; i < count; i++) {
         char symbol[CALL_SPEC];
-        int32_t arguments[MAX_PROBE_ARGUMENTS];
+        int64_t arguments[MAX_PROBE_ARGUMENTS];
         const char *at = specs[i] + strcspn(specs[i], ":");
         size_t length = (size_t)(at - specs[i]);
         assert(length < sizeof symbol);
         memcpy(symbol, specs[i], length);
         symbol[length] = 0;
+        bool adapter = *at;
         int n = 0;
-        for (char *end; *at; at = end, n++) {
+        for (char *end; adapter && *at && at[1]; at = end, n++) {
             assert(n < MAX_PROBE_ARGUMENTS);
-            arguments[n] = (int32_t)strtol(at + 1, &end, 10);
+            arguments[n] = strtoll(at + 1, &end, 10);
         }
         void *function = dlsym(opened, symbol);
         if (!function) {
             fprintf(stderr, "native scalar symbol %s: %s\n", symbol, dlerror());
             return 1;
         }
-        int32_t value = specs[i][length] ? ((scalar_adapter)function)(arguments)
-                                         : ((scalar_entry)function)();
-        printf("%d\n", value);
+        int64_t value = adapter ? ((scalar_adapter)function)(arguments)
+                                : ((scalar_entry)function)();
+        printf("%" PRId64 "\n", value);
         fflush(stdout);
     }
     return 0;
@@ -11433,7 +13506,7 @@ static bool native_values(
     }
     for (int level = 0; level < 2; level++) {
         char library[PATH_MAX];
-        REQUIRE(native_library(directory, name, ir, adapter, level * 2, false, library));
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
         REQUIRE(native_passed(
             library_calls(directory, library, calls, count, 2 + level, CALLS_SECONDS)
         ));
@@ -11532,7 +13605,6 @@ static bool observes_lazy_arm(const char *directory, const pin_value *rows, cons
                 observed,
                 adapter,
                 level * 2,
-                true,
                 library
             );
             for (int condition = 0; valid && condition < 2; condition++) {
@@ -11555,8 +13627,8 @@ static bool observes_lazy_arm(const char *directory, const pin_value *rows, cons
                         calls[3].values[column] == (!condition || extra);
                 fprintf(
                     stderr,
-                    "lazy trace O%d extra %d condition %d: return %d, "
-                    "Taken %d, Skipped %d, oracle %s\n",
+                    "lazy trace O%d extra %d condition %d: return %" PRId64 ", "
+                    "Taken %" PRId64 ", Skipped %" PRId64 ", oracle %s\n",
                     level * 2,
                     extra,
                     condition,
@@ -11578,14 +13650,14 @@ static bool observes_lazy_arm(const char *directory, const pin_value *rows, cons
 static bool calls_agree(const char *name, const scalar_call *calls, int count)
 {
     for (int i = 0; i < count; i++) {
-        const int32_t *values = calls[i].values;
-        int32_t expected = calls[i].probe.expected;
+        const int64_t *values = calls[i].values;
+        int64_t expected = calls[i].probe.expected;
         bool agree = scalar_results_match(values, expected);
         if (!agree) {
             fprintf(
                 stderr,
-                "scalar case %s %s%s: expected %d, VM %d %d, native O0 %d O2 "
-                "%d\n",
+                "scalar case %s %s%s: expected %" PRId64 ", VM %" PRId64
+                " %" PRId64 ", native O0 %" PRId64 " O2 %" PRId64 "\n",
                 name,
                 calls[i].probe.function,
                 calls[i].json,
@@ -11646,6 +13718,30 @@ static bool collected_rows(int b, const char *case_name, pin_value source, pin_v
     REQUIRE(collected);
     return true;
 }
+/* Each of `calls` of an accepted module, `ir` its IR, gives its expected value
+ * on both VMs, from the authored compiler's closure of `source` on VM b, and
+ * natively at O0 and O2. */
+static bool runs_everywhere(
+    const char *directory,
+    int b,
+    const char *name,
+    pin_string source,
+    const pin_value *rows,
+    const char *ir,
+    scalar_call *calls,
+    int count
+)
+{
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(b, source, &closure, &length));
+    bool agree = vm_values(closure, length, rows, calls, count) &&
+                 native_values(directory, name, rows, ir, calls, count) &&
+                 calls_agree(name, calls, count);
+    free(closure);
+    REQUIRE(agree);
+    return true;
+}
 /* An accepted module, `ir` its IR, which this frees: each of its calls must
  * give one value on both VMs and natively at O0 and O2. */
 static bool module_agrees(
@@ -11655,22 +13751,16 @@ static bool module_agrees(
     pin_string source,
     const pin_value *rows,
     char *ir,
-    int32_t expected,
+    int64_t expected,
     scalar_call calls[MAX_CASE_CALLS]
 )
 {
     REQUIRE(keeps_guards(case_name, ir));
-    unsigned char *closure;
-    size_t length;
-    REQUIRE(vm_closure(b, source, &closure, &length));
     int count = case_calls(case_name, rows, expected, calls);
-    bool ran = vm_values(closure, length, calls, count) &&
-               native_values(directory, case_name, rows, ir, calls, count);
-    bool agree = ran && calls_agree(case_name, calls, count);
+    bool agree = runs_everywhere(directory, b, case_name, source, rows, ir, calls, count);
     if (agree && !strcmp(case_name, "lazy_arm")) {
         agree = observes_lazy_arm(directory, rows, ir);
     }
-    free(closure);
     free(ir);
     REQUIRE(agree);
     return true;
@@ -11725,9 +13815,14 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
         calls
     );
 }
+#define IDS_10 "Id(Id(Id(Id(Id(Id(Id(Id(Id(Id("
+#define CLOSES_10 "))))))))))"
+#define NESTED_IDS IDS_10 IDS_10 IDS_10 IDS_10 IDS_10
+#define NESTED_CLOSES CLOSES_10 CLOSES_10 CLOSES_10 CLOSES_10 CLOSES_10
 /* A scalar module with a constant expression the ordinary compiler folds
- * exactly, and the value its Main gives. They stay out of the 96-source
- * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each one:
+ * exactly, a conversion it must call instead, calls that omit defaulted
+ * arguments or records, and the value its Main gives. They stay out of the 96-source
+ * corpus, which Run.ps1 bounds. Fixed-width rows would wrap each constant:
  * `(2147483647 + 1) / 2` to -2^30, and the square to 1. */
 static const struct
 {
@@ -11753,16 +13848,207 @@ static const struct
       "    return 0;\n"
       "}\n",
       INT32_MAX },
+    /* A conversion an authored function shadows is a call to it, with that
+     * function's result type, also inside an expression and as a built-in
+     * conversion's argument. */
+    { "shadowed_conversion",
+      "package scalar\nMain :: () -> int { return i8(1); }\n"
+      "i8 :: (v: int) -> int { return v + 1; }\n",
+      2 },
+    { "shadowed_nested_conversion",
+      "package scalar\nMain :: () -> int { return int(i8(127)) + i8(100) * "
+      "2; }\n"
+      "i8 :: (v: int) -> int { return v + 1; }\n",
+      330 },
+    /* A default of every kind of type, and a call that gives some
+     * arguments and omits the rest: 6 + 20 + 10 + (-1 + 255 + 15 + 2 - 9). */
+    { "defaults",
+      "package scalar\nMain :: () -> int { return Mix() + Mix(10) + Mix(10, "
+      "false) + Small(); }\n"
+      "Mix :: (a: int = 3, twice: bool = true) -> int { if (twice) { return a "
+      "* 2; } "
+      "return a; }\n"
+      "Small :: (b: i8 = -1, u: u8 = 255, w: u64 = "
+      "18446744073709551615, f: number = 0.5,\n"
+      "          d: f64 = -2.25) -> int {\n"
+      "    return int(b) + int(u) + int(w >> 60) + int(f * 4.0) + int(d * "
+      "4.0);\n"
+      "}\n",
+      298 },
+    /* Records: literals in any field order, copies that leave their source
+     * alone, field writes and compound writes, record parameters and
+     * results, nested calls, and a u8 field that wraps:
+     * 50 + (206 + 8 - 9 + 1 + 1000) + 5. */
+    { "records",
+      "package scalar\n"
+      "Vec :: struct { x: number; y: number; }\n"
+      "Cell :: struct { alive: bool; count: u8; weight: f64; id: i64; "
+      "}\n"
+      "Main :: () -> int { return Vectors() + Cells() + Walk(); }\n"
+      "Add :: (p: Vec, q: Vec) -> Vec { return {x: p.x + q.x, y: p.y + q.y}; "
+      "}\n"
+      "Vectors :: () -> int {\n"
+      "    a: Vec = {x: 1.5, y: -2.0};\n"
+      "    b := a;\n"
+      "    b.x = 4.0;\n"
+      "    b.y *= 3.0;\n"
+      "    s := Add(a, b);\n"
+      "    return int(s.x * 10.0) + int(s.y) + int(a.x * 2.0);\n"
+      "}\n"
+      "Grow :: (c: Cell) -> Cell {\n"
+      "    next := c;\n"
+      "    next.count += 3;\n"
+      "    next.weight = next.weight * 2.0;\n"
+      "    next.id -= 1;\n"
+      "    next.alive = next.count > 2;\n"
+      "    return next;\n"
+      "}\n"
+      "Cells :: () -> int {\n"
+      "    c := Grow(Grow({alive: true, count: 200, weight: 0.25, id: -7}));\n"
+      "    total: int = 0;\n"
+      "    if (c.alive) { total += int(c.count) + int(c.weight * 8.0) + "
+      "int(c.id); }\n"
+      "    w := Grow({id: 0, weight: 1.0, count: 254, alive: true});\n"
+      "    total += int(w.count);\n"
+      "    if (!w.alive) { total += 1000; }\n"
+      "    return total;\n"
+      "}\n"
+      "Walk :: () -> int {\n"
+      "    a: Vec = {y: -2.0, x: 1.5};\n"
+      "    for (i in 0..<3) { a = Add(a, {y: 1.0, x: number(i)}); }\n"
+      "    return int(a.x) + int(a.y);\n"
+      "}\n",
+      1261 },
+    /* A record through 50 nested calls. Each call takes one compiler frame,
+     * as an int call does, so this stays within the 64 frames stage zero
+     * gives the compiler; two frames per call would exceed them. */
+    { "nested_records",
+      "package scalar\nVec :: struct { x: int; }\n"
+      "Main :: () -> int { v: Vec = {x: 7}; return " NESTED_IDS "v" NESTED_CLOSES ".x; }\n"
+      "Id :: (p: Vec) -> Vec { return p; }\n",
+      7 },
+    /* Unions: variants with and without payloads, made, passed, returned,
+     * assigned and tested with `is`, switches whose arms bind payloads, with
+     * a default arm or covering every variant without one, and a switch in
+     * a loop that breaks and continues: 123 + 111 + (250 + 251 + 252 + 253). */
+    { "unions",
+      "package scalar\n"
+      "Shape :: union { Empty | Circle(r: number) | Rect(w: int, h: int) | "
+      "Flag(lit: bool, weight: f64) }\n"
+      "Step :: union { Stop | Go(n: u8) }\n"
+      "Main :: () -> int { return Areas() + Tests() + Steps(); }\n"
+      "Area :: (s: Shape) -> int {\n"
+      "    switch s {\n"
+      "        case .Empty: return 0;\n"
+      "        case .Circle(r): return int(r * r * 3.0);\n"
+      "        case .Rect(w, h): return w * h;\n"
+      "        case .Flag(lit, weight):\n"
+      "            if (lit) { return int(weight * 2.0); }\n"
+      "            return -1;\n"
+      "    }\n"
+      "}\n"
+      "Grow :: (s: Shape) -> Shape {\n"
+      "    switch s {\n"
+      "        case .Rect(w, h): return Shape.Rect(w + 1, h * 2);\n"
+      "        case .Circle(r): return Shape.Circle(r + 0.5);\n"
+      "        case: return s;\n"
+      "    }\n"
+      "}\n"
+      "Areas :: () -> int {\n"
+      "    a := Shape.Rect(3, 4);\n"
+      "    b: Shape = Shape.Circle(2.0);\n"
+      "    c := Grow(Grow(a));\n"
+      "    total := Area(a) + Area(b) + Area(c) + Area(Shape.Empty) + "
+      "Area(Shape.Flag(true, 10.25));\n"
+      "    a = Grow(Shape.Flag(false, 1.0));\n"
+      "    return total + Area(a);\n"
+      "}\n"
+      "Tests :: () -> int {\n"
+      "    s := Grow(Shape.Circle(1.0));\n"
+      "    n: int = 0;\n"
+      "    if (s is .Circle) { n += 1; }\n"
+      "    if (s is not .Rect) { n += 10; }\n"
+      "    if (Shape.Empty is .Empty && !(s is .Empty)) { n += 100; }\n"
+      "    return n;\n"
+      "}\n"
+      "Steps :: () -> int {\n"
+      "    s := Step.Go(250);\n"
+      "    total: int = 0;\n"
+      "    for (i in 0..<10) {\n"
+      "        switch s {\n"
+      "            case .Stop: break;\n"
+      "            case .Go(n):\n"
+      "                total += int(n);\n"
+      "                if (n > 252) { s = Step.Stop; continue; }\n"
+      "                s = Step.Go(n + 1);\n"
+      "        }\n"
+      "    }\n"
+      "    return total;\n"
+      "}\n",
+      1240 },
+    /* A union of the most payloads, which with its tag fills the most
+     * fields a native record holds, all bound in one arm of a function of
+     * nearly the most operands: 1 + 2 + ... + 15, grouped so the producer's
+     * operand recursion stays shallow. */
+    { "widest_union",
+      "package scalar\n"
+      "Wide :: union { Empty | All(a: int, b: int, c: int, d: int, e: int, f: "
+      "int, g: int, h: int, i: int, j: int,\n"
+      "    k: int, l: int, m: int, n: int, o: int) }\n"
+      "Main :: () -> int { return Sum(Wide.All(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "
+      "11, 12, 13, 14, 15)); }\n"
+      "Sum :: (w: Wide) -> int {\n"
+      "    switch w {\n"
+      "        case .Empty: return 0;\n"
+      "        case .All(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o):\n"
+      "            return (a + b + c + d + e) + (f + g + h + i + j) + (k + l + "
+      "m + n + o);\n"
+      "    }\n"
+      "}\n",
+      120 },
     /* Not constant: the sum wraps at run time. */
     { "wrapped_operand",
       "package scalar\nMain :: () -> int { return Half(2147483647); }\n"
       "Half :: (x: int) -> int { return (x + 1) / 2; }\n",
       -1073741824 },
 };
+#undef NESTED_CLOSES
+#undef NESTED_IDS
+#undef CLOSES_10
+#undef IDS_10
 enum
 {
     FOLDED_SOURCE_COUNT = (int)(sizeof FOLDED_SOURCES / sizeof *FOLDED_SOURCES)
 };
+/* Why module `name`'s rows on VM b have no IR: the producer's rejection or
+ * the consumer's validation error. */
+static void report_rejection(int b, const char *name, pin_value *rows)
+{
+    pin_value error;
+    if (row_int(rows, 1, "kind") == SCALAR_REJECTION_ROW) {
+        const pin_array *array = rows->ptr;
+        error = scalar_field(&array->items[1], "text");
+    } else if (!compiler_fixture_call(
+                   &consumer,
+                   b,
+                   "project:scalar_llvm",
+                   "Validate",
+                   rows,
+                   1,
+                   COMPILE_BUDGET,
+                   &input,
+                   &error
+               )) {
+        error = text("Validate failed");
+    }
+    fprintf(
+        stderr,
+        "scalar case %s: rejected: %.*s\n",
+        name,
+        (int)pin_text(error).length,
+        pin_text(error).bytes
+    );
+}
 /* Each folded source is accepted, and its Main gives its value on both VMs
  * and natively at O0 and O2. */
 static bool folded_sources_agree(const char *directory)
@@ -11775,7 +14061,7 @@ static bool folded_sources_agree(const char *directory)
         char *ir;
         REQUIRE(emitted_ir(b, &rows, &ir));
         if (!ir) {
-            fprintf(stderr, "scalar case %s: rejected\n", name);
+            report_rejection(b, name, &rows);
         }
         REQUIRE(ir);
         scalar_call calls[MAX_CASE_CALLS];
@@ -11794,7 +14080,7 @@ static bool folded_sources_agree(const char *directory)
         if (calls[0].values[0] != FOLDED_SOURCES[i].entry) {
             fprintf(
                 stderr,
-                "scalar case %s: Main gave %d, not %d\n",
+                "scalar case %s: Main gave %" PRId64 ", not %d\n",
                 name,
                 calls[0].values[0],
                 FOLDED_SOURCES[i].entry
@@ -11822,7 +14108,1851 @@ static bool folded_overflow_rejected()
     arena_free(&detached);
     return true;
 }
+/* The integer types, as the width modules declare them: each one's name, the
+ * name its functions take, its scalar_facts type, bits and signedness. */
+typedef struct scalar_width
+{
+    const char *name, *title;
+    int type, bits;
+    bool is_unsigned;
+} scalar_width;
+static const scalar_width WIDTHS[] = {
+    { "i8", "Int8", SCALAR_INT8, 8, false },
+    { "u8", "Byte", SCALAR_BYTE, 8, true },
+    { "i16", "Int16", SCALAR_INT16, 16, false },
+    { "u16", "Uint16", SCALAR_UINT16, 16, true },
+    { "int", "Int", SCALAR_INT, 32, false },
+    { "u32", "Uint", SCALAR_UINT, 32, true },
+    { "i64", "Int64", SCALAR_INT64, 64, false },
+    { "u64", "Uint64", SCALAR_WORD, 64, true },
+};
+enum
+{
+    SCALAR_WIDTHS = (int)(sizeof WIDTHS / sizeof *WIDTHS),
+    WIDTH_INT = 4,
+    WIDTH_INT64 = 6,
+    WIDTH_WORD = 7,
+    WIDTH_SOURCE_BYTES = 4096
+};
+/* `bits` as a value of `w`: its low bits, sign-extended when `w` is signed,
+ * so a uint64 is its bits. */
+static int64_t width_value(const scalar_width *w, uint64_t bits)
+{
+    if (w->bits < 64) {
+        uint64_t mask = (UINT64_C(1) << w->bits) - 1;
+        bits &= mask;
+        if (!w->is_unsigned && bits >> (w->bits - 1)) {
+            bits |= ~mask;
+        }
+    }
+    return (int64_t)bits;
+}
+static int64_t width_least(const scalar_width *w)
+{
+    return w->is_unsigned ? 0 : width_value(w, UINT64_C(1) << (w->bits - 1));
+}
+static int64_t width_greatest(const scalar_width *w)
+{
+    return width_value(w, w->is_unsigned ? UINT64_MAX : (UINT64_C(1) << (w->bits - 1)) - 1);
+}
+/* Whether value `a` of `t` is less than value `b` of `u`. */
+static bool width_below(const scalar_width *t, int64_t a, const scalar_width *u, int64_t b)
+{
+    bool a_negative = !t->is_unsigned && a < 0, b_negative = !u->is_unsigned && b < 0;
+    if (a_negative != b_negative) {
+        return a_negative;
+    }
+    return a_negative ? a < b : (uint64_t)a < (uint64_t)b;
+}
+/* The operations of a width module: the function, its expression over `a`
+ * and `b` of the module's type or the uint shift count `n`, and its arity. */
+enum
+{
+    WIDTH_ADD,
+    WIDTH_SUB,
+    WIDTH_MUL,
+    WIDTH_DIV,
+    WIDTH_MOD,
+    WIDTH_AND,
+    WIDTH_OR,
+    WIDTH_XOR,
+    WIDTH_LT,
+    WIDTH_LE,
+    WIDTH_GT,
+    WIDTH_GE,
+    WIDTH_EQ,
+    WIDTH_NE,
+    WIDTH_SHL,
+    WIDTH_SHR,
+    WIDTH_SHL_FAR,
+    WIDTH_SHR_FAR,
+    WIDTH_NEG,
+    WIDTH_NOT,
+    WIDTH_OPERATIONS
+};
+static const struct
+{
+    const char *name, *expression;
+    int parameters;
+} WIDTH_OPERATION[WIDTH_OPERATIONS] = {
+    [WIDTH_ADD] = { "Add", "a + b", 2 },
+    [WIDTH_SUB] = { "Sub", "a - b", 2 },
+    [WIDTH_MUL] = { "Mul", "a * b", 2 },
+    [WIDTH_DIV] = { "Div", "a / b", 2 },
+    [WIDTH_MOD] = { "Mod", "a % b", 2 },
+    [WIDTH_AND] = { "And", "a & b", 2 },
+    [WIDTH_OR] = { "Or", "a | b", 2 },
+    [WIDTH_XOR] = { "Xor", "a ^ b", 2 },
+    [WIDTH_LT] = { "Lt", "a < b", 2 },
+    [WIDTH_LE] = { "Le", "a <= b", 2 },
+    [WIDTH_GT] = { "Gt", "a > b", 2 },
+    [WIDTH_GE] = { "Ge", "a >= b", 2 },
+    [WIDTH_EQ] = { "Eq", "a == b", 2 },
+    [WIDTH_NE] = { "Ne", "a != b", 2 },
+    [WIDTH_SHL] = { "Shl", "a << n", 2 },
+    [WIDTH_SHR] = { "Shr", "a >> n", 2 },
+    [WIDTH_SHL_FAR] = { "ShlFar", "a << 300", 1 },
+    [WIDTH_SHR_FAR] = { "ShrFar", "a >> 300", 1 },
+    [WIDTH_NEG] = { "Neg", "-a", 1 },
+    [WIDTH_NOT] = { "Not", "~a", 1 },
+};
+/* The far shifts' constant count, which ShiftStep clamps to the type. */
+static const int64_t FAR_COUNT = 300;
+/* The language's integer contract for operation `op` on values of `w`:
+ * nothing fails, and a shift count is a uint at or past the width. */
+static int64_t width_total(const scalar_width *w, int op, int64_t a, int64_t b)
+{
+    uint64_t x = (uint64_t)a, y = (uint64_t)b;
+    bool sign = !w->is_unsigned;
+    switch (op) {
+        case WIDTH_ADD: return width_value(w, x + y);
+        case WIDTH_SUB: return width_value(w, x - y);
+        case WIDTH_MUL: return width_value(w, x * y);
+        case WIDTH_DIV:
+            return !b              ? 0
+                 : sign && b == -1 ? width_value(w, 0 - x)
+                 : sign            ? a / b
+                                   : (int64_t)(x / y);
+        case WIDTH_MOD:
+            return !b              ? a
+                 : sign && b == -1 ? 0
+                 : sign            ? a % b
+                                   : (int64_t)(x % y);
+        case WIDTH_AND: return a & b;
+        case WIDTH_OR: return a | b;
+        case WIDTH_XOR: return a ^ b;
+        case WIDTH_LT: return width_below(w, a, w, b);
+        case WIDTH_LE: return !width_below(w, b, w, a);
+        case WIDTH_GT: return width_below(w, b, w, a);
+        case WIDTH_GE: return !width_below(w, a, w, b);
+        case WIDTH_EQ: return a == b;
+        case WIDTH_NE: return a != b;
+        case WIDTH_SHL_FAR: y = FAR_COUNT; /* fall through */
+        case WIDTH_SHL:
+            return y >= (uint64_t)w->bits ? 0 : width_value(w, x << y);
+        case WIDTH_SHR_FAR: y = FAR_COUNT; /* fall through */
+        case WIDTH_SHR:
+            if (y >= (uint64_t)w->bits) {
+                return sign && a < 0 ? -1 : 0;
+            }
+            return !sign ? (int64_t)(x >> y) : a < 0 ? ~(~a >> y) : a >> y;
+        case WIDTH_NEG: return width_value(w, 0 - x);
+        default: return width_value(w, ~x);
+    }
+}
+/* The boundary values a width module's operations take: the least and
+ * greatest, those next to them, 0, 1 and -1, or the top bit unsigned. */
+static int width_samples(const scalar_width *w, int64_t samples[6])
+{
+    uint64_t top = UINT64_C(1) << (w->bits - 1);
+    if (w->is_unsigned) {
+        const int64_t values[6] = { 0,
+                                    1,
+                                    2,
+                                    width_value(w, top),
+                                    width_greatest(w) - 1,
+                                    width_greatest(w) };
+        memcpy(samples, values, sizeof values);
+    } else {
+        const int64_t values[6] = {
+            width_least(w), width_least(w) + 1, -1, 0, 1, width_greatest(w)
+        };
+        memcpy(samples, values, sizeof values);
+    }
+    return 6;
+}
+/* The uint shift counts: in range, the width's edges and past it, and past
+ * every narrower type's range, which the count's conversion clamps. */
+static int shift_counts(const scalar_width *w, int64_t counts[7])
+{
+    const int64_t values[7] = { 0,           1,   w->bits - 1, w->bits,
+                                w->bits + 1, 255, UINT32_MAX };
+    memcpy(counts, values, sizeof values);
+    return 7;
+}
+/* The operations module of `w`: Main, then one function per operation. */
+static void width_operations_source(const scalar_width *w, char source[WIDTH_SOURCE_BYTES])
+{
+    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(wrap: Mul(3, 5)); }\n");
+    for (int op = 0; op < WIDTH_OPERATIONS; op++) {
+        const char *result = op >= WIDTH_LT && op <= WIDTH_NE ? "bool" : w->name;
+        char parameters[64];
+        if (WIDTH_OPERATION[op].parameters == 1) {
+            snprintf(parameters, sizeof parameters, "a: %s", w->name);
+        } else if (op == WIDTH_SHL || op == WIDTH_SHR) {
+            snprintf(parameters, sizeof parameters, "a: %s, n: u32", w->name);
+        } else {
+            snprintf(parameters, sizeof parameters, "a: %s, b: %s", w->name, w->name);
+        }
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "%s :: (%s) -> %s { return %s; }\n",
+            WIDTH_OPERATION[op].name,
+            parameters,
+            result,
+            WIDTH_OPERATION[op].expression
+        );
+    }
+    assert(n < WIDTH_SOURCE_BYTES);
+}
+/* A call of `function` with `count` arguments that must give `expected`. */
+static scalar_call width_call(const char *function, int count, int64_t a, int64_t b, int64_t expected)
+{
+    return (scalar_call){ .probe = { "widths", function, count, { a, b }, expected } };
+}
+/* The entry, then each operation of `w` on every pair of its samples, or each
+ * sample with every shift count, or each sample alone. */
+static int width_operation_calls(const scalar_width *w, scalar_call calls[MAX_WIDTH_CALLS])
+{
+    int64_t samples[6], counts[7];
+    int sample_count = width_samples(w, samples),
+        count_count = shift_counts(w, counts), count = 0;
+    calls[count++] = width_call("Main", 0, 0, 0, 15);
+    for (int op = 0; op < WIDTH_OPERATIONS; op++) {
+        bool shift = op == WIDTH_SHL || op == WIDTH_SHR,
+             unary = WIDTH_OPERATION[op].parameters == 1;
+        const int64_t *rights = shift ? counts : samples;
+        int right_count = unary ? 1 : shift ? count_count : sample_count;
+        for (int i = 0; i < sample_count; i++) {
+            for (int j = 0; j < right_count; j++) {
+                int64_t a = samples[i], b = unary ? 0 : rights[j];
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = width_call(
+                    WIDTH_OPERATION[op].name,
+                    WIDTH_OPERATION[op].parameters,
+                    a,
+                    b,
+                    width_total(w, op, a, b)
+                );
+            }
+        }
+    }
+    return count;
+}
+/* The values conversions take: each type's edges and those next to them, as
+ * an int64 sample or, past it, a uint64 one. */
+static const int64_t CONVERTED[] = { 0,
+                                     1,
+                                     -1,
+                                     42,
+                                     127,
+                                     128,
+                                     -128,
+                                     -129,
+                                     255,
+                                     256,
+                                     298,
+                                     32767,
+                                     32768,
+                                     -32768,
+                                     -32769,
+                                     65535,
+                                     65536,
+                                     INT32_MAX,
+                                     INT32_MAX + INT64_C(1),
+                                     INT32_MIN,
+                                     INT32_MIN - INT64_C(1),
+                                     UINT32_MAX,
+                                     UINT32_MAX + INT64_C(1),
+                                     INT64_MAX,
+                                     INT64_MIN };
+static const int64_t CONVERTED_WORDS[] = { INT64_MIN, -1 };
+/* `T(value)` and `T(wrap: value)` for a value of `from` and T `to`. */
+static int64_t clamped(const scalar_width *from, int64_t value, const scalar_width *to)
+{
+    if (width_below(from, value, to, width_least(to))) {
+        return width_least(to);
+    }
+    if (width_below(to, width_greatest(to), from, value)) {
+        return width_greatest(to);
+    }
+    return width_value(to, (uint64_t)value);
+}
+/* The conversions module of `to`: Main, then ClampT and WrapT for each type
+ * T, which convert their T to `to`. */
+static void width_conversions_source(const scalar_width *to, char source[WIDTH_SOURCE_BYTES])
+{
+    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(wrap: WrapInt(298)); }\n");
+    for (int i = 0; i < SCALAR_WIDTHS; i++) {
+        const scalar_width *from = &WIDTHS[i];
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "Clamp%s :: (a: %s) -> %s { return %s(a); }\nWrap%s :: (a: %s) -> "
+            "%s { return %s(wrap: a); }\n",
+            from->title,
+            from->name,
+            to->name,
+            to->name,
+            from->title,
+            from->name,
+            to->name,
+            to->name
+        );
+    }
+    assert(n < WIDTH_SOURCE_BYTES);
+}
+/* The entry, then both conversions of each type's every sample it holds. */
+static int width_conversion_calls(const scalar_width *to, scalar_call *calls, char names[][32])
+{
+    int count = 0;
+    calls[count++] = width_call(
+        "Main",
+        0,
+        0,
+        0,
+        width_value(&WIDTHS[WIDTH_INT], (uint64_t)width_value(to, 298))
+    );
+    for (int i = 0; i < SCALAR_WIDTHS; i++) {
+        const scalar_width *from = &WIDTHS[i];
+        for (int wrap = 0; wrap < 2; wrap++) {
+            int name = 2 * i + wrap;
+            snprintf(names[name], sizeof names[name], "%s%s", wrap ? "Wrap" : "Clamp", from->title);
+            for (int k = 0; k < (int)(sizeof CONVERTED / sizeof *CONVERTED) + 2; k++) {
+                bool word = k >= (int)(sizeof CONVERTED / sizeof *CONVERTED);
+                const scalar_width *sampled = word ? &WIDTHS[WIDTH_WORD]
+                                                   : &WIDTHS[WIDTH_INT64];
+                int64_t value = word
+                                  ? CONVERTED_WORDS[k - (int)(sizeof CONVERTED / sizeof *CONVERTED)]
+                                  : CONVERTED[k];
+                if (width_below(sampled, value, from, width_least(from)) ||
+                    width_below(from, width_greatest(from), sampled, value)) {
+                    continue;
+                }
+                int64_t expected = wrap ? width_value(to, (uint64_t)value)
+                                        : clamped(from, value, to);
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = width_call(names[name], 1, value, 0, expected);
+            }
+        }
+    }
+    return count;
+}
+/* `source`, a width module, is accepted on VM b, and each of its `calls`
+ * gives its oracle's value on both VMs and natively at O0 and O2. */
+static bool width_module_agrees(
+    const char *directory,
+    int b,
+    const char *name,
+    const char *source,
+    scalar_call *calls,
+    int count
+)
+{
+    pin_value rows;
+    REQUIRE(collected_rows(b, name, text(source), &rows));
+    char *ir;
+    REQUIRE(emitted_ir(b, &rows, &ir));
+    if (!ir) {
+        const pin_array *array = rows.ptr;
+        fprintf(
+            stderr,
+            "scalar case %s: %s at %d:%d\n",
+            name,
+            pin_text(scalar_field(&array->items[1], "text")).bytes,
+            scalar_field(&array->items[1], "line").i,
+            scalar_field(&array->items[1], "column").i
+        );
+    }
+    REQUIRE(ir);
+    snprintf(calls[0].json, sizeof calls[0].json, "[]");
+    snprintf(calls[0].symbol, sizeof calls[0].symbol, "chibi_scalar");
+    for (int i = 1; i < count; i++) {
+        probe_json(&rows, &calls[i].probe, calls[i].json, sizeof calls[i].json);
+        snprintf(
+            calls[i].symbol,
+            sizeof calls[i].symbol,
+            "probe_%s",
+            calls[i].probe.function
+        );
+    }
+    bool agree = runs_everywhere(
+        directory,
+        b,
+        name,
+        (pin_string){ source, strlen(source) },
+        &rows,
+        ir,
+        calls,
+        count
+    );
+    free(ir);
+    arena_free(&detached);
+    REQUIRE(agree);
+    return true;
+}
+/* Every integer type's operations and its conversions from every type, at
+ * their boundaries, run natively as the integer contract and both VMs give
+ * them. */
+static bool widths_agree(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    char source[WIDTH_SOURCE_BYTES], name[64], names[2 * SCALAR_WIDTHS][32];
+    bool agreed = true;
+    for (int i = 0; agreed && !native_cancelled && i < SCALAR_WIDTHS; i++) {
+        snprintf(name, sizeof name, "%s_operations", WIDTHS[i].name);
+        width_operations_source(&WIDTHS[i], source);
+        int count = width_operation_calls(&WIDTHS[i], calls);
+        agreed = width_module_agrees(directory, i % 2, name, source, calls, count);
+        snprintf(name, sizeof name, "%s_conversions", WIDTHS[i].name);
+        width_conversions_source(&WIDTHS[i], source);
+        count = width_conversion_calls(&WIDTHS[i], calls, names);
+        agreed = agreed &&
+                 width_module_agrees(directory, (i + 1) % 2, name, source, calls, count);
+    }
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
 
+/* The operations float and double take, of WIDTH_OPERATION. */
+static const int FLOATING_OPERATIONS[] = { WIDTH_ADD, WIDTH_SUB, WIDTH_MUL,
+                                           WIDTH_DIV, WIDTH_LT,  WIDTH_LE,
+                                           WIDTH_GT,  WIDTH_GE,  WIDTH_EQ,
+                                           WIDTH_NE };
+enum
+{
+    FLOATING_OPERATION_COUNT = (int)(sizeof FLOATING_OPERATIONS / sizeof *FLOATING_OPERATIONS),
+    FLOATING_SAMPLES = 9
+};
+static const char *floating_name(int type)
+{
+    return type == SCALAR_FLOAT ? "number" : "f64";
+}
+/* The values a floating module's operations take: both zeros, a finite value
+ * of each sign, one that rounds, the extremes, both infinities and NaN. */
+static void floating_samples(int type, double samples[FLOATING_SAMPLES])
+{
+    bool narrow = type == SCALAR_FLOAT;
+    const double values[FLOATING_SAMPLES] = { 0.0,
+                                              -0.0,
+                                              1.0,
+                                              narrow ? (double)-0.1f : -0.1,
+                                              narrow ? FLT_MAX : DBL_MAX,
+                                              narrow ? FLT_TRUE_MIN : DBL_TRUE_MIN,
+                                              INFINITY,
+                                              -INFINITY,
+                                              NAN };
+    memcpy(samples, values, sizeof values);
+}
+/* IEEE operation `op` on `a` and `b` at the width of `type`, rounding to
+ * nearest. Every ordered comparison is false for NaN, and != true. */
+static int64_t floating_total(int type, int op, double a, double b)
+{
+    if (type == SCALAR_FLOAT) {
+        float x = (float)a, y = (float)b;
+        switch (op) {
+            case WIDTH_ADD: return floating_bits(type, x + y);
+            case WIDTH_SUB: return floating_bits(type, x - y);
+            case WIDTH_MUL: return floating_bits(type, x * y);
+            case WIDTH_DIV: return floating_bits(type, x / y);
+            case WIDTH_LT: return x < y;
+            case WIDTH_LE: return x <= y;
+            case WIDTH_GT: return x > y;
+            case WIDTH_GE: return x >= y;
+            case WIDTH_EQ: return x == y;
+            default: return x != y;
+        }
+    }
+    switch (op) {
+        case WIDTH_ADD: return floating_bits(type, a + b);
+        case WIDTH_SUB: return floating_bits(type, a - b);
+        case WIDTH_MUL: return floating_bits(type, a * b);
+        case WIDTH_DIV: return floating_bits(type, a / b);
+        case WIDTH_LT: return a < b;
+        case WIDTH_LE: return a <= b;
+        case WIDTH_GT: return a > b;
+        case WIDTH_GE: return a >= b;
+        case WIDTH_EQ: return a == b;
+        default: return a != b;
+    }
+}
+/* The ints a floating module adds to its type: an int becomes a float
+ * through double, so 2^24 + 1 rounds to even. */
+static const int64_t MIXED_INTS[] = { 0, -1, 16777217, INT32_MAX, INT32_MIN };
+/* The operations module of floating `type`: Main, each operation, then the
+ * typing rules around it: literals, an int operand, and for float its
+ * widening to double. */
+static void floating_operations_source(int type, char source[WIDTH_SOURCE_BYTES])
+{
+    const char *name = floating_name(type);
+    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return int(Mul(2.5, 3.0)); }\n");
+    for (int i = 0; i < FLOATING_OPERATION_COUNT; i++) {
+        int op = FLOATING_OPERATIONS[i];
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "%s :: (a: %s, b: %s) -> %s { return %s; }\n",
+            WIDTH_OPERATION[op].name,
+            name,
+            name,
+            op >= WIDTH_LT ? "bool" : name,
+            WIDTH_OPERATION[op].expression
+        );
+    }
+    n += snprintf(
+        source + n,
+        WIDTH_SOURCE_BYTES - (size_t)n,
+        "Mixed :: (a: %s, n: int) -> %s { return a + n; }\nSigned :: () -> %s "
+        "{ return -1.5; }\nPlus :: () -> %s { return +1.5; }\nRounded :: () -> "
+        "%s { return %s; }\nHalf :: (a: %s) -> bool { return a != 0.5; }\n",
+        name,
+        name,
+        name,
+        name,
+        name,
+        type == SCALAR_FLOAT ? "1.0000000596046447753906250000001" : "0.1",
+        name
+    );
+    if (type == SCALAR_FLOAT) {
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "Widen :: (a: number) -> f64 { return a; }\nAddDouble :: (a: "
+            "number, b: f64) -> f64 { return a + b; }\n"
+        );
+    }
+    assert(n < WIDTH_SOURCE_BYTES);
+}
+static scalar_call floating_call(const char *function, int count, int64_t a, int64_t b, int64_t expected)
+{
+    return (scalar_call){ .probe = { "floats", function, count, { a, b }, expected } };
+}
+/* The entry, each operation on every pair of samples, and the typing rules'
+ * calls. A float literal is the binary32 nearest its binary64, so the
+ * literal just past halfway between 1 and the next float rounds to 1. */
+static int floating_operation_calls(int type, scalar_call calls[MAX_WIDTH_CALLS])
+{
+    double samples[FLOATING_SAMPLES];
+    floating_samples(type, samples);
+    int count = 0;
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Main", 0, 0, 0, 7);
+    for (int k = 0; k < FLOATING_OPERATION_COUNT; k++) {
+        int op = FLOATING_OPERATIONS[k];
+        for (int i = 0; i < FLOATING_SAMPLES; i++) {
+            for (int j = 0; j < FLOATING_SAMPLES; j++) {
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = floating_call(
+                    WIDTH_OPERATION[op].name,
+                    2,
+                    floating_bits(type, samples[i]),
+                    floating_bits(type, samples[j]),
+                    floating_total(type, op, samples[i], samples[j])
+                );
+            }
+        }
+    }
+    /* Each function's calls are consecutive, so each gets one adapter. */
+    for (int i = 0; i < FLOATING_SAMPLES; i++) {
+        for (size_t j = 0; j < sizeof MIXED_INTS / sizeof *MIXED_INTS; j++) {
+            double n = (double)MIXED_INTS[j];
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = floating_call(
+                "Mixed",
+                2,
+                floating_bits(type, samples[i]),
+                MIXED_INTS[j],
+                floating_total(type, WIDTH_ADD, samples[i], type == SCALAR_FLOAT ? (float)n : n)
+            );
+        }
+    }
+    for (int i = 0; i < FLOATING_SAMPLES; i++) {
+        assert(count < MAX_WIDTH_CALLS);
+        calls[count++] = floating_call("Half", 1, floating_bits(type, samples[i]), 0, samples[i] != 0.5);
+    }
+    for (int i = 0; type == SCALAR_FLOAT && i < FLOATING_SAMPLES; i++) {
+        int64_t a = floating_bits(type, samples[i]);
+        assert(count < MAX_WIDTH_CALLS);
+        calls[count++] = floating_call("Widen", 1, a, 0, floating_bits(SCALAR_DOUBLE, samples[i]));
+    }
+    for (int i = 0; type == SCALAR_FLOAT && i < FLOATING_SAMPLES; i++) {
+        assert(count < MAX_WIDTH_CALLS);
+        calls[count++] = floating_call(
+            "AddDouble",
+            2,
+            floating_bits(type, samples[i]),
+            floating_bits(SCALAR_DOUBLE, 0.1),
+            floating_bits(SCALAR_DOUBLE, samples[i] + 0.1)
+        );
+    }
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Signed", 0, 0, 0, floating_bits(type, -1.5));
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Plus", 0, 0, 0, floating_bits(type, 1.5));
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Rounded", 0, 0, 0, floating_bits(type, type == SCALAR_FLOAT ? 1.0 : 0.1));
+    return count;
+}
+/* The values floats convert to integers from: each integer type's edges,
+ * with fractions on either side, past every type, the infinities, NaN and the
+ * least subnormals. */
+static const double TRUNCATED[] = { 0.0,
+                                    -0.0,
+                                    0.9,
+                                    -0.9,
+                                    1.5,
+                                    -1.5,
+                                    127.5,
+                                    128.0,
+                                    -128.5,
+                                    -129.0,
+                                    255.5,
+                                    256.0,
+                                    32767.5,
+                                    32768.0,
+                                    -32768.5,
+                                    -32769.0,
+                                    65535.5,
+                                    65536.0,
+                                    2147483647.5,
+                                    2147483648.0,
+                                    -2147483648.5,
+                                    -2147483649.0,
+                                    4294967295.5,
+                                    4294967296.0,
+                                    9223372036854774784.0,
+                                    9223372036854775808.0,
+                                    -9223372036854775808.0,
+                                    -9223372036854777856.0,
+                                    18446744073709549568.0,
+                                    18446744073709551616.0,
+                                    1e30,
+                                    -1e30,
+                                    INFINITY,
+                                    -INFINITY,
+                                    NAN,
+                                    DBL_TRUE_MIN,
+                                    -DBL_TRUE_MIN };
+/* `T(value)` for a float or double `value` and integer type `to`: truncated
+ * toward zero, saturated at the type's bounds, and 0 for NaN. */
+static int64_t truncated(const scalar_width *to, double value)
+{
+    if (isnan(value)) {
+        return 0;
+    }
+    double whole = trunc(value), limit = ldexp(1, to->bits - !to->is_unsigned);
+    if (whole >= limit) {
+        return width_greatest(to);
+    }
+    if (whole < (to->is_unsigned ? 0 : -limit)) {
+        return width_least(to);
+    }
+    return to->is_unsigned ? (int64_t)(uint64_t)whole : (int64_t)whole;
+}
+/* The ints converted to float through double rounding: below 2^53 and 2^24
+ * they are exact, and past them each rounds to nearest, with 2^60 + 2^36 + 1
+ * rounding twice. */
+static const int64_t FLOATED[] = { INT64_C(16777217),
+                                   INT64_C(9007199254740993),
+                                   INT64_C(0x1000001000000001) };
+/* The integer `value` of `from` as floating `type`: an int becomes a double,
+ * then a float. */
+static int64_t floated(int type, const scalar_width *from, int64_t value)
+{
+    double wide = from->is_unsigned ? (double)(uint64_t)value : (double)value;
+    return floating_bits(type, type == SCALAR_FLOAT ? (float)wide : wide);
+}
+/* The conversions module of floating `type`: Main, To<T> and From<T> between
+ * it and each integer type T, and Narrow from double to float or Widen from
+ * float to double. */
+static void floating_conversions_source(int type, char source[WIDTH_SOURCE_BYTES])
+{
+    const char *name = floating_name(type);
+    int n = snprintf(source, WIDTH_SOURCE_BYTES, "package scalar\nMain :: () -> int { return ToInt(-7.5); }\n");
+    for (int i = 0; i < SCALAR_WIDTHS; i++) {
+        const scalar_width *w = &WIDTHS[i];
+        n += snprintf(
+            source + n,
+            WIDTH_SOURCE_BYTES - (size_t)n,
+            "To%s :: (a: %s) -> %s { return %s(a); }\nFrom%s :: (a: %s) -> %s "
+            "{ "
+            "return %s(a); }\n",
+            w->title,
+            name,
+            w->name,
+            w->name,
+            w->title,
+            w->name,
+            name,
+            name
+        );
+    }
+    n += snprintf(
+        source + n,
+        WIDTH_SOURCE_BYTES - (size_t)n,
+        type == SCALAR_FLOAT
+            ? "Narrow :: (a: f64) -> number { return number(a); }\n"
+            : "Widen :: (a: number) -> f64 { return f64(a); }\n"
+    );
+    assert(n < WIDTH_SOURCE_BYTES);
+}
+/* The entry, each To<T> of every sample as `type` holds it, each From<T> of
+ * every integer sample T holds, and Narrow or Widen of every sample. */
+static int floating_conversion_calls(int type, scalar_call *calls, char names[][32])
+{
+    int count = 0, samples = (int)(sizeof TRUNCATED / sizeof *TRUNCATED);
+    assert(count < MAX_WIDTH_CALLS);
+    calls[count++] = floating_call("Main", 0, 0, 0, -7);
+    for (int i = 0; i < SCALAR_WIDTHS; i++) {
+        const scalar_width *w = &WIDTHS[i];
+        snprintf(names[2 * i], sizeof names[2 * i], "To%s", w->title);
+        snprintf(names[2 * i + 1], sizeof names[2 * i + 1], "From%s", w->title);
+        for (int k = 0; k < samples; k++) {
+            int64_t bits = floating_bits(type, TRUNCATED[k]);
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = floating_call(
+                names[2 * i],
+                1,
+                bits,
+                0,
+                truncated(w, floating_value(type, bits))
+            );
+        }
+        int converted = (int)(sizeof CONVERTED / sizeof *CONVERTED),
+            words = (int)(sizeof CONVERTED_WORDS / sizeof *CONVERTED_WORDS),
+            floated_count = (int)(sizeof FLOATED / sizeof *FLOATED);
+        for (int k = 0; k < converted + words + floated_count; k++) {
+            bool word = k >= converted && k < converted + words;
+            const scalar_width *sampled = word ? &WIDTHS[WIDTH_WORD]
+                                               : &WIDTHS[WIDTH_INT64];
+            int64_t value = k < converted ? CONVERTED[k]
+                          : word          ? CONVERTED_WORDS[k - converted]
+                                          : FLOATED[k - converted - words];
+            if (width_below(sampled, value, w, width_least(w)) ||
+                width_below(w, width_greatest(w), sampled, value)) {
+                continue;
+            }
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = floating_call(names[2 * i + 1], 1, value, 0, floated(type, w, value));
+        }
+    }
+    int other = type == SCALAR_FLOAT ? SCALAR_DOUBLE : SCALAR_FLOAT;
+    for (int k = 0; k < samples; k++) {
+        double value = floating_value(other, floating_bits(other, TRUNCATED[k]));
+        assert(count < MAX_WIDTH_CALLS);
+        calls[count++] = floating_call(
+            type == SCALAR_FLOAT ? "Narrow" : "Widen",
+            1,
+            floating_bits(other, value),
+            0,
+            floating_bits(type, value)
+        );
+    }
+    return count;
+}
+/* Float and double operations, conversions to and from every integer type
+ * and between the two, at their boundaries and IEEE's special values, run
+ * natively as C's IEEE arithmetic and both VMs give them. */
+static bool floats_agree(const char *directory)
+{
+    static const int TYPES[] = { SCALAR_FLOAT, SCALAR_DOUBLE };
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    char source[WIDTH_SOURCE_BYTES], name[64], names[2 * SCALAR_WIDTHS][32];
+    bool agreed = true;
+    for (int i = 0; agreed && !native_cancelled && i < 2; i++) {
+        snprintf(name, sizeof name, "%s_operations", floating_name(TYPES[i]));
+        floating_operations_source(TYPES[i], source);
+        int count = floating_operation_calls(TYPES[i], calls);
+        agreed = width_module_agrees(directory, i, name, source, calls, count);
+        snprintf(name, sizeof name, "%s_conversions", floating_name(TYPES[i]));
+        floating_conversions_source(TYPES[i], source);
+        count = floating_conversion_calls(TYPES[i], calls, names);
+        agreed = agreed &&
+                 width_module_agrees(directory, 1 - i, name, source, calls, count);
+    }
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+
+/* Control flow over every statement form: else-if chains that end or fall
+ * through, nested consequences with locals of their own, compound
+ * assignments to parameters and to a byte local, every logical form and
+ * bool equality. */
+static const char CONTROL_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Flow(30, 5) + Grade(85); }\n"
+         "Sign :: (x: int) -> int {\n"
+         "    if (x < 0) {\n"
+         "        return -1;\n"
+         "    } else if (x == 0) {\n"
+         "        return 0;\n"
+         "    } else {\n"
+         "        return 1;\n"
+         "    }\n"
+         "}\n"
+         "Grade :: (x: int) -> int {\n"
+         "    if (x >= 90) {\n"
+         "        return 4;\n"
+         "    } else if (x >= 80) {\n"
+         "        return 3;\n"
+         "    } else if (x >= 70) {\n"
+         "        return 2;\n"
+         "    } else if (x >= 60) {\n"
+         "        return 1;\n"
+         "    }\n"
+         "    return 0;\n"
+         "}\n"
+         "Parity :: (x: int) -> int {\n"
+         "    kind := 0;\n"
+         "    if (x > 0) {\n"
+         "        if (x % 2 == 0) {\n"
+         "            kind = 2;\n"
+         "        } else {\n"
+         "            kind = 1;\n"
+         "        }\n"
+         "    } else {\n"
+         "        offset := 3;\n"
+         "        kind = kind + offset;\n"
+         "    }\n"
+         "    return kind;\n"
+         "}\n"
+         "Flow :: (a: int, b: int) -> int {\n"
+         "    r := 0;\n"
+         "    if (a > b) {\n"
+         "        r = a - b;\n"
+         "    }\n"
+         "    if (a == b) {\n"
+         "        return 100;\n"
+         "    }\n"
+         "    if (r > 10 && a > 0) {\n"
+         "        r = 10;\n"
+         "    } else if (!(r > 0)) {\n"
+         "        r = -1;\n"
+         "    }\n"
+         "    return r;\n"
+         "}\n"
+         "Steps :: (a: int, b: int) -> int {\n"
+         "    a += b;\n"
+         "    a *= 3;\n"
+         "    a -= 1;\n"
+         "    a = a << 2;\n"
+         "    a = a >> 1;\n"
+         "    a /= b;\n"
+         "    a %= 7;\n"
+         "    a ^= b;\n"
+         "    a |= 1;\n"
+         "    a &= 255;\n"
+         "    return a;\n"
+         "}\n"
+         "Low :: (a: u8, b: u8) -> u8 {\n"
+         "    x := a;\n"
+         "    x += b;\n"
+         "    x *= 3;\n"
+         "    x = x >> 1;\n"
+         "    return x;\n"
+         "}\n"
+         "Far :: (a: u8, n: u32) -> u8 {\n"
+         "    x := a;\n"
+         "    x = x << n;\n"
+         "    y := a;\n"
+         "    y = y >> 300;\n"
+         "    return x + y;\n"
+         "}\n"
+         "Shadow :: (x: int) -> int {\n"
+         "    y := x + 1;\n"
+         "    if (x > 0) {\n"
+         "        y := x * 2;\n"
+         "        return y;\n"
+         "    }\n"
+         "    return y;\n"
+         "}\n"
+         "Choose :: (c: bool, a: int, b: int) -> int {\n"
+         "    picked: int = b;\n"
+         "    if (c && a > b || !c && a < b) {\n"
+         "        picked = a;\n"
+         "    }\n"
+         "    return picked;\n"
+         "}\n"
+         "Both :: (a: bool, b: bool) -> bool { return a && b; }\n"
+         "Either :: (a: bool, b: bool) -> bool { return a || b; }\n"
+         "Not :: (a: bool) -> bool { return !a; }\n"
+         "Same :: (a: bool, b: bool) -> bool { return a == b; }\n"
+         "Differ :: (a: bool, b: bool) -> bool { return a != b; }\n"
+         "Mixed :: (a: bool, b: bool, c: bool) -> bool { return a && !b || c; "
+         "}\n"
+         "Nested :: (a: bool, b: bool, c: bool) -> bool { return a || (b && "
+         "!c) || !(a || c); }\n";
+static scalar_call control_call(const char *function, int count, int64_t a, int64_t b, int64_t c, int64_t expected)
+{
+    return (scalar_call){ .probe = { "control", function, count, { a, b, c }, expected } };
+}
+/* What CONTROL_SOURCE's integer functions give, as C computes them with the
+ * integer contract: nothing fails, and a byte keeps its low bits. */
+static int64_t control_int(const char *function, int64_t a, int64_t b, int64_t c)
+{
+    int32_t x = (int32_t)a, y = (int32_t)b;
+    if (!strcmp(function, "Sign")) {
+        return x < 0 ? -1 : x == 0 ? 0 : 1;
+    }
+    if (!strcmp(function, "Grade")) {
+        return x >= 90 ? 4 : x >= 80 ? 3 : x >= 70 ? 2 : x >= 60 ? 1 : 0;
+    }
+    if (!strcmp(function, "Parity")) {
+        return x > 0 ? (total(11, x, 2) == 0 ? 2 : 1) : 3;
+    }
+    if (!strcmp(function, "Flow")) {
+        int32_t r = x > y ? total(8, x, y) : 0;
+        return x == y ? 100 : r > 10 && x > 0 ? 10 : !(r > 0) ? -1 : r;
+    }
+    if (!strcmp(function, "Steps")) {
+        x = total(7, x, y);
+        x = total(9, x, 3);
+        x = total(8, x, 1);
+        x = total(17, x, 2);
+        x = total(18, x, 1);
+        x = total(10, x, y);
+        x = total(11, x, 7);
+        return ((x ^ y) | 1) & 255;
+    }
+    if (!strcmp(function, "Low")) {
+        uint8_t v = (uint8_t)((uint8_t)(a + b) * 3);
+        return v >> 1;
+    }
+    if (!strcmp(function, "Far")) {
+        /* The count clamps to the byte, and 300 to its largest, 255. */
+        int64_t count = b > 255 ? 255 : b;
+        return count >= 8 ? 0 : (uint8_t)(a << count);
+    }
+    if (!strcmp(function, "Shadow")) {
+        return x > 0 ? total(9, x, 2) : total(7, x, 1);
+    }
+    assert(!strcmp(function, "Choose"));
+    return (a && y > (int32_t)c) || (!a && y < (int32_t)c) ? y : (int32_t)c;
+}
+static int64_t control_bool(const char *function, bool a, bool b, bool c)
+{
+    if (!strcmp(function, "Both")) {
+        return a && b;
+    }
+    if (!strcmp(function, "Either")) {
+        return a || b;
+    }
+    if (!strcmp(function, "Not")) {
+        return !a;
+    }
+    if (!strcmp(function, "Same")) {
+        return a == b;
+    }
+    if (!strcmp(function, "Differ")) {
+        return a != b;
+    }
+    if (!strcmp(function, "Mixed")) {
+        return (a && !b) || c;
+    }
+    assert(!strcmp(function, "Nested"));
+    return a || (b && !c) || !(a || c);
+}
+/* The entry, then each integer function on its samples, Far with each byte
+ * and count, Choose with each
+ * condition and ordered pair, and each bool function with every
+ * combination of its arguments. */
+static int control_calls(scalar_call calls[MAX_WIDTH_CALLS])
+{
+    static const char *const INTS[] = { "Sign", "Grade", "Parity", "Shadow" };
+    static const char *const PAIRS_OF[] = { "Flow", "Steps" };
+    static const char *const BOOLS[] = { "Both",   "Either", "Not",   "Same",
+                                         "Differ", "Mixed",  "Nested" };
+    static const int BOOL_ARITY[] = { 2, 2, 1, 2, 2, 3, 3 };
+    static const int64_t SAMPLES[] = { INT32_MIN, -7, -1, 0,   1,
+                                       2,         59, 60, 69,  70,
+                                       80,        89, 90, 100, INT32_MAX };
+    static const int64_t PAIRED[] = { INT32_MIN, -11, -1, 0,        1,
+                                      5,         16,  30, INT32_MAX };
+    static const int64_t BYTES[] = { 0, 1, 85, 127, 128, 200, 255 };
+    static const int64_t COUNTS[] = { 0, 1, 7, 8, 9, 255, 256, UINT32_MAX };
+    int count = 0;
+    calls[count++] = control_call("Main", 0, 0, 0, 0, 13);
+    for (int f = 0; f < 4; f++) {
+        for (int i = 0; i < (int)(sizeof SAMPLES / sizeof *SAMPLES); i++) {
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = control_call(
+                INTS[f],
+                1,
+                SAMPLES[i],
+                0,
+                0,
+                control_int(INTS[f], SAMPLES[i], 0, 0)
+            );
+        }
+    }
+    for (int f = 0; f < 2; f++) {
+        for (int i = 0; i < (int)(sizeof PAIRED / sizeof *PAIRED); i++) {
+            for (int j = 0; j < (int)(sizeof PAIRED / sizeof *PAIRED); j++) {
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = control_call(
+                    PAIRS_OF[f],
+                    2,
+                    PAIRED[i],
+                    PAIRED[j],
+                    0,
+                    control_int(PAIRS_OF[f], PAIRED[i], PAIRED[j], 0)
+                );
+            }
+        }
+    }
+    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
+        for (int j = 0; j < (int)(sizeof BYTES / sizeof *BYTES); j++) {
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = control_call(
+                "Low",
+                2,
+                BYTES[i],
+                BYTES[j],
+                0,
+                control_int("Low", BYTES[i], BYTES[j], 0)
+            );
+        }
+    }
+    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
+        for (int j = 0; j < (int)(sizeof COUNTS / sizeof *COUNTS); j++) {
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = control_call(
+                "Far",
+                2,
+                BYTES[i],
+                COUNTS[j],
+                0,
+                control_int("Far", BYTES[i], COUNTS[j], 0)
+            );
+        }
+    }
+    for (int condition = 0; condition < 2; condition++) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = control_call(
+                    "Choose",
+                    3,
+                    condition,
+                    PAIRED[i + 2],
+                    PAIRED[j + 2],
+                    control_int("Choose", condition, PAIRED[i + 2], PAIRED[j + 2])
+                );
+            }
+        }
+    }
+    for (int f = 0; f < (int)(sizeof BOOLS / sizeof *BOOLS); f++) {
+        for (int bits = 0; bits < 1 << BOOL_ARITY[f]; bits++) {
+            bool a = bits & 1, b = bits >> 1 & 1, c = bits >> 2 & 1;
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = control_call(
+                BOOLS[f],
+                BOOL_ARITY[f],
+                a,
+                b,
+                c,
+                control_bool(BOOLS[f], a, b, c)
+            );
+        }
+    }
+    return count;
+}
+/* Locals, assignments, nested if statements and logic run natively as C and
+ * both VMs give them. */
+static bool control_agrees(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = control_calls(calls);
+    bool agreed = width_module_agrees(directory, 0, "control", CONTROL_SOURCE, calls, count);
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+
+/* Every loop form: ranges up and down, inclusive and exclusive, to the ends
+ * of int and over byte bounds; a while loop with a condition, an endless one
+ * that only a return leaves, nested loops whose break and continue leave or
+ * restart the innermost, and an outer break and continue that pass over an
+ * inner loop. Each range folds its indices into a hash, so
+ * their order and count both show. */
+static const char LOOP_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Up(0, 5) + Nested(3); }\n"
+         "Up :: (a: int, b: int) -> int {\n"
+         "    h := 7;\n"
+         "    for i in a..<b { h = h * 31 + i; }\n"
+         "    return h;\n"
+         "}\n"
+         "Through :: (a: int, b: int) -> int {\n"
+         "    h := 7;\n"
+         "    for i in a..b { h = h * 31 + i; }\n"
+         "    return h;\n"
+         "}\n"
+         "Down :: (a: int, b: int) -> int {\n"
+         "    h := 7;\n"
+         "    for < i in a..<b { h = h * 31 + i; }\n"
+         "    return h;\n"
+         "}\n"
+         "DownThrough :: (a: int, b: int) -> int {\n"
+         "    h := 7;\n"
+         "    for < i in a..b { h = h * 31 + i; }\n"
+         "    return h;\n"
+         "}\n"
+         "Bytes :: (a: u8, b: u8) -> int {\n"
+         "    sum := 0;\n"
+         "    for i in a..<b { sum += i; }\n"
+         "    return sum;\n"
+         "}\n"
+         "Halve :: (n: int) -> int {\n"
+         "    steps := 0;\n"
+         "    while (n > 1) {\n"
+         "        n /= 2;\n"
+         "        steps += 1;\n"
+         "    }\n"
+         "    return steps;\n"
+         "}\n"
+         "Collatz :: (n: int) -> int {\n"
+         "    steps := 0;\n"
+         "    while (true) {\n"
+         "        if (n <= 1) { return steps; }\n"
+         "        if (n % 2 == 0) { n /= 2; } else { n = 3 * n + 1; }\n"
+         "        steps += 1;\n"
+         "    }\n"
+         "}\n"
+         "Outer :: (n: int) -> int {\n"
+         "    h := 0;\n"
+         "    for i in 0..<n {\n"
+         "        if (i % 3 == 0) { continue; }\n"
+         "        if (i > 7) { break; }\n"
+         "        j := 0;\n"
+         "        while (j < i) { j += 1; }\n"
+         "        h = h * 5 + j;\n"
+         "    }\n"
+         "    return h;\n"
+         "}\n"
+         "Nested :: (n: int) -> int {\n"
+         "    h := 0;\n"
+         "    for i in 0..<n {\n"
+         "        if (i == 2) { continue; }\n"
+         "        j := 0;\n"
+         "        while (j < n) {\n"
+         "            j += 1;\n"
+         "            if (j == 3) { continue; }\n"
+         "            if (j > i + 2) { break; }\n"
+         "            h = h * 7 + i * 10 + j;\n"
+         "        }\n"
+         "        if (h > 100000) { break; }\n"
+         "    }\n"
+         "    return h;\n"
+         "}\n";
+static int32_t loop_hash(int32_t h, int64_t i)
+{
+    return (int32_t)((uint32_t)h * 31u + (uint32_t)i);
+}
+/* What LOOP_SOURCE's functions give, as C computes them with the integer
+ * contract. Indices are int64, so no C loop wraps at an end of int. */
+static int64_t loop_int(const char *function, int64_t a, int64_t b)
+{
+    int32_t x = (int32_t)a, y = (int32_t)b, h = 7;
+    if (!strcmp(function, "Up")) {
+        for (int64_t i = x; i < y; i++) {
+            h = loop_hash(h, i);
+        }
+        return h;
+    }
+    if (!strcmp(function, "Through")) {
+        for (int64_t i = x; i <= y; i++) {
+            h = loop_hash(h, i);
+        }
+        return h;
+    }
+    if (!strcmp(function, "Down")) {
+        for (int64_t i = (int64_t)y - 1; i >= x; i--) {
+            h = loop_hash(h, i);
+        }
+        return h;
+    }
+    if (!strcmp(function, "DownThrough")) {
+        for (int64_t i = y; i >= x; i--) {
+            h = loop_hash(h, i);
+        }
+        return h;
+    }
+    if (!strcmp(function, "Bytes")) {
+        return a < b ? (b - a) * (a + b - 1) / 2 : 0;
+    }
+    int32_t steps = 0;
+    if (!strcmp(function, "Halve")) {
+        for (; x > 1; x /= 2) {
+            steps++;
+        }
+        return steps;
+    }
+    if (!strcmp(function, "Collatz")) {
+        for (; x > 1; steps++) {
+            x = x % 2 == 0 ? x / 2 : total(7, total(9, 3, x), 1);
+        }
+        return steps;
+    }
+    uint32_t hash = 0;
+    if (!strcmp(function, "Outer")) {
+        for (int64_t i = 0; i < x; i++) {
+            if (i % 3 == 0) {
+                continue;
+            }
+            if (i > 7) {
+                break;
+            }
+            hash = hash * 5u + (uint32_t)i;
+        }
+        return (int32_t)hash;
+    }
+    assert(!strcmp(function, "Nested"));
+    for (int64_t i = 0; i < x; i++) {
+        if (i == 2) {
+            continue;
+        }
+        for (int64_t j = 1; j <= x; j++) {
+            if (j == 3) {
+                continue;
+            }
+            if (j > i + 2) {
+                break;
+            }
+            hash = hash * 7u + (uint32_t)(i * 10 + j);
+        }
+        if ((int32_t)hash > 100000) {
+            break;
+        }
+    }
+    return (int32_t)hash;
+}
+/* The entry, each range function on every pair of RANGE_ENDS at most 16
+ * apart, which includes every empty range, Bytes on every pair of bytes, and
+ * the while loops on their samples. */
+static int loop_calls(scalar_call calls[MAX_WIDTH_CALLS])
+{
+    static const char *const RANGES[] = { "Up", "Through", "Down", "DownThrough" };
+    static const int64_t RANGE_ENDS[] = {
+        INT32_MIN, INT32_MIN + 1, INT32_MIN + 3, -3,       -1, 0, 1,
+        5,         INT32_MAX - 3, INT32_MAX - 1, INT32_MAX
+    };
+    static const int64_t BYTES[] = { 0, 1, 85, 127, 128, 200, 255 };
+    static const struct
+    {
+        const char *function;
+        int64_t samples[11];
+    } WHILES[] = {
+        { "Halve", { INT32_MIN, -1, 0, 1, 2, 3, 1024, 1025, INT32_MAX } },
+        { "Collatz", { INT32_MIN, -5, 0, 1, 2, 3, 6, 7, 27, 97, 871 } },
+        { "Nested", { INT32_MIN, -1, 0, 1, 2, 3, 4, 5, 8, 20 } },
+        { "Outer", { INT32_MIN, 0, 1, 2, 4, 5, 8, 9, 12, 100 } },
+    };
+    static const int WHILE_SAMPLES[] = { 9, 11, 10, 10 };
+    int count = 0, ends = (int)(sizeof RANGE_ENDS / sizeof *RANGE_ENDS);
+    calls[count++] = (scalar_call){
+        .probe = { "loop", "Main", 0, { 0 }, loop_int("Up", 0, 5) + loop_int("Nested", 3, 0) }
+    };
+    for (int f = 0; f < 4; f++) {
+        for (int i = 0; i < ends; i++) {
+            for (int j = 0; j < ends; j++) {
+                if (RANGE_ENDS[j] - RANGE_ENDS[i] > 16) {
+                    continue;
+                }
+                int64_t a = RANGE_ENDS[i], b = RANGE_ENDS[j];
+                assert(count < MAX_WIDTH_CALLS);
+                calls[count++] = (scalar_call){
+                    .probe = { "loop", RANGES[f], 2, { a, b }, loop_int(RANGES[f], a, b) }
+                };
+            }
+        }
+    }
+    for (int i = 0; i < (int)(sizeof BYTES / sizeof *BYTES); i++) {
+        for (int j = 0; j < (int)(sizeof BYTES / sizeof *BYTES); j++) {
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = (scalar_call){
+                .probe = { "loop",
+                           "Bytes",
+                           2,
+                           { BYTES[i], BYTES[j] },
+                           loop_int("Bytes", BYTES[i], BYTES[j]) }
+            };
+        }
+    }
+    for (int f = 0; f < (int)(sizeof WHILES / sizeof *WHILES); f++) {
+        for (int i = 0; i < WHILE_SAMPLES[f]; i++) {
+            int64_t n = WHILES[f].samples[i];
+            assert(count < MAX_WIDTH_CALLS);
+            calls[count++] = (scalar_call){
+                .probe = { "loop",
+                           WHILES[f].function,
+                           1,
+                           { n },
+                           loop_int(WHILES[f].function, n, 0) }
+            };
+        }
+    }
+    return count;
+}
+/* Loops, break and continue run natively as C and both VMs give them. */
+static bool loops_agree(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = loop_calls(calls);
+    bool agreed = width_module_agrees(directory, 1, "loop", LOOP_SOURCE, calls, count);
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+/* Switches: arms that all return, a default arm written first that runs
+ * last, a byte and an int64 value, arm values that are calls and
+ * expressions, one repeated so only its first arm can run, break and continue
+ * through a switch to its loop, and a switch nested in an arm. */
+static const char
+    SWITCH_SOURCE[] = "package scalar\n"
+                      "Main :: () -> int { return Grade(85) + Late(2); }\n"
+                      "Grade :: (x: int) -> int {\n"
+                      "    switch x / 10 {\n"
+                      "        case 10: return 5;\n"
+                      "        case 9: return 4;\n"
+                      "        case 8: return 3;\n"
+                      "        case: return 0;\n"
+                      "    }\n"
+                      "}\n"
+                      "Late :: (x: int) -> int {\n"
+                      "    r := 0;\n"
+                      "    switch x {\n"
+                      "        case: r = 100;\n"
+                      "        case 1: r = 1;\n"
+                      "        case 2:\n"
+                      "            y := x * 3;\n"
+                      "            r = y;\n"
+                      "    }\n"
+                      "    return r;\n"
+                      "}\n"
+                      "Narrow :: (b: u8) -> int {\n"
+                      "    switch b {\n"
+                      "        case 0: return 1;\n"
+                      "        case 255: return 2;\n"
+                      "    }\n"
+                      "    return 3;\n"
+                      "}\n"
+                      "Long :: (v: i64) -> int {\n"
+                      "    switch v {\n"
+                      "        case -1: return 1;\n"
+                      "        case 4294967296: return 2;\n"
+                      "    }\n"
+                      "    return 3;\n"
+                      "}\n"
+                      "Twice :: (v: int) -> int { return v * 2; }\n"
+                      "Order :: (x: int) -> int {\n"
+                      "    switch x {\n"
+                      "        case Twice(1): return 10;\n"
+                      "        case 2: return 20;\n"
+                      "        case -x: return 30;\n"
+                      "    }\n"
+                      "    return 40;\n"
+                      "}\n"
+                      "Steps :: (n: int) -> int {\n"
+                      "    h := 0;\n"
+                      "    for i in 0..<n {\n"
+                      "        switch i % 4 {\n"
+                      "            case 0: continue;\n"
+                      "            case 3:\n"
+                      "                if (i > 9) { break; }\n"
+                      "                h += 100;\n"
+                      "            case: h = h * 3 + i;\n"
+                      "        }\n"
+                      "        h += 1;\n"
+                      "    }\n"
+                      "    return h;\n"
+                      "}\n"
+                      "Pair :: (a: int, b: int) -> int {\n"
+                      "    switch a {\n"
+                      "        case 0:\n"
+                      "            switch b {\n"
+                      "                case 0: return 1;\n"
+                      "                case: return 2;\n"
+                      "            }\n"
+                      "        case 1:\n"
+                      "            x := b * 2;\n"
+                      "            return x;\n"
+                      "    }\n"
+                      "    return -1;\n"
+                      "}\n";
+/* What SWITCH_SOURCE's functions give, as C computes them with the integer
+ * contract. */
+static int64_t switch_int(const char *function, int64_t a, int64_t b)
+{
+    int32_t x = (int32_t)a, y = (int32_t)b;
+    if (!strcmp(function, "Grade")) {
+        int32_t tens = total(10, x, 10);
+        return tens == 10 ? 5 : tens == 9 ? 4 : tens == 8 ? 3 : 0;
+    }
+    if (!strcmp(function, "Late")) {
+        return x == 1 ? 1 : x == 2 ? 6 : 100;
+    }
+    if (!strcmp(function, "Narrow")) {
+        return a == 0 ? 1 : a == 255 ? 2 : 3;
+    }
+    if (!strcmp(function, "Long")) {
+        return a == -1 ? 1 : a == INT64_C(4294967296) ? 2 : 3;
+    }
+    if (!strcmp(function, "Order")) {
+        return x == 2 ? 10 : x == total(12, x, 0) ? 30 : 40;
+    }
+    if (!strcmp(function, "Steps")) {
+        uint32_t h = 0;
+        for (int64_t i = 0; i < x; i++) {
+            if (i % 4 == 0) {
+                continue;
+            }
+            if (i % 4 == 3) {
+                if (i > 9) {
+                    break;
+                }
+                h += 100;
+            } else {
+                h = h * 3u + (uint32_t)i;
+            }
+            h += 1;
+        }
+        return (int32_t)h;
+    }
+    assert(!strcmp(function, "Pair"));
+    return x == 0 ? (y == 0 ? 1 : 2) : x == 1 ? total(9, y, 2) : -1;
+}
+/* The entry, then each function on its samples: the int ones at and around
+ * their arms' values and at the ends of int, Narrow on every byte, Long at
+ * its arms and the ends of int64, and Pair on every pair of its samples. */
+static int switch_calls(scalar_call calls[MAX_WIDTH_CALLS])
+{
+    static const char *const INTS[] = { "Grade", "Late", "Order", "Steps" };
+    static const int64_t SAMPLES[] = { INT32_MIN, -1, 0,   1,   2,
+                                       3,         12, 20,  79,  80,
+                                       89,        99, 100, 109, INT32_MAX };
+    static const int64_t LONGS[] = {
+        INT64_MIN,           -2,       -1, 0, INT64_C(4294967295),
+        INT64_C(4294967296), INT64_MAX
+    };
+    static const int64_t PAIRS[] = { INT32_MIN, -1, 0, 1, 2, INT32_MAX };
+    int count = 0;
+    calls[count++] = (scalar_call){ .probe = { "switch",
+                                               "Main",
+                                               0,
+                                               { 0 },
+                                               switch_int("Grade", 85, 0) +
+                                                   switch_int("Late", 2, 0) } };
+    for (int f = 0; f < 4; f++) {
+        for (int i = 0; i < (int)(sizeof SAMPLES / sizeof *SAMPLES); i++) {
+            /* Steps loops its argument's times, so it takes none past 20. */
+            if (f == 3 && SAMPLES[i] > 20) {
+                continue;
+            }
+            calls[count++] = (scalar_call){
+                .probe = { "switch",
+                           INTS[f],
+                           1,
+                           { SAMPLES[i] },
+                           switch_int(INTS[f], SAMPLES[i], 0) }
+            };
+        }
+    }
+    for (int value = 0; value < 256; value++) {
+        calls[count++] = (scalar_call){
+            .probe = { "switch", "Narrow", 1, { value }, switch_int("Narrow", value, 0) }
+        };
+    }
+    for (int i = 0; i < (int)(sizeof LONGS / sizeof *LONGS); i++) {
+        calls[count++] = (scalar_call){
+            .probe = { "switch", "Long", 1, { LONGS[i] }, switch_int("Long", LONGS[i], 0) }
+        };
+    }
+    for (int i = 0; i < (int)(sizeof PAIRS / sizeof *PAIRS); i++) {
+        for (int j = 0; j < (int)(sizeof PAIRS / sizeof *PAIRS); j++) {
+            calls[count++] = (scalar_call){
+                .probe = { "switch",
+                           "Pair",
+                           2,
+                           { PAIRS[i], PAIRS[j] },
+                           switch_int("Pair", PAIRS[i], PAIRS[j]) }
+            };
+        }
+    }
+    assert(count <= MAX_WIDTH_CALLS);
+    return count;
+}
+/* Switches run natively as C and both VMs give them. */
+static bool switches_agree(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = switch_calls(calls);
+    bool agreed = width_module_agrees(directory, 0, "switch", SWITCH_SOURCE, calls, count);
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+/* A function at the facts bounds whose loops take the most native slots:
+ * eight parameters, SCALAR_MAX_LOCALS reversed exclusive ranges of 13 slots
+ * each, then an assignment of a logical chain that fills the remaining
+ * operands, then a return, 248 of llvm_native's 256 slots. Its native
+ * lowering must still fit llvm_native's tables. */
+static bool widest_loops_agree(const char *directory)
+{
+    char source[2048];
+    int at = snprintf(
+        source,
+        sizeof source,
+        "package scalar\nMain :: () -> int { return Wide(1, 3, true, 0, 0, 0, "
+        "0, 0); }\n"
+        "Wide :: (a: int, b: int, c: bool, d: int, e: int, f: int, g: int, h: "
+        "int) -> int {\n"
+    );
+    for (int i = 0; i < SCALAR_MAX_LOCALS; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, "    for < i in a..<b {}\n");
+    }
+    /* Each range has two operands, the chain 2k - 1 for k reads of c, and the
+     * return one. */
+    at += snprintf(source + at, sizeof source - (size_t)at, "    c = c");
+    for (int i = 1; i < (SCALAR_MAX_OPERANDS - 2 * SCALAR_MAX_LOCALS) / 2; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, " && c");
+    }
+    snprintf(source + at, sizeof source - (size_t)at, ";\n    return a;\n}\n");
+    scalar_call call = { .probe = { "widest", "Main", 0, { 0 }, 1 } };
+    REQUIRE(width_module_agrees(directory, 0, "widest", source, &call, 1));
+    return true;
+}
+/* `function`(`argument`) of `source` fails on both VMs with `status`. */
+static bool vms_fail(const char *source, const char *function, int64_t argument, int status)
+{
+    unsigned char *closure;
+    size_t length;
+    REQUIRE(vm_closure(0, (pin_string){ source, strlen(source) }, &closure, &length));
+    char id[128], arguments[32];
+    snprintf(id, sizeof id, "project:scalar:1:%s:callable", function);
+    int n = snprintf(arguments, sizeof arguments, "[%" PRId64 "]", argument);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(vm_load(closure, length, backend));
+        compiler_host_invoke(
+            host,
+            script_catalog_id("package-symbol", id),
+            arguments,
+            (size_t)n,
+            TARGET_BUDGET,
+            &result
+        );
+        int given = result.flow_status;
+        free(result.json);
+        result = (compiler_host_result){ 0 };
+        compiler_host_free(host);
+        host = NULL;
+        REQUIRE(given == status);
+    }
+    free(closure);
+    arena_free(&detached);
+    return true;
+}
+/* How a native call of a function taking one int ends, at O0 and O2, within
+ * `seconds`: with `value`, when `error` is CHIBI_PROCESS_OK and `signal` 0;
+ * otherwise with `error`, and for CHIBI_PROCESS_OK with `signal`'s status
+ * and `report` in its standard error. */
+typedef struct
+{
+    const char *function;
+    int64_t argument, value;
+    chibi_process_error error;
+    int signal;
+    const char *report;
+    double seconds;
+} native_ending;
+/* Each of `calls`, of functions of `source`, ends natively as it says. */
+static bool natively_end(
+    const char *directory,
+    const char *name,
+    const char *source,
+    const native_ending *calls,
+    int count
+)
+{
+    pin_value rows;
+    REQUIRE(collected_rows(0, name, text(source), &rows));
+    char *ir, *adapter = xmalloc(1);
+    *adapter = 0;
+    REQUIRE(emitted_ir(0, &rows, &ir));
+    REQUIRE(ir);
+    for (int i = 0; i < count; i++) {
+        char probe[128];
+        snprintf(probe, sizeof probe, "@probe_%s(", calls[i].function);
+        REQUIRE(strstr(adapter, probe) || append_adapter(&rows, calls[i].function, &adapter));
+    }
+    for (int level = 0; level < 2; level++) {
+        char library[PATH_MAX];
+        REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
+        for (int i = 0; i < count; i++) {
+            const native_ending *expected = &calls[i];
+            scalar_call call = {
+                .probe = { name, expected->function, 1, { expected->argument }, 0 }
+            };
+            snprintf(call.symbol, sizeof call.symbol, "probe_%s", expected->function);
+            chibi_process_capture_result
+                ended = library_calls(directory, library, &call, 1, 2, expected->seconds);
+            REQUIRE(ended.error == expected->error);
+            if (expected->error != CHIBI_PROCESS_OK) {
+                continue;
+            }
+            REQUIRE(ended.status == -expected->signal);
+            REQUIRE(expected->signal || call.values[2] == expected->value);
+            REQUIRE(!expected->report || strstr(native_errors, expected->report));
+        }
+    }
+    free(adapter);
+    free(ir);
+    arena_free(&detached);
+    return true;
+}
+/* Spin never returns. Both VMs fail its call at their instruction budget.
+ * Natively its loop runs unchecked, as Odin's does, and LLVM keeps it at O0
+ * and O2, so the call runs until its deadline stops it. */
+static const char SPIN_SOURCE[] = "package scalar\n"
+                                  "Main :: () -> int { return 0; }\n"
+                                  "Spin :: (n: int) -> int {\n"
+                                  "    while (true) { n += 1; }\n"
+                                  "}\n";
+static bool endless_loops_hang(const char *directory)
+{
+    static const native_ending spin = { .function = "Spin",
+                                        .error = CHIBI_PROCESS_TIMEOUT,
+                                        .seconds = SPIN_SECONDS };
+    REQUIRE(vms_fail(SPIN_SOURCE, "Spin", 0, FLOW_ERR_STEP_BUDGET));
+    REQUIRE(natively_end(directory, "spin", SPIN_SOURCE, &spin, 1));
+    return true;
+}
+/* Direct, mutual and two-way recursion, recursion through a loop, and a
+ * function that only ever calls itself. Forever's subtraction keeps its call
+ * from being a tail call, which O2 would turn into an endless loop. */
+static const char RECURSION_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Sum(10) + Even(7); }\n"
+         "Sum :: (n: int) -> int {\n"
+         "    if (n > 0) { return n + Sum(n - 1); }\n"
+         "    return 0;\n"
+         "}\n"
+         "Fib :: (n: int) -> int {\n"
+         "    if (n < 2) { return n; }\n"
+         "    return Fib(n - 1) + Fib(n - 2);\n"
+         "}\n"
+         "Even :: (n: int) -> int {\n"
+         "    if (n == 0) { return 1; }\n"
+         "    return Odd(n - 1);\n"
+         "}\n"
+         "Odd :: (n: int) -> int {\n"
+         "    if (n == 0) { return 0; }\n"
+         "    return Even(n - 1);\n"
+         "}\n"
+         "Gcd :: (a: int, b: int) -> int {\n"
+         "    if (b == 0) { return a; }\n"
+         "    return Gcd(b, a % b);\n"
+         "}\n"
+         "Nodes :: (n: int) -> int {\n"
+         "    c := 1;\n"
+         "    for i in 0..<n { c += Nodes(i); }\n"
+         "    return c;\n"
+         "}\n"
+         "Forever :: (n: int) -> int { return Forever(n + 1) - n; }\n";
+/* What RECURSION_SOURCE's functions give, as C computes them with the
+ * integer contract. */
+static int64_t recursion_int(const char *function, int64_t a, int64_t b)
+{
+    int32_t x = (int32_t)a, y = (int32_t)b;
+    if (!strcmp(function, "Sum")) {
+        return x > 0 ? total(7, x, (int32_t)recursion_int("Sum", x - 1, 0)) : 0;
+    }
+    if (!strcmp(function, "Fib")) {
+        return x < 2 ? x
+                     : total(
+                           7,
+                           (int32_t)recursion_int("Fib", x - 1, 0),
+                           (int32_t)recursion_int("Fib", x - 2, 0)
+                       );
+    }
+    if (!strcmp(function, "Even") || !strcmp(function, "Odd")) {
+        bool even = !strcmp(function, "Even");
+        return x == 0 ? even : recursion_int(even ? "Odd" : "Even", x - 1, 0);
+    }
+    if (!strcmp(function, "Nodes")) {
+        return x > 0 ? INT64_C(1) << x : 1;
+    }
+    assert(!strcmp(function, "Gcd"));
+    return y == 0 ? x : recursion_int("Gcd", y, total(11, x, y));
+}
+/* The entry, then each function at the depths every backend runs: Sum, Even
+ * and Odd at each depth below stage zero's call depth limit, Fib and Nodes on
+ * their first 12, within the VMs' instruction budget, and Gcd on pairs of
+ * zero, signs, the ends of int and consecutive Fibonacci numbers, its
+ * deepest. */
+static int recursion_calls(scalar_call calls[MAX_WIDTH_CALLS])
+{
+    static const int64_t PAIRS[][2] = { { 0, 0 },
+                                        { 12, 0 },
+                                        { 0, 12 },
+                                        { 12, 18 },
+                                        { -12, 18 },
+                                        { 12, -18 },
+                                        { INT32_MIN, -1 },
+                                        { INT32_MAX, INT32_MIN },
+                                        { 1836311903, 1134903170 } };
+    int count = 0;
+    calls[count++] = (scalar_call){ .probe = { "recursion",
+                                               "Main",
+                                               0,
+                                               { 0 },
+                                               recursion_int("Sum", 10, 0) +
+                                                   recursion_int("Even", 7, 0) } };
+    static const char *const DEEP[] = { "Sum", "Even", "Odd" };
+    for (int f = 0; f < 3; f++) {
+        /* Even and Odd recurse without end below 0, so only Sum takes -1. */
+        for (int n = f ? 0 : -1; n < SCRIPT_CALL_DEPTH_LIMIT; n++) {
+            calls[count++] = (scalar_call){
+                .probe = { "recursion", DEEP[f], 1, { n }, recursion_int(DEEP[f], n, 0) }
+            };
+        }
+    }
+    static const char *const WIDE[] = { "Fib", "Nodes" };
+    for (int f = 0; f < 2; f++) {
+        for (int n = 0; n < 12; n++) {
+            calls[count++] = (scalar_call){
+                .probe = { "recursion", WIDE[f], 1, { n }, recursion_int(WIDE[f], n, 0) }
+            };
+        }
+    }
+    for (int i = 0; i < (int)(sizeof PAIRS / sizeof *PAIRS); i++) {
+        calls[count++] = (scalar_call){
+            .probe = { "recursion",
+                       "Gcd",
+                       2,
+                       { PAIRS[i][0], PAIRS[i][1] },
+                       recursion_int("Gcd", PAIRS[i][0], PAIRS[i][1]) }
+        };
+    }
+    assert(count <= MAX_WIDTH_CALLS);
+    return count;
+}
+/* Recursion runs natively as C and both VMs give it. */
+static bool recursion_agrees(const char *directory)
+{
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = recursion_calls(calls);
+    bool agreed = width_module_agrees(directory, 1, "recursion", RECURSION_SOURCE, calls, count);
+    free(calls);
+    REQUIRE(agreed);
+    return true;
+}
+/* Natively recursion is unchecked, as Rust's is: Sum, Even and Odd run 10,000
+ * calls deep, far past any VM's limit, and Forever's endless recursion
+ * faults in the stack's guard page, which the host reports as a stack
+ * overflow before it aborts, at O0 and O2, well before the deadline. */
+static bool recursion_overflows_by_name(const char *directory)
+{
+    enum
+    {
+        DEEP = 10000
+    };
+    /* Sum(DEEP) wraps as the sum of its terms does. */
+    int32_t sum = (int32_t)(uint32_t)((uint64_t)DEEP * (DEEP + 1) / 2);
+    const native_ending calls[] = {
+        { "Sum", DEEP, sum, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
+        { "Even", DEEP, 1, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
+        { "Odd", DEEP, 0, CHIBI_PROCESS_OK, 0, NULL, CALLS_SECONDS },
+        { "Forever", 0, 0, CHIBI_PROCESS_OK, SIGABRT, "stack overflow", CALLS_SECONDS },
+    };
+    REQUIRE(
+        natively_end(directory, "recursion", RECURSION_SOURCE, calls, (int)(sizeof calls / sizeof *calls))
+    );
+    return true;
+}
+
+/* A function of `locals` locals, then `assignments` assignments, then a
+ * return: one statement each. */
+static void bounded_source(char *source, size_t size, int locals, int assignments)
+{
+    int at = snprintf(source, size, "package scalar\nMain :: () -> int {\n");
+    for (int i = 0; i < locals; i++) {
+        at += snprintf(source + at, size - (size_t)at, "    x%d := %d;\n", i, i);
+    }
+    for (int i = 0; i < assignments; i++) {
+        at += snprintf(source + at, size - (size_t)at, "    x0 = %d;\n", i);
+    }
+    snprintf(source + at, size - (size_t)at, "    return x0;\n}\n");
+}
+/* `rows` with the two rows from `at` repeated after them. */
+static bool repeated_rows(pin_value *rows, int at, pin_value *longer)
+{
+    const pin_array *array = rows->ptr;
+    pin_array *copy = pin_array_snapshot_like(&detached, array, array->count + 2);
+    for (int i = 0; i < copy->count; i++) {
+        pin_value item = pin_array_get(array, i < at + 2 ? i : i - 2);
+        REQUIRE(!pin_array_snapshot_set(&detached, copy, i, &item));
+    }
+    *longer = *rows;
+    longer->ptr = copy;
+    return true;
+}
+/* Main's statements and locals reach the facts bounds on both VMs, and one
+ * more of either is rejected with its bound, by the producer and, for
+ * statements, by the consumer. */
+static bool statement_bounds_agree()
+{
+    static const struct
+    {
+        int locals, assignments;
+        const char *message;
+    } BOUNDS[] = {
+        { SCALAR_MAX_LOCALS, SCALAR_MAX_STATEMENTS - SCALAR_MAX_LOCALS - 1, NULL },
+        { SCALAR_MAX_LOCALS + 1, 0, "scalar proof admits at most 16 locals per function" },
+        { 1, SCALAR_MAX_STATEMENTS - 1, "scalar proof admits at most 32 statements per function" }
+    };
+    char source[2048];
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < (int)(sizeof BOUNDS / sizeof *BOUNDS); i++) {
+            bounded_source(source, sizeof source, BOUNDS[i].locals, BOUNDS[i].assignments);
+            pin_value rows;
+            REQUIRE(collected_rows(b, "bounds", text(source), &rows));
+            char *ir;
+            REQUIRE(emitted_ir(b, &rows, &ir));
+            const pin_array *array = rows.ptr;
+            const char *message = pin_text(scalar_field(&array->items[1], "text"))
+                                      .bytes;
+            REQUIRE(BOUNDS[i].message ? !ir && !strcmp(message, BOUNDS[i].message) : ir != NULL);
+            free(ir);
+            if (!BOUNDS[i].message) {
+                /* An assignment and its literal, after the source, document,
+                 * function and each local's two rows. */
+                pin_value longer;
+                REQUIRE(repeated_rows(&rows, 3 + 2 * SCALAR_MAX_LOCALS, &longer));
+                REQUIRE(
+                    scalar_field(guard_row(&rows, 3 + 2 * SCALAR_MAX_LOCALS), "kind")
+                        .i == SCALAR_ASSIGN_ROW
+                );
+                REQUIRE(validated(b, &rows, "") && validated(b, &longer, LAYOUT));
+            }
+            arena_free(&detached);
+        }
+    }
+    return true;
+}
 /* A new directory for the native builds' files. */
 static bool native_directory(char directory[PATH_MAX])
 {
@@ -11870,6 +16000,80 @@ static bool process_ended(pid_t pid, double seconds)
  * which allows for a slow sanitized host. */
 static const double PROMPT_SECONDS = 10;
 
+/* A dense switch, which O2 lowers through a table, links into a shared
+ * library and runs: the driver's objects are position independent. */
+static bool lookup_tables_link(const char *directory)
+{
+    static const char
+        TABLE[] = "@index = internal global i32 3\n"
+                  "define i32 @table() {\n"
+                  "entry:\n"
+                  "  %x = load volatile i32, ptr @index\n"
+                  "  switch i32 %x, label %other [ i32 0, label %a\n"
+                  "    i32 1, label %b\n    i32 2, label %c\n"
+                  "    i32 3, label %d\n    i32 4, label %e ]\n"
+                  "a:\n  ret i32 11\nb:\n  ret i32 23\nc:\n  ret i32 5\n"
+                  "d:\n  ret i32 47\ne:\n  ret i32 9\nother:\n  ret i32 0\n"
+                  "}\n";
+    char library[PATH_MAX];
+    REQUIRE(native_library(directory, "table", TABLE, "", 2, library));
+    scalar_call call = { .symbol = "table" };
+    REQUIRE(native_passed(library_calls(directory, library, &call, 1, 2, CALLS_SECONDS)));
+    REQUIRE(call.values[2] == 47);
+    return true;
+}
+/* The SIGSEGV handler a stack_overflow child installs before the report,
+ * with SIGUSR1 in its mask: it exits 7 when that mask is in force. */
+static void handled_fault(int)
+{
+    sigset_t blocked;
+    sigprocmask(SIG_SETMASK, NULL, &blocked);
+    _exit(sigismember(&blocked, SIGUSR1) ? 7 : 8);
+}
+/* The child of stack_overflow_leaves_other_faults. `mode` is "handled" or
+ * "default", the action SIGSEGV has before the report is installed, then
+ * "-fault" for a write to an unmapped page or "-sent" for raise(SIGSEGV). */
+int test_language_stack_overflow_child(const char *mode)
+{
+    struct sigaction before = { .sa_handler = SIG_DFL };
+    sigemptyset(&before.sa_mask);
+    if (!strncmp(mode, "handled", strlen("handled"))) {
+        before.sa_handler = handled_fault;
+        sigaddset(&before.sa_mask, SIGUSR1);
+    }
+    sigaction(SIGSEGV, &before, NULL);
+    stack_overflow_init();
+    if (strstr(mode, "-fault")) {
+        *(volatile int *)(uintptr_t)16 = 0;
+    } else {
+        raise(SIGSEGV);
+    }
+    return 1;
+}
+/* A SIGSEGV that is not a stack overflow, a fault or a sent signal, goes to
+ * the action installed before the report, with that action's mask. */
+TEST_CASE(stack_overflow_leaves_other_faults)
+{
+    static const struct
+    {
+        const char *mode;
+        int status;
+    } cases[] = { { "handled-fault", 7 },
+                  { "handled-sent", 7 },
+                  { "default-fault", -SIGSEGV },
+                  { "default-sent", -SIGSEGV } };
+    char self[PATH_MAX], out[NATIVE_OUTPUT];
+    ssize_t length = readlink("/proc/self/exe", self, sizeof self - 1);
+    REQUIRE(length > 0);
+    self[length] = 0;
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        const char *const argv[] = { self, "--stack-overflow-child", cases[i].mode, NULL };
+        chibi_process_capture_result ended = run_native(argv, "/", CALLS_SECONDS, out);
+        REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == cases[i].status);
+        REQUIRE(!strstr(native_errors, "stack overflow"));
+    }
+    return true;
+}
 TEST_CASE(package_compiler_native_runs_are_bounded)
 {
     char out[NATIVE_OUTPUT];
@@ -11909,12 +16113,13 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
                        "  ret i32 0\n"
                        "}\n";
     scalar_call call = { .symbol = "hang" };
-    bool built = native_library(directory, "hang", loop, "", 0, false, library);
+    bool linked = lookup_tables_link(directory);
+    bool built = native_library(directory, "hang", loop, "", 0, library);
     started = chibi_process_now();
     result = built ? library_calls(directory, library, &call, 1, 2, 1)
                    : (chibi_process_capture_result){ 0 };
     double elapsed = chibi_process_now() - started;
-    REQUIRE(remove_native_files(directory) && built);
+    REQUIRE(remove_native_files(directory) && linked && built);
     REQUIRE(result.error == CHIBI_PROCESS_TIMEOUT && elapsed < PROMPT_SECONDS);
     return true;
 }
@@ -11973,7 +16178,8 @@ static bool total_ir(char **ir)
     (*ir)[text.length] = 0;
     return true;
 }
-/* The validation-only adapter probe_NAME(ptr) of each operation. */
+/* The validation-only adapter probe_NAME(ptr) of each operation, which takes
+ * and returns int64 as append_adapter's do. */
 static char *total_adapters()
 {
     char *adapters = xmalloc(1);
@@ -11984,17 +16190,18 @@ static char *total_adapters()
         int n = snprintf(
             text,
             sizeof text,
-            "\ndefine i32 @probe_%s(ptr %%args) {\n  %%a0 = load i32, ptr "
-            "%%args\n",
+            "\ndefine i64 @probe_%s(ptr %%args) {\n  %%w0 = load i64, ptr "
+            "%%args\n  %%a0 = trunc i64 %%w0 to i32\n",
             TOTAL_OPERATIONS[k].name
         );
         if (binary) {
-            n += snprintf(text + n, sizeof text - (size_t)n, "  %%p1 = getelementptr i32, ptr %%args, i64 1\n  %%a1 = load i32, ptr %%p1\n");
+            n += snprintf(text + n, sizeof text - (size_t)n, "  %%p1 = getelementptr i64, ptr %%args, i64 1\n  %%w1 = load i64, ptr %%p1\n  %%a1 = trunc i64 %%w1 to i32\n");
         }
         snprintf(
             text + n,
             sizeof text - (size_t)n,
-            "  %%r = call i32 @chibi_scalar.%d(i32 %%a0%s)\n  ret i32 %%r\n}\n",
+            "  %%r = call i32 @chibi_scalar.%d(i32 %%a0%s)\n  %%z = sext i32 "
+            "%%r to i64\n  ret i64 %%z\n}\n",
             k + 1,
             binary ? ", i32 %a1" : ""
         );
@@ -12046,7 +16253,7 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
     bool agreed = true;
     for (int level = 0; agreed && level < 2; level++) {
         char library[PATH_MAX];
-        agreed = native_library(directory, "total", ir, adapters, level * 2, false, library);
+        agreed = native_library(directory, "total", ir, adapters, level * 2, library);
         for (int k = 0; agreed && k < TOTAL_OPERATION_COUNT; k++) {
             scalar_call calls[MAX_CASE_CALLS];
             int count = total_calls(k, calls);
@@ -12059,7 +16266,8 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
                 if (!agreed) {
                     fprintf(
                         stderr,
-                        "native %s(%d, %d) at O%d gave %d, expected %d\n",
+                        "native %s(%" PRId64 ", %" PRId64
+                        ") at O%d gave %" PRId64 ", expected %" PRId64 "\n",
                         probe->function,
                         probe->arguments[0],
                         probe->arguments[1],
@@ -12097,7 +16305,13 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
         agreed = scalar_case_agrees(directory, i, &accepted, &deep);
         arena_free(&detached);
     }
-    agreed = agreed && folded_sources_agree(directory) && folded_overflow_rejected();
+    agreed = agreed && folded_sources_agree(directory) &&
+             folded_overflow_rejected() && widths_agree(directory) &&
+             floats_agree(directory) && control_agrees(directory) &&
+             statement_bounds_agree() && loops_agree(directory) &&
+             widest_loops_agree(directory) && switches_agree(directory) &&
+             endless_loops_hang(directory) && recursion_agrees(directory) &&
+             recursion_overflows_by_name(directory);
     REQUIRE(remove_native_files(directory));
     if (native_cancelled) {
         fprintf(stderr, "native scalar run was cancelled\n");
@@ -12107,7 +16321,7 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
     return true;
 }
 #endif
-/* Query tests use the target's canonical Tick(dt: float), while the older
+/* Query tests use the target's canonical Tick(dt: number), while the older
  * behavior fixtures above exercise an event named DeltaSeconds. */
 static script_catalog query_game_catalog()
 {
@@ -12279,10 +16493,10 @@ TEST_CASE(package_compiler_query_rows_capture_and_restart)
     static const char source
         [] = "Rows :: behavior {\n"
              "    total: int = 0\n"
-             "    Bump :: (value: float) -> float { total := value; "
+             "    Bump :: (value: number) -> number { total := value; "
              "total += 1; return total }\n"
              "    on Tick :: () {\n"
-             "        threshold: float = 3\n"
+             "        threshold: number = 3\n"
              "        matches := query(before: Spot, live: ^Spot, if "
              "before.x > threshold, amount := Bump(before.x + threshold - 1))\n"
              "        threshold = 100\n"
@@ -12338,7 +16552,7 @@ TEST_CASE(package_compiler_query_nested_return_and_empty_iteration)
 {
     static const char
         source[] = "Nested :: behavior {\n"
-                   "    First :: () -> float {\n"
+                   "    First :: () -> number {\n"
                    "        matches := query(point: Spot, if point.x > 0)\n"
                    "        for outer in matches {\n"
                    "            for inner in matches { return outer.point.x + "
@@ -12424,9 +16638,9 @@ TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt)
 {
     static const char
         source[] = "Apply :: system(before: Spot, live: ^Spot, if before.x > "
-                   "0, amount := float(10 / int(before.x))) {\n"
+                   "0, amount := number(10 / int(before.x))) {\n"
                    "    live.x += amount\n"
-                   "    live.y = before.x + float(dt)\n"
+                   "    live.y = before.x + number(dt)\n"
                    "}\n";
     REQUIRE(prepare());
     query_register_types();
@@ -12590,15 +16804,15 @@ TEST_CASE(package_compiler_query_captures_resolve_in_any_source_order)
     snprintf(padded, sizeof padded, "Padded :: behavior {%512s\n    pad: int = 0\n}\n", "");
     static const char *const
         captured = "Captured :: behavior {\n"
-                   "    sum: float = 0\n"
-                   "    Twice :: (value: float) -> float {\n"
-                   "        sum: float = 0\n"
+                   "    sum: number = 0\n"
+                   "    Twice :: (value: number) -> number {\n"
+                   "        sum: number = 0\n"
                    "        count: int = 0\n"
                    "        while count < 2 { sum += value; count += 1 }\n"
                    "        return sum\n"
                    "    }\n"
                    "    on Tick :: () {\n"
-                   "        threshold: float = 3\n"
+                   "        threshold: number = 3\n"
                    "        matches := query(before: Spot, live: ^Spot, if "
                    "before.x > threshold, "
                    "amount := Twice(before.x))\n"
@@ -12631,9 +16845,9 @@ TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper)
         [] = "Accumulate :: system(before: Spot, live: ^Spot, if before.x > 0, "
              "amount := Bump(before.x)) {\n"
              "    total: retain int = 0\n"
-             "    Bump :: (value: float) -> float { return value + 1 }\n"
-             "    Add :: (step: float) -> float { total += 1; return step }\n"
-             "    step := Add(float(dt))\n"
+             "    Bump :: (value: number) -> number { return value + 1 }\n"
+             "    Add :: (step: number) -> number { total += 1; return step }\n"
+             "    step := Add(number(dt))\n"
              "    live.y += amount + step\n"
              "}\n";
     REQUIRE(prepare());
@@ -12668,7 +16882,7 @@ TEST_CASE(package_compiler_empty_system_runs_only_attached_owner)
 {
     static const char
         source[] = "Empty :: system(/* empty */) { self.Spot.x += 1; "
-                   "self.Spot.y += float(dt) }";
+                   "self.Spot.y += number(dt) }";
     REQUIRE(prepare());
     query_register_types();
     bool passed = true;
@@ -12795,8 +17009,8 @@ TEST_CASE(package_compiler_query_optional_guards_and_inferred_values)
 TEST_CASE(package_compiler_query_rejects_hidden_mutation_and_old_headers)
 {
     static const char *const sources[] = {
-        "Fixed :: system(point: ^Spot) { Read :: () -> float { return "
-        "float(dt) }; "
+        "Fixed :: system(point: ^Spot) { Read :: () -> number { return "
+        "number(dt) }; "
         "point.y = Read() }",
         "Fixed :: system(target: Missing in self.Targets) {}",
         "Fixed :: system(amount: Missing = 1) {}",
@@ -12808,10 +17022,11 @@ TEST_CASE(package_compiler_query_rejects_hidden_mutation_and_old_headers)
         "Fixed :: system(inner := query(point: Spot, if point.x > dt)) {}",
         "Fixed :: behavior { total: int = 1; on Tick :: () { "
         "matches := query(point: Spot, inner := query(other: Spot, "
-        "if other.x > Read())) } Read :: () -> float { return float(total) } }",
+        "if other.x > Read())) } Read :: () -> number { return number(total) } "
+        "}",
         "Fixed :: behavior { total: int = 1; "
         "Read :: () -> int { for row in query(p: Spot, "
-        "if p.x > float(total)) { return 1 }; return 0 } "
+        "if p.x > number(total)) { return 1 }; return 0 } "
         "on Tick :: () { matches := query(point: Spot, amount := Read()) } }",
         "Fixed :: behavior { on Tick :: () { value := 1; "
         "matches := query(point: Spot, pointer := &value) } }",
@@ -12913,10 +17128,10 @@ TEST_CASE(package_compiler_query_captures_lexical_bindings)
         [] = "package scope\n"
              "Choice :: union { Some(amount: int) | None }\n"
              "Probe :: () -> int {\n"
-             "    threshold: double = 20; payload: double = 40;\n"
+             "    threshold: f64 = 20; payload: f64 = 40;\n"
              "    for threshold in 0..<2 { captured := query(value := "
              "threshold); }\n"
-             "    values: double[] = [3, 7]; alias := values;\n"
+             "    values: f64[] = [3, 7]; alias := values;\n"
              "    for value, index in alias { captured := query(v := value, n "
              ":= index); }\n"
              "    pairs: [string: int] = [\"a\": 3]; pair_alias := pairs;\n"
@@ -13126,6 +17341,7 @@ void test_language_package_compiler_chibi_actions()
     RUN_TEST_CASE(package_compiler_rejects_nonzero_handle_defaults);
     RUN_TEST_CASE(package_compiler_calls_native_actions);
     RUN_TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected);
+    RUN_TEST_CASE(package_compiler_watches_overloaded_native_defaults);
     RUN_TEST_CASE(package_compiler_rejects_native_action_arguments);
     RUN_TEST_CASE(package_compiler_rejects_native_name_collisions);
     RUN_TEST_CASE(package_compiler_watches_native_owner_arguments);
@@ -13177,6 +17393,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
+    RUN_TEST_CASE(package_compiler_scalar_rejects_unsupported_unions);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)
@@ -13186,6 +17403,10 @@ int test_language_package_compiler_chibi_native_call(int count, char **arguments
 }
 #else
 int test_language_package_compiler_chibi_native_call(int, char **)
+{
+    abort();
+}
+int test_language_stack_overflow_child(const char *)
 {
     abort();
 }
@@ -13200,6 +17421,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGINT, &cancel, &interrupt);
     sigaction(SIGTERM, &cancel, &terminate);
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(stack_overflow_leaves_other_faults);
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
     RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
     RUN_TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm);
@@ -13344,6 +17566,106 @@ TEST_CASE(native_arguments_reference_contract)
     return true;
 }
 
+/* Stage zero picks native.overload's integer or text overload by the
+ * argument; an untyped number never converts to text, so it cannot pick the
+ * text one. native.kernel's number overload takes literals and typed values
+ * other than i64, which takes the f64 one. */
+TEST_CASE(native_overload_reference_contract)
+{
+    static const struct
+    {
+        const char *source;
+        pin_type parameter;
+        const char *message;
+        int column;
+    } cases[] = {
+        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload((-(2))); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(2.0); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(1e0); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
+        { "package facts\nRun :: (v: int) -> int { return native.kernel(v * "
+          "2); }",
+          PIN_F32 },
+        { "package facts\nRun :: (v: i64) -> int { return native.kernel(v * "
+          "2); }",
+          PIN_F64 },
+        { "package facts\nRun :: (v: f64) -> int { return native.kernel(v); }", PIN_F64 },
+        { "package facts\nRun :: (v: int) -> int { return native.overload(v); "
+          "}",
+          PIN_I32 },
+        { "package facts\nRun :: () -> int { return "
+          "native.overload(\"three\"); }",
+          PIN_STR },
+        { "package facts\nRun :: () -> int { return native.overload(2.5); }",
+          PIN_FLOW,
+          "Numeric literal has a fraction, which int cannot hold",
+          43 },
+        { "package facts\nRun :: () -> int { return "
+          "native.overload(4294967296); }",
+          PIN_FLOW,
+          "Numeric literal is outside the range of int",
+          43 },
+    };
+    native_definition_pack packs[] = { CSTRING_PACK };
+    source_package_input inputs[SAMPLE_INPUTS];
+    sample first = { .source = cases[0].source };
+    int count = sample_inputs(&first, inputs);
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, inputs, count, packs, 1));
+    const script_catalog *catalog = native_capabilities_catalog(fixture.native);
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        sample s = { .source = cases[i].source };
+        const authoring_package *root;
+        authoring_packages *packages = oracle_packages(&s, &root);
+        if (cases[i].message) {
+            const script_diagnostic *d = root->diagnostic_count
+                                           ? &root->diagnostics[0]
+                                           : NULL;
+            if (d) {
+                fprintf(
+                    stderr,
+                    "native overload %zu: %s at %d:%d\n",
+                    i,
+                    d->message,
+                    d->range.line,
+                    d->range.column
+                );
+            }
+            bool same = d && !strcmp(d->message, cases[i].message) &&
+                        d->range.line == 2 && d->range.column == cases[i].column;
+            authoring_packages_free(packages);
+            REQUIRE(same);
+            continue;
+        }
+        const script_analysis *analysis = root->analysis;
+        int chosen = 0;
+        for (int e = 0; e < analysis->expression_count; e++) {
+            const script_expression *expression = &analysis->expressions[e];
+            const script_catalog_capability *capability = expression->kind == SCRIPT_EXPR_CALL
+                                                            ? script_catalog_capability_by_id(
+                                                                  catalog,
+                                                                  expression->capability
+                                                              )
+                                                            : NULL;
+            if (capability && capability->parameter_count == 1 &&
+                capability->parameters[0].type.storage == cases[i].parameter) {
+                chosen++;
+            }
+        }
+        bool valid = root->valid && chosen == 1;
+        if (!valid) {
+            fprintf(
+                stderr,
+                "native overload %zu: %s\n",
+                i,
+                root->diagnostic_count ? root->diagnostics[0].message : "other overload"
+            );
+        }
+        authoring_packages_free(packages);
+        REQUIRE(valid);
+    }
+    return true;
+}
 TEST_CASE(native_arguments_authored_contract)
 {
     REQUIRE(prepare());
@@ -13418,6 +17740,7 @@ void test_language_package_compiler_chibi_native_arguments_oracle()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(native_arguments_reference_contract);
+    RUN_TEST_CASE(native_overload_reference_contract);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_native_arguments()

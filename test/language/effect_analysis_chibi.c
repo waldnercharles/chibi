@@ -1338,23 +1338,24 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
         "E :: behavior { bind self.Position.x = self.Position.y; bind "
         "self.Position.y = self.Position.x; }",
         "E :: system(p: Position, amount := p.x * 2, if amount > 0) {}",
-        "E :: system(p: Position, amount := saved) { saved: retain float = 2; "
+        "E :: system(p: Position, amount := saved) { saved: retain number = 2; "
         "}",
         "E :: system(p: Position, amount := Twice(p.x), if amount > 0) { Twice "
-        ":: (value: float) -> float { return value * 2; } }",
-        "E :: system(p: Position, amount := Read()) { Read :: () -> float { "
+        ":: (value: number) -> number { return value * 2; } }",
+        "E :: system(p: Position, amount := Read()) { Read :: () -> number { "
         "return p.x; } }",
         "E :: system(p: Position, amount := noise()) {}",
         "E :: system(p: Position, amount := Deferred()) { Deferred :: () -> "
-        "float { yield; return 2; } }",
-        "E :: library { Run :: (threshold: float) { q := query(p: Position, if "
+        "number { yield; return 2; } }",
+        "E :: library { Run :: (threshold: number) { q := query(p: Position, "
+        "if "
         "p.x > threshold); } }",
-        "E :: behavior { threshold: float = 2; Threshold :: () -> float { "
+        "E :: behavior { threshold: number = 2; Threshold :: () -> number { "
         "return threshold; } Run :: () { q := query(p: Position, if p.x > "
         "Threshold()); } }",
-        "E :: behavior { threshold: float = 2; Run :: () { q := query(p: "
+        "E :: behavior { threshold: number = 2; Run :: () { q := query(p: "
         "Position, amount := p.x + threshold, if amount > 0); } }",
-        "E :: system(p: Position, amount := Touch()) { Touch :: () -> float { "
+        "E :: system(p: Position, amount := Touch()) { Touch :: () -> number { "
         "mutate(); return 1; } }",
         "E :: system(snapshot: Position, live: ^Position) { reduce live.x += "
         "1; }",

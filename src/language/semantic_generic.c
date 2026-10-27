@@ -519,22 +519,9 @@ static const char *own(analyzer *a, const char *text)
 }
 static const char *scalar_name(pin_type storage)
 {
-    switch (storage) {
-        case PIN_F32: return "float";
-        case PIN_F64: return "double";
-        case PIN_I8: return "int8";
-        case PIN_U8: return "uint8";
-        case PIN_I16: return "int16";
-        case PIN_U16: return "uint16";
-        case PIN_I32: return "int";
-        case PIN_U32: return "uint";
-        case PIN_I64: return "int64";
-        case PIN_U64: return "uint64";
-        case PIN_BOOL: return "bool";
-        case PIN_STR: return "string";
-        case PIN_NAME: return "name";
-        default: return "value";
-    }
+    return (storage >= PIN_BOOL && storage <= PIN_NAME) || storage == PIN_STR
+             ? script_scalar_name(storage)
+             : "value";
 }
 static char *specialization_name(analyzer *a, generic_template definition, compile_binding *bindings)
 {

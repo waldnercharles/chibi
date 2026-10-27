@@ -192,6 +192,101 @@ bool execution_wire_record(execution_wire *w)
     w->records++;
     return true;
 }
+enum
+{
+    STRING_TABLE_OFFSET_BYTES = 8
+};
+static size_t text_slot(const char *text, size_t mask)
+{
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (; *text; text++) {
+        hash = (hash ^ (unsigned char)*text) * UINT64_C(1099511628211);
+    }
+    return (size_t)hash & mask;
+}
+/* The scratch a writer's table holds: its string vector and its slots. */
+static size_t table_scratch(size_t slots)
+{
+    return 2 * sizeof(dyna_hdr) + slots / 2 * sizeof(const char *) +
+           slots * sizeof(int);
+}
+static size_t strings_scratch(const execution_wire *w)
+{
+    return w->slots ? table_scratch((size_t)acap(w->slots)) : 0;
+}
+static void release(execution_wire *w, size_t bytes)
+{
+    if (w->storage_budget) {
+        *w->storage_budget += bytes;
+        w->storage_charged -= bytes;
+    }
+    w->owned_bytes -= bytes;
+}
+/* The slot holding `text`, or the empty slot where it goes. */
+static size_t probe(const int *slots, size_t mask, const char *const *strings, const char *text)
+{
+    size_t at = text_slot(text, mask);
+    while (slots[at] && strcmp(strings[slots[at] - 1], text)) {
+        at = (at + 1) & mask;
+    }
+    return at;
+}
+/* Doubles the slots once they are half full, keeping probes short. The
+ * vector holds half as many strings, so it grows only here. The old and new
+ * tables are both live while rehashing and while the vector moves, so both
+ * stay charged until the old one is freed. */
+static bool grow_slots(execution_wire *w)
+{
+    size_t before = strings_scratch(w);
+    size_t size = acap(w->slots) ? (size_t)acap(w->slots) * 2 : 64;
+    if (size > INT_MAX || !execution_wire_reserve(w, table_scratch(size))) {
+        return false;
+    }
+    int *slots = NULL;
+    asetlen(slots, (int)size);
+    memset(slots, 0, size * sizeof *slots);
+    for (int i = 0; i < acount(w->strings); i++) {
+        slots[probe(slots, size - 1, w->strings, w->strings[i])] = i + 1;
+    }
+    afree(w->slots);
+    w->slots = slots;
+    asetcap(w->strings, (int)(size / 2));
+    assert(acap(w->slots) == (int)size && acap(w->strings) == (int)(size / 2));
+    release(w, before);
+    return true;
+}
+static size_t string_code(execution_wire *w, const char *text)
+{
+    if ((size_t)acount(w->strings) * 2 >= (size_t)acap(w->slots) && !grow_slots(w)) {
+        return 0;
+    }
+    size_t at = probe(w->slots, (size_t)acap(w->slots) - 1, w->strings, text);
+    if (!w->slots[at]) {
+        apush(w->strings, text);
+        w->slots[at] = acount(w->strings);
+    }
+    return (size_t)w->slots[at];
+}
+static void interned_string(execution_wire *w, const char **value)
+{
+    size_t code = 0;
+    if (!w->reading && *value && !(code = string_code(w, *value))) {
+        return;
+    }
+    execution_wire_size(w, &code);
+    if (!w->reading || w->error) {
+        return;
+    }
+    /* Entries are named in table order, each first named after the last. */
+    if (code > w->strings_named + 1 || code > w->string_count) {
+        fail(w, "Prepared string index is out of order or exceeds its table");
+        return;
+    }
+    if (code == w->strings_named + 1) {
+        w->strings_named++;
+    }
+    *value = code ? w->strings[code - 1] : NULL;
+}
 void execution_wire_string(execution_wire *w, const char **value)
 {
     size_t bytes = 0;
@@ -202,6 +297,10 @@ void execution_wire_string(execution_wire *w, const char **value)
             return;
         }
         bytes++;
+    }
+    if (w->interning) {
+        interned_string(w, value);
+        return;
     }
     execution_wire_size(w, &bytes);
     if (w->error) {
@@ -239,6 +338,115 @@ void execution_wire_string(execution_wire *w, const char **value)
     }
     w->size += length;
     w->offset = w->size;
+}
+/* Writers store each string once, so a table that repeats one would decode
+ * to bytes no writer produces. Fails only on a repeat; a reservation failure
+ * sets the wire's error instead. */
+static bool distinct(execution_wire *w, const char **table, int count)
+{
+    size_t size = 64;
+    while (size < 2 * (size_t)count) {
+        size *= 2;
+    }
+    if (!execution_wire_reserve(w, size * sizeof(int))) {
+        return true;
+    }
+    int *slots = xcalloc(size, sizeof *slots);
+    bool unique = true;
+    for (int i = 0; i < count && unique; i++) {
+        size_t at = probe(slots, size - 1, table, table[i]);
+        unique = !slots[at];
+        slots[at] = i + 1;
+    }
+    free(slots);
+    release(w, size * sizeof(int));
+    return unique;
+}
+/* Reads the table between the offset the last 8 bytes give and those bytes,
+ * then limits the wire to the bytes before it. */
+static void read_strings(execution_wire *w)
+{
+    if (w->error || w->offset > w->size ||
+        w->size - w->offset < STRING_TABLE_OFFSET_BYTES) {
+        fail(w, "Prepared string table is absent");
+        return;
+    }
+    size_t end = w->size - STRING_TABLE_OFFSET_BYTES;
+    uint64_t at = 0;
+    for (int i = 0; i < STRING_TABLE_OFFSET_BYTES; i++) {
+        at |= (uint64_t)w->data[end + i] << (8 * i);
+    }
+    if (at < w->offset || at > end) {
+        fail(w, "Prepared string table offset is invalid");
+        return;
+    }
+    size_t body = w->offset;
+    w->offset = (size_t)at;
+    w->size = end;
+    int count = 0;
+    execution_wire_count(w, &count, 1);
+    const char **table = NULL;
+    if (count && !w->error) {
+        table = execution_wire_allocate(w, (size_t)count * sizeof *table);
+    }
+    for (int i = 0; i < count && !w->error; i++) {
+        execution_wire_string(w, &table[i]);
+        if (!w->error && !table[i]) {
+            fail(w, "Prepared string table entry is absent");
+        }
+    }
+    if (!w->error && w->offset != end) {
+        fail(w, "Prepared string table has trailing bytes");
+    }
+    if (!w->error && !distinct(w, table, count)) {
+        fail(w, "Prepared string table repeats an entry");
+    }
+    w->strings = table;
+    w->string_count = w->error ? 0 : (size_t)count;
+    w->offset = body;
+    w->size = (size_t)at;
+}
+void execution_wire_strings_begin(execution_wire *w)
+{
+    assert(!w->interning);
+    if (w->reading) {
+        read_strings(w);
+    }
+    w->interning = true;
+}
+static void write_strings(execution_wire *w)
+{
+    uint64_t at = w->size;
+    int count = acount(w->strings);
+    execution_wire_count(w, &count, 1);
+    for (int i = 0; i < count; i++) {
+        execution_wire_string(w, &w->strings[i]);
+    }
+    if (!available(w, STRING_TABLE_OFFSET_BYTES)) {
+        return;
+    }
+    for (int i = 0; i < STRING_TABLE_OFFSET_BYTES; i++) {
+        write_byte(w, (unsigned char)(at >> (8 * i)));
+    }
+    w->size += STRING_TABLE_OFFSET_BYTES;
+    w->offset = w->size;
+}
+void execution_wire_strings_finish(execution_wire *w)
+{
+    assert(w->interning);
+    w->interning = false;
+    if (w->reading) {
+        if (!w->error && w->strings_named != w->string_count) {
+            fail(w, "Prepared string table has an unnamed entry");
+        }
+        return;
+    }
+    if (!w->error) {
+        write_strings(w);
+    }
+    release(w, strings_scratch(w));
+    afree(w->strings);
+    afree(w->slots);
 }
 /* Language text has an explicit length; metadata uses wire_string above. */
 static void text_value(execution_wire *w, pin_value *value)

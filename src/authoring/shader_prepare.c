@@ -135,7 +135,7 @@ static bool particle_asset_prepare(const graph *g, shader_asset *fresh, shader_e
     if (!signature) {
         if (error) {
             error->node = ret ? ret->id : g->return_id;
-            snprintf(error->message, sizeof error->message, "Particle function needs 3..32 float/vector arguments and Position:ShaderVec3, Size:float, Color:ShaderVec4 results");
+            snprintf(error->message, sizeof error->message, "Particle function needs 3..32 number/vector arguments and Position:ShaderVec3, Size:number, Color:ShaderVec4 results");
         }
         return false;
     }

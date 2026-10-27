@@ -5,7 +5,7 @@ import snapshot "project:source_snapshot"
 // A task join returns the native structural union T | Cancelled. These
 // declarations carry semantic tags, rather than source union variant names.
 TaskResultDecl: int : 11;
-CancelledTag: uint64 : 0x63616e63656c6c65;
+CancelledTag: u64 : 0x63616e63656c6c65;
 TaskDeclarations :: union {
     Collected(types: TypeDecl[], members: TypeMember[])
 }
@@ -26,7 +26,7 @@ TaskResultSupport :: (callable: Callable, types: TypeDecl[], params: Param[]) ->
     }
     return "";
 }
-TaskSuccessTag :: (callable: Callable, types: TypeDecl[], params: Param[]) -> uint64 {
+TaskSuccessTag :: (callable: Callable, types: TypeDecl[], params: Param[]) -> u64 {
     return SemanticTag(types, TaskSuccessValue(callable, params));
 }
 TaskResultRecord :: (types: TypeDecl[], callable: int) -> int {
@@ -63,7 +63,7 @@ TaskResultDeclarations :: (callables: Callable[], params: Param[], input_types: 
             first_tag = CancelledTag;
             second_tag = success;
         }
-        id := ((uint64(14695981039346656037) ^ first_tag) * uint64(1099511628211) ^ second_tag) * uint64(1099511628211);
+        id := ((u64(14695981039346656037) ^ first_tag) * u64(1099511628211) ^ second_tag) * u64(1099511628211);
         parent := length(types);
         declared: TypeDecl = {name: "", type_name: "", package: callable.package, node: -1,
                               kind: TaskResultDecl, first: parent + 1, count: 2, size: 0, parent: index,
@@ -71,7 +71,7 @@ TaskResultDeclarations :: (callables: Callable[], params: Param[], input_types: 
                               value_storage: value.storage, value_container: value.container,
                               value_record: value.record};
         types.append(declared);
-        tags: uint64[] = [first_tag, second_tag];
+        tags: u64[] = [first_tag, second_tag];
         for (tag in tags) {
             name := "";
             count: int = 0;

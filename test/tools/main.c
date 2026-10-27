@@ -63,6 +63,7 @@ void test_build_graph_support(const char *host, const char *cmake_build);
 void test_build_graph_reflect(const char *host, const char *cmake_build);
 void test_build_graph_archive(const char *host, const char *cmake_build);
 void test_build_graph_generated(const char *host, const char *cmake_build);
+void test_build_graph_debug_optimization(const char *host, const char *cmake_build);
 void test_build_graph_programs(const char *host, const char *cmake_build);
 void test_build_graph_resources(const char *host, const char *cmake_build);
 #ifndef _WIN32
@@ -575,6 +576,7 @@ int main(int argc, char **argv)
                       !strcmp(argv[1], "--build-graph-archive") ||
                       !strcmp(argv[1], "--build-graph-generated") ||
                       !strcmp(argv[1], "--build-graph-programs") ||
+                      !strcmp(argv[1], "--build-graph-debug-optimization") ||
                       !strcmp(argv[1], "--build-graph-resources"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
@@ -587,6 +589,8 @@ int main(int argc, char **argv)
             test_build_graph_reflect(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-archive")) {
             test_build_graph_archive(argv[2], argv[3]);
+        } else if (!strcmp(argv[1], "--build-graph-debug-optimization")) {
+            test_build_graph_debug_optimization(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-programs")) {
             test_build_graph_programs(argv[2], argv[3]);
         } else if (!strcmp(argv[1], "--build-graph-resources")) {
@@ -1635,6 +1639,8 @@ int main(int argc, char **argv)
         test_tool_types();
     } else if (arena) {
         test_arena();
+    } else if (types) {
+        test_tool_types();
     } else {
         test_tool_execution_policy();
         test_tool_types();

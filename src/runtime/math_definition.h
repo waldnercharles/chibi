@@ -5,7 +5,7 @@
 #define NATIVE_MATH_PORT(X, NAME, TYPE, NOMINAL, VALUE)                        \
     X(NAME, NATIVE_PARAMETER_DATA, TYPE, NOMINAL, PIN_CONTAINER_SINGLE, 0, 0, SCRIPT_REFERENCE_NONE, false, VALUE)
 #define NATIVE_MATH_DOUBLE(X, NAME)                                            \
-    NATIVE_MATH_PORT(X, NAME, PIN_F64, "double", ((pin_value){ 0 }))
+    NATIVE_MATH_PORT(X, NAME, PIN_F64, "f64", ((pin_value){ 0 }))
 #define NATIVE_MATH_EMPTY_INPUTS(X)
 #define NATIVE_MATH_UNARY_INPUTS(X) NATIVE_MATH_DOUBLE(X, "Value")
 #define NATIVE_MATH_RESULT_OUTPUTS(X) NATIVE_MATH_DOUBLE(X, "Result")
@@ -18,14 +18,14 @@
 #define NATIVE_MATH_MIX_INPUTS(X)                                              \
     NATIVE_MATH_DOUBLE(X, "A")                                                 \
     NATIVE_MATH_DOUBLE(X, "B") NATIVE_MATH_DOUBLE(X, "Alpha")
-#define NATIVE_MATH_RANGE_INPUTS(X)                                                         \
-    NATIVE_MATH_PORT(X, "Min", PIN_F64, "double", ((pin_value){ .type = PIN_F64, .d = 0 })) \
-    NATIVE_MATH_PORT(X, "Max", PIN_F64, "double", ((pin_value){ .type = PIN_F64, .d = 1 }))
-#define NATIVE_MATH_QUANTIZE_INPUTS(X)                                                        \
-    NATIVE_MATH_PORT(X, "Angle", PIN_F64, "double", ((pin_value){ .type = PIN_F64, .d = 0 })) \
-    NATIVE_MATH_PORT(X, "Step", PIN_F64, "double", ((pin_value){ .type = PIN_F64, .d = 1.5707963267948966 }))
+#define NATIVE_MATH_RANGE_INPUTS(X)                                                      \
+    NATIVE_MATH_PORT(X, "Min", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 0 })) \
+    NATIVE_MATH_PORT(X, "Max", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 1 }))
+#define NATIVE_MATH_QUANTIZE_INPUTS(X)                                                     \
+    NATIVE_MATH_PORT(X, "Angle", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 0 })) \
+    NATIVE_MATH_PORT(X, "Step", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 1.5707963267948966 }))
 #define NATIVE_MATH_FLOAT(X, NAME, VALUE)                                      \
-    NATIVE_MATH_PORT(X, NAME, PIN_F32, "float", ((pin_value){ .type = PIN_F32, .f = VALUE }))
+    NATIVE_MATH_PORT(X, NAME, PIN_F32, "number", ((pin_value){ .type = PIN_F32, .f = VALUE }))
 #define NATIVE_MATH_F32_UNARY_INPUTS(X) NATIVE_MATH_FLOAT(X, "Value", 0)
 #define NATIVE_MATH_F32_OUTPUTS(X) NATIVE_MATH_FLOAT(X, "Result", 0)
 #define NATIVE_MATH_F32_Power_INPUTS(X)                                        \
@@ -41,6 +41,8 @@
     NATIVE_MATH_FLOAT(X, "Angle", 0)                                           \
     NATIVE_MATH_FLOAT(X, "Step", 1.5707963267948966f)
 #define NATIVE_MATH_F32_Smooth_Step_INPUTS(X) NATIVE_MATH_F32_UNARY_INPUTS(X)
+#define NATIVE_MATH_F32_RANGE_INPUTS(X)                                        \
+    NATIVE_MATH_FLOAT(X, "Min", 0) NATIVE_MATH_FLOAT(X, "Max", 1)
 #define NATIVE_MATH_SPRING_INPUTS(X)                                           \
     NATIVE_MATH_FLOAT(X, "Position", 0)                                        \
     NATIVE_MATH_FLOAT(X, "Velocity", 0)                                        \
@@ -48,8 +50,8 @@
     NATIVE_MATH_FLOAT(X, "Frequency", 1)                                       \
     NATIVE_MATH_FLOAT(X, "Damping", 1) NATIVE_MATH_FLOAT(X, "Delta", 0)
 #define NATIVE_MATH_SPRING_OUTPUTS(X)                                          \
-    NATIVE_MATH_PORT(X, "Position", PIN_F32, "float", ((pin_value){ 0 }))      \
-    NATIVE_MATH_PORT(X, "Velocity", PIN_F32, "float", ((pin_value){ 0 }))
+    NATIVE_MATH_PORT(X, "Position", PIN_F32, "number", ((pin_value){ 0 }))     \
+    NATIVE_MATH_PORT(X, "Velocity", PIN_F32, "number", ((pin_value){ 0 }))
 
 #define NATIVE_MATH_Sine_NAME "Sine"
 #define NATIVE_MATH_Sine_SOURCE "sin"
@@ -169,11 +171,6 @@
 #define NATIVE_MATH_VALUES(X)                                                               \
     X(Step, NATIVE_MATH_Step_NAME, NATIVE_MATH_Step_SOURCE, NATIVE_MATH_STEP_INPUTS, false) \
     X(Mix, NATIVE_MATH_Mix_NAME, NATIVE_MATH_Mix_SOURCE, NATIVE_MATH_MIX_INPUTS, false)     \
-    X(RandomReal,                                                                           \
-      NATIVE_MATH_RandomReal_NAME,                                                          \
-      NATIVE_MATH_RandomReal_SOURCE,                                                        \
-      NATIVE_MATH_EMPTY_INPUTS,                                                             \
-      true)                                                                                 \
     X(RandomRangeReal,                                                                      \
       NATIVE_MATH_RandomRangeReal_NAME,                                                     \
       NATIVE_MATH_RandomRangeReal_SOURCE,                                                   \
@@ -191,15 +188,22 @@
       false)
 
 extern const native_definition_pack NATIVE_MATH_DEFINITION_PACK;
-#define NATIVE_MATH_F32_VALUES(X)                                                        \
-    X(Step, NATIVE_MATH_Step_NAME, NATIVE_MATH_Step_SOURCE, NATIVE_MATH_F32_Step_INPUTS) \
-    X(Mix, NATIVE_MATH_Mix_NAME, NATIVE_MATH_Mix_SOURCE, NATIVE_MATH_F32_Mix_INPUTS)     \
-    X(Quantize_Angle,                                                                    \
-      NATIVE_MATH_Quantize_Angle_NAME,                                                   \
-      NATIVE_MATH_Quantize_Angle_SOURCE,                                                 \
-      NATIVE_MATH_F32_Quantize_Angle_INPUTS)                                             \
-    X(Smooth_Step,                                                                       \
-      NATIVE_MATH_Smooth_Step_NAME,                                                      \
-      NATIVE_MATH_Smooth_Step_SOURCE,                                                    \
-      NATIVE_MATH_F32_Smooth_Step_INPUTS)
+#define NATIVE_MATH_F32_VALUES(X)                                                               \
+    X(Step, NATIVE_MATH_Step_NAME, NATIVE_MATH_Step_SOURCE, NATIVE_MATH_F32_Step_INPUTS, false) \
+    X(Mix, NATIVE_MATH_Mix_NAME, NATIVE_MATH_Mix_SOURCE, NATIVE_MATH_F32_Mix_INPUTS, false)     \
+    X(RandomRangeReal,                                                                          \
+      NATIVE_MATH_RandomRangeReal_NAME,                                                         \
+      NATIVE_MATH_RandomRangeReal_SOURCE,                                                       \
+      NATIVE_MATH_F32_RANGE_INPUTS,                                                             \
+      true)                                                                                     \
+    X(Quantize_Angle,                                                                           \
+      NATIVE_MATH_Quantize_Angle_NAME,                                                          \
+      NATIVE_MATH_Quantize_Angle_SOURCE,                                                        \
+      NATIVE_MATH_F32_Quantize_Angle_INPUTS,                                                    \
+      false)                                                                                    \
+    X(Smooth_Step,                                                                              \
+      NATIVE_MATH_Smooth_Step_NAME,                                                             \
+      NATIVE_MATH_Smooth_Step_SOURCE,                                                           \
+      NATIVE_MATH_F32_Smooth_Step_INPUTS,                                                       \
+      false)
 #endif

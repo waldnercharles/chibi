@@ -13,8 +13,8 @@
       false,                                                                   \
       ((pin_value){ .type = TYPE }))
 #define NATIVE_COMPARE_REAL_INPUTS(X)                                          \
-    NATIVE_COMPARE_PORT(X, "A", PIN_F32, "float")                              \
-    NATIVE_COMPARE_PORT(X, "B", PIN_F32, "float")
+    NATIVE_COMPARE_PORT(X, "A", PIN_F32, "number")                             \
+    NATIVE_COMPARE_PORT(X, "B", PIN_F32, "number")
 #define NATIVE_COMPARE_INTEGER_INPUTS(X)                                       \
     NATIVE_COMPARE_PORT(X, "A", PIN_I32, "int")                                \
     NATIVE_COMPARE_PORT(X, "B", PIN_I32, "int")

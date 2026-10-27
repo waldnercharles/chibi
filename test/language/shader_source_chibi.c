@@ -834,7 +834,7 @@ TEST_CASE(shader_scalar_rejects_unsupported_and_invalid_facts)
     } cases[] = {
         { "Shader scalar entry must be pure", 0 },
         { "Shader scalar entry must be a nullary source function returning "
-          "float",
+          "number",
           0 },
         { "Unsupported shader scalar statement", 1 },
         { "Shader scalar bindings must be immutable", 2 },
@@ -844,8 +844,8 @@ TEST_CASE(shader_scalar_rejects_unsupported_and_invalid_facts)
         { "Unsupported shader scalar binary operation", 10 },
         { "Unsupported shader scalar expression or type", 3 },
         { "Shader scalar read requires an initialized immutable local", 6 },
-        { "Shader scalar constants must be finite float32 bits", 3 },
-        { "Shader scalar constants must be finite float32 bits", 3 },
+        { "Shader scalar constants must be finite f32 bits", 3 },
+        { "Shader scalar constants must be finite f32 bits", 3 },
         { "Shader scalar return must be the final statement", 1 },
         { "Shader scalar entry needs a final return", 0 },
         { "Unsupported shader scalar binary operation", 10 },
@@ -853,7 +853,7 @@ TEST_CASE(shader_scalar_rejects_unsupported_and_invalid_facts)
         { "Shader scalar expressions contain a cycle", 10 },
         { "Invalid shader scalar initialization", 1 },
         { "Shader scalar entry must be a nullary source function returning "
-          "float",
+          "number",
           0 },
         { "Unsupported shader scalar expression", 3 },
         { "Unsupported shader scalar expression", 9 },

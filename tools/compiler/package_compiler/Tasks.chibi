@@ -4,7 +4,7 @@ import snapshot "project:source_snapshot"
 import binding "project:lexical_binding"
 
 // These are the existing persistent command identities from execution/task.h.
-TaskCommandBase: uint64 : 0x4348494900000100;
+TaskCommandBase: u64 : 0x4348494900000100;
 DelayCommand: int : 1;
 YieldCommand: int : 2;
 JoinCommand: int : 3;
@@ -13,7 +13,7 @@ RunningCommand: int : 5;
 CancelAfterCommand: int : 6;
 SuspendEffect: int : 16;
 
-TaskCommandNode :: (command: int, syntax_node: int) -> uint64 {
+TaskCommandNode :: (command: int, syntax_node: int) -> u64 {
     return binding.ID("task-command", format_text("{}:{}", command, syntax_node));
 }
 // The native analyzer identifies waiting functions from their own await/yield
@@ -70,10 +70,10 @@ ImmediatelyAwaited :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     }
     return Is(forest, parent, "await_expression") && Field(forest, parent, "value") == at;
 }
-// An instruction that names a command node. One literal holds the uint64:
+// An instruction that names a command node. One literal holds the u64:
 // storing it into a local record's field would make every caller copy its
 // arguments, as ConstantCode notes.
-CommandCode :: (op: int, target: int, command_node: uint64, node: snapshot.SnapshotNode) -> Code {
+CommandCode :: (op: int, target: int, command_node: u64, node: snapshot.SnapshotNode) -> Code {
     return {op: op, type: 0, output: 0, left: 0, right: 0, target: target, offset: 0, value_storage: 0,
             value_container: 0, value_record: -1, payload: command_node, text: "", has_text: false, message: "",
             has_message: false, start: node.start, end: node.end, line: node.row + 1, column: node.column + 1};
@@ -81,7 +81,7 @@ CommandCode :: (op: int, target: int, command_node: uint64, node: snapshot.Snaps
 // One registry command. Its arguments and result keep body-cell coordinates;
 // assembly gives commands their separate runtime banks and remaps row indices.
 TaskCommandStep :: (forest: snapshot.SnapshotNode[], document: int, values: Value[], top: int,
-                    item: Work, command: int, success_tag: uint64, result: Value, ops: Ops,
+                    item: Work, command: int, success_tag: u64, result: Value, ops: Ops,
                     target: Target, at: Bases) -> Step {
     node := forest[item.node];
     if (target.error_status_offset <= 0) {
@@ -121,7 +121,7 @@ TaskCommandStep :: (forest: snapshot.SnapshotNode[], document: int, values: Valu
     if (command == CancelAfterCommand || command == DelayCommand) {
         duration := values[top - 1];
         if (!Single(duration, DoubleStorage)) {
-            return Fail(forest, item.node, document, "cancellation duration needs a double");
+            return Fail(forest, item.node, document, "cancellation duration needs an f64");
         }
         cells.append(TypedCell(DoubleStorage, 0, -1));
         write := Instruction(ops.command_argument, DoubleStorage, 0, duration.slot, 0, at.cell + count, node);

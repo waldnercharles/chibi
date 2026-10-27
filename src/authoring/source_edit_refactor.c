@@ -104,21 +104,9 @@ static bool type_text(
             name = nominal->source_name ? nominal->source_name : nominal->name;
         }
     } else if (!name) {
-        switch (type.storage) {
-            case PIN_BOOL: name = "bool"; break;
-            case PIN_I8: name = "int8"; break;
-            case PIN_U8: name = "byte"; break;
-            case PIN_I16: name = "int16"; break;
-            case PIN_U16: name = "uint16"; break;
-            case PIN_I32: name = "int"; break;
-            case PIN_U32: name = "uint"; break;
-            case PIN_I64: name = "int64"; break;
-            case PIN_U64: name = "uint64"; break;
-            case PIN_F32: name = "float"; break;
-            case PIN_F64: name = "double"; break;
-            case PIN_STR: name = "string"; break;
-            case PIN_NAME: name = "name"; break;
-            default: break;
+        if ((type.storage >= PIN_BOOL && type.storage <= PIN_NAME) ||
+            type.storage == PIN_STR) {
+            name = script_scalar_name(type.storage);
         }
     }
     if (!name) {

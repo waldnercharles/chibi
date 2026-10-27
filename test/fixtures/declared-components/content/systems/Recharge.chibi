@@ -1,6 +1,6 @@
 Recharge :: system(charge: ^Charge) {
     if !charge.full {
-        charge.level = float(double(charge.level) + charge.rate * dt)
+        charge.level += charge.rate * dt
         if charge.level >= charge.capacity {
             charge.full = true
             charge.cycles += 1

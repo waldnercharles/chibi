@@ -522,10 +522,10 @@ TEST_CASE(scalar_unions_optimize_authored_local_patterns)
         }
     }
     REQUIRE(constructors == 1);
-    pin_value input = { .type = PIN_F64, .d = 3.75 }, output = { .type = PIN_F64 };
+    pin_value input = { .type = PIN_F32, .f = 3.75f }, output = { .type = PIN_F32 };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(begin(&input, 1, &output, backend) == FLOW_OK);
-        REQUIRE(output.d == input.d);
+        REQUIRE(output.f == input.f);
     }
     return true;
 }
@@ -867,7 +867,7 @@ static const type_field scalar_read_fields[] = {
       .type = PIN_F32,
       .offset = offsetof(scalar_read_row, single),
       .size = sizeof(float),
-      .type_name = "float" }
+      .type_name = "number" }
 };
 static const type_field managed_read_fields[] = {
     { .name = "signed_value",

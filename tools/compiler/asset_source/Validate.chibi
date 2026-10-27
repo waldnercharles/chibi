@@ -3,7 +3,7 @@ package asset_source
 // Shape validation leaves referenced names unresolved. Only root/entity fields
 // participate; similarly named reflected component fields remain ordinary data.
 pub ValidatePrototype :: (kinds: int[], parents: int[], keys: string[], texts: string[],
-                          signed: int64[], unsigned: uint64[], reals: double[], booleans: bool[]) -> string {
+                          signed: i64[], unsigned: u64[], reals: f64[], booleans: bool[]) -> string {
     count := length(kinds);
     if (count == 0 || length(parents) != count || length(keys) != count ||
         length(texts) != count || length(signed) != count || length(unsigned) != count ||

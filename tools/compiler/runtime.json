@@ -1,25 +1,25 @@
 {
   "format": 1,
   "repository": "waldnercharles/chibi",
-  "tag": "compiler-runtime-prepared21-1b186cee41397a4ee0bb2f89eede03fbdaf63ea9",
-  "source_revision": "1b186cee41397a4ee0bb2f89eede03fbdaf63ea9",
-  "source_tree": "019f3bf2940863c55d9ba416275fd552e7587901",
-  "run_url": "https://github.com/waldnercharles/chibi/actions/runs/40203985079",
+  "tag": "compiler-runtime-prepared22-7b151ebc59bd35fe5f0eaf8c3f87430ad3883550",
+  "source_revision": "7b151ebc59bd35fe5f0eaf8c3f87430ad3883550",
+  "source_tree": "42efe4f581cdb65f132ebc597e307c5be144e393",
+  "run_url": "https://github.com/waldnercharles/chibi/actions/runs/40436367091",
   "platforms": {
     "macos-arm64": {
       "asset": "chibi-compiler-host-macos-arm64",
-      "sha256": "dfd8532a94d9d0290cb3b5b32481cc3aec25f92d47a36d9fc96f8018baac50a8",
-      "bytes": 1168928
+      "sha256": "91b7ceafac33bf691332f07cdb15df79687aaf22ace6c6b7aeaf0ba4f9b544e3",
+      "bytes": 1169408
     },
     "linux-x64": {
       "asset": "chibi-compiler-host-linux-x64",
-      "sha256": "1f0581c617d4b4c9ec3c927e5f593bc2bcbeaec3f36134e6d3268ab99bbf3d1b",
-      "bytes": 1879032
+      "sha256": "70b1be44849754c28b9a2dc7ac0318a38bda337d148927a9a6a4f7ccf83d45ff",
+      "bytes": 1887824
     },
     "windows-x64": {
       "asset": "chibi-compiler-host-windows-x64.exe",
-      "sha256": "4c8a7009d28d24f0689234e5d68f3de7413aa8f39e3244d6cfa6479495812cb5",
-      "bytes": 1906176
+      "sha256": "5e9786c46d1f01ca3cbeb39d70ea83df63c551fa63af6b64e54d9af27e45090a",
+      "bytes": 1916928
     }
   }
 }

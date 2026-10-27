@@ -19,7 +19,7 @@ description "Generic destructible specimen. Retained part X gives signed world-u
                     surface_position id=201 type="struct" type_name="ShaderVec3"
                 }
                 outputs {
-                    Result id=202 type="float"
+                    Result id=202 type="number"
                 }
             }
             - {

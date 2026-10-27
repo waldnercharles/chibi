@@ -101,10 +101,10 @@ TEST_CASE(wasm_default_executes_emitted_code_with_numeric_and_array_helpers)
     REQUIRE(behavior_default_backend() == BEHAVIOR_WASM);
     REQUIRE(behavior_backend_available(BEHAVIOR_WASM));
     const char
-        *source = "B :: behavior { total: double = 0;Pair :: (x: double) -> "
-                  "(r: double[]) { return [x, x + 1] }Step :: (x: int) -> (r: "
-                  "double) {if (x & 1) == 0 { return double(x * 3) "
-                  "}return double(-x) }on Run :: () { total = 0; i: int = 0; "
+        *source = "B :: behavior { total: f64 = 0;Pair :: (x: f64) -> "
+                  "(r: f64[]) { return [x, x + 1] }Step :: (x: int) -> (r: "
+                  "f64) {if (x & 1) == 0 { return f64(x * 3) "
+                  "}return f64(-x) }on Run :: () { total = 0; i: int = 0; "
                   "while i < 8 {row := Pair(Step(i)); total += row[0] + "
                   "row[1]; i += 1 } } }";
     execution_wasm_jit_stats before, after;
@@ -136,7 +136,7 @@ TEST_CASE(wasm_oversized_definition_runs_on_bytecode)
         STEPS = 3000
     };
     static const char
-        head[] = "B :: behavior { total: double = 0;on Run :: () { total = 0;";
+        head[] = "B :: behavior { total: f64 = 0;on Run :: () { total = 0;";
     static const char step[] = "total += 1;";
     char *source = xmalloc(sizeof head + STEPS * (sizeof step - 1) + 3);
     char *at = source + sprintf(source, "%s", head);
@@ -163,7 +163,7 @@ TEST_CASE(wasm_oversized_definition_runs_on_bytecode)
 TEST_CASE(wasm_helper_resumes_and_budget_failure_is_reported)
 {
     REQUIRE(
-        compile("B :: behavior { total: double = 0;Later :: (x: double) -> (r: double) { yield; return x * 2 }on Run :: () { total = 1; total += await Later(4); total += 10 } }", BEHAVIOR_WASM)
+        compile("B :: behavior { total: f64 = 0;Later :: (x: f64) -> (r: f64) { yield; return x * 2 }on Run :: () { total = 1; total += await Later(4); total += 10 } }", BEHAVIOR_WASM)
     );
     execution_instance *instance = attach();
     REQUIRE(instance);
@@ -175,7 +175,7 @@ TEST_CASE(wasm_helper_resumes_and_budget_failure_is_reported)
     REQUIRE(execution_instance_pending(instance) == 0);
     cleanup();
     REQUIRE(
-        compile("B :: behavior { total: double = 0;on Run :: () { while true { total += 1 } } }", BEHAVIOR_WASM)
+        compile("B :: behavior { total: f64 = 0;on Run :: () { while true { total += 1 } } }", BEHAVIOR_WASM)
     );
     instance = attach();
     REQUIRE(instance);
@@ -188,9 +188,9 @@ TEST_CASE(wasm_helper_resumes_and_budget_failure_is_reported)
 TEST_CASE(wasm_integer_operations_preserve_width_and_exact_bits)
 {
     const char
-        *source = "B :: behavior { total: double = 0;a: int64 = "
-                  "9007199254740993; b: int64 = -8;u: uint64 = "
-                  "18446744073709551615; small: int8 = -2;on Run :: () { total "
+        *source = "B :: behavior { total: f64 = 0;a: i64 = "
+                  "9007199254740993; b: i64 = -8;u: u64 = "
+                  "18446744073709551615; small: i8 = -2;on Run :: () { total "
                   "= "
                   "0;if a + 2 == 9007199254740995 { total += 1 }if a << 1 == "
                   "18014398509481986 { total += 1 }if ~a == -9007199254740994 "
@@ -388,7 +388,7 @@ TEST_CASE(wasm_retiring_one_function_preserves_other_live_entries)
 TEST_CASE(wasm_prepared_reload_owns_its_compiled_generation)
 {
     REQUIRE(
-        compile("B :: behavior { total: double = 0;Add :: (x: double) -> (r: double) { return x + 3 }on Run :: () { total += Add(4) } }", BEHAVIOR_WASM)
+        compile("B :: behavior { total: f64 = 0;Add :: (x: f64) -> (r: f64) { return x + 3 }on Run :: () { total += Add(4) } }", BEHAVIOR_WASM)
     );
     size_t length = 0;
     char error[256];
@@ -441,8 +441,8 @@ TEST_CASE(wasm_workers_install_and_retire_independent_entries)
     for (int generation = 0; generation < 2; generation++) {
         cleanup();
         const char *sources[] = {
-            "B :: behavior { total: double = 0; on Run :: () { total += 7 } }",
-            "B :: behavior { total: double = 0; on Run :: () { total += 11 } }",
+            "B :: behavior { total: f64 = 0; on Run :: () { total += 7 } }",
+            "B :: behavior { total: f64 = 0; on Run :: () { total += 11 } }",
         };
         REQUIRE(compile(sources[generation], BEHAVIOR_WASM));
         worker_run runs[2] = { 0 };

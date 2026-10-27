@@ -225,6 +225,8 @@ script_type script_analyzer_arithmetic_type(script_type left, script_type right)
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);
 script_expression script_analyzer_number_literal(analyzer *, TSNode, script_type expected, bool negate);
+/* Retypes an untyped numeric expression at `type`, reparsing its literals. */
+void script_analyzer_contextual_numeric(analyzer *, int expression, script_type type);
 int script_analyzer_statement_add(analyzer *a, script_statement statement);
 void script_analyzer_union_results(analyzer *a, int function, TSNode body);
 void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool truth);

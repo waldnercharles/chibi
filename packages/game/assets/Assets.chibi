@@ -5,8 +5,8 @@ import strings "core:strings"
 // Asset source is ordinary compiled Chibi. These values describe the document
 // passed to each asset family's validator; they do not perform external work.
 pub Value :: union {
-    Null | Bool(value: bool) | Int(value: int64) | UInt(value: uint64)
-    | Real(value: double) | Text(value: string)
+    Null | Bool(value: bool) | Int(value: i64) | UInt(value: u64)
+    | Real(value: f64) | Text(value: string)
     | Array(values: Value[]) | Object(keys: string[], values: Value[])
 }
 
@@ -64,13 +64,13 @@ pub Get :: (object: Value, name: string) -> Value {
     return Value.Null;
 }
 
-pub AsInt :: (value: Value) -> int64 {
+pub AsInt :: (value: Value) -> i64 {
     switch value {
         case .Int(number):
             return number;
         case .UInt(number):
             assert(number <= 9223372036854775807, "Asset integer exceeds int64 range");
-            return int64(number);
+            return i64(number);
         case:
             assert(false, "Asset value must be an integer");
             return 0;
@@ -79,13 +79,13 @@ pub AsInt :: (value: Value) -> int64 {
     return 0;
 }
 
-pub AsUInt :: (value: Value) -> uint64 {
+pub AsUInt :: (value: Value) -> u64 {
     switch value {
         case .UInt(number):
             return number;
         case .Int(number):
             assert(number >= 0, "Asset unsigned integer must not be negative");
-            return uint64(number);
+            return u64(number);
         case:
             assert(false, "Asset value must be an unsigned integer");
             return 0;
@@ -94,7 +94,7 @@ pub AsUInt :: (value: Value) -> uint64 {
     return 0;
 }
 
-pub AsReal :: (value: Value) -> double {
+pub AsReal :: (value: Value) -> f64 {
     switch value {
         case .Real(number):
             return number;
@@ -363,23 +363,23 @@ ValidText :: (bytes: int[]) -> bool {
     return true;
 }
 
-Quoted :: (text: string) -> byte[] {
+Quoted :: (text: string) -> u8[] {
     assert(strings.ByteLength(text) <= MaxBytes, "Asset text exceeds byte quota");
     bytes := strings.Bytes(text);
     assert(ValidText(bytes), "Asset text must be valid UTF-8");
-    out: byte[] = [34];
+    out: u8[] = [34];
     hex := strings.Bytes("0123456789abcdef");
     for (value in bytes) {
         if (value == 34 || value == 92) {
             assert(length(out) <= MaxBytes - 2, "Asset document exceeds byte quota");
             out.append(92);
-            out.append(byte(value));
+            out.append(u8(value));
         } else if (value < 32) {
             assert(length(out) <= MaxBytes - 6, "Asset document exceeds byte quota");
-            out.extend([92, 117, 48, 48, byte(hex[value >> 4]), byte(hex[value & 15])]);
+            out.extend([92, 117, 48, 48, u8(hex[value >> 4]), u8(hex[value & 15])]);
         } else {
             assert(length(out) < MaxBytes, "Asset document exceeds byte quota");
-            out.append(byte(value));
+            out.append(u8(value));
         }
     }
     assert(length(out) < MaxBytes, "Asset document exceeds byte quota");
@@ -387,10 +387,10 @@ Quoted :: (text: string) -> byte[] {
     return out;
 }
 
-Raw :: (text: string) -> byte[] {
-    out: byte[] = [];
+Raw :: (text: string) -> u8[] {
+    out: u8[] = [];
     for (value in strings.Bytes(text)) {
-        out.append(byte(value));
+        out.append(u8(value));
     }
     return out;
 }
@@ -398,15 +398,15 @@ Raw :: (text: string) -> byte[] {
 // A versioned private transport preserves numeric kinds around the JSON value.
 // Structure, quoting, scalar conversion and quotas are authored here.
 // The caller's runtime instruction budget/cancellation also covers this code.
-pub Encode :: (value: Value) -> byte[] {
-    out: byte[] = [];
-    numbers: byte[] = [];
+pub Encode :: (value: Value) -> u8[] {
+    out: u8[] = [];
+    numbers: u8[] = [];
     pending: Work[] = [Work.Visit(value, 0)];
     visited: int = 0;
     while (length(pending) > 0) {
         work := pending[length(pending) - 1];
         pending.remove_index(length(pending) - 1);
-        bytes: byte[] = [];
+        bytes: u8[] = [];
         switch work {
             case .Token(text):
                 bytes = Raw(text);

@@ -255,7 +255,8 @@ TEST_CASE(environment_supplied_modules_reject_unprojectable_library)
     tool_write(
         library,
         "FieldShapes :: library {\n"
-        " Islands :: (X: float = 0.0, Y: float = 0.0) -> (Value: float = 0.0) "
+        " Islands :: (X: number = 0.0, Y: number = 0.0) -> (Value: number = "
+        "0.0) "
         "{\n"
         "  if X > 0.0 { return field_circle(X, Y, 1.0); }\n"
         "  return field_circle(X, Y, 2.0);\n"

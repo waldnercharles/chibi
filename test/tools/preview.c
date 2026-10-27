@@ -98,7 +98,7 @@ static bool particle_preview_fixture()
                 g,
                 entry,
                 true,
-                &(pin_spec){ .name = names[i], .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" }
+                &(pin_spec){ .name = names[i], .kind = PIN_DATA, .type = PIN_F32, .type_name = "number" }
             ) == i
         );
     }
@@ -107,7 +107,7 @@ static bool particle_preview_fixture()
     );
     const pin_spec outputs[] = {
         { .name = "Position", .kind = PIN_DATA, .type = PIN_STRUCT, .type_name = "ShaderVec3" },
-        { .name = "Size", .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" },
+        { .name = "Size", .kind = PIN_DATA, .type = PIN_F32, .type_name = "number" },
         { .name = "Color", .kind = PIN_DATA, .type = PIN_STRUCT, .type_name = "ShaderVec4" },
     };
     for (int i = 0; i < 3; i++) {

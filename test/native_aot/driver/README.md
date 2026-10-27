@@ -58,7 +58,9 @@ executes fixed argument vectors:
    `opt -S -passes=verify,default<O2>,verify` for mode2.
 2. Admit the verified canonical output's exact
    `x86_64-unknown-linux-gnu` triple and observed LLVM19 x86-64 data layout.
-3. `llc -filetype=obj -O=0|2` without a target override.
+3. `llc -filetype=obj -O=0|2 -relocation-model=pic` without a target
+   override. A static object's absolute references, such as the table O2
+   lowers a dense switch through, cannot link into the PIE program `cc` makes.
 4. For `Build` only: `cc object.o -Wl,--gc-sections -o program`.
 
 The accepted canonical data layout is

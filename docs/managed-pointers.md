@@ -213,7 +213,7 @@ which supersedes the macOS artifact figures above:
   an empty environment reproduced all 14,224,585 artifact bytes and SHA-256
   `faf6bf0a28025ede5782350022ba9c12807697244f6a583813f88d0e405ef4e5`.
 
-Prepared ABI is 22; bootstrap capability version is 6,
+Prepared ABI is 23; bootstrap capability version is 6,
 while minimum remains 2 because the compiler sources do not use pointer syntax.
 Local test logs and diagnostic scratch remain in `.chibi/managed-pointers/`;
 the temporary seed and isolated recovery copies were removed after validation.

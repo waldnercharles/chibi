@@ -20,15 +20,15 @@ pub Project :: (name: string, version: int, content: string, start_scene: string
     assert(name != "", "Project name must not be empty");
     assert(version > 0, "Project version must be positive");
     assert(content != "", "Project content path must not be empty");
-    return NamedObject([Field.Named("name", Value.Text(name)), Field.Named("version", Value.Int(int64(version))),
+    return NamedObject([Field.Named("name", Value.Text(name)), Field.Named("version", Value.Int(i64(version))),
                         Field.Named("content", Value.Text(content)), Field.Named("start_scene", Value.Text(start_scene))], fields);
 }
 
 pub Application :: (title: string, width: int, height: int, fullscreen: bool, fields: Field[]) -> Value {
     assert(width >= 0 && height >= 0 && width <= 16384 && height <= 16384,
            "Application dimensions must be between 0 and 16384");
-    return NamedObject([Field.Named("title", Value.Text(title)), Field.Named("width", Value.Int(int64(width))),
-                        Field.Named("height", Value.Int(int64(height))), Field.Named("fullscreen", Value.Bool(fullscreen))], fields);
+    return NamedObject([Field.Named("title", Value.Text(title)), Field.Named("width", Value.Int(i64(width))),
+                        Field.Named("height", Value.Int(i64(height))), Field.Named("fullscreen", Value.Bool(fullscreen))], fields);
 }
 
 pub EntityDefinition :: union {
@@ -69,11 +69,11 @@ pub Prototype :: (name: string, components: Field[], includes: string[], behavio
 }
 
 pub GraphNode :: union {
-    Named(id: uint64, type: string, fields: Field[])
+    Named(id: u64, type: string, fields: Field[])
 }
 pub GraphConnection :: union {
     Named(from: string, to: string, fields: Field[])
-    | Linked(from: uint64, from_pin: uint64, to: uint64, to_pin: uint64, fields: Field[])
+    | Linked(from: u64, from_pin: u64, to: u64, to_pin: u64, fields: Field[])
 }
 pub GraphDefinition :: union {
     Named(kind: string, name: string, nodes: GraphNode[], edges: GraphConnection[], fields: Field[])
@@ -84,7 +84,7 @@ GraphValue :: (graph: GraphDefinition) -> Value {
         case .Named(kind, name, nodes, edges, fields):
             assert(kind != "", "Graph kind must not be empty");
             values: Value[] = [];
-            ids: uint64[] = [];
+            ids: u64[] = [];
             for (node in nodes) {
                 switch node {
                     case .Named(id, type, extra):
@@ -114,7 +114,7 @@ GraphValue :: (graph: GraphDefinition) -> Value {
     }
 }
 
-pub Graph :: (name: string, domain: string, version: int, id_counter: uint64, graphs: GraphDefinition[], fields: Field[]) -> Value {
+pub Graph :: (name: string, domain: string, version: int, id_counter: u64, graphs: GraphDefinition[], fields: Field[]) -> Value {
     assert(name != "" && domain != "", "Graph asset needs a name and domain");
     assert(version > 0, "Graph version must be positive");
     values: Value[] = [];
@@ -122,7 +122,7 @@ pub Graph :: (name: string, domain: string, version: int, id_counter: uint64, gr
         values.append(GraphValue(graph));
     }
     return NamedObject([Field.Named("name", Value.Text(name)), Field.Named("domain", Value.Text(domain)),
-                        Field.Named("version", Value.UInt(uint64(version))), Field.Named("id_counter", Value.UInt(id_counter)),
+                        Field.Named("version", Value.UInt(u64(version))), Field.Named("id_counter", Value.UInt(id_counter)),
                         Field.Named("graphs", List(values))], fields);
 }
 
@@ -143,13 +143,13 @@ pub InputMap :: (actions: InputAction[]) -> Value {
             case .Controller(name, slot, buttons, firing):
                 assert(name != "" && length(buttons) > 0 && slot >= 0 && slot < 4,
                        "Controller action needs a name, buttons and slot from 0 to 3");
-                fields.append(Field.Named(name, Object([Field.Named("controller", Value.UInt(uint64(slot))),
+                fields.append(Field.Named(name, Object([Field.Named("controller", Value.UInt(u64(slot))),
                                                         Field.Named("buttons", TextList(buttons)), Field.Named("firing", Value.Bool(firing))])));
             case .Combined(name, sources, slot, buttons, firing):
                 assert(name != "" && length(sources) > 0 && length(buttons) > 0 && slot >= 0 && slot < 4,
                        "Combined action needs a name, sources, buttons and slot from 0 to 3");
                 fields.append(Field.Named(name, Object([Field.Named("sources", TextList(sources)),
-                                                        Field.Named("controller", Value.UInt(uint64(slot))),
+                                                        Field.Named("controller", Value.UInt(u64(slot))),
                                                         Field.Named("buttons", TextList(buttons)), Field.Named("firing", Value.Bool(firing))])));
         }
     }
@@ -169,10 +169,10 @@ pub Scenario :: (scene: string, frames: int, keys: Keyframe[], fields: Field[]) 
             case .At(frame, extra):
                 assert(frame >= 0 && frame < frames && frame >= previous, "Scenario key frames must not decrease or exceed the scenario");
                 previous = frame;
-                values.append(NamedObject([Field.Named("frame", Value.UInt(uint64(frame)))], extra));
+                values.append(NamedObject([Field.Named("frame", Value.UInt(u64(frame)))], extra));
         }
     }
-    return NamedObject([Field.Named("scene", Value.Text(scene)), Field.Named("frames", Value.UInt(uint64(frames))),
+    return NamedObject([Field.Named("scene", Value.Text(scene)), Field.Named("frames", Value.UInt(u64(frames))),
                         Field.Named("keys", List(values))], fields);
 }
 

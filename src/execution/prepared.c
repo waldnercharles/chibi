@@ -768,6 +768,8 @@ static bool write_depth(
                            .record_work_limit = record_work_limit };
     c.wire.storage = &c.plan->storage;
     c.wire.hash = hash;
+    /* The string table's scratch, released when the table is written. */
+    c.wire.storage_budget = budget ? budget->storage_budget : NULL;
     /* A dependency's fingerprint re-encodes a module its importer's linker
      * admitted, so it takes that linker's record bound, not the default. */
     c.wire.record_limit = budget ? budget->record_limit : 0;
@@ -787,6 +789,7 @@ static bool write_depth(
     }
     execution_wire *w = &c.wire;
     header(w);
+    execution_wire_strings_begin(w);
     U64(c.plan->id);
     U64(c.plan->owner_type);
     if (!w->error && !c.plan->id) {
@@ -801,6 +804,7 @@ static bool write_depth(
         prepared_function(&c, c.functions[i]);
     }
     payload(&c);
+    execution_wire_strings_finish(w);
     bool success = !w->error;
     if (success) {
         *length = w->size;
@@ -970,6 +974,7 @@ execution_module *execution_prepared_read_budget(
         w->error = "prepared file exceeds byte budget";
     }
     header(w);
+    execution_wire_strings_begin(w);
     U64(c.plan->id);
     U64(c.plan->owner_type);
     if (!w->error && !c.plan->id) {
@@ -995,7 +1000,8 @@ execution_module *execution_prepared_read_budget(
     }
     w->storage = &c.plan->storage;
     payload(&c);
-    if (!w->error && w->offset != length) {
+    execution_wire_strings_finish(w);
+    if (!w->error && w->offset != w->size) {
         w->error = "trailing prepared bytes";
     }
     if (!w->error) {

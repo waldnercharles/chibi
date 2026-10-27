@@ -45,7 +45,7 @@ QueryField :: struct {
     component: int;
     variable: int;
     source: int;
-    source_relationship: uint64;
+    source_relationship: u64;
     source_traversal: int;
     optional: bool;
 }
@@ -56,21 +56,21 @@ QueryTerm :: struct {
     left: int;
     right: int;
     root: bool;
-    component: uint64;
+    component: u64;
     source_variable: int;
     target_variable: int;
-    source_relationship: uint64;
+    source_relationship: u64;
     source_traversal: int;
 }
 QueryProvider :: struct {
     variable: int;
-    relation: uint64;
+    relation: u64;
     traversal: int;
     valid: bool;
 }
-// One literal holds `relation`: storing a uint64 into a local record's field
+// One literal holds `relation`: storing a u64 into a local record's field
 // would make every caller copy its arguments, as ConstantCode notes.
-QueryProviderOf :: (variable: int, relation: uint64, traversal: int, valid: bool) -> QueryProvider {
+QueryProviderOf :: (variable: int, relation: u64, traversal: int, valid: bool) -> QueryProvider {
     return {variable: variable, relation: relation, traversal: traversal, valid: valid};
 }
 QuerySource :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], fields: QueryField[], source: int) -> QueryProvider {
@@ -218,7 +218,7 @@ QueryFields :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
     }
     return fields;
 }
-QueryLeaf :: (kind: int, component: uint64, source: int, target: int, relation: uint64,
+QueryLeaf :: (kind: int, component: u64, source: int, target: int, relation: u64,
               traversal: int, node: int) -> QueryTerm {
     return {kind: kind, required: false, node: node, left: -1, right: -1, root: false, component: component,
             source_variable: source, target_variable: target, source_relationship: relation, source_traversal: traversal};
@@ -421,11 +421,11 @@ QueryPointers :: (types: TypeDecl[], members: TypeMember[]) -> TypeDecl[] {
     return declared;
 }
 QueryRowName :: (types: TypeDecl[], fields: QueryField[], start: int) -> string {
-    shape: uint64 = 14695981039346656037;
+    shape: u64 = 14695981039346656037;
     for (field in fields) {
-        nominal: uint64 = 0;
-        layout: uint64 = 0;
-        component_layout: uint64 = 0;
+        nominal: u64 = 0;
+        layout: u64 = 0;
+        component_layout: u64 = 0;
         flags: int = 0;
         if (field.optional) {
             flags = 2;
@@ -494,7 +494,7 @@ Ancestor :: (forest: snapshot.SnapshotNode[], ancestor: int, node: int) -> bool 
     }
     return false;
 }
-QueryType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], entity: uint64,
+QueryType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], entity: u64,
               node: int) -> ValueType {
     if (node < 0) {
         return {storage: 0, container: 0, record: -1};
@@ -522,7 +522,7 @@ QueryType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], 
 // indexing, dereferences and aggregate rules as an ordinary local initializer.
 QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
                    callables: Callable[], params: Param[], natives: ResolvedNative[], ports: ResolvedPort[], queries: QuerySpec[],
-                   names: Name[], entity: uint64, node: int, ops: Ops, target: Target) -> ValueType {
+                   names: Name[], entity: u64, node: int, ops: Ops, target: Target) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     if (node < 0) {
         return none;
@@ -639,7 +639,7 @@ QuerySourceRoot :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // lexical ancestors contribute, so sibling blocks, loops and arms stay out.
 QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
                callables: Callable[], params: Param[], natives: ResolvedNative[], ports: ResolvedPort[], queries: QuerySpec[],
-               globals: Name[], entity: uint64, node: int, ops: Ops, target: Target) -> Name[] {
+               globals: Name[], entity: u64, node: int, ops: Ops, target: Target) -> Name[] {
     names := globals;
     for (callable in callables) {
         if (!Ancestor(forest, Field(forest, callable.node, "body"), node)) {
@@ -909,7 +909,7 @@ QueryExcludes :: (forest: snapshot.SnapshotNode[], text: string, condition: int,
 // parameter would make every caller copy its arguments.
 CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string, document: int, input_types: TypeDecl[],
                  input_members: TypeMember[], input_callables: Callable[], input_params: Param[], natives: ResolvedNative[],
-                 ports: ResolvedPort[], input_queries: QuerySpec[], globals: Name[], enclosing: Name[], entity: uint64,
+                 ports: ResolvedPort[], input_queries: QuerySpec[], globals: Name[], enclosing: Name[], entity: u64,
                  node: int, system_header: bool, target: Target, ops: Ops) -> QueryDeclarations {
     types := input_types;
     members := input_members;
@@ -1169,7 +1169,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                           storage: QueryStorage, id: id, layout: 0, component: 0, key: 0, value_storage: 0,
                           value_container: 0, value_record: -1};
     types.append(declared);
-    // A literal again: a copy of `declared` shares its uint64 id, and writing
+    // A literal again: a copy of `declared` shares its u64 id, and writing
     // into that copy would make every caller copy its arguments.
     description: TypeDecl = {name: "", type_name: row_name, package: document, node: node, kind: QueryDescriptorDecl,
                              first: first, count: length(fields), size: target.pointer_size, parent: row,
@@ -1217,7 +1217,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
 CollectQueries :: (forest: snapshot.SnapshotNode[], text: string, identity: string, document: int, node_start: int,
                    node_end: int, input_types: TypeDecl[], input_members: TypeMember[], input_callables: Callable[],
                    input_params: Param[], natives: ResolvedNative[], ports: ResolvedPort[], input_queries: QuerySpec[],
-                   globals: Name[], entity: uint64, target: Target, ops: Ops) -> QueryDeclarations {
+                   globals: Name[], entity: u64, target: Target, ops: Ops) -> QueryDeclarations {
     types := input_types;
     members := input_members;
     callables := input_callables;
@@ -1290,7 +1290,7 @@ QueryCallStep :: (intrinsic: int, arguments: Value[], initial: Cell[], result: V
     return CellSchemaStep(Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], popped, produced, NoValue(), []),
                           at.cell + length(initial), ops, target, at, node);
 }
-QueryCell :: (storage: int, record: int, bits: uint64) -> Cell {
+QueryCell :: (storage: int, record: int, bits: u64) -> Cell {
     return {storage: storage, container: 0, record: record, constant: bits, variant: -1, kind: ValueKind};
 }
 QueryCurrentStep :: (record: int, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
@@ -1308,7 +1308,7 @@ QueryChangedStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
             if (term.node == item.node && term.kind == 7) {
                 return QueryCallStep(QueryTestIntrinsic,
                                      [Typed(-2, target.pointer_storage, 0, -1), Typed(-1, IntStorage, 0, -1)],
-                                     [QueryCell(target.pointer_storage, -1, 0), QueryCell(IntStorage, -1, uint64(base + index))],
+                                     [QueryCell(target.pointer_storage, -1, 0), QueryCell(IntStorage, -1, u64(base + index))],
                                      {storage: BoolStorage, container: 0, record: -1}, 0, ops, target, at, forest[item.node]);
             }
             index += 1;
@@ -1320,7 +1320,7 @@ QueryChangedStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
 QueryGetStep :: (row: Value, index: int, field: ValueType, popped: int, ops: Ops, target: Target,
                  at: Bases, node: snapshot.SnapshotNode) -> Step {
     return QueryCallStep(QueryGetIntrinsic, [row, Typed(-1, IntStorage, 0, -1)],
-                         [QueryCell(QueryStorage, row.record, 0), QueryCell(IntStorage, -1, uint64(index))],
+                         [QueryCell(QueryStorage, row.record, 0), QueryCell(IntStorage, -1, u64(index))],
                          field, popped, ops, target, at, node);
 }
 
@@ -1519,7 +1519,7 @@ QueryMembershipStep :: (term: QueryTerm, values: Value[], top: int, item: Work, 
         arguments.append(Typed(-1, WordStorage, 0, -1));
         arguments.append(Typed(-1, IntStorage, 0, -1));
         initial.append(QueryCell(WordStorage, -1, term.source_relationship));
-        initial.append(QueryCell(IntStorage, -1, uint64(term.source_traversal)));
+        initial.append(QueryCell(IntStorage, -1, u64(term.source_traversal)));
     }
     return PointerContinue(PointerPrefix([owner], [ValueLocal(HandleStorage)],
                                          QueryCallStep(intrinsic, arguments, initial, {storage: HandleStorage, container: 0, record: -1},
@@ -1669,7 +1669,7 @@ QueryExpressionStep :: (forest: snapshot.SnapshotNode[], document: int, params: 
         return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
     }
     arguments: Value[] = [Typed(-2, target.pointer_storage, 0, -1), Typed(-1, IntStorage, 0, -1)];
-    initial: Cell[] = [QueryCell(target.pointer_storage, -1, 0), QueryCell(IntStorage, -1, uint64(index))];
+    initial: Cell[] = [QueryCell(target.pointer_storage, -1, 0), QueryCell(IntStorage, -1, u64(index))];
     first := top - described.capture_count;
     at_capture: int = 0;
     while (at_capture < described.capture_count) {
@@ -1696,7 +1696,7 @@ QueryOwnedComponentStep :: (types: TypeDecl[], field: QueryField, entity: Value,
     initial: Cell[] = [QueryCell(target.pointer_storage, -1, 0), QueryCell(HandleStorage, -1, 0),
                        QueryCell(WordStorage, -1, types[field.component].component), QueryCell(StructStorage, field.component, 0),
                        QueryCell(WordStorage, -1, types[field.component].layout),
-                       QueryCell(WordStorage, -1, uint64(types[field.component].size))];
+                       QueryCell(WordStorage, -1, u64(types[field.component].size))];
     intrinsic := ComponentPointerIntrinsic;
     if (field.storage == StructStorage) {
         intrinsic = ComponentSnapshotIntrinsic;
@@ -1724,7 +1724,7 @@ QueryComponentStep :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], field
     initial: Cell[] = [QueryCell(target.pointer_storage, -1, 0), QueryCell(HandleStorage, -1, 0),
                        QueryCell(WordStorage, -1, types[field.component].component),
                        QueryCell(WordStorage, -1, field.source_relationship),
-                       QueryCell(IntStorage, -1, uint64(field.source_traversal))];
+                       QueryCell(IntStorage, -1, u64(field.source_traversal))];
     return PointerPrefix([source], source_slots,
                          QueryCallStep(19, arguments, initial, {storage: HandleStorage, container: 0, record: -1}, 0,
                                        ops, target, SlotsPast(at, 1), node));
@@ -1778,7 +1778,7 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
             context.offset = target.results_offset;
             code.append(context);
             slots.append(ValueLocal(IntStorage));
-            code.append(ConstantCode(ops, IntStorage, uint64(item.a), at.slot + 2, node));
+            code.append(ConstantCode(ops, IntStorage, u64(item.a), at.slot + 2, node));
             slots.append(AddressSlot(target));
             indexed := Instruction(ops.index, target.pointer_storage, at.slot + 3, at.slot + 1, at.slot + 2, 0, node);
             indexed.offset = target.value_size;
@@ -1804,7 +1804,7 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
             context := Instruction(ops.context, target.pointer_storage, at.slot, 0, 0, 0, node);
             context.offset = target.results_offset;
             code.append(context);
-            code.append(ConstantCode(ops, IntStorage, uint64(item.a), at.slot + 1, node));
+            code.append(ConstantCode(ops, IntStorage, u64(item.a), at.slot + 1, node));
             indexed := Instruction(ops.index, target.pointer_storage, at.slot + 2, at.slot, at.slot + 1, 0, node);
             indexed.offset = target.value_size;
             code.append(indexed);

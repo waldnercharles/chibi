@@ -137,7 +137,7 @@ TEST_CASE(language_declarations_actions_and_bindings)
         "action pending = delay(Duration: 1);\n"
         "event changed = self.Health.CurrentChanged;\n"
         "bind self.ParticleEmitter.Active = enabled;\n"
-        "on Tick :: (dt: float) { count += int(dt); }\n"
+        "on Tick :: (dt: number) { count += int(dt); }\n"
         "after pending.Completed { destroy(self); }\n"
         "events Other { on Begin :: () { pending.start(); } }\n"
         "}"
@@ -251,7 +251,7 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
         "items: Element[]; } Identity :: (value: $T) -> T => { return value; } "
         "Product :: (left: $L, right: $R) -> ProductType(L, R) { return left; "
         "} "
-        "Composed :: (value: ref Vector(float, 2)[]) -> Vector(float, 2)? { "
+        "Composed :: (value: ref Vector(number, 2)[]) -> Vector(number, 2)? { "
         "return nil; } "
         "Use :: () { values: [string: int] = [\"Ada\": 1, key: 2, 3: 4]; "
         "for key, value in values { consume(key, value); } "
@@ -279,8 +279,8 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
     TSNode composed_type = field(parameter, "type");
     REQUIRE(node_text(field(composed_type, "trait"), "ref"));
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(composed_type, 0)), "type_application"));
-    REQUIRE(node_text(composed_type, "ref Vector(float, 2)[]"));
-    REQUIRE(node_text(field(composed, "results"), "Vector(float, 2)?"));
+    REQUIRE(node_text(composed_type, "ref Vector(number, 2)[]"));
+    REQUIRE(node_text(field(composed, "results"), "Vector(number, 2)?"));
     TSNode use = ts_node_named_child(body, 4);
     TSNode statements = field(use, "body");
     TSNode value = field(ts_node_named_child(statements, 0), "value");
@@ -466,7 +466,7 @@ TEST_CASE(language_callable_types_entries_and_results)
     cleanup();
     parse(
         "Use :: library { Run :: () { result: Units.ProductType(A, B) = {}; "
-        "speed: Units.Quantity(double, 1, -1) = {}; return speed; } }"
+        "speed: Units.Quantity(f64, 1, -1) = {}; return speed; } }"
     );
     REQUIRE(!original->diagnostic_count);
     TSNode body = field(ts_node_named_child(declaration_body(), 0), "body");

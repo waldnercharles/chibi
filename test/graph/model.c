@@ -15,7 +15,7 @@
 
 /* Hand-authored descriptors: a float literal, an executable sink and a
    two-input float sum, none of them from the registry. */
-static pin_spec const_out[] = { { "value", PIN_F32, "float" } };
+static pin_spec const_out[] = { { "value", PIN_F32, "number" } };
 static node_desc const_desc = { .name = "const_f32",
                                 .output_count = 1,
                                 .outputs = const_out,
@@ -30,8 +30,9 @@ static node_desc sink_desc = { .name = "Sink",
                                .inputs = sink_inputs,
                                .outputs = sink_outputs,
                                .flow_kind = NODE_FLOW_CUSTOM };
-static pin_spec sum_inputs[] = { { "a", PIN_F32, "float" }, { "b", PIN_F32, "float" } };
-static pin_spec sum_outputs[] = { { "result", PIN_F32, "float" } };
+static pin_spec sum_inputs[] = { { "a", PIN_F32, "number" },
+                                 { "b", PIN_F32, "number" } };
+static pin_spec sum_outputs[] = { { "result", PIN_F32, "number" } };
 static node_desc sum_desc = { .name = "test_add",
                               .input_count = 2,
                               .output_count = 1,
@@ -54,7 +55,7 @@ static void cleanup()
 static node *make_const(graph *to, float v)
 {
     node *n = graph_add_node(to, &const_desc);
-    pin_value authored = { .type = PIN_F32, .type_name = "float", .f = v };
+    pin_value authored = { .type = PIN_F32, .type_name = "number", .f = v };
     graph_set_pin_default(to, n, 1, 0, &authored);
     return n;
 }
@@ -165,7 +166,7 @@ TEST_CASE(input_lookup_follows_edits)
 
     /* The lookup follows stable IDs when both endpoint pin arrays move, and
        removing dynamic pins keeps the remaining connection. */
-    pin_spec extra = { "Extra", PIN_F64, "double", PIN_DATA };
+    pin_spec extra = { "Extra", PIN_F64, "f64", PIN_DATA };
     bool moved = graph_connect(&z, first, 0, target, 0) == 0 &&
                  input_matches(&z, target, 0, first, 0, NULL) &&
                  graph_add_pin(&z, first, 1, &extra) == 1 &&
@@ -435,7 +436,7 @@ TEST_CASE(ids_and_instance_pins_stay_stable)
     REQUIRE(graph_set_pin_name(&g, p1, 0, 0, "left") == 0);
     REQUIRE(!strcmp(p1->input_pins[0].name, "left") && !strcmp(p2->input_pins[0].name, "A"));
     REQUIRE(!strcmp(sum->inputs[0].name, "A"));
-    pin_value authored = { .type = PIN_F32, .type_name = "float", .f = 7.0f };
+    pin_value authored = { .type = PIN_F32, .type_name = "number", .f = 7.0f };
     REQUIRE(graph_set_pin_default(&g, p1, 0, 0, &authored) == 0);
     REQUIRE(p1->input_pins[0].default_value.f == 7.0f);
 
@@ -472,7 +473,7 @@ static const pin_value *loaded_default(const graph *loaded, const node *n)
 TEST_CASE(authored_defaults_and_literals_save)
 {
     node *literal = add(&g, "Real");
-    pin_value changed = { .type = PIN_F64, .type_name = "double", .d = 9.0 };
+    pin_value changed = { .type = PIN_F64, .type_name = "f64", .d = 9.0 };
     REQUIRE(graph_set_pin_default(&g, literal, 0, 0, &changed) == 0);
     REQUIRE(literal->input_pins[0].default_value.d == 9.0);
 
@@ -521,7 +522,7 @@ TEST_CASE(real_inputs_convert_between_widths)
     REQUIRE(graph_connect_data(&g, make_const(&g, 2.5f), 0, delay, 1) == 0);
     REQUIRE(delay->input_pins[1].type == PIN_F64);
     static pin_spec int_output[] = { { "value", PIN_I32, "int" } };
-    static pin_spec int64_input[] = { { "value", PIN_I64, "int64" } };
+    static pin_spec int64_input[] = { { "value", PIN_I64, "i64" } };
     static node_desc int_source = { .name = "test_int_source",
                                     .output_count = 1,
                                     .outputs = int_output,
@@ -533,9 +534,9 @@ TEST_CASE(real_inputs_convert_between_widths)
     node *integer = graph_add_node(&g, &int_source);
     node *integer64 = graph_add_node(&g, &int_target);
     REQUIRE(graph_connect(&g, integer, 0, integer64, 0) != 0);
-    pin_spec f32 = { .type = PIN_F32, .type_name = "float" };
-    pin_spec f64 = { .type = PIN_F64, .type_name = "double" };
-    pin_value converted = { .type = PIN_F64, .type_name = "double", .d = 7.25 };
+    pin_spec f32 = { .type = PIN_F32, .type_name = "number" };
+    pin_spec f64 = { .type = PIN_F64, .type_name = "f64" };
+    pin_value converted = { .type = PIN_F64, .type_name = "f64", .d = 7.25 };
     REQUIRE(pin_compatible(&f32, &f64) && pin_coerce(&converted, &f32));
     REQUIRE(converted.type == PIN_F32 && converted.f == 7.25f);
     return true;

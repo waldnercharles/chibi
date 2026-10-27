@@ -100,7 +100,7 @@ Refresh :: (environment: Environment) -> Environment {
             switch signature {
                 case .Tables(names, constructor_tables, pointer_size):
                     updated_names := names;
-                    lexical_ids: uint64[] = [];
+                    lexical_ids: u64[] = [];
                     switch names {
                         case .Tables(lexical, types, ids, merged, own, native, old_symbol_types, imports, exports, uses,
                                      identity, package_scope, has_native, has_documents, entity_id):
@@ -253,7 +253,7 @@ Declare :: (work: Work, tree: reader.Tree, node: int, context: Context,
                                     lexical_context: binding.Context = {identity: identity, scope: context.scope, function: context.function,
                                                                         package_scope: package_scope, has_identity: true, has_documents: has_documents};
                                     existing: int = -1;
-                                    id: uint64 = 0;
+                                    id: u64 = 0;
                                     diagnostics := old_diagnostics;
                                     switch binding.Declare(lexical, lexical_context, lexical_request) {
                                         case .Appended(symbol_id, errors):
@@ -331,7 +331,7 @@ SymbolValue :: (work: Work, index: int) -> named.Value {
             }
     }
 }
-SymbolID :: (work: Work, index: int) -> uint64 {
+SymbolID :: (work: Work, index: int) -> u64 {
     switch work {
         case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
             switch environment {

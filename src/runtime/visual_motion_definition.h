@@ -28,7 +28,7 @@
     X("Lift",                                                                  \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_F32,                                                                 \
-      "float",                                                                 \
+      "number",                                                                \
       PIN_CONTAINER_SINGLE,                                                    \
       0,                                                                       \
       0,                                                                       \

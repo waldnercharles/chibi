@@ -19,7 +19,7 @@ pub Variant :: struct {
     is_literal: bool;
 }
 pub Environment :: union {
-    Tables(types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[])
+    Tables(types: named.Type[], ids: u64[], definitions: Definition[], variants: Variant[])
 }
 
 pub Equal :: (left: named.Value, right: named.Value) -> bool {
@@ -46,8 +46,8 @@ pub Numeric :: (value: named.Value) -> bool {
     }
 }
 // Integers convert implicitly only when every value fits, and to a float
-// always. Float widens to double; double narrows to float only explicitly.
-// Floating values become integers only explicitly.
+// always. f32 widens to f64; f64 narrows to f32 only explicitly, and a float
+// becomes an integer only explicitly.
 // Storage 2..9 alternates signed and unsigned 8, 16, 32 and 64-bit integers.
 NumericImplicit :: (from: int, to: int) -> bool {
     if (to > 9) {
@@ -112,7 +112,7 @@ pub Assignable :: (expected: named.Value, actual: named.Value) -> bool {
             }
     }
 }
-FindDefinition :: (environment: Environment, id: uint64) -> int {
+FindDefinition :: (environment: Environment, id: u64) -> int {
     switch environment {
         case .Tables(types, ids, definitions, variants):
             index: int = 0;

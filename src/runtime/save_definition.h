@@ -31,10 +31,10 @@
     SAVE_TEXT(X)
 #define SAVE_SET_INPUTS(X) SAVE_EXEC(X) SAVE_KEY(X) SAVE_TEXT(X)
 #define SAVE_NUMBER(X)                                                         \
-    SAVE_PORT(X, "Number", NATIVE_PARAMETER_DATA, PIN_F64, "double")
+    SAVE_PORT(X, "Number", NATIVE_PARAMETER_DATA, PIN_F32, "number")
 #define SAVE_READ_NUMBER_INPUTS(X)                                             \
     SAVE_KEY(X)                                                                \
-    SAVE_PORT(X, "Default", NATIVE_PARAMETER_DATA, PIN_F64, "double")
+    SAVE_PORT(X, "Default", NATIVE_PARAMETER_DATA, PIN_F32, "number")
 #define SAVE_READ_NUMBER_OUTPUTS(X)                                            \
     SAVE_PORT(X, "Found", NATIVE_PARAMETER_DATA, PIN_BOOL, "bool")             \
     SAVE_NUMBER(X)

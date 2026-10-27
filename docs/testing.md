@@ -183,6 +183,28 @@ call `make test-bootstrap`, which prepares stage one through stage zero.
 The separate manual runtime-seed workflow retains the C/CMake recovery route
 for updating the explicitly prebuilt runtime dependency.
 
+### Starting CI with labels
+
+The `CI control` workflow starts runs for maintainers and agents whose GitHub
+access cannot re-run or dispatch workflows. It acts only when the person who
+added the label or retargeted the PR has write access, which GitHub requires
+for re-runs and dispatches anyway. It only acts on branches of this repository
+and on the head commit that the event named, and removes the label when it is
+done.
+
+- `ci-rerun` re-runs the failed jobs of the PR's own CI and compiler
+  self-build runs on the head commit. It never re-runs a push or publishing
+  run that shares the commit. On a PR into `main`, it dispatches a workflow
+  that never ran on the head branch.
+- `ci-seed` dispatches the runtime-seed workflow on the head branch. Publishing
+  the release and moving the pin in `tools/compiler/runtime.json` stay manual.
+
+A dispatched run must build the head commit the event named. If the branch
+moved in between, the workflow cancels the run and fails, and the PR needs the
+label again. Retargeting a stacked PR to `main` does the same as `ci-rerun`, so
+it gets CI without a new push. A dispatched run checks the head branch, not the
+merge with `main`.
+
 ## Feature coverage
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per
@@ -2128,7 +2150,7 @@ on both backends, with exactly four authored exports: `Echo(byte[]) -> byte[]`,
 `Scalar() -> byte`, `Integers() -> int[]` and `Loop(bool) -> byte[]`. Stage zero
 serializes this <=32 KiB closure and writes its IDs and bounded inputs. It makes
 no source calls. This is transport fixture generation, not authored serialization.
-A third producer case prepares a separate one-export `Sized(int) -> byte[]`
+A third producer case prepares a separate one-export `Sized(int) -> u8[]`
 fixture on both backends, also below 32 KiB, with no source calls. `Sized`
 uses one native resize per call. On bytecode and SLJIT, the boundary
 case checks 16 MiB, 16 MiB + 1, 32 MiB and 32 MiB + 1 against both limits;
@@ -3444,6 +3466,40 @@ With matching compiler input it took 2.6 seconds on the Mac validation host. Wit
 changed compiler source and retained older input it took 71 seconds including supported
 in-process recovery. It retains the existing process budget. No second workflow
 invocation or broader suite is added.
+
+## Project 34 numeric migration
+
+`python3 tools/test_policy.py tool language-migration34` runs the format 34→35
+step's C cases through the production source, content and project migration
+entrypoints on disposable files; `language-migration34-generic-repro`, in the
+language group, runs its four source cases alone. The repair is Charles's
+reviewed checkpoint (`fdae32fe`, `1eaf4a8e`), ported from version 32→33 to
+34→35.
+
+Every `.chibi` source is checked before inputs are filtered or files staged.
+The inventory refuses declarations and bindings spelling an old name, a rename
+destination or a newly reserved scalar name, including loop keys and values,
+pattern and `is` bindings, generic type binders and import aliases. A local
+named `number`, which version 34 allowed, is refused only when the same source
+renames a `float` to `number`. Unqualified argument values and conversion
+callees are then rewritten; qualified names, members, argument labels, fields,
+variants, units, strings and comments keep their text. The migrated
+`Quantity(double, 1, -1)` program compiles and runs on both backends.
+
+KDL assets change only graph pin and event metadata, through source-span
+edits, so numeric payload bytes such as `1.0000000000000002`, `16777217`,
+`1e300` and `-0.0` are kept. Explicitly owned array and set default
+descriptors migrate; map collection defaults, and an omitted pin container
+that may hold a codec envelope needing a rename, are refused before any write.
+A pin that omits its storage and names an old scalar in `type_name` is renamed:
+no declaration can take that name. A malformed asset fails with the KDL
+parser's located diagnostic and leaves the project unchanged for a retry.
+
+Every project in this repository at `main`'s version 34 migrates with the
+step, and the result matches the committed projects except where they were
+hand-simplified afterwards. `project-declarations` and
+`language-query-program`, which no group runs, also failed on the checkpoint's
+base.
 
 ## Debug optimization experiment
 

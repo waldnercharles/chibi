@@ -32,7 +32,7 @@ static script_type untyped_common(script_type left, script_type right)
         return script_char_type();
     }
     if (left.storage > PIN_U64 || right.storage > PIN_U64) {
-        return (script_type){ .storage = PIN_F64 };
+        return (script_type){ .storage = PIN_F32 };
     }
     pin_type common = behavior_scalar_common_integer(left.storage, right.storage);
     return (script_type){ .storage = common == PIN_FLOW ? PIN_U64 : common };
@@ -210,11 +210,11 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
 }
 
 /* Without a type from context a literal is typed by its spelling, as in C#:
- * an integer is int, or the first of int64 and uint64 that holds it, and a
+ * an integer is int, or the first of i64 and u64 that holds it, and a
  * decimal point or exponent makes a number. Hex digits include e. */
 static script_type untyped_number(const char *text, long double value)
 {
-    script_type type = { .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+    script_type type = { .storage = PIN_F32, .flags = SCRIPT_TYPE_UNTYPED };
     if (!strpbrk(text, "xX") && strpbrk(text, ".eE")) {
         return type;
     }
@@ -222,6 +222,78 @@ static script_type untyped_number(const char *text, long double value)
                  : value >= -0x1p63L && value < 0x1p63L ? PIN_I64
                                                         : PIN_U64;
     return type;
+}
+/* A decimal spelling such as 2.0 or -1e3 read exactly at an integer type,
+ * digit by digit with no floating rounding: whole with its magnitude, past
+ * 64 bits, or else with a fraction. */
+typedef enum
+{
+    DECIMAL_WHOLE,
+    DECIMAL_LARGE,
+    DECIMAL_FRACTION
+} decimal_integral;
+static decimal_integral decimal_integer(const char *text, uint64_t *magnitude)
+{
+    static const long exponent_limit = 1000000;
+    const char *at = text + (*text == '-' || *text == '+');
+    char *digits = xmalloc(strlen(at) + 1);
+    /* Significant digits before the decimal point; leading zeros after it
+     * make this negative. */
+    long point = 0;
+    int count = 0;
+    bool dot = false;
+    for (; (*at >= '0' && *at <= '9') || *at == '.'; at++) {
+        if (*at == '.') {
+            dot = true;
+        } else if (*at == '0' && count == 0) {
+            point -= dot;
+        } else {
+            digits[count++] = *at;
+            point += !dot;
+        }
+    }
+    if (*at == 'e' || *at == 'E') {
+        long exponent = strtol(at + 1, NULL, 10);
+        exponent = exponent > exponent_limit ? exponent_limit : exponent;
+        point += exponent < -exponent_limit ? -exponent_limit : exponent;
+    }
+    while (count > 0 && digits[count - 1] == '0') {
+        count--;
+    }
+    *magnitude = 0;
+    if (count == 0) {
+        free(digits);
+        return DECIMAL_WHOLE;
+    }
+    decimal_integral read = point > 20 ? DECIMAL_LARGE : DECIMAL_WHOLE;
+    for (long i = 0; read == DECIMAL_WHOLE && i < point; i++) {
+        uint64_t digit = i < count ? (uint64_t)(digits[i] - '0') : 0;
+        if (*magnitude > (UINT64_MAX - digit) / 10) {
+            read = DECIMAL_LARGE;
+            break;
+        }
+        *magnitude = *magnitude * 10 + digit;
+    }
+    free(digits);
+    if (read == DECIMAL_WHOLE && count > point) {
+        return DECIMAL_FRACTION;
+    }
+    return read;
+}
+/* The largest value of an integer type. */
+static uint64_t integer_maximum(uint8_t storage)
+{
+    switch (storage) {
+        case PIN_I8: return INT8_MAX;
+        case PIN_U8: return UINT8_MAX;
+        case PIN_I16: return INT16_MAX;
+        case PIN_U16: return UINT16_MAX;
+        case PIN_I32:
+        case PIN_ENUM: return INT32_MAX;
+        case PIN_U32: return UINT32_MAX;
+        case PIN_I64: return INT64_MAX;
+        default: return UINT64_MAX;
+    }
 }
 /* A union such as `number | Cancelled` gives a literal its one numeric
  * alternative's type. */
@@ -326,20 +398,28 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
             break;
         default: integer = false; break;
     }
-    bool fits = isfinite(value);
-    if (integer) {
-        fits = fits && truncl(value) == value && value < limit &&
-               value >= (unsigned_integer ? 0 : -limit);
-    } else {
-        fits = fits && fabsl(value) <=
-                           (result.type.storage == PIN_F32 ? FLT_MAX : DBL_MAX);
-    }
+    bool fits = isfinite(value) &&
+                fabsl(value) <= (result.type.storage == PIN_F32 ? FLT_MAX : DBL_MAX);
     /* Hex digits include e, so only decimal literals have an exponent. */
     int base = strpbrk(text, "xX") ? 16 : 10;
     bool exact_integer = integer && (base == 16 || !strpbrk(text, ".eE"));
+    bool fraction = false;
     uint64_t exact = 0;
     int64_t exact_signed = 0;
-    if (exact_integer && !unsigned_integer) {
+    if (integer && !exact_integer) {
+        /* A decimal such as 2.0 is the integer it spells, exactly. */
+        decimal_integral read = decimal_integer(text, &exact);
+        bool negative = text[0] == '-' && exact;
+        uint64_t maximum = integer_maximum(result.type.storage);
+        fraction = read == DECIMAL_FRACTION;
+        fits = read == DECIMAL_WHOLE &&
+               (negative ? !unsigned_integer && exact - 1 <= maximum : exact <= maximum);
+        /* Only a signed value in range is built as one. */
+        if (fits && !unsigned_integer) {
+            exact_signed = negative ? -(int64_t)(exact - 1) - 1 : (int64_t)exact;
+        }
+        value = negative ? -(long double)exact : (long double)exact;
+    } else if (exact_integer && !unsigned_integer) {
         errno = 0;
         intmax_t parsed = strtoimax(text, &end, base);
         fits = parsed >= INT64_MIN && parsed <= INT64_MAX;
@@ -351,19 +431,8 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         errno = 0;
         uintmax_t parsed = strtoumax(text, &end, base);
         exact = parsed <= UINT64_MAX ? (uint64_t)parsed : 0;
-        uint64_t maximum = UINT64_MAX;
-        switch (result.type.storage) {
-            case PIN_I8: maximum = INT8_MAX; break;
-            case PIN_U8: maximum = UINT8_MAX; break;
-            case PIN_I16: maximum = INT16_MAX; break;
-            case PIN_U16: maximum = UINT16_MAX; break;
-            case PIN_I32: maximum = INT32_MAX; break;
-            case PIN_U32: maximum = UINT32_MAX; break;
-            case PIN_I64: maximum = INT64_MAX; break;
-            default: break;
-        }
         fits = parsed <= UINT64_MAX && text[0] != '-' && !*end &&
-               errno != ERANGE && exact <= maximum;
+               errno != ERANGE && exact <= integer_maximum(result.type.storage);
     }
     if (script_type_char(result.type) && fits) {
         fits = (value >= 0 && value < 0xD800) || (value > 0xDFFF && value <= 0x10FFFF);
@@ -374,9 +443,8 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         script_analyzer_diagnostic(
             a,
             literal,
-            integer && isfinite(value) && truncl(value) != value
-                ? "Numeric literal has a fraction, which %s cannot hold"
-                : "Numeric literal is outside the range of %s",
+            fraction ? "Numeric literal has a fraction, which %s cannot hold"
+                     : "Numeric literal is outside the range of %s",
             script_numeric_name(result.type)
         );
         value = 0;
@@ -387,16 +455,10 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         case PIN_I16: result.constant.i16 = (int16_t)value; break;
         case PIN_U16: result.constant.u16 = (uint16_t)value; break;
         case PIN_I32: result.constant.i = (int32_t)value; break;
-        case PIN_ENUM:
-            result.constant.e = exact_integer ? (int32_t)exact_signed : (int32_t)value;
-            break;
+        case PIN_ENUM: result.constant.e = (int32_t)exact_signed; break;
         case PIN_U32: result.constant.u = (uint32_t)value; break;
-        case PIN_I64:
-            result.constant.i64 = exact_integer ? exact_signed : (int64_t)value;
-            break;
-        case PIN_U64:
-            result.constant.u64 = exact_integer ? exact : (uint64_t)value;
-            break;
+        case PIN_I64: result.constant.i64 = exact_signed; break;
+        case PIN_U64: result.constant.u64 = exact; break;
         case PIN_F32: result.constant.f = (float)value; break;
         default: result.constant.d = value; break;
     }
@@ -446,7 +508,25 @@ static int character_constant(analyzer *a, TSNode node, script_type expected)
     return script_analyzer_expr_add(a, result);
 }
 
-static void contextual_numeric(analyzer *a, int index, script_type type)
+/* Drops the range error a literal, with its minus sign, got when it was read
+ * without a type, so the type its context gives decides alone. */
+static void retract_range_error(analyzer *a, TSNode literal)
+{
+    script_range range = script_analyzer_range(a, literal);
+    static const char prefix[] = "Numeric literal is outside the range of ";
+    for (int i = acount(a->out->diagnostics) - 1; i >= 0; i--) {
+        const script_diagnostic *d = &a->out->diagnostics[i];
+        if (d->range.start == range.start && d->range.end == range.end &&
+            d->range.document == range.document &&
+            !strncmp(d->message, prefix, sizeof prefix - 1)) {
+            script_diagnostic *all = a->out->diagnostics;
+            memmove(all + i, all + i + 1, (size_t)(acount(all) - i - 1) * sizeof *all);
+            asetlen(a->out->diagnostics, acount(all) - 1);
+            return;
+        }
+    }
+}
+void script_analyzer_contextual_numeric(analyzer *a, int index, script_type type)
 {
     script_expression *expression = &a->out->expressions[index];
     if (!(expression->type.flags & SCRIPT_TYPE_UNTYPED) || !script_type_numeric(type)) {
@@ -454,23 +534,24 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     }
     if (expression->kind == SCRIPT_EXPR_CONSTANT) {
         script_range range = expression->range;
-        pin_value constant = expression->constant;
-        bool negative = constant.type == PIN_F32 ? signbit(constant.f)
-                      : constant.type == PIN_F64
-                          ? signbit(constant.d)
-                          : behavior_scalar_signed(constant.type) &&
-                                (int64_t)behavior_scalar_bits(constant) < 0;
         TSNode node = ts_node_descendant_for_byte_range(
             ts_tree_root_node(script_analyzer_document_syntax(a, range.document)->tree),
             (uint32_t)range.start,
             (uint32_t)range.end
         );
-        if (script_analyzer_is(node, "unary_expression")) {
+        /* The sign comes from the source: a value the untyped reading
+         * rejected holds zero. Only a minus folds into a literal. */
+        bool negative = script_analyzer_is(node, "unary_expression");
+        TSNode literal = node;
+        if (negative) {
             node = script_analyzer_field(node, "operand");
         }
-        int converted = script_analyzer_is(node, "character")
-                          ? character_constant(a, node, type)
-                          : number_constant(a, node, type, negative);
+        bool character = script_analyzer_is(node, "character");
+        if (!character) {
+            retract_range_error(a, literal);
+        }
+        int converted = character ? character_constant(a, node, type)
+                                  : number_constant(a, node, type, negative);
         a->out->expressions[index] = a->out->expressions[converted];
         a->out->expressions[index].range = range;
         return;
@@ -478,10 +559,10 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     if (expression->kind == SCRIPT_EXPR_UNARY || expression->kind == SCRIPT_EXPR_BINARY) {
         int left = expression->left, right = expression->right;
         if (left >= 0) {
-            contextual_numeric(a, left, type);
+            script_analyzer_contextual_numeric(a, left, type);
         }
         if (right >= 0) {
-            contextual_numeric(a, right, type);
+            script_analyzer_contextual_numeric(a, right, type);
         }
         a->out->expressions[index].type = type;
     }
@@ -531,7 +612,7 @@ static int shift_expression(analyzer *a, TSNode node, script_expression result, 
     /* A negative constant count is reported with the other constants. */
     if (!negative && typed_integer(y) && !script_type_char(y) &&
         behavior_scalar_signed(y.storage)) {
-        script_analyzer_diagnostic(a, count, "Shift count must be unsigned; convert it with uint(value)");
+        script_analyzer_diagnostic(a, count, "Shift count must be unsigned; convert it with u32(value)");
     } else if (!negative && !(y.flags & SCRIPT_TYPE_UNTYPED) && (!typed_integer(y) || script_type_char(y))) {
         script_analyzer_diagnostic(a, count, "Shift count must be an unsigned integer");
     }
@@ -547,7 +628,7 @@ static int shift_expression(analyzer *a, TSNode node, script_expression result, 
         if (!open && (!both || script_type_numeric(expected))) {
             value.flags &= ~SCRIPT_TYPE_UNTYPED;
         }
-        contextual_numeric(a, result.left, value);
+        script_analyzer_contextual_numeric(a, result.left, value);
         value = script_analyzer_expr_type(a, result.left);
     }
     if (!typed_integer(value) && !(value.flags & SCRIPT_TYPE_UNTYPED)) {
@@ -557,7 +638,7 @@ static int shift_expression(analyzer *a, TSNode node, script_expression result, 
         /* Counts keep their exact expression and an independent type until
          * constant folding. Lowering converts runtime counts to the value's
          * type only after the constant checks have finished. */
-        contextual_numeric(a, result.right, script_analyzer_conversion_operand(a, count));
+        script_analyzer_contextual_numeric(a, result.right, script_analyzer_conversion_operand(a, count));
     }
     result.effects = script_analyzer_expr_effects(a, result.left) |
                      script_analyzer_expr_effects(a, result.right);
@@ -1268,8 +1349,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                 script_type_numeric(expected)) {
                 operands.flags &= ~SCRIPT_TYPE_UNTYPED;
             }
-            contextual_numeric(a, result.left, operands);
-            contextual_numeric(a, result.right, operands);
+            script_analyzer_contextual_numeric(a, result.left, operands);
+            script_analyzer_contextual_numeric(a, result.right, operands);
             x = script_analyzer_expr_type(a, result.left);
             y = script_analyzer_expr_type(a, result.right);
         }

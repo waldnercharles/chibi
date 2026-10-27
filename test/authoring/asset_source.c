@@ -25,7 +25,7 @@ static bool has_completion(const asset_source_completions *choices, const char *
  * property completion remains independently covered below. */
 TEST_CASE(asset_source_navigates_event_payloads)
 {
-    const char *text = "Payload :: behavior { on Tick :: (dt: float) { "
+    const char *text = "Payload :: behavior { on Tick :: (dt: number) { "
                        "first:=dt; second:=dt; } }";
     const script_catalog_parameter payload = { .name = "dt",
                                                .type = { .storage = PIN_F32 } };
@@ -58,7 +58,7 @@ TEST_CASE(asset_source_navigates_event_payloads)
     }
     REQUIRE(references == 2);
     char *hover = authoring_source_hover(navigation, 0, offset);
-    REQUIRE(hover && !strcmp(hover, "dt: float"));
+    REQUIRE(hover && !strcmp(hover, "dt: number"));
     free(hover);
     authoring_navigation_free(navigation);
     script_analysis_free(analysis);
@@ -541,10 +541,15 @@ TEST_CASE(asset_source_resolves_canonical_component_identities)
         at = (int)(strstr(draft, "x=1") - draft) + 2;
         char *hover = asset_source_hover(source, at);
         REQUIRE(hover);
-        REQUIRE((strstr(hover, "x: float") != NULL) == (i == 0));
+        REQUIRE((strstr(hover, "x: number") != NULL) == (i == 0));
         free(hover);
         asset_source_free(source);
     }
+    /* A wrong value names the field's type as the language spells it. */
+    asset_source *wrong = asset_source_parse("components {\n Transform x=#true\n}\n");
+    REQUIRE(acount(wrong->diagnostics) == 1);
+    REQUIRE(strstr(wrong->diagnostics[0].message, "Transform.x (number)"));
+    asset_source_free(wrong);
     /* Typing a component offers the key scene files name it by. */
     const char *draft = "components {\n T\n}\n";
     asset_source *source = asset_source_parse(draft);

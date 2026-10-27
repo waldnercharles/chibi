@@ -25,7 +25,7 @@ pub Origin :: struct {
     end: int;
     line: int;
     column: int;
-    occurrence: uint64;
+    occurrence: u64;
 }
 
 // Storage/container come from the matching compiler target. Qualifiers are
@@ -40,7 +40,7 @@ pub NamespaceQualifier: int : 32;
 pub Type :: struct {
     storage: int;
     container: int;
-    nominal: uint64;
+    nominal: u64;
     qualifiers: int;
     first_field: int;
     field_count: int;
@@ -52,7 +52,7 @@ pub Field :: struct {
     owner_type: int;
     type: int;
     origin: int;
-    semantic: uint64;
+    semantic: u64;
     name: string;
     ordinal: int;
 }
@@ -70,7 +70,7 @@ pub NativeFunction: int : 1;
 // A single ordinary result has result_type; -1 means no result. A callable
 // shape this schema cannot represent is retained with unsupported and origin.
 pub Function :: struct {
-    semantic: uint64;
+    semantic: u64;
     name: string;
     origin: int;
     kind: int;
@@ -155,7 +155,7 @@ pub Expression :: struct {
     field: int;
     operation: int;
     conversion: int;
-    bits: uint64;
+    bits: u64;
     first_argument: int;
     argument_count: int;
     unsupported: string;

@@ -513,13 +513,13 @@ TEST_CASE(binary_transport_fixture_produces_bounded_artifact)
 {
     static const char
         source[] = "package binary_fixture\n"
-                   "pub Echo :: (values: byte[]) -> byte[] { return values; }\n"
-                   "pub Scalar :: () -> byte { return byte(7); }\n"
+                   "pub Echo :: (values: u8[]) -> u8[] { return values; }\n"
+                   "pub Scalar :: () -> u8 { return u8(7); }\n"
                    "pub Integers :: () -> int[] { values: int[] = []; return "
                    "values; }\n"
-                   "pub Loop :: (spin: bool) -> byte[] {\n"
+                   "pub Loop :: (spin: bool) -> u8[] {\n"
                    "  while (spin) {}\n"
-                   "  values: byte[] = []; return values;\n"
+                   "  values: u8[] = []; return values;\n"
                    "}\n";
     REQUIRE(sizeof source - 1 <= 4096);
     source_package_input input = { "binary_fixture/Fixture.chibi",
@@ -571,8 +571,8 @@ TEST_CASE(binary_transport_fixture_produces_bounded_artifact)
 TEST_CASE(binary_sized_fixture_produces_bounded_artifact)
 {
     static const char source[] = "package binary_sized\n"
-                                 "pub Sized :: (count: int) -> byte[] {\n"
-                                 "  return resize([byte(37)], count);\n"
+                                 "pub Sized :: (count: int) -> u8[] {\n"
+                                 "  return resize([u8(37)], count);\n"
                                  "}\n";
     const source_package_input input = { "binary_sized/Fixture.chibi",
                                          source,

@@ -9,7 +9,7 @@ Row :: (kind: int, type: int, value: int, count: int, name: string, start: int, 
     return {kind: kind, type: type, value: value, count: count, literal: 0, name: name, text: "", start: start,
             end: end, line: line, column: column};
 }
-Literal :: (type: int, literal: int64, start: int, end: int, line: int, column: int) -> facts.Row {
+Literal :: (type: int, literal: i64, start: int, end: int, line: int, column: int) -> facts.Row {
     row := Row(facts.LiteralRow, type, 0, 0, "", start, end, line, column);
     row.literal = literal;
     return row;
@@ -66,7 +66,7 @@ Changed :: (rows: facts.Row[], index: int, field: int, value: int) -> facts.Row[
         case Column:
             row.column = value;
         case LiteralValue:
-            row.literal = int64(value);
+            row.literal = i64(value);
     }
     rows[index] = row;
     return rows;

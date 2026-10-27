@@ -1,7 +1,7 @@
 // Begin and Damage flash the bound material for 0.18 seconds. The material
 // exposes Flash as a scalar parameter.
 DamageFlashBehavior :: behavior {
-    action set_material_parameter_action = set_material_parameter(self, "Flash", Value: float = 3.0)
+    action set_material_parameter_action = set_material_parameter(self, "Flash", 3.0)
     on Begin :: () {
         set_material_parameter_action()
     }
@@ -10,6 +10,6 @@ DamageFlashBehavior :: behavior {
     }
     after set_material_parameter_action {
         await delay(0.18)
-        set_material_parameter(self, "Flash", Value: float = 0.0)
+        set_material_parameter(self, "Flash", 0.0)
     }
 }

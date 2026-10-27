@@ -1,6 +1,6 @@
-Recharge :: system(charge: Charge) on Tick :: (dt: float s) {
+Recharge :: system(charge: Charge) on Tick :: (dt: number s) {
     if !charge.full {
-        charge.level = float(double(charge.level) + charge.rate * dt)
+        charge.level += charge.rate * dt
         if charge.level >= charge.capacity {
             charge.full = true
             charge.cycles += 1

@@ -38,7 +38,7 @@ enum
 };
 static const char PACKAGE[] = "project:callable_headers";
 static const char *const sources[CASES] = {
-    "Facts :: library { Work :: (value:int,scale:double)->double { return "
+    "Facts :: library { Work :: (value:int,scale:f64)->f64 { return "
     "scale; } }",
     "Facts :: library { Work :: (value:U)->int { return 1; } }",
     "Facts :: library { Work :: (T:T,value:T)->int { return 1; } }",
@@ -54,7 +54,7 @@ static const char *const sources[CASES] = {
     "Facts :: library { Work :: (value:int=3)->(value:int=4) { return; } }",
     "Facts :: library { Work :: (value) {} }",
     "package facts\nWork :: (value:int)->int { return value; }",
-    "Facts :: library { Work :: (speed:double u/s)->double u/s { return speed; "
+    "Facts :: library { Work :: (speed:f64 u/s)->f64 u/s { return speed; "
     "} }",
 };
 static compiler_fixture fixture;

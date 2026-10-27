@@ -137,11 +137,11 @@ ScaledRealLiteral :: (source: string, nodes: syntax.Node[], fields: string[], no
                 return "";
             }
             mantissa := (bits & 0x000fffffffffffff) | 0x0010000000000000;
-            value: double = 0.0;
+            value: f64 = 0.0;
             bit: int = 52;
             while (bit >= 0) {
                 value *= 2.0;
-                if (((mantissa >> uint64(bit)) & 1) != 0) {
+                if (((mantissa >> u64(bit)) & 1) != 0) {
                     value += 1.0;
                 }
                 bit -= 1;

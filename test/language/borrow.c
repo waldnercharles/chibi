@@ -553,7 +553,7 @@ static void mutate_at_call(const behavior_function *, behavior_function_context 
 TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
 {
     REQUIRE(
-        authored("Borrow :: library {Root :: (input: double[]) -> double { copy := input; return Forward(copy); }Forward :: (input: double[]) -> double { return Sum(input); }Sum :: (input: double[]) -> double { total := 0.0; for value in input { total += value; } return total; } }")
+        authored("Borrow :: library {Root :: (input: f64[]) -> f64 { copy := input; return Forward(copy); }Forward :: (input: f64[]) -> f64 { return Sum(input); }Sum :: (input: f64[]) -> f64 { total: f64 = 0; for value in input { total += value; } return total; } }")
     );
     REQUIRE(function->readonly_collections);
     REQUIRE(guarded() > 0);
@@ -589,7 +589,7 @@ TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
 TEST_CASE(borrow_call_callbacks_keep_their_owned_argument_snapshots)
 {
     REQUIRE(
-        authored("Borrow :: library {Root :: (input: double[]) -> double { copy := input; return Sum(copy) + Sum(copy); }Sum :: (input: double[]) -> double { total := 0.0; for value in input { total += value; } return total; } }")
+        authored("Borrow :: library {Root :: (input: f64[]) -> f64 { copy := input; return Sum(copy) + Sum(copy); }Sum :: (input: f64[]) -> f64 { total: f64 = 0; for value in input { total += value; } return total; } }")
     );
     REQUIRE(function->readonly_collections);
     for (int backend = 0; backend < 2; backend++) {
@@ -614,16 +614,16 @@ TEST_CASE(borrow_call_callbacks_keep_their_owned_argument_snapshots)
 TEST_CASE(borrow_call_contract_rejects_escape_mutation_suspend_and_recursion)
 {
     const char *sources[] = {
-        ("Borrow :: library { Root :: (input: double[]) -> double[] { return "
-         "Keep(input); }Keep :: (input: double[]) -> double[] { return input; "
+        ("Borrow :: library { Root :: (input: f64[]) -> f64[] { return "
+         "Keep(input); }Keep :: (input: f64[]) -> f64[] { return input; "
          "} }"),
-        ("Borrow :: library { Root :: (input: double[]) -> double { return "
-         "Change(input); }Change :: (input: double[]) -> double { input[0] = "
+        ("Borrow :: library { Root :: (input: f64[]) -> f64 { return "
+         "Change(input); }Change :: (input: f64[]) -> f64 { input[0] = "
          "99; return input[0]; } }"),
-        ("Borrow :: library { Root :: (input: double[]) -> double { return "
-         "await Wait(input); }Wait :: (input: double[]) -> double { yield; "
+        ("Borrow :: library { Root :: (input: f64[]) -> f64 { return "
+         "await Wait(input); }Wait :: (input: f64[]) -> f64 { yield; "
          "return input[0]; } }"),
-        ("Borrow :: library { Root :: (input: double[]) -> double { return "
+        ("Borrow :: library { Root :: (input: f64[]) -> f64 { return "
          "Root(input); } }")
     };
     for (int i = 0; i < 4; i++) {
@@ -702,7 +702,7 @@ TEST_CASE(borrow_helper_mutation_and_opaque_calls_remain_owning)
 TEST_CASE(borrow_call_guards_program_state_headers_before_commit)
 {
     REQUIRE(
-        authored("Borrow :: behavior { scalar: double = 7;Root :: (input: double[]) -> double { copy := input; scalar = 99; Touch(); return copy[0]; }Touch :: () -> double { return 0; } }")
+        authored("Borrow :: behavior { scalar: f64 = 7;Root :: (input: f64[]) -> f64 { copy := input; scalar = 99; Touch(); return copy[0]; }Touch :: () -> f64 { return 0; } }")
     );
     REQUIRE(function->readonly_collections && guarded() > 0);
     uint64_t state = 0;
@@ -749,7 +749,7 @@ TEST_CASE(borrow_authored_readonly_loop_keeps_scalar_writes)
                                               .name = "Run",
                                               .kind = SCRIPT_CAPABILITY_EVENT };
     const script_catalog catalog = { .capabilities = &event, .capability_count = 1 };
-    syntax = script_parse("Borrow :: behavior { values: double[]=[]; total: double=0; on Run :: () { sum:=0.0; for value in values { sum+=value; } total+=sum; } }");
+    syntax = script_parse("Borrow :: behavior { values: f64[]=[]; total: f64=0; on Run :: () { sum: f64 = 0; for value in values { sum+=value; } total+=sum; } }");
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(analysis && analysis->valid);
@@ -990,7 +990,7 @@ TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code)
     cleanup();
     const script_catalog catalog = { 0 };
     const script_lower_bindings bindings = { 0 };
-    syntax = script_parse("Borrow :: library { Count :: (values:double[])->double { total:=0.0; for value in values { total+=1; } return total; } }");
+    syntax = script_parse("Borrow :: library { Count :: (values:f64[])->f64 { total: f64 = 0; for value in values { total+=1; } return total; } }");
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(analysis && analysis->valid);

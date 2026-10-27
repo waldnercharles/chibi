@@ -149,8 +149,8 @@ CarriageReturn: int : 13;
 // Odin's keyword table: FNV-1a hashes into a power-of-two table, here probed
 // linearly because Chibi's keywords collide in Odin's 512 slots.
 KeywordSlots: int : 512;
-KeywordHashBasis: uint64 : 0x811C9DC5;
-KeywordHashPrime: uint64 : 0x01000193;
+KeywordHashBasis: u64 : 0x811C9DC5;
+KeywordHashPrime: u64 : 0x01000193;
 
 Tokens :: union {
     Scanned(kinds: int[], starts: int[], ends: int[], rows: int[], columns: int[],
@@ -562,10 +562,10 @@ KeywordTable :: (names: string[]) -> int[] {
     kind: int = Package;
     while (kind <= Delete) {
         name := names[kind];
-        hash: uint64 = KeywordHashBasis;
+        hash: u64 = KeywordHashBasis;
         index: int = 0;
         while (index < text_byte_length(name)) {
-            hash = ((hash ^ uint64(text_byte_at(name, index))) * KeywordHashPrime) & 0xFFFFFFFF;
+            hash = ((hash ^ u64(text_byte_at(name, index))) * KeywordHashPrime) & 0xFFFFFFFF;
             index += 1;
         }
         slot := int(hash & 511);
@@ -584,10 +584,10 @@ Keyword :: (table: int[], names: string[], bytes: int[], start: int, end: int) -
     if (end - start < 2 || end - start >= 16) {
         return Ident;
     }
-    hash: uint64 = KeywordHashBasis;
+    hash: u64 = KeywordHashBasis;
     index := start;
     while (index < end) {
-        hash = ((hash ^ uint64(bytes[index])) * KeywordHashPrime) & 0xFFFFFFFF;
+        hash = ((hash ^ u64(bytes[index])) * KeywordHashPrime) & 0xFFFFFFFF;
         index += 1;
     }
     slot := int(hash & 511);

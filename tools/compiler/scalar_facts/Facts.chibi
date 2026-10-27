@@ -143,7 +143,7 @@ pub Row :: struct {
     type: int;
     value: int;
     count: int;
-    literal: int64;
+    literal: i64;
     name: string;
     text: string;
     start: int;
@@ -279,9 +279,9 @@ pub Floating :: (type: int) -> bool {
 }
 // Whether `literal` is a value of `type`: 0 or 1 for bool, its range for an
 // integer type, any bits for a word or double, and 32 bits for a float.
-pub Fits :: (literal: int64, type: int) -> bool {
+pub Fits :: (literal: i64, type: int) -> bool {
     if (type == FloatType) {
-        return literal >= 0 && literal < int64(1) << uint(32);
+        return literal >= 0 && literal < i64(1) << u32(32);
     }
     bits := Bits(type);
     if (bits == 0) {
@@ -291,9 +291,9 @@ pub Fits :: (literal: int64, type: int) -> bool {
         return true;
     }
     if (Unsigned(type)) {
-        return literal >= 0 && literal < int64(1) << uint(bits);
+        return literal >= 0 && literal < i64(1) << u32(bits);
     }
-    half := int64(1) << uint(bits - 1);
+    half := i64(1) << u32(bits - 1);
     return literal >= 0 - half && literal < half;
 }
 

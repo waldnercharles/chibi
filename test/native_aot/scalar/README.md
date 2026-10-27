@@ -14,8 +14,8 @@ One source document holding one package, no imports, and only ordinary
 function declarations without attributes: at most 32 functions. The first
 function is the module's entry and must be `() -> int`. Every function:
 
-- takes at most eight plain number or `bool` parameters (`int8`, `byte`,
-  `int16`, `uint16`, `int`, `uint`, `int64`, `uint64`, `float` or `double`; no
+- takes at most eight plain number or `bool` parameters (`i8`, `u8`,
+  `i16`, `u16`, `int`, `u32`, `i64`, `u64`, `number` or `f64`; no
   `ref`, defaults or managed, nominal or container types) and returns one
   plain number or `bool`;
 - has a body of locals (`x := EXPR;` or `x: T = EXPR;`), assignments to its
@@ -33,8 +33,9 @@ function is the module's entry and must be `() -> int`. Every function:
   not;
 - has `bool` conditions and returns, assigns and declares expressions of the
   type expected, or of a type that widens to it, as a return widens: a
-  narrower integer, or `float` to `double`. Each is a number literal within
-  its type, possibly signed, `true` or `false`, a parameter or local in scope,
+  narrower integer, or `number` to `f64`. Each is a number literal within
+  its type, possibly signed (in an integer context a whole decimal such as
+  `1.0` or `1e2` is the integer it spells), `true` or `false`, a parameter or local in scope,
   integer arithmetic `a + b` (or
   `-`, `*`, `/`, `%`, `&`, `|`, `^`), floating arithmetic `a + b` (or `-`,
   `*`, `/`), a shift `a << n` or `a >> n`, an integer negation `-a` or
@@ -42,7 +43,7 @@ function is the module's entry and must be `() -> int`. Every function:
   two numbers, `a == b` or `a != b` of two bools, `a && b`, `a || b` or `!a`
   (or `and`, `or` and `not`), a conversion `T(a)` or `T(wrap: a)` to an
   integer type,
-  `float(a)` or `double(a)`, or a direct call
+  `number(a)` or `f64(a)`, or a direct call
   `F(a, b, ...)` of a function of the same source with exactly its arity and
   parameter types, whose operands are again such expressions: at most 64
   operands per function, counted over all its statements.
@@ -59,14 +60,14 @@ not fit becomes the type's largest value, and a typed one clamps. `T(a)`
 clamps to T's range and `T(wrap: a)` keeps the low bits. The emitter guards
 the divisor and count with `select`, so no path traps.
 
-`float` and `double` are IEEE at their width with no fast-math: arithmetic
+`number` and `f64` are IEEE at their width with no fast-math: arithmetic
 rounds to nearest, overflow gives an infinity, subnormals are kept, and NaN
-makes every comparison false except `!=`. An integer beside a float, or a
-`float` beside a `double`, converts to the floating type first, as
-`OperatorStep` converts it; an integer reaches `float` through `double`, so
-2^60 + 2^36 + 1 rounds twice. A float or double converted to an integer type
+makes every comparison false except `!=`. An integer beside a floating
+value, or a `number` beside an `f64`, converts to the floating type first, as
+`OperatorStep` converts it; an integer reaches `number` through `f64`, so
+2^60 + 2^36 + 1 rounds twice. A `number` or `f64` converted to an integer type
 truncates toward zero, saturates at the type's bounds and gives 0 for NaN, in
-either mode. A floating literal is the binary64 nearest it, and a `float` one
+either mode. A floating literal is the binary64 nearest it, and a `number` one
 the binary32 nearest that, as stage zero reads it.
 
 A consequence runs only when its condition holds and its alternative only
@@ -132,7 +133,7 @@ record or union with any other field or payload, an `is` that binds and a
 switch on a union expression other than a variable are rejected. The
 exported `Main` still takes and returns scalars.
 Sources are at most 16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds
-the 96-source corpus (48 accepted) with each accepted value and statement
+the 96-source corpus (51 accepted) with each accepted value and statement
 trace and each rejection's exact message and source excerpt, including both
 sides of every bound.
 
@@ -255,9 +256,9 @@ child process. Its `chibi_scalar()` must return what the authored compiler's
 closure of the same source returns on both VMs. Probes call internal functions
 such as `Min`, `Max`, `Clamp` and each comparison with `INT32_MIN`,
 `INT32_MAX`, equal and adjacent values, and both outcomes of each guard,
-through a validation-only IR adapter that passes int64 arguments, truncated
-to each parameter's type, and extends the result to int64, so a `bool` is 0 or
-1 and a `uint64` is its bits. The adapter is not an ABI. The O0 IR must keep `Min`'s
+through a validation-only IR adapter that passes i64 arguments, truncated
+to each parameter's type, and extends the result to i64, so a `bool` is 0 or
+1 and a `u64` is its bits. The adapter is not an ABI. The O0 IR must keep `Min`'s
 parameter-dependent `icmp` and `br`; `lazy_arm` must call the consequence's
 callee only after the branch's true target and the fallback's only past the
 jump it takes otherwise; and `logical_and` must compare `b < c` only after
@@ -266,7 +267,7 @@ branching on `a < b`.
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 47 accepted sources build, run and agree at O0 and O2.
+other 50 accepted sources build, run and agree at O0 and O2.
 
 Generated width modules stay out of the corpus, which `Run.ps1` bounds. For
 each integer type, one module declares every operator on that type and
@@ -279,37 +280,37 @@ on every value at the edges of each type that its source type holds. Every
 call must give the integer contract's value, computed in C, on both VMs and
 natively at O0 and O2.
 
-Generated floating modules sit beside them. For `float` and `double`, one
+Generated floating modules sit beside them. For `number` and `f64`, one
 module runs each operator and comparison on every pair of both zeros, 1,
 -0.1, the largest finite value, the least subnormal, both infinities and NaN,
 adds an `int` operand, and returns a signed, a `+`-prefixed and a rounding
-literal; the `float` module also widens to `double`. Another converts the
+literal; the `number` module also widens to `f64`. Another converts the
 type to and from every integer type, at each integer type's edges with
 fractions on either side, past every type, at the infinities, NaN and the
-least subnormals, and between `float` and `double`. Each call must give the
+least subnormals, and between `number` and `f64`. Each call must give the
 value C's IEEE arithmetic gives on both VMs and natively at O0 and O2. The
-adapter passes a float or double as its encoding's bits, zero-extended, and
+adapter passes a `number` or `f64` as its encoding's bits, zero-extended, and
 returns any NaN as the canonical quiet NaN, since IEEE leaves a NaN's sign
 and payload open.
 
 A generated control module runs else-if chains that end and that fall
 through, nested consequences with locals of their own and a local that hides
-another, compound assignments to `int` parameters and a `byte` local, shifts
-assigned to `byte` locals by a `uint` count and by a constant past the
+another, compound assignments to `int` parameters and a `u8` local, shifts
+assigned to `u8` locals by a `u32` count and by a constant past the
 width, `&&`,
 `||`, `!` and `bool` equality on every combination of their operands, and a
 condition mixing them. Each call must give the value C gives on both VMs and
 natively at O0 and O2.
 
-A generated switch module runs every arm of switches on `int`, `byte` (every
-value) and `int64` values, a default arm written first, arm values that are
+A generated switch module runs every arm of switches on `int`, `u8` (every
+value) and `i64` values, a default arm written first, arm values that are
 calls and expressions, a repeated value whose second arm cannot run, `break`
 and `continue` through a switch to its loop, and a switch nested in an arm.
 Each call must give the value C gives on both VMs and natively at O0 and O2.
 
 A generated loop module runs each range form on every pair of ends near zero
 and both ends of `int` at most 16 apart, every empty range among them, folding
-the indices into a hash so their order and count show; a range over `byte`
+the indices into a hash so their order and count show; a range over `u8`
 bounds; a `while` loop that may not run; an endless loop that only a return
 leaves; and nested loops whose `break` and `continue` leave or restart the
 innermost. Each call must give the value C gives on both VMs and natively at

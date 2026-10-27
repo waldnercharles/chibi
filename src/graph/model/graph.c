@@ -229,8 +229,8 @@ int pin_types_compatible(const pin_spec *a, const pin_spec *b)
 void graph_wildcard_resolve_pin(graph *g, pin_spec *p, pin_type type, const char *type_name)
 {
     char *copy = type_name ? graph_own_str(g, type_name, strlen(type_name)) : NULL;
-    /* Only aggregates, enums and handles are named types: a float spelled
-     * "float" is the same float as an unnamed one. */
+    /* Only aggregates, enums and handles are named types: a number spelled
+     * "number" is the same number as an unnamed one. */
     bool named = type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE;
     bool changed_type = p->type != type || (named && (p->type_name || type_name) &&
                                             (!p->type_name || !type_name ||

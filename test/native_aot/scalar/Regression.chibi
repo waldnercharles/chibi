@@ -21,7 +21,7 @@ pub Tests :: () -> int {
 
 // Host invocation selects entries in its root package only. Keep this test
 // forwarding entry authored and preserve the original input rows unchanged.
-pub EmitBytes :: (rows: facts.Row[]) -> byte[] {
+pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
     return scalar.EmitBytes(rows);
 }
 
@@ -70,7 +70,7 @@ pub Check :: (rows: facts.Row[]) -> int {
                 return -5;
             }
             for (index in 0..<length(expected)) {
-                if (bytes[index] != byte(expected[index])) {
+                if (bytes[index] != u8(expected[index])) {
                     return -6;
                 }
             }

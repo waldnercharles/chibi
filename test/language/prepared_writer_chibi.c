@@ -61,9 +61,9 @@ static const char SAMPLE
          "    if (count == 0) { return Shape.Empty; }\n"
          "    return Shape.Path(points);\n"
          "}\n"
-         "Wide :: (seed: uint64) -> uint64 { return (seed ^ "
+         "Wide :: (seed: u64) -> u64 { return (seed ^ "
          "0x9e3779b97f4a7c15) * 3; }\n"
-         "Ratio :: (a: double, b: float) -> double { return a / b + 0.5; }\n";
+         "Ratio :: (a: f64, b: number) -> f64 { return a / b + 0.5; }\n";
 static const char *const CORPUS[] = { "project:prepared_writer",
                                       "core:strings",
                                       "project:syntax_diagnostics",

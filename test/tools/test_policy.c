@@ -1803,6 +1803,30 @@ TEST_CASE(ci_groups_share_one_build_and_stop_on_failure)
     return true;
 }
 
+TEST_CASE(ci_build_timings_use_ready_drivers_and_bounded_selector)
+{
+    char *workflow = tool_read(CHIBI_SOURCE_ROOT "/.github/workflows/ci.yml");
+    REQUIRE(workflow);
+    const char
+        *step = "      - name: Build timing host regressions (ready drivers)\n"
+                "        env:\n"
+                "          CHIBI_TOOLS_BUILD_DIR: build/test/tools\n"
+                "          CHIBI_BUILD_HOST: "
+                "build-release/sdk/chibi-build-host\n"
+                "        run: python3 tools/test_policy.py --timeout 180 tool "
+                "build-timings\n";
+    const char *first = strstr(workflow, step);
+    REQUIRE(first);
+    const char *second = strstr(first + strlen(step), step);
+    REQUIRE(second && !strstr(second + strlen(step), step));
+    free(workflow);
+    char *policy = tool_read(CHIBI_SOURCE_ROOT "/tools/test_policy.py");
+    REQUIRE(policy);
+    REQUIRE(strstr(policy, "'build-timings':") && strstr(policy, "'--build-timings'"));
+    free(policy);
+    return true;
+}
+
 TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage)
 {
     const char *steps[] = { "build", "native", "materials", "projects", "language" };
@@ -3218,6 +3242,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(language_artifact_cli_requires_exact_argument_counts);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
     RUN_TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage);
+    RUN_TEST_CASE(ci_build_timings_use_ready_drivers_and_bounded_selector);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
     RUN_TEST_CASE(ci_generator_hosts_resolve_symlink_root);
     RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);

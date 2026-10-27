@@ -575,7 +575,7 @@ Gather :: (module: Module) -> Gathered {
         case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
                      sources, results, data, hosts, calls, references, components, points, watches, states,
-                     entries):
+                     entries, queries, query_root, query_variable_count, query_filter, descriptions, system_description):
             // Each step is a value Write writes, or -1 - n for named[n].
             named: string[] = [];
             steps: int[] = [];
@@ -693,6 +693,9 @@ Gather :: (module: Module) -> Gathered {
                     named.append(item.event_name);
                     steps.append(-length(named));
                 }
+            }
+            for (description in descriptions) {
+                steps.append(description.row_type);
             }
             // A value writes its own strings, then those of its nested values
             // in order, so a stack walks each written value in that order.

@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -106,15 +107,21 @@ static void reset(const char *name, const char *source)
     write_at(tools, "action", "ok\n");
 }
 
-/* Runs `chibi build --native` with up to two options, an empty PATH and no
- * CHIBI_LLVM_BIN. */
-static int build_with(const char *program, const char *const options[2], const char *llvm)
+enum
+{
+    MAX_OPTIONS = 4
+};
+
+/* Runs `chibi build --native` with `options`, up to MAX_OPTIONS and ended by
+ * NULL, an empty PATH and no CHIBI_LLVM_BIN. */
+static int build_with(const char *program, const char *const *options, const char *llvm)
 {
     chibi_process_output out = { .data = output, .capacity = sizeof output };
     chibi_process_output err = { .data = errors, .capacity = sizeof errors };
-    const char *argv[9] = { program, "build", "--native" };
+    const char *argv[MAX_OPTIONS + 7] = { program, "build", "--native" };
     int at = 3;
-    for (int i = 0; i < 2 && options[i]; i++) {
+    for (int i = 0; options[i]; i++) {
+        assert(i < MAX_OPTIONS);
         argv[at++] = options[i];
     }
     argv[at++] = "--llvm";
@@ -130,6 +137,23 @@ static int build(const char *program, const char *mode, const char *llvm)
 {
     const char *options[] = { mode, NULL };
     return build_with(program, options, llvm);
+}
+
+/* The program path the launcher printed last, as "native: PATH". */
+static bool printed(char program[1024])
+{
+    const char *line = strstr(errors, "native: /");
+    if (!line) {
+        return false;
+    }
+    line += strlen("native: ");
+    size_t length = strcspn(line, "\n");
+    if (length >= 1024) {
+        return false;
+    }
+    memcpy(program, line, length);
+    program[length] = 0;
+    return true;
 }
 
 /* The one entry of game/build/native starting with `prefix` and ending with
@@ -258,7 +282,7 @@ TEST_CASE(native_build_adds_line_tables_with_g)
 {
     reset("lines", SOURCE);
     REQUIRE(build(launcher, "-O0", tools) == 0);
-    const char *lines[] = { "-O0", "-g" };
+    const char *lines[] = { "-O0", "-g", NULL };
     REQUIRE(build_with(launcher, lines, tools) == 0 && count("O0-") == 2);
     REQUIRE(build_with(launcher, lines, tools) == 0 && strstr(errors, "is up to date"));
     char *plain = module_ir(false), *ir = module_ir(true);
@@ -290,7 +314,7 @@ TEST_CASE(native_build_adds_line_tables_with_g)
     snprintf(file, sizeof file, "directory: \"%s\")", game);
     REQUIRE(build(launcher, "-O0", tools) == 0 && strstr(errors, "is up to date"));
     REQUIRE(build_with(launcher, lines, tools) == 0 && count("O0-") == 3 && any_ir(file));
-    const char *twice[] = { "-g", "-g" };
+    const char *twice[] = { "-g", "-g", NULL };
     REQUIRE(build_with(launcher, twice, tools) == 2 && strstr(errors, "Invalid build option: -g"));
     return true;
 }
@@ -358,6 +382,117 @@ TEST_CASE(native_build_rejects_missing_and_failing_tools)
     return true;
 }
 
+/* Whether `name` in `folder` holds `text`. */
+static bool holds(const char *folder, const char *name, const char *text)
+{
+    char file[1024];
+    path(file, folder, name);
+    char *read = tool_read(file);
+    bool found = read && strstr(read, text);
+    free(read);
+    return found;
+}
+
+/* Whether the trace `name` in the tools folder is exactly `expected`. */
+static bool traced(const char *name, const char *expected)
+{
+    char file[1024];
+    path(file, tools, name);
+    char *read = tool_read(file);
+    bool same = read && !strcmp(read, expected);
+    free(read);
+    return same;
+}
+
+/* `--target` links a macOS arm64 program with ld64.lld against a libSystem
+ * stub, with dyld calling `main`, and a Windows x64 program.exe with lld-link
+ * and no C runtime, through an import library for kernel32's ExitProcess.
+ * The target is part of the key, and an unknown target or Windows line
+ * tables are rejected. */
+TEST_CASE(native_build_links_macos_and_windows_programs)
+{
+    reset("targets", SOURCE);
+    const char *mac[] = { "-O0", "--target", "aarch64-apple-darwin", NULL };
+    REQUIRE(build_with(launcher, mac, tools) == 0);
+    char program[1024], folder[1024], expected[8192];
+    REQUIRE(printed(program) && only("O0-", "", folder));
+    snprintf(expected, sizeof expected, "%s/program", folder);
+    REQUIRE(!strcmp(program, expected));
+    snprintf(
+        expected,
+        sizeof expected,
+        "-flavor\ndarwin\n-arch\narm64\n-platform_version\nmacos\n11.0.0\n11.0."
+        "0\n-dead_strip\n-e\n_main\n"
+        "%s.partial/object.o\n%s.partial/start.o\n%s.partial/"
+        "libSystem.tbd\n-o\n%s.partial/program\n",
+        folder,
+        folder,
+        folder,
+        folder
+    );
+    REQUIRE(traced("ld.lld.argv", expected));
+    REQUIRE(holds(folder, "libSystem.tbd", "install-name: '/usr/lib/libSystem.B.dylib'\n"));
+    REQUIRE(holds(folder, "start.ll", "target triple = \"arm64-apple-macosx11.0.0\""));
+    REQUIRE(holds(folder, "start.ll", "define i32 @main() {\n  %status = call i32 @chibi_scalar()"));
+    REQUIRE(holds(folder, "source.ll", "target triple = \"arm64-apple-macosx11.0.0\""));
+    REQUIRE(build_with(launcher, mac, tools) == 0 && strstr(errors, "/program is up to date"));
+
+    const char *windows[] = { "-O0", "--target", "x86_64-pc-windows-msvc", NULL };
+    REQUIRE(build_with(launcher, windows, tools) == 0 && count("O0-") == 2);
+    REQUIRE(printed(program) && strlen(program) > strlen("/program.exe"));
+    size_t length = strlen(program) - strlen("/program.exe");
+    REQUIRE(!strcmp(program + length, "/program.exe"));
+    memcpy(folder, program, length);
+    folder[length] = 0;
+    snprintf(
+        expected,
+        sizeof expected,
+        "-flavor\nlink\n/lib\n/nologo\n/def:%s.partial/kernel32.def\n/"
+        "machine:x64\n/out:%s.partial/kernel32.lib\n",
+        folder,
+        folder
+    );
+    REQUIRE(traced("ld.lld.lib.argv", expected));
+    snprintf(
+        expected,
+        sizeof expected,
+        "-flavor\nlink\n/nologo\n/subsystem:console\n/entry:mainCRTStartup\n/"
+        "nodefaultlib\n/opt:ref\n"
+        "/out:%s.partial/program.exe\n%s.partial/object.o\n%s.partial/"
+        "start.o\n%s.partial/kernel32.lib\n",
+        folder,
+        folder,
+        folder,
+        folder
+    );
+    REQUIRE(traced("ld.lld.argv", expected));
+    REQUIRE(holds(folder, "kernel32.def", "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n"));
+    REQUIRE(holds(folder, "start.ll", "call void @ExitProcess(i32 %status)"));
+    REQUIRE(holds(folder, "start.ll", "module asm \"__chkstk:\""));
+    REQUIRE(holds(folder, "start.ll", "@_fltused = dso_local global i32 0"));
+    REQUIRE(holds(folder, "source.ll", "\"probe-stack\"=\"__chkstk\""));
+    REQUIRE(holds(folder, "receipt.txt", "\nstage import-library\n"));
+    REQUIRE(build_with(launcher, windows, tools) == 0 && strstr(errors, "/program.exe is up to date"));
+
+    const char *unknown[] = { "--target", "riscv64gc-unknown-linux-gnu", NULL };
+    REQUIRE(build_with(launcher, unknown, tools) == 2);
+    REQUIRE(strstr(errors, "unknown target riscv64gc-unknown-linux-gnu; use "));
+    const char *lines[] = { "-g", "--target", "x86_64-pc-windows-msvc", NULL };
+    REQUIRE(build_with(launcher, lines, tools) == 2);
+    REQUIRE(strstr(errors, "line tables are Linux x86-64 only"));
+    const char *twice[] = { "--target",
+                            "aarch64-apple-darwin",
+                            "--target",
+                            "aarch64-apple-darwin",
+                            NULL };
+    REQUIRE(
+        build_with(launcher, twice, tools) == 2 &&
+        strstr(errors, "Invalid build option: --target")
+    );
+    REQUIRE(count("O0-") == 2);
+    return true;
+}
+
 TEST_CASE(native_build_refuses_what_an_interrupted_build_left)
 {
     reset("interrupted", SOURCE);
@@ -416,6 +551,18 @@ TEST_CASE(native_build_refuses_an_incomplete_output)
     return true;
 }
 
+/* Replaces the controlled tools with links to the LLVM tools in `bin`. */
+static void real_tools(const char *bin)
+{
+    const char *names[] = { "opt", "llc", "ld.lld" };
+    for (int i = 0; i < 3; i++) {
+        char tool[1024], real[1024];
+        path(tool, tools, names[i]);
+        path(real, bin, names[i]);
+        assert(!unlink(tool) && !symlink(real, tool));
+    }
+}
+
 /* `llvm-symbolizer` in `bin` places `symbol` of `program` at `expected`. */
 static bool symbolized(const char *bin, const char *program, const char *symbol, const char *expected)
 {
@@ -451,27 +598,14 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
         return true;
     }
     reset("llvm", SOURCE);
-    const char *names[] = { "opt", "llc", "ld.lld" };
-    for (int i = 0; i < 3; i++) {
-        char tool[1024], real[1024];
-        path(tool, tools, names[i]);
-        path(real, bin, names[i]);
-        REQUIRE(!unlink(tool) && !symlink(real, tool));
-    }
+    real_tools(bin);
     char in_place[1024];
     path(in_place, built, "sdk/chibi");
     for (int i = 0; i < 4; i++) {
-        const char *options[] = { i % 2 ? "-O2" : "-O0", i >= 2 ? "-g" : NULL };
+        const char *options[] = { i % 2 ? "-O2" : "-O0", i >= 2 ? "-g" : NULL, NULL };
         REQUIRE(build_with(in_place, options, tools) == 0);
-        /* The launcher prints the program's path last. */
         char program[1024];
-        const char *printed = strstr(errors, "native: /");
-        REQUIRE(printed);
-        printed += strlen("native: ");
-        size_t length = strcspn(printed, "\n");
-        REQUIRE(length < sizeof program);
-        memcpy(program, printed, length);
-        program[length] = 0;
+        REQUIRE(printed(program));
         const char *argv[] = { program, NULL };
         const char *envp[] = { NULL };
         chibi_process_output out = { 0 }, err = { 0 };
@@ -500,6 +634,194 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
     return true;
 }
 
+/* The other targets' bundle directories and program names, in the
+ * driver's target order after Linux. */
+static const struct
+{
+    const char *triple, *directory, *program;
+} CROSS[] = {
+    { "aarch64-apple-darwin", "macos-arm64", "program" },
+    { "x86_64-pc-windows-msvc", "windows-x64", "program.exe" },
+};
+
+/* Whether `program` is CROSS[t]'s executable: a 64-bit arm64 Mach-O
+ * MH_EXECUTE file, or a PE32+ x86-64 console program. */
+static bool executable_for(const char *program, int t)
+{
+    unsigned char bytes[512] = { 0 };
+    FILE *file = fopen(program, "rb");
+    size_t read = file ? fread(bytes, 1, sizeof bytes, file) : 0;
+    if (file) {
+        fclose(file);
+    }
+    if (read < sizeof bytes) {
+        return false;
+    }
+    if (!t) {
+        return !memcmp(bytes, "\xcf\xfa\xed\xfe\x0c\x00\x00\x01", 8) && bytes[12] == 2;
+    }
+    size_t pe = (size_t)bytes[0x3c] | (size_t)bytes[0x3d] << 8;
+    return !memcmp(bytes, "MZ", 2) && pe + 24 + 69 < sizeof bytes &&
+           !memcmp(bytes + pe, "PE\0\0", 4) && bytes[pe + 4] == 0x64 &&
+           bytes[pe + 5] == 0x86 && bytes[pe + 24] == 0x0b &&
+           bytes[pe + 25] == 0x02 && bytes[pe + 24 + 68] == 3;
+}
+
+/* With CHIBI_NATIVE_BUNDLE set, copies `program` into CROSS[t]'s bundle
+ * directory as `name` and lists it with its exit status 42, for
+ * test/native_aot/targets/run.c to run on that target. */
+static void bundle_program(const char *program, int t, const char *name)
+{
+    const char *bundle = getenv("CHIBI_NATIVE_BUNDLE");
+    if (!bundle || !*bundle) {
+        return;
+    }
+    char folder[1024], programs[1024], copied[1100], list[1024];
+    path(folder, bundle, CROSS[t].directory);
+    path(programs, folder, "programs");
+    assert((!mkdir(bundle, 0700) || errno == EEXIST) && (!mkdir(folder, 0700) || errno == EEXIST));
+    assert(!mkdir(programs, 0700) || errno == EEXIST);
+    path(copied, programs, name);
+    unlink(copied);
+    copy(program, copied);
+    path(list, folder, "programs.txt");
+    FILE *file = fopen(list, "a");
+    assert(file);
+    fprintf(file, "program %s 42\n", name);
+    fclose(file);
+}
+
+/* What each CROSS target's object holds when a frame's probes survive O2:
+ * arm64's inline loop, `sub sp, sp, #1, lsl #12`, `cmp sp, x9` and
+ * `str xzr, [sp]`, and Windows' symbol for its call to __chkstk. */
+static const struct
+{
+    const char *bytes;
+    size_t size;
+} PROBES[] = { { "\xff\x07\x40\xd1\xff\x63\x29\xeb\xff\x03\x00\xf9", 12 },
+               { "__chkstk", 8 } };
+
+/* Whether the object.o published in `out` holds `size` bytes of `bytes`. */
+static bool object_holds(const char *out, const char *bytes, size_t size)
+{
+    char object[1024];
+    path(object, out, "object.o");
+    FILE *file = fopen(object, "rb");
+    assert(file);
+    static char data[1 << 16];
+    size_t length = fread(data, 1, sizeof data, file);
+    assert(feof(file));
+    fclose(file);
+    for (size_t i = 0; i + size <= length; i++) {
+        if (!memcmp(data + i, bytes, size)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Links `ir` to a program in `out` through the relocated SDK's Driver.Build,
+ * with the tools in the tools folder at O2. */
+static bool driver_build(const char *ir, const char *out)
+{
+    char host[1024], share[1024], driver[1024], source[1024], core[1024],
+        compiler[1024], opt[1024], llc[1024], lld[1024];
+    path(host, sdk, "libexec/chibi/chibi-build-host");
+    path(share, sdk, "share/chibi");
+    path(driver, share, "tools/native_aot");
+    path(source, driver, "Driver.chibi");
+    path(core, share, "core");
+    path(compiler, share, "compiler");
+    path(opt, tools, "opt");
+    path(llc, tools, "llc");
+    path(lld, tools, "ld.lld");
+    const char *argv[] = { host,     "--root",
+                           driver,   "--source",
+                           source,   "--core",
+                           core,     "--compiler",
+                           compiler, "--compiler-core",
+                           core,     "--entry",
+                           "Build",  "--timeout-ms",
+                           "120000", "--",
+                           ir,       out,
+                           opt,      llc,
+                           lld,      "2",
+                           NULL };
+    const char *envp[] = { "PATH=", NULL };
+    chibi_process_output out_text = { .data = output, .capacity = sizeof output };
+    chibi_process_output err = { .data = errors, .capacity = sizeof errors };
+    status = chibi_process_capture(host, argv, suite, envp, chibi_process_now() + 180, NULL, &out_text, &err);
+    return status.error == CHIBI_PROCESS_OK && !status.status;
+}
+
+/* Real LLVM tools on Linux link macOS arm64 and Windows x64 programs with no
+ * SDK of either system. A 256 KiB frame links too: Windows code calls the
+ * start object's __chkstk, and arm64 probes inline. A volatile index keeps O2
+ * from shrinking the frame to the one element it touches. With
+ * CHIBI_NATIVE_BUNDLE set, the programs go into the bundle that CI's
+ * native-targets job runs on macOS and Windows. */
+TEST_CASE(native_build_links_other_targets_with_llvm)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native build: set CHIBI_LLVM_BIN to link other targets with real LLVM tools\n");
+        return true;
+    }
+    reset("cross", SOURCE);
+    real_tools(bin);
+    char in_place[1024], program[1024];
+    path(in_place, built, "sdk/chibi");
+    for (int t = 0; t < 2; t++) {
+        const char *bundle = getenv("CHIBI_NATIVE_BUNDLE");
+        if (bundle && *bundle) {
+            char list[1024], folder[1024];
+            path(folder, bundle, CROSS[t].directory);
+            path(list, folder, "programs.txt");
+            unlink(list);
+        }
+        for (int mode = 0; mode < 2; mode++) {
+            const char *options[] = { mode ? "-O2" : "-O0", "--target", CROSS[t].triple, NULL };
+            REQUIRE(build_with(in_place, options, tools) == 0 && printed(program));
+            REQUIRE(executable_for(program, t));
+            char name[64];
+            snprintf(name, sizeof name, "twice-O%d%s", mode * 2, t ? ".exe" : "");
+            bundle_program(program, t, name);
+        }
+        char ir[1024], out[1024];
+        snprintf(ir, sizeof ir, "%s/frame-%s.ll", game, CROSS[t].directory);
+        snprintf(out, sizeof out, "%s/frame-%s", game, CROSS[t].directory);
+        static const char *const modules[] = {
+            "target triple = \"arm64-apple-macosx11.0.0\"\n",
+            "target triple = \"x86_64-pc-windows-msvc\"\n"
+        };
+        static const char *const probes[] = { "inline-asm", "__chkstk" };
+        char text[1024];
+        snprintf(
+            text,
+            sizeof text,
+            "%s@index = internal global i64 60000\n"
+            "define i32 @chibi_scalar() #0 {\n"
+            "  %%frame = alloca [65536 x i32]\n"
+            "  %%i = load volatile i64, ptr @index\n"
+            "  %%at = getelementptr [65536 x i32], ptr %%frame, i64 0, i64 "
+            "%%i\n"
+            "  store volatile i32 42, ptr %%at\n"
+            "  %%value = load volatile i32, ptr %%at\n"
+            "  ret i32 %%value\n"
+            "}\n"
+            "attributes #0 = { \"probe-stack\"=\"%s\" }\n",
+            modules[t],
+            probes[t]
+        );
+        tool_write(ir, text);
+        REQUIRE(driver_build(ir, out));
+        REQUIRE(object_holds(out, PROBES[t].bytes, PROBES[t].size));
+        path(program, out, CROSS[t].program);
+        REQUIRE(executable_for(program, t));
+        bundle_program(program, t, t ? "frame-O2.exe" : "frame-O2");
+    }
+    return true;
+}
 #endif
 
 void test_native_build(const char *binary)
@@ -518,13 +840,15 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_adds_line_tables_with_g);
     RUN_TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back);
     RUN_TEST_CASE(native_build_rejects_missing_and_failing_tools);
+    RUN_TEST_CASE(native_build_links_macos_and_windows_programs);
     RUN_TEST_CASE(native_build_refuses_what_an_interrupted_build_left);
     RUN_TEST_CASE(native_build_refuses_an_incomplete_output);
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
+    RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     free(stage_tool);
     tool_remove_tree(suite);
 #else
     (void)binary;
-    fprintf(stderr, "native build: seven Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
+    fprintf(stderr, "native build: nine Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
 #endif
 }

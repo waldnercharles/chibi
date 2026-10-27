@@ -2,7 +2,9 @@
  * language-scalar-native builds for that target when CHIBI_NATIVE_BUNDLE
  * names a directory (see README.md). Each module's O0 or O2 object becomes a
  * shared library through the platform linker, and each listed call must give
- * the value both VMs and the native Linux runs gave. The engine's test
+ * the value both VMs and the native Linux runs gave. Each program that
+ * native-build links for the target on Linux must exit with its listed
+ * status. The engine's test
  * drivers do not build on Windows yet, so this file stands alone: clang
  * builds it with no other source.
  *
@@ -21,6 +23,7 @@
 #if defined(__APPLE__) && defined(__aarch64__)
 #include <dlfcn.h>
 #include <spawn.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 extern char **environ;
 static const char TARGET[] = "macos-arm64", LIBRARY[] = "dylib";
@@ -253,6 +256,41 @@ TEST_CASE(every_module_runs_as_on_linux)
     return true;
 }
 
+/* Runs each program in the bundle's programs.txt, a line `program NAME
+ * STATUS` each, and checks its exit status. */
+TEST_CASE(every_program_exits_as_listed)
+{
+    char list[PATH_BYTES];
+    snprintf(directory, sizeof directory, "%s/%s", bundle, TARGET);
+    snprintf(list, sizeof list, "%s/programs.txt", directory);
+    FILE *file = fopen(list, "r");
+    REQUIRE(file);
+    char line[512];
+    int programs = 0;
+    bool exited = true;
+    while (exited && fgets(line, sizeof line, file)) {
+        char name[256], program[PATH_BYTES];
+        int expected;
+        REQUIRE(sscanf(line, "program %255s %d", name, &expected) == 2);
+        snprintf(program, sizeof program, "%s/programs/%s", directory, name);
+#ifndef _WIN32
+        /* Artifacts keep no file modes. */
+        REQUIRE(!chmod(program, 0755));
+#endif
+        const char *const argv[] = { program, NULL };
+        int status = run(argv);
+        if (status != expected) {
+            fprintf(stderr, "%s: %s exited with %d, expected %d\n", TARGET, name, status, expected);
+        }
+        exited = status == expected;
+        programs++;
+    }
+    fclose(file);
+    printf("%s: %d programs ran\n", TARGET, programs);
+    REQUIRE(exited && programs);
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 3) {
@@ -263,6 +301,7 @@ int main(int argc, char **argv)
     linker = argv[2];
     pu_display_time(true);
     RUN_TEST_CASE(every_module_runs_as_on_linux);
+    RUN_TEST_CASE(every_program_exits_as_listed);
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }

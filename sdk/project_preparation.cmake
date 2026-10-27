@@ -62,7 +62,7 @@ target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chib
     chibi_scene_document chibi_player chibi_native_prepared chibi_shader_preparation
     PRIVATE chibi_graph_catalog chibi_host_native_default chibi_graph_compilation chibi_graph_authoring chibi_asset_authoring
     chibi_asset_text chibi_source_presentation chibi_text_source chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json
-    chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities)
+    chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities chibi_task_pool_runtime)
 list(APPEND CHIBI_SDK_TARGETS chibi_compiler_syntax chibi_compiler_json chibi_shader_preparation chibi_project_compilation)
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)

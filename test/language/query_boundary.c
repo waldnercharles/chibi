@@ -1123,7 +1123,6 @@ void test_language_query_boundary()
     RUN_TEST_CASE(query_binding_preserves_live_integer_slots);
     RUN_TEST_CASE(query_binding_prepared_roundtrip_preserves_errors_and_values);
     RUN_TEST_CASE(query_binding_predicate_requires_bound_variables_transitively);
-    RUN_TEST_CASE(query_binding_dispatch_has_bounded_measurements);
     RUN_TEST_CASE(query_change_versions_saturate);
     RUN_TEST_CASE(query_predicates_roundtrip_with_services_effects_and_preflight);
     RUN_TEST_CASE(query_binding_publication_and_prepared_reader_reject_forged_bound_masks);
@@ -1132,5 +1131,12 @@ void test_language_query_boundary()
     RUN_TEST_CASE(query_predicate_purity_is_rechecked_after_native_linking);
     RUN_TEST_CASE(query_predicate_purity_follows_each_outlined_callee);
     RUN_TEST_CASE(query_predicate_context_cannot_be_recovered_through_bank_aliases);
+    pu_clear_setup();
+}
+
+void test_language_query_binding_benchmark()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(query_binding_dispatch_has_bounded_measurements);
     pu_clear_setup();
 }

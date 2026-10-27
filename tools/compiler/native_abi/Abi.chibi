@@ -12,6 +12,13 @@ pub LinuxX64 :: () -> Target {
     return {triple: "x86_64-unknown-linux-gnu", pointer_bits: 64};
 }
 
+// The module flag that selects the target's debug information format: DWARF
+// 4 on Linux, as rustc emits there. Line tables also need LLVM's own
+// "Debug Info Version" flag, which no target changes.
+pub DebugFormat :: (target: Target) -> string {
+    return "!{i32 7, !\"Dwarf Version\", i32 4}";
+}
+
 // Reject other targets rather than silently applying the first target's ABI.
 // The backend supplies its data layout; no unverified layout is embedded here.
 pub Supported :: (target: Target) -> bool {
@@ -31,6 +38,7 @@ Int64Storage: int : 8;
 WordStorage: int : 9;
 pub FloatStorage: int : 10;
 pub DoubleStorage: int : 11;
+pub TextStorage: int : 13;
 
 // The bits of an integer storage, or 0 for any other.
 pub IntegerBits :: (storage: int) -> int {
@@ -77,4 +85,13 @@ pub ScalarType :: (storage: int) -> string {
         return "";
     }
     return format_text("i{}", bits);
+}
+// The LLVM type of a string: the runtime's text descriptor, `pin_string` in
+// src/types/value.h, its bytes then its unsigned length, by value. Odin's
+// and Rust's strings are a pointer and a pointer-sized length; this one
+// matches the runtime's, so native code and the VMs share strings. Its zero,
+// a null pointer and length 0, is empty text, as a null descriptor is, and
+// nothing reads its bytes. A string is immutable, so a copy shares its bytes.
+pub TextType :: () -> string {
+    return "{ ptr, i32 }";
 }

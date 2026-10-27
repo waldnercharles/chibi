@@ -1,0 +1,72 @@
+package workload
+
+// A compiler pass in miniature: classify a generated stream of 4,000,000
+// characters into identifier, number, operator and space tokens with a
+// state machine, and checksum the token kinds and lengths.
+Main :: () -> int {
+    current := Token.Space;
+    span := 0;
+    sum := 0;
+    for (index in 0..<4000000) {
+        next := Classify(Character(index));
+        if (Same(next, current)) {
+            span = span + 1;
+        } else {
+            sum = (sum * 31 + Weight(current) * span) % 1000003;
+            current = next;
+            span = 1;
+        }
+    }
+    return (sum + Weight(current) * span) % 251;
+}
+
+Token :: union {
+    Space | Name | Digits | Operator(code: int)
+}
+
+// Letters, digits, spaces and operators in a fixed pseudo-random mix.
+Character :: (index: int) -> int {
+    x := (index * 1103515245 + 12345) & 2147483647;
+    pick := (x / 65536) % 100;
+    if (pick < 45) {
+        return 97 + x % 26;
+    }
+    if (pick < 70) {
+        return 48 + x % 10;
+    }
+    if (pick < 85) {
+        return 32;
+    }
+    return 40 + x % 8;
+}
+
+Classify :: (character: int) -> Token {
+    if (character == 32) {
+        return Token.Space;
+    }
+    if (character >= 97) {
+        return Token.Name;
+    }
+    if (character >= 48) {
+        return Token.Digits;
+    }
+    return Token.Operator(character);
+}
+
+// Operators never merge; other kinds continue their run.
+Same :: (a: Token, b: Token) -> bool {
+    return Weight(a) == Weight(b) && Weight(a) < 4;
+}
+
+Weight :: (token: Token) -> int {
+    switch token {
+        case .Space:
+            return 1;
+        case .Name:
+            return 2;
+        case .Digits:
+            return 3;
+        case .Operator(code):
+            return 4 + code;
+    }
+}

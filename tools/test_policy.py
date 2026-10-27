@@ -95,6 +95,9 @@ TOOLS = {
     # chibi build --native through a relocated copy of the build tree's SDK.
     'native-build': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                      '--native-build', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
+    # W20's kernels through chibi build --native; needs CHIBI_LLVM_BIN.
+    'native-workload-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                                  '--native-workload-benchmark', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
     'chibi-cli-installed': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--chibi-cli-installed', str(ROOT / os.environ.get('CHIBI_INSTALLED_CLI', 'dist/sdk/bin/chibi'))],
     'native-aot-driver': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),

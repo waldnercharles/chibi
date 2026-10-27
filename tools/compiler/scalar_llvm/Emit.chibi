@@ -957,7 +957,7 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // Each union is the backend's record of its tag, an int, then all its
 // payloads: a Make row inserts its tag and payloads into the zero constant,
 // and a Tag or Payload row extracts its field.
-pub Emit :: (rows: facts.Row[]) -> Result {
+pub EmitFor :: (target: abi.Target, rows: facts.Row[]) -> Result {
     error := Validate(rows);
     if (error != "") {
         return Result.Invalid(error);
@@ -1391,7 +1391,7 @@ pub Emit :: (rows: facts.Row[]) -> Result {
         code.extend(body);
         functions.append(shape);
     }
-    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields, false,
+    switch native.Emit(target, functions, parameters, slots, locals, code, arguments, records, fields, false,
                        1) {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
@@ -1400,11 +1400,19 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     }
 }
 
+// Emit and EmitBytes are the Linux x86-64 entries `chibi build` calls.
+pub Emit :: (rows: facts.Row[]) -> Result {
+    return EmitFor(abi.LinuxX64(), rows);
+}
+pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
+    return EmitBytesFor(abi.LinuxX64(), rows);
+}
+
 // Existing compiler-host --output-bytes rejects an empty result before file
 // publication. Emit retains typed diagnostics; this entry adds no host codec.
-pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
+pub EmitBytesFor :: (target: abi.Target, rows: facts.Row[]) -> u8[] {
     output: u8[] = [];
-    switch Emit(rows) {
+    switch EmitFor(target, rows) {
         case .Rejected(rejected):
             return output;
         case .Invalid(message):

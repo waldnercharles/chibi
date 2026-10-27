@@ -1,9 +1,9 @@
 # Runtime-free scalar LLVM backend (opt-in WIP)
 
 `llvm_native.Emit` validates a bounded scalar instruction plan and writes LLVM
-IR. `native_abi` owns the exact Linux x86-64 target and internal scalar mapping;
-the selected LLVM backend supplies its actual data layout. This clean integration
-carries those reviewed pure packages from [3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
+IR. `native_abi` owns the exact targets (Linux x86-64, macOS arm64 and Windows
+x64) and internal scalar mapping; the selected LLVM backend supplies its actual
+data layout. This clean integration carries those reviewed pure packages from [3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
 onto the current-base [authored LLVM driver](https://github.com/waldnercharles/chibi/commit/ae4828697dfc976a657c33014513f00e047ec422).
 
 It deliberately does **not** carry `package_compiler/Native.chibi`,

@@ -6,15 +6,18 @@ import abi "project:native_abi"
 // Zero means success; nonzero identifies a failed contract below. No assert
 // native is required, so the same checks run in the minimal compiler catalog.
 TargetChecks :: () -> int {
-    target := abi.LinuxX64();
-    if (target.triple != "x86_64-unknown-linux-gnu") {
-        return 1;
-    }
-    if (target.pointer_bits != 64) {
-        return 2;
-    }
-    if (!abi.Supported(target)) {
-        return 3;
+    targets := [abi.LinuxX64(), abi.MacOSArm64(), abi.WindowsX64()];
+    triples := ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"];
+    for (index in 0..<length(targets)) {
+        if (targets[index].triple != triples[index]) {
+            return 1;
+        }
+        if (targets[index].pointer_bits != 64) {
+            return 2;
+        }
+        if (!abi.Supported(targets[index])) {
+            return 3;
+        }
     }
     return 0;
 }
@@ -37,17 +40,28 @@ RejectedTargetChecks :: () -> int {
     if (abi.Supported(target)) {
         return 7;
     }
-    target.triple = "x86_64-pc-windows-msvc";
+    // Spellings of the admitted targets that LLVM gives other meanings: no
+    // macOS build version, and the MSVC version clang appends.
+    target.triple = "aarch64-apple-darwin";
     if (abi.Supported(target)) {
         return 8;
     }
-    target.triple = "aarch64-apple-darwin";
+    target.triple = "arm64-apple-macosx";
     if (abi.Supported(target)) {
         return 9;
     }
-    target.triple = "x86_64-unknown-linux-gnu-extra";
+    target.triple = "x86_64-pc-windows-msvc19.33.0";
     if (abi.Supported(target)) {
         return 10;
+    }
+    target.triple = "x86_64-unknown-linux-gnu-extra";
+    if (abi.Supported(target)) {
+        return 11;
+    }
+    target = abi.MacOSArm64();
+    target.pointer_bits = 32;
+    if (abi.Supported(target)) {
+        return 12;
     }
     return 0;
 }
@@ -57,7 +71,7 @@ ScalarTypeChecks :: () -> int {
     names := ["i1", "i8", "i8", "i16", "i16", "i32", "i32", "i64", "i64", "float", "double"];
     for (index in 0..<length(names)) {
         if (abi.ScalarType(index + 1) != names[index]) {
-            return 11 + index;
+            return 20 + index;
         }
     }
     unsupported: int[] = [-1, 0, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 999];

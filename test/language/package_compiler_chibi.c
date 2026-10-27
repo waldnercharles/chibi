@@ -56,6 +56,7 @@
 #include <dlfcn.h>
 #include <limits.h>
 #include <signal.h>
+#include <sys/stat.h>
 extern char **environ;
 #endif
 
@@ -10781,15 +10782,31 @@ static void write_row(const pin_value *rows, int index, const char *name, pin_va
     assert(field);
     assert(!pin_write_field(&detached, row->ptr, field, value));
 }
+/* native_abi's target `function`, such as "LinuxX64", on VM b. */
+static bool native_target(int b, const char *function, pin_value *out)
+{
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:native_abi", function, NULL, 0, COMPILE_BUDGET, &input, out)
+    );
+    return true;
+}
+/* scalar_llvm's EmitBytesFor of `rows` and native_abi's target `function`. */
+static bool emit_bytes(int b, const char *function, const pin_value *rows, pin_value *emitted)
+{
+    pin_value args[2] = { { 0 }, *rows };
+    REQUIRE(native_target(b, function, &args[0]));
+    REQUIRE(
+        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytesFor", args, 2, COMPILE_BUDGET, &input, emitted)
+    );
+    return true;
+}
 static bool validated(int b, pin_value *rows, const char *message)
 {
     pin_value error, emitted;
     REQUIRE(
         compiler_fixture_call(&consumer, b, "project:scalar_llvm", "Validate", rows, 1, COMPILE_BUDGET, &input, &error)
     );
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
-    );
+    REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
     bool valid = pin_text_equal(pin_text(error), (pin_string){ message, strlen(message) });
     if (!valid) {
         fprintf(
@@ -11064,17 +11081,7 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
         REQUIRE(scalar_field(&rows->items[6], "count").i == 2);
         REQUIRE(retained_text(&rows->items[7], "name", "Pick"));
         pin_value emitted;
-        REQUIRE(compiler_fixture_call(
-            &consumer,
-            b,
-            "project:scalar_llvm",
-            "EmitBytes",
-            &produced[b],
-            1,
-            COMPILE_BUDGET,
-            &input,
-            &emitted
-        ));
+        REQUIRE(emit_bytes(b, "LinuxX64", &produced[b], &emitted));
         const pin_array *bytes = emitted.ptr;
         REQUIRE(emitted.container == PIN_CONTAINER_ARRAY && bytes->count > 0);
         char *ir = xmalloc((size_t)bytes->count + 1);
@@ -11311,21 +11318,12 @@ static bool native_record_table(int b, const native_record *records, int count, 
     free(values);
     return built;
 }
-/* Emits m as a module of internal functions under budget 1. */
-static bool native_emit(int b, const native_module *m, const pin_union **out)
+/* Emits m for native_abi's target `function` as a module of internal
+ * functions under budget 1. */
+static bool native_target_emit(int b, const char *function, const native_module *m, const pin_union **out)
 {
     pin_value args[11];
-    REQUIRE(compiler_fixture_call(
-        &consumer,
-        b,
-        "project:native_abi",
-        "LinuxX64",
-        NULL,
-        0,
-        COMPILE_BUDGET,
-        &input,
-        &args[0]
-    ));
+    REQUIRE(native_target(b, function, &args[0]));
     REQUIRE(native_functions(b, m->functions, m->function_count, &args[1]));
     args[2] = native_ints(m->parameters, m->parameter_count);
     args[3] = native_ints(m->slots, m->slot_count);
@@ -11343,6 +11341,11 @@ static bool native_emit(int b, const native_module *m, const pin_union **out)
     REQUIRE(result.type == PIN_UNION && result.ptr);
     *out = result.ptr;
     return true;
+}
+/* Emits m for Linux x86-64. */
+static bool native_emit(int b, const native_module *m, const pin_union **out)
+{
+    return native_target_emit(b, "LinuxX64", m, out);
 }
 static bool native_rejects(int b, const native_module *m, const char *message)
 {
@@ -11964,9 +11967,10 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
  * value, and so must each probe's. A probe reaches an internal function
  * through a validation-only IR adapter that passes it int64 arguments and
  * returns an int64, which is how every integer type and bool reaches it; the
- * adapter is not a foreign ABI. Linux x86-64 is the one target the emitter
- * admits. CHIBI_LLVM_BIN names the directory of opt, llc, ld.lld and llvm-nm;
- * nothing is found through PATH. */
+ * adapter is not a foreign ABI. The modules run on Linux x86-64 here, and
+ * the other targets the emitter admits run them from a bundle (see
+ * test/native_aot/targets). CHIBI_LLVM_BIN names the directory of opt, llc,
+ * ld.lld and llvm-nm; nothing is found through PATH. */
 /* The corpus's accepted cases. */
 enum
 {
@@ -12265,29 +12269,28 @@ static void native_file(const char *path)
     strcpy(copy, path);
     apush(native_files, copy);
 }
-/* `ir` and then `adapter`, built at `level` with the driver's exact object
- * arguments, then linked as `directory`/`name`.so, which `library` names. */
-static bool native_library(
+/* `ir` and then `adapter`, built at `level` with the driver's exact opt and
+ * llc arguments into `object`. `module` receives the path of the optimized
+ * module in `directory`, and `undefined` the object's undefined symbols,
+ * one per line. */
+static bool native_object(
     const char *directory,
     const char *name,
     const char *ir,
     const char *adapter,
     int level,
-    char library[PATH_MAX]
+    const char *object,
+    char module[PATH_MAX],
+    char undefined[NATIVE_OUTPUT]
 )
 {
-    char opt[PATH_MAX], llc[PATH_MAX], nm[PATH_MAX], lld[PATH_MAX];
-    REQUIRE(llvm_tool("opt", opt) && llvm_tool("llc", llc));
-    REQUIRE(llvm_tool("llvm-nm", nm) && llvm_tool("ld.lld", lld));
-    char source[PATH_MAX], module[PATH_MAX], object[PATH_MAX];
+    char opt[PATH_MAX], llc[PATH_MAX], nm[PATH_MAX];
+    REQUIRE(llvm_tool("opt", opt) && llvm_tool("llc", llc) && llvm_tool("llvm-nm", nm));
+    char source[PATH_MAX];
     snprintf(source, sizeof source, "%s/%s-%d.ll", directory, name, level);
-    snprintf(module, sizeof module, "%s/%s-%d.opt.ll", directory, name, level);
-    snprintf(object, sizeof object, "%s/%s-%d.o", directory, name, level);
-    snprintf(library, PATH_MAX, "%s/%s-%d.so", directory, name, level);
-    const char *const outputs[] = { source, module, object, library };
-    for (int i = 0; i < 4; i++) {
-        native_file(outputs[i]);
-    }
+    snprintf(module, PATH_MAX, "%s/%s-%d.opt.ll", directory, name, level);
+    native_file(source);
+    native_file(module);
     REQUIRE(write_text(source, ir, adapter));
     const char *passes = level ? "-passes=verify,default<O2>,verify" : "-passes=verify";
     const char *const optimize[] = { opt,  "-S",   passes, source,
@@ -12300,15 +12303,34 @@ static bool native_library(
                                  "-o",
                                  object,
                                  NULL };
-    const char *const symbols[] = { nm, "--undefined-only", object, NULL };
-    const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
-    char out[NATIVE_OUTPUT];
-    REQUIRE(run_tool(optimize, directory, out) && run_tool(emit, directory, out));
-    REQUIRE(run_tool(symbols, directory, out));
+    const char *const symbols[] = { nm, "--undefined-only", "--just-symbol-name", object, NULL };
+    REQUIRE(run_tool(optimize, directory, undefined) && run_tool(emit, directory, undefined));
+    REQUIRE(run_tool(symbols, directory, undefined));
+    return true;
+}
+/* `ir` and then `adapter`, built at `level` with the driver's exact object
+ * arguments, then linked as `directory`/`name`.so, which `library` names. */
+static bool native_library(
+    const char *directory,
+    const char *name,
+    const char *ir,
+    const char *adapter,
+    int level,
+    char library[PATH_MAX]
+)
+{
+    char lld[PATH_MAX], object[PATH_MAX], module[PATH_MAX], out[NATIVE_OUTPUT];
+    REQUIRE(llvm_tool("ld.lld", lld));
+    snprintf(object, sizeof object, "%s/%s-%d.o", directory, name, level);
+    snprintf(library, PATH_MAX, "%s/%s-%d.so", directory, name, level);
+    native_file(object);
+    native_file(library);
+    REQUIRE(native_object(directory, name, ir, adapter, level, object, module, out));
     if (*out) {
         fprintf(stderr, "%s has undefined symbols: %s\n", object, out);
     }
     REQUIRE(!*out);
+    const char *const link[] = { lld, "-shared", object, "-o", library, NULL };
     REQUIRE(run_tool(link, directory, out));
     return true;
 }
@@ -12882,6 +12904,147 @@ static int library_child(const char *library, int count, char **specs)
     }
     return 0;
 }
+/* The other targets native_abi admits. When CHIBI_NATIVE_BUNDLE names a
+ * directory, each module the native tests run is also emitted for each of
+ * them and built with the driver's opt and llc arguments into the bundle,
+ * whose runner (test/native_aot/targets) links and runs it on that target.
+ * Each has native_abi's function, the bundle's subdirectory, the triple and
+ * the data layout LLVM 18 gives it, which the driver admits, and the one
+ * symbol its objects may leave undefined, or NULL: Windows code that uses
+ * floating point references _fltused, which the platform runtime defines. */
+static const struct
+{
+    const char *function, *directory, *triple, *layout, *runtime;
+} BUNDLE_TARGETS[] = {
+    { "MacOSArm64", "macos-arm64", "arm64-apple-macosx11.0.0", "e-m:o-i64:64-i128:128-n32:64-S128", NULL },
+    { "WindowsX64", "windows-x64", "x86_64-pc-windows-msvc", "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128", "_fltused" },
+};
+enum
+{
+    BUNDLE_TARGET_COUNT = (int)(sizeof BUNDLE_TARGETS / sizeof *BUNDLE_TARGETS)
+};
+/* The modules bundled so far, which number each one's objects: generated
+ * modules share some corpus cases' names. */
+static int bundled_modules;
+static const char *bundle_root()
+{
+    const char *root = getenv("CHIBI_NATIVE_BUNDLE");
+    return root && *root ? root : NULL;
+}
+/* Whether the module at `path` declares exactly target t's triple and
+ * layout. */
+static bool bundle_module_targets(const char *path, int t)
+{
+    char *text = file_read_text(path);
+    REQUIRE(text);
+    char triple[128], layout[256];
+    snprintf(
+        triple,
+        sizeof triple,
+        "\ntarget triple = \"%s\"\n",
+        BUNDLE_TARGETS[t].triple
+    );
+    snprintf(
+        layout,
+        sizeof layout,
+        "\ntarget datalayout = \"%s\"\n",
+        BUNDLE_TARGETS[t].layout
+    );
+    bool declared = strstr(text, triple) && strstr(text, layout) &&
+                    !strstr(strstr(text, triple) + 1, "\ntarget triple");
+    free(text);
+    if (!declared) {
+        fprintf(
+            stderr,
+            "%s does not declare %s's triple and layout\n",
+            path,
+            BUNDLE_TARGETS[t].directory
+        );
+    }
+    return declared;
+}
+/* Builds `ir`, emitted for bundle target t, and `adapter` at O0 and O2 into
+ * the bundle, and lists each of `calls` after its object with the value
+ * both VMs and the native Linux runs gave. */
+static bool bundle_module(
+    const char *directory,
+    int t,
+    const char *name,
+    const char *ir,
+    const char *adapter,
+    const scalar_call *calls,
+    int count
+)
+{
+    char path[PATH_MAX], label[128];
+    snprintf(
+        path,
+        sizeof path,
+        "%s/%s/modules.txt",
+        bundle_root(),
+        BUNDLE_TARGETS[t].directory
+    );
+    snprintf(label, sizeof label, "%s-%s", BUNDLE_TARGETS[t].directory, name);
+    FILE *list = fopen(path, "a");
+    REQUIRE(list);
+    bool built = true;
+    for (int level = 0; level < 3; level += 2) {
+        char file[128], object[PATH_MAX], module[PATH_MAX],
+            undefined[NATIVE_OUTPUT], allowed[64] = "";
+        snprintf(file, sizeof file, "%d-%s-%d.o", bundled_modules, name, level);
+        snprintf(
+            object,
+            sizeof object,
+            "%s/%s/%s",
+            bundle_root(),
+            BUNDLE_TARGETS[t].directory,
+            file
+        );
+        if (BUNDLE_TARGETS[t].runtime) {
+            snprintf(allowed, sizeof allowed, "%s\n", BUNDLE_TARGETS[t].runtime);
+        }
+        built = native_object(directory, label, ir, adapter, level, object, module, undefined) &&
+                bundle_module_targets(module, t);
+        if (built && *undefined && strcmp(undefined, allowed)) {
+            fprintf(stderr, "%s has undefined symbols: %s\n", object, undefined);
+            built = false;
+        }
+        if (!built) {
+            break;
+        }
+        fprintf(list, "module %s\n", file);
+        for (int i = 0; i < count; i++) {
+            const scalar_probe *probe = &calls[i].probe;
+            fprintf(
+                list,
+                "call %s %" PRId64 " %d",
+                calls[i].symbol,
+                probe->expected,
+                probe->count
+            );
+            for (int a = 0; a < probe->count; a++) {
+                fprintf(list, " %" PRId64, probe->arguments[a]);
+            }
+            fputc('\n', list);
+        }
+    }
+    bundled_modules++;
+    REQUIRE(!fclose(list) && built);
+    return true;
+}
+/* An adapter for each function `calls` probe after the entry. */
+static bool call_adapters(const pin_value *rows, const scalar_call *calls, int count, char **adapter)
+{
+    *adapter = xmalloc(1);
+    **adapter = 0;
+    for (int i = 1; i < count; i++) {
+        if (i > 1 && !strcmp(calls[i].probe.function, calls[i - 1].probe.function)) {
+            continue;
+        }
+        REQUIRE(append_adapter(rows, calls[i].probe.function, adapter));
+    }
+    return true;
+}
 /* Each call's value natively: `ir` with an adapter for each probed function,
  * built at O0 and at O2. */
 static bool native_values(
@@ -12893,14 +13056,8 @@ static bool native_values(
     int count
 )
 {
-    char *adapter = xmalloc(1);
-    *adapter = 0;
-    for (int i = 1; i < count; i++) {
-        if (i > 1 && !strcmp(calls[i].probe.function, calls[i - 1].probe.function)) {
-            continue;
-        }
-        REQUIRE(append_adapter(rows, calls[i].probe.function, &adapter));
-    }
+    char *adapter;
+    REQUIRE(call_adapters(rows, calls, count, &adapter));
     for (int level = 0; level < 2; level++) {
         char library[PATH_MAX];
         REQUIRE(native_library(directory, name, ir, adapter, level * 2, library));
@@ -13069,13 +13226,12 @@ static bool calls_agree(const char *name, const scalar_call *calls, int count)
     }
     return true;
 }
-/* The IR EmitBytes gives for `rows`, NUL-terminated, or NULL for none. */
-static bool emitted_ir(int b, pin_value *rows, char **ir)
+/* The IR EmitBytesFor gives for `rows` and native_abi's target `function`,
+ * NUL-terminated, or NULL for none. */
+static bool target_ir(int b, const char *function, const pin_value *rows, char **ir)
 {
     pin_value emitted;
-    REQUIRE(
-        compiler_fixture_call(&consumer, b, "project:scalar_llvm", "EmitBytes", rows, 1, COMPILE_BUDGET, &input, &emitted)
-    );
+    REQUIRE(emit_bytes(b, function, rows, &emitted));
     const pin_array *bytes = emitted.ptr;
     REQUIRE(emitted.container == PIN_CONTAINER_ARRAY);
     *ir = NULL;
@@ -13088,6 +13244,11 @@ static bool emitted_ir(int b, pin_value *rows, char **ir)
     }
     (*ir)[bytes->count] = 0;
     return true;
+}
+/* The Linux x86-64 IR EmitBytesFor gives for `rows`, or NULL for none. */
+static bool emitted_ir(int b, pin_value *rows, char **ir)
+{
+    return target_ir(b, "LinuxX64", rows, ir);
 }
 /* `source`'s producer rows from CollectScalar on VM b. */
 static bool collected_rows(int b, const char *case_name, pin_value source, pin_value *rows)
@@ -13115,6 +13276,33 @@ static bool collected_rows(int b, const char *case_name, pin_value source, pin_v
     REQUIRE(collected);
     return true;
 }
+/* With a bundle, the module of `rows` for each other target, with `calls`,
+ * whose values every run agreed on. */
+static bool bundled(
+    const char *directory,
+    int b,
+    const char *name,
+    const pin_value *rows,
+    const scalar_call *calls,
+    int count
+)
+{
+    if (!bundle_root()) {
+        return true;
+    }
+    char *adapter;
+    REQUIRE(call_adapters(rows, calls, count, &adapter));
+    bool built = true;
+    for (int t = 0; built && t < BUNDLE_TARGET_COUNT; t++) {
+        char *ir = NULL;
+        built = target_ir(b, BUNDLE_TARGETS[t].function, rows, &ir) && ir &&
+                bundle_module(directory, t, name, ir, adapter, calls, count);
+        free(ir);
+    }
+    free(adapter);
+    REQUIRE(built);
+    return true;
+}
 /* Each of `calls` of an accepted module, `ir` its IR, gives its expected value
  * on both VMs, from the authored compiler's closure of `source` on VM b, and
  * natively at O0 and O2. */
@@ -13134,7 +13322,8 @@ static bool runs_everywhere(
     REQUIRE(vm_closure(b, source, &closure, &length));
     bool agree = vm_values(closure, length, rows, calls, count) &&
                  native_values(directory, name, rows, ir, calls, count) &&
-                 calls_agree(name, calls, count);
+                 calls_agree(name, calls, count) &&
+                 bundled(directory, b, name, rows, calls, count);
     free(closure);
     REQUIRE(agree);
     return true;
@@ -15397,6 +15586,53 @@ static bool process_ended(pid_t pid, double seconds)
  * which allows for a slow sanitized host. */
 static const double PROMPT_SECONDS = 10;
 
+/* Starts the bundle: an empty list of modules for each target, and for a
+ * target whose objects reference a runtime symbol, an object that defines
+ * it, which its runner links into each library. */
+TEST_CASE(native_bundle_starts_empty)
+{
+    if (!bundle_root()) {
+        return true;
+    }
+    char directory[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    bool started = true;
+    for (int t = 0; started && t < BUNDLE_TARGET_COUNT; t++) {
+        char path[PATH_MAX];
+        snprintf(path, sizeof path, "%s/%s", bundle_root(), BUNDLE_TARGETS[t].directory);
+        started = !mkdir(path, 0700) || errno == EEXIST;
+        snprintf(
+            path,
+            sizeof path,
+            "%s/%s/modules.txt",
+            bundle_root(),
+            BUNDLE_TARGETS[t].directory
+        );
+        started = started && write_text(path, "", "");
+        if (!started || !BUNDLE_TARGETS[t].runtime) {
+            continue;
+        }
+        char ir[256], object[PATH_MAX], module[PATH_MAX], undefined[NATIVE_OUTPUT];
+        snprintf(
+            ir,
+            sizeof ir,
+            "target triple = \"%s\"\n@%s = dso_local global i32 0\n",
+            BUNDLE_TARGETS[t].triple,
+            BUNDLE_TARGETS[t].runtime
+        );
+        snprintf(
+            object,
+            sizeof object,
+            "%s/%s/runtime.o",
+            bundle_root(),
+            BUNDLE_TARGETS[t].directory
+        );
+        started = native_object(directory, "runtime", ir, "", 0, object, module, undefined) &&
+                  !*undefined && bundle_module_targets(module, t);
+    }
+    REQUIRE(remove_native_files(directory) && started);
+    return true;
+}
 /* A dense switch, which O2 lowers through a table, links into a shared
  * library and runs: the driver's objects are position independent. */
 static bool lookup_tables_link(const char *directory)
@@ -15522,7 +15758,7 @@ TEST_CASE(package_compiler_native_runs_are_bounded)
 }
 /* A module whose entry returns 0 and whose function k + 1 applies operation
  * k to its parameters. */
-static bool total_ir(char **ir)
+static bool total_ir(const char *function, char **ir)
 {
     native_code code[4 + TOTAL_OPERATION_COUNT * 6];
     native_function functions[1 + TOTAL_OPERATION_COUNT];
@@ -15563,7 +15799,7 @@ static bool total_ir(char **ir)
                         code,       c,
                         NULL,       0 };
     const pin_union *value;
-    REQUIRE(native_emit(0, &m, &value));
+    REQUIRE(native_target_emit(0, function, &m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, 0, NATIVE_PACKAGE, "Result", "Emitted"));
     pin_string text = pin_text(value->values[0]);
     REQUIRE(
@@ -15637,6 +15873,30 @@ static int total_calls(int k, scalar_call calls[MAX_CASE_CALLS])
     return count;
 }
 
+/* With a bundle, the total module for each other target, with every
+ * operation's calls. */
+static bool total_bundled(const char *directory, const char *adapters)
+{
+    if (!bundle_root()) {
+        return true;
+    }
+    scalar_call *calls = xmalloc(sizeof *calls * MAX_WIDTH_CALLS);
+    int count = 0;
+    for (int k = 0; k < TOTAL_OPERATION_COUNT; k++) {
+        count += total_calls(k, calls + count);
+    }
+    assert(count <= MAX_WIDTH_CALLS);
+    bool built = true;
+    for (int t = 0; built && t < BUNDLE_TARGET_COUNT; t++) {
+        char *ir = NULL;
+        built = total_ir(BUNDLE_TARGETS[t].function, &ir) &&
+                bundle_module(directory, t, "total", ir, adapters, calls, count);
+        free(ir);
+    }
+    free(calls);
+    REQUIRE(built);
+    return true;
+}
 TEST_CASE(package_compiler_native_arithmetic_is_total)
 {
     const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
@@ -15644,7 +15904,7 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
         compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
     );
     char *ir;
-    REQUIRE(total_ir(&ir));
+    REQUIRE(total_ir("LinuxX64", &ir));
     char *adapters = total_adapters(), directory[PATH_MAX];
     REQUIRE(native_directory(directory));
     bool agreed = true;
@@ -15677,6 +15937,7 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
         }
     }
     free(ir);
+    agreed = agreed && total_bundled(directory, adapters);
     free(adapters);
     REQUIRE(remove_native_files(directory) && agreed);
     return true;
@@ -15856,6 +16117,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGINT, &cancel, &interrupt);
     sigaction(SIGTERM, &cancel, &terminate);
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(native_bundle_starts_empty);
     RUN_TEST_CASE(stack_overflow_leaves_other_faults);
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
     RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
@@ -15864,7 +16126,7 @@ void test_language_package_compiler_chibi_native()
     sigaction(SIGINT, &interrupt, NULL);
     sigaction(SIGTERM, &terminate, NULL);
 #else
-    fprintf(stderr, "native scalar execution needs Linux x86-64, the one target the emitter admits\n");
+    fprintf(stderr, "native scalar execution runs on Linux x86-64; other targets run its bundle\n");
     abort();
 #endif
 }

@@ -245,9 +245,10 @@ native observation: `bool` parameters and results are internal, and any `bool`
 probe is a validation-only adapter, not an ABI.
 
 `tool language-scalar-native` (`test/language`, Linux x86-64 only) runs the
-corpus natively. `CHIBI_LLVM_BIN` names the directory of `opt`, `llc`,
-`ld.lld` and `llvm-nm`; nothing is found through `PATH`, and `make
-test-language-all` passes `NATIVE_LLVM_BIN` as it. Each case goes through
+corpus natively, and can bundle the same modules for macOS arm64 and Windows
+x64 (see [targets](../targets/README.md)). `CHIBI_LLVM_BIN` names the
+directory of `opt`, `llc`, `ld.lld` and `llvm-nm`; nothing is found through
+`PATH`, and `make test-language-all` passes `NATIVE_LLVM_BIN` as it. Each case goes through
 `CollectScalar` on one VM, alternating by case, and must be what
 `Cases.Check` expects. Each accepted module's IR becomes O0 and O2 objects
 through the driver's fixed `opt` and `llc` argument vectors, with no undefined

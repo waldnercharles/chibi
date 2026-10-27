@@ -1,7 +1,7 @@
 package native_abi
 
-// Internal contract for the first runtime-free LLVM slice, not a public
-// core package or a foreign ABI. These facts describe the destination, never
+// Internal contract for the runtime-free LLVM slice, not a public core
+// package or a foreign ABI. These facts describe the destination, never
 // the host running the compiler. Extend them only with a tested consumer.
 pub Target :: struct {
     triple: string;
@@ -11,12 +11,21 @@ pub Target :: struct {
 pub LinuxX64 :: () -> Target {
     return {triple: "x86_64-unknown-linux-gnu", pointer_bits: 64};
 }
+// The OS version makes llc write the object's LC_BUILD_VERSION.
+pub MacOSArm64 :: () -> Target {
+    return {triple: "arm64-apple-macosx11.0.0", pointer_bits: 64};
+}
+pub WindowsX64 :: () -> Target {
+    return {triple: "x86_64-pc-windows-msvc", pointer_bits: 64};
+}
 
-// Reject other targets rather than silently applying the first target's ABI.
+Same :: (target: Target, supported: Target) -> bool {
+    return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
+}
+// Reject other targets rather than silently applying another target's ABI.
 // The backend supplies its data layout; no unverified layout is embedded here.
 pub Supported :: (target: Target) -> bool {
-    supported := LinuxX64();
-    return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
+    return Same(target, LinuxX64()) || Same(target, MacOSArm64()) || Same(target, WindowsX64());
 }
 
 // Current compiler storage ordinals, not byte widths or foreign type IDs.

@@ -117,10 +117,22 @@ jobs:
       - name: Native, material, project and language selectors
         env:
           UBSAN_OPTIONS: halt_on_error=1
+          # language-scalar-native also builds each module it runs for macOS
+          # arm64 and Windows x64 here, and native-targets runs them there.
+          CHIBI_NATIVE_BUNDLE: ${{ runner.temp }}/native-bundle
         # Keep the default host: scheduled/manual sanitizer runs also exercise
         # Build.chibi under instrumentation, not only the native products. Keep
         # the Release asset generator hosts so the resource is not regenerated.
-        run: make -j1 test-native test-materials test-projects test-language-all ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
+        run: |
+          mkdir "$CHIBI_NATIVE_BUNDLE"
+          make -j1 test-native test-materials test-projects test-language-all ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
+      - name: Keep the macOS and Windows native modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-bundle
+          path: ${{ runner.temp }}/native-bundle
+          if-no-files-found: error
+          retention-days: 1
       - name: Preserve native profile evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -235,6 +247,51 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
+
+  # The engine's test drivers do not build on Windows yet, so the Linux job
+  # builds each module language-scalar-native runs for macOS arm64 and Windows
+  # x64, and this job links and runs them there (test/native_aot/targets).
+  native-targets:
+    name: Native scalar modules (${{ matrix.platform }})
+    needs: native
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: macos-arm64
+          - os: windows-2022
+            platform: windows-x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-bundle
+          path: ${{ runner.temp }}/native-bundle
+      - name: Link and run the macOS modules
+        if: runner.os == 'macOS'
+        run: |
+          clang -std=c2x -O1 -Wall -Wextra -Werror -I. test/native_aot/targets/run.c -o "$RUNNER_TEMP/run"
+          "$RUNNER_TEMP/run" "$RUNNER_TEMP/native-bundle" /usr/bin/clang
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV }
+          }
+      - name: Link and run the Windows modules
+        if: runner.os == 'Windows'
+        run: |
+          $llvm = 'C:\Program Files\LLVM\bin'
+          & "$llvm\clang.exe" -std=c2x -O1 -Wall -Wextra -Werror -D_CRT_SECURE_NO_WARNINGS -I. test/native_aot/targets/run.c -o "$env:RUNNER_TEMP\run.exe"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP\run.exe" "$env:RUNNER_TEMP\native-bundle" "$llvm\lld-link.exe"
+          exit $LASTEXITCODE
 
   windows:
     name: Engine build and compile smoke test (Windows)

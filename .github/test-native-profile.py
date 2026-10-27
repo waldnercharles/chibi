@@ -20,6 +20,7 @@ class ProfileTests(unittest.TestCase):
                 env = profile.settings(enabled)
                 self.assertEqual(env['BUILD_PROFILE'], 'sanitizer' if enabled == 'ON' else 'debug')
                 self.assertEqual(env['BUILD_DEBUG_OPTIMIZATION'], '1')
+                self.assertEqual(env['BUILD_DEBUG_FRAME_POINTERS'], 'on' if enabled == 'OFF' else '')
                 flags = shlex.split(env['SANITIZER_CMAKE_FLAGS'])
                 for flag in ('-DCMAKE_BUILD_TYPE=Debug', '-DCHIBI_ENABLE_WARNINGS=ON',
                              '-DCHIBI_ENABLE_CCACHE=ON', '-DCHIBI_SANITIZERS=address,undefined',
@@ -34,10 +35,11 @@ class ProfileTests(unittest.TestCase):
         result = subprocess.check_output(
             ['make', '-n', 'build-release', 'GRAPH_BUILD=1', 'BUILD_HOST=/nonexistent',
              'BUILD_TARGET=chibi-build-host'], cwd=ROOT, text=True,
-            env=dict(os.environ, BUILD_DEBUG_OPTIMIZATION='1'))
+            env=dict(os.environ, BUILD_DEBUG_OPTIMIZATION='1', BUILD_DEBUG_FRAME_POINTERS='on'))
         self.assertIn('BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION=', result)
         self.assertIn('--profile "release"', result)
         self.assertNotIn('--debug-optimization "1"', result)
+        self.assertNotIn('--debug-frame-pointers "on"', result)
 
     def test_invalid_profile_fails_closed(self):
         for value in ('', 'true', 'off', None):

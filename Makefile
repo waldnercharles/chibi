@@ -38,6 +38,7 @@ BUILD_TIMEOUT_MS ?= 1800000
 BUILD_PROFILE ?= sanitizer
 # Opt-in Graph experiment; pair with matching CMAKE_<LANG>_FLAGS_DEBUG.
 BUILD_DEBUG_OPTIMIZATION ?=
+BUILD_DEBUG_FRAME_POINTERS ?=
 GRAPH_BUILD = $(filter Darwin,$(shell uname -s))
 GRAPH_PROGRAM ?= tools/toolchain/Graph.chibi
 GRAPH_TIMEOUT_MS ?= 3600000
@@ -126,7 +127,7 @@ build:
 ifneq ($(GRAPH_BUILD),)
 toolchain-build:
 	@$(QUIET) third-party -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
-	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) --jobs "$(JOBS)" --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
+	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) --jobs "$(JOBS)" --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
 	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
 
 # Recovery builds the first build host with CMake beside the build directory;
@@ -244,7 +245,7 @@ install:
 	@cmake -E copy "$(INSTALL_SDK_PREFIX)/share/chibi/engine.json" "$(abspath $(PREFIX))/share/chibi/engine.json"
 
 build-release:
-	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION= BUILD_TARGET="$(BUILD_TARGET)"
+	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_PROFILE=release BUILD_DEBUG_OPTIMIZATION= BUILD_DEBUG_FRAME_POINTERS= BUILD_TARGET="$(BUILD_TARGET)"
 
 package-player:
 	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"

@@ -31,6 +31,7 @@ static char compiler[GRAPH_PATH], cxx_compiler[GRAPH_PATH], compiler_id[64],
     third_party[GRAPH_PATH];
 static bool warnings;
 static char debug_optimization[2];
+static bool debug_frame_pointers;
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
 #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
 
@@ -131,12 +132,24 @@ static void read_profile()
     compiler_value(file, "CMAKE_C_COMPILER_ID", compiler_id, sizeof compiler_id);
     cache_value(cache, "CMAKE_BUILD_TYPE", build_type, sizeof build_type);
     debug_optimization[0] = 0;
+    debug_frame_pointers = false;
     cache_value(cache, "CMAKE_C_FLAGS_DEBUG", value, sizeof value);
-    if (!strcmp(build_type, "Debug") &&
-        (!strcmp(value, "-g -O0") || !strcmp(value, "-g -O1") ||
-         !strcmp(value, "-g -O1 -fno-omit-frame-pointer"))) {
-        debug_optimization[0] = value[5];
-        debug_optimization[1] = 0;
+    if (!strcmp(build_type, "Debug")) {
+        const char *frames = " -fno-omit-frame-pointer";
+        size_t length = strlen(value), suffix = strlen(frames);
+        bool explicit_frames = length >= suffix &&
+                               !strcmp(value + length - suffix, frames);
+        if (explicit_frames) {
+            value[length - suffix] = 0;
+        }
+        if (!strcmp(value, "-g") || !strcmp(value, "-g -O0") ||
+            !strcmp(value, "-g -O1")) {
+            debug_frame_pointers = explicit_frames;
+            if (value[2]) {
+                debug_optimization[0] = value[5];
+                debug_optimization[1] = 0;
+            }
+        }
     }
     cache_value(cache, "CMAKE_OSX_SYSROOT", sysroot, sizeof sysroot);
     cache_value(cache, "CMAKE_OSX_ARCHITECTURES", architecture, sizeof architecture);
@@ -257,6 +270,8 @@ static int graph(const char *root, const char *build_dir, bool warn, const char 
         "",
         "--third-party",
         third_party,
+        !strcmp(build_type, "Debug") ? "--debug-frame-pointers" : NULL,
+        debug_frame_pointers ? "on" : "off",
         debug_optimization[0] ? "--debug-optimization" : NULL,
         debug_optimization,
         NULL,
@@ -271,17 +286,19 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
     const char *profile = sanitizers[0]                  ? "sanitizer"
                         : !strcmp(build_type, "Release") ? "release"
                                                          : "debug";
-    const char *const options[] = { "--profile",
-                                    profile,
-                                    "--debug-compilation-dir",
-                                    debug_dir,
-                                    "--warnings",
-                                    warnings ? "on" : "off",
-                                    debug_optimization[0]
-                                        ? "--debug-optimization"
-                                        : NULL,
-                                    debug_optimization,
-                                    NULL };
+    const char *const options[] = {
+        "--profile",
+        profile,
+        "--debug-compilation-dir",
+        debug_dir,
+        "--warnings",
+        warnings ? "on" : "off",
+        !strcmp(build_type, "Debug") ? "--debug-frame-pointers" : NULL,
+        debug_frame_pointers ? "on" : "off",
+        debug_optimization[0] ? "--debug-optimization" : NULL,
+        debug_optimization,
+        NULL
+    };
     /* Without CXX, the C++ compiler is the one beside CC, as CMake's. */
     char *saved = getenv("CC") ? strdup(getenv("CC")) : NULL;
     char *saved_cxx = getenv("CXX") ? strdup(getenv("CXX")) : NULL;
@@ -1205,7 +1222,7 @@ TEST_CASE(invalid_targets_fail_before_writing_commands)
 
 /* No compiler runs: explicit profiles expose every language's argv, including
  * test assertions, before the opt-in experiment is allowed to build. */
-static bool debug_optimization_instrumentation(bool instrumented)
+static bool debug_optimization_instrumentation(bool instrumented, int frame_mode)
 {
     const char *const options[] = { "--profile",
                                     "explicit",
@@ -1223,6 +1240,8 @@ static bool debug_optimization_instrumentation(bool instrumented)
                                     "/unused/ar",
                                     "--ranlib",
                                     "/unused/ranlib",
+                                    frame_mode >= 0 ? "--debug-frame-pointers" : NULL,
+                                    frame_mode ? "on" : "off",
                                     NULL };
     const char *const levels[] = { "", "0", "1" };
     for (int level = 0; level < 3; level++) {
@@ -1231,9 +1250,10 @@ static bool debug_optimization_instrumentation(bool instrumented)
         snprintf(
             name,
             sizeof name,
-            "%s debug %s",
+            "%s debug %s frames %d",
             instrumented ? "sanitized" : "plain",
-            level ? levels[level] : "default"
+            level ? levels[level] : "default",
+            frame_mode
         );
         join(build_dir, suite, name);
         const char *const extra[] = { "--commands-only",
@@ -1284,7 +1304,7 @@ static bool debug_optimization_instrumentation(bool instrumented)
             }
             REQUIRE(debug);
             REQUIRE(sanitizer == (instrumented != 0));
-            REQUIRE(frames == (instrumented || level == 2));
+            REQUIRE(frames == (instrumented || frame_mode == 1));
             REQUIRE(optimizations == (level != 0));
             const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
             saw_engine |= strstr(output, "/objects/chibi_engine/") != NULL;
@@ -1319,8 +1339,10 @@ static bool debug_optimization_instrumentation(bool instrumented)
 
 TEST_CASE(debug_optimization_preserves_instrumentation)
 {
-    REQUIRE(debug_optimization_instrumentation(false));
-    REQUIRE(debug_optimization_instrumentation(true));
+    for (int frames = -1; frames <= 1; frames++) {
+        REQUIRE(debug_optimization_instrumentation(false, frames));
+        REQUIRE(debug_optimization_instrumentation(true, frames));
+    }
     return true;
 }
 
@@ -1334,15 +1356,23 @@ TEST_CASE(debug_optimization_rejects_invalid_profiles)
         { "--build-type", "Debug", "--debug-optimization", NULL },
         { "--build-type", "Debug", "--debug-optimization", "--commands-only", "on", NULL },
         { "--build-type", "Release", "--debug-optimization", "1", NULL },
-        { "--build-type", "RelWithDebInfo", "--debug-optimization", "0", NULL }
+        { "--build-type", "RelWithDebInfo", "--debug-optimization", "0", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", "bad", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", "on", "--debug-frame-pointers", "bad", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", "", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", "--commands-only", "on", NULL },
+        { "--build-type", "Release", "--debug-frame-pointers", "on", NULL },
+        { "--build-type", "RelWithDebInfo", "--debug-frame-pointers", "off", NULL }
     };
     for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
         char build_dir[GRAPH_PATH];
         join(build_dir, suite, "invalid optimization");
         REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, cases[i]) == -1);
         char *log = tool_read(log_path);
-        bool diagnostic = log &&
-                          strstr(log, "--debug-optimization requires 0 or 1 and build type Debug");
+        const char *expected = !strcmp(cases[i][2], "--debug-optimization") ? "--debug-optimization requires 0 or 1 and build type Debug"
+                                                                            : "--debug-frame-pointers requires on or off and build type Debug";
+        bool diagnostic = log && strstr(log, expected);
         free(log);
         REQUIRE(diagnostic);
         REQUIRE(access(build_dir, F_OK));

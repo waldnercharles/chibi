@@ -18,6 +18,7 @@ pub Profile :: struct {
     build_type: string;
     // Empty preserves Debug defaults; 0 or 1 is an opt-in experiment.
     debug_optimization: string;
+    debug_frame_pointers: bool;
     architecture: string;
     sysroot: string;
     warnings: bool;
@@ -801,13 +802,14 @@ DebugDirectoryFlags :: (profile: Profile, build_dir: string) -> string[] {
 BuildTypeFlags :: (profile: Profile) -> string[] {
     build_type := profile.build_type;
     if (build_type == "Debug") {
-        if (profile.debug_optimization == "1" && profile.sanitizers == "") {
-            return ["-g", "-O1", "-fno-omit-frame-pointer"];
-        }
+        flags := ["-g"];
         if (profile.debug_optimization != "") {
-            return ["-g", Join(["-O", profile.debug_optimization])];
+            flags.append(Join(["-O", profile.debug_optimization]));
         }
-        return ["-g"];
+        if (profile.debug_frame_pointers && profile.sanitizers == "") {
+            flags.append("-fno-omit-frame-pointer");
+        }
+        return flags;
     }
     if (build_type == "Release") {
         return ["-O3", "-DNDEBUG"];

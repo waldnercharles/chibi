@@ -12,7 +12,9 @@ def settings(sanitizers):
              '-DCHIBI_ENABLE_CCACHE=ON ' + ' '.join(
                  f'-DCMAKE_{language}_FLAGS_DEBUG="{debug}"' for language in ('C', 'CXX', 'OBJC')))
     return {'BUILD_PROFILE': 'sanitizer' if sanitizers == 'ON' else 'debug',
-            'BUILD_DEBUG_OPTIMIZATION': '1', 'SANITIZER_CMAKE_FLAGS': flags}
+            'BUILD_DEBUG_OPTIMIZATION': '1',
+            'BUILD_DEBUG_FRAME_POINTERS': 'on' if sanitizers == 'OFF' else '',
+            'SANITIZER_CMAKE_FLAGS': flags}
 
 
 def main():

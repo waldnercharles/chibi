@@ -144,3 +144,13 @@ project, language and tooling manifests on **both** platforms, independent revie
 of the exact candidate and applicable server checks before any policy proposal.
 Record every unrun selector and environment limitation. No speedup, native build
 pass, or full-suite pass is asserted by this document.
+
+### Parallel verbose build evidence
+
+The Linux manual runner fixes the generator to Unix Makefiles and passes
+`--output-sync=target` to Make for both arms. Without recipe-level output
+buffering, parallel progress output can interrupt compiler commands longer than
+`PIPE_BUF`, making strict actual-argv verification fail even after a successful
+build. The verifier still requires exact argv (apart from dependency-output
+flags); it does not reconstruct or normalize corrupted command lines. This option
+is specific to the manual Make experiment, not a change to Ninja or normal CI.

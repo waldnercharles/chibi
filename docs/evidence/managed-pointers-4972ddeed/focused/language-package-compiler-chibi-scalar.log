@@ -1,0 +1,10 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-package-compiler-chibi-scalar
+revision 4972ddeed7f2de1a3e3fd45c7a07ebad526ea65e 0 modified
+Running: package_compiler_scalar_rows_outlive_the_producer (OK) (128.917072 secs)
+Running: package_compiler_native_emitter_checks_calls (OK) (4.461399 secs)
+Running: package_compiler_scalar_results_require_the_fixture_value (OK) (0.971611 secs)
+Running: package_compiler_scalar_rejects_unsupported_unions (OK) (119.010363 secs)
+===============================================================
+Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 38137
+Test command wall time: 256.531s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

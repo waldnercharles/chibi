@@ -96,6 +96,13 @@ def verify(build, evidence, level):
                 if line.startswith('CHIBI_THIRD_PARTY_DIR:'))
 
 
+def build_command(build):
+    # This experiment fixes the generator to Unix Makefiles. Buffer each recipe's
+    # verbose output so concurrent >PIPE_BUF compiler commands remain intact.
+    return ['cmake', '--build', str(build), '--target', 'chibi_ctl', 'test_tools',
+            'test_language', '--parallel', '4', '--verbose', '--', '--output-sync=target']
+
+
 def run_phase(evidence, deadline, name, command, environment):
     begin = time.monotonic()
     require(deadline > begin, 'experiment budget exhausted')
@@ -166,8 +173,7 @@ def main():
     totals = []
     environments = []
     for level, build in enumerate(builds):
-        total = run(f'o{level}-build', ['cmake', '--build', str(build), '--target',
-                    'chibi_ctl', 'test_tools', 'test_language', '--parallel', '4', '--verbose'], environment)
+        total = run(f'o{level}-build', build_command(build), environment)
         archives.append(verify(build, evidence, level))
         require(len(set(archives)) == 1, 'arms do not use the same dependency archive')
         env = dict(environment, CHIBI_TOOLS_BUILD_DIR=str(build / 'test/tools'),

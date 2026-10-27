@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
@@ -671,6 +672,50 @@ TEST_CASE(types_wire_strings_store_each_string_once)
     static const unsigned char unnamed[] = { 7, 1,   0, 1, 1, 1, 9, 4, 2, 'a',
                                              2, 'b', 7, 0, 0, 0, 0, 0, 0, 0 };
     REQUIRE(rejects_strings(unnamed, sizeof unnamed));
+    /* Both entries are named in order, but a writer never stores one twice. */
+    unsigned char repeated[] = { 7, 1,   0, 2, 1, 2, 9, 4, 2, 'a',
+                                 2, 'b', 7, 0, 0, 0, 0, 0, 0, 0 };
+    REQUIRE(!rejects_strings(repeated, sizeof repeated));
+    repeated[11] = 'a';
+    REQUIRE(rejects_strings(repeated, sizeof repeated));
+    return true;
+}
+/* The table's scratch for a slot count, as value_wire.c charges it. */
+static size_t table_scratch(size_t slots)
+{
+    return 2 * sizeof(dyna_hdr) + slots / 2 * sizeof(const char *) +
+           slots * sizeof(int);
+}
+/* 33 distinct strings grow the slots from 64 to 128. Both tables are live
+ * while the strings are rehashed, so the budget must cover both at once. */
+TEST_CASE(types_wire_strings_charge_both_tables_while_growing)
+{
+    enum
+    {
+        DISTINCT = 33
+    };
+    char names[DISTINCT][4];
+    const char *texts[DISTINCT];
+    for (int i = 0; i < DISTINCT; i++) {
+        snprintf(names[i], sizeof names[i], "s%d", i);
+        texts[i] = names[i];
+    }
+    const size_t peak = table_scratch(64) + table_scratch(128);
+    size_t budget = peak - 1;
+    execution_wire writer = { .storage_budget = &budget };
+    interned_strings(&writer, texts, DISTINCT);
+    REQUIRE(writer.error && strstr(writer.error, "budget") && budget == peak - 1);
+    REQUIRE(
+        !writer.strings && !writer.slots && !writer.storage_charged && !writer.owned_bytes
+    );
+    afree(writer.data);
+    budget = peak;
+    writer = (execution_wire){ .storage_budget = &budget };
+    interned_strings(&writer, texts, DISTINCT);
+    REQUIRE(
+        !writer.error && budget == peak && !writer.storage_charged && !writer.owned_bytes
+    );
+    afree(writer.data);
     return true;
 }
 
@@ -1176,6 +1221,7 @@ void test_tool_types()
     RUN_TEST_CASE(types_plain_struct_array_codecs_preserve_inline_values_and_nulls);
     RUN_TEST_CASE(types_union_wire_rejects_invalid_tags_counts_and_depth);
     RUN_TEST_CASE(types_wire_strings_store_each_string_once);
+    RUN_TEST_CASE(types_wire_strings_charge_both_tables_while_growing);
     RUN_TEST_CASE(types_struct_array_snapshot_retains_nested_payload);
     RUN_TEST_CASE(types_document_snapshot_survives_source_release);
     RUN_TEST_CASE(types_map_documents_own_nested_maps_arrays_and_native_structs);

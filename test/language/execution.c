@@ -4115,37 +4115,63 @@ TEST_CASE(execution_scoped_lent_locals_leave_their_owner_intact)
         "case: return -1; } }\n"
         "Param :: (xs: int[], flag: bool) -> int { if flag { alias := xs; "
         "if length(alias) == 0 { return -1; } } return Shape(xs); }\n"
+        /* Locals lent a whole local. */
         "pub Scoped :: () -> int { xs := Make(2); if length(xs) > 0 { "
         "alias := xs; if length(alias) == 0 { return -1; } } return Shape(xs); "
         "}\n"
         "pub Passed :: () -> int { xs := Make(4); "
         "n := Param(xs, true); return n * 100 + Shape(xs); }\n"
-        "pub Looped :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
-        "total := 0; for i in 0..<3 { row := rows[0]; total += length(row); } "
+        "pub PassedFalse :: () -> int { xs := Make(4); "
+        "n := Param(xs, false); return n * 100 + Shape(xs); }\n"
+        "pub Broken :: () -> int { xs := Make(3); total := 0; "
+        "for i in 0..<3 { alias := xs; total += length(alias); "
+        "if i == 1 { break; } } return total * 100 + Shape(xs); }\n"
+        "pub Continued :: () -> int { xs := Make(3); total := 0; "
+        "for i in 0..<3 { alias := xs; if i == 1 { continue; } "
+        "total += length(alias); } return total * 100 + Shape(xs); }\n"
+        "pub Returned :: () -> int { xs := Make(3); total := 0; "
+        "for i in 0..<3 { alias := xs; total += length(alias); "
+        "if i == 1 { return total * 100 + Shape(xs); } } return -1; }\n"
+        "pub Whole :: () -> int { held := Pair.Row(Make(3)); "
+        "if Width(held) > 0 { alias := held; if Width(alias) < 0 { return -1; "
+        "} } "
+        "return Width(held); }\n"
+        /* Locals and loop items lent an element. */
+        "pub Looped :: () -> int { rows: int[][] = [Make(3), Make(1)]; total "
+        ":= 0; "
+        "for i in 0..<3 { row := rows[0]; total += length(row); } "
         "return total * 100 + Shape(rows[0]); }\n"
-        "pub Broken :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
-        "total := 0; for i in 0..<3 { if i == 1 { break; } row := rows[0]; "
+        "pub RowBroken :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
+        "total := 0; "
+        "for i in 0..<3 { row := rows[0]; total += length(row); "
+        "if i == 1 { break; } } return total * 100 + Shape(rows[0]); }\n"
+        "pub RowContinued :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
+        "total := 0; for i in 0..<3 { row := rows[0]; if i == 1 { continue; } "
         "total += length(row); } return total * 100 + Shape(rows[0]); }\n"
-        "pub Continued :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
-        "total := 0; for i in 0..<3 { if i == 1 { continue; } row := rows[0]; "
-        "total += length(row); } return total * 100 + Shape(rows[0]); }\n"
-        "pub Returned :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
-        "total := 0; for i in 0..<3 { if i == 1 { return total * 100 + "
-        "Shape(rows[0]); } row := rows[0]; total += length(row); } return -1; "
-        "}\n"
+        "pub RowReturned :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
+        "total := 0; for i in 0..<3 { row := rows[0]; total += length(row); "
+        "if i == 1 { return total * 100 + Shape(rows[0]); } } return -1; }\n"
         "pub Element :: () -> int { pairs: Pair[] = [Pair.Row(Make(2)), "
         "Pair.None]; "
         "if length(pairs) > 0 { pair := pairs[0]; if Width(pair) < 0 { return "
         "-1; } } "
         "return Width(pairs[0]); }\n"
-        "pub Whole :: () -> int { held := Pair.Row(Make(3)); "
-        "if Width(held) > 0 { alias := held; if Width(alias) < 0 { return -1; "
-        "} } "
-        "return Width(held); }\n";
+        "pub Items :: () -> int { rows: int[][] = [Make(3), Make(1)]; total := "
+        "0; "
+        "for row in rows { total += length(row); } "
+        "return total * 10000 + Shape(rows[0]) * 100 + Shape(rows[1]); }\n"
+        "pub ItemsBroken :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
+        "total := 0; for row in rows { total += length(row); "
+        "if length(row) == 3 { break; } } "
+        "return total * 10000 + Shape(rows[0]) * 100 + Shape(rows[1]); }\n";
     const sequence_case cases[] = {
-        { "Scoped", 22 },  { "Passed", 4444 },   { "Looped", 933 },
-        { "Broken", 333 }, { "Continued", 633 }, { "Returned", 333 },
-        { "Element", 22 }, { "Whole", 33 },
+        { "Scoped", 22 },        { "Passed", 4444 },
+        { "PassedFalse", 4444 }, { "Broken", 633 },
+        { "Continued", 633 },    { "Returned", 633 },
+        { "Whole", 33 },         { "Looped", 933 },
+        { "RowBroken", 633 },    { "RowContinued", 633 },
+        { "RowReturned", 633 },  { "Element", 22 },
+        { "Items", 43311 },      { "ItemsBroken", 33311 },
     };
     return sequence_results(source, cases, sizeof cases / sizeof *cases);
 }

@@ -65,7 +65,7 @@ extern char **environ;
 static const char PACKAGE[] = "project:package_compiler";
 enum
 {
-    CALLS = 12,
+    CALLS = 14,
     SAMPLE_INPUTS = 4,
     ARGUMENTS = 12,
     /* Compile's debug flag, then the six that describe the target. */
@@ -1289,6 +1289,57 @@ static const sample samples[] = {
                 "    n := Param(xs, true);\n"
                 "    return n * 100 + Shape(xs);\n"
                 "}\n"
+                "PassedFalse :: () -> int {\n"
+                "    xs := Make(4);\n"
+                "    n := Param(xs, false);\n"
+                "    return n * 100 + Shape(xs);\n"
+                "}\n"
+                "Broken :: () -> int {\n"
+                "    xs := Make(3);\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        alias := xs;\n"
+                "        total += length(alias);\n"
+                "        if i == 1 {\n"
+                "            break;\n"
+                "        }\n"
+                "    }\n"
+                "    return total * 100 + Shape(xs);\n"
+                "}\n"
+                "Continued :: () -> int {\n"
+                "    xs := Make(3);\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        alias := xs;\n"
+                "        if i == 1 {\n"
+                "            continue;\n"
+                "        }\n"
+                "        total += length(alias);\n"
+                "    }\n"
+                "    return total * 100 + Shape(xs);\n"
+                "}\n"
+                "Returned :: () -> int {\n"
+                "    xs := Make(3);\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        alias := xs;\n"
+                "        total += length(alias);\n"
+                "        if i == 1 {\n"
+                "            return total * 100 + Shape(xs);\n"
+                "        }\n"
+                "    }\n"
+                "    return -1;\n"
+                "}\n"
+                "Whole :: () -> int {\n"
+                "    held := Pair.Row(Make(3));\n"
+                "    if Width(held) > 0 {\n"
+                "        alias := held;\n"
+                "        if Width(alias) < 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Width(held);\n"
+                "}\n"
                 "Looped :: () -> int {\n"
                 "    rows: int[][] = [Make(3), Make(1)];\n"
                 "    total := 0;\n"
@@ -1298,39 +1349,39 @@ static const sample samples[] = {
                 "    }\n"
                 "    return total * 100 + Shape(rows[0]);\n"
                 "}\n"
-                "Broken :: () -> int {\n"
+                "RowBroken :: () -> int {\n"
                 "    rows: int[][] = [Make(3), Make(1)];\n"
                 "    total := 0;\n"
                 "    for i in 0..<3 {\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
                 "        if i == 1 {\n"
                 "            break;\n"
                 "        }\n"
-                "        row := rows[0];\n"
-                "        total += length(row);\n"
                 "    }\n"
                 "    return total * 100 + Shape(rows[0]);\n"
                 "}\n"
-                "Continued :: () -> int {\n"
+                "RowContinued :: () -> int {\n"
                 "    rows: int[][] = [Make(3), Make(1)];\n"
                 "    total := 0;\n"
                 "    for i in 0..<3 {\n"
+                "        row := rows[0];\n"
                 "        if i == 1 {\n"
                 "            continue;\n"
                 "        }\n"
-                "        row := rows[0];\n"
                 "        total += length(row);\n"
                 "    }\n"
                 "    return total * 100 + Shape(rows[0]);\n"
                 "}\n"
-                "Returned :: () -> int {\n"
+                "RowReturned :: () -> int {\n"
                 "    rows: int[][] = [Make(3), Make(1)];\n"
                 "    total := 0;\n"
                 "    for i in 0..<3 {\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
                 "        if i == 1 {\n"
                 "            return total * 100 + Shape(rows[0]);\n"
                 "        }\n"
-                "        row := rows[0];\n"
-                "        total += length(row);\n"
                 "    }\n"
                 "    return -1;\n"
                 "}\n"
@@ -1344,33 +1395,54 @@ static const sample samples[] = {
                 "    }\n"
                 "    return Width(pairs[0]);\n"
                 "}\n"
-                "Whole :: () -> int {\n"
-                "    held := Pair.Row(Make(3));\n"
-                "    if Width(held) > 0 {\n"
-                "        alias := held;\n"
-                "        if Width(alias) < 0 {\n"
-                "            return -1;\n"
+                "Items :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for row in rows {\n"
+                "        total += length(row);\n"
+                "    }\n"
+                "    return total * 10000 + Shape(rows[0]) * 100 + Shape(rows[1]);\n"
+                "}\n"
+                "ItemsBroken :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for row in rows {\n"
+                "        total += length(row);\n"
+                "        if length(row) == 3 {\n"
+                "            break;\n"
                 "        }\n"
                 "    }\n"
-                "    return Width(held);\n"
+                "    return total * 10000 + Shape(rows[0]) * 100 + Shape(rows[1]);\n"
                 "}\n",
       .calls = {
           { .function = "Scoped", .arguments = "[]",
             .expected = "[22]" },
           { .function = "Passed", .arguments = "[]",
             .expected = "[4444]" },
-          { .function = "Looped", .arguments = "[]",
-            .expected = "[933]" },
+          { .function = "PassedFalse", .arguments = "[]",
+            .expected = "[4444]" },
           { .function = "Broken", .arguments = "[]",
-            .expected = "[333]" },
+            .expected = "[633]" },
           { .function = "Continued", .arguments = "[]",
             .expected = "[633]" },
           { .function = "Returned", .arguments = "[]",
-            .expected = "[333]" },
-          { .function = "Element", .arguments = "[]",
-            .expected = "[22]" },
+            .expected = "[633]" },
           { .function = "Whole", .arguments = "[]",
             .expected = "[33]" },
+          { .function = "Looped", .arguments = "[]",
+            .expected = "[933]" },
+          { .function = "RowBroken", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "RowContinued", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "RowReturned", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "Element", .arguments = "[]",
+            .expected = "[22]" },
+          { .function = "Items", .arguments = "[]",
+            .expected = "[43311]" },
+          { .function = "ItemsBroken", .arguments = "[]",
+            .expected = "[33311]" },
       } },
     { .name = "removed union elements",
       .group = COLLECTION_SAMPLES,

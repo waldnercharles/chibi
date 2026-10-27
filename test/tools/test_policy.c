@@ -964,7 +964,8 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                     "--render-fixture\n--material-bake\n--environment-"
                     "authoring\n"
                     "--terrain-checkpoint\n--terrain-storage-commands\n"
-                    "--terrain-playable\n--published-docs\n--chibi-cli\n";
+                    "--terrain-playable\n--published-docs\n--chibi-cli\n"
+                    "--native-build\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);
@@ -984,7 +985,8 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                                 "--terrain-checkpoint\n",
                                 "--terrain-storage-commands\n",
                                 "--published-docs\n",
-                                "--chibi-cli\n" };
+                                "--chibi-cli\n",
+                                "--native-build\n" };
     for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
         separate = !strstr(output, selectors[i]);
     }

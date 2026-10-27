@@ -31,11 +31,12 @@ case "$name" in
             fail) exit 71 ;;
             signal) kill -TERM "$$" ;;
             cancel) kill -USR1 "$PPID"; while :; do /bin/sleep 1; done ;;
+            terminate) kill -TERM "$PPID"; while :; do /bin/sleep 1; done ;;
             mutate-opt) printf '\n# changed\n' >> "$root/opt tool" ;;
             mutate-llc) printf '\n# changed\n' >> "$0" ;;
         esac
         ;;
-    linker*)
+    linker*|ld.lld*)
         test "$#" = 10 || exit 64
         test "$1" = -flavor && test "$3" = -static && test "$5" = -e && test "$9" = -o || exit 64
         printf '#!/bin/sh\nexit 42\n' > "${10}"

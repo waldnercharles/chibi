@@ -171,6 +171,12 @@ static const char driver_ci_build
     [] = "if sys.argv[2] == 'ci-initial-build':\n"
          "    import shlex\n"
          "    root = Path(sys.argv[4])\n"
+         "    sanitizer, request = sys.argv[5].split(':', 1)\n"
+         "    if request == 'alias':\n"
+         "        alias = root / 'logical-root'\n"
+         "        alias.unlink(missing_ok=True)\n"
+         "        alias.symlink_to(root, target_is_directory=True)\n"
+         "        root = alias\n"
          "    trace = root / 'ci-build-trace'\n"
          "    recorder = root / 'ci-build-record.py'\n"
          "    recorder.write_text('import json, os, sys\\n'\n"
@@ -179,7 +185,6 @@ static const char driver_ci_build
          "        'sys.exit(1 if sys.argv[1] == os.environ[\"CI_FAIL\"] else "
          "0)\\n')\n"
          "    host = root / 'ci-build-host'\n"
-         "    sanitizer, request = sys.argv[5].split(':', 1)\n"
          "    cold = request.startswith('cold:')\n"
          "    failure = request.removeprefix('cold:')\n"
          "    if cold:\n"
@@ -275,8 +280,11 @@ static const char driver_ci_build_run[] =
     "                if '--asset-generator-hosts' in arguments:\n"
     "                    generator = "
     "arguments[arguments.index('--asset-generator-hosts') + 1]\n"
+    "                if generator and not Path(generator).is_absolute():\n"
+    "                    raise ValueError('generator hosts must be absolute')\n"
     "                print('generators=' + "
-    "(str(Path(generator).relative_to(root)) if generator else ''))\n"
+    "(str(Path(generator).resolve().relative_to(root.resolve())) if generator "
+    "else ''))\n"
     "            if step == 'graph':\n"
     "                print('targets=' + ','.join(arguments[i + 1] for i, arg "
     "in enumerate(arguments) if arg == '--target'))\n"
@@ -1111,6 +1119,26 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
 {
     REQUIRE(ci_initial_build_profile(false));
     REQUIRE(ci_initial_build_profile(true));
+    return true;
+}
+
+TEST_CASE(ci_generator_hosts_resolve_symlink_root)
+{
+    const char *profiles[] = { "OFF", "ON" };
+    for (int i = 0; i < 2; i++) {
+        char argument[32];
+        snprintf(argument, sizeof argument, "%s:-", profiles[i]);
+        REQUIRE(run("ci-initial-build", argument) == 0);
+        char *physical = tool_read(logpath);
+        REQUIRE(physical);
+        snprintf(argument, sizeof argument, "%s:alias", profiles[i]);
+        int status = run("ci-initial-build", argument);
+        char *logical = tool_read(logpath);
+        bool equal = status == 0 && logical && !strcmp(physical, logical);
+        free(physical);
+        free(logical);
+        REQUIRE(equal);
+    }
     return true;
 }
 
@@ -2262,6 +2290,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
+    RUN_TEST_CASE(ci_generator_hosts_resolve_symlink_root);
     RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);
     RUN_TEST_CASE(ci_preserves_failed_macos_graph_stage_log);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);

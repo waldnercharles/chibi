@@ -12444,7 +12444,8 @@ static bool library_rows(int b, const char *source, pin_value *rows)
     return true;
 }
 /* Library sources that are not one library of plain functions, each with
- * its message. */
+ * its message. A source holds at most one library, so the grammar rejects
+ * anything after it. */
 static const struct
 {
     const char *source, *message;
@@ -12452,6 +12453,9 @@ static const struct
     { "Tools :: library {\n    Point :: struct { x: int; }\n}\n",
       "a native library holds only functions without attributes" },
     { "Tools :: library {\n}\n", "scalar proof requires at least one function" },
+    { "Tools :: library {\n    One :: () -> int { return 1; }\n}\n"
+      "More :: library {\n    Two :: () -> int { return 2; }\n}\n",
+      "Unexpected syntax" },
     { "Tools :: library {\n    One :: () -> int { return 1; }\n"
       "    One :: () -> int { return 2; }\n}\n",
       "Duplicate declaration 'One'" },

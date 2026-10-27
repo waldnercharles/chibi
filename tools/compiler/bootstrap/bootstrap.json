@@ -2,7 +2,7 @@
   "format": 1,
   "version": 6,
   "minimum": 2,
-  "revision": "f23a874e1bb2b76a91c7a727c3f83d124918342f-dirty",
+  "revision": "d4088f44a2b25c40f8ff7c68b8763144f9f8d256",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",

@@ -716,6 +716,7 @@ Files :: (target: string) -> string[] {
     if (target == "test_language") {
         return [
             "test/language/main.c", "test/language/inferred_string_arrays.c",
+            "test/parallel.c", "test/language/parallel.c",
             "test/language/build_workflow.c", "test/language/record_publication.c",
             "test/language/outliner_projection.c", "test/language/row_array.c",
             "test/language/record_compatibility.c", "test/language/record_state.c",
@@ -2553,7 +2554,7 @@ pub Includes :: (target: string) -> string[] {
             "public/native_prepared", "public/native_capabilities", "public/capabilities",
             "public/types", "public/execution_contract", "public/behavior_runtime", "public/execution",
             "public/ecs", "public/tasks", "public/events", "public/compiler_host",
-            "public/asset_compiler_host", "public/math_capabilities",
+            "public/asset_compiler_host", "public/math_capabilities", "public/conversion_capabilities",
             "public/project_compilation", "public/source_catalog", "public/authoring",
             "public/compiler", "public/language", "public/reference_index", "public/input_map",
             "public/input_action", "public/prototype_document", "public/scene_document",
@@ -3057,7 +3058,8 @@ CommonSystemIncludes :: (target: string) -> string[] {
         ];
     }
     if (target == "test_language") {
-        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math"];
+        return ["third-party/include/chibi/vendor/tree_sitter/1", "public/math",
+                "third-party/include/chibi/vendor/enkits/1"];
     }
     if (target == "chibi_sdk_contracts") {
         return ["public/math"];
@@ -3258,7 +3260,8 @@ pub Defines :: (target: string) -> string[] {
         return ["_POSIX_C_SOURCE=200809L"];
     }
     if (target == "test_language") {
-        return ["CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS"];
+        return ["CHIBI_TEST_ASSET_COMPILER_HOST=1", "CHIBI_TEST_RECORD_SERVICES", "CHIBI_TEST_SOURCE_ASSETS", "CHIBI_PACKAGE_TEST_POOL=1",
+                "CHIBI_TEST_ENKITS=1"];
     }
     if (target == "chibi_sdk_contracts") {
         return [
@@ -3616,6 +3619,7 @@ pub Configures :: (target: string) -> string[] {
         return [
             "third_party/pico_headers/pico_unit.h=third_party/pico_headers/pico_unit.h",
             "test/prepared_fixture.h=test/prepared_fixture.h",
+            "test/parallel.h=test/parallel.h",
             "package_core_source.h=test/language/package_core_source.h.in",
             "docs_markdown_source.h=test/language/docs_markdown_source.h.in",
             "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",

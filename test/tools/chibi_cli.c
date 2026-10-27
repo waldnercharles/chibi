@@ -547,6 +547,33 @@ TEST_CASE(compiler_test_reports_each_test)
     );
     REQUIRE(file_is("tests.log", expected));
 
+    /* The explicit serial and parallel budgets retain exactly the same
+     * ordered diagnostics. Invalid settings fail before preparing packages. */
+    const char *previous = getenv("CHIBI_TEST_WORKERS");
+    char *saved_workers = previous ? xstrdup(previous) : NULL;
+    bool worker_settings = true;
+    const char *workers[] = { "1", "2" };
+    for (int i = 0; i < 2; i++) {
+        worker_settings &= !setenv("CHIBI_TEST_WORKERS", workers[i], 1);
+        worker_settings &= tool_run(run, root, output) == 1;
+        worker_settings &= file_is("tests.log", expected);
+    }
+    const char *invalid_workers[] = {
+        "", "0", "33", "-1", "+2", " 2", "2x", "9999999999999999999999999999"
+    };
+    for (size_t i = 0; i < sizeof invalid_workers / sizeof *invalid_workers; i++) {
+        worker_settings &= !setenv("CHIBI_TEST_WORKERS", invalid_workers[i], 1);
+        worker_settings &= tool_run(run, root, output) == 1;
+        worker_settings &= file_is("tests.log", "CHIBI_TEST_WORKERS must be an integer from 1 to 32\n");
+    }
+    if (saved_workers) {
+        worker_settings &= !setenv("CHIBI_TEST_WORKERS", saved_workers, 1);
+    } else {
+        worker_settings &= !unsetenv("CHIBI_TEST_WORKERS");
+    }
+    free(saved_workers);
+    REQUIRE(worker_settings);
+
     char *passing = xstrdup(FACTS);
     *strstr(passing, "== 4") = '!';
     write_file("tests/facts/Facts.chibi", passing);

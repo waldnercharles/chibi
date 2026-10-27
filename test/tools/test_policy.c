@@ -263,6 +263,14 @@ static const char driver_routes
     [] = "if sys.argv[2] == 'asset-host-platforms':\n"
          "    print(' '.join(policy.ASSET_COMPILER_HOST_PLATFORMS))\n"
          "    sys.exit(0)\n"
+         "if sys.argv[2] == 'wasm-benchmark-routes':\n"
+         "    print(' '.join(n for n in policy.GROUPS['wasm']\n"
+         "                   if n.endswith('-benchmark')))\n"
+         "    for name in sorted(policy.TOOLS):\n"
+         "        if name.startswith('wasm-') and "
+         "name.endswith('-benchmark'):\n"
+         "            print(name, policy.tool_command(name)[-1])\n"
+         "    sys.exit(0)\n"
          "if sys.argv[2] == 'bootstrap-route':\n"
          "    command = policy.tool_command('compiler-bootstrap')\n"
          "    print(len(command), Path(command[0]).name, command[1],\n"
@@ -1556,6 +1564,7 @@ TEST_CASE(asset_language_cases_are_in_the_actual_ci_group)
     REQUIRE(run_group("language") == 0);
     char *output = tool_read(commands);
     REQUIRE(output);
+    REQUIRE(!strstr(output, "benchmark"));
     const char *selectors[] = { "--execution-scope\n",
                                 "--asset-packaging-chibi\n",
                                 "--asset-compiler-host\n",
@@ -1618,7 +1627,7 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     REQUIRE(!unlink(commands));
     REQUIRE(run_group("native") == 0);
     output = tool_read(commands);
-    bool separate = output && *output;
+    bool separate = output && *output && !strstr(output, "benchmark");
     const char *selectors[] = { "--mesh-files\n",
                                 "--model-import\n",
                                 "--validate-project\n",
@@ -1638,6 +1647,105 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     }
     free(output);
     REQUIRE(separate);
+    REQUIRE(!unlink(commands));
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        REQUIRE(!unlink(child));
+    }
+    return true;
+}
+
+/* Native and language dispatch are checked above. Exercise the material
+ * group through the same production supervisor rather than a duplicate list. */
+TEST_CASE(material_group_does_not_run_benchmarks)
+{
+    char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
+    path(commands, "correctness-commands");
+    int length = snprintf(source, sizeof source, "#!/bin/sh\nprintf '%%s\\n' \"$1\" >> '%s'\n", commands);
+    REQUIRE(length > 0 && length < (int)sizeof source);
+    const char *drivers[] = { "test_tools", "test_language" };
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        tool_write(child, source);
+        REQUIRE(!chmod(child, 0700));
+    }
+    REQUIRE(run_group("materials") == 0);
+    char *output = tool_read(commands);
+    REQUIRE(output && *output);
+    REQUIRE(!strstr(output, "benchmark"));
+    const char *correctness[] = {
+        "--material-destruction\n", "--material-fluids\n",
+        "--material-mpm\n",         "--material-thermal\n",
+        "--material-simulation\n",  "--material-ecs\n",
+        "--material-render\n"
+    };
+    for (int i = 0; i < (int)(sizeof correctness / sizeof *correctness); i++) {
+        REQUIRE(strstr(output, correctness[i]));
+    }
+    free(output);
+    REQUIRE(!unlink(commands));
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        REQUIRE(!unlink(child));
+    }
+    return true;
+}
+
+TEST_CASE(benchmark_routes_remain_explicit)
+{
+    char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
+    path(commands, "benchmark-commands");
+    int length = snprintf(source, sizeof source, "#!/bin/sh\nprintf '%%s\\n' \"$1\" >> '%s'\n", commands);
+    REQUIRE(length > 0 && length < (int)sizeof source);
+    const char *drivers[] = { "test_tools", "test_language" };
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        tool_write(child, source);
+        REQUIRE(!chmod(child, 0700));
+    }
+    REQUIRE(run_group("benchmarks") == 0);
+    char *output = tool_read(commands);
+    REQUIRE(output && *output);
+    const char *selectors[] = { "--ecs-query-benchmark\n",
+                                "--source-reduction-benchmark\n",
+                                "--source-execution-benchmark\n",
+                                "--native-workload-benchmark\n",
+                                "--material-benchmark\n",
+                                "--contact-benchmark\n",
+                                "--script-benchmark\n",
+                                "--scheduler-benchmark\n",
+                                "--activation-benchmark\n",
+                                "--binding-benchmark\n",
+                                "--borrow-benchmark\n",
+                                "--incremental-benchmark\n",
+                                "--runtime-attribution-benchmark\n",
+                                "--query-binding-benchmark\n",
+                                "--scalar-read-benchmark\n",
+                                "--packed-benchmark\n" };
+    for (int i = 0; i < (int)(sizeof selectors / sizeof *selectors); i++) {
+        const char *found = strstr(output, selectors[i]);
+        REQUIRE(found && !strstr(found + strlen(selectors[i]), selectors[i]));
+    }
+    free(output);
+    REQUIRE(run("wasm-benchmark-routes", NULL) == 0);
+    output = tool_read(logpath);
+    REQUIRE(
+        output && !strcmp(
+                      output,
+                      "\n"
+                      "wasm-activation-benchmark --activation-benchmark\n"
+                      "wasm-binding-benchmark --binding-benchmark\n"
+                      "wasm-borrow-benchmark --borrow-benchmark\n"
+                      "wasm-incremental-benchmark --incremental-benchmark\n"
+                      "wasm-packed-benchmark --packed-benchmark\n"
+                      "wasm-query-binding-benchmark --query-binding-benchmark\n"
+                      "wasm-runtime-attribution-benchmark "
+                      "--runtime-attribution-benchmark\n"
+                      "wasm-scalar-read-benchmark --scalar-read-benchmark\n"
+                      "wasm-script-benchmark --script-benchmark\n"
+                  )
+    );
+    free(output);
     REQUIRE(!unlink(commands));
     for (int i = 0; i < 2; i++) {
         path(child, drivers[i]);
@@ -3296,6 +3404,8 @@ void test_tool_test_policy()
     RUN_TEST_CASE(asset_language_cases_are_in_the_actual_ci_group);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
+    RUN_TEST_CASE(material_group_does_not_run_benchmarks);
+    RUN_TEST_CASE(benchmark_routes_remain_explicit);
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(language_shard_producer_selects_verified_full_sanitizer_profile);
     RUN_TEST_CASE(language_shards_keep_exact_manifest_and_serial_fallback);

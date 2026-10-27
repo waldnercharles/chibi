@@ -5,6 +5,7 @@
 #include "package_compiler_chibi.h"
 #include "prepared_writer_chibi.h"
 #include "record_members_chibi.h"
+#include "test/parallel.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "type_relations_chibi.h"
 #include "union_members_chibi.h"
@@ -13,11 +14,16 @@
 #include <string.h>
 
 void test_language_syntax();
+void test_language_parallel();
 void test_language_inferred_string_arrays(bool repro);
 void test_language_outliner_projection();
 void test_language_row_array();
 void test_language_packed();
+void test_language_packed_benchmark();
 void test_language_runtime_attribution();
+void test_language_runtime_attribution_benchmark();
+void test_language_query_binding_benchmark();
+void test_language_scalar_read_benchmark();
 void test_language_record_values();
 void test_language_record_publication(bool repro);
 void test_language_record_document();
@@ -127,6 +133,15 @@ void test_language_native_census_flattening();
 
 int main(int argc, char **argv)
 {
+    if (!test_parallel_init()) {
+        return 2;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--test-parallel")) {
+        test_language_parallel();
+        test_parallel_finish();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc >= 3 && !strcmp(argv[1], "--package-compiler-chibi-native-call")) {
         return test_language_package_compiler_chibi_native_call(argc - 2, argv + 2);
     }
@@ -167,7 +182,14 @@ int main(int argc, char **argv)
     bool record_publication = argc == 2 && !strcmp(argv[1], "--record-publication");
     bool record_publication_repro = argc == 2 &&
                                     !strcmp(argv[1], "--record-publication-repro");
+    bool packed_benchmark = argc == 2 && !strcmp(argv[1], "--packed-benchmark");
+    bool query_binding_benchmark = argc == 2 &&
+                                   !strcmp(argv[1], "--query-binding-benchmark");
+    bool scalar_read_benchmark = argc == 2 &&
+                                 !strcmp(argv[1], "--scalar-read-benchmark");
     bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
+    bool runtime_attribution_benchmark = argc == 2 &&
+                                         !strcmp(argv[1], "--runtime-attribution-benchmark");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool migration34 = argc == 2 && !strcmp(argv[1], "--migration34");
     bool migration34_generic_repro = argc == 2 &&
@@ -319,8 +341,10 @@ int main(int argc, char **argv)
          !record_document && !record_state && !record_services &&
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
          !outliner_projection && !row_array && !record_runtime &&
-         !runtime_attribution && !wasm && !migration34 && !migration34_generic_repro &&
-         !program && !query_program && !incremental && !operations && !modules &&
+         !runtime_attribution && !runtime_attribution_benchmark &&
+         !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
+         !wasm && !migration34 && !migration34_generic_repro && !program &&
+         !query_program && !incremental && !operations && !modules &&
          !native_calls && !ranges && !numeric_exact_core && !integer_semantics &&
          !integer_shift_counts && !integer_shift_counts_authored &&
          !package_graph && !package_graph_chibi && !asset_compiler_host &&
@@ -356,7 +380,8 @@ int main(int argc, char **argv)
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
-            "Usage: %s --syntax [--corpus manifest] | --execution | "
+            "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
+            "--execution | "
             "--execution-scope | --semantic "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
@@ -419,7 +444,9 @@ int main(int argc, char **argv)
             "--field-runtime | --prototype-document | --source-prototype-edits "
             "| --ui-authoring | "
             "--text-format | --graph-model | --graph-authoring | "
-            "--model-runtime | --runtime-attribution | --record-values | "
+            "--model-runtime | --runtime-attribution | "
+            "--runtime-attribution-benchmark | --query-binding-benchmark | "
+            "--scalar-read-benchmark | --packed-benchmark | --record-values | "
             "--record-semantic | --record-document | --record-services | "
             "--record-compatibility | --row-array | "
             "--migration34 | --migration34-generic-repro | "
@@ -470,6 +497,14 @@ int main(int argc, char **argv)
         test_language_record_values();
     } else if (runtime_attribution) {
         test_language_runtime_attribution();
+    } else if (packed_benchmark) {
+        test_language_packed_benchmark();
+    } else if (query_binding_benchmark) {
+        test_language_query_binding_benchmark();
+    } else if (scalar_read_benchmark) {
+        test_language_scalar_read_benchmark();
+    } else if (runtime_attribution_benchmark) {
+        test_language_runtime_attribution_benchmark();
     } else if (wasm) {
         test_language_wasm();
     } else if (benchmark) {
@@ -718,6 +753,7 @@ int main(int argc, char **argv)
             test_language_corpus(argv[3]);
         }
     }
+    test_parallel_finish();
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }

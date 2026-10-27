@@ -1390,12 +1390,11 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
     REQUIRE(!strstr(output, "bad counters accepted"));
     REQUIRE(strstr(output, "bytecode counters accepted\nbytecode counters rejected\n"));
     REQUIRE(strstr(output, "sljit counters accepted\nsljit counters rejected\n"));
-    const char *members[] = {
-        "5b207b2274657874223a22e298835c5c6e5c5c5c225b5d222c2276616c7565223a3138"
-        "3434363734343037333730393535313631357d205d",
-        "5b747275652c31652d33305d",
-        "5b5d"
-    };
+    const char *members[] = { ("5b207b2274657874223a22e298835c5c6e5c5c5c225b5d2"
+                               "22c2276616c7565223a3138"
+                               "3434363734343037333730393535313631357d205d"),
+                              "5b747275652c31652d33305d",
+                              "5b5d" };
     for (int i = 0; i < 3; i++) {
         char expected[512];
         snprintf(expected, sizeof expected, "member:%s\n", members[i]);

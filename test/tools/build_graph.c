@@ -133,8 +133,9 @@ static void read_profile()
     debug_optimization[0] = 0;
     cache_value(cache, "CMAKE_C_FLAGS_DEBUG", value, sizeof value);
     if (!strcmp(build_type, "Debug") &&
-        (!strcmp(value, "-g -O0") || !strcmp(value, "-g -O1"))) {
-        debug_optimization[0] = value[strlen(value) - 1];
+        (!strcmp(value, "-g -O0") || !strcmp(value, "-g -O1") ||
+         !strcmp(value, "-g -O1 -fno-omit-frame-pointer"))) {
+        debug_optimization[0] = value[5];
         debug_optimization[1] = 0;
     }
     cache_value(cache, "CMAKE_OSX_SYSROOT", sysroot, sizeof sysroot);
@@ -1204,7 +1205,7 @@ TEST_CASE(invalid_targets_fail_before_writing_commands)
 
 /* No compiler runs: explicit profiles expose every language's argv, including
  * test assertions, before the opt-in experiment is allowed to build. */
-TEST_CASE(debug_optimization_preserves_instrumentation)
+static bool debug_optimization_instrumentation(bool instrumented)
 {
     const char *const options[] = { "--profile",
                                     "explicit",
@@ -1217,7 +1218,7 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
                                     "--build-type",
                                     "Debug",
                                     "--sanitizers",
-                                    "address,undefined",
+                                    instrumented ? "address,undefined" : "",
                                     "--archiver",
                                     "/unused/ar",
                                     "--ranlib",
@@ -1226,7 +1227,15 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
     const char *const levels[] = { "", "0", "1" };
     for (int level = 0; level < 3; level++) {
         char build_dir[GRAPH_PATH], path[GRAPH_PATH];
-        join(build_dir, suite, level == 0 ? "default debug" : levels[level]);
+        char name[64];
+        snprintf(
+            name,
+            sizeof name,
+            "%s debug %s",
+            instrumented ? "sanitized" : "plain",
+            level ? levels[level] : "default"
+        );
+        join(build_dir, suite, name);
         const char *const extra[] = { "--commands-only",
                                       "on",
                                       "--target",
@@ -1260,7 +1269,11 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
                 const char *arg = yyjson_get_str(value);
                 REQUIRE(arg);
                 debug |= !strcmp(arg, "-g");
-                sanitizer |= !strcmp(arg, "-fsanitize=address,undefined");
+                if (!strncmp(arg, "-fsanitize=", 11)) {
+                    REQUIRE(instrumented && !strcmp(arg, "-fsanitize=address,undefined"));
+                    sanitizer = true;
+                }
+                REQUIRE(strcmp(arg, "-fomit-frame-pointer"));
                 frames |= !strcmp(arg, "-fno-omit-frame-pointer");
                 assertions |= !strcmp(arg, "-UNDEBUG");
                 REQUIRE(strncmp(arg, "-DNDEBUG", 8));
@@ -1269,7 +1282,9 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
                     REQUIRE(level && !strcmp(arg + 2, levels[level]));
                 }
             }
-            REQUIRE(debug && sanitizer && frames);
+            REQUIRE(debug);
+            REQUIRE(sanitizer == (instrumented != 0));
+            REQUIRE(frames == (instrumented || level == 2));
             REQUIRE(optimizations == (level != 0));
             const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
             saw_engine |= strstr(output, "/objects/chibi_engine/") != NULL;
@@ -1299,6 +1314,13 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
 #endif
         yyjson_doc_free(doc);
     }
+    return true;
+}
+
+TEST_CASE(debug_optimization_preserves_instrumentation)
+{
+    REQUIRE(debug_optimization_instrumentation(false));
+    REQUIRE(debug_optimization_instrumentation(true));
     return true;
 }
 

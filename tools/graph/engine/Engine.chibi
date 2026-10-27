@@ -801,6 +801,9 @@ DebugDirectoryFlags :: (profile: Profile, build_dir: string) -> string[] {
 BuildTypeFlags :: (profile: Profile) -> string[] {
     build_type := profile.build_type;
     if (build_type == "Debug") {
+        if (profile.debug_optimization == "1" && profile.sanitizers == "") {
+            return ["-g", "-O1", "-fno-omit-frame-pointer"];
+        }
         if (profile.debug_optimization != "") {
             return ["-g", Join(["-O", profile.debug_optimization])];
         }

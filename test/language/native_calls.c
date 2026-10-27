@@ -45,8 +45,8 @@ static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BA
     "        if (b) { return f64(a) + f64(c) + f64(d) + f64(e) + f * g; }\n"   \
     "        return g - f64(a);\n"                                             \
     "    }\n"
-const char NATIVE_CALLS_LIBRARY[] = "Native :: library {\n" PURE_FUNCTIONS
-                                    "}\n";
+const char NATIVE_CALLS_LIBRARY
+    [] = "Native :: library {\n" PURE_FUNCTIONS NATIVE_CALLS_WIDE "}\n";
 /* With functions that wait, exceed the entry's parameter bound or take a
  * reference, which no export can bind. */
 static const char

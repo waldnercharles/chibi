@@ -12,43 +12,36 @@ call to one, so a function can be blocked by a function it calls (*Through*). A 
 when the producer accepts it with everything it calls; it is native once `scalar_llvm` and
 `Driver.Object` also take it. The producer checks every signature before any body, so most
 functions stop at a parameter or result, and the next blocker shows
-once that package lands. Size limits count the flattened source, so records and unions from
-other packages count toward them as they would in one package.
+once that package lands.
 
 ## Summary
 
-Of 642 functions, 70 pass the producer, 30 of them without flattened imports or constants.
+Of 639 functions, 81 pass the producer, 33 of them without flattened imports or constants.
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 359 |
-| W27 | the producer's size limits | 119 |
-| none | passes the producer | 70 |
-| W9 | strings and arrays in records and unions | 47 |
-| W4 | text natives | 34 |
+| W7 | array parameters, results and natives | 437 |
+| none | passes the producer | 81 |
+| W9 | strings and arrays in records and unions | 68 |
+| W4 | text natives | 39 |
 | W6 | `format_text` | 9 |
-| none yet | other forms; see each message | 4 |
+| none yet | other forms; see each message | 5 |
 
 Each first blocker by the producer's message:
 
 | Package | Rejection | Functions |
 | --- | --- | ---: |
-| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 355 |
+| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 433 |
 | W7 | Unknown function 'length' | 4 |
-| W27 | scalar proof admits at most 64 operands per function | 8 |
-| W27 | scalar proof admits at most 16 fields per record | 28 |
-| W27 | scalar proof admits at most 16 records and unions | 22 |
-| W27 | scalar proof admits at most 16384 source bytes | 9 |
-| W27 | more parameters than the producer admits | 52 |
-| W9 | scalar proof requires number and bool record fields | 27 |
-| W9 | scalar proof requires number and bool union payloads | 20 |
-| W4 | Unknown function 'text_byte_length' | 26 |
+| W9 | scalar proof requires number and bool record fields | 47 |
+| W9 | scalar proof requires number and bool union payloads | 21 |
+| W4 | Unknown function 'text_byte_length' | 31 |
 | W4 | Unknown function 'text_byte_at' | 3 |
 | W4 | Unknown function 'text_slice' | 5 |
 | W6 | Unknown function 'format_text' | 9 |
-| none yet | scalar proof requires known effect-free scalar execution | 4 |
+| none yet | scalar proof requires known effect-free scalar execution | 5 |
 
-The census flattens two features, so neither is ever a first blocker: 325 functions name another package (W13), and 267 name a package constant (W12).
+The census flattens two features, so neither is ever a first blocker: 322 functions name another package (W13), and 265 name a package constant (W12).
 
 ## Functions
 
@@ -64,16 +57,16 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `/sdk/core/strings/Strings.chibi` | `Compare` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `IsIdentifier` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `BaseName` | W4 | `ByteLength` |  | `text_byte_length` |
-| `/sdk/core/strings/Strings.chibi` | `Contains` | W27 | `IndexFrom` |  | `i64(ByteAt(s, start + i))` |
+| `/sdk/core/strings/Strings.chibi` | `Contains` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `ContainsAny` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `HasPrefix` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `HasSuffix` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `IndexByte` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `LastIndexByte` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `MatchesAt` | W4 | `ByteLength` |  | `text_byte_length` |
-| `/sdk/core/strings/Strings.chibi` | `IndexFrom` | W27 |  |  | `i64(ByteAt(s, start + i))` |
-| `/sdk/core/strings/Strings.chibi` | `Index` | W27 | `IndexFrom` |  | `i64(ByteAt(s, start + i))` |
-| `/sdk/core/strings/Strings.chibi` | `LastIndex` | W27 |  |  | `i64(ByteAt(s, size - 1 - i))` |
+| `/sdk/core/strings/Strings.chibi` | `IndexFrom` | W4 | `ByteLength` |  | `text_byte_length` |
+| `/sdk/core/strings/Strings.chibi` | `Index` | W4 | `ByteLength` |  | `text_byte_length` |
+| `/sdk/core/strings/Strings.chibi` | `LastIndex` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `IndexAny` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `LastIndexAny` | W4 | `ByteLength` |  | `text_byte_length` |
 | `/sdk/core/strings/Strings.chibi` | `Count` | W4 | `ByteLength` |  | `text_byte_length` |
@@ -111,9 +104,9 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `/sdk/core/strings/Strings.chibi` | `RemoveAll` | W6 | `Replace` |  | `format_text` |
 | `/sdk/core/strings/Strings.chibi` | `Partition` | W9 |  |  | `head: string;` |
 | `source_snapshot/Snapshot.chibi` | `FileRange` | none |  |  |  |
-| `source_snapshot/Snapshot.chibi` | `HeaderRange` | W27 |  |  | `pub Document :: struct {     original_path: string;     path` |
-| `source_snapshot/Snapshot.chibi` | `ImportRange` | W27 |  |  | `pub ResolvedImport :: struct {     file: int;     alias: str` |
-| `source_snapshot/Snapshot.chibi` | `PathRange` | W27 |  |  | `pub ResolvedImport :: struct {     file: int;     alias: str` |
+| `source_snapshot/Snapshot.chibi` | `HeaderRange` | W9 |  |  | `original_path: string;` |
+| `source_snapshot/Snapshot.chibi` | `ImportRange` | W9 |  |  | `alias: string;` |
+| `source_snapshot/Snapshot.chibi` | `PathRange` | W9 |  |  | `alias: string;` |
 | `source_snapshot/Snapshot.chibi` | `Diagnostic` | W9 |  | W13 | `message: string;` |
 | `source_snapshot/Snapshot.chibi` | `Stamp` | W9 |  | W13 | `message: string;` |
 | `source_snapshot/Snapshot.chibi` | `Reject` | W7 |  | W13 | `documents: Document[]` |
@@ -123,9 +116,9 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `source_snapshot/Snapshot.chibi` | `Retained` | W9 |  |  | `path: string;` |
 | `source_snapshot/Snapshot.chibi` | `Rebase` | none |  |  |  |
 | `source_snapshot/Snapshot.chibi` | `Node` | W9 |  | W13 | `kind: string;` |
-| `source_snapshot/Snapshot.chibi` | `Resolved` | W27 |  | W13 | `pub package_syntax__Import :: struct {     file: int;     al` |
+| `source_snapshot/Snapshot.chibi` | `Resolved` | W9 |  | W13 | `alias: string;` |
 | `source_snapshot/Snapshot.chibi` | `GraphFailure` | W7 |  | W12, W13 | `cycle: int[]` |
-| `source_snapshot/Snapshot.chibi` | `Build` | W27 |  | W13 | `pub package_graph__Package :: struct {     directory: string` |
+| `source_snapshot/Snapshot.chibi` | `Build` | W7 |  | W13 | `collections: package_routes__Collection[]` |
 | `compiler_syntax/Syntax.chibi` | `Assemble` | W7 |  | W13 | `syntax_diagnostics__Node[]` |
 | `compiler_syntax/Syntax.chibi` | `Parse` | W9 |  | W13 | `nodes: syntax_diagnostics__Node[]` |
 | `package_routes/Routes.chibi` | `FileError` | W9 |  | W13 | `message: string;` |
@@ -185,9 +178,9 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `prepared_writer/Writer.chibi` | `FunctionHead` | W7 |  |  | `u8[]` |
 | `prepared_writer/Writer.chibi` | `EntryHead` | W7 |  |  | `u8[]` |
 | `prepared_writer/Writer.chibi` | `EventBytes` | W7 |  |  | `u8[]` |
-| `prepared_writer/Writer.chibi` | `Gather` | W27 |  | W12 | `pub ResultLayout :: struct {     index: int;     name: strin` |
-| `prepared_writer/Writer.chibi` | `Write` | W27 |  |  | `pub Data :: struct {     kind: int;     initial: int;     si` |
-| `prepared_writer/Writer.chibi` | `WriteTables` | W27 |  | W12 | `pub Data :: struct {     kind: int;     initial: int;     si` |
+| `prepared_writer/Writer.chibi` | `Gather` | W9 |  | W12 | `wide: u64[]` |
+| `prepared_writer/Writer.chibi` | `Write` | W7 |  |  | `u8[]` |
+| `prepared_writer/Writer.chibi` | `WriteTables` | W7 |  | W12 | `u8[]` |
 | `prepared_writer/Writer.chibi` | `Fingerprint` | W7 |  |  | `bytes: u8[]` |
 | `prepared_writer/Writer.chibi` | `Word` | W7 |  |  | `u8[]` |
 | `prepared_writer/Writer.chibi` | `Closure` | W7 |  | W13 | `u8[]` |
@@ -198,7 +191,7 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Compile.chibi` | `Ordinal` | W7 |  |  | `names: string[]` |
 | `package_compiler/Compile.chibi` | `Position` | W7 |  |  | `items: int[]` |
 | `package_compiler/Compile.chibi` | `ResolveOps` | W7 |  |  | `names: string[]` |
-| `package_compiler/Compile.chibi` | `Complete` | W27 |  |  | `Ops :: struct {     constant: int;     argument: int;     lo` |
+| `package_compiler/Compile.chibi` | `Complete` | none yet |  |  | `{     used: int[] = [ops.constant, ops.argument, ops.local, ` |
 | `package_compiler/Compile.chibi` | `ScalarStorage` | none yet | `TypeName` | W12 | `{     if (!Integer(storage)) {         return "";     }     ` |
 | `package_compiler/Compile.chibi` | `FindType` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Compile.chibi` | `FindConstant` | W7 |  |  | `constants: ConstDecl[]` |
@@ -211,11 +204,11 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Compile.chibi` | `FindMap` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Compile.chibi` | `TypeTag` | W7 |  | W13 | `types: TypeDecl[]` |
 | `package_compiler/Compile.chibi` | `DeclareMaps` | W7 |  | W12, W13 | `TypeDecl[]` |
-| `package_compiler/Compile.chibi` | `FieldSize` | W27 |  | W12 | `pub Target :: struct {     pointer_storage: int;     pointer` |
+| `package_compiler/Compile.chibi` | `FieldSize` | none |  | W12 |  |
 | `package_compiler/Compile.chibi` | `AlignTo` | none |  |  |  |
 | `package_compiler/Compile.chibi` | `InputFailure` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
 | `package_compiler/Compile.chibi` | `Declare` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `DeclarePackage` | W27 |  | W12, W13 | `` |
+| `package_compiler/Compile.chibi` | `DeclarePackage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `NumberConversionType` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `ConversionType` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `Arithmetic` | none |  |  |  |
@@ -229,7 +222,7 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Compile.chibi` | `EvaluateShift` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `EvaluateConversion` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `LiteralDefault` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `FunctionSignature` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, key:` |
+| `package_compiler/Compile.chibi` | `FunctionSignature` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `ScalarValue` | W9 |  | W13 | `type_name: string;` |
 | `package_compiler/Compile.chibi` | `Header` | W7 |  | W12, W13 | `types: TypeDecl[]` |
 | `package_compiler/Compile.chibi` | `ParamHeader` | W7 |  | W13 | `types: TypeDecl[]` |
@@ -240,17 +233,17 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Compile.chibi` | `HashText` | W7 | `Bytes` | W13 | `int[]` |
 | `package_compiler/Compile.chibi` | `LayoutHash` | W7 |  | W12 | `fields: TypeMember[]` |
 | `package_compiler/Compile.chibi` | `Reachable` | W7 |  | W13 | `bool[]` |
-| `package_compiler/Compile.chibi` | `Link` | W27 |  | W13 | `Body :: union {     Failed(diagnostic: syntax_diagnostics__D` |
+| `package_compiler/Compile.chibi` | `Link` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `UsedConstants` | W7 |  | W12, W13 | `ConstDecl[]` |
 | `package_compiler/Compile.chibi` | `WriteSummaries` | W7 |  | W12, W13 | `int[]` |
 | `package_compiler/Compile.chibi` | `ItemWrite` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Compile.chibi` | `GenericUpdates` | W7 |  | W12, W13 | `int[]` |
 | `package_compiler/Compile.chibi` | `StablePreparation` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Compile.chibi` | `PreparePackages` | W27 |  | W12, W13 | `Body :: union {     Failed(diagnostic: syntax_diagnostics__D` |
-| `package_compiler/Compile.chibi` | `FunctionBody` | W27 |  | W13 | `pub syntax_diagnostics__Diagnostic :: struct {     start: in` |
-| `package_compiler/Compile.chibi` | `Assemble` | W27 |  | W12, W13 | `` |
-| `package_compiler/Compile.chibi` | `Compile` | W27 |  | W13 | `(project: string, collection_names: string[], collection_pat` |
-| `package_compiler/Compile.chibi` | `CompileWithEffects` | W27 |  | W13 | `(project: string, collection_names: string[], collection_pat` |
+| `package_compiler/Compile.chibi` | `PreparePackages` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Compile.chibi` | `FunctionBody` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Compile.chibi` | `Assemble` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Compile.chibi` | `Compile` | W7 |  | W13 | `collection_names: string[]` |
+| `package_compiler/Compile.chibi` | `CompileWithEffects` | W7 |  | W13 | `collection_names: string[]` |
 | `package_compiler/Compile.chibi` | `CompileClosure` | W7 |  |  | `u8[]` |
 | `package_compiler/Compile.chibi` | `CompileClosureWithEffects` | W7 |  |  | `u8[]` |
 | `package_compiler/Body.chibi` | `ValueLocal` | none |  | W12 |  |
@@ -263,15 +256,15 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Body.chibi` | `SolidOffsets` | W7 |  | W13 | `int[]` |
 | `package_compiler/Body.chibi` | `PointIn` | W7 |  | W13 | `solid: int[]` |
 | `package_compiler/Body.chibi` | `PointAt` | W7 |  | W13 | `solid: int[]` |
-| `package_compiler/Body.chibi` | `CompletionCode` | W27 |  | W12, W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/Body.chibi` | `ExpressionCode` | W27 |  | W12, W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/Body.chibi` | `SymbolCode` | W27 |  | W12, W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/Body.chibi` | `OccurrenceCode` | W27 |  | W12, W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
+| `package_compiler/Body.chibi` | `CompletionCode` | W9 |  | W12, W13 | `kind: string;` |
+| `package_compiler/Body.chibi` | `ExpressionCode` | W9 |  | W12, W13 | `kind: string;` |
+| `package_compiler/Body.chibi` | `SymbolCode` | W9 |  | W12, W13 | `kind: string;` |
+| `package_compiler/Body.chibi` | `OccurrenceCode` | W9 |  | W12, W13 | `kind: string;` |
 | `package_compiler/Body.chibi` | `Parameter` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `LiteralNode` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `NumberLiteral` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `OverloadArgument` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `OverloadArguments` | W27 |  | W12, W13 | `pub syntax_diagnostics__Diagnostic :: struct {     start: in` |
+| `package_compiler/Body.chibi` | `OverloadArguments` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `Retargeted` | W7 |  |  | `Code[]` |
 | `package_compiler/Body.chibi` | `Resumed` | W7 |  |  | `next: Work[]` |
 | `package_compiler/Body.chibi` | `LastIndexOf` | W7 |  |  | `values: int[]` |
@@ -280,16 +273,16 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Body.chibi` | `TargetPoints` | W7 |  | W13 | `Code[]` |
 | `package_compiler/Body.chibi` | `Expression` | none |  |  |  |
 | `package_compiler/Body.chibi` | `SymbolOccurrence` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `WatchCode` | W27 |  | W12, W13 | `(ops: Ops, slot: int, storage: int, container: int, record: ` |
-| `package_compiler/Body.chibi` | `ScalarWatch` | W27 |  | W12, W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/Body.chibi` | `DefaultWatch` | W27 |  | W12, W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
+| `package_compiler/Body.chibi` | `WatchCode` | W9 |  | W12, W13 | `kind: string;` |
+| `package_compiler/Body.chibi` | `ScalarWatch` | W9 |  | W12, W13 | `kind: string;` |
+| `package_compiler/Body.chibi` | `DefaultWatch` | W9 |  | W12, W13 | `kind: string;` |
 | `package_compiler/Body.chibi` | `LiteralWatch` | W7 |  | W13 | `Code[]` |
 | `package_compiler/Body.chibi` | `OwnerWatch` | W7 |  | W12, W13 | `Code[]` |
 | `package_compiler/Body.chibi` | `TargetRoot` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `SlotsPast` | none |  |  |  |
-| `package_compiler/Body.chibi` | `Located` | W27 |  | W13 | `Code :: struct {     op: int;     type: int;     output: int` |
+| `package_compiler/Body.chibi` | `Located` | W9 |  | W13 | `text: string;` |
 | `package_compiler/Body.chibi` | `WithoutDebug` | W7 |  |  | `Code[]` |
-| `package_compiler/Body.chibi` | `PointCode` | W27 |  | W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
+| `package_compiler/Body.chibi` | `PointCode` | W9 |  | W13 | `kind: string;` |
 | `package_compiler/Body.chibi` | `Statement` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Instruction` | W9 |  | W13 | `kind: string;` |
 | `package_compiler/Body.chibi` | `Visit` | none |  |  |  |
@@ -314,7 +307,7 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Body.chibi` | `RootOf` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `MutatedNames` | W7 |  | W13 | `string[]` |
 | `package_compiler/Body.chibi` | `ChangingMethod` | none yet |  | W13 | `{     changers: string[] = ["delete", "append", "extend", "i` |
-| `package_compiler/Body.chibi` | `Unchanging` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
+| `package_compiler/Body.chibi` | `Unchanging` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `BuiltName` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `BuiltLiteral` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `NamePosition` | W7 |  |  | `spellings: string[]` |
@@ -322,7 +315,7 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Body.chibi` | `ReturnedNames` | W7 |  | W13 | `string[]` |
 | `package_compiler/Body.chibi` | `BuiltLocals` | W7 |  | W13 | `int[]` |
 | `package_compiler/Body.chibi` | `Pointer` | none |  | W12 |  |
-| `package_compiler/Body.chibi` | `SlotStorage` | W27 |  |  | `pub Target :: struct {     pointer_storage: int;     pointer` |
+| `package_compiler/Body.chibi` | `SlotStorage` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `SlotKind` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `SameType` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Single` | none |  |  |  |
@@ -337,12 +330,12 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Body.chibi` | `CommonInteger` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `IntegerWidens` | none |  | W12 |  |
 | `package_compiler/Body.chibi` | `Widens` | none |  | W12 |  |
-| `package_compiler/Body.chibi` | `Computes` | W27 |  |  | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/Body.chibi` | `ConstantCode` | W27 |  | W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/Body.chibi` | `CastCode` | W27 |  | W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
+| `package_compiler/Body.chibi` | `Computes` | none |  | W12 |  |
+| `package_compiler/Body.chibi` | `ConstantCode` | W9 |  | W13 | `kind: string;` |
+| `package_compiler/Body.chibi` | `CastCode` | W9 |  | W13 | `kind: string;` |
 | `package_compiler/Body.chibi` | `Floating` | none |  | W12 |  |
-| `package_compiler/Body.chibi` | `BinaryOp` | W27 |  |  | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/Body.chibi` | `Comparison` | W27 |  |  | `Ops :: struct {     constant: int;     argument: int;     lo` |
+| `package_compiler/Body.chibi` | `BinaryOp` | none |  |  |  |
+| `package_compiler/Body.chibi` | `Comparison` | none |  |  |  |
 | `package_compiler/Body.chibi` | `CompoundOperator` | W4 | `Slice` | W13 | `text_slice` |
 | `package_compiler/Body.chibi` | `FindCallable` | W7 |  |  | `callables: Callable[]` |
 | `package_compiler/Body.chibi` | `CatalogCallable` | W7 |  | W12 | `callables: Callable[]` |
@@ -353,7 +346,7 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Body.chibi` | `Lookup` | W7 |  |  | `names: Name[]` |
 | `package_compiler/Body.chibi` | `Separator` | none |  |  |  |
 | `package_compiler/Body.chibi` | `Lower` | none |  |  |  |
-| `package_compiler/Body.chibi` | `NameMatches` | W27 |  | W13 | `j += 1;` |
+| `package_compiler/Body.chibi` | `NameMatches` | W4 | `ByteLength` | W13 | `text_byte_length` |
 | `package_compiler/Body.chibi` | `NativeNameMatches` | W9 |  |  | `name: string;` |
 | `package_compiler/Body.chibi` | `ExactNativeKind` | W7 |  |  | `natives: ResolvedNative[]` |
 | `package_compiler/Body.chibi` | `NativeCandidate` | W9 |  |  | `name: string;` |
@@ -376,33 +369,33 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Body.chibi` | `NextArm` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `FindResult` | W7 |  |  | `ports: ResolvedPort[]` |
 | `package_compiler/Body.chibi` | `NativePort` | W9 |  |  | `name: string;` |
-| `package_compiler/Body.chibi` | `InPlaceUpdate` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
+| `package_compiler/Body.chibi` | `InPlaceUpdate` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `ArrayMethod` | W7 |  | W12 | `natives: ResolvedNative[]` |
 | `package_compiler/Body.chibi` | `ArrayChanger` | W7 |  |  | `natives: ResolvedNative[]` |
 | `package_compiler/Body.chibi` | `ChangedArray` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `StatementTarget` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `StatementValue` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `Prologue` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, para` |
+| `package_compiler/Body.chibi` | `Prologue` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Body.chibi` | `OwnerArgumentCodes` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Body.chibi` | `DebugPoints` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, name` |
-| `package_compiler/Body.chibi` | `DebugWatches` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], item: Work, produc` |
-| `package_compiler/Body.chibi` | `EmitBody` | W27 |  | W12, W13 | `` |
-| `package_compiler/Body.chibi` | `NumberPoints` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], solid: int[], unde` |
+| `package_compiler/Body.chibi` | `DebugPoints` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `DebugWatches` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `EmitBody` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Body.chibi` | `NumberPoints` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `Packable` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Steps.chibi` | `ElementSlots` | W7 |  | W12 | `Slot[]` |
 | `package_compiler/Steps.chibi` | `ElementRead` | W7 |  | W12, W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `LoadSlots` | W7 |  | W12 | `Slot[]` |
 | `package_compiler/Steps.chibi` | `ElementLoad` | W7 |  | W12, W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `ElementLocals` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `RetainStep` | W27 |  | W12, W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
+| `package_compiler/Steps.chibi` | `RetainStep` | W9 |  | W12, W13 | `kind: string;` |
 | `package_compiler/Steps.chibi` | `MovedCell` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `AddressSlot` | W27 |  | W12 | `pub Target :: struct {     pointer_storage: int;     pointer` |
+| `package_compiler/Steps.chibi` | `AddressSlot` | none |  | W12 |  |
 | `package_compiler/Steps.chibi` | `MoveCode` | W7 |  | W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `InferredNumberStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `StatementStep` | W27 |  | W12, W13 | `` |
+| `package_compiler/Steps.chibi` | `StatementStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `ReadIntegerLiteral` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `ValueStep` | W27 |  | W12, W13 | `` |
-| `package_compiler/Steps.chibi` | `LiteralStep` | W27 |  | W12, W13 | `pub syntax_diagnostics__Diagnostic :: struct {     start: in` |
+| `package_compiler/Steps.chibi` | `ValueStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `LiteralStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `Unparenthesized` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `CStringMessage` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `CStringTextMessage` | W6 |  | W13 | `format_text` |
@@ -413,14 +406,14 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Steps.chibi` | `NativeExpectation` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `NativeOwnerZero` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `NativeOwner` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `NativeBoundValues` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Steps.chibi` | `NativeBoundValues` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `NativeCallPrefix` | W7 |  | W13 | `code: Code[]` |
-| `package_compiler/Steps.chibi` | `CallStep` | W27 |  | W12, W13 | `` |
-| `package_compiler/Steps.chibi` | `OperatorStep` | W27 |  | W12, W13 | `` |
+| `package_compiler/Steps.chibi` | `CallStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `OperatorStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `MixedCompoundIntegers` | none |  | W12 |  |
-| `package_compiler/Steps.chibi` | `ConstantStep` | W27 |  | W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Steps.chibi` | `ConstantStep` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `SignedConstant` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `NumberLiteralStep` | W27 |  | W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Steps.chibi` | `NumberLiteralStep` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `SignCode` | W7 |  | W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `SignSlots` | W7 |  | W13 | `Slot[]` |
 | `package_compiler/Steps.chibi` | `ParsedLiteral` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
@@ -434,10 +427,10 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Steps.chibi` | `ConversionArgument` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `ZeroDivisor` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `ZeroCompoundDivisor` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Steps.chibi` | `FoldStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
-| `package_compiler/Steps.chibi` | `ShiftStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
-| `package_compiler/Steps.chibi` | `ForStep` | W27 |  | W12, W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/Steps.chibi` | `FieldStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Steps.chibi` | `FoldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `ShiftStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `ForStep` | W9 |  | W12, W13 | `kind: string;` |
+| `package_compiler/Steps.chibi` | `FieldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `CellRead` | W7 |  | W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `CellWrite` | W7 |  | W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `SelfComponent` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
@@ -448,7 +441,7 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Steps.chibi` | `ConstantMember` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `FindNativeType` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Steps.chibi` | `MakeCells` | W7 |  | W12 | `Cell[]` |
-| `package_compiler/Steps.chibi` | `ReferenceCell` | W27 |  | W12 | `pub Target :: struct {     pointer_storage: int;     pointer` |
+| `package_compiler/Steps.chibi` | `ReferenceCell` | none |  | W12 |  |
 | `package_compiler/Steps.chibi` | `ComponentFacts` | W7 |  | W12 | `u64[]` |
 | `package_compiler/Steps.chibi` | `ReferenceCells` | W7 |  | W12 | `Cell[]` |
 | `package_compiler/Steps.chibi` | `FieldReferenceHosts` | W7 |  | W12 | `Host[]` |
@@ -458,13 +451,13 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Steps.chibi` | `ReferenceWriteCode` | W7 |  | W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `OwnerCode` | W7 |  | W12, W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `OwnerSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `ComponentReferenceStep` | W27 |  | W12, W13 | `Value :: struct {     slot: int;     storage: int;     conta` |
-| `package_compiler/Steps.chibi` | `ComponentReadStep` | W27 |  | W12, W13 | `(before: Code[], types: TypeDecl[], component: int, written:` |
-| `package_compiler/Steps.chibi` | `ComponentMakeStep` | W27 |  | W12, W13 | `(before: Code[], types: TypeDecl[], component: int, entity: ` |
-| `package_compiler/Steps.chibi` | `EntityComponentStep` | W27 |  | W12, W13 | `Name :: struct {     name: string;     place: int;     index` |
+| `package_compiler/Steps.chibi` | `ComponentReferenceStep` | W7 |  | W12, W13 | `before: Code[]` |
+| `package_compiler/Steps.chibi` | `ComponentReadStep` | W7 |  | W12, W13 | `before: Code[]` |
+| `package_compiler/Steps.chibi` | `ComponentMakeStep` | W7 |  | W12, W13 | `before: Code[]` |
+| `package_compiler/Steps.chibi` | `EntityComponentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `Canonical` | W7 |  | W12 | `types: TypeDecl[]` |
-| `package_compiler/Steps.chibi` | `ComponentAssignStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], document: int, typ` |
-| `package_compiler/Steps.chibi` | `ComponentWriteStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Steps.chibi` | `ComponentAssignStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `ComponentWriteStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `NumberBits` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `FloatConstantStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `FoldedPoints` | W7 |  | W13 | `Code[]` |
@@ -479,60 +472,60 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Steps.chibi` | `MemberEffects` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Steps.chibi` | `EffectsStep` | W9 |  | W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
 | `package_compiler/Steps.chibi` | `WriteStep` | W9 |  | W12, W13 | `diagnostic: syntax_diagnostics__Diagnostic` |
-| `package_compiler/Steps.chibi` | `NamedResultsStep` | W27 |  | W12, W13 | `Value :: struct {     slot: int;     storage: int;     conta` |
+| `package_compiler/Steps.chibi` | `NamedResultsStep` | W7 |  | W12, W13 | `before: Code[]` |
 | `package_compiler/Steps.chibi` | `NamedReturnValues` | W7 |  | W13 | `int[]` |
-| `package_compiler/Steps.chibi` | `NamedReturnStep` | W27 |  | W12, W13 | `Value :: struct {     slot: int;     storage: int;     conta` |
-| `package_compiler/Steps.chibi` | `ResultsStep` | W27 |  | W12, W13 | `Invocation :: struct {     callee: int;     first: int;     ` |
+| `package_compiler/Steps.chibi` | `NamedReturnStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `ResultsStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `PrefixSlots` | W7 |  | W13 | `prefix: Slot[]` |
 | `package_compiler/Steps.chibi` | `Numeric` | none |  | W12 |  |
 | `package_compiler/Steps.chibi` | `NumericAggregate` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Steps.chibi` | `SameFields` | W7 |  |  | `types: TypeDecl[]` |
 | `package_compiler/Steps.chibi` | `FindAggregate` | W7 |  |  | `operators: NumericOperator[]` |
-| `package_compiler/Steps.chibi` | `AggregateStep` | W27 |  | W12, W13 | `Cell :: struct {     storage: int;     container: int;     r` |
+| `package_compiler/Steps.chibi` | `AggregateStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `NativeTextReadStep` | W9 |  | W12, W13 | `name: string;` |
-| `package_compiler/Steps.chibi` | `NativeReadStep` | W27 |  | W12, W13 | `Host :: struct {     intrinsic: int;     linked: int;     fi` |
+| `package_compiler/Steps.chibi` | `NativeReadStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `NativePortType` | W9 |  |  | `name: string;` |
 | `package_compiler/Steps.chibi` | `NativeTakes` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Steps.chibi` | `Returns` | W7 |  |  | `types: TypeDecl[]` |
 | `package_compiler/Steps.chibi` | `Supported` | W7 |  | W12 | `ports: ResolvedPort[]` |
 | `package_compiler/Steps.chibi` | `Overloaded` | W7 |  | W12 | `natives: ResolvedNative[]` |
-| `package_compiler/Steps.chibi` | `Overload` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Steps.chibi` | `Overload` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `Converted` | W9 |  |  | `name: string;` |
 | `package_compiler/Steps.chibi` | `TypedCost` | none |  | W12 |  |
 | `package_compiler/Steps.chibi` | `LiteralCost` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `FindMake` | W7 |  |  | `makes: NativeMake[]` |
-| `package_compiler/Steps.chibi` | `MakeStep` | W27 |  | W12, W13 | `Root :: struct {     slot: int;     storage: int;     contai` |
+| `package_compiler/Steps.chibi` | `MakeStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Steps.chibi` | `CallCells` | W7 |  | W12 | `Cell[]` |
 | `package_compiler/Steps.chibi` | `CallCode` | W7 |  | W13 | `Code[]` |
 | `package_compiler/Steps.chibi` | `CallSlots` | W7 |  | W12 | `Slot[]` |
-| `package_compiler/Steps.chibi` | `ParameterStep` | W27 |  | W12, W13 | `Value :: struct {     slot: int;     storage: int;     conta` |
-| `package_compiler/Steps.chibi` | `MatchStep` | W27 |  | W12, W13 | `Value :: struct {     slot: int;     storage: int;     conta` |
-| `package_compiler/Steps.chibi` | `IsStep` | W27 |  | W12, W13 | `Invocation :: struct {     callee: int;     first: int;     ` |
+| `package_compiler/Steps.chibi` | `ParameterStep` | W7 |  | W12, W13 | `params: Param[]` |
+| `package_compiler/Steps.chibi` | `MatchStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Steps.chibi` | `IsStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Maps.chibi` | `MapCell` | none |  | W12 |  |
 | `package_compiler/Maps.chibi` | `KeyCell` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Maps.chibi` | `ItemCell` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Maps.chibi` | `PartCell` | none |  | W12 |  |
 | `package_compiler/Maps.chibi` | `IsMap` | none |  | W12 |  |
-| `package_compiler/Maps.chibi` | `MapLiteralStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], document: int, typ` |
+| `package_compiler/Maps.chibi` | `MapLiteralStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Maps.chibi` | `HasZero` | none |  | W12 |  |
-| `package_compiler/Maps.chibi` | `MapReadStep` | W27 |  | W12, W13 | `Work :: struct {     node: int;     phase: int;     a: int; ` |
+| `package_compiler/Maps.chibi` | `MapReadStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Maps.chibi` | `NotIn` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Maps.chibi` | `MapMethod` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Maps.chibi` | `LocalMap` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapStoreStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Maps.chibi` | `MapStoreStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Maps.chibi` | `MapDeleteStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Maps.chibi` | `MapUpdateStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
-| `package_compiler/Maps.chibi` | `MapHasStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Maps.chibi` | `MapUpdateStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Maps.chibi` | `MapHasStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Maps.chibi` | `MapItemCode` | W7 |  | W12, W13 | `Code[]` |
 | `package_compiler/Maps.chibi` | `MapItemCells` | W7 |  | W12 | `Cell[]` |
-| `package_compiler/Maps.chibi` | `MapForStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/Maps.chibi` | `MapForStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `AnyReference` | W7 |  |  | `params: Param[]` |
 | `package_compiler/References.chibi` | `CalledFunction` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `ArgumentRoot` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `ReferencedNames` | W7 |  | W13 | `string[]` |
 | `package_compiler/References.chibi` | `Holds` | W7 |  |  | `names: string[]` |
-| `package_compiler/References.chibi` | `DescriptorCode` | W27 |  | W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/References.chibi` | `DescriptorSlot` | W27 |  | W12 | `pub Target :: struct {     pointer_storage: int;     pointer` |
+| `package_compiler/References.chibi` | `DescriptorCode` | W9 |  | W13 | `kind: string;` |
+| `package_compiler/References.chibi` | `DescriptorSlot` | none |  | W12 |  |
 | `package_compiler/References.chibi` | `TypedCell` | none |  | W12 |  |
 | `package_compiler/References.chibi` | `ReadThroughCode` | W7 |  | W13 | `Code[]` |
 | `package_compiler/References.chibi` | `ReadThroughSlots` | W7 |  | W12 | `Slot[]` |
@@ -541,17 +534,17 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/References.chibi` | `WriteThroughCells` | W7 |  | W12 | `Cell[]` |
 | `package_compiler/References.chibi` | `WriteThroughHost` | none |  | W12 |  |
 | `package_compiler/References.chibi` | `PlaceReadStep` | W9 |  | W12, W13 | `name: string;` |
-| `package_compiler/References.chibi` | `BoxStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, loca` |
+| `package_compiler/References.chibi` | `BoxStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `BoxParameterStep` | W9 |  | W12, W13 | `name: string;` |
-| `package_compiler/References.chibi` | `PlaceAssignStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/References.chibi` | `PlaceAssignStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/References.chibi` | `PlaceSlots` | W7 |  | W12 | `Slot[]` |
 | `package_compiler/References.chibi` | `MakeValueCells` | W7 |  |  | `Cell[]` |
 | `package_compiler/References.chibi` | `MakeValueCode` | W7 |  | W13 | `Code[]` |
 | `package_compiler/References.chibi` | `MakeValueSlots` | W7 |  | W12 | `Slot[]` |
 | `package_compiler/References.chibi` | `MakeValueHost` | none |  | W12 |  |
-| `package_compiler/References.chibi` | `ReferenceArgumentStep` | W27 |  | W12, W13 | `Value :: struct {     slot: int;     storage: int;     conta` |
-| `package_compiler/References.chibi` | `ReferenceWatch` | W27 |  | W13 | `Ops :: struct {     constant: int;     argument: int;     lo` |
-| `package_compiler/References.chibi` | `ReferenceFieldStep` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, docu` |
+| `package_compiler/References.chibi` | `ReferenceArgumentStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/References.chibi` | `ReferenceWatch` | W9 |  | W13 | `name: string;` |
+| `package_compiler/References.chibi` | `ReferenceFieldStep` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Tree.chibi` | `Member` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Tree.chibi` | `Members` | W7 |  | W13 | `int[]` |
 | `package_compiler/Tree.chibi` | `FirstMember` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
@@ -571,8 +564,8 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Number.chibi` | `RoundsUp` | W7 |  |  | `digits: int[]` |
 | `package_compiler/Number.chibi` | `RoundedInteger` | W7 |  |  | `digits: int[]` |
 | `package_compiler/Number.chibi` | `PowerStep` | W7 |  |  | `length` |
-| `package_compiler/Number.chibi` | `FloatFromDouble` | W27 |  |  | `i64(narrow) << 23` |
-| `package_compiler/Number.chibi` | `FloatingBits` | W27 |  | W12 | `u64(0x7fffff)` |
+| `package_compiler/Number.chibi` | `FloatFromDouble` | none |  |  |  |
+| `package_compiler/Number.chibi` | `FloatingBits` | none |  | W12 |  |
 | `package_compiler/Number.chibi` | `DecimalBits` | W7 |  | W12 | `digits: int[]` |
 | `package_compiler/Number.chibi` | `LiteralBits` | W9 |  | W13 | `digits: int[]` |
 | `package_compiler/Number.chibi` | `LargestWholeDigit` | W4 | `ByteAt` | W13 | `text_byte_at` |
@@ -619,29 +612,29 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Behavior.chibi` | `StateNumberStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Behavior.chibi` | `StateType` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Behavior.chibi` | `StateDefault` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Behavior.chibi` | `CompileBehavior` | W27 |  | W13 | `(identity: string, source: string, target: Target, abi: u64,` |
-| `package_compiler/Behavior.chibi` | `CompileBehaviorResolved` | W27 |  | W13 | `(identity: string, source: string, target: Target, abi: u64,` |
+| `package_compiler/Behavior.chibi` | `CompileBehavior` | W7 |  | W13 | `names: string[]` |
+| `package_compiler/Behavior.chibi` | `CompileBehaviorResolved` | W7 |  | W13 | `names: string[]` |
 | `package_compiler/Behavior.chibi` | `PromoteRecords` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Behavior.chibi` | `DeclareSource` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], document: source_s` |
+| `package_compiler/Behavior.chibi` | `DeclareSource` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Behavior.chibi` | `SourceNatives` | W7 |  | W13 | `ResolvedNative[]` |
-| `package_compiler/Behavior.chibi` | `CompileSources` | W27 |  | W12, W13 | `` |
+| `package_compiler/Behavior.chibi` | `CompileSources` | W7 |  | W12, W13 | `identities: string[]` |
 | `package_compiler/Behavior.chibi` | `CompileBehaviorsResolved` | W7 |  |  | `u8[]` |
-| `package_compiler/Behavior.chibi` | `BehaviorRejectionResolved` | W27 |  |  | `(identities: string[], sources: string[], target: Target, ab` |
+| `package_compiler/Behavior.chibi` | `BehaviorRejectionResolved` | W7 |  |  | `identities: string[]` |
 | `package_compiler/Behavior.chibi` | `CatalogRecordValid` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Behavior.chibi` | `CatalogPorts` | W7 |  | W12 | `ResolvedPort[]` |
 | `package_compiler/Behavior.chibi` | `CatalogMakes` | W7 |  |  | `NativeMake[]` |
 | `package_compiler/Behavior.chibi` | `CompileBehaviorsWithCatalog` | W7 |  |  | `u8[]` |
-| `package_compiler/Behavior.chibi` | `BehaviorRejectionWithCatalog` | W27 |  |  | `(identities: string[], sources: string[], target: Target, ab` |
+| `package_compiler/Behavior.chibi` | `BehaviorRejectionWithCatalog` | W7 |  |  | `identities: string[]` |
 | `package_compiler/Scalar.chibi` | `ScalarSource` | W9 |  | W12, W13 | `name: string;` |
 | `package_compiler/Scalar.chibi` | `ScalarFailure` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
 | `package_compiler/Scalar.chibi` | `ScalarAt` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarLiteral` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarTypeOf` | W7 |  | W12, W13 | `length` |
-| `package_compiler/Scalar.chibi` | `ScalarDeclares` | W27 |  | W12 | `TypeDecl :: struct {     name: string;     type_name: string` |
+| `package_compiler/Scalar.chibi` | `ScalarDeclares` | W9 |  | W12 | `name: string;` |
 | `package_compiler/Scalar.chibi` | `ScalarRecordType` | W7 |  | W12, W13 | `types: TypeDecl[]` |
 | `package_compiler/Scalar.chibi` | `ScalarValueType` | W7 |  | W12 | `types: TypeDecl[]` |
 | `package_compiler/Scalar.chibi` | `ScalarParam` | W7 |  |  | `types: TypeDecl[]` |
-| `package_compiler/Scalar.chibi` | `ScalarSignature` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarSignature` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarReturned` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarVariable` | W7 |  |  | `names: Name[]` |
 | `package_compiler/Scalar.chibi` | `ScalarRecordOf` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
@@ -655,46 +648,43 @@ The census flattens two features, so neither is ever a first blocker: 325 functi
 | `package_compiler/Scalar.chibi` | `ScalarShifts` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarCommon` | none |  | W12 |  |
 | `package_compiler/Scalar.chibi` | `ScalarSpelled` | none |  | W12 |  |
-| `package_compiler/Scalar.chibi` | `ScalarOperandStorage` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarFull` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarExtend` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarAppend` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarOperand` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarVariant` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarIs` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarRecordValue` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarConvert` | W27 |  | W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarConversion` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarConverted` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarShifted` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarComputed` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
+| `package_compiler/Scalar.chibi` | `ScalarOperandStorage` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarOperand` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarVariant` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarIs` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarRecordValue` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarConvert` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarConversion` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarConverted` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarShifted` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarComputed` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarLogic` | none |  | W12, W13 |  |
 | `package_compiler/Scalar.chibi` | `ScalarNegated` | none |  |  |  |
-| `package_compiler/Scalar.chibi` | `ScalarLogical` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarSides` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarBounded` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarLogical` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarSides` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarArms` | W7 |  | W13 | `int[]` |
 | `package_compiler/Scalar.chibi` | `ScalarBlock` | W7 |  | W12, W13 | `ScalarWork[]` |
 | `package_compiler/Scalar.chibi` | `ScalarBreaks` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarEnds` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarDeclared` | W27 |  | W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
+| `package_compiler/Scalar.chibi` | `ScalarDeclared` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarDeclaredRecord` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
-| `package_compiler/Scalar.chibi` | `ScalarFieldAssigned` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarAssigned` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarPlanned` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, call` |
-| `package_compiler/Scalar.chibi` | `ScalarFunction` | W27 |  | W12, W13 | `` |
+| `package_compiler/Scalar.chibi` | `ScalarFieldAssigned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarAssigned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarPlanned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarFunction` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarCells` | W7 |  | W12 | `cells: Cell[]` |
 | `package_compiler/Scalar.chibi` | `ScalarHosts` | W7 |  | W12 | `hosts: Host[]` |
-| `package_compiler/Scalar.chibi` | `ScalarEmits` | W27 |  | W13 | `(forest: source_snapshot__SnapshotNode[], text: string, key:` |
-| `package_compiler/Scalar.chibi` | `ScalarModule` | W27 |  | W12, W13 | `(forest: source_snapshot__SnapshotNode[], text: string, key:` |
+| `package_compiler/Scalar.chibi` | `ScalarEmits` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarModule` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarRecords` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarUnion` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarStart` | W9 |  | W13 | `message: string;` |
 | `package_compiler/Scalar.chibi` | `ScalarPassed` | W9 |  | W13 | `message: string;` |
-| `package_compiler/Scalar.chibi` | `ScalarMembers` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarMembers` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarNul` | W9 |  | W13 | `message: string;` |
+| `package_compiler/Scalar.chibi` | `ScalarLibrary` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
 | `package_compiler/Scalar.chibi` | `CollectScalar` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
 | `scalar_facts/Facts.chibi` | `Bits` | none |  | W12 |  |
 | `scalar_facts/Facts.chibi` | `Unsigned` | none |  | W12 |  |
 | `scalar_facts/Facts.chibi` | `Floating` | none |  | W12 |  |
-| `scalar_facts/Facts.chibi` | `Fits` | W27 |  | W12 | `literal >= 0 - half` |
+| `scalar_facts/Facts.chibi` | `Fits` | none |  | W12 |  |

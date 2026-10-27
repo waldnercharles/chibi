@@ -71,7 +71,7 @@ which have one writer at a time, so they run in order in the LLVM lane.
 
 | ID | Package | Prerequisites | Shared interfaces | Owner | Parallel | Exit tests | On main | Pending PR | Design |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| W1 | Named arguments | none | Call rows' argument order | LLVM lane | no | corpus `named_argument` accepted; a module calling with names in every order and with defaults agrees with both VMs at O0 and O2, in the order the call step evaluates them | no | none | decided: follow the call step |
+| W1 | Named arguments | stage one's authored named arguments, which it rejects as unsupported syntax | Call rows' argument order | LLVM lane | no | corpus `named_argument` accepted; a module calling with names in every order and with defaults agrees with both VMs at O0 and O2, in the order the call step evaluates them | no | none | decided: follow the call step |
 | W2 | Multiple and named results | records (done) | Return rows with several values; an internal struct return | LLVM lane | no | corpus `named_result` accepted; a module returning and destructuring two to four results of mixed types agrees at O0 and O2 | no | none | decided: an internal LLVM struct, as records are |
 | W3 | String values: literals, parameters, results, locals, `==` and `!=` | none | `native_abi.TextType`, the runtime's `pin_string` layout | LLVM lane | no | corpus `string_equality` accepted; a strings module (escapes, UTF-8, embedded NUL, empty, prefixes) agrees at O0 and O2; O2 objects have no undefined symbols; a C test pins `pin_string`'s layout | yes (#740) | none | decided: D10, by-value `{ ptr, i32 }` descriptors, no allocation |
 | W4 | Text natives: byte length, byte reads, slices, `for` over a string | W3 | native catalog input to `CollectScalar` | LLVM lane | no | `core:strings` functions copied into a module (Compare, HasPrefix, Index, Split's counting) agree at O0 and O2 | no | none | proposed: a slice is a view of its source's bytes |
@@ -97,14 +97,15 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W24 | Game scenarios | none | game fixtures | proposed lane | yes | deterministic scenarios for each feature the inventory finds in games | no | none | decided |
 | W25 | Native game execution | W16, W14, W7 | W16's bridge | LLVM lane | no | representative scenes run with native functions and give the VM's traces; tasks stay in the VM (D10) | no | none | decided: D10, native functions never suspend |
 | W26 | Default adoption and removal | all of the above | stable command defaults | owner decision | no | PLAN.md's deletion gate for each removed path | no | none | open: the owner decides the switch |
-| W27 | Lift the producer's size limits | none | the limits in `Facts.chibi`; `Run.ps1`'s cap | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules at the old limits and past them agree at O0 and O2 | no | none | open: raise the limits or remove them |
+| W27 | Remove the producer's size limits | none | the limits in `Facts.chibi` | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules past the old limits agree at O0 and O2 | yes (#754) | none | decided: removed, as Rust and Odin have none; the validator keeps structural checks |
 
 Lanes:
 
 - Ready now, beside the LLVM lane: W16 (VM-to-native calls),
   W17 and W18 (driver and linking), W20 (measurements), W21 (census) and W24
   (game scenarios). Each touches files the LLVM lane does not.
-- In the LLVM lane, in order: W3, then W12, W1, W2, W4, W5, W6, W11 and W19.
+- In the LLVM lane, in order: W3, W12 and W27 (done), then W4, W2, W5, W6,
+  W11 and W19. W1 follows stage one's named arguments.
   W5's runtime side may split off once its symbol list is fixed.
 - After #694 and #695 land: W7, W10, W8 and W9, in that order; W14 and W13
   follow.
@@ -113,30 +114,29 @@ Lanes:
 
 ## Census
 
-The [census](native-compiler-census.md) (W21) gives each of the 642 functions
+The [census](native-compiler-census.md) (W21) gives each of the 639 functions
 in the self-hosted compiler's bootstrap closure the first rejection the
 producer gives it, after flattening imports (W13) and constants (W12) into one
-package. With native strings (W3, #740) on main at `018755f` (27 October
-2026):
+package. With the producer's size limits removed (W27) on top of native
+strings (W3, #740), constants (W12, #751) and native libraries (#753), 27
+October 2026:
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 359 |
-| W27 | the producer's size limits | 119 |
-| none | passes the producer | 70 |
-| W9 | strings and arrays in records and unions | 47 |
-| W4 | text natives | 34 |
+| W7 | array parameters, results and natives | 437 |
+| none | passes the producer | 81 |
+| W9 | strings and arrays in records and unions | 68 |
+| W4 | text natives | 39 |
 | W6 | `format_text` | 9 |
-| none yet | other forms | 4 |
+| none yet | other forms | 5 |
 
-W3 removed all 99 of its first blockers. Those functions now stop at the next
-package's feature, mostly W7's arrays, W9's string fields and W4's
-`text_byte_length`. W27's 119 are 52 functions with more than 8 parameters, 28
-with a record of more than 16 fields, 22 naming more than 16 records and
-unions, 9 over 16 KB of flattened source and 8 over 64 operands. The 4 others
-build a `string[]` literal, which waits for W7. Of the 70 that pass, 30 need
-neither flattening. In all, 325 functions name another package and 267 a
-package constant.
+W27 removed all 119 of its first blockers. Of those, 11 now pass and the rest
+stop at the next package's feature: 81 at W7's arrays, 21 at W9's managed
+fields, 5 at W4's text natives and 1 at another form. The closure also lost
+four functions that were W7's, the producer's helpers for the bounds. The 5 others build a
+`string[]` literal, which waits for W7. Of the 81 that pass, 33 need neither
+flattening. In all, 322 functions name another package and 265 a package
+constant.
 
 The producer checks every signature before any body, so a count shows the
 first blocker only, and the next one appears when its package lands. Rerun
@@ -249,7 +249,7 @@ decision.
 | D5 | Native ABI | An explicit target, ownership and effect contract. Probes use a validation-only adapter, and internal ownership follows D10. Inside a module `bool` is a plain `i1`. An exported or foreign `bool` parameter or result is `zeroext i1`, as clang passes C's `_Bool` on Linux, macOS and Windows and as rustc and Odin pass theirs (owner, 27 October 2026). Windows code that uses floating point references `_fltused`, which the MSVC runtime defines; a program linked without it must define it. | The exported and foreign ABI of aggregates and strings, and the calling conventions they need (W14, W16). | open, needed for M5 |
 | D6 | Failure handling | Observable errors, effects and cleanup are preserved. | Native diagnostics, unwinding, status and termination. A provisional trap is not the final answer. | open |
 | D7 | Targets and defaults | Prove each target, and keep current behavior working. `native_abi` admits `x86_64-unknown-linux-gnu`, `arm64-apple-macosx11.0.0` (versioned, so the object records its platform, as Odin's default does) and `x86_64-pc-windows-msvc`, and `Driver.Target` admits each with the layout LLVM 18 gives it; `Driver.Object` emits objects for all three, and `Driver.Build` links programs for all three on Linux with `ld.lld` (W18). Line tables (W19) and libraries (W16) are Linux x86-64 only, and the emitter rejects them for the other two. The x86-64 layouts are the same from LLVM 18 to 21; the arm64 one changes with the major, so another major's arm64 layout is rejected. | The pinned LLVM for macOS and Windows hosts (CI builds their objects and programs with Linux's LLVM 18) and when native output becomes a default. | open, M6 and M8 |
-| D8 | Regression budget | `Run.ps1` caps at 96 sources and 240 seconds (#683 raised it from 180), and M1 reaches 96. M2's folded-constant sources and its generated width and floating modules go in the C selector (`FOLDED_SOURCES`, `widths_agree`, `floats_agree`), and its corpus edits keep 96. | A measured larger cap. | M2 cases in the C selector; cap open |
+| D8 | Regression budget | `Run.ps1` caps at 96 sources and 240 seconds (#683 raised it from 180). M1 reached 96, and W27 brought the corpus to 90 by dropping the cases on each side of the size limits. M2's folded-constant sources and its generated width and floating modules go in the C selector (`FOLDED_SOURCES`, `widths_agree`, `floats_agree`). | A measured larger cap. | M2 cases in the C selector; cap open |
 | D9 | Out-of-range indexes | Native code panics, as Rust's and Odin's does: it ends the program with a named message. The VM keeps its recoverable error for the editor. The owner declined reading a zero value and dropping the write. (Owner, 26 October 2026.) | The message and the host hook it reports through, with D6. | decided for M4 |
 | D10 | Native ownership | Native code has no ownership scheme of its own. It calls the runtime's value operations (copy, drop, make unique, allocate) as internal `chibi_rt_*` symbols, versioned with the prepared ABI, at the copies and drops the compiler certifies. It reads strings inline and arrays only through runtime spans. A hidden first context parameter carries the heap and the failure slot, and native functions never suspend, so the heap collects only while execution is quiescent. | Lands with M4c; arrays and maps wait for #695 and #694. | set for M4c |
 | D11 | Calls from the VM into native code | A native library source (`Name :: library { ... }` of plain functions) compiles to an object that exports one symbol, `chibi_natives_<Name>`, a manifest of its pure scalar functions; every function is internal, and one wrapper per word signature reads and writes the words, as rustc and Odin export a crate's or package's API and keep the rest internal. Each export names a function by its stable ID (`script_catalog_id("symbol", "<library path>:1:<name>:callable")`, which its prepared module records) and its exact parameter and result types, and its entry reads and writes 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1, `number` and `f64` as their bits. `execution_natives_bind` (`src/execution/native.c`) binds an export only to the effect-free authored function with that ID and signature, and rejects the whole manifest otherwise. A program given the table runs bound synchronous calls natively; tasks, inspected calls and unbound functions stay in the VM, and the editor binds nothing. The program's context layout and the prepared ABI do not change. | Loading objects in the player and producing them in the build, and records, strings and arrays at the boundary (W5). | runtime bridge and emission implemented; loading open |

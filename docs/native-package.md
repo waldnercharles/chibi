@@ -58,8 +58,9 @@ from a `<Library> :: library { ... }` source and exports its manifest as
 `chibi_natives_<Library>`. The player loads them before the first scene and
 binds each manifest to the library's module, so calls to its pure functions run
 natively; tasks, unbound functions and Studio stay in the VM. A library that
-does not load or bind stops the player with the reason. Web exports ship none. `chibi-compile` does not produce these objects yet; see W16 in
-`docs/native-llvm-ledger.md`.
+does not load or bind stops the player with the reason. Web exports ship none.
+`chibi export --native` builds them on Linux x86-64 (see the toolchain guide);
+see W16 in `docs/native-llvm-ledger.md`.
 
 ## Window and icon
 

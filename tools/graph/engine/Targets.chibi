@@ -890,7 +890,7 @@ Files :: (target: string) -> string[] {
             "test/tools/test_policy.c", "test/tools/validation_plan.c", "test/tools/web_storage.c",
             "test/tools/player_url.c", "test/tools/webgpu_staging.c", "test/tools/browser.c",
             "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
-            "src/host/process.c", "third_party/yyjson/yyjson.c",
+            "src/host/process.c", "src/host/native_libraries.c", "third_party/yyjson/yyjson.c",
             "test/tools/native_aot_driver.c", "test/tools/build_process.c",
             "test/tools/build_toolchain.c", "test/tools/build_graph.c", "test/tools/build_sdk.c",
             "test/tools/compiler_artifact.c", "test/tools/compiler_bootstrap.c",

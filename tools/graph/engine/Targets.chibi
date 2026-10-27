@@ -3672,7 +3672,8 @@ pub Configures :: (target: string) -> string[] {
 // as CMake's file(READ ... HEX) initializer, `cstring:PATH` as C string lines,
 // and `compiler:ARGUMENT` as C string initializer lines of the profile's C
 // compiler, its C flags and then ARGUMENT, as test/tools writes the compiler
-// its exported C builds with.
+// its exported C builds with. `test-sources:PREFIX:PACKAGE:DIR` and
+// `test-inputs:PREFIX:PACKAGE:DIR` discover a test package's direct .chibi files.
 pub Substitutions :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
@@ -3694,6 +3695,8 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_DOCS_MARKDOWN_BYTES=bytes:tools/docs/markdown/Markdown.chibi",
             "CHIBI_DOCS_REFERENCE_BYTES=bytes:tools/docs/reference/Reference.chibi",
             "CHIBI_DOCS_SITE_BYTES=bytes:tools/docs/site/Site.chibi",
+            "CHIBI_EMITTER_TEST_SOURCES=test-sources:EMITTER_TEST_SOURCE:llvm_native_calls:test/native_aot/emitter_calls",
+            "CHIBI_EMITTER_TEST_INPUTS=test-inputs:EMITTER_TEST_SOURCE:llvm_native_calls:test/native_aot/emitter_calls",
             "CHIBI_EFFECT_ANALYSIS_BYTES=bytes:tools/compiler/effect_analysis/Effects.chibi",
             "CHIBI_LEXICAL_BINDING_BYTES=bytes:tools/compiler/lexical_binding/Binding.chibi",
             "CHIBI_LLVM_NATIVE_BYTES=bytes:tools/compiler/llvm_native/Emit.chibi",

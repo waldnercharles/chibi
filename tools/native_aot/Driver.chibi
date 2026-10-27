@@ -71,11 +71,11 @@ Failed :: (partial: string, stage: string, status: int) -> int {
     return status;
 }
 
-// The program's only runtime. The kernel enters _start with a 16-byte aligned
-// stack, so the call gives the module's entry, `chibi_scalar() -> i32` as
-// `scalar_llvm` emits it, its ABI alignment, and the entry's result becomes the
-// exit status. Nothing else is linked, so no C library or compiler driver is
-// needed.
+// The program's only runtime, shaped like Odin's no-CRT `_start` and musl's
+// crt1: clear the frame pointer, align the stack down to 16 bytes, then call the
+// module's entry, `chibi_scalar() -> i32` as `scalar_llvm` emits it, whose
+// result becomes the exit status. Nothing else is linked, so no C library or
+// compiler driver is needed.
 Start :: () -> string {
     return Join([
         "target triple = \"x86_64-unknown-linux-gnu\"\n",
@@ -84,6 +84,7 @@ Start :: () -> string {
         "module asm \".type _start, @function\"\n",
         "module asm \"_start:\"\n",
         "module asm \"xorl %ebp, %ebp\"\n",
+        "module asm \"andq $-16, %rsp\"\n",
         "module asm \"callq chibi_scalar\"\n",
         "module asm \"movl %eax, %edi\"\n",
         "module asm \"movl $231, %eax\"\n",

@@ -99,6 +99,10 @@ pub TextType :: () -> string {
 // runtime checks before binding it: EXECUTION_NATIVE_ABI in
 // src/execution/native.h.
 pub ExportAbi: int : 1;
+// The most parameters an entry of that ABI takes:
+// EXECUTION_NATIVE_MAX_PARAMETERS. A function with more stays callable only
+// inside its library.
+pub ExportParameters: int : 8;
 // The type a manifest records for a parameter or result of this storage,
 // execution_native_type in src/execution/native.h, or 0 when no word carries
 // it. A word holds an integer sign- or zero-extended from its width, a bool as

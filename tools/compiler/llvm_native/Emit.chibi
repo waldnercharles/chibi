@@ -1087,9 +1087,13 @@ Identifier :: (name: string) -> bool {
     return length(bytes) > 0;
 }
 // The manifest types of a function's parameters, then its result, or none
-// when a word cannot carry one of them, such as a string or a record.
+// when a word cannot carry one of them, such as a string or a record, or the
+// entry ABI takes fewer parameters.
 ExportTypes :: (shape: Function, parameters: int[]) -> int[] {
     types: int[] = [];
+    if (shape.parameters > abi.ExportParameters) {
+        return types;
+    }
     for (index in 0..<shape.parameters) {
         types.append(abi.ExportType(parameters[shape.first_parameter + index]));
     }

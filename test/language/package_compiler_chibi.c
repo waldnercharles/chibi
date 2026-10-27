@@ -10720,6 +10720,8 @@ static const malformed_guard MALFORMED_UNIONS[] = {
     { { { .row = UNION_BOX, .field = "name", .text = "Dot", .from = -1 } }, VARIANT_ROW },
     { { COPY(UNION_BOX, "end", UNION_MAIN) }, VARIANT_ROW },
     { { EDIT(UNION_BOX, "count", 1) }, LAYOUT },
+    /* Payload counts that would wrap the next variant's row negative. */
+    { { EDIT(UNION_DOT, "count", INT32_MAX) }, UNION_ROW },
     { { EDIT(UNION_BOX, "count", INT32_MAX) }, UNION_ROW },
     { { EDIT(UNION_DECLARATION, "count", INT32_MAX) }, UNION_ROW },
     /* A payload numbered as another, of a record type, named as another in
@@ -11796,6 +11798,28 @@ static bool native_recursion_probes_the_stack(int b)
                                            { NATIVE_INT, 0, 3, 4, 1, 8, 3, 3, 0 } };
     m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
     m.functions = gap;
+    REQUIRE(native_rejects(b, &m, TABLES));
+    /* Slot ranges whose sum wraps back to an empty slot table. */
+    static const native_code returns[] = {
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+        { .op = NATIVE_CHECK },
+        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
+        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+        { .op = NATIVE_RETURN },
+    };
+    static const native_function wrapped[] = {
+        { NATIVE_INT, 0, 0, 0, INT32_MAX, 0, 4, 0, 0 },
+        { NATIVE_INT, 0, 0, INT32_MAX, INT32_MAX, 4, 4, 0, 0 },
+        { NATIVE_INT, 0, 0, -2, 2, 8, 4, 0, 0 },
+    };
+    m = (native_module){ wrapped, 3, NULL, 0, NULL, 0, returns, 12, NULL, 0 };
     REQUIRE(native_rejects(b, &m, TABLES));
     return true;
 }
@@ -16314,9 +16338,26 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
     REQUIRE(remove_native_files(directory) && agreed);
     return true;
 }
+/* Whether `manifest` exports Small, whose entry gives 19 through Wide, and
+ * not Wide, whose parameters no entry takes. */
+static bool exports_small_alone(const execution_native_manifest *manifest)
+{
+    const execution_native_export *small = NULL;
+    for (int i = 0; i < manifest->count; i++) {
+        REQUIRE(strcmp(manifest->exports[i].name, "Wide"));
+        if (!strcmp(manifest->exports[i].name, "Small")) {
+            small = &manifest->exports[i];
+        }
+    }
+    REQUIRE(small && small->parameter_count == 0);
+    uint64_t result = 0;
+    small->entry(NULL, &result);
+    REQUIRE(result == 19);
+    return true;
+}
 /* NATIVE_CALLS_LIBRARY compiled natively at O0 and O2: its object's
- * manifest names every function, and bound to the library's module it gives
- * a running Probe the VM's states. */
+ * manifest names every function an entry can take, and bound to the
+ * library's module it gives a running Probe the VM's states. */
 static bool library_runs_in_a_scene(const char *directory)
 {
     pin_value rows;
@@ -16336,7 +16377,8 @@ static bool library_runs_in_a_scene(const char *directory)
         const execution_native_manifest *manifest = opened ? dlsym(opened, "chibi_natives_Native")
                                                            : NULL;
         agreed = manifest && manifest->abi == EXECUTION_NATIVE_ABI &&
-                 manifest->count == 4 && native_calls_agree(manifest);
+                 manifest->count == 5 && exports_small_alone(manifest) &&
+                 native_calls_agree(manifest);
         if (opened) {
             dlclose(opened);
         }

@@ -148,6 +148,45 @@ The folder contains package files, rather than game behaviors or libraries.
 Tests import local packages with `project:NAME` and SDK packages with `core:NAME`.
 See [Testing](testing.md) for a complete example.
 
+## Build native programs
+
+```sh
+chibi build --native --llvm /usr/lib/llvm-18/bin /path/to/program
+```
+
+`build --native` compiles a folder holding one `.chibi` source to a native
+program with LLVM, without a C compiler. Its first function is the program's
+entry and returns the exit status:
+
+```chibi
+package program
+
+Main :: () -> int {
+    return Twice(21)
+}
+
+Twice :: (value: int) -> int {
+    return value * 2
+}
+```
+
+`--llvm` names the folder of LLVM's `opt`, `llc` and `ld.lld`. Without it the
+command reads `CHIBI_LLVM_BIN`. `-O2`, the default, optimizes; `-O0` does not.
+The program and its receipt go to `build/native/O2-HASH` or `O0-HASH`, named
+by a hash of the source, the SDK and the tools, and the command prints the
+program's path. An unchanged build reuses its folder once its receipt still
+names the tools and the program's bytes and the program is executable;
+otherwise the command fails and asks you to remove the folder. A changed build
+never replaces an earlier program. A source that native code cannot compile yet
+fails with the position of its first unsupported form, and nothing falls back
+to the player's compiled game. Native code supports numbers, `bool`, records
+and unions of them, control flow and calls between the source's own functions
+so far. The engine repository's `docs/native-llvm-ledger.md` tracks the rest.
+
+An interrupted build leaves its `.work` or `.partial` folder beside the
+output. The next build refuses to start until you remove it, so it never
+overwrites a build that is still running.
+
 ## Export a game
 
 Use an installed SDK to assemble a release:
@@ -310,7 +349,8 @@ Each command accepts `--help`.
 
 ## Platform limits
 
-Linux and macOS support all commands.
+Linux and macOS support all commands, except `build --native`, which builds
+Linux x86-64 programs only.
 
 TODO: Windows support for reading package sources in `test` and `doc`.
 

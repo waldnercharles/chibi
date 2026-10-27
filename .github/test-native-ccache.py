@@ -3,6 +3,8 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import subprocess
+from unittest.mock import patch
 import unittest
 
 spec = importlib.util.spec_from_file_location('native_ccache', Path(__file__).with_name('native-ccache.py'))
@@ -25,7 +27,7 @@ class CacheTests(unittest.TestCase):
                         ImageOS='ubuntu24', ImageVersion='1')
 
     def key(self, env=None, run=None):
-        return cache.identity(self.root, env or self.env, run or (lambda *args: ' '.join(args)))
+        return cache.identity(self.root, env or self.env, run or (lambda *args: ' '.join(args)), fingerprint=lambda command: command)
 
     def test_stable_without_source_revision(self):
         before = self.key()
@@ -36,8 +38,14 @@ class CacheTests(unittest.TestCase):
         before = self.key()
         for key in ('RUNNER_OS', 'RUNNER_ARCH', 'ImageOS', 'ImageVersion', 'CC', 'CXX'):
             with self.subTest(key=key):
-                self.assertNotEqual(before, self.key(dict(self.env, **{key: 'different'})))
-        self.assertNotEqual(before, self.key(run=lambda *args: 'new version'))
+                after = self.key(dict(self.env, **{key: 'different'}))
+                self.assertNotEqual(before[0], after[0])
+                self.assertNotEqual(before[1], after[1])
+        for tool in ('clang', 'clang++', 'ccache', 'dpkg-query'):
+            with self.subTest(tool=tool):
+                after = self.key(run=lambda *args: 'new version' if args[0] == tool else ' '.join(args))
+                self.assertNotEqual(before[0], after[0])
+                self.assertNotEqual(before[1], after[1])
 
     def test_recipe_and_dependency_invalidation(self):
         for path in sorted(self.root.rglob('*')):
@@ -45,19 +53,80 @@ class CacheTests(unittest.TestCase):
                 with self.subTest(path=path):
                     before = self.key()
                     path.write_text(path.read_text() + 'changed')
-                    self.assertNotEqual(before, self.key())
+                    self.assertNotEqual(before[0], self.key()[0])
+                    self.assertEqual(before[1], self.key()[1])
+
+    def test_compiler_content_invalidation(self):
+        def key(content):
+            return cache.identity(self.root, self.env, lambda *args: 'same version',
+                                  fingerprint=lambda command: content)
+        before = key('old compiler bytes')
+        after = key('new compiler bytes')
+        self.assertNotEqual(before[0], after[0])
+        self.assertNotEqual(before[1], after[1])
+
+    def test_compiler_missing_fails_closed(self):
+        with self.assertRaises(FileNotFoundError):
+            cache.compiler_digest('/nonexistent/chibi-compiler')
+
+    def test_compiler_hash_reads_contents(self):
+        compiler = self.root / 'compiler'
+        compiler.write_text('old')
+        compiler.chmod(0o700)
+        before = cache.compiler_digest(str(compiler))
+        compiler.write_text('new')
+        self.assertNotEqual(before, cache.compiler_digest(str(compiler)))
+
+    def test_primary_is_nested_under_compatibility(self):
+        primary, compatible = self.key()
+        self.assertTrue(primary.startswith(compatible + '-'))
+        self.assertTrue(primary.startswith('ccache-v2-Linux-X64-'))
 
     def test_macos_sdk_invalidation(self):
         env = dict(self.env, RUNNER_OS='macOS')
         before = self.key(env)
-        self.assertNotEqual(before, self.key(env, lambda *args: 'new sdk' if args[0] == 'xcrun' else ' '.join(args)))
+        for field in ('--show-sdk-path', '--show-sdk-version', '--show-sdk-build-version'):
+            with self.subTest(field=field):
+                after = self.key(env, lambda *args: 'new sdk' if field in args else ' '.join(args))
+                self.assertNotEqual(before[0], after[0])
+                self.assertNotEqual(before[1], after[1])
+
+    def test_macos_companion_package_invalidation(self):
+        env = dict(self.env, RUNNER_OS='macOS')
+        before = self.key(env)
+        for command in ('deps', 'list'):
+            with self.subTest(command=command):
+                after = self.key(env, lambda *args: 'changed llvm package' if
+                                 args[:2] == ('brew', command) else ' '.join(args))
+                self.assertNotEqual(before[0], after[0])
+                self.assertNotEqual(before[1], after[1])
+
+    def test_identity_query_failure_fails_closed(self):
+        for platform, tool in (('Linux', 'dpkg-query'), ('macOS', 'brew'), ('macOS', 'xcrun')):
+            with self.subTest(platform=platform, tool=tool):
+                def run(*args):
+                    if args[0] == tool:
+                        raise subprocess.CalledProcessError(1, args)
+                    return ' '.join(args)
+                with self.assertRaises(subprocess.CalledProcessError):
+                    self.key(dict(self.env, RUNNER_OS=platform), run)
+
+    def test_output_provenance(self):
+        env = dict(self.env, RUNNER_TEMP=str(self.root), GITHUB_WORKSPACE=str(self.root),
+                   GITHUB_ENV=str(self.root / 'env'), GITHUB_OUTPUT=str(self.root / 'output'))
+        primary, compatible = self.key()
+        with patch.object(cache.os, 'environ', env), \
+             patch.object(cache, 'identity', return_value=(primary, compatible)):
+            cache.main()
+        self.assertEqual((self.root / 'output').read_text(),
+                         f'prefix={primary}\ncompatibility-prefix={compatible}\n')
 
     def test_job_local_configuration(self):
         env = dict(self.env, RUNNER_TEMP=str(self.root), GITHUB_WORKSPACE='/workspace/source',
                    GITHUB_ENV=str(self.root / 'env'))
         cache.configure(env)
         self.assertEqual((self.root / 'chibi-ccache.conf').read_text(),
-                         'max_size = 500M\ncompiler_check = content\n')
+                         'max_size = 500M\ncompiler_check = content\nhash_dir = true\nsloppiness =\n')
         self.assertEqual((self.root / 'env').read_text(),
                          f'CCACHE_DIR={self.root}/chibi-ccache\n'
                          f'CCACHE_CONFIGPATH={self.root}/chibi-ccache.conf\n'
@@ -68,11 +137,13 @@ class CacheTests(unittest.TestCase):
         workflow = (cache.ROOT / '.github/workflows/ci.yml').read_text()
         self.assertEqual(workflow.count('uses: actions/cache/restore@v4'), 2)
         self.assertEqual(workflow.count('uses: actions/cache/save@v4'), 2)
+        self.assertNotIn('key: ${{ steps.ccache-config.outputs.compatibility-prefix }}', workflow)
+        self.assertNotIn('pull_request_target:', workflow)
         guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'"
         self.assertEqual(workflow.count(guard), 2)
         self.assertEqual(workflow.count('path: ${{ env.CCACHE_DIR }}'), 4)
         self.assertEqual(workflow.count('key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}'), 4)
-        self.assertEqual(workflow.count('restore-keys: ${{ steps.ccache-config.outputs.prefix }}-'), 2)
+        self.assertEqual(workflow.count('restore-keys: |\n            ${{ steps.ccache-config.outputs.prefix }}-\n            ${{ steps.ccache-config.outputs.compatibility-prefix }}-'), 2)
 
 
 if __name__ == '__main__':

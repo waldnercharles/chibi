@@ -1,0 +1,29 @@
+package native_emitter
+
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import strings "core:strings"
+
+// `chibi build --native`'s entries over CollectScalar's rows. Both return raw
+// bytes the compiler host writes unchanged: the module's IR, or why it has
+// none.
+pub Emit :: (rows: facts.Row[]) -> u8[] {
+    return scalar.EmitBytes(rows);
+}
+
+pub Diagnose :: (rows: facts.Row[]) -> u8[] {
+    message := "";
+    switch scalar.Emit(rows) {
+        case .Rejected(rejected):
+            message = format_text("{}:{}: {}", rejected[1].line, rejected[1].column, rejected[1].text);
+        case .Invalid(reason):
+            message = reason;
+        case .Emitted(text):
+            message = "";
+    }
+    bytes: u8[] = [];
+    for (value in strings.Bytes(message)) {
+        bytes.append(u8(value));
+    }
+    return bytes;
+}

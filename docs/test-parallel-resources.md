@@ -47,3 +47,159 @@ anchors.
   cancellation and manifest-preservation regressions separately from engine
   runs. Claim iteration speedups only after matched serial/parallel wall-time
   measurements; pico_unit CPU time is not elapsed time.
+
+## Build-once isolated language shards (manual proof)
+
+`Language shard validation` is an opt-in workflow, not a replacement for ordinary
+CI. Each platform builds the ASan/UBSan drivers once and restores the same-run
+artifact into three separate hosted runners. Each runner executes one complete
+assigned selector list serially. Linux and macOS have independent producer/test
+pipelines; Linux does not wait for the macOS build. Both producers explicitly select
+`CHIBI_CI_SANITIZERS=ON` through `.github/native-profile.py`: the full sanitizer
+Debug `-g -O1` profile with assertions and ASan/UBSan, distinct from ordinary
+fast PR CI. A regression checks shared-helper selection on both platforms,
+verbose build capture with pipeline failure propagation, and profile evidence
+verification before artifact packing. The verifier checks actual compiler/link
+receipts and sanitizer symbols, not just intended flags. Like the full sanitizer
+lane, the producer first builds Release generation hosts and uses the Release
+planner on macOS; these build-time hosts are not consumer artifacts. Include
+that Release build and setup in the measured critical path and runner cost.
+The transferred drivers and compiler host remain sanitized. No purchased runner capacity
+or billing setting is involved. All ordinary native, material, project, language,
+tooling, Studio, graph and formatting gates remain in `.github/workflows/ci.yml`.
+
+The artifact contains only `build/test/language/test_language`, its `corpus.txt`,
+`build/test/tools/test_tools`, and `build/sdk/chibi-compiler-host`. The test
+binaries embed the source path; the corpus also contains absolute paths, and
+compiler-bootstrap uses `git archive HEAD`. Consumers therefore check out the
+exact producer commit at the identical absolute workspace path on a separate
+runner. Copying these binaries into an arbitrary worktree is not supported.
+`tools/language_test_artifact.py` verifies the source commit, tracked-tree
+cleanliness, source root, OS/architecture, runner image, run/attempt, compiler and
+sanitizer runtime identity, selector manifest, file inventory, hashes and modes.
+The fixed-member tar unpacker rejects duplicate names, links, special files,
+path traversal and wrong modes before writing, then verifies the staged identity.
+A mismatch fails closed, before a test runs. It does not fetch cross-run artifacts
+or substitute Release binaries. Runtime libraries come from the matching runner
+image/toolchain; successful restored selector execution is still required to
+prove the real loader/runtime closure, especially macOS ASan dylibs.
+
+`python3 tools/test_policy.py shard-manifest` prints the exact current manifest,
+platform exclusions and all three lanes. `--shard 1/3 group language` selects the
+first lane and always uses one worker; `--jobs 2` is rejected. The ordinary
+unsharded invocation is unchanged, and `--shard 1/1 group language` preserves the
+full original serial order. Counts outside 1–3 and out-of-range indices fail
+before launching work. Each platform's current `GROUPS['language']` is the sole
+coverage source. Historical integer weights only choose a lane; new/unmeasured
+selectors have weight one and cannot disappear. A lane preserves the original
+relative selector order. This permits overlap only across independent runner
+filesystems, not across previously unaudited selectors in one checkout. Existing
+supervision, failure propagation, sanitizer settings, subprocess budgets and
+45-minute job timeouts remain in effect.
+
+Closure tracing at `15bc4b78`: `tools/test_policy.py` maps every language
+selector to `test_language`, except compiler-bootstrap's `test_tools` invocation
+with the language and compiler-host paths. Syntax and format receive the corpus
+manifest. `test/language/CMakeLists.txt:340–385` creates that absolute-path
+manifest; `tools/graph/engine/Targets.chibi:3836` declares its graph equivalent.
+`test/tools/compiler_bootstrap.c:635` archives source `HEAD` into private scratch,
+`test/language/integer_semantics.c:744–746` reads the checked source bootstrap,
+and `test/language/asset_packaging_chibi.c:362` reads source-root files. Native
+scalar helpers self-execute via `/proc/self/exe`
+(`test/language/package_compiler_chibi.c:12811`) and invoke the supplied LLVM
+binaries. Authored generated asset code is linked into the driver, not copied
+as a writable shared cache. These source checks motivate the minimal closure;
+they do not replace the exact-head restored-runtime tests.
+
+### Critical path and runner-time tradeoff
+
+Baseline run [40423984810](https://github.com/waldnercharles/chibi/actions/runs/40423984810)
+checked out `28059065dbf35823a7ab825a5ce0451d51da5f16`.
+[Linux selector diagnostics](https://github.com/waldnercharles/chibi/actions/runs/40423984810/job/121925067563)
+recorded 923 seconds of language wall time at two workers and 1,516 seconds of
+summed selector lifetimes. Applying the checked-in partition to those observations
+models lanes of 507/503/506 seconds, before setup, transfer and queue time: about
+416 seconds less test-tail wall time, but about 1.64 times the test-phase runner
+seconds. These are scheduling estimates, not a measured new CI speedup or CPU
+cost. Removing CPU contention can change individual lifetimes.
+
+The later `15bc4b78` inventory has an additional
+`language-migration34-generic-repro` selector (48 Linux / 47 macOS total versus
+47/46 in the measured run). Its time is not measured and is not included in that
+estimate. The macOS baseline spent 1,097 seconds in its serial language group;
+Linux durations are not macOS measurements. PR #723 independently changes the
+planner and macOS worker admission; this work does not duplicate or presume its
+results. The separate O0/O1 experiment also remains independent.
+
+The manual run must establish exact-head restored runtime success on both OSes,
+complete/disjoint manifests, artifact bytes and upload/download/setup timing,
+submission-to-result wall time (including producer and shard queues), whole-run
+critical path and runner-seconds before considering a default CI split. Ordinary
+PR CI now selects a fast unsanitized Debug profile; this sanitizer-only proof
+cannot establish that three shards improve that different lane. Compare its
+full-suite wall time and queue/setup overhead separately, without purchasing
+runner capacity. Keep ordinary CI unchanged until matched evidence and
+independent review justify any activation.
+
+### Local regression scope
+
+The existing pico_unit `--test-runner` dispatcher checks exact membership,
+disjointness, deterministic assignment, per-lane order, unknown-selector
+inclusion, one-lane fallback, invalid requests, serial execution and exit-code
+propagation. Artifact fixtures exercise pack/verify/restore and reject damaged
+files, modes, inventory, symlinks, path escapes and identity mismatches. These
+fixtures cannot prove a real hosted ASan binary is portable; the manual workflow
+is the integration proof, and all existing CI remains required.
+
+## Integer selector extension (source baseline `15bc4b78`)
+
+The following three selectors are also independent at the **process** boundary.
+They join the existing allowlist without changing the manifest or scheduler:
+
+| Runner selector | Resource evidence | Isolation |
+| --- | --- | --- |
+| `language-integer-semantics` | `test/language/integer_semantics.c`: `test_language_integer_semantics` runs `integer_semantics_pin_every_width`; `stage_zero` creates snapshots from literal `source_package_input` strings, and `sample_agrees` compares authored and stage-zero closures. | `native`, `authored`, `host`, result JSON and all backend state are process-private. No subprocess or output file is created. |
+| `language-integer-shift-counts` | `test_language_integer_shift_counts` uses `setup_native`, `stage_zero` and `compiles_alike`; it does not load the authored bootstrap. | Only memory-owned capabilities, snapshots, closures and bytecode/SLJIT calls; no filesystem access or child process. |
+| `language-integer-shift-counts-authored` | `test_language_integer_shift_counts_authored` uses the same `setup` and `sample_agrees` paths as integer semantics, once per shift sample. | Read-only bootstrap/compiler inputs, process-private compiler and execution state; no subprocess or generated-file write. |
+
+Shared dependencies and less obvious paths were included in this audit:
+
+- `setup` passes absolute source-root `tools/compiler/bootstrap`, `tools/compiler`
+  and `packages/core` paths to `compiler_bootstrap_load`. Its `validated` path
+  reads the manifest, closure, compiler contract and source snapshot. If sources
+  changed, `compiler_bootstrap_load` calls `recover` with **NULL output**;
+  `written` only calls `write_path` for a non-NULL output. Recovery creates an
+  in-memory host; it does not update the checked-in seed. Neither the bootstrap
+  writer nor the output-writing check/reuse APIs are called by these selectors.
+- `compiler_host_load` exposes text, array, compiler JSON and syntax capabilities,
+  not file/process capabilities or a persistent disk cache. Invocation results
+  and diagnostics are allocated JSON/text or stderr. `stage_zero` passes explicit
+  file texts, not a disk-backed project; `/compiler`, `/project` and `/sdk/core`
+  are snapshot/compile identities, not directories written by these tests.
+- Native test builds use SLJIT, not external LLVM compilation. The JIT creates
+  per-process SLJIT compilers and generated code. The configured
+  `SLJIT_WX_EXECUTABLE_ALLOCATOR=1` uses anonymous process-owned mappings on
+  Linux/macOS, not shared diagnostic files or a persistent compiler cache.
+- The adjacent `language-migration34-generic-repro` remains **exclusive**: its
+  `generic_version_34_cross_file_collisions_preserve_project` creates and mutates
+  a unique project under hardcoded `/tmp`, outside runner-owned TMPDIR cleanup.
+  This extension does not move any work across that barrier or admit the broader
+  migration selector.
+
+The pico_unit policy regression substitutes native rendezvous workers for each
+new selector and existing `language-asset-packaging-chibi`, preserving their real
+resource metadata. Both workers must be alive together and receive isolated
+scratch. Missing allowlist entries therefore fail the regression, not silently
+serialize it. The existing whole-language manifest, ordered output, serial
+escape, memory admission, fail-fast, deadline and owned-cancellation regressions
+remain applicable. These fixture checks do not constitute engine execution or a
+matched wall-time benchmark; no additional peak-RSS measurement is claimed and
+the default two-worker cap / conservative memory admission are unchanged.
+
+Rechecked when integrating `959d22d4` (prepared format 22): string-table
+interning scratch belongs to each `execution_wire`/module and authored local
+arrays. Updated compiler/seed inputs remain read-only; the integer setup and
+NULL-output bootstrap recovery paths are unchanged. This introduces no new
+shared file/cache/process resources. Allocation and compiler behavior did
+change, so prior-head engine results are not integration validation; rerun the
+current combined candidate rather than treating the old CI as current evidence.

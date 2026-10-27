@@ -619,7 +619,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY AND
         "${CHIBI_SDK_ROOT}/src/host/build_values.c"
         "${CHIBI_SDK_ROOT}/src/host/build_io.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_package_files.c")
-    foreach(header build_host build_host_internal build_values build_io process)
+    foreach(header build_host build_host_internal build_timing build_values build_io process)
         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/host/${header}.h" COPYONLY)
     endforeach()
@@ -651,6 +651,13 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY AND
         configure_file("${CHIBI_SDK_ROOT}/packages/core/${source}"
             "${CMAKE_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
     endforeach()
+    # chibi build --native runs this driver in the build host.
+    foreach(source Driver.chibi emitter/Emitter.chibi)
+        configure_file("${CHIBI_SDK_ROOT}/tools/native_aot/${source}"
+            "${CMAKE_BINARY_DIR}/share/chibi/tools/native_aot/${source}" COPYONLY)
+    endforeach()
+    install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/native_aot/" DESTINATION share/chibi/tools/native_aot
+        FILES_MATCHING PATTERN "*.chibi")
     install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/compiler/" DESTINATION share/chibi/compiler)
     install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
         FILES_MATCHING PATTERN "*.chibi")

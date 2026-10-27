@@ -13529,7 +13529,7 @@ static const struct
       298 },
     /* Records: literals in any field order, copies that leave their source
      * alone, field writes and compound writes, record parameters and
-     * results, nested calls, and a byte field that wraps:
+     * results, nested calls, and a u8 field that wraps:
      * 50 + (206 + 8 - 9 + 1 + 1000) + 5. */
     { "records",
       "package scalar\n"

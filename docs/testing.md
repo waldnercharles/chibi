@@ -2106,7 +2106,7 @@ on both backends, with exactly four authored exports: `Echo(byte[]) -> byte[]`,
 `Scalar() -> byte`, `Integers() -> int[]` and `Loop(bool) -> byte[]`. Stage zero
 serializes this <=32 KiB closure and writes its IDs and bounded inputs. It makes
 no source calls. This is transport fixture generation, not authored serialization.
-A third producer case prepares a separate one-export `Sized(int) -> byte[]`
+A third producer case prepares a separate one-export `Sized(int) -> u8[]`
 fixture on both backends, also below 32 KiB, with no source calls. `Sized`
 uses one native resize per call. On bytecode and SLJIT, the boundary
 case checks 16 MiB, 16 MiB + 1, 32 MiB and 32 MiB + 1 against both limits;

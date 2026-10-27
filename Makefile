@@ -336,8 +336,8 @@ test-materials: test-build
 # Project commands repeatedly load the authoring catalog. Use Release products
 # for these integrations; the native driver retains its sanitizer coverage.
 test-projects: test-build
-	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi'
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" python3 tools/test_policy.py group projects
+	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host'
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group projects
 
 # Stage one compiling itself, and stage two compiling the same sources to the
 # same bytes, take about two minutes each under sanitizers, so the bootstrap

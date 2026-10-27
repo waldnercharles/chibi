@@ -11,7 +11,7 @@ replace the shared frontend or introduce a public IR, ABI or general build graph
 The `Build` entry preserves its six positional arguments:
 
 ```
-INPUT.ll OUTPUT_DIRECTORY OPT_EXECUTABLE LLC_EXECUTABLE LINKER_EXECUTABLE 0|2
+INPUT.ll OUTPUT_DIRECTORY OPT_EXECUTABLE LLC_EXECUTABLE LD_LLD_EXECUTABLE 0|2
 ```
 
 The explicit `Object` entry takes exactly five, with no dummy linker:
@@ -43,13 +43,14 @@ mkdir -p "$ROOT/out"
   --core "$CORE" --compiler "$COMPILER" --compiler-core "$CORE" \
   --entry Build --timeout-ms 120000 -- \
   "$ROOT/test/native_aot/driver/fixtures/scalar/Main.ll" "$ROOT/out/scalar-2" \
-  "$OPT" "$LLC" "$CC" 2
+  "$OPT" "$LLC" "$LLD" 2
 ```
 
-`SDK`, `OPT`, `LLC` and `CC` must name already installed, verified tools. The
-driver does not download or install anything. The linker is a Linux compiler
-driver such as `cc`, used only to link the emitted object and ordinary native
-startup dependencies, never to compile C source.
+`SDK`, `OPT`, `LLC` and `LLD` must name already installed, verified tools. The
+driver does not download or install anything. The linker is LLVM's `ld.lld`,
+which links the emitted object with a start object the driver generates; no C
+compiler, C library or startup file takes part (see
+[linking without a C compiler](#linking-without-a-c-compiler)).
 
 The driver snapshots input bytes into an exclusively reserved directory, then
 executes fixed argument vectors:
@@ -60,8 +61,13 @@ executes fixed argument vectors:
    `x86_64-unknown-linux-gnu` triple and observed LLVM19 x86-64 data layout.
 3. `llc -filetype=obj -O=0|2 -relocation-model=pic` without a target
    override. A static object's absolute references, such as the table O2
-   lowers a dense switch through, cannot link into the PIE program `cc` makes.
-4. For `Build` only: `cc object.o -Wl,--gc-sections -o program`.
+   lowers a dense switch through, cannot link into the shared libraries the
+   native tests load.
+4. For `Build` only: the same `llc` arguments on the generated `start.ll`,
+   giving `start.o`, then
+   `ld.lld -flavor gnu -static --gc-sections -e _start object.o start.o -o program`.
+   The driver runs the linker it resolved, which may be lld's generic driver,
+   so it names the GNU flavor rather than relying on the `ld.lld` name.
 
 The accepted canonical data layout is
 `e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`.
@@ -76,12 +82,12 @@ provenance or arbitrary LLVM semantics, and does not parse LLVM independently.
 Only successful object creation (plus an executable file for `Build`), unchanged
 direct tool hashes, and a completed receipt permit no-replace publication.
 `source.ll`, `module.ll`, `object.o` and `receipt.txt` are published together;
-`Build` additionally publishes `program`. Every receipt explicitly records
+`Build` additionally publishes `start.ll`, `start.o` and `program`. Every receipt explicitly records
 `output-kind object` or `output-kind executable`, resolved tool paths/SHA256,
 actual argv, mode and input/module/object hashes. An object receipt contains no
 linker identity, link command or program hash, and `Object` does not resolve,
 hash or execute a linker. An executable receipt additionally records those
-linker/program facts. Receipts identify direct executables, not every
+linker/program facts, the start object's hash and the command that built it. Receipts identify direct executables, not every
 shared library, linker subprocess or startup file: this is not a hermetic build
 or protection against malicious tools/concurrent mutation.
 
@@ -99,6 +105,40 @@ for untrusted LLVM or executables. The driver uses native `build.lines`, not
 quadratic remainder-slicing, for canonical metadata. Existing 16MiB text and
 8192-line array bounds remain unchanged.
 
+## Linking without a C compiler
+
+`Build` links Linux x86-64 programs with `ld.lld` alone. The program's only
+runtime is `start.ll`, which the driver writes and compiles with the same `llc`
+arguments as the module. Like Odin's no-CRT `_start` and musl's `crt1`, it
+clears the frame pointer, aligns the stack down to 16 bytes, calls the module's
+entry `chibi_scalar() -> i32` as `scalar_llvm` emits it, and passes the result
+to the `exit_group` system call. The link line follows rustc's direct `ld.lld`
+flavor (`-flavor gnu`, `--gc-sections`, `-static`). Emitted scalar
+objects have no undefined symbols, so the static link needs no C library,
+startup file or compiler driver, and an empty `PATH` changes nothing. Programs
+that overflow their stack end with the system's SIGSEGV, as before (D4).
+
+The checks:
+
+- `executable_links_with_the_named_linker_and_start_object` checks the exact
+  start-object and link argument vectors and the receipt's linker, start-object
+  hash and commands, with controlled tools.
+- `executable_links_llvm_objects_without_a_c_compiler` links the scalar fixture
+  at O0 and O2 with the `opt`, `llc` and `ld.lld` in `CHIBI_LLVM_BIN`, an empty
+  `PATH`, and runs each program to its exit status 42. Without `CHIBI_LLVM_BIN`
+  it says it did not run. Each case compiles the driver in the build host, so
+  run this selector against a Release `test_tools`
+  (`CHIBI_TOOLS_BUILD_DIR=build-release/test/tools`); under the sanitizers the
+  compile outlasts the cases' 10-second deadlines. CI links real programs
+  through `chibi build --native` instead: the `native-build` selector in the
+  projects group (see `docs/guide/toolchain.md`).
+
+`fixtures/scalar/Main.ll` is the source path's own output for
+`fixtures/scalar/Main.chibi`: the bootstrap compiler's `CollectScalar` rows,
+lowered by `scalar_llvm.EmitBytes`. It exports `chibi_scalar`, which the start
+object calls. The earlier hand-run emitter output exported `main`, which no
+current producer emits.
+
 ## Genuine emitter fixtures and provenance
 
 The checked-in source fixtures use canonical SDK formatting. Both were rerun
@@ -106,7 +146,9 @@ through the unchanged reviewed Front/Back artifacts on bytecode and SLJIT; each
 source pipeline forwards the exact Front stdout envelope unchanged to Back.
 Formatting changed source hashes, but both emitted IR files were measured
 byte-identical to their original reviewed outputs (not assumed or hand-edited).
-The scalar fixture exports `main` returning 42 with CHECK budget 1. The small
+The scalar fixture originally exported `main` returning 42 with CHECK budget 1;
+it was regenerated through the source path (see above), so its hash below is
+historical. The small
 parameter fixture exports `chibi_scalar(i32, i1) -> i32`, returning its integer
 argument when its boolean argument is true, otherwise zero, with CHECK budget 64.
 It is a genuine existing parameterized-emitter consumer, not a renamed `main`.
@@ -140,7 +182,7 @@ llc and linker. It invokes the actual driver through the actual SDK host:
   --entry Tests --timeout-ms 120000 -- \
   "$HOST" "$ROOT/tools/native_aot/Driver.chibi" "$COMPILER" "$CORE" \
   "$ROOT/test/native_aot/driver/fixtures/scalar/Main.ll" "$ROOT/out/driver-tests" \
-  "$OPT" "$LLC" "$CC"
+  "$OPT" "$LLC" "$LLD"
 ```
 
 The exact candidate passed real O0/O2 builds and native exit42, paths with spaces

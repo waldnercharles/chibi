@@ -15586,9 +15586,10 @@ static bool process_ended(pid_t pid, double seconds)
  * which allows for a slow sanitized host. */
 static const double PROMPT_SECONDS = 10;
 
-/* Starts the bundle: an empty list of modules for each target, and for a
- * target whose objects reference a runtime symbol, an object that defines
- * it, which its runner links into each library. */
+/* Starts the bundle, creating its directory if needed: an empty list of
+ * modules for each target, and for a target whose objects reference a
+ * runtime symbol, an object that defines it, which its runner links into
+ * each library. */
 TEST_CASE(native_bundle_starts_empty)
 {
     if (!bundle_root()) {
@@ -15596,7 +15597,7 @@ TEST_CASE(native_bundle_starts_empty)
     }
     char directory[PATH_MAX];
     REQUIRE(native_directory(directory));
-    bool started = true;
+    bool started = !mkdir(bundle_root(), 0700) || errno == EEXIST;
     for (int t = 0; started && t < BUNDLE_TARGET_COUNT; t++) {
         char path[PATH_MAX];
         snprintf(path, sizeof path, "%s/%s", bundle_root(), BUNDLE_TARGETS[t].directory);

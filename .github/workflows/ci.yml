@@ -126,7 +126,6 @@ jobs:
         shell: bash
         run: |
           set -e
-          mkdir "$CHIBI_NATIVE_BUNDLE"
           # Preserve Linux Build.chibi coverage through the selected-profile host,
           # including sanitizer runs whose first cold build used CMake recovery.
           make test-build ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18

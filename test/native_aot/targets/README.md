@@ -35,7 +35,6 @@ CI's `native` job writes the bundle, and `native-targets` runs it on
 `macos-15` and `windows-2022`. To do the same by hand:
 
 ```sh
-mkdir /tmp/bundle
 CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin CHIBI_NATIVE_BUNDLE=/tmp/bundle \
   build/test/language/test_language --package-compiler-chibi-native
 # then, on a Mac with the bundle copied over:

@@ -78,13 +78,15 @@ jobs:
         run: |
           ccache --show-config
           ccache --zero-stats
-      - name: Build products and test drivers (ASan and UBSan)
-        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' LIBCLANG_ROOT=/usr/lib/llvm-18
       # validate-project runs chibi_ctl dozens of times, and published-docs and
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
-        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+      # The Release hosts generate the asset compiler, the same bytes the
+      # sanitized hosts would, in under a minute instead of about four.
+      - name: Build products and test drivers (ASan and UBSan)
+        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
       # Run authored command generation on the Release helper; test_tools and
       # the reference profile remain Debug + ASan/UBSan. No products are compiled.
       - name: Graph Debug optimization and command parity (commands only)
@@ -101,7 +103,9 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1
         # test-build runs Build.chibi in the sanitized build host: CI's one run
         # of a build program under the sanitizers, so keep its default host.
-        run: make -j1 test-native test-materials test-projects test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
+        # Its asset compiler keeps the Release generator hosts, so it is not
+        # generated again.
+        run: make -j1 test-native test-materials test-projects test-language-all ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 NATIVE_LLVM_BIN=/usr/lib/llvm-18/bin
       - name: Report compiler cache statistics
         if: always() && steps.ccache-config.outcome == 'success'
         run: ccache --show-stats --verbose
@@ -152,14 +156,14 @@ jobs:
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the sanitized builds use.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
-        run: make build-release BUILD_TARGET='chibi_ctl chibi' LIBCLANG_ROOT="$LLVM"
+        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
       # The Release build host runs the outer Build and Graph programs, which
       # plan the sanitized build. Compiling the Graph program in the ASan host
-      # took about two minutes of every macOS build. The sanitizer profile, the
-      # products, the test drivers and the asset compiler generation (which
-      # runs this tree's sanitized hosts) are unchanged.
+      # took about two minutes of every macOS build. The Release hosts also
+      # generate the asset compiler, the same bytes the sanitized hosts would.
+      # The sanitizer profile, the products and the test drivers are unchanged.
       - name: Build products and test drivers (ASan and UBSan)
-        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT="$LLVM"
+        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM"
       - name: Preserve failed macOS Graph stage log
         if: failure()
         uses: actions/upload-artifact@v4
@@ -175,7 +179,7 @@ jobs:
       # One make process shares test-build across these targets. Keep groups
       # sequential so they cannot race over fixtures or build outputs.
       - name: Native, material, project and language selectors
-        run: make -j1 test-native test-materials test-projects test-language-all BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" LIBCLANG_ROOT="$LLVM"
+        run: make -j1 test-native test-materials test-projects test-language-all BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM"
       - name: Report compiler cache statistics
         if: always() && steps.ccache-config.outcome == 'success'
         run: ccache --show-stats --verbose

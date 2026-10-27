@@ -27,6 +27,11 @@ FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
 BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
+# Another build's sdk directory, such as build-release/sdk, whose
+# chibi-build-host and chibi-compiler-host generate the asset compiler instead
+# of this build's. The resource is the same; Release hosts generate it faster.
+ASSET_GENERATOR_HOSTS ?=
+ASSET_GENERATOR_HOSTS_PATH = $(if $(strip $(ASSET_GENERATOR_HOSTS)),$(abspath $(ASSET_GENERATOR_HOSTS)),)
 BUILD_PROGRAM ?= tools/toolchain/Build.chibi
 BUILD_TIMEOUT_MS ?= 1800000
 # On macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
@@ -126,7 +131,7 @@ build:
 ifneq ($(GRAPH_BUILD),)
 toolchain-build:
 	@$(QUIET) third-party -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
-	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) --jobs "$(JOBS)" --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
+	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_PATH),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_PATH)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
 	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
 
 # Recovery builds the first build host with CMake beside the build directory;
@@ -137,11 +142,11 @@ stage-zero-build:
 	@$(MAKE) toolchain-build BUILD_HOST="$(CMAKE_REFERENCE_DIR)/sdk/chibi-build-host"
 else
 toolchain-build:
-	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_ASSET_GENERATOR_HOSTS="$(ASSET_GENERATOR_HOSTS_PATH)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 
 # Recovery also creates the private host used by subsequent builds.
 stage-zero-build:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_ASSET_GENERATOR_HOSTS="$(ASSET_GENERATOR_HOSTS_PATH)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET) $(BUILD_HOST_TARGET),) --parallel $(JOBS)
 endif
 
@@ -243,8 +248,10 @@ install:
 	@cmake --install "$(INSTALL_SDK_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
 	@cmake -E copy "$(INSTALL_SDK_PREFIX)/share/chibi/engine.json" "$(abspath $(PREFIX))/share/chibi/engine.json"
 
+# The Release build generates its asset compiler with its own hosts, even when
+# a sanitized build in the same make borrows them.
 build-release:
-	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_PROFILE=release BUILD_TARGET="$(BUILD_TARGET)"
+	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_PROFILE=release BUILD_TARGET="$(BUILD_TARGET)" ASSET_GENERATOR_HOSTS=
 
 package-player:
 	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"

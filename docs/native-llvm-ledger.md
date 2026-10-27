@@ -50,7 +50,7 @@ the last milestones to the toolchain plan's acceptance and deletion rules.
 | M3 Structured control flow and calls | in progress | Loops, integer switches, recursion under D4, literal parameter defaults (#704) | named arguments (W1), multiple and named results (W2) |
 | M4 Aggregates and native ownership | in progress | Records of number and bool fields; unions of number and bool payloads; string values and equality (W3) | text natives and allocating text (W4 to W6), arrays (W7) and maps (W8) after pointers (#695) and collections (#694), managed fields (W9), pointers (W10), failure reporting (W11), constants (W12), under D9 and D10 |
 | M5 Modules and platform ABI | not started | | imports (W13), native catalog calls (W14), macOS and Windows targets (W15), calls from the VM into native code (W16) |
-| M6 AoT driver and diagnostics | in progress | `Driver.Object` and `Driver.Build`; `chibi build --native` (W17, #736); linking with `ld.lld` and no `cc` on Linux x86-64 (W18, #735) | debug information (W19), measured workloads (W20) |
+| M6 AoT driver and diagnostics | in progress | `Driver.Object` and `Driver.Build`; `chibi build --native` (W17, #736); linking with `ld.lld` and no `cc` on Linux x86-64 (W18, #735) | debug information (W19), workloads for strings and arrays (W20) |
 | M7 Native self-hosting | not started | | the compiler-source census (W21), native stage one and two (W22), recovery without `cmake`, `clang` or `gcc` (W23) |
 | M8 Game SDK and default adoption | not started | | game scenarios (W24), native game execution (W25), default adoption and removal (W26) |
 
@@ -86,7 +86,7 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W17 | The driver in `chibi build` | none (`EmitBytes` is frozen) | stable commands; driver receipts | proposed lane | yes | process tests for an explicit native mode: relocated SDK, paths with spaces, missing and wrong tools, interrupted builds, stale partials, kept prior outputs, and no silent VM fallback | yes: `chibi build --native`, one source per program; the `native-build` selector (#736) | none | decided: keep an explicit override until M8 |
 | W18 | Linking without `cc` | W17 | the platform linker and runtime libraries, named in receipts | proposed lane | yes | an executable links with `cc`, `clang` and `gcc` unavailable, through a linker the receipt names | yes on Linux x86-64: `ld.lld -flavor gnu -static` and a start object shaped like Odin's no-CRT `_start` (#735); `native-build` runs it with an empty `PATH` | none | decided for Linux: rustc's direct `ld.lld` path; macOS and Windows linkers open with W15 (D7) |
 | W19 | Debug information and native diagnostics | W3 (emitter churn) | `llvm_native`'s output | LLVM lane | no | a debugger's backtrace of a native panic shows source lines at O0 and O2 | no | none | open: D6 |
-| W20 | Workloads and measurements | none | none | proposed lane, or the LLVM lane | yes | defined kernels (game math, compiler passes) with compile time, peak memory, size and run time recorded per milestone | no | none | decided: correctness first, no promised speedups |
+| W20 | Workloads and measurements | none | none | proposed lane, or the LLVM lane | yes | defined kernels (game math, compiler passes) with compile time, peak memory, size and run time recorded per milestone | in progress: four kernels and `native-workload-benchmark`, recorded under [Baseline and measurements](#baseline-and-measurements); a string kernel can follow W3; compiler-pass kernels wait for arrays (W7) | none | decided: correctness first, no promised speedups |
 | W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | yes: `make native-census` writes the [census](native-compiler-census.md); counts are under [Census](#census) | none | decided |
 | W22 | Native stage one and stage two | W1 to W14 as the census requires | the bootstrap generation | LLVM lane with the generation coordinator | no | a native stage one builds stage two and a checking rebuild with identical or normalized bytes, and the corpus gives the same results as the VM stages | no | none | decided: no C-frontend delegation |
 | W23 | Recovery and installed proof without `cmake`, `clang` or `gcc` | W18, W22 | CI recovery job | LLVM lane | no | a CI job with those executables unavailable goes from a clean checkout through stage one and stage two and links a checked game | no | none | decided: PLAN.md's objective |
@@ -325,6 +325,30 @@ After string interning (#719, 27 October 2026, same container):
 - The runtime pin is `compiler-runtime-prepared22-7b151ebc5`. The `ci-seed`
   label built, published and pinned it on the PR branch (see
   [starting CI with labels](testing.md#starting-ci-with-labels)).
+
+W20's workloads (27 October 2026, main at `e66e308`, before W3's strings,
+same container, Ubuntu LLVM 18.1.3, Release launcher and hosts):
+`native-workload-benchmark` builds the four kernels in
+`test/native_aot/workloads` with `chibi build --native`, and checks each
+program's status against the one the VM gives. These are that commit's
+numbers; a later milestone re-runs the selector and records its own.
+
+| Kernel | O0 build | O2 build | O0 size | O2 size | O0 run | O2 run |
+| --- | --- | --- | --- | --- | --- | --- |
+| `integrate` | 3.20 s | 3.35 s | 6,720 B | 1,544 B | 719 ms | 88.1 ms |
+| `collide` | 3.49 s | 3.38 s | 5,376 B | 2,432 B | 3,932 ms | 98.0 ms |
+| `lex` | 3.31 s | 3.14 s | 4,656 B | 1,312 B | 383 ms | 18.4 ms |
+| `recurse` | 3.15 s | 3.09 s | 2,192 B | 1,264 B | 63.5 ms | 7.8 ms |
+
+- A build's time is almost all fixed cost: about 3.0 s pass before `opt`
+  starts, while the build host compiles the driver and the compiler host
+  collects facts and emits IR. `opt`, both `llc` runs and `ld.lld` take
+  about 0.1 s together.
+- The first build in a folder takes 7.0 to 7.9 s, because it also compiles
+  the emitter closure.
+- The peak resident memory of the largest process is 245 MiB for every
+  kernel and mode, so it doesn't depend on the kernel.
+- Programs are static, have no C library, and stay under 7 KB.
 
 After native strings (W3, #740, 27 October 2026, same container):
 

@@ -259,7 +259,8 @@ package-player:
 	@$(QUIET) package_player.py -- python3 tools/package_player.py --sdk "$(RUNTIME_SDK_PREFIX)" --output "$(PLAYER_OUTPUT)"
 
 benchmark: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group benchmarks
+	@$(MAKE) build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group benchmarks
 
 # Browser Studio consumes a separately packaged Emscripten SDK generation.
 .PHONY: web-sdk-build package-web-sdk

@@ -123,13 +123,20 @@ LLVM inlines them to `ret i32 6`. Both return 6 natively.
 Everything else is rejected with a located diagnostic and no partial result:
 floating negation and remainder, ordering `bool`s, statements outside the
 subset, function values, qualified or imported calls, native or foreign
-calls (`print`), named arguments, string operations other than literals
-and `==` or `!=` (no concatenation, indexing or text natives), other
+calls (`print`) other than the text natives below, named arguments,
+string operations other than literals, `==`, `!=` and those natives (no
+concatenation or indexing), other
 managed values
 and attributes. A call may omit trailing arguments whose
 parameters have defaults; each omitted one is a literal row of its default.
 A string is an immutable value: a literal is a private constant of its
 decoded bytes, with a NUL after them, and `==` compares lengths, then bytes.
+`text_byte_length(s)`, `text_byte_at(s, i)` and `text_slice(s, start, count)`
+lower as the runtime's natives behave: a byte outside the string is -1, and
+a slice clamps its start and count to the string's bytes, giving a view of
+them. They are recognized by name only when the host's native catalog,
+which `CollectScalar` takes after the instruction names, binds them, and a
+named argument to one is rejected.
 Records whose fields are numbers or `bool`s are values: a literal, in any
 field order, a copy, a field read or write and a record parameter, result
 or local. Unions whose payloads are numbers or `bool`s are values too: a

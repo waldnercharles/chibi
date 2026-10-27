@@ -1,9 +1,0 @@
-configure-native: running (log: .chibi/logs/1793127556538927953-17209-configure-native.log)
-configure-native: ok (2.8s; log: .chibi/logs/1793127556538927953-17209-configure-native.log)
-build: running (log: .chibi/logs/1793127559404923994-17238-build.log)
-build: ok (46.8s; log: .chibi/logs/1793127559404923994-17238-build.log)
-Running: package_compiler_compiles_itself (OK) (92.528038 secs)
-===============================================================
-Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 26653
-Test command wall time: 92.805s; includes in-test fixture setup; external configuration/build excluded.
-wrote the bootstrap artifact tools/compiler/bootstrap

@@ -3589,21 +3589,6 @@ static pin_value rows(const pin_value *items, int count, pin_type type, const pi
                         .record = shape,
                         .type_name = shape ? shape->type.name : NULL };
 }
-/* A port's storage as Compile takes it: a generic port's type is the one its
- * call infers (0), a wildcard takes each argument's own type (-2), and -1 is
- * a type the compiler cannot pass. */
-static int port_storage(script_type type)
-{
-    unsigned inferred = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC;
-    if (type.flags & SCRIPT_TYPE_UNTYPED) {
-        if (type.flags & ~inferred) {
-            return -1;
-        }
-        return type.flags & SCRIPT_TYPE_GENERIC ? 0 : -2;
-    }
-    return type.flags || type.nominal || type.storage == PIN_FLOW ? -1
-                                                                  : (int)type.storage;
-}
 /* The data functions the compiler host links: no flow, outcomes or
  * suspension. */
 static bool natives(int b, bool game, bool probe, pin_value *out)
@@ -3638,64 +3623,16 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         );
         REQUIRE(linked[game][probe]);
     }
-    const script_catalog *catalog = native_capabilities_catalog(linked[game][probe]);
-    pin_value *functions = NULL, *ports = NULL, *identities = NULL, *effects = NULL;
-    for (int i = 0; i < catalog->capability_count; i++) {
-        const script_catalog_capability *c = &catalog->capabilities[i];
-        if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
-            c->flow.kind != SCRIPT_FLOW_ACCESS_NONE || c->outcome_count ||
-            (c->effects & SCRIPT_EFFECT_SUSPEND)) {
-            continue;
-        }
-        pin_value function = row(b, "Native");
-        REQUIRE(put_value(&function, "name", text(c->name)));
-        REQUIRE(put(&function, "first", acount(ports)));
-        REQUIRE(put(&function, "parameters", c->parameter_count));
-        REQUIRE(put(&function, "results", c->result_count));
-        REQUIRE(put_value(
-            &function,
-            "variadic",
-            (pin_value){ .type = PIN_BOOL, .b = c->variadic || c->variadic_optional }
-        ));
-        apush(functions, function);
-        apush(effects, ((pin_value){ .type = PIN_I32, .i = (int)c->effects }));
-        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
-            const script_catalog_parameter *declared = j < c->parameter_count
-                                                         ? &c->parameters[j]
-                                                         : &c->results[j - c->parameter_count];
-            script_type type = declared->type;
-            pin_value port = row(b, "Port");
-            REQUIRE(put_value(&port, "name", text(declared->name ? declared->name : "")));
-            REQUIRE(put(&port, "storage", port_storage(type)));
-            REQUIRE(put(&port, "container", (int)type.container));
-            REQUIRE(put_value(
-                &port,
-                "c_string",
-                (pin_value){ .type = PIN_BOOL, .b = declared->c_string }
-            ));
-            apush(ports, port);
-        }
-        apush(identities, ((pin_value){ .type = PIN_U64, .u64 = c->id }));
-        apush(
-            identities,
-            ((pin_value){ .type = PIN_U64,
-                          .u64 = script_catalog_capability_abi(catalog, c) })
-        );
-    }
-    out[0] = rows(
-        functions,
-        acount(functions),
-        PIN_STRUCT,
-        functions ? functions[0].record : NULL
-    );
-    out[1] = rows(ports, acount(ports), PIN_STRUCT, ports ? ports[0].record : NULL);
-    out[2] = rows(identities, acount(identities), PIN_U64, NULL);
-    linked_effects[game][probe][b] = rows(effects, acount(effects), PIN_I32, NULL);
+    REQUIRE(compiler_fixture_natives(
+        &fixture,
+        b,
+        PACKAGE,
+        native_capabilities_catalog(linked[game][probe]),
+        &input,
+        out,
+        &linked_effects[game][probe][b]
+    ));
     memcpy(linked_tables[game][probe][b], out, sizeof linked_tables[game][probe][b]);
-    afree(functions);
-    afree(ports);
-    afree(identities);
-    afree(effects);
     return true;
 }
 static bool get(const pin_value *row, const char *name, pin_value *out)
@@ -3826,6 +3763,23 @@ static pin_value instruction_names()
         names->items[i] = text(execution_prepared_instruction_name(i));
     }
     return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
+}
+enum
+{
+    SCALAR_ARGUMENTS = 8
+};
+/* CollectScalar's arguments for `source` at `path` on VM b: the project, the
+ * path and source, this host's target and instruction names, and the
+ * production natives it links. */
+static bool scalar_arguments(int b, const char *path, pin_value source, pin_value args[SCALAR_ARGUMENTS])
+{
+    args[0] = text("/project");
+    args[1] = text(path);
+    args[2] = source;
+    REQUIRE(target(b, &args[3]));
+    args[4] = instruction_names();
+    REQUIRE(natives(b, false, false, &args[5]));
+    return true;
 }
 /* Compile's arguments for `inputs`: the project, the core collection, the
  * files, debugger points and watches, this host's target and the natives it
@@ -10400,6 +10354,10 @@ enum
     SCALAR_MAKE_ROW = 32,
     SCALAR_TAG_ROW = 33,
     SCALAR_PAYLOAD_ROW = 34,
+    SCALAR_TEXT_ROW = 35,
+    SCALAR_TEXT_LENGTH = 1,
+    SCALAR_TEXT_BYTE = 2,
+    SCALAR_TEXT_SLICE = 3,
     SCALAR_RANGE_EXCLUSIVE = 1,
     SCALAR_INT = 1,
     SCALAR_BOOL = 2,
@@ -10696,6 +10654,32 @@ enum
     STRING_PARAMETER = 16,
     STRING_PARAMETER_READ = 18,
     STRING_ROWS = (int)(sizeof STRING_KINDS / sizeof *STRING_KINDS)
+};
+/* Main slices a literal, then reads its view's byte count and first byte:
+ * 2 + 'b'. */
+static const char TEXT_ROWS_SOURCE[] = "package scalar\n"
+                                       "Main :: () -> int {\n"
+                                       "    s := text_slice(\"abcd\", 1, 2);\n"
+                                       "    return text_byte_length(s) + "
+                                       "text_byte_at(s, 0);\n"
+                                       "}\n";
+/* The kind of each of TEXT_ROWS_SOURCE's rows, and the rows edited. */
+static const int TEXT_KINDS[] = {
+    SCALAR_SOURCE_ROW,  SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
+    SCALAR_LOCAL_ROW,   SCALAR_LITERAL_ROW,  SCALAR_LITERAL_ROW,
+    SCALAR_LITERAL_ROW, SCALAR_TEXT_ROW,     SCALAR_RETURN_ROW,
+    SCALAR_READ_ROW,    SCALAR_TEXT_ROW,     SCALAR_READ_ROW,
+    SCALAR_LITERAL_ROW, SCALAR_TEXT_ROW,     SCALAR_ARITHMETIC_ROW,
+};
+enum
+{
+    TEXT_SOURCE = 4,
+    TEXT_START = 5,
+    TEXT_SLICE = 7,
+    TEXT_LENGTH = 10,
+    TEXT_INDEX = 12,
+    TEXT_BYTE = 13,
+    TEXT_ROWS = (int)(sizeof TEXT_KINDS / sizeof *TEXT_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -11030,6 +11014,25 @@ static const malformed_guard MALFORMED_STRINGS[] = {
     { { EDIT(STRING_PARAMETER, "type", SCALAR_INT) },
       "scalar call argument differs from its parameter" },
 };
+static const char TEXT_READ[] = "scalar text read differs from its operands";
+/* A Text row's operator, arity, name and result, and its string or int
+ * operand of another type. */
+static const malformed_guard MALFORMED_TEXTS[] = {
+    { { EDIT(TEXT_SLICE, "value", 0) }, TEXT_READ },
+    { { EDIT(TEXT_SLICE, "value", 4) }, TEXT_READ },
+    { { EDIT(TEXT_SLICE, "count", 2) }, TEXT_READ },
+    { { EDIT(TEXT_SLICE, "type", SCALAR_INT) }, TEXT_READ },
+    { { EDIT(TEXT_LENGTH, "type", SCALAR_STRING) }, TEXT_READ },
+    { { { .row = TEXT_LENGTH, .field = "name", .text = "x", .from = -1 } }, TEXT_READ },
+    { { EDIT(TEXT_BYTE, "value", SCALAR_TEXT_LENGTH) }, TEXT_READ },
+    { { EDIT(TEXT_BYTE, "value", SCALAR_TEXT_SLICE), EDIT(TEXT_BYTE, "count", 3) },
+      TEXT_READ },
+    { { EDIT(TEXT_START, "type", SCALAR_BOOL) }, TEXT_READ },
+    { { EDIT(TEXT_INDEX, "type", SCALAR_INT64) }, TEXT_READ },
+    { { EDIT(TEXT_SOURCE, "type", SCALAR_INT),
+        { .row = TEXT_SOURCE, .field = "text", .text = "", .from = -1 } },
+      TEXT_READ },
+};
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
@@ -11325,6 +11328,27 @@ static bool stringed_rows(int b, pin_value *rows)
     write_row(rows, STRING_LITERAL, "text", saved);
     return true;
 }
+/* TEXT_ROWS_SOURCE's Text rows: each names its operator and the operands it
+ * consumes, a slice gives a string and a byte count or byte an int. */
+static bool texted_rows(pin_value *rows)
+{
+    static const struct
+    {
+        int row, value, count, type;
+    } TEXTS[] = {
+        { TEXT_SLICE, SCALAR_TEXT_SLICE, 3, SCALAR_STRING },
+        { TEXT_LENGTH, SCALAR_TEXT_LENGTH, 1, SCALAR_INT },
+        { TEXT_BYTE, SCALAR_TEXT_BYTE, 2, SCALAR_INT },
+    };
+    for (int i = 0; i < (int)(sizeof TEXTS / sizeof *TEXTS); i++) {
+        pin_value *row = guard_row(rows, TEXTS[i].row);
+        REQUIRE(scalar_field(row, "value").i == TEXTS[i].value);
+        REQUIRE(scalar_field(row, "count").i == TEXTS[i].count);
+        REQUIRE(scalar_field(row, "type").i == TEXTS[i].type);
+    }
+    REQUIRE(retained_text(guard_row(rows, TEXT_SOURCE), "text", "abcd"));
+    return true;
+}
 /* UNION_ROWS_SOURCE's union, its variants and their payloads numbered across
  * it, the union type of Make's result, Main's local and the rows that read or
  * make one, the Tag and variant ordinals its `is` and arms test, its last
@@ -11381,61 +11405,33 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
-        looped[2], switched[2], recorded[2], unioned[2], stringed[2];
+        looped[2], switched[2], recorded[2], unioned[2], stringed[2], texted[2];
+    const char *const texts[] = { SCALAR_SOURCE,       GUARD_SOURCE,
+                                  ARITHMETIC_SOURCE,   WIDTH_SOURCE,
+                                  CONTROL_ROWS_SOURCE, LOOP_ROWS_SOURCE,
+                                  SWITCH_ROWS_SOURCE,  RECORD_ROWS_SOURCE,
+                                  UNION_ROWS_SOURCE,   STRING_ROWS_SOURCE,
+                                  TEXT_ROWS_SOURCE };
+    pin_value *outputs[] = { produced,   guarded,  computed, widened,
+                             controlled, looped,   switched, recorded,
+                             unioned,    stringed, texted };
     for (int b = 0; b < 2; b++) {
-        pin_value args[] = { text("/project"),
-                             text("Scalar.chibi"),
-                             text(SCALAR_SOURCE),
-                             { 0 },
-                             instruction_names() };
-        REQUIRE(target(b, &args[3]));
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &produced[b])
-        );
-        args[2] = text(GUARD_SOURCE);
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &guarded[b])
-        );
-        args[2] = text(ARITHMETIC_SOURCE);
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &computed[b])
-        );
-        args[2] = text(WIDTH_SOURCE);
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &widened[b])
-        );
-        args[2] = text(CONTROL_ROWS_SOURCE);
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            b,
-            PACKAGE,
-            "CollectScalar",
-            args,
-            5,
-            COMPILE_BUDGET,
-            &detached,
-            &controlled[b]
-        ));
-        args[2] = text(LOOP_ROWS_SOURCE);
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &looped[b])
-        );
-        args[2] = text(SWITCH_ROWS_SOURCE);
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &switched[b])
-        );
-        args[2] = text(RECORD_ROWS_SOURCE);
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &recorded[b])
-        );
-        args[2] = text(UNION_ROWS_SOURCE);
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &unioned[b])
-        );
-        args[2] = text(STRING_ROWS_SOURCE);
-        REQUIRE(
-            compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &stringed[b])
-        );
+        pin_value args[SCALAR_ARGUMENTS];
+        REQUIRE(scalar_arguments(b, "Scalar.chibi", text(SCALAR_SOURCE), args));
+        for (size_t i = 0; i < sizeof texts / sizeof *texts; i++) {
+            args[2] = text(texts[i]);
+            REQUIRE(compiler_fixture_call(
+                &fixture,
+                b,
+                PACKAGE,
+                "CollectScalar",
+                args,
+                SCALAR_ARGUMENTS,
+                COMPILE_BUDGET,
+                &detached,
+                &outputs[i][b]
+            ));
+        }
     }
     compiler_fixture_free(&fixture);
     arena_free(&input);
@@ -11544,6 +11540,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             (int)(sizeof MALFORMED_STRINGS / sizeof *MALFORMED_STRINGS)
         ));
         REQUIRE(stringed_rows(b, &stringed[b]));
+        REQUIRE(texted_rows(&texted[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &texted[b],
+            TEXT_KINDS,
+            TEXT_ROWS,
+            MALFORMED_TEXTS,
+            (int)(sizeof MALFORMED_TEXTS / sizeof *MALFORMED_TEXTS)
+        ));
     }
     return true;
 }
@@ -11566,7 +11571,12 @@ enum
     NATIVE_INSERT = 30,
     NATIVE_EXTRACT = 31,
     NATIVE_TEXT = 13,
-    NATIVE_RECORD = 32
+    NATIVE_RECORD = 32,
+    NATIVE_ADD = 7,
+    NATIVE_TEXT_LENGTH = 32,
+    NATIVE_TEXT_BYTE = 33,
+    NATIVE_TEXT_DROP = 34,
+    NATIVE_TEXT_TAKE = 35
 };
 typedef struct native_code
 {
@@ -12080,6 +12090,93 @@ static bool native_rejects_text_change(int b, native_change change, const char *
     native_module m = text_module(code);
     return native_rejects(b, &m, message);
 }
+/* Main returns the length of "abcd" with one byte dropped and two taken,
+ * plus that slice's byte 1: 2 + 'c'. */
+static const native_code TEXT_READ_CODE[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 1 },
+    { .op = NATIVE_TEXT_DROP, .type = NATIVE_TEXT, .output = 2, .right = 1 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 3, .literal = 2 },
+    { .op = NATIVE_TEXT_TAKE, .type = NATIVE_TEXT, .output = 4, .left = 2, .right = 3 },
+    { .op = NATIVE_TEXT_LENGTH, .type = NATIVE_INT, .output = 5, .left = 4 },
+    { .op = NATIVE_TEXT_BYTE, .type = NATIVE_INT, .output = 6, .left = 4, .right = 1 },
+    { .op = NATIVE_ADD, .type = NATIVE_INT, .output = 7, .left = 5, .right = 6 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 7 },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    TEXT_READ_COUNT = (int)(sizeof TEXT_READ_CODE / sizeof *TEXT_READ_CODE)
+};
+static native_module text_read_module(const native_code *code)
+{
+    static const native_function functions[] = {
+        { NATIVE_INT, 0, 0, 0, 8, 0, TEXT_READ_COUNT, 0, 0 }
+    };
+    static const int slots[] = { NATIVE_TEXT, NATIVE_INT,  NATIVE_TEXT,
+                                 NATIVE_INT,  NATIVE_TEXT, NATIVE_INT,
+                                 NATIVE_INT,  NATIVE_INT };
+    static const char *const texts[] = { "abcd" };
+    return (native_module){ .functions = functions,
+                            .function_count = 1,
+                            .slots = slots,
+                            .slot_count = 8,
+                            .code = code,
+                            .code_count = TEXT_READ_COUNT,
+                            .texts = texts,
+                            .text_count = 1 };
+}
+/* A string's length is its second field, a byte is read only below it, and
+ * a slice is a view whose count is clamped to it: no read or pointer passes
+ * the string's bytes. Reads of the wrong slot types are rejected. */
+static bool native_text_reads_emit(int b)
+{
+    native_module m = text_read_module(TEXT_READ_CODE);
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    static const char *const expected[] = {
+        "%length6 = extractvalue { ptr, i32 } %a6, 1\n",
+        "%inside7 = icmp ult i32 %b7, %length7\n  br i1 %inside7, label "
+        "%read7, label %byte7\n",
+        "%at7 = getelementptr inbounds i8, ptr %bytes7, i64 %offset7\n",
+        "byte7:\n  %v7 = phi i32 [ %wide7, %read7 ], [ -1, %p7 ]\n",
+        "%over5 = icmp ugt i32 %low5, %length5\n  %n5 = select i1 %over5, "
+        "i32 %length5, i32 %low5\n",
+        "%v5 = insertvalue { ptr, i32 } %a5, i32 %n5, 1\n",
+        "%start3 = getelementptr inbounds i8, ptr %bytes3, i64 %offset3\n",
+        "%rest3 = sub i32 %length3, %n3\n",
+        "%v3 = insertvalue { ptr, i32 } %moved3, i32 %rest3, 1\n",
+    };
+    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
+        REQUIRE(contains(ir, expected[i]));
+    }
+    static const char read[] = "native text read differs from its operands";
+    static const native_change changes[] = {
+        /* A byte at a string index, and a length or a drop of an int. */
+        { 7, offsetof(native_code, right), 0 },
+        { 6, offsetof(native_code, left), 1 },
+        { 3, offsetof(native_code, left), 1 },
+        /* A take of a string count. */
+        { 5, offsetof(native_code, right), 2 },
+        /* A length that would be a string, and a slice that would be an int. */
+        { 5, offsetof(native_code, op), NATIVE_TEXT_LENGTH },
+        { 7, offsetof(native_code, op), NATIVE_TEXT_DROP },
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
+        native_code code[TEXT_READ_COUNT];
+        memcpy(code, TEXT_READ_CODE, sizeof code);
+        change_code(code, changes[i]);
+        m = text_read_module(code);
+        REQUIRE(native_rejects(b, &m, read));
+    }
+    native_code code[TEXT_READ_COUNT];
+    memcpy(code, TEXT_READ_CODE, sizeof code);
+    code[7].op = NATIVE_TEXT_TAKE + 1;
+    m = text_read_module(code);
+    REQUIRE(native_rejects(b, &m, "unsupported native scalar instruction"));
+    return true;
+}
 /* Whether every instruction line of `ir` has a location. */
 static bool located(pin_string ir)
 {
@@ -12337,6 +12434,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_libraries_export_words(b));
         REQUIRE(native_recursion_probes_the_stack(b));
         REQUIRE(native_strings_emit(b));
+        REQUIRE(native_text_reads_emit(b));
         REQUIRE(native_lines_place_code(b));
         REQUIRE(native_cycles_run_unchecked(b));
     }
@@ -12351,14 +12449,14 @@ static bool scalar_results_match(const int64_t values[4], int64_t expected)
     return values[0] == expected && values[1] == expected &&
            values[2] == expected && values[3] == expected;
 }
-/* Union forms the scalar subset cannot express, each with its message and
- * the source its diagnostic covers: a switch on a call, an `is` that binds,
- * string and record payloads, and one payload and one variant past the
- * bounds. */
+/* Forms the scalar subset cannot express, each with its message and the
+ * source its diagnostic covers: a switch on a union call, an `is` that
+ * binds, string and record payloads, a text native given a named argument
+ * and a call of another native. */
 static const struct
 {
     const char *source, *message, *excerpt;
-} UNION_REJECTIONS[] = {
+} UNSUPPORTED[] = {
     { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
       "Main :: () -> int { switch Make() { case .Dot: return 0; case .Box(w): "
       "return w; } }\n"
@@ -12379,25 +12477,37 @@ static const struct
       "Main :: () -> int { return 1; }\n",
       "scalar proof requires number and bool union payloads",
       "p: Point" },
+    { "package scalar\nMain :: () -> int { return text_byte_length(Value: "
+      "\"ab\"); }\n",
+      "scalar proof passes a text native's arguments in order",
+      "Value: \"ab\"" },
+    /* No native but a text read is known. */
+    { "package scalar\nMain :: () -> int { if (text_equal(\"a\", \"b\")) { "
+      "return 1; } return 0; }\n",
+      "Unknown function 'text_equal'",
+      "text_equal" },
 };
-/* Each of UNION_REJECTIONS is a located rejection on both VMs, its source
- * and diagnostic and nothing else. */
-static bool scalar_rejects_unsupported_unions()
+/* Each of UNSUPPORTED is a located rejection on both VMs, its source and
+ * diagnostic and nothing else. */
+static bool scalar_rejects_unsupported()
 {
     for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < (int)(sizeof UNION_REJECTIONS / sizeof *UNION_REJECTIONS);
-             i++) {
-            const char *source = UNION_REJECTIONS[i].source;
-            pin_value args[] = { text("/project"),
-                                 text("Scalar.chibi"),
-                                 text(source),
-                                 { 0 },
-                                 instruction_names() };
-            REQUIRE(target(b, &args[3]));
+        for (int i = 0; i < (int)(sizeof UNSUPPORTED / sizeof *UNSUPPORTED); i++) {
+            const char *source = UNSUPPORTED[i].source;
+            pin_value args[SCALAR_ARGUMENTS];
+            REQUIRE(scalar_arguments(b, "Scalar.chibi", text(source), args));
             pin_value rows;
-            REQUIRE(
-                compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, &rows)
-            );
+            REQUIRE(compiler_fixture_call(
+                &fixture,
+                b,
+                PACKAGE,
+                "CollectScalar",
+                args,
+                SCALAR_ARGUMENTS,
+                COMPILE_BUDGET,
+                &detached,
+                &rows
+            ));
             const pin_array *array = rows.ptr;
             REQUIRE(array->count == 2);
             pin_value *rejection = guard_row(&rows, 1);
@@ -12405,11 +12515,18 @@ static bool scalar_rejects_unsupported_unions()
             int start = scalar_field(rejection, "start").i,
                 end = scalar_field(rejection, "end").i;
             pin_string message = pin_text(scalar_field(rejection, "text"));
-            bool expected = !strcmp(message.bytes, UNION_REJECTIONS[i].message) &&
-                            end - start == (int)strlen(UNION_REJECTIONS[i].excerpt) &&
-                            !strncmp(source + start, UNION_REJECTIONS[i].excerpt, (size_t)(end - start));
+            bool expected = !strcmp(message.bytes, UNSUPPORTED[i].message) &&
+                            end - start == (int)strlen(UNSUPPORTED[i].excerpt) &&
+                            !strncmp(source + start, UNSUPPORTED[i].excerpt, (size_t)(end - start));
             if (!expected) {
-                fprintf(stderr, "union rejection %d: %s at %.*s\n", i, message.bytes, end - start, source + start);
+                fprintf(
+                    stderr,
+                    "unsupported rejection %d: %s at %.*s\n",
+                    i,
+                    message.bytes,
+                    end - start,
+                    source + start
+                );
             }
             REQUIRE(expected);
             arena_free(&detached);
@@ -12420,14 +12537,10 @@ static bool scalar_rejects_unsupported_unions()
 /* CollectScalar's rows of `source` at libraries/Tools.chibi on VM b. */
 static bool library_rows(int b, const char *source, pin_value *rows)
 {
-    pin_value args[] = { text("/project"),
-                         text("libraries/Tools.chibi"),
-                         text(source),
-                         { 0 },
-                         instruction_names() };
-    REQUIRE(target(b, &args[3]));
+    pin_value args[SCALAR_ARGUMENTS];
+    REQUIRE(scalar_arguments(b, "libraries/Tools.chibi", text(source), args));
     REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, 5, COMPILE_BUDGET, &detached, rows)
+        compiler_fixture_call(&fixture, b, PACKAGE, "CollectScalar", args, SCALAR_ARGUMENTS, COMPILE_BUDGET, &detached, rows)
     );
     return true;
 }
@@ -12499,7 +12612,7 @@ static bool scalar_collects_libraries()
 TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries)
 {
     REQUIRE(prepare());
-    REQUIRE(scalar_rejects_unsupported_unions());
+    REQUIRE(scalar_rejects_unsupported());
     REQUIRE(scalar_collects_libraries());
     return true;
 }
@@ -13892,15 +14005,15 @@ static bool emitted_ir(int b, pin_value *rows, char **ir)
 /* `source`'s producer rows at `path` from CollectScalar on VM b. */
 static bool collected_at(int b, const char *path, const char *case_name, pin_value source, pin_value *rows)
 {
-    pin_value args[] = { text("/project"), text(path), source, { 0 }, instruction_names() };
-    REQUIRE(target(b, &args[3]));
+    pin_value args[SCALAR_ARGUMENTS];
+    REQUIRE(scalar_arguments(b, path, source, args));
     bool collected = compiler_fixture_call(
         &fixture,
         b,
         PACKAGE,
         "CollectScalar",
         args,
-        5,
+        SCALAR_ARGUMENTS,
         COMPILE_BUDGET,
         &detached,
         rows
@@ -14345,6 +14458,316 @@ enum
 {
     FOLDED_SOURCE_COUNT = (int)(sizeof FOLDED_SOURCES / sizeof *FOLDED_SOURCES)
 };
+/* Text natives through core:strings functions copied as they are:
+ * byte counts, bytes inside and outside a string, slices clamped at
+ * each end and slices of slices, compared and searched. Each value is
+ * mixed into Main's result, which wraps. The source is joined from
+ * pieces, each under C99's 4095-byte bound on a string literal. */
+static const char *const TEXT_NATIVES[] = {
+    "package scalar\n"
+    "Main :: () -> int {\n"
+    "    t: int = 0;\n"
+    "    t = Mix(t, Compare(\"abc\", \"abd\"));\n"
+    "    t = Mix(t, Compare(\"abd\", \"abc\"));\n"
+    "    t = Mix(t, Compare(\"\", \"\"));\n"
+    "    t = Mix(t, Compare(\"ab\", \"abc\"));\n"
+    "    t = Mix(t, Bit(HasPrefix(\"prefix\", \"pre\")));\n"
+    "    t = Mix(t, Bit(HasPrefix(\"pr\", \"pre\")));\n"
+    "    t = Mix(t, Bit(HasSuffix(\"suffix\", \"fix\")));\n"
+    "    t = Mix(t, Bit(HasSuffix(\"x\", \"fix\")));\n"
+    "    t = Mix(t, Bit(EqualFold(\"Chibi\", \"cHIBI\")));\n"
+    "    t = Mix(t, Bit(EqualFold(\"ab\", \"ac\")));\n"
+    "    t = Mix(t, Bit(IsIdentifier(\"_a1\")));\n"
+    "    t = Mix(t, Bit(IsIdentifier(\"1a\")));\n"
+    "    t = Mix(t, Index(\"chicken\", \"ken\"));\n"
+    "    t = Mix(t, Index(\"chicken\", \"dmc\"));\n"
+    "    t = Mix(t, Index(\"abcabc\", \"c\"));\n"
+    "    t = Mix(t, Index(\"abc\", \"\"));\n"
+    "    t = Mix(t, LastIndex(\"abcabc\", \"bc\"));\n"
+    "    t = Mix(t, LastIndex(\"abc\", \"\"));\n"
+    "    t = Mix(t, LastIndex(\"abc\", \"abc\"));\n"
+    "    t = Mix(t, Count(\"cheese\", \"e\"));\n"
+    "    t = Mix(t, Count(\"five\", \"\"));\n"
+    "    t = Mix(t, Count(\"banana\", \"ana\"));\n"
+    "    t = Mix(t, IndexByte(\"hello\", 108));\n"
+    "    t = Mix(t, LastIndexByte(\"hello\", 108));\n"
+    "    t = Mix(t, ByteLength(BaseName(\"/a/b/file.txt\")));\n"
+    "    t = Mix(t, Bit(BaseName(\"/a/b/file.txt\") == \"file.txt\"));\n"
+    "    t = Mix(t, Bit(TruncateToByte(\"key=value\", 61) == \"key\"));\n"
+    "    t = Mix(t, Bit(TruncateToByte(\"plain\", 61) == \"plain\"));\n"
+    "    t = Mix(t, Bit(Slice(\"abc\", -5, 2) == \"ab\"));\n"
+    "    t = Mix(t, Bit(Slice(\"abc\", 2, 99) == \"c\"));\n"
+    "    t = Mix(t, Bit(Slice(\"abc\", 9, 1) == \"\"));\n"
+    "    t = Mix(t, Bit(Slice(\"abc\", 1, -1) == \"\"));\n"
+    "    t = Mix(t, Bit(Slice(Slice(\"abcdef\", 1, 4), 1, 2) == \"cd\"));\n"
+    "    t = Mix(t, ByteAt(\"\xc3\xa9"
+    "\", 1));\n"
+    "    t = Mix(t, ByteAt(\"a\", 5));\n"
+    "    t = Mix(t, ByteAt(\"a\", -1));\n"
+    "    t = Mix(t, ByteLength(\"h\xc3\xa9"
+    "llo\"));\n"
+    "    t = Mix(t, ByteAt(Slice(\"xyz\", 1, 5), 1));\n"
+    "    return t;\n"
+    "}\n"
+    "Mix :: (t: int, value: int) -> int { return t * 31 + value; }\n"
+    "Bit :: (b: bool) -> int {\n"
+    "    if (b) { return 1; }\n"
+    "    return 0;\n"
+    "}\n"
+    "ByteLength :: (value: string) -> int {\n"
+    "    return text_byte_length(value);\n"
+    "}\n"
+    "ByteAt :: (value: string, index: int) -> int {\n"
+    "    return text_byte_at(value, index);\n"
+    "}\n"
+    "Slice :: (value: string, start: int, count: int) -> string {\n"
+    "    return text_slice(value, start, count);\n"
+    "}\n",
+    "Compare :: (left: string, right: string) -> int {\n"
+    "    leftLength := ByteLength(left);\n"
+    "    rightLength := ByteLength(right);\n"
+    "    index: int = 0;\n"
+    "    while (index < leftLength && index < rightLength) {\n"
+    "        a := ByteAt(left, index);\n"
+    "        b := ByteAt(right, index);\n"
+    "        if (a < b) {\n"
+    "            return -1;\n"
+    "        }\n"
+    "        if (a > b) {\n"
+    "            return 1;\n"
+    "        }\n"
+    "        index += 1;\n"
+    "    }\n"
+    "    if (leftLength < rightLength) {\n"
+    "        return -1;\n"
+    "    }\n"
+    "    if (leftLength > rightLength) {\n"
+    "        return 1;\n"
+    "    }\n"
+    "    return 0;\n"
+    "}\n"
+    "IsIdentifier :: (value: string) -> bool {\n"
+    "    size := ByteLength(value);\n"
+    "    if (size == 0) {\n"
+    "        return false;\n"
+    "    }\n"
+    "    index: int = 0;\n"
+    "    while (index < size) {\n"
+    "        byte := ByteAt(value, index);\n"
+    "        letter := byte == 95 || (byte >= 65 && byte <= 90) || (byte >= 97 "
+    "&& byte <= 122);\n"
+    "        if (!letter && !(index > 0 && byte >= 48 && byte <= 57)) {\n"
+    "            return false;\n"
+    "        }\n"
+    "        index += 1;\n"
+    "    }\n"
+    "    return true;\n"
+    "}\n"
+    "BaseName :: (path: string) -> string {\n"
+    "    size := ByteLength(path);\n"
+    "    start: int = 0;\n"
+    "    index: int = 0;\n"
+    "    while (index < size) {\n"
+    "        if (ByteAt(path, index) == 47) {\n"
+    "            start = index + 1;\n"
+    "        }\n"
+    "        index += 1;\n"
+    "    }\n"
+    "    return Slice(path, start, size - start);\n"
+    "}\n"
+    "HasPrefix :: (s: string, prefix: string) -> bool {\n"
+    "    size := ByteLength(prefix);\n"
+    "    return ByteLength(s) >= size && Slice(s, 0, size) == prefix;\n"
+    "}\n"
+    "HasSuffix :: (s: string, suffix: string) -> bool {\n"
+    "    size := ByteLength(s);\n"
+    "    count := ByteLength(suffix);\n"
+    "    return size >= count && Slice(s, size - count, count) == suffix;\n"
+    "}\n",
+    "IndexByte :: (s: string, c: int) -> int {\n"
+    "    size := ByteLength(s);\n"
+    "    i: int = 0;\n"
+    "    while (i < size) {\n"
+    "        if (ByteAt(s, i) == c) {\n"
+    "            return i;\n"
+    "        }\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    return -1;\n"
+    "}\n"
+    "LastIndexByte :: (s: string, c: int) -> int {\n"
+    "    i: int = ByteLength(s) - 1;\n"
+    "    while (i >= 0) {\n"
+    "        if (ByteAt(s, i) == c) {\n"
+    "            return i;\n"
+    "        }\n"
+    "        i -= 1;\n"
+    "    }\n"
+    "    return -1;\n"
+    "}\n"
+    "MatchesAt :: (s: string, substr: string, start: int) -> bool {\n"
+    "    i: int = 0;\n"
+    "    while (i < ByteLength(substr)) {\n"
+    "        if (ByteAt(s, start + i) != ByteAt(substr, i)) {\n"
+    "            return false;\n"
+    "        }\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    return true;\n"
+    "}\n"
+    "IndexFrom :: (s: string, substr: string, start: int) -> int {\n"
+    "    n := ByteLength(substr);\n"
+    "    size := ByteLength(s);\n"
+    "    if (n == 0) {\n"
+    "        return start;\n"
+    "    }\n"
+    "    if (n > size - start) {\n"
+    "        return -1;\n"
+    "    }\n"
+    "    if (n == 1) {\n"
+    "        c := ByteAt(substr, 0);\n"
+    "        i := start;\n"
+    "        while (i < size) {\n"
+    "            if (ByteAt(s, i) == c) {\n"
+    "                return i;\n"
+    "            }\n"
+    "            i += 1;\n"
+    "        }\n"
+    "        return -1;\n"
+    "    }\n"
+    "    hash: i64 = 0;\n"
+    "    pow: i64 = 1;\n"
+    "    h: i64 = 0;\n"
+    "    i: int = 0;\n"
+    "    while (i < n) {\n"
+    "        hash = (hash * 16777619 + i64(ByteAt(substr, i))) & 0xFFFFFFFF;\n"
+    "        pow = (pow * 16777619) & 0xFFFFFFFF;\n"
+    "        h = (h * 16777619 + i64(ByteAt(s, start + i))) & 0xFFFFFFFF;\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    i += start;\n"
+    "    if (h == hash && MatchesAt(s, substr, start)) {\n"
+    "        return start;\n"
+    "    }\n"
+    "    while (i < size) {\n"
+    "        h = (h * 16777619 + i64(ByteAt(s, i)) - pow * i64(ByteAt(s, i - "
+    "n))) & 0xFFFFFFFF;\n"
+    "        i += 1;\n"
+    "        if (h == hash && MatchesAt(s, substr, i - n)) {\n"
+    "            return i - n;\n"
+    "        }\n"
+    "    }\n"
+    "    return -1;\n"
+    "}\n",
+    "Index :: (s: string, substr: string) -> int {\n"
+    "    return IndexFrom(s, substr, 0);\n"
+    "}\n"
+    "LastIndex :: (s: string, substr: string) -> int {\n"
+    "    n := ByteLength(substr);\n"
+    "    size := ByteLength(s);\n"
+    "    if (n == 0) {\n"
+    "        return size;\n"
+    "    }\n"
+    "    if (n == 1) {\n"
+    "        return LastIndexByte(s, ByteAt(substr, 0));\n"
+    "    }\n"
+    "    if (n == size) {\n"
+    "        if (s == substr) {\n"
+    "            return 0;\n"
+    "        }\n"
+    "        return -1;\n"
+    "    }\n"
+    "    if (n > size) {\n"
+    "        return -1;\n"
+    "    }\n"
+    "    hash: i64 = 0;\n"
+    "    pow: i64 = 1;\n"
+    "    h: i64 = 0;\n"
+    "    i: int = 0;\n"
+    "    while (i < n) {\n"
+    "        hash = (hash * 16777619 + i64(ByteAt(substr, n - 1 - i))) & "
+    "0xFFFFFFFF;\n"
+    "        pow = (pow * 16777619) & 0xFFFFFFFF;\n"
+    "        h = (h * 16777619 + i64(ByteAt(s, size - 1 - i))) & 0xFFFFFFFF;\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    i = size - n;\n"
+    "    if (h == hash && Slice(s, i, n) == substr) {\n"
+    "        return i;\n"
+    "    }\n"
+    "    i -= 1;\n"
+    "    while (i >= 0) {\n"
+    "        h = (h * 16777619 + i64(ByteAt(s, i)) - pow * i64(ByteAt(s, i + "
+    "n))) & 0xFFFFFFFF;\n"
+    "        if (h == hash && Slice(s, i, n) == substr) {\n"
+    "            return i;\n"
+    "        }\n"
+    "        i -= 1;\n"
+    "    }\n"
+    "    return -1;\n"
+    "}\n",
+    "Count :: (s: string, substr: string) -> int {\n"
+    "    n := ByteLength(substr);\n"
+    "    if (n == 0) {\n"
+    "        return ByteLength(s) + 1;\n"
+    "    }\n"
+    "    total: int = 0;\n"
+    "    if (n == 1) {\n"
+    "        c := ByteAt(substr, 0);\n"
+    "        size := ByteLength(s);\n"
+    "        i: int = 0;\n"
+    "        while (i < size) {\n"
+    "            if (ByteAt(s, i) == c) {\n"
+    "                total += 1;\n"
+    "            }\n"
+    "            i += 1;\n"
+    "        }\n"
+    "        return total;\n"
+    "    }\n"
+    "    start: int = 0;\n"
+    "    while (true) {\n"
+    "        i := IndexFrom(s, substr, start);\n"
+    "        if (i < 0) {\n"
+    "            break;\n"
+    "        }\n"
+    "        total += 1;\n"
+    "        start = i + n;\n"
+    "    }\n"
+    "    return total;\n"
+    "}\n"
+    "TruncateToByte :: (s: string, c: int) -> string {\n"
+    "    n := IndexByte(s, c);\n"
+    "    if (n < 0) {\n"
+    "        return s;\n"
+    "    }\n"
+    "    return Slice(s, 0, n);\n"
+    "}\n"
+    "EqualFold :: (u: string, v: string) -> bool {\n"
+    "    size := ByteLength(u);\n"
+    "    if (size != ByteLength(v)) {\n"
+    "        return false;\n"
+    "    }\n"
+    "    i: int = 0;\n"
+    "    while (i < size) {\n"
+    "        sr := ByteAt(u, i);\n"
+    "        tr := ByteAt(v, i);\n"
+    "        if (tr < sr) {\n"
+    "            swap := sr;\n"
+    "            sr = tr;\n"
+    "            tr = swap;\n"
+    "        }\n"
+    "        if (tr != sr && !(sr >= 65 && sr <= 90 && tr == sr + 32)) {\n"
+    "            return false;\n"
+    "        }\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    return true;\n"
+    "}\n",
+};
+enum
+{
+    TEXT_NATIVES_ENTRY = -386181014
+};
 /* Why module `name`'s rows on VM b have no IR: the producer's rejection or
  * the consumer's validation error. */
 static void report_rejection(int b, const char *name, pin_value *rows)
@@ -14374,47 +14797,61 @@ static void report_rejection(int b, const char *name, pin_value *rows)
         pin_text(error).bytes
     );
 }
-/* Each folded source is accepted, and its Main gives its value on both VMs
- * and natively at O0 and O2. */
+/* Module `name` is accepted, and its Main gives `entry` on VM b and
+ * natively at O0 and O2. */
+static bool module_gives(const char *directory, int b, const char *name, const char *source, int32_t entry)
+{
+    pin_value rows;
+    REQUIRE(collected_rows(b, name, text(source), &rows));
+    char *ir;
+    REQUIRE(emitted_ir(b, &rows, &ir));
+    if (!ir) {
+        report_rejection(b, name, &rows);
+    }
+    REQUIRE(ir);
+    scalar_call calls[MAX_CASE_CALLS];
+    REQUIRE(
+        module_agrees(directory, b, name, (pin_string){ source, strlen(source) }, &rows, ir, entry, calls)
+    );
+    if (calls[0].values[0] != entry) {
+        fprintf(
+            stderr,
+            "scalar case %s: Main gave %" PRId64 ", not %d\n",
+            name,
+            calls[0].values[0],
+            entry
+        );
+    }
+    REQUIRE(calls[0].values[0] == entry);
+    arena_free(&detached);
+    return true;
+}
+/* Each folded source and the text natives' source is accepted, and its Main
+ * gives its value on both VMs and natively at O0 and O2. */
 static bool folded_sources_agree(const char *directory)
 {
     for (int i = 0; i < FOLDED_SOURCE_COUNT && !native_cancelled; i++) {
-        int b = i % 2;
-        const char *name = FOLDED_SOURCES[i].name;
-        pin_value rows;
-        REQUIRE(collected_rows(b, name, text(FOLDED_SOURCES[i].source), &rows));
-        char *ir;
-        REQUIRE(emitted_ir(b, &rows, &ir));
-        if (!ir) {
-            report_rejection(b, name, &rows);
-        }
-        REQUIRE(ir);
-        scalar_call calls[MAX_CASE_CALLS];
-        pin_string source = { FOLDED_SOURCES[i].source,
-                              strlen(FOLDED_SOURCES[i].source) };
-        REQUIRE(module_agrees(
+        REQUIRE(module_gives(
             directory,
-            b,
-            name,
-            source,
-            &rows,
-            ir,
-            FOLDED_SOURCES[i].entry,
-            calls
+            i % 2,
+            FOLDED_SOURCES[i].name,
+            FOLDED_SOURCES[i].source,
+            FOLDED_SOURCES[i].entry
         ));
-        if (calls[0].values[0] != FOLDED_SOURCES[i].entry) {
-            fprintf(
-                stderr,
-                "scalar case %s: Main gave %" PRId64 ", not %d\n",
-                name,
-                calls[0].values[0],
-                FOLDED_SOURCES[i].entry
-            );
-        }
-        REQUIRE(calls[0].values[0] == FOLDED_SOURCES[i].entry);
-        arena_free(&detached);
     }
-    return true;
+    size_t length = 0;
+    for (size_t i = 0; i < sizeof TEXT_NATIVES / sizeof *TEXT_NATIVES; i++) {
+        length += strlen(TEXT_NATIVES[i]);
+    }
+    char *source = xmalloc(length + 1);
+    source[0] = 0;
+    for (size_t i = 0; i < sizeof TEXT_NATIVES / sizeof *TEXT_NATIVES; i++) {
+        strcat(source, TEXT_NATIVES[i]);
+    }
+    bool gives = native_cancelled ||
+                 module_gives(directory, FOLDED_SOURCE_COUNT % 2, "text_natives", source, TEXT_NATIVES_ENTRY);
+    free(source);
+    return gives;
 }
 /* A constant that folds outside its type is still a located error. */
 static bool folded_overflow_rejected()

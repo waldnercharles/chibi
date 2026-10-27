@@ -312,8 +312,8 @@ static const char driver_integer_parallel
          "'language-migration34-generic-repro'\n"
          "          not in policy.PARALLEL_RESOURCES, flush=True)\n"
          "    sys.exit(policy.run_group(names, jobs=2))\n";
-/* Execute the workflow's group commands through the real Makefile, recording
- * only its build/test boundaries. No engine build is needed for this check. */
+/* Standalone developer targets still build their prerequisites and stop on
+ * failure. Record build/test boundaries without an engine build. */
 static const char driver_ci
     [] = "if sys.argv[2] == 'ci-groups':\n"
          "    import shlex\n"
@@ -332,18 +332,9 @@ static const char driver_ci
          "os.environ['PATH'],\n"
          "               CI_TRACE=str(trace), CI_FAIL=sys.argv[5], "
          "MAKEFLAGS='', MFLAGS='')\n"
-         "    jobs = {'native': [], 'native-macos': []}\n"
-         "    job = None\n"
-         "    for line in "
-         "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
-         "        if line.startswith('  ') and not line.startswith('   '):\n"
-         "            job = line.strip().removesuffix(':')\n"
-         "        command = line.strip().removeprefix('run: ')\n"
-         "        if job in jobs and command.startswith('make ') and any(\n"
-         "            target in shlex.split(command) for target in\n"
-         "            ('test-native', 'test-materials', 'test-projects', "
-         "'test-language-all')):\n"
-         "            jobs[job].append(command)\n"
+         "    commands = ['make -j1 test-native test-materials test-projects "
+         "test-language-all']\n"
+         "    jobs = dict(native=commands, macos=commands)\n"
          "    for commands in jobs.values():\n"
          "        trace.write_text('')\n"
          "        status = 0\n"
@@ -358,6 +349,101 @@ static const char driver_ci
          "        print(trace.read_text(), end='')\n"
          "    python.unlink()\n"
          "    sys.exit(0)\n";
+/* Execute actual CI shell blocks with build/driver boundaries replaced. */
+static const char driver_ci_ready_setup[] =
+    "if sys.argv[2] == 'ci-ready-groups':\n"
+    "    root = Path(sys.argv[4]) / 'ready'\n"
+    "    root.mkdir(exist_ok=True)\n"
+    "    trace = root / 'trace'\n"
+    "    request = sys.argv[5]\n"
+    "    binaries = ['build/test/tools/test_tools', "
+    "'build/test/language/test_language',\n"
+    "                'build-release/bin/chibi_ctl', "
+    "'build-release/sdk/chibi',\n"
+    "                'build-release/sdk/chibi-compile']\n"
+    "    for binary in binaries:\n"
+    "        path = root / binary\n"
+    "        path.parent.mkdir(parents=True, exist_ok=True)\n"
+    "        path.write_text('#!/bin/sh\\nexit 99\\n')\n"
+    "        path.chmod(0o700)\n"
+    "    if request.startswith('missing:'):\n"
+    "        (root / binaries[int(request.split(':')[1])]).unlink()\n"
+    "    recorder = root / 'record'\n"
+    "    recorder.write_text('#!/bin/sh\\nset -e\\n'\n"
+    "        'case \"$1\" in\\n'\n"
+    "        'test-build) test \"$2\" = "
+    "ASSET_GENERATOR_HOSTS=build-release/sdk; '\n"
+    "        'test \"$3\" = LIBCLANG_ROOT=/usr/lib/llvm-18; step=build;;\\n'\n"
+    "        'tools/test_policy.py) test \"$2\" = group; step=$3; '\n"
+    "        'test \"$CHIBI_TOOLS_BUILD_DIR\" = build/test/tools; '\n"
+    "        'test \"$CHIBI_LANGUAGE_BUILD_DIR\" = build/test/language; '\n"
+    "        'if [ \"$step\" = projects ]; then test \"$CHIBI_CTL\" = "
+    "build-release/bin/chibi_ctl; '\n"
+    "        'test \"$CHIBI_CLI\" = build-release/sdk/chibi; '\n"
+    "        'test \"$CHIBI_COMPILE\" = build-release/sdk/chibi-compile; '\n"
+    "        'else test -z \"${CHIBI_CTL-}${CHIBI_CLI-}${CHIBI_COMPILE-}\"; "
+    "fi; '\n"
+    "        'if [ \"$step\" = language ] || [ \"$step\" = projects ]; then "
+    "test \"$CHIBI_LLVM_BIN\" = "
+    "\"$CI_LLVM\"; fi;;\\n'\n"
+    "        '*) exit 99;;\\nesac\\n'\n"
+    "        'printf \"%s\\\\n\" \"$step\" >> \"$CI_TRACE\"\\n'\n"
+    "        '[ \"$step\" != \"$CI_FAIL\" ]\\n')\n"
+    "    recorder.chmod(0o700)\n"
+    "    for command in ['python3', 'make']:\n"
+    "        path = root / command\n"
+    "        path.unlink(missing_ok=True)\n"
+    "        path.symlink_to(recorder)\n";
+static const char driver_ci_ready_run
+    [] = "    jobs = {'native': [], 'native-macos': []}\n"
+         "    job, selected, capture = None, False, False\n"
+         "    built, verified, released = set(), set(), set()\n"
+         "    for line in "
+         "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
+         "        if line.startswith('  ') and not line.startswith('   '):\n"
+         "            job = line.strip().removesuffix(':')\n"
+         "        if job not in jobs:\n"
+         "            continue\n"
+         "        command = line.strip().removeprefix('run: ')\n"
+         "        if command.startswith('make build-release BUILD_TARGET='):\n"
+         "            released.add(job)\n"
+         "        if command.startswith('make build BUILD_TARGET='):\n"
+         "            built.add(job)\n"
+         "        if command == 'python3 .github/verify-native-profile.py':\n"
+         "            if job not in built:\n"
+         "                raise RuntimeError('profile verification must follow "
+         "the build')\n"
+         "            verified.add(job)\n"
+         "        if line.startswith('      - name:'):\n"
+         "            selected = line.strip() == '- name: Native, material, "
+         "project and language selectors'\n"
+         "            capture = False\n"
+         "            if selected and (job not in released or job not in "
+         "verified):\n"
+         "                raise RuntimeError('tests require Release helpers "
+         "and profile-verified drivers')\n"
+         "        if selected and line == '        run: |':\n"
+         "            capture = True\n"
+         "        elif capture and line.startswith('          '):\n"
+         "            jobs[job].append(line[10:])\n"
+         "        elif capture:\n"
+         "            capture = False\n"
+         "    for job, commands in jobs.items():\n"
+         "        trace.write_text('')\n"
+         "        env = dict(os.environ, PATH=str(root) + os.pathsep + "
+         "os.environ['PATH'],\n"
+         "                   CI_TRACE=str(trace), CI_FAIL=request,\n"
+         "                   CI_LLVM='/usr/lib/llvm-18/bin' if job == 'native' "
+         "else '')\n"
+         "        result = subprocess.run(['bash', '-e', '-c', "
+         "'\\n'.join(commands)],\n"
+         "                                cwd=root, env=env, "
+         "stdout=subprocess.DEVNULL,\n"
+         "                                stderr=subprocess.DEVNULL)\n"
+         "        print('status=' + str(result.returncode))\n"
+         "        print(trace.read_text(), end='')\n"
+         "    sys.exit(0)\n";
+
 /* Record the initial workflow builds through the real Makefile on both routes. */
 static const char driver_ci_build
     [] = "if sys.argv[2] == 'ci-initial-build':\n"
@@ -404,7 +490,6 @@ static const char driver_ci_build
 static const char driver_ci_build_workflow
     [] = "    release = {}\n"
          "    release_first = {}\n"
-         "    test_hosts = {}\n"
          "    job = None\n"
          "    for line in "
          "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
@@ -422,10 +507,7 @@ static const char driver_ci_build_workflow
          "                release[job] = next((w.split('=', 1)[1] for w in "
          "words if w.startswith('BUILD_TARGET=')), '')\n"
          "                release_first[job] = not jobs[job]\n"
-         "            if 'test-native' in words:\n"
-         "                test_hosts[job] = next((w.split('=', 1)[1] for w in "
-         "words if w.startswith('ASSET_GENERATOR_HOSTS=')), '')\n"
-         "            if words[1] in ('test-build', 'build'):\n"
+         "            if words[1] == 'build':\n"
          "                if words[-4:] != ['2>&1', '|', 'tee', "
          "'$RUNNER_TEMP/native-build.log']:\n"
          "                    raise RuntimeError('initial build must retain "
@@ -438,7 +520,6 @@ static const char driver_ci_build_run[] =
     "    for job, commands in jobs.items():\n"
     "        print('release-first=' + str(release_first.get(job, False)))\n"
     "        print('release-targets=' + release.get(job, ''))\n"
-    "        print('test-generators=' + test_hosts.get(job, ''))\n"
     "        if failure == 'o0':\n"
     "            commands = [c + ['SANITIZER_CMAKE_FLAGS=' +\n"
     "                profile['SANITIZER_CMAKE_FLAGS'].replace('-O1', '-O0'),\n"
@@ -1384,6 +1465,37 @@ TEST_CASE(ci_groups_share_one_build_and_stop_on_failure)
     return true;
 }
 
+TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage)
+{
+    const char *steps[] = { "build", "native", "materials", "projects", "language" };
+    for (int fail = -1; fail < 5; fail++) {
+        REQUIRE(run("ci-ready-groups", fail < 0 ? "-" : steps[fail]) == 0);
+        char expected[512] = "";
+        for (int job = 0; job < 2; job++) {
+            bool failed = fail >= 0 && (job == 0 || fail != 0);
+            strcat(expected, failed ? "status=1\n" : "status=0\n");
+            for (int i = job; i <= (failed ? fail : 4); i++) {
+                strcat(expected, steps[i]);
+                strcat(expected, "\n");
+            }
+        }
+        char *output = tool_read(logpath);
+        bool exact = output && !strcmp(output, expected);
+        free(output);
+        REQUIRE(exact);
+    }
+    for (int missing = 0; missing < 5; missing++) {
+        char request[32];
+        snprintf(request, sizeof request, "missing:%d", missing);
+        REQUIRE(run("ci-ready-groups", request) == 0);
+        char *output = tool_read(logpath);
+        bool exact = output && !strcmp(output, "status=1\nbuild\nstatus=1\n");
+        free(output);
+        REQUIRE(exact);
+    }
+    return true;
+}
+
 static bool ci_initial_build_profile(bool instrumented)
 {
     const char *targets = "targets=chibi,chibi-compile,chibi-player,chibi_ctl,"
@@ -1415,8 +1527,7 @@ static bool ci_initial_build_profile(bool instrumented)
         bool cold = fail >= 4;
         char expected[3072] = "release-first=True\n"
                               "release-targets=chibi_ctl chibi "
-                              "chibi-build-host chibi-compiler-host\n"
-                              "test-generators=build-release/sdk\n";
+                              "chibi-build-host chibi-compiler-host\n";
         strcat(expected, fail == 1 || fail == 5 || fail == 6 ? "native failed\n" : "native continued\n");
         if (cold) {
             strcat(expected, "configure-native\ngenerators=build-release/sdk\n");
@@ -1437,7 +1548,6 @@ static bool ci_initial_build_profile(bool instrumented)
             expected,
             "release-first=True\n"
             "release-targets=chibi_ctl chibi chibi-compiler-host\n"
-            "test-generators=build-release/sdk\n"
         );
         strcat(expected, fail == 2 || fail == 3 || fail >= 5 ? "native-macos failed\n" : "native-macos continued\n");
         if (cold) {
@@ -2650,6 +2760,8 @@ static void set_up()
     }
     assert(fputs(driver_integer_parallel, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
+    assert(fputs(driver_ci_ready_setup, script) >= 0);
+    assert(fputs(driver_ci_ready_run, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
     assert(fputs(driver_ci_build_workflow, script) >= 0);
     assert(fputs(driver_ci_build_run, script) >= 0);
@@ -2684,6 +2796,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(language_artifact_archive_validates_before_writing);
     RUN_TEST_CASE(language_artifact_cli_requires_exact_argument_counts);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
+    RUN_TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
     RUN_TEST_CASE(ci_generator_hosts_resolve_symlink_root);
     RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);

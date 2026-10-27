@@ -40,6 +40,13 @@ This is a CI-only choice: local `make build` / `make test-build` retain their
 sanitizer defaults. The standalone tooling harness and Release helpers retain
 their existing roles.
 
+Native CI runs the existing test-policy groups sequentially after building and
+verifying the selected profile. It reuses the initial Release helpers rather than
+planning them again for project tests; macOS also reuses its initial Graph build.
+Linux retains a selected-profile `test-build` invocation so cold CMake recovery
+does not remove authored `Build.chibi` coverage (including sanitizer runs).
+Standalone `make test-*` targets still build their own prerequisites.
+
 The same `CI` workflow runs full **ASan + UBSan** coverage daily at **08:00 UTC**
 on the latest default-branch commit (GitHub may delay scheduled starts). To run
 it on demand, choose **Actions → CI → Run workflow**, select the candidate

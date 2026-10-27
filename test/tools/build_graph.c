@@ -1172,10 +1172,10 @@ TEST_CASE(all_commands_list_every_target)
     return true;
 }
 
-/* Five fixed rejected invocations: an unknown target alone and beside a
+/* Six fixed rejected invocations: an unknown target alone and beside a
  * known target, a target missing its name at the end or before an option, and
- * relative asset generator hosts. They write no build outputs and never reach
- * toolchain discovery. */
+ * asset generator hosts that are relative or missing. They write no build
+ * outputs and never reach toolchain discovery. */
 TEST_CASE(invalid_arguments_fail_before_writing_commands)
 {
     char build_dir[GRAPH_PATH];
@@ -1194,7 +1194,9 @@ TEST_CASE(invalid_arguments_fail_before_writing_commands)
         { { "--target", "--commands-only", "on", NULL },
           "graph: --target requires a target name" },
         { { "--commands-only", "on", "--asset-generator-hosts", "build-release/sdk", NULL },
-          "graph: --asset-generator-hosts must be absolute" }
+          "graph: --asset-generator-hosts requires an absolute directory" },
+        { { "--commands-only", "on", "--asset-generator-hosts", NULL },
+          "graph: --asset-generator-hosts requires an absolute directory" }
     };
     for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
         REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, cases[i].arguments) == -1);

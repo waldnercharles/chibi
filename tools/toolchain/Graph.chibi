@@ -159,6 +159,11 @@ Libraries :: () -> int {
             build.report("graph: --debug-optimization requires 0 or 1 and build type Debug");
             return 2;
         }
+        if (arguments[i] == "--asset-generator-hosts" &&
+            (i + 1 == length(arguments) || !strings.HasPrefix(arguments[i + 1], "/"))) {
+            build.report("graph: --asset-generator-hosts requires an absolute directory");
+            return 2;
+        }
     }
     tools: c.Tools = {
         launcher: Option(arguments, "--launcher", launcher),
@@ -171,10 +176,6 @@ Libraries :: () -> int {
     if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(profile.compiler, "/") ||
         tools.archiver == "" || tools.ranlib == "" || jobs < 1) {
         build.report("graph: --build must be absolute, a compiler, archiver and ranlib must be found, and --jobs must be positive");
-        return 2;
-    }
-    if (profile.asset_generator_hosts != "" && !strings.HasPrefix(profile.asset_generator_hosts, "/")) {
-        build.report("graph: --asset-generator-hosts must be absolute");
         return 2;
     }
     selected: string[] = [];

@@ -63,11 +63,11 @@ ScalarLiteral :: (forest: snapshot.SnapshotNode[], node: int, type: int, bits: u
     row.literal = i64(wrap: bits);
     return row;
 }
-// The scalar type of a storage, 0 for any other. The facts types are
-// consecutive from facts.IntType in this order.
+// The facts type of a number, bool or string storage, 0 for any other. The
+// facts types are consecutive from facts.IntType in this order.
 ScalarTypeOf :: (storage: int) -> int {
     storages := [IntStorage, BoolStorage, Int8Storage, ByteStorage, Int16Storage, Uint16Storage, UintStorage,
-                 Int64Storage, WordStorage, FloatStorage, DoubleStorage];
+                 Int64Storage, WordStorage, FloatStorage, DoubleStorage, TextStorage];
     for (index in 0..<length(storages)) {
         if (storages[index] == storage) {
             return facts.IntType + index;
@@ -295,6 +295,9 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
     if (Is(forest, node, "number") || InferredNumberStorage(forest, text, node) != 0) {
         return context;
     }
+    if (Is(forest, node, "string")) {
+        return TextStorage;
+    }
     if (ScalarVariantMade(forest, node) && ScalarUnionOf(forest, text, callables, names, types, callable.package, node) >= 0) {
         return UnionStorage;
     }
@@ -398,9 +401,16 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
     }
     if (type == 0) {
-        return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof supports only number and bool values"));
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof supports only number, bool and string values"));
     }
     output := rows;
+    if (Is(forest, node, "string")) {
+        // The bytes the literal step decodes, which EmitBody has checked.
+        row := ScalarAt(forest, node, facts.LiteralRow, type, 0, 0, "");
+        row.text = compiler_json_value_string(Text(forest, text, node)).value;
+        output.append(row);
+        return ScalarOperands.Built(output);
+    }
     // A signed number is a literal too, as ParseNumber reads it.
     literal := Is(forest, node, "number") ||
                (Is(forest, node, "unary_expression") && InferredNumberStorage(forest, text, node) != 0);
@@ -489,7 +499,8 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
         operator := ScalarComparison(Text(forest, text, Field(forest, node, "operator")));
         equality := operator == facts.Equal || operator == facts.NotEqual;
-        if (!Integer(compared) && !Floating(compared) && !(compared == BoolStorage && equality)) {
+        if (!Integer(compared) && !Floating(compared) &&
+            !((compared == BoolStorage || compared == TextStorage) && equality)) {
             return ScalarOperands.Failed(Diagnose(forest, node, 0, "scalar proof compares only number operands"));
         }
         compare := ScalarAt(forest, node, facts.CompareRow, facts.BoolType, operator, 2, "");
@@ -560,8 +571,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     // parameter's type at the call, as the call step fills it in.
     while (count < target.count) {
         param := params[target.first + count];
-        switch ScalarAppend(forest, node, ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits),
-                            output) {
+        omitted := ScalarLiteral(forest, node, ScalarTypeOf(param.storage), param.default_bits);
+        omitted.text = param.default_text;
+        switch ScalarAppend(forest, node, omitted, output) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(built):
@@ -1192,7 +1204,7 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarPlan.Converted(value, storage, storage);
     }
     if (ScalarTypeOf(storage) == 0) {
-        return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof supports only number and bool values"));
+        return ScalarPlan.Failed(Diagnose(forest, statement, 0, "scalar proof supports only number, bool and string values"));
     }
     if (Field(forest, statement, "type") < 0) {
         return ScalarPlan.Converted(value, InferredNumberStorage(forest, text, value), storage);
@@ -1578,7 +1590,7 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
     for (callable in callables) {
         rejected := ScalarSignature(forest, types, params, callable);
         if (rejected >= 0) {
-            return ScalarOperands.Failed(Diagnose(forest, rejected, 0, "scalar proof requires number, bool, record or union parameters and one number, bool, record or union result"));
+            return ScalarOperands.Failed(Diagnose(forest, rejected, 0, "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result"));
         }
     }
     first := callables[0];
@@ -1640,7 +1652,7 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
         for (index in 0..<declared.count) {
             field := members[declared.first + index];
             type := ScalarTypeOf(field.storage);
-            if (type == 0) {
+            if (type == 0 || type == facts.StringType) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number and bool record fields"));
             }
@@ -1676,7 +1688,8 @@ ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: Typ
         fields := Members(forest, Field(forest, variants[ordinal], "parameters"));
         for (index in 0..<variant.count) {
             field := members[variant.first + index];
-            if (ScalarTypeOf(field.storage) == 0 || field.container != 0) {
+            payload := ScalarTypeOf(field.storage);
+            if (payload == 0 || payload == facts.StringType || field.container != 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number and bool union payloads"));
             }
@@ -1685,8 +1698,8 @@ ScalarUnion :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: Typ
                                                       format_text("scalar proof admits at most {} payloads per union",
                                                                   facts.MaxPayloads)));
             }
-            rows.append(ScalarAt(forest, Field(forest, fields[index], "name"), facts.MemberRow,
-                                 ScalarTypeOf(field.storage), variant.first + index - payloads, 0, field.name));
+            rows.append(ScalarAt(forest, Field(forest, fields[index], "name"), facts.MemberRow, payload,
+                                 variant.first + index - payloads, 0, field.name));
         }
     }
     return ScalarOperands.Built(rows);

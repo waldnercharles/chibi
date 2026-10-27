@@ -51,10 +51,11 @@ Unlocated :: (row: facts.Row) -> bool {
 Scalar :: (type: int) -> bool {
     return type >= facts.IntType && type <= facts.DoubleType;
 }
-// Whether `type` is a scalar or one of the module's records and unions, whose
-// Record and Union rows are at `records`.
+// Whether `type` is a scalar, a string or one of the module's records and
+// unions, whose Record and Union rows are at `records`.
 Valued :: (records: int[], type: int) -> bool {
-    return Scalar(type) || (type >= facts.RecordType && type - facts.RecordType < length(records));
+    return Scalar(type) || type == facts.StringType ||
+           (type >= facts.RecordType && type - facts.RecordType < length(records));
 }
 // The type of field `field` of record type `type`, or 0 when `type` is no
 // record of the module or has no such field.
@@ -135,14 +136,14 @@ Converts :: (from: int, to: int) -> bool {
     }
     return Integer(to) && Number(from);
 }
-// The backend's storage ordinal of a scalar type: the storages of int, bool,
-// i8, u8, i16, u16, u32, i64, u64, number and f64 in facts
-// type order. Record r is the backend's record r.
+// The backend's storage ordinal of a value type: the storages of int, bool,
+// i8, u8, i16, u16, u32, i64, u64, number, f64 and string in facts type
+// order. Record r is the backend's record r.
 NativeType :: (type: int) -> int {
     if (type >= facts.RecordType) {
         return native.RecordType + type - facts.RecordType;
     }
-    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
+    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, abi.TextStorage];
     return storages[type - facts.IntType];
 }
 // A rejection keeps exactly its source and one located diagnostic.
@@ -466,13 +467,15 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             floor = depths[length(depths) - 1];
         }
         operand := rows[row];
-        if (operand.text != "" || !Valued(records, operand.type) || !Located(operand, starts, size) ||
+        // Only a string literal has text.
+        texted := operand.kind == facts.LiteralRow && operand.type == facts.StringType;
+        if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
             return "invalid scalar operand row";
         }
         if (operand.kind == facts.LiteralRow) {
             if (operand.name != "" || operand.count != 0 || operand.value != 0 ||
-                !facts.Fits(operand.literal, operand.type)) {
+                !facts.Fits(operand.literal, operand.type) || strings.ByteLength(operand.text) > facts.MaxSource) {
                 return "noncanonical scalar literal";
             }
         } else if (operand.kind == facts.ReadRow) {
@@ -498,7 +501,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (operand.name != "" || operand.count != 2 || operand.type != facts.BoolType ||
                 operand.value < facts.Less || operand.value > facts.NotEqual || base < floor ||
                 (!Number(stack[base]) &&
-                 (stack[base] != facts.BoolType || operand.value < facts.Equal)) ||
+                 ((stack[base] != facts.BoolType && stack[base] != facts.StringType) ||
+                  operand.value < facts.Equal)) ||
                 stack[base + 1] != stack[base]) {
                 return "scalar comparison differs from its operands";
             }
@@ -956,7 +960,8 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // row is its constant, an Update row an Insert and a Field row an Extract.
 // Each union is the backend's record of its tag, an int, then all its
 // payloads: a Make row inserts its tag and payloads into the zero constant,
-// and a Tag or Payload row extracts its field.
+// and a Tag or Payload row extracts its field. A string literal is a
+// constant of the module's text table, one entry per distinct text.
 pub Emit :: (rows: facts.Row[]) -> Result {
     error := Validate(rows);
     if (error != "") {
@@ -973,6 +978,7 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     arguments: int[] = [];
     records: native.Record[] = [];
     fields: int[] = [];
+    texts: string[] = [];
     declared := Records(rows);
     for (head in declared) {
         record: native.Record = {first: length(fields), count: 0};
@@ -1218,7 +1224,19 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                 }
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
                                             target: 0, literal: operand.literal};
-                if (operand.kind == facts.ReadRow) {
+                if (operand.kind == facts.LiteralRow && operand.type == facts.StringType) {
+                    // A repeated literal or default shares one entry.
+                    item.literal = i64(length(texts));
+                    for (index in 0..<length(texts)) {
+                        if (texts[index] == operand.text) {
+                            item.literal = i64(index);
+                            break;
+                        }
+                    }
+                    if (item.literal == i64(length(texts))) {
+                        texts.append(operand.text);
+                    }
+                } else if (operand.kind == facts.ReadRow) {
                     item = Op(native.Local, type, slot, places[operand.value], 0, 0);
                 } else if (operand.kind == facts.CompareRow) {
                     base := length(stack) - 2;
@@ -1391,8 +1409,8 @@ pub Emit :: (rows: facts.Row[]) -> Result {
         code.extend(body);
         functions.append(shape);
     }
-    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields, false,
-                       1) {
+    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields, texts,
+                       false, 1) {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):

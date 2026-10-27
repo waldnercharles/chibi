@@ -14,10 +14,10 @@ One source document holding one package, no imports, and only ordinary
 function declarations without attributes: at most 32 functions. The first
 function is the module's entry and must be `() -> int`. Every function:
 
-- takes at most eight plain number or `bool` parameters (`i8`, `u8`,
-  `i16`, `u16`, `int`, `u32`, `i64`, `u64`, `number` or `f64`; no
-  `ref`, defaults or managed, nominal or container types) and returns one
-  plain number or `bool`;
+- takes at most eight plain number, `bool` or `string` parameters (`i8`,
+  `u8`, `i16`, `u16`, `int`, `u32`, `i64`, `u64`, `number` or `f64`; no
+  `ref` or other managed, nominal or container types) and returns one
+  plain number, `bool` or `string`;
 - has a body of locals (`x := EXPR;` or `x: T = EXPR;`), assignments to its
   parameters and locals (`x = EXPR;`, or compound, `x += EXPR;` and the other
   arithmetic and shift operators), if statements with any `else` or
@@ -35,12 +35,13 @@ function is the module's entry and must be `() -> int`. Every function:
   type expected, or of a type that widens to it, as a return widens: a
   narrower integer, or `number` to `f64`. Each is a number literal within
   its type, possibly signed (in an integer context a whole decimal such as
-  `1.0` or `1e2` is the integer it spells), `true` or `false`, a parameter or local in scope,
+  `1.0` or `1e2` is the integer it spells), `true` or `false`, a string
+  literal, a parameter or local in scope,
   integer arithmetic `a + b` (or
   `-`, `*`, `/`, `%`, `&`, `|`, `^`), floating arithmetic `a + b` (or `-`,
   `*`, `/`), a shift `a << n` or `a >> n`, an integer negation `-a` or
   complement `~a`, a comparison `a < b` (or `<=`, `>`, `>=`, `==`, `!=`) of
-  two numbers, `a == b` or `a != b` of two bools, `a && b`, `a || b` or `!a`
+  two numbers, `a == b` or `a != b` of two bools or two strings, `a && b`, `a || b` or `!a`
   (or `and`, `or` and `not`), a conversion `T(a)` or `T(wrap: a)` to an
   integer type,
   `number(a)` or `f64(a)`, or a direct call
@@ -118,9 +119,13 @@ LLVM inlines them to `ret i32 6`. Both return 6 natively.
 Everything else is rejected with a located diagnostic and no partial result:
 floating negation and remainder, ordering `bool`s, statements outside the
 subset, function values, qualified or imported calls, native or foreign
-calls (`print`), named arguments, strings and other managed values,
+calls (`print`), named arguments, string operations other than literals
+and `==` or `!=` (no concatenation, indexing or text natives), other
+managed values,
 attributes and constants. A call may omit trailing arguments whose
 parameters have defaults; each omitted one is a literal row of its default.
+A string is an immutable value: a literal is a private constant of its
+decoded bytes, with a NUL after them, and `==` compares lengths, then bytes.
 Records whose fields are numbers or `bool`s are values: a literal, in any
 field order, a copy, a field read or write and a record parameter, result
 or local. Unions whose payloads are numbers or `bool`s are values too: a
@@ -133,7 +138,7 @@ record or union with any other field or payload, an `is` that binds and a
 switch on a union expression other than a variable are rejected. The
 exported `Main` still takes and returns scalars.
 Sources are at most 16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds
-the 96-source corpus (51 accepted) with each accepted value and statement
+the 96-source corpus (52 accepted) with each accepted value and statement
 trace and each rejection's exact message and source excerpt, including both
 sides of every bound.
 
@@ -194,11 +199,15 @@ rows own their strings and, once snapshotted, their record shape.
   local gets 15: statements before the first arm, arms outside a switch, a
   second default, switch and arm types, arm fields and ranges, a read of the
   default arm's local in the next arm, and an arm that does not return.
-  A union module whose switch binds payloads gets 24: union, variant and
+  A union module whose switch binds payloads gets 25: union, variant and
   payload rows out of order, unnamed, duplicated, outside their declaration
-  or of a record type, a variant made with another's payloads or as a
+  or of a record or string type, a variant made with another's payloads or as a
   scalar, Tag and Payload rows of another type, arity or payload, and a zero,
-  field read or comparison of a union or its tag.
+  field read or comparison of a union or its tag. A string module gets 10:
+  text on an int literal or a read, a string literal with a nonzero or
+  oversized literal, strings ordered or compared with an int, a local or
+  read of another type and a string argument for an int parameter. A string
+  record field is rejected with the record module's variants.
 
 `scalar_llvm.Validate` checks the representation: bounds before counts, row
 layout, canonical fields, positions, typed operand stacks and callee

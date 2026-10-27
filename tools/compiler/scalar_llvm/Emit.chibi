@@ -401,6 +401,20 @@ Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
     }
     return length(rows);
 }
+// The operands a Text row's operator consumes: its string, then its index,
+// or its start and count; 0 for no operator.
+TextOperands :: (operator: int) -> int {
+    if (operator == facts.TextLength) {
+        return 1;
+    }
+    if (operator == facts.TextByte) {
+        return 2;
+    }
+    if (operator == facts.TextSlice) {
+        return 3;
+    }
+    return 0;
+}
 Holds :: (values: int[], wanted: int) -> bool {
     for (value in values) {
         if (value == wanted) {
@@ -571,6 +585,23 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (operand.name != "" || operand.count != 1 || base < floor ||
                 PayloadType(rows, records, stack[base], operand.value) != operand.type) {
                 return "scalar payload read differs from its union";
+            }
+            stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.TextRow) {
+            consumed := TextOperands(operand.value);
+            base := length(stack) - consumed;
+            output := facts.IntType;
+            if (operand.value == facts.TextSlice) {
+                output = facts.StringType;
+            }
+            if (operand.name != "" || consumed == 0 || operand.count != consumed || operand.type != output ||
+                base < floor || stack[base] != facts.StringType) {
+                return "scalar text read differs from its operands";
+            }
+            for (index in 1..<consumed) {
+                if (stack[base + index] != facts.IntType) {
+                    return "scalar text read differs from its operands";
+                }
             }
             stack = slice(stack, 0, base);
         } else {
@@ -1296,6 +1327,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     base := length(stack) - 2;
                     item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
                     item.literal = i64(operand.value);
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.TextRow) {
+                    base := length(stack) - operand.count;
+                    item = Op(native.TextLength, type, slot, stack[base], 0, 0);
+                    if (operand.value == facts.TextByte) {
+                        item = Op(native.TextByte, type, slot, stack[base], stack[base + 1], 0);
+                    }
+                    // A slice drops the bytes before its start, then takes its
+                    // count of those after it.
+                    if (operand.value == facts.TextSlice) {
+                        slots.append(type);
+                        body.append(Op(native.TextDrop, type, slot, stack[base], stack[base + 1], 0));
+                        item = Op(native.TextTake, type, slot + 1, slot, stack[base + 2], 0);
+                        slot += 1;
+                    }
                     stack = slice(stack, 0, base);
                 }
                 body.append(item);

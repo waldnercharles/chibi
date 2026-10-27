@@ -93,7 +93,7 @@ function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
 }
 $sources = [System.Text.Json.Nodes.JsonArray]::new()
 for ($i = 0; $i -lt 9; $i++) { $sources.Add((String-Node "source-$i")) }
-$manifest = [System.Text.Json.Nodes.JsonNode]::Parse('{"target":[0,0,0]}')
+$manifest = [System.Text.Json.Nodes.JsonNode]::Parse('{"target":[0,0,0,0,0,0]}')
 $compiler = 'compiler'
 $regression = 'regression'
 try { . (Join-Path $output 'loop.ps1'); Write-Host 'classification accepted' }

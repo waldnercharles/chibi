@@ -682,16 +682,34 @@ static pin_value row_field(const pin_value *row, const char *name)
  * message and the bytes [start, end) it covers. */
 static bool collect_scalar(const char *text, char **message, int *start, int *end, bool *accepted)
 {
-    pin_value args[] = { text_value("/project"),
-                         text_value("Census.chibi"),
-                         text_value(text),
-                         { 0 },
-                         instruction_names() };
+    pin_value args[8] = { text_value("/project"),
+                          text_value("Census.chibi"),
+                          text_value(text),
+                          { 0 },
+                          instruction_names() };
     REQUIRE(target(&args[3]));
+    pin_value effects;
+    REQUIRE(compiler_fixture_natives(
+        &fixture,
+        CENSUS_BACKEND,
+        PACKAGE,
+        native_capabilities_catalog(fixture.native),
+        &input,
+        &args[5],
+        &effects
+    ));
     pin_value produced;
-    REQUIRE(
-        compiler_fixture_call(&fixture, CENSUS_BACKEND, PACKAGE, "CollectScalar", args, 5, CENSUS_BUDGET, &detached, &produced)
-    );
+    REQUIRE(compiler_fixture_call(
+        &fixture,
+        CENSUS_BACKEND,
+        PACKAGE,
+        "CollectScalar",
+        args,
+        (int)(sizeof args / sizeof *args),
+        CENSUS_BUDGET,
+        &detached,
+        &produced
+    ));
     const pin_array *array = produced.ptr;
     REQUIRE(array->count >= 2);
     *accepted = row_field(&array->items[1], "kind").i != REJECTION_ROW;

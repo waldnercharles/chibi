@@ -339,7 +339,37 @@ Every corpus source then crosses all four producer/consumer VM combinations:
 which must define every function and call each recorded callee. The runner
 only transports, checks identity and requires selected-backend counters with
 no fallback. Rejected sources must publish no raw IR and preserve a prior
-output. Its finite 240-second total budget covers at most 96 sources (970 child
-invocations), retaining a 120-second per-command limit clamped to the remaining
-time. Deadline failures report completed invocations/crossings and the next
-invocation, including when the corpus has not yet been enumerated.
+output. Pure producer and authored-check requests use the pinned host's existing
+`--batch` API in groups of at most eight; each request still gets a fresh
+activation, arena and instruction budget. All 384 raw-byte CLI crossings and
+four prior-output preservation probes remain individual child invocations.
+This reduces the 96-case process count from 970 to 466 without a new runtime,
+entry point or server. Compiler/source identity and all four backend crossings
+remain mandatory.
+
+Producer batch bytes are forwarded unchanged to the consumer batch. Individual
+raw calls receive original producer byte ranges, not runner JSON reserialization.
+The existing host batch API internally decodes each request and encodes its
+argument list before invoking the entry; this is typed-value API behavior,
+not a claim that raw JSON spelling survives inside the host. Original stdout
+and member byte ranges remain the runner's evidence and raw-call inputs.
+Evidence records each member's parent batch hash, byte offset/length and digest,
+and links each crossing to its producer/check batch item. Backend counters are
+actual batch aggregates, never invented per-item counts; each batch uses one
+requested backend and rejects any other backend/fallback count or overflow.
+Every item invokes the same host backend in a fresh execution scope. The host
+adds unsigned per-item counters, so a zero other-backend/fallback aggregate
+cannot hide a member's fallback behind another member's selected count.
+
+Classification and raw publication retain original case/producer/consumer order.
+Up to seven later pure cases (including their other crossings) may already have
+been computed in the current batch. The first negative classification stops all
+later raw publications and the next batch; a failed host batch stops immediately
+at its reported item index and publishes no partial result. No side-effectful
+entries belong in these batches.
+
+The finite 240-second total budget and 120-second per-child limit are unchanged;
+each child is clamped to the remaining total. Deadline failures report completed
+invocations/crossings and the next invocation, including before corpus enumeration.
+Per-invocation elapsed time is recorded so startup and execution changes can be
+measured without inferring wall time from CPU counters.

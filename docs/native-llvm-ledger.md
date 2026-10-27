@@ -34,13 +34,112 @@ Each feature has one of these states:
   ([current limits](code-language.md#current-limits));
 - **decision**: blocked on a decision in the register below.
 
+## Milestones
+
+The milestones are the LLVM delivery plan's. This table records where each one
+stands, [work packages](#work-packages) break the open work into pieces with
+prerequisites and exit tests, and the rows under [Features](#features) record
+each language feature. [How this meets PLAN.md](#how-this-meets-planmd) ties
+the last milestones to the toolchain plan's acceptance and deletion rules.
+
+| Milestone | State | What landed | Still open |
+| --- | --- | --- | --- |
+| M0 Inventory and baseline | done | This ledger, the dependency register and the baseline below | none |
+| M1 Comparisons and guarded returns | done | The 96-source corpus, `language-scalar-native` | none |
+| M2 Numeric semantics and scalar types | done | Every integer width under D1, `number` and `f64` under D3 | none |
+| M3 Structured control flow and calls | in progress | Loops, integer switches, recursion under D4, literal parameter defaults (#704) | named arguments (W1), multiple and named results (W2) |
+| M4 Aggregates and native ownership | in progress | Records of number and bool fields; unions of number and bool payloads | strings (W3 to W6), arrays (W7) and maps (W8) after pointers (#695) and collections (#694), managed fields (W9), pointers (W10), failure reporting (W11), constants (W12), under D9 and D10 |
+| M5 Modules and platform ABI | not started | | imports (W13), native catalog calls (W14), macOS and Windows targets (W15), calls from the VM into native code (W16) |
+| M6 AoT driver and diagnostics | in progress | `Driver.Object` and `Driver.Build`; `chibi build --native` (W17, #736); linking with `ld.lld` and no `cc` on Linux x86-64 (W18, #735) | debug information (W19), measured workloads (W20) |
+| M7 Native self-hosting | not started | | the compiler-source census (W21), native stage one and two (W22), recovery without `cmake`, `clang` or `gcc` (W23) |
+| M8 Game SDK and default adoption | not started | | game scenarios (W24), native game execution (W25), default adoption and removal (W26) |
+
+## Work packages
+
+Each package is one reviewable piece of the open work. "On main" means real
+source runs natively on main; "pending PR" names an open pull request; and
+"design" says whether its contract is decided (with the decision), proposed,
+or open. A package marked parallel touches no file another lane is changing,
+so a separate owner can take it; the others share the producer
+(`Scalar.chibi`), the facts (`Facts.chibi`), the consumer and emitter
+(`scalar_llvm`, `llvm_native`) and `test/language/package_compiler_chibi.c`,
+which have one writer at a time, so they run in order in the LLVM lane.
+
+| ID | Package | Prerequisites | Shared interfaces | Owner | Parallel | Exit tests | On main | Pending PR | Design |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| W1 | Named arguments | none | Call rows' argument order | LLVM lane | no | corpus `named_argument` accepted; a module calling with names in every order and with defaults agrees with both VMs at O0 and O2, in the order the call step evaluates them | no | none | decided: follow the call step |
+| W2 | Multiple and named results | records (done) | Return rows with several values; an internal struct return | LLVM lane | no | corpus `named_result` accepted; a module returning and destructuring two to four results of mixed types agrees at O0 and O2 | no | none | decided: an internal LLVM struct, as records are |
+| W3 | String values: literals, parameters, results, locals, `==` and `!=` | none | `native_abi.TextType`, the runtime's `pin_string` layout | LLVM lane | no | corpus `string_equality` accepted; a strings module (escapes, UTF-8, embedded NUL, empty, prefixes) agrees at O0 and O2; O2 objects have no undefined symbols; a C test pins `pin_string`'s layout | no | in progress on the LLVM lane | decided: D10, by-value `{ ptr, i32 }` descriptors, no allocation |
+| W4 | Text natives: byte length, byte reads, slices, `for` over a string | W3 | native catalog input to `CollectScalar` | LLVM lane | no | `core:strings` functions copied into a module (Compare, HasPrefix, Index, Split's counting) agree at O0 and O2 | no | none | proposed: a slice is a view of its source's bytes |
+| W5 | Native runtime library and context | W3 | `chibi_rt_*` symbol inventory, versioned with the prepared ABI; hidden context parameter | LLVM lane with the runtime owner | partly: the runtime side once the symbol list is fixed | an allocating object links against the runtime library; an inventory test lists exactly the reviewed symbols; ASan leak and use-after-free cases; an out-of-range index ends the program with its named message | no | none | decided: D9, D10 |
+| W6 | Allocating text: `format_text`, joins, case conversion | W4, W5 | W5's allocation calls | LLVM lane | no | the same `core:strings` functions that build strings agree at O0 and O2, with no leak under ASan | no | none | open: which text natives are lowered inline and which call the runtime |
+| W7 | Arrays (M4d) | #694, #695 merged; W5 | #694's copy, drop and make-unique operations; runtime spans | LLVM lane | no | copy independence, growth, empty arrays, out-of-range panics, `for` over arrays, at O0 and O2 and under ASan | no | #694, #695 (dependencies) | decided: D10 spans |
+| W8 | Maps (M4e) | W7 | #694's map operations | LLVM lane | no | as W7, plus hashing and iteration order matching the VM | no | none | decided: D10 |
+| W9 | Strings and arrays in records and unions (M4f) | W3, W7 | record layout with managed fields | LLVM lane | no | copy independence of nested values; corpus `struct` accepted | no | none | open: field copy and drop placement |
+| W10 | Pointers (`^T`) in place of references | #695, #698 merged; W5 | #695's managed heap | LLVM lane | no | corpus `reference` replaced by a pointer case; cycles collected after native calls return | no | #695, #698 (dependencies) | decided: D10, quiescent collection |
+| W11 | `assert` and native failure reporting | W5 | the panic hook in the context | LLVM lane | no | corpus `assert_before` accepted; a failing assert ends with its message and source position | no | none | open: D6 |
+| W12 | Package constants | none | Literal rows | LLVM lane | no | corpus `constant` accepted | no | none | decided: a constant is its folded value |
+| W13 | Imports and multi-file packages | W12 | the package graph; symbol identity | LLVM lane | no | corpus `import` and `qualified_call` accepted; two-package modules agree at O0 and O2 | no | none | open: symbol names and initialization order |
+| W14 | Calls to the native catalog | W5 for managed arguments; pure scalar natives need none | a foreign call ABI per native | LLVM lane | no | corpus `native_call` replaced by pure math natives (`max`, `vec2`) agreeing at O0 and O2 | no | none | open: D5 foreign ABI |
+| W15 | macOS arm64 and Windows x64 targets | none for scalars | `native_abi.Target`, the driver's layout check, CI legs | proposed lane | yes | `language-scalar-native`'s corpus and generated modules run natively on macOS arm64 and Windows x64 in CI; foreign `bool` decided | no | none | open: D5, D7 |
+| W16 | Calls from the VM into native code | exported scalar ABI (exists); W3 for the emitted wrappers; W5 for managed values | an exported symbol ABI and its `pin_value` conversion (`src/execution/native.h`); a loader in the player | "Call native code from running scenes" thread | yes | a running scene calls a natively compiled pure function and gets the VM's results; the editor keeps the VM. So far `language-native-calls` checks C entries with the export ABI against the VM on both backends, inspected calls staying in the VM and every rejected manifest, and `--program` checks a query predicate's bound call | the runtime bridge (#741) | none; the emitted wrappers and the player loader follow W3 | decided: D11, identity by stable function ID and exact signature; loading open |
+| W17 | The driver in `chibi build` | none (`EmitBytes` is frozen) | stable commands; driver receipts | proposed lane | yes | process tests for an explicit native mode: relocated SDK, paths with spaces, missing and wrong tools, interrupted builds, stale partials, kept prior outputs, and no silent VM fallback | yes: `chibi build --native`, one source per program; the `native-build` selector (#736) | none | decided: keep an explicit override until M8 |
+| W18 | Linking without `cc` | W17 | the platform linker and runtime libraries, named in receipts | proposed lane | yes | an executable links with `cc`, `clang` and `gcc` unavailable, through a linker the receipt names | yes on Linux x86-64: `ld.lld -flavor gnu -static` and a start object shaped like Odin's no-CRT `_start` (#735); `native-build` runs it with an empty `PATH` | none | decided for Linux: rustc's direct `ld.lld` path; macOS and Windows linkers open with W15 (D7) |
+| W19 | Debug information and native diagnostics | W3 (emitter churn) | `llvm_native`'s output | LLVM lane | no | a debugger's backtrace of a native panic shows source lines at O0 and O2 | no | none | open: D6 |
+| W20 | Workloads and measurements | none | none | proposed lane, or the LLVM lane | yes | defined kernels (game math, compiler passes) with compile time, peak memory, size and run time recorded per milestone | no | none | decided: correctness first, no promised speedups |
+| W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | yes: `make native-census` writes the [census](native-compiler-census.md); counts are under [Census](#census) | none | decided |
+| W22 | Native stage one and stage two | W1 to W14 as the census requires | the bootstrap generation | LLVM lane with the generation coordinator | no | a native stage one builds stage two and a checking rebuild with identical or normalized bytes, and the corpus gives the same results as the VM stages | no | none | decided: no C-frontend delegation |
+| W23 | Recovery and installed proof without `cmake`, `clang` or `gcc` | W18, W22 | CI recovery job | LLVM lane | no | a CI job with those executables unavailable goes from a clean checkout through stage one and stage two and links a checked game | no | none | decided: PLAN.md's objective |
+| W24 | Game scenarios | none | game fixtures | proposed lane | yes | deterministic scenarios for each feature the inventory finds in games | no | none | decided |
+| W25 | Native game execution | W16, W14, W7 | W16's bridge | LLVM lane | no | representative scenes run with native functions and give the VM's traces; tasks stay in the VM (D10) | no | none | decided: D10, native functions never suspend |
+| W26 | Default adoption and removal | all of the above | stable command defaults | owner decision | no | PLAN.md's deletion gate for each removed path | no | none | open: the owner decides the switch |
+| W27 | Lift the producer's size limits | none | the limits in `Facts.chibi`; `Run.ps1`'s cap | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules at the old limits and past them agree at O0 and O2 | no | none | open: raise the limits or remove them |
+
+Lanes:
+
+- Ready now, beside the LLVM lane: W15 (targets), W16 (VM-to-native calls),
+  W17 and W18 (driver and linking), W20 (measurements), W21 (census) and W24
+  (game scenarios). Each touches files the LLVM lane does not.
+- In the LLVM lane, in order: W3, then W12, W1, W2, W4, W5, W6, W11 and W19.
+  W5's runtime side may split off once its symbol list is fixed.
+- After #694 and #695 land: W7, W10, W8 and W9, in that order; W14 and W13
+  follow.
+- Coordinated centrally: changes to the facts schema, the prepared ABI and
+  runtime symbol versions, bootstrap generations, and the default switch.
+
+## Census
+
+The [census](native-compiler-census.md) (W21) gives each of the 642 functions
+in the self-hosted compiler's bootstrap closure the first rejection the
+producer gives it, after flattening imports (W13) and constants (W12) into one
+package. On main at `5877b94` (27 October 2026):
+
+| Package | First blocker | Functions |
+| --- | --- | ---: |
+| W7 | array parameters, results and natives | 346 |
+| W27 | the producer's size limits | 109 |
+| W3 | string parameters and results | 99 |
+| none | passes the producer | 64 |
+| W9 | strings and arrays in records and unions | 24 |
+
+W27's 109 are 50 functions with more than 8 parameters, 26 with a record of
+more than 16 fields, 22 naming more than 16 records and unions, 9 over 16 KB of
+flattened source and 2 over 64 operands. Of the 64 that pass, 25 need neither
+flattening, 37 need only W12 and 2 only W13. In all, 322 functions name another
+package and 265 a package constant.
+
+The producer checks every signature before any body, so a count shows the
+first blocker only, and the next one appears when its package lands. Rerun
+`make native-census` (about three minutes under ASan) after each package lands
+and update this table.
+
 ## Features
 
 | Feature | Semantic owner | State | Native gap | Runtime need | Selector and evidence |
 | --- | --- | --- | --- | --- | --- |
 | Integer and `bool` parameters, results, literals | `Compile.chibi` `Declare`, `Steps.chibi` `ConstantStep` | native | none in the subset; the entry still returns `int` | none | `language-scalar-native`, `Run.ps1` (IR only) |
 | Direct same-source calls, nested and repeated | `Steps.chibi` `CalledFunction` | native | none in the subset | none | `language-scalar-native` |
-| Six comparisons of every integer type, signed or unsigned | `Steps.chibi` `OperatorStep` | native | `bool` and string equality | none | `language-scalar-native`: each width module compares every pair of its type's boundary values |
+| Six comparisons of every integer type, signed or unsigned | `Steps.chibi` `OperatorStep` | native | none in the subset (`bool` equality has its own row, strings are W3) | none | `language-scalar-native`: each width module compares every pair of its type's boundary values |
 | `if`, `else`, `else if`, nested and early returns; the body must end in a return | `Body.chibi` `if_statement` | native | none in the subset | none | `language-scalar-native`: the control module runs every branch of nested, shadowing and early-returning functions; `lazy_arm` IR order |
 | Locals, assignment, compound assignment, branch-local scope and shadowing | `Body.chibi`, `Steps.chibi` | native | none in the subset | none | `language-scalar-native`: the control module's `Steps`, `Low`, `Far` (shift counts clamped to a `u8` local's type) and `Shadow`; corpus `local`, `helper_statement` |
 | `&&`, `\|\|`, `!` short circuit, `bool` `==` and `!=` | `Steps.chibi` | native | none in the subset | none | `language-scalar-native`: every left and right value of `Both`, `Either`, `Not`, `Same`, `Differ` and `Mixed`, against both VMs; IR checks the right operand of `&&` is behind a branch; corpus `logical_and`, `bool_comparison` |
@@ -49,16 +148,16 @@ Each feature has one of these states:
 | Shifts, with constant and typed unsigned counts | `Steps.chibi` `ShiftStep` | native | none in the subset | none: a count past the width gives 0 or the sign fill (D1) | `language-scalar-native`: each width shifts its boundary values by counts through and past its width, and by a constant past every width; corpus `shift` |
 | `T(v)` and `T(wrap: v)` between integer types, implicit widening at returns | `Steps.chibi` `CallStep` and return step, `src/runtime/conversions.c` | native | none in the subset | none: nothing fails (D1) | `language-scalar-native`: every pair of types in both modes at every type's edges; corpus `conversion`; a clamp lowered as a plain truncation fails it |
 | `number`, `f64` parameters, results, literals, `+`, `-`, `*`, `/`, comparisons, `number(v)`, `f64(v)`, float-to-integer `T(v)`, mixed integer and float operands, float-to-double widening | `Number.chibi`, `Steps.chibi` `OperatorStep`, `FloatConstantStep` and `NumberCode`, `src/execution/machine.c` | native | floating negation, which stage one rejects (see [language friction](language-friction.md#stage-one-cannot-negate-a-float)); `number` parameters until D3's migration | none: IEEE at width, no fast-math (D3) | `language-scalar-native`: float and double modules run every operator and comparison on every pair of both zeros, the extremes, the least subnormal, both infinities and NaN, and convert to and from every integer type at its edges, against C's IEEE arithmetic; `language-package-compiler-chibi-scalar` checks the emitter's encodings, `fcmp une`, saturating intrinsics and rejections |
-| `switch` on an integer value, arms tried in order, default arm wherever it is, a switch with a default whose arms all return as an end | `Body.chibi` `switch_statement` | native | `switch` on unions (M4) | none | `language-scalar-native`: the switch module runs every arm of switches on `int`, `u8` and `i64` values, a default written first, call and expression arm values, a repeated value, `break` and `continue` through a switch and a nested switch, against C and both VMs; 15 malformed switch rows |
+| `switch` on an integer value, arms tried in order, default arm wherever it is, a switch with a default whose arms all return as an end | `Body.chibi` `switch_statement` | native | none in the subset (switches on union variables are native, see the unions row) | none | `language-scalar-native`: the switch module runs every arm of switches on `int`, `u8` and `i64` values, a default written first, call and expression arm values, a repeated value, `break` and `continue` through a switch and a nested switch, against C and both VMs; 15 malformed switch rows |
 | `while`, `while (true)` as an end, `for` over `int` ranges (`..`, `..<`, `for <`), `break`, `continue` | `Body.chibi` | native | `for` over arrays, maps and strings (M4) | none: native loops run unchecked, as Odin's do; the VM keeps its instruction budget (D4) | `language-scalar-native`: the loop module runs every range form to both ends of `int`, empty ranges, `u8` bounds, nested `break` and `continue` and an endless loop left by a return, against C and both VMs; malformed loop rows; a loop that never returns fails both VMs at their budget and runs natively until its deadline stops it; `llvm_native` emits a cycle without a CHECK |
 | Direct and mutual recursion | `Body.chibi`, `src/execution/call.c` depth limit | native | none in the subset | stack: no depth counter, as Rust and Odin; every function carries `"probe-stack"="inline-asm"`, so running out of stack faults in the guard page; in a host that calls `stack_overflow_init` (so far the Linux native test host), `src/host/stack_overflow.c` reports "stack overflow" and aborts, and a standalone driver-linked program ends with SIGSEGV (D4) | `language-scalar-native`: Sum, Even and Odd at every depth below 64, Fib, Nodes (recursion inside a loop) and Gcd against C and both VMs; Sum, Even and Odd 10,000 calls deep natively, and an endless recursion that aborts with "stack overflow" at O0 and O2 (the VMs run stage one's output, which has no depth limit; see [language friction](language-friction.md#stage-one-writes-no-call-depth-limit)); `llvm_native` IR checks for direct and mutual recursion and the probe attribute; corpus `recursion`, `mutual_recursion`, `recursive_guard` accepted and probed |
 | Parameter defaults | `Compile.chibi` `LiteralDefault`, `Steps.chibi` call step | native | none in the subset: a default is a literal, filled in at the call site as the call step fills it | none | `language-scalar-native`: `defaults` calls functions that omit every argument, some arguments or none, with defaults of `int`, `bool`, `i8`, `u8`, `u64`, `number` and `f64`, against both VMs at O0 and O2; corpus `default_parameter` accepted and probed |
-| Named arguments | `Steps.chibi` call step | stage one | argument reordering | none | corpus `named_argument` rejects |
-| Multiple and named results | `Body.chibi`, `Steps.chibi` | stage one | aggregate return ABI (M4) | struct storage | corpus `named_result` rejects |
+| Named arguments | `Steps.chibi` call step | stage one | argument reordering (W1) | none | corpus `named_argument` rejects |
+| Multiple and named results | `Body.chibi`, `Steps.chibi` | stage one | an internal struct return (W2) | none | corpus `named_result` rejects |
 | Records of number and bool fields: literals in any field order, copies, field reads, field and compound field writes, record parameters, results and locals | `Steps.chibi` struct literal and member steps, `src/types/record.c` | native | none in the subset: a record is an LLVM value of its fields in declaration order, so a copy is a value and needs no allocator | none | `language-scalar-native`: the records module builds, copies, writes and passes `number`, `bool`, `u8`, `f64` and `i64` fields through calls, nested calls and a loop, and `nested_records` passes one through 50 nested calls, against both VMs at O0 and O2; `language-package-compiler-chibi-scalar` checks the record rows and 21 malformed variants; `llvm_native` IR checks and 8 changed-plan rejections; corpus `struct` rejects a `string` field |
 | Unions of number and bool payloads: variants with and without payloads made, passed, returned and assigned, `is` and `is not` tests, switches on a union variable whose arms bind payloads, with a default arm or covering every variant | `Steps.chibi` union make and `MatchStep`, `Body.chibi` switch arms, `IsStep`, `src/types/union.c` | native | none in the subset: a union is an LLVM value of its int tag then all its variants' payloads, so a copy is a value and needs no allocator | none | `language-scalar-native`: the unions module makes, passes, returns, assigns, tests and switches on `number`, `int`, `bool`, `f64` and `u8` payloads, in a loop with `break` and `continue`, against both VMs at O0 and O2; `language-package-compiler-chibi-scalar` checks the union rows, 24 malformed variants and the subset's union rejections |
 | Unions with string, array, union or record payloads, `is` bindings, switches on union expressions, and records with string, array, union or record fields | `Steps.chibi`, `src/types/record.c`, `union.c` | stage one | managed fields (M4) | allocator, copy | corpus `struct` rejects; `language-package-compiler-chibi-scalar` rejects each union form |
-| Strings | `src/types/text.c` | stage one | managed text (M4) | allocator, refcount | corpus `string_result` rejects |
+| Strings | `src/types/text.c` | stage one | values and equality (W3), text natives (W4), allocating text (W6) | none for W3 and W4; the runtime library (W5) for W6 | corpus `string_result` rejects |
 | Arrays, bounds checks | `Steps.chibi`, `src/types/array.c` | stage one | managed arrays, bounds traps (M4) | allocator | corpus `array_result` rejects |
 | Maps | `Maps.chibi` | stage one (restricted) | managed maps (M4) | hashing, allocator | corpus `map_result` rejects |
 | Scoped pointer parameters | `References.chibi`, `src/execution/borrow.c` | stage one (partial) | borrow lowering (M4) | borrow checks | corpus `reference` rejects |
@@ -78,6 +177,32 @@ Each feature has one of these states:
 | Array, union and nested-record fields in records | none | excluded | none | none | none |
 | Embedded NUL and multiline strings | none | excluded | none | none | corpus `nul` rejects |
 
+## How this meets PLAN.md
+
+[PLAN.md](../PLAN.md) owns the toolchain milestones. Its M5 self-hosts the
+compiler on the VMs; this ledger's M7 makes that compiler native. Its
+acceptance rules bind the last three milestones here:
+
+- **M6** delivers PLAN.md's stable commands natively: `chibi build`, `run`,
+  `test` and `export` keep their meanings, with an explicit native mode and
+  override until M8 (W17). Exit: W17's process tests and W18's link with no
+  `cc`.
+- **M7** meets the objective's acceptance requirement: "Chibi must compile
+  Chibi and drive build/link without requiring `cmake`, `clang`, or `gcc`
+  executables", with the installed, relocated, clean-checkout proof running
+  stage one and stage two and linking a checked game (W23). It also meets
+  the definition of complete's bootstrap rule: a checksummed recovery
+  artifact, and the old C compiler off the normal path (W22).
+- **M8** meets the definition of complete for games: the installed SDK builds
+  and exports a game natively, and remaining native code is a narrow binding
+  with ownership tests at its boundary (W25). Switching defaults and removing
+  an old path follow PLAN.md's M10 deletion gate (W26): name the replacement,
+  enumerate every repository, SDK, CI, release and application caller, run
+  the equivalence checks in [the toolchain inventory](toolchain-inventory.md),
+  and keep the documented recovery path for the agreed migration period.
+  The stage-zero C compiler and the VMs stay as recovery and editor runtimes
+  until then (see the dependency register).
+
 ## Dependency register
 
 These are the first-party C services and external tools the path still
@@ -93,9 +218,10 @@ needs. Each one says who uses it and what replacing it requires.
 | Bytecode and SLJIT VMs | `src/execution` | all authored tools, reference results | Stays as the reference and the editor runtime. |
 | Stage-zero compiler | `src/language` | compiles the compiler; differential reference | Kept until the native bootstrap passes its gates (M7). |
 | Runtime arithmetic, conversions, comparisons | `src/runtime/{arithmetic,conversions,comparisons}.c` | VMs | Native code matches them; they stay for the VMs. |
-| LLVM `opt`, `llc` | external, declared | `Driver.Object`; `language-scalar-native` calls them directly | External input; identity recorded per run. |
-| `ld.lld`, `llvm-nm` | external, declared | `language-scalar-native` only | Validation only; not part of the authored path. |
-| Build-host file and process capabilities | `chibi-build-host` | `Driver.Object` | Native driver (M6). |
+| LLVM `opt`, `llc` | external, declared | `Driver.Object`, `Driver.Build`, `chibi build --native`; `language-scalar-native` calls them directly | External input; identity recorded per run. |
+| `ld.lld` | external, declared | `Driver.Build`, `chibi build --native`, `language-scalar-native` | The Linux x86-64 linker (W18); identity recorded per run. |
+| `llvm-nm` | external, declared | `language-scalar-native` only | Validation only; not part of the authored path. |
+| Build-host file and process capabilities | `chibi-build-host` | `Driver.Object`, `Driver.Build`, `chibi build --native` | Runs the native driver (W17). |
 
 ## Decision register
 
@@ -108,10 +234,13 @@ decision.
 | D2 | Comparing two untyped literals | Follow stage zero. | none: each literal takes its spelled type. | decided in M1 |
 | D3 | Floating math | `number` is a 32-bit float everywhere, on the CPU and the GPU, and `f64` appears only where a type spells it, such as long timers and the engine's total time. Float arithmetic is IEEE at its type's width: nothing computes at reduced precision or is fast-math-like. Typed `f32` to `f64` widening may be implicit. Typed `f64` to `f32` narrowing needs an explicit `number(value)` or `f32(value)` at assignments, arguments and returns alike, and rounds to nearest, ties to even: overflow gives a signed infinity, and NaN stays NaN with no payload guarantee. Nothing panics, clamps or checks precision. Untyped literals stay contextual, and one past the `number` range needs an explicit `f64` context, such as a declaration, `f64(value)` or an argument whose typed operands select an `f64` overload. Helpers stay Odin-style, with no blanket finite checks. Game code spells `number` and `int`, and sized types take Odin's names (`i8`-`u64`, `f32`, `f64`). (Owner, 24 October 2026.) | #687 gave stage one conversions, implicit widening and typed floating constants. Project version 35 makes `number` 32-bit, renames the sized types and the conversions to `number(value)` and `f64(value)`, and rejects implicit narrowing in stage zero and stage one; its migration renames them in sources and graph pins. Changing `number` from 64 to 32 bits moves recorded results in their low bits. Native lowering of `number` and `f64` arithmetic, comparisons and conversions is in the scalar path, IEEE at width with no fast-math flags. The engine has no total-time native yet; one should return `f64`. | implemented |
 | D4 | Budget and recursion | Native loops and recursion run unchecked, as Odin's and Rust's do: an endless loop runs until its host or test deadline stops it, and no `mustprogress` lets LLVM remove it. Recursion has no depth limit: every native function probes its stack (`"probe-stack"="inline-asm"`), so an overflow always faults in the guard page. A host that calls `stack_overflow_init` reports that fault as "stack overflow" and aborts, as Rust's runtime does; so far only the Linux native test host does. The VM keeps its instruction budget, which stops runaway scripts in the editor, and stage zero's VM output keeps its 64-call limit; stage one's has no limit yet. (Owner, 25 October 2026.) | Cancellation and scheduler interaction (M6). The named overflow report in production hosts: a standalone program the driver links installs no handler and ends with SIGSEGV, and no engine host runs native code yet. Threads other than the one that ran `stack_overflow_init`. macOS and Windows behavior is untested. | decided for M3 |
-| D5 | Native ABI | An explicit target, ownership and effect contract. `bool` stays internal for now, and probes use a validation-only adapter. | Pointer, collection and query ABI, and foreign `bool`. | open, needed for M4 and M5 |
+| D5 | Native ABI | An explicit target, ownership and effect contract. `bool` stays internal for now, and probes use a validation-only adapter. Internal ownership follows D10. | The exported and foreign ABI: aggregates, strings, foreign `bool` and per-target calling conventions (W14 to W16). | open, needed for M5 |
 | D6 | Failure handling | Observable errors, effects and cleanup are preserved. | Native diagnostics, unwinding, status and termination. A provisional trap is not the final answer. | open |
-| D7 | Targets and defaults | Prove each target, and keep current behavior working. | The pinned LLVM (the driver measured LLVM 19's layout, and Ubuntu LLVM 18.1.3 gives the same one), the final linker, and when native output becomes a default. | open, M6 and M8 |
+| D7 | Targets and defaults | Prove each target, and keep current behavior working. | The pinned LLVM (the driver measured LLVM 19's layout, and Ubuntu LLVM 18.1.3 gives the same one), the macOS and Windows linkers (Linux uses `ld.lld`, W18), and when native output becomes a default. | open, M6 and M8 |
 | D8 | Regression budget | `Run.ps1` caps at 96 sources and 240 seconds (#683 raised it from 180), and M1 reaches 96. M2's folded-constant sources and its generated width and floating modules go in the C selector (`FOLDED_SOURCES`, `widths_agree`, `floats_agree`), and its corpus edits keep 96. | A measured larger cap. | M2 cases in the C selector; cap open |
+| D9 | Out-of-range indexes | Native code panics, as Rust's and Odin's does: it ends the program with a named message. The VM keeps its recoverable error for the editor. The owner declined reading a zero value and dropping the write. (Owner, 26 October 2026.) | The message and the host hook it reports through, with D6. | decided for M4 |
+| D10 | Native ownership | Native code has no ownership scheme of its own. It calls the runtime's value operations (copy, drop, make unique, allocate) as internal `chibi_rt_*` symbols, versioned with the prepared ABI, at the copies and drops the compiler certifies. It reads strings inline and arrays only through runtime spans. A hidden first context parameter carries the heap and the failure slot, and native functions never suspend, so the heap collects only while execution is quiescent. | Lands with M4c; arrays and maps wait for #695 and #694. | set for M4c |
+| D11 | Calls from the VM into native code | A native library exports a manifest of its pure scalar functions. Each export names a function by its stable ID (`script_catalog_id("symbol", "<library path>:1:<name>:callable")`, which its prepared module records) and its exact parameter and result types, and its entry reads and writes 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1, `number` and `f64` as their bits. `execution_natives_bind` (`src/execution/native.c`) binds an export only to the effect-free authored function with that ID and signature, and rejects the whole manifest otherwise. A program given the table runs bound synchronous calls natively; tasks, inspected calls and unbound functions stay in the VM, and the editor binds nothing. The program's context layout and the prepared ABI do not change. | The emitted export wrappers and manifest symbol, loading objects in the player, and records, strings and arrays at the boundary (W5). | runtime bridge implemented; emission and loading open |
 
 ## Baseline and measurements
 
@@ -169,3 +298,24 @@ After M2's compile rules (24 October 2026, same container):
   The selector now asserts that stage two's compiler marks no function but
   the listed ones as copying its arguments. That reads the module's sharing
   metadata; it neither counts allocations nor proves the timing.
+
+After M3 and M4's records and unions (25 and 26 October 2026, same container):
+
+- `Run.ps1` passed 96 sources on four crossings in 211 s locally with M3
+  and native recursion, and in 255 s with records. Main took 241 s locally
+  and 177 s in CI, so this container runs about 1.36 times slower than CI.
+
+After string interning (#719, 27 October 2026, same container):
+
+- #714 raised the bound on bootstrap closures to 32 MiB. #719 then stores
+  each metadata string once per module in prepared format 22, and the
+  bootstrap closure went from 17,139,143 to 9,112,577 bytes, about half the
+  16 MiB result bound.
+- `language-package-compiler-chibi-bootstrap` takes 62 to 64 s in Release,
+  as before interning. Peak memory went from 4,389 to 4,352 MiB, and from
+  2,025 to 1,964 MiB for a bootstrap load.
+- `Run.ps1` passed 96 sources on four crossings in 195 s locally, and both
+  recovery stages reproduced the checked-in closure.
+- The runtime pin is `compiler-runtime-prepared22-7b151ebc5`. The `ci-seed`
+  label built, published and pinned it on the PR branch (see
+  [starting CI with labels](testing.md#starting-ci-with-labels)).

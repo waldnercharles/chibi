@@ -1,0 +1,24 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool compiler-artifact
+revision 150a81faceb8911c49301fc991754c4acd251eed 0 modified
+(FAILED: /home/claude/chibi/test/tools/compiler_artifact.c (663): same)
+Running: actual_compiler_artifact_runs_both_product_backends (OK) (0.024266 secs)
+Running: artifact_truncated_container_rejected_before_decode (OK) (0.000092 secs)
+Running: artifact_duplicate_module_id_rejected_before_decode (OK) (0.001309 secs)
+Running: artifact_trailing_data_rejected_before_decode (OK) (0.001243 secs)
+Running: product_cli_rejects_malformed_artifact_without_output (OK) (0.001913 secs)
+Running: product_rejects_reference_entry_before_decoding_pointer (OK) (0.006202 secs)
+Running: binary_bytes_survive_all_producer_owners (OK) (0.025363 secs)
+Running: binary_result_limit_is_atomic (OK) (0.010293 secs)
+Running: binary_artifact_bound_does_not_widen_ordinary_results (OK) (45.013708 secs)
+Running: binary_signature_and_input_reject_before_execution (OK) (0.004312 secs)
+Running: binary_reference_result_rejects_before_input_decoding (OK) (0.001356 secs)
+Running: binary_budget_failure_has_no_output (OK) (0.014251 secs)
+Running: binary_publication_reloads_both_backends (OK) (0.017689 secs)
+Running: binary_invalid_artifact_preserves_destination (OK) (0.006585 secs)
+Running: binary_raw_output_writes_bytes_that_are_no_compiler (OK) (0.001326 secs)
+Running: binary_rename_failure_preserves_directory (OK) (0.000714 secs)
+Running: binary_usage_preserves_destination (OK) (0.001128 secs)
+===============================================================
+Summary: Passed: 17 Failed: 0 Total: 17 Suites: 0 Asserts: 15966
+Test command wall time: 51.094s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

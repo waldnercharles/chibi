@@ -23,6 +23,8 @@ typedef struct
     uint64_t inspection_bytecode_fallbacks;
     /* Entries of definitions past the Wasm JIT's size budget. */
     uint64_t size_bytecode_fallbacks;
+    /* Synchronous calls that ran a bound native entry instead of a frame. */
+    uint64_t native_entries;
     bool overflow; /* Sticky saturation makes the sample inexact. */
 } behavior_run_counts;
 typedef struct behavior_run_scope
@@ -216,6 +218,8 @@ typedef struct
     uintptr_t steps;
     int pc, frame, source, stack;
     uint64_t node_id;
+    /* A root activation's borrowed native entries for its synchronous calls. */
+    const struct execution_natives *natives;
 } behavior_function_activation;
 typedef struct behavior_function_context
 {

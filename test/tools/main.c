@@ -43,6 +43,7 @@ void test_tool_record_c_export();
 void test_tool_package();
 void test_tool_chibi_cli(const char *binary);
 void test_tool_chibi_cli_installed(const char *binary);
+void test_native_build(const char *binary);
 void test_tool_chibi_cli_export(const char *binary);
 #ifdef CHIBI_TEST_PUBLISHED_DOCS
 void test_tool_published_docs(const char *binary);
@@ -57,6 +58,7 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 void test_native_aot_driver(const char *source);
 void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
+void test_tool_build_timings(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
 void test_build_graph(const char *host, const char *cmake_build);
 void test_build_graph_support(const char *host, const char *cmake_build);
@@ -654,12 +656,15 @@ int main(int argc, char **argv)
 #endif
     }
     if (argc == 4 && (!strcmp(argv[1], "--build-process") ||
-                      !strcmp(argv[1], "--build-process-files"))) {
+                      !strcmp(argv[1], "--build-process-files") ||
+                      !strcmp(argv[1], "--build-timings"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
         if (!strcmp(argv[1], "--build-process-files")) {
             test_tool_build_process_files(argv[2], argv[3]);
+        } else if (!strcmp(argv[1], "--build-timings")) {
+            test_tool_build_timings(argv[2], argv[3]);
         } else {
             test_tool_build_process(argv[2], argv[3]);
         }
@@ -681,6 +686,13 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_chibi_cli_export(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--native-build")) {
+        tool_init();
+        pu_display_time(true);
+        test_native_build(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

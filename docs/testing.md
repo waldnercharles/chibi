@@ -31,6 +31,44 @@ snapshots, mutation of the original source, concurrent fixtures, detached text
 after teardown, changed source on re-preparation, and both execution backends.
 It adds no processes, timing loops, network, rendering or GPU work.
 
+## CI profiles and release validation
+
+Ordinary pull requests and pushes to `main` use **Debug O1 without ASan/UBSan**
+on Linux and macOS. Symbols, assertions, frame pointers and the full existing
+native, material, project, language and tooling selections remain enabled.
+This is a CI-only choice: local `make build` / `make test-build` retain their
+sanitizer defaults. The standalone tooling harness and Release helpers retain
+their existing roles.
+
+Native CI runs the existing test-policy groups sequentially after building and
+verifying the selected profile. It reuses the initial Release helpers rather than
+planning them again for project tests; macOS also reuses its initial Graph build.
+Linux retains a selected-profile `test-build` invocation so cold CMake recovery
+does not remove authored `Build.chibi` coverage (including sanitizer runs).
+Standalone `make test-*` targets still build their own prerequisites.
+
+The same `CI` workflow runs full **ASan + UBSan** coverage daily at **08:00 UTC**
+on the latest default-branch commit (GitHub may delay scheduled starts). To run
+it on demand, choose **Actions → CI → Run workflow**, select the candidate
+branch, and enable **sanitizers**. A manual run without that option uses the
+fast profile. Run titles identify `ASan + UBSan` versus `fast Debug O1`; native
+profile artifacts record the selected instrumentation and checked build evidence.
+The event and profile have separate concurrency keys, so a scheduled sanitizer
+run cannot cancel ordinary CI. Job/check names and 45-minute native timeouts
+are unchanged. Sanitizer-only defects can now be discovered after merge rather
+than blocking every PR; a scheduled workflow by itself does not automatically
+triage or fix failures.
+
+Before a major release, dispatch with **sanitizers enabled** on the exact release
+candidate; require both Linux and macOS native jobs and all existing functional
+checks to pass. Check the run's commit SHA and profile receipts, investigate any
+sanitizer failure, and rerun on the fixed candidate. A passing fast run is not
+a substitute for sanitizer evidence. Explicit holds and required repository checks
+still apply. Both profiles share `.github/native-profile.py` and the same test
+steps to prevent drift; macOS Graph and CMake use matching explicit O1 and
+frame-pointer settings. Graph frame pointers are a separate Debug-only opt-in
+(`BUILD_DEBUG_FRAME_POINTERS=on`); ordinary developer Debug/O1 behavior is unchanged.
+
 ## Run the checks
 
 The engine build compiles the full test drivers, `test_tools` and
@@ -201,7 +239,13 @@ done.
   publishes the seeds as a commit-specific prerelease and commits the new pin in
   `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
   self-build on the pin commit. Pull before pushing again. If the branch moved
-  after the seed run started, the pin step fails and the release stays unpinned.
+  after the seed run started, unrelated branch movement fails the pin step.
+  Rerunning the same workflow can resume its verified one-file pin commit and
+  dispatch only checks not already started on that exact pin. Existing published
+  seeds are reused only after verifying their tag target, source identity,
+  complete asset inventory, checksums and three-platform recovery evidence;
+  a mismatch fails without replacing published assets. Runs for the same source
+  SHA serialize across refs and do not cancel an active publication/pin.
 
 A dispatched run must build the head commit the event named. If the branch
 moved in between, the workflow cancels the run and fails, and the PR needs the

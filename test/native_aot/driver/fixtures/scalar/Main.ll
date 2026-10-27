@@ -2,7 +2,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 declare void @llvm.trap()
 
-define i32 @main() {
+define i32 @chibi_scalar() #0 {
 entry:
   %budget0 = alloca i32
   store i32 1, ptr %budget0
@@ -28,10 +28,9 @@ p2:
 p3:
   %return3 = load i32, ptr %result0
   ret i32 %return3
-p4:
-  %return4 = load i32, ptr %result0
-  ret i32 %return4
 trap:
   call void @llvm.trap()
   unreachable
 }
+
+attributes #0 = { "probe-stack"="inline-asm" }

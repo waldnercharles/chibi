@@ -728,17 +728,7 @@ int execution_machine_step(execution_machine *m, int pc)
         case BF_LOCAL: *out = locals[i->left]; break;
         case BF_DELTA: out->f = (float)ctx->delta_seconds; break;
         case BF_ARGUMENT:
-            *out = i->value;
-            if (i->left < ctx->argument_count) {
-                pin_value arg = ctx->arguments[i->left];
-                if (arg.type == i->type) {
-                    *out = arg;
-                } else if (arg.type == PIN_F32 && i->type == PIN_F64) {
-                    out->d = (double)arg.f;
-                } else if (arg.type == PIN_F64 && i->type == PIN_F32) {
-                    out->f = (float)arg.d;
-                }
-            }
+            *out = behavior_function_argument(ctx->arguments, ctx->argument_count, i->left, i->value);
             break;
         case BF_CAST:
             behavior_scalar_cast(a, i->type, (behavior_cast_mode)i->target, out);

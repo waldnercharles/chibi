@@ -11,7 +11,8 @@ tracks which language features reach native code and what blocks the rest.
 ## What is supported
 
 One source document holding one package, no imports, and only ordinary
-function declarations without attributes: at most 32 functions. The first
+function declarations without attributes, records, unions and constants: at
+most 32 functions. The first
 function is the module's entry and must be `() -> int`. Every function:
 
 - takes at most eight plain number, `bool` or `string` parameters (`i8`,
@@ -36,7 +37,7 @@ function is the module's entry and must be `() -> int`. Every function:
   narrower integer, or `number` to `f64`. Each is a number literal within
   its type, possibly signed (in an integer context a whole decimal such as
   `1.0` or `1e2` is the integer it spells), `true` or `false`, a string
-  literal, a parameter or local in scope,
+  literal, a parameter or local in scope, a package constant,
   integer arithmetic `a + b` (or
   `-`, `*`, `/`, `%`, `&`, `|`, `^`), floating arithmetic `a + b` (or `-`,
   `*`, `/`), a shift `a << n` or `a >> n`, an integer negation `-a` or
@@ -121,8 +122,8 @@ floating negation and remainder, ordering `bool`s, statements outside the
 subset, function values, qualified or imported calls, native or foreign
 calls (`print`), named arguments, string operations other than literals
 and `==` or `!=` (no concatenation, indexing or text natives), other
-managed values,
-attributes and constants. A call may omit trailing arguments whose
+managed values
+and attributes. A call may omit trailing arguments whose
 parameters have defaults; each omitted one is a literal row of its default.
 A string is an immutable value: a literal is a private constant of its
 decoded bytes, with a NUL after them, and `==` compares lengths, then bytes.
@@ -138,13 +139,15 @@ record or union with any other field or payload, an `is` that binds and a
 switch on a union expression other than a variable are rejected. The
 exported `Main` still takes and returns scalars.
 Sources are at most 16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds
-the 96-source corpus (52 accepted) with each accepted value and statement
+the 96-source corpus (53 accepted) with each accepted value and statement
 trace and each rejection's exact message and source excerpt, including both
 sides of every bound.
 
-A constant expression, such as `(2147483647 + 1) / 2` or `int(42)`, is one
-literal row holding the value the ordinary compiler folds it to exactly, so
-native code never computes it with wrapping rows.
+A constant expression, such as `(2147483647 + 1) / 2`, `int(42)` or `N / 20`
+of a package constant `N`, is one literal row holding the value the ordinary
+compiler folds it to exactly, so native code never computes it with wrapping
+rows. A package constant alone is a literal row of the value `Declare` folds
+it to, of its declared type.
 
 Two untyped literals compared, as in `if (7 < 3)`, take their common
 spelled type, as stage zero types them; the ordinary compiler's

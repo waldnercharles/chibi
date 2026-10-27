@@ -1,0 +1,27 @@
+configure-native: running (log: .chibi/logs/1793052138122165475-4854-configure-native.log)
+configure-native: ok (3.2s; log: .chibi/logs/1793052138122165475-4854-configure-native.log)
+build: running (log: .chibi/logs/1793052141353696544-4886-build.log)
+build: FAILED (71.5s; log: .chibi/logs/1793052141353696544-4886-build.log)
+FAILED: test/language/CMakeFiles/chibi_asset_compiler_consumer.dir/asset_compiler_host.c.o 
+/usr/bin/clang  -I/home/claude/chibi/build-release/test/language/testing/include -I/home/claude/chibi/build-release/sdk/public/asset_compiler_host -I/home/claude/chibi/build-release/sdk/public/asset_values -I/home/claude/chibi/build-release/sdk/public/support -I/home/claude/chibi/build-release/sdk/public/behavior_runtime -I/home/claude/chibi/build-release/sdk/public/execution -I/home/claude/chibi/build-release/sdk/public/types -I/home/claude/chibi/build-release/sdk/public/execution_contract -I/h/home/claude/chibi/test/language/asset_compiler_host.c:488:11: error: redefinition of 'asset_source_keeps_the_16_mib_source_bound'
+  488 | TEST_CASE(asset_source_keeps_the_16_mib_source_bound)
+      |           ^
+/home/claude/chibi/test/language/asset_compiler_host.c:41:11: note: previous definition is here
+   41 | TEST_CASE(asset_source_keeps_the_16_mib_source_bound)
+ng-concatenation -Wno-gnu-zero-variadic-macro-arguments -UNDEBUG -MD -MT test/language/CMakeFiles/chibi_asset_compiler_consumer.dir/asset_compiler_host.c.o -MF test/language/CMakeFiles/chibi_asset_compiler_consumer.dir/asset_compiler_host.c.o.d -o test/language/CMakeFiles/chibi_asset_compiler_consumer.dir/asset_compiler_host.c.o -c /home/claude/chibi/test/language/asset_compiler_host.c
+FAILED: test/language/CMakeFiles/chibi_asset_compiler_consumer.dir/asset_compiler_host.c.o 
+/usr/bin/clang  -I/home/claude/chibi/build-release/test/language/testing/include -I/home/claude/chibi/build-release/sdk/public/asset_compiler_host -I/home/claude/chibi/build-release/sdk/public/asset_values -I/home/claude/chibi/build-release/sdk/public/support -I/home/claude/chibi/build-release/sdk/public/behavior_runtime -I/home/claude/chibi/build-release/sdk/public/execution -I/home/claude/chibi/build-release/sdk/public/types -I/home/claude/chibi/build-release/sdk/public/execution_contract -I/home/claude/chibi/build-release/sdk/public/capabilities -I/home/claude/chibi/build-release/sdk/public/ecs -I/home/claude/chibi/build-release/sdk/public/tasks -I/home/claude/chibi/build-release/sdk/public/events -I/home/claude/chibi/build-release/sdk/public/scene_document -I/home/claude/chibi/build-release/sdk/public/scene_runtime -I/home/claude/chibi/build-release/sdk/public/prototype_document -O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Wpedantic -Werror -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -Wno-zero-length-array -Wno-string-concatenation -Wno-gnu-zero-variadic-macro-arguments -UNDEBUG -MD -MT test/language/CMakeFiles/chibi_asset_compiler_consumer.dir/asset_compiler_host.c.o -MF test/language/CMakeFiles/chibi_asset_compiler_consumer.dir/asset_compiler_host.c.o.d -o test/language/CMakeFiles/chibi_asset_compiler_consumer.dir/asset_compiler_host.c.o -c /home/claude/chibi/test/language/asset_compiler_host.c
+/home/claude/chibi/test/language/asset_compiler_host.c:488:11: error: redefinition of 'asset_source_keeps_the_16_mib_source_bound'
+  488 | TEST_CASE(asset_source_keeps_the_16_mib_source_bound)
+      |           ^
+/home/claude/chibi/test/language/asset_compiler_host.c:41:11: note: previous definition is here
+   41 | TEST_CASE(asset_source_keeps_the_16_mib_source_bound)
+      |           ^
+1 error generated.
+[113/115] /usr/bin/clang  -I/home/claude/chibi/build-release/sdk/public/asset_compiler_host -I/home/claude/chibi/build-release/sdk/private/asset_compiler_host -I/home/claude/chibi/build-release/sdk/generated/assets -I/home/claude/chibi/third_party/yyjson -I/home/claude/chibi/build-release/sdk/public/asset_values -I/home/claude/chibi/build-release/sdk/public/support -I/home/claude/chibi/build-release/sdk/public/compiler_host -I/home/claude/chibi/build-release/sdk/public/behavior_runtime -I/home/claude/chibi/build-release/sdk/public/execution -I/home/claude/chibi/build-release/sdk/public/types -I/home/claude/chibi/build-release/sdk/public/execution_contract -I/home/claude/chibi/build-release/sdk/public/capabilities -I/home/claude/chibi/build-release/sdk/public/ecs -I/home/claude/chibi/build-release/sdk/public/tasks -I/home/claude/chibi/build-release/sdk/public/events -I/home/claude/chibi/build-release/sdk/public/asset_json -I/home/claude/chibi/build-release/sdk/public/json -O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Wpedantic -Werror -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -Wno-zero-length-array -Wno-string-concatenation -Wno-gnu-zero-variadic-macro-arguments -MD -MT sdk/CMakeFiles/chibi_asset_compiler_host.dir/generated/assets/asset_compiler_packaged.c.o -MF sdk/CMakeFiles/chibi_asset_compiler_host.dir/generated/assets/asset_compiler_packaged.c.o.d -o sdk/CMakeFiles/chibi_asset_compiler_host.dir/generated/assets/asset_compiler_packaged.c.o -c /home/claude/chibi/build-release/sdk/generated/assets/asset_compiler_packaged.c
+ninja: build stopped: subcommand failed.
+
+make[3]: *** [Makefile:138: stage-zero-build] Error 1
+make[2]: *** [Makefile:116: build] Error 2
+make[1]: *** [Makefile:240: build-release] Error 2
+make: *** [Makefile:343: bootstrap-artifact] Error 2

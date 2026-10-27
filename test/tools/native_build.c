@@ -21,6 +21,7 @@
 #include "runtime/engine.h"
 #include "runtime/native_prepared.h"
 #include "runtime/player_prepared.h"
+#include "runtime/text_format.h"
 #endif
 
 #if defined(__linux__) && defined(__x86_64__)
@@ -775,6 +776,7 @@ static uint64_t played(const char *data, bool native)
                          .linker = &linker,
                          .natives = manifests,
                          .native_count = count,
+                         .native_runtime = { NATIVE_FORMAT_TEXT_HOST.value },
                          .resources = { .stage = stage_cpu,
                                         .scene = cpu_scene,
                                         .commit = commit_cpu,

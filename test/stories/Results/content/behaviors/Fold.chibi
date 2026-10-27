@@ -1,13 +1,13 @@
 // Member procedures with one result and with named results.
 Fold :: behavior {
-    Wrap :: (value: float, limit: float) -> float {
+    Wrap :: (value: number, limit: number) -> number {
         if value > limit {
             return value - limit * 2
         }
         return value
     }
 
-    Split :: (value: float) -> (whole: int, rest: float) {
+    Split :: (value: number) -> (whole: int, rest: number) {
         whole = int(value)
         rest = value - whole
         return (whole, rest)

@@ -103,22 +103,22 @@ static bool create(int owners, behavior_backend backend)
 {
     assert(owners <= OWNER_MAX);
     const declared_field totals[] = {
-        { .name = "total", .type = "number" },
-        { .name = "single", .type = "float" },
+        { .name = "total", .type = "f64" },
+        { .name = "single", .type = "number" },
         { .name = "count", .type = "int" },
-        { .name = "bounded", .type = "number", .min = 0, .max = 10 },
+        { .name = "bounded", .type = "f64", .min = 0, .max = 10 },
         { .name = "limited", .type = "int", .min = 0, .max = 10 },
-        { .name = "minimum", .type = "number" },
-        { .name = "maximum", .type = "number" },
+        { .name = "minimum", .type = "f64" },
+        { .name = "maximum", .type = "f64" },
     };
     const declared_field contribution[] = {
         { .name = "target", .type = "entity" },
         { .name = "alternate", .type = "entity" },
-        { .name = "amount", .type = "number" },
-        { .name = "candidate", .type = "number" },
+        { .name = "amount", .type = "f64" },
+        { .name = "candidate", .type = "f64" },
     };
     const declared_field seen[] = {
-        { .name = "total", .type = "number" },
+        { .name = "total", .type = "f64" },
         { .name = "count", .type = "int" },
         { .name = "hits", .type = "int" },
     };
@@ -1327,7 +1327,7 @@ static bool row_benchmark(int rows, int iterations, bool parallel, bool unordere
         "while i < %d {value=value*1664525+1013904223; i+=1;} return value;}"
         "if true {value:=Mix(int(c.amount));"
         "reduce %sc.target.ReductionTotals.count += value;"
-        "reduce %sc.target.ReductionTotals.total += number(value);}}",
+        "reduce %sc.target.ReductionTotals.total += f64(value);}}",
         iterations,
         unordered ? "unordered " : "",
         unordered ? "unordered " : ""

@@ -353,7 +353,7 @@ bool shader_graph_particle_validate(const shader_graph *g, shader_error *error)
     }
     if (g->output_count != 3 || g->nodes[g->output[0]].width != 3 ||
         g->nodes[g->output[1]].width != 1 || g->nodes[g->output[2]].width != 4) {
-        return fail(error, 0, "Particle function must return Position:ShaderVec3, Size:float, Color:ShaderVec4");
+        return fail(error, 0, "Particle function must return Position:ShaderVec3, Size:number, Color:ShaderVec4");
     }
     if (acount(g->images)) {
         return fail(error, 0, "Particle functions cannot sample images or volumes");
@@ -436,7 +436,7 @@ bool shader_particle_parameters_validate(
     static const char *const reserved[] = { "Index", "Count", "Seed" };
     for (int i = 0; i < 3; i++) {
         if (!names[i] || strcmp(names[i], reserved[i]) || widths[i] != 1) {
-            return fail(error, 0, "Particle arguments must start with Index:float, Count:float, Seed:float");
+            return fail(error, 0, "Particle arguments must start with Index:number, Count:number, Seed:number");
         }
     }
     bool end = false;

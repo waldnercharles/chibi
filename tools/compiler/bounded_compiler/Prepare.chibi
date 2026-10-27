@@ -26,15 +26,15 @@ Reference :: (own: int) -> writer.Reference {
 // One prepared module holding the plan's function. Its tables are the plan's
 // canonical definition; the runtime verifies and finalizes them when it loads
 // the module, so nothing is optimized here.
-Prepare :: (plan: lower.Plan, module: uint64, function: uint64, name: string,
-            abi: uint64, pointer_size: int, opcodes: int[]) -> byte[] {
+Prepare :: (plan: lower.Plan, module: u64, function: u64, name: string,
+            abi: u64, pointer_size: int, opcodes: int[]) -> u8[] {
     switch plan {
         case .Rejected(diagnostics):
-            empty: byte[] = [];
+            empty: u8[] = [];
             return empty;
         case .Ready(target, variable_ids, defaults, results, slots, locals, origins, documents, code):
             // Wide entry 0 is the zero every absent payload names; 1 is the function.
-            wide: uint64[] = [0];
+            wide: u64[] = [0];
             wide.append(function);
             values: writer.Value[] = [];
             ints: int[] = [];
@@ -54,7 +54,7 @@ Prepare :: (plan: lower.Plan, module: uint64, function: uint64, name: string,
             for (item in scalars) {
                 value := Empty();
                 value.tag = item.storage;
-                bits := uint64(wrap: int64(item.payload));
+                bits := u64(wrap: i64(item.payload));
                 if (bits != 0) {
                     value.wide = length(wide);
                     wide.append(bits);

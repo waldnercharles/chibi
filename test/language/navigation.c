@@ -443,8 +443,8 @@ TEST_CASE(intelligence_completes_listed_payload_fields)
     base_catalog();
     capabilities[0].parameters = fields;
     capabilities[0].parameter_count = 2;
-    const char *sources[] = { "Use :: behavior { total: double = 0; on Tick :: "
-                              "(scale: double) { total = scale; } }" };
+    const char *sources[] = { "Use :: behavior { total: f64 = 0; on Tick :: "
+                              "(scale: f64) { total = scale; } }" };
     REQUIRE(load(sources, 1));
     const char *text = documents[0].syntax->text;
     int cursor = (int)(strstr(text, "= scale;") - text) + 2;

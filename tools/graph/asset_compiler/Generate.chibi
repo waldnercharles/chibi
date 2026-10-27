@@ -305,9 +305,9 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         return false;
     }
     // The same stable package-symbol hash used by all prepared entry IDs.
-    id := uint64(14695981039346656037);
+    id := u64(14695981039346656037);
     for (value in strings.Bytes("package-symbol:project:asset_compiler:1:Packaged:callable")) {
-        id = (id ^ uint64(value)) * uint64(1099511628211);
+        id = (id ^ u64(value)) * u64(1099511628211);
     }
     build.report("asset compiler: invoke packaging");
     if (!Invoke(host, facade, format_text("0x{:016x}", id), inputs, Join([folder, "/asset_compiler_packaged.c.tmp"]), compiler_timeout) ||

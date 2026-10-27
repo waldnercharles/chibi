@@ -106,7 +106,7 @@ pub Range :: struct {
     document: int;
 }
 pub Environment :: union {
-    Tables(expressions: Expression[], arguments: int[], statements: Statement[], children: int[], functions: Function[], symbols: Symbol[], scopes: Scope[], queries: Query[], bindings: Binding[], reads: uint64[], writes: uint64[], capabilities: Capability[], catalog_types: CatalogType[], ids: uint64[], ranges: Range[], descriptions: Description[], stages: Stage[])
+    Tables(expressions: Expression[], arguments: int[], statements: Statement[], children: int[], functions: Function[], symbols: Symbol[], scopes: Scope[], queries: Query[], bindings: Binding[], reads: u64[], writes: u64[], capabilities: Capability[], catalog_types: CatalogType[], ids: u64[], ranges: Range[], descriptions: Description[], stages: Stage[])
 }
 pub Analysis :: union {
     Completed(expression_effects: int[], statement_effects: int[], function_effects: int[], diagnostics: syntax.Diagnostic[])
@@ -175,13 +175,13 @@ Bindings :: (environment: Environment) -> Binding[] {
             return bindings;
     }
 }
-Reads :: (environment: Environment) -> uint64[] {
+Reads :: (environment: Environment) -> u64[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return reads;
     }
 }
-Writes :: (environment: Environment) -> uint64[] {
+Writes :: (environment: Environment) -> u64[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return writes;
@@ -199,7 +199,7 @@ CatalogTypes :: (environment: Environment) -> CatalogType[] {
             return catalog_types;
     }
 }
-Ids :: (environment: Environment) -> uint64[] {
+Ids :: (environment: Environment) -> u64[] {
     switch environment {
         case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return ids;
@@ -271,7 +271,7 @@ ReferenceIteration :: (environment: Environment, expressionEffects: int[], state
     }
     return diagnostics;
 }
-IDAt :: (environment: Environment, slot: int) -> uint64 {
+IDAt :: (environment: Environment, slot: int) -> u64 {
     if (slot < 0) {
         return 0;
     }
@@ -398,7 +398,7 @@ QueryRestrictions :: (environment: Environment, effects: int[], root: int, seen:
     }
     return Restrictions.Restricted(bits, seen);
 }
-ComponentTarget :: (environment: Environment, index: int) -> uint64 {
+ComponentTarget :: (environment: Environment, index: int) -> u64 {
     expressions := Expressions(environment);
     remaining := length(expressions);
     while (index >= 0 && remaining > 0) {
@@ -428,7 +428,7 @@ ComponentTarget :: (environment: Environment, index: int) -> uint64 {
     }
     return 0;
 }
-ReductionCapability :: (environment: Environment, componentID: uint64, check: Reduction, id: uint64) -> Reduction {
+ReductionCapability :: (environment: Environment, componentID: u64, check: Reduction, id: u64) -> Reduction {
     for (row in Capabilities(environment)) {
         if (IDAt(environment, row.id_slot) == id) {
             switch check {
@@ -448,7 +448,7 @@ ReductionCapability :: (environment: Environment, componentID: uint64, check: Re
     }
     return check;
 }
-ReductionStatement :: (environment: Environment, componentID: uint64, check: Reduction, index: int) -> Reduction {
+ReductionStatement :: (environment: Environment, componentID: u64, check: Reduction, index: int) -> Reduction {
     if (index < 0) {
         return check;
     }
@@ -475,7 +475,7 @@ ReductionStatement :: (environment: Environment, componentID: uint64, check: Red
     }
     return check;
 }
-ReductionExpression :: (environment: Environment, componentID: uint64, check: Reduction, index: int, condition: bool) -> Reduction {
+ReductionExpression :: (environment: Environment, componentID: u64, check: Reduction, index: int, condition: bool) -> Reduction {
     if (index < 0) {
         return check;
     }
@@ -533,7 +533,7 @@ ReductionExpression :: (environment: Environment, componentID: uint64, check: Re
     return check;
 }
 ReductionDiagnostics :: (environment: Environment, functionEffects: int[], diagnostics: syntax.Diagnostic[]) -> syntax.Diagnostic[] {
-    checked: uint64[] = [];
+    checked: u64[] = [];
     statements := Statements(environment);
     i: int = 0;
     while (i < length(statements)) {

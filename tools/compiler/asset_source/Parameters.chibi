@@ -20,12 +20,12 @@ ParameterLiteral :: (source: string, binding: Binding) -> string {
     }
     hexadecimal := length(bytes) > at + 2 && bytes[at] == 48 && (bytes[at + 1] == 120 || bytes[at + 1] == 88);
     if (binding.kind != 4 || hexadecimal) {
-        base: uint64 = 10;
+        base: u64 = 10;
         if (hexadecimal) {
             base = 16;
             at += 2;
         }
-        magnitude: uint64 = 0;
+        magnitude: u64 = 0;
         while (at < length(bytes)) {
             digit := bytes[at] - 48;
             if (bytes[at] >= 65 && bytes[at] <= 70) {
@@ -34,9 +34,9 @@ ParameterLiteral :: (source: string, binding: Binding) -> string {
             if (bytes[at] >= 97 && bytes[at] <= 102) {
                 digit = bytes[at] - 87;
             }
-            assert(digit >= 0 && uint64(digit) < base, "Invalid scalar parameter literal");
-            assert(magnitude <= (18446744073709551615 - uint64(digit)) / base, "Parameter integer exceeds uint64 range");
-            magnitude = magnitude * base + uint64(digit);
+            assert(digit >= 0 && u64(digit) < base, "Invalid scalar parameter literal");
+            assert(magnitude <= (18446744073709551615 - u64(digit)) / base, "Parameter integer exceeds uint64 range");
+            magnitude = magnitude * base + u64(digit);
             at += 1;
         }
         if (binding.kind == 2) {
@@ -70,7 +70,7 @@ ParameterLiteral :: (source: string, binding: Binding) -> string {
     return text;
 }
 
-pub Parameters :: (source: string) -> byte[] {
+pub Parameters :: (source: string) -> u8[] {
     if (!MetadataActive(source, "parameters")) {
         return SourceBytes("{}");
     }
@@ -104,7 +104,7 @@ pub Parameters :: (source: string) -> byte[] {
 }
 
 pub SetParameter :: (source: string, name: string, kind: int, value_text: string,
-                     signed: int64, unsigned: uint64, real: double, boolean: bool) -> byte[] {
+                     signed: i64, unsigned: u64, real: f64, boolean: bool) -> u8[] {
     switch Inspect(source, "Parameters") {
         case .Rejected(start, end, message):
             assert(false, "Asset source metadata is not directly editable");

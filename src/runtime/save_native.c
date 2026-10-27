@@ -6,6 +6,8 @@
 #include "types/text.h"
 
 #include <assert.h>
+#include <float.h>
+#include <math.h>
 #include <string.h>
 
 static const char missing_read[] = "Reading save data requires a game world";
@@ -84,8 +86,10 @@ static const char *read_number(
     if (!service) {
         return missing_read;
     }
-    out[1].d = in[1].d;
-    out[0].b = save_get_number(service, text0, &out[1].d);
+    /* A saved number past f32's range reads as missing. */
+    double number = in[1].f;
+    out[0].b = save_get_number(service, text0, &number) && fabs(number) <= FLT_MAX;
+    out[1].f = out[0].b ? (float)number : in[1].f;
     return NULL;
 }
 static const char *set_number(
@@ -105,7 +109,7 @@ static const char *set_number(
     if (!service) {
         return missing_write;
     }
-    return save_set_number(service, text0, in[1].d) ? NULL : save_error(service);
+    return save_set_number(service, text0, in[1].f) ? NULL : save_error(service);
 }
 static const char *remove_text(
     const behavior_function_context *ctx,

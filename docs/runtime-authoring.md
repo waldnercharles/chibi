@@ -55,7 +55,7 @@ form first. Version 31 removes the step globals `dt`, `delta` and
 `delta_time()`: a read in an `on Tick` handler or a system becomes a listed
 `dt`, and the migration refuses one anywhere else, where the step must be
 passed in.
-Version 36 gives systems an implicit, read-only body-local `dt` and flattens
+Version 37 gives systems an implicit, read-only body-local `dt` and flattens
 their query headers. It migrates live component bindings to `^T`, merges
 `join` entries into the binding list, and replaces `without` and query `where`
 clauses with `if` entries. Behavior handlers still list their payload fields.
@@ -106,7 +106,7 @@ a scene needs. See the `Lighting` prototype in `test/fixtures/sprites`.
 A game declares its own component types under `content/components`, one `.chibi`
 file per component. Fields are laid out in order with natural alignment and start
 zeroed, then clamped into any declared range. A field's type is a script scalar
-(`bool`, `int`, `float`, `double`, `number`, `string`, `entity`, ...), an engine
+(`bool`, `int`, `number`, `f64`, `u8`, `string`, `entity`, ...), an engine
 struct such as `vec2`, or a
 measure: a `number` with an optional range and an optional unit. The `//`
 comments directly above the component and each field describe them.
@@ -192,7 +192,7 @@ Valid custom names such as `charge` and `banana/basket` remain supported. Units
 with different names are distinct; there are no implicit conversions between
 `m` and `u`, or aliases from `Hz` to `1/s`. Fix a mismatch by correcting the
 declared units or the calculation, such as multiplying a rate by `dt`. Plain
-numbers still infer double-precision `number`; use `int` explicitly when integer
+numbers still infer `number`, a 32-bit float; use `int` explicitly when integer
 semantics are intended. Neither absent unit information nor an editor hint
 authorizes arithmetic optimizations.
 
@@ -694,9 +694,9 @@ Put `ParticleField3D`, `Geometry3D` and `Shader` on one transformed entity in a
 3D scene. Geometry must be a tetrahedron (`primitive=6`) or octahedron
 (`primitive=5`) with positive dimensions. `Shader.material` names a pure
 shader-library function as `Library.Function`. Its first arguments are
-`Index:float`, `Count:float`, `Seed:float`, followed by named float or
+`Index:number`, `Count:number`, `Seed:number`, followed by named number or
 `ShaderVec2/3/4` uniforms, with at most 32 arguments total. Its results are
-exactly `Position:ShaderVec3`, `Size:float`, `Color:ShaderVec4`, in that order.
+exactly `Position:ShaderVec3`, `Size:number`, `Color:ShaderVec4`, in that order.
 Position is local to the entity, Size scales the geometry, and Color is HDR RGBA.
 Uniform defaults and `Shader.parameters` use the existing material parameter
 path, including `set_material_parameter()`.
@@ -836,10 +836,21 @@ components {
 ## Saved progress
 
 `read_saved_number(Key, Default)` returns `.Found` and `.Number`. Missing keys
-and text that is not a finite JSON decimal return `Found=false` and the default.
-`await set_saved_number(Key, Number)` stages a finite double using decimal text
-that preserves its exact value. It shares the store with `read_saved_text` and
-`set_saved_text`. Reads include staged changes. `await commit_save()` writes
+and text that is not a finite JSON decimal, or that a `number` cannot hold,
+return `Found=false` and the default. `await set_saved_number(Key, Number)`
+stages a finite number using decimal text that preserves its exact value. It shares the store with `read_saved_text` and
+`set_saved_text`.
+
+Both calls carry a `number`, so the store keeps 32-bit values. A behavior can
+still declare `f64` variables, such as a long-running accumulator, but saving
+one narrows it with an explicit `number(value)`, and reading it back gives only
+that precision. Save a value that needs every `f64` digit as text.
+
+Rejecting a nonfinite number is the save store's data validation:
+`set_saved_number` refuses NaN and infinities, and `read_saved_number` reports a
+missing value for them. It is separate from numeric conversions, where
+`number(value)` turns an `f64` past the `number` range into a signed infinity
+and keeps NaN. Reads include staged changes. `await commit_save()` writes
 them to storage; its `Failed` outcome keeps the previous committed save intact.
 `await discard_save_changes()` restores that commit.
 

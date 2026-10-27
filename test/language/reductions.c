@@ -43,25 +43,25 @@ typedef struct
       .size = sizeof(((structure *)0)->member),                                \
       .type_name = spelling }
 static const type_field result_fields[] = {
-    FIELD(reduction_result, total, PIN_F64, "double"),
+    FIELD(reduction_result, total, PIN_F64, "f64"),
     { .name = "clamped",
       .type = PIN_F64,
       .offset = offsetof(reduction_result, clamped),
       .size = sizeof(double),
-      .type_name = "double",
+      .type_name = "f64",
       .range_contract = true,
       .min = 0,
       .max = 10 },
-    FIELD(reduction_result, minimum, PIN_F64, "double"),
-    FIELD(reduction_result, maximum, PIN_F64, "double"),
+    FIELD(reduction_result, minimum, PIN_F64, "f64"),
+    FIELD(reduction_result, maximum, PIN_F64, "f64"),
     FIELD(reduction_result, count, PIN_I32, "int"),
     FIELD(reduction_result, small, PIN_U8, "uint8_t"),
-    FIELD(reduction_result, single, PIN_F32, "float"),
+    FIELD(reduction_result, single, PIN_F32, "number"),
     FIELD(reduction_result, wide, PIN_U64, "uint64_t"),
 };
 static const type_field input_fields[] = {
     FIELD(reduction_input, target, PIN_HANDLE, "ecs.entity"),
-    FIELD(reduction_input, amount, PIN_F64, "double"),
+    FIELD(reduction_input, amount, PIN_F64, "f64"),
 };
 #undef FIELD
 static const type_desc result_type = { .name = "ReductionResult",
@@ -396,24 +396,24 @@ TEST_CASE(reductions_failures_and_discard_do_not_publish_partial_results)
 TEST_CASE(reductions_scalar_helper_closure_streams_and_preserves_fallbacks)
 {
     static const char *const sources[] = {
-        "Sum :: system(input: ^ReductionInput) {Twice :: (amount: double) -> "
-        "double { return "
-        "amount * 2; }Adjust :: (amount: double) -> double { adjusted := "
+        "Sum :: system(input: ^ReductionInput) {Twice :: (amount: f64) -> "
+        "f64 { return "
+        "amount * 2; }Adjust :: (amount: f64) -> f64 { adjusted := "
         "Twice(amount);if adjusted "
         "> 0 { adjusted += 1; } return adjusted; }reduce "
         "input.target.ReductionResult.total += "
         "Adjust(input.amount); }",
-        "Sum :: system(input: ^ReductionInput) {Read :: (extra: double) -> "
-        "double { if "
+        "Sum :: system(input: ^ReductionInput) {Read :: (extra: f64) -> "
+        "f64 { if "
         "self.ReductionInput {return self.ReductionInput.amount + extra; } "
         "return extra; }reduce "
         "input.target.ReductionResult.total += Read(0); }",
-        "Sum :: system(input: ^ReductionInput) {First :: (amounts: double[]) "
-        "-> double { return "
+        "Sum :: system(input: ^ReductionInput) {First :: (amounts: f64[]) "
+        "-> f64 { return "
         "amounts[0]; }reduce input.target.ReductionResult.total += "
         "First([input.amount]); }",
-        "Sum :: system(input: ^ReductionInput) {Unused :: (amount: double) -> "
-        "double { return "
+        "Sum :: system(input: ^ReductionInput) {Unused :: (amount: f64) -> "
+        "f64 { return "
         "amount * 2; }reduce input.target.ReductionResult.total += "
         "input.amount; }"
     };

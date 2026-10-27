@@ -319,8 +319,8 @@ TEST_CASE(object_relocates_tools_with_spaces_without_a_linker_or_path)
         snprintf(
             expected,
             sizeof expected,
-            "-filetype=obj\n-O=%d\n%s.partial/module.ll\n-o\n%s.partial/"
-            "object.o\n",
+            "-filetype=obj\n-O=%d\n-relocation-model=pic\n%s.partial/"
+            "module.ll\n-o\n%s.partial/object.o\n",
             mode ? 2 : 0,
             output,
             output

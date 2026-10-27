@@ -1,14 +1,14 @@
 // Aim at the nearest enemy when manual aim is absent; emit shots only while
 // Fire is held.
 Weapon :: behavior {
-    macro AdvanceElapsed(elapsed: ref float, dt: double) {
-        elapsed = float(double(elapsed) + dt)
+    macro AdvanceElapsed(elapsed: ref number, dt: f64) {
+        elapsed = number(f64(elapsed) + dt)
     }
-    elapsed: float = 0.125
+    elapsed: number = 0.125
     // The step the next advance adds.
-    step: double = 0
+    step: f64 = 0
     action elapsed_dt = AdvanceElapsed(ref elapsed, step)
-    on Tick :: (dt: float s) {
+    on Tick :: (dt: number s) {
         step = dt
         if self.Aim.Manual {
             elapsed_dt()
@@ -33,10 +33,10 @@ Weapon :: behavior {
                     roll: 0.0,
                     scale: 1.0
                 }).Offset), self.Aim.Direction, self.Weapon.Damage, Projectile, self)
-                elapsed = float(double(elapsed) - double(self.Weapon.Cooldown))
+                elapsed -= f64(self.Weapon.Cooldown)
             }
         } else {
-            elapsed = float(min(elapsed, double(self.Weapon.Cooldown)))
+            elapsed = min(elapsed, f64(self.Weapon.Cooldown))
         }
     }
     position_offset :: (position: vec2 = null, offset: vec2 = null) -> (Result: vec2 = null) {

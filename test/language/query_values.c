@@ -312,7 +312,7 @@ TEST_CASE(query_value_bindings_and_headers_are_readonly)
         "Apply :: system(p: ^Position, if dt > 0) {}",
         "Apply :: system(p: ^Position) { helper :: () { p.x += dt; } helper(); "
         "}",
-        "Apply :: behavior { threshold := 1.0; Limit :: () -> double { return "
+        "Apply :: behavior { threshold := 1.0; Limit :: () -> f64 { return "
         "threshold; }"
         "on Begin :: () { q := query(p: Position, if p.x > Limit()); } }",
     };

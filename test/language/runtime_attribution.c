@@ -1644,7 +1644,7 @@ static bool workload_trial(int managed, behavior_backend backend, bool enabled, 
     return true;
 }
 
-TEST_CASE(runtime_attribution_overhead)
+static bool attribution_workload(bool benchmark)
 {
     REQUIRE(behavior_backend_available(TEST_COMPILED_BACKEND));
     REQUIRE(workload_build(0));
@@ -1656,6 +1656,9 @@ TEST_CASE(runtime_attribution_overhead)
             REQUIRE(workload_warm(managed, backends[backend], false));
             REQUIRE(workload_warm(managed, backends[backend], true));
             calls += 2;
+            if (!benchmark) {
+                continue;
+            }
             for (int trial = 0; trial < WORKLOAD_TRIALS; trial++) {
                 /* OFF/ON, ON/OFF, OFF/ON, ON/OFF, OFF/ON. */
                 for (int pair = 0; pair < 2; pair++) {
@@ -1666,16 +1669,25 @@ TEST_CASE(runtime_attribution_overhead)
             }
         }
     }
-    REQUIRE(calls == 5128);
+    REQUIRE(calls == (benchmark ? 5128 : 8));
     return true;
+}
+
+TEST_CASE(runtime_attribution_scalar_and_managed_copy_backends)
+{
+    return attribution_workload(false);
+}
+
+TEST_CASE(runtime_attribution_overhead)
+{
+    return attribution_workload(true);
 }
 
 void test_language_runtime_attribution()
 {
     printf(
         "runtime-attribution engine_base=%s fixture_sha256=%s build=%s "
-        "coverage=selected "
-        "timings=raw-noop-hooks-control-not-run\n",
+        "coverage=correctness timings=none\n",
         CHIBI_ATTRIBUTION_BASE,
         CHIBI_ATTRIBUTION_FIXTURE_SHA,
         CHIBI_ATTRIBUTION_BUILD
@@ -1686,6 +1698,20 @@ void test_language_runtime_attribution()
     RUN_TEST_CASE(runtime_attribution_world_strings);
     RUN_TEST_CASE(runtime_attribution_tasks);
     RUN_TEST_CASE(runtime_attribution_backend_entries);
+    RUN_TEST_CASE(runtime_attribution_scalar_and_managed_copy_backends);
+    pu_clear_setup();
+}
+
+void test_language_runtime_attribution_benchmark()
+{
+    printf(
+        "runtime-attribution engine_base=%s fixture_sha256=%s build=%s "
+        "coverage=overhead timings=raw-noop-hooks-control-not-run\n",
+        CHIBI_ATTRIBUTION_BASE,
+        CHIBI_ATTRIBUTION_FIXTURE_SHA,
+        CHIBI_ATTRIBUTION_BUILD
+    );
+    pu_setup(NULL, cleanup_attribution);
     RUN_TEST_CASE(runtime_attribution_overhead);
     pu_clear_setup();
 }

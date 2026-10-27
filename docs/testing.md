@@ -34,8 +34,9 @@ It adds no processes, timing loops, network, rendering or GPU work.
 ## CI profiles and release validation
 
 Ordinary pull requests and pushes to `main` use **Debug O1 without ASan/UBSan**
-on Linux and macOS. Symbols, assertions, frame pointers and the full existing
-native, material, project, language and tooling selections remain enabled.
+on Linux and macOS. Symbols, assertions, frame pointers and native, material,
+project, language and tooling correctness selections remain enabled. Performance
+benchmarks are opt-in, not part of routine CI or correctness aggregates.
 This is a CI-only choice: local `make build` / `make test-build` retain their
 sanitizer defaults. The standalone tooling harness and Release helpers retain
 their existing roles.
@@ -488,7 +489,7 @@ selector has a `wasm-` variant (`docs/package-compiler.md#hosts`). Add
 `WEB_THREADS=1` to build and test the worker configuration. Both compile the
 same C language dispatcher with Emscripten Release, embed its small language
 examples. Configuration and build time are separate. Node runs the Wasm,
-execution, program, headless, publication and scalar benchmark selectors. Chrome runs the same selectors
+execution, program, headless and publication correctness selectors. Chrome runs the same selectors
 except headless through `test_tools --wasm-browser`, with GPU use disabled and
 a 55-second internal process deadline. The fixture owns and removes its browser
 profile. `CHIBI_WASM_BENCHMARK_ONLY=1` selects only the fixed C benchmark for
@@ -497,8 +498,9 @@ baseline comparison.
 Chrome also runs `--row-array`, `--modules` and `--query-program` for packed
 numeric arrays, imported generic ownership, maps and iteration. These are fixed
 C workloads; module paths use a temporary MEMFS directory and source overlays.
-The packed loop has 64 elements and 16 trials per numeric width, representation
-and backend. The combined route retains its 55-second internal timeout. Its
+The packed correctness loop has 64 elements and two invocations (initial and
+warm reuse) per numeric width, representation and backend. Its 16 timing
+trials are opt-in as `language-packed-benchmark` or `wasm-packed-benchmark`. The combined route retains its 55-second internal timeout. Its
 expanded duration has not been measured.
 
 Wasm cases assert actual generated-entry calls, exact integer widths, arrays,
@@ -1174,14 +1176,14 @@ The language follow-up adds these focused C checks:
   once initially, then five times for each of unchanged, body-edit and
   presentation-edit modes; it creates one disposable empty source directory.
   `tool scheduler-benchmark` compares identical registration and warm dispatch
-  of 12 systems over 128 passes per trial, plus owned-descriptor, dependency and
-  failure checks. These fixtures perform no child-process, engine-frame or GPU
+  of 12 systems over 128 passes per trial. Owned-descriptor, dependency and
+  failure checks run under `tool system-schedule`. These fixtures perform no child-process, engine-frame or GPU
   work. The four language selectors also have `wasm-` variants using the same
   C checks. Workload counts alone do not establish measured speedups.
-  The scheduler selector also covers unchanged owned descriptors, callback and
+  The `system-schedule` selector also covers unchanged owned descriptors, callback and
   effect replacement, failure retry and ordering, one recursive dispatch, and a
-  129-system oversized-cache fallback. There are eight fixed cases; cached
-  allocation assertions and retained scratch accounting complement timings.
+  129-system oversized-cache fallback. Cached allocation assertions and retained
+  scratch accounting are correctness checks, not throughput measurements.
 - `tool language-binding-schedule` and `tool wasm-binding-schedule` exercise five
   fixed binding-cache cases on both backends: module/owner generation changes,
   peer destruction, caller ordering, cycle rejection before writes, query-gate
@@ -1315,7 +1317,7 @@ The call-view/reduction follow-up adds bounded affected-contract checks:
 - Four additional scheduler cases use three synthetic registrations, a reverse
   inline executor and fixed failures/pauses to check ordered publication,
   prepare-after-commit, discard and resume without replay. They create no worker
-  threads and stay in `tool scheduler-benchmark`.
+  threads and run in `tool system-schedule`.
 - The component-setter source-presentation case also projects four tiny reduction
   spellings and checks receiver/value origins and reduction-mode cache identity.
 
@@ -1404,7 +1406,7 @@ formatter and root-state routes. Use `make test-list` to inspect the groups
 and standalone routes; registering a route alone does not add it to a group.
 
 The Chrome C driver also includes counted-row construction and Outliner
-projection among its ten selectors. It retains its internal 55-second timeout.
+projection among its nine correctness selectors. It retains its internal 55-second timeout.
 
 Exceeding an explicit timeout fails the run. The runner verifies cleanup
 discovery before test work. Portable process inspection allows five seconds for
@@ -1413,6 +1415,22 @@ discovery fails. The C runner cases cover delayed inspection, stuck-probe refusa
 descendant cleanup and sibling preservation. Linux subreaping contains escaped sessions;
 arbitrary already-detached descendants are not proven contained on macOS.
 Platform validation must report what actually ran.
+
+Routine CI and the `native`, `materials`, `language` and `wasm` correctness
+groups exclude benchmark selectors. Scheduler correctness cases run through
+`system-schedule`; runtime-attribution correctness cases remain in
+`language-runtime-attribution` (and its Wasm variant), while its repeated
+OFF/ON overhead comparison is opt-in as `language-runtime-attribution-benchmark`.
+The query-binding throughput case is opt-in as `language-query-binding-benchmark`.
+`language-scalarize` retains all scalar-read paths, fields, backends, inspection
+modes and cold/warm allocation/error-reset assertions with eight warm reads per
+combination; the five repeated timing trials are opt-in as
+`language-scalar-read-benchmark`. Packed array parity retains every numeric
+width/backend/representation with initial and warm execution; its 16-trial timing
+loop is opt-in as `language-packed-benchmark`. All four routes have `wasm-` variants.
+Compiler O0/O2 result comparisons, timeout/cleanup tests, allocation and
+instrumentation assertions, and passive test/build wall times remain enabled.
+The separately dispatched debug-optimization experiment remains manual.
 
 Use `make benchmark` for the mapped native C benchmarks or
 `python3 tools/test_policy.py tool <benchmark-name>` for one fixture. Each
@@ -3196,19 +3214,24 @@ status is asserted by this local validation.
 ## Selected runtime attribution: fixed workload
 
 `tool language-runtime-attribution` and `tool wasm-runtime-attribution` run the
-same six C/pico_unit cases through the existing language dispatcher. Each occurs
-once in its ordinary native-language or serial-Wasm group. This does not add a
-second copy to the separate native `test_tools` selector group.
+same six correctness C/pico_unit cases through the existing language dispatcher.
+Each occurs once in its ordinary native-language or serial-Wasm group. This does
+not add a second copy to the separate native `test_tools` selector group.
 
 The fixed envelope is 44 copy API operations, ten scoped copies/VM calls, three
 intern worlds with 32 unique edits and 32 repeats, four task owners with eight
-cycles and four boundaries each, six native/five Wasm backend attempts, and
-5,128 paired invocations. Tiny instruction/context budgets and the 512 KiB trial
-storage cap are unchanged. There are no new frames, GPU/browser/network workers
-or environment-controlled repetitions. Source review and exact artifact
-validation preceded measurement.
+cycles and four boundaries each, six native/five Wasm backend attempts, and eight
+untimed scalar/managed-array × bytecode/compiled × OFF/ON invocations. Those
+eight retain the combined backend/copy oracle, including four value-header moves
+and 14 text bytes for each observed managed-array snapshot. The repeated
+paired OFF/ON overhead case runs only through
+`tool language-runtime-attribution-benchmark` or its `wasm-` variant: 5,128
+invocations with the existing tiny instruction/context budgets and 512 KiB trial
+storage cap. Neither route adds frames, GPU/browser/network workers or
+environment-controlled repetitions.
 
-The six cases passed with 69,013 native assertions and 69,000 Wasm assertions.
+Before this correctness/benchmark split, the six cases passed with 69,013 native
+assertions and 69,000 Wasm assertions.
 The integrated complete language/Wasm groups, native-tools and installed
 compiler-free prepared consumer also passed. Exact source, build/SDK boundaries,
 raw timing samples, log hashes and limitations are in
@@ -3565,3 +3588,4 @@ base.
 See [the opt-in O0/O1 sanitizer comparison](debug-optimization-experiment.md) for
 matched build flags, correctness gates and wall-time measurements. CI defaults
 and sanitizer coverage remain unchanged.
+

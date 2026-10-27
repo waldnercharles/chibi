@@ -3,7 +3,11 @@
 set -eu
 root=${0%/*}
 name=${0##*/}
-printf '%s\n' "$@" > "$root/$name.argv"
+trace=$name.argv
+case "$name:$*" in
+    llc*/start.ll*) trace=$name.start.argv ;;
+esac
+printf '%s\n' "$@" > "$root/$trace"
 case "$name" in
     opt*)
         test "$#" = 5 || exit 64
@@ -14,11 +18,15 @@ case "$name" in
         /bin/cat "$3" >> "$5"
         ;;
     llc*)
-        test "$#" = 5 || exit 64
-        test "$1" = -filetype=obj && test "$4" = -o || exit 64
+        test "$#" = 6 || exit 64
+        test "$1" = -filetype=obj && test "$3" = -relocation-model=pic && test "$5" = -o || exit 64
+        if test "${4##*/}" = start.ll; then
+            printf 'controlled start object\n' > "$6"
+            exit 0
+        fi
         IFS= read -r action < "$root/action"
         test "$action" != missing || exit 0
-        printf 'controlled object\n' > "$5"
+        printf 'controlled object\n' > "$6"
         case "$action" in
             fail) exit 71 ;;
             signal) kill -TERM "$$" ;;
@@ -28,10 +36,10 @@ case "$name" in
         esac
         ;;
     linker*)
-        test "$#" = 4 || exit 64
-        test "$2" = -Wl,--gc-sections && test "$3" = -o || exit 64
-        printf '#!/bin/sh\nexit 42\n' > "$4"
-        /bin/chmod 700 "$4"
+        test "$#" = 10 || exit 64
+        test "$1" = -flavor && test "$3" = -static && test "$5" = -e && test "$9" = -o || exit 64
+        printf '#!/bin/sh\nexit 42\n' > "${10}"
+        /bin/chmod 700 "${10}"
         ;;
     *) exit 99 ;;
 esac

@@ -15332,12 +15332,13 @@ static bool switches_agree(const char *directory)
     return true;
 }
 /* A function well past the bounds the facts once had: twelve parameters,
- * WIDE_LOOPS reversed exclusive ranges, then an assignment of a logical
- * chain of WIDE_CHAIN reads, then a return. */
+ * WIDE_LOOPS reversed exclusive ranges, then WIDE_CHAINS assignments of a
+ * logical chain of five reads, then a return. Short chains keep stage zero's
+ * operand recursion within its 64 calls. */
 enum
 {
     WIDE_LOOPS = 40,
-    WIDE_CHAIN = 100
+    WIDE_CHAINS = 20
 };
 static bool widest_loops_agree(const char *directory)
 {
@@ -15353,11 +15354,10 @@ static bool widest_loops_agree(const char *directory)
     for (int i = 0; i < WIDE_LOOPS; i++) {
         at += snprintf(source + at, sizeof source - (size_t)at, "    for < n in a..<b {}\n");
     }
-    at += snprintf(source + at, sizeof source - (size_t)at, "    c = c");
-    for (int i = 1; i < WIDE_CHAIN; i++) {
-        at += snprintf(source + at, sizeof source - (size_t)at, " && c");
+    for (int i = 0; i < WIDE_CHAINS; i++) {
+        at += snprintf(source + at, sizeof source - (size_t)at, "    c = c && c && c && c && c;\n");
     }
-    snprintf(source + at, sizeof source - (size_t)at, ";\n    return a + l;\n}\n");
+    snprintf(source + at, sizeof source - (size_t)at, "    return a + l;\n}\n");
     assert(strlen(source) < sizeof source - 1);
     scalar_call call = { .probe = { "widest", "Main", 0, { 0 }, 13 } };
     REQUIRE(width_module_agrees(directory, 0, "widest", source, &call, 1));

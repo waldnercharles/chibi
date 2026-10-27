@@ -126,7 +126,11 @@ bool package_test_run(
     if (resumable) {
         behavior_function_activation_init(test->body, &activation);
     }
-    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+    /* Each run owns its heap, so parallel tests never share one. */
+    behavior_managed_heap managed;
+    behavior_managed_heap_init(&managed);
+    behavior_function_context context = { .managed_heap = &managed,
+                                          .activation = resumable ? &activation : NULL,
                                           .budget = budget,
                                           .inspection_user = failure,
                                           .failure_observer = observe,
@@ -152,6 +156,7 @@ bool package_test_run(
     }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&managed);
     arena_free(&storage);
     return passed;
 }

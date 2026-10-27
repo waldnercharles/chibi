@@ -730,6 +730,25 @@ static const char *const driver_parallel[] = {
     "    if action.startswith('parallel-language'):\n"
     "        names = list(policy.GROUPS['language'])\n"
     "        modes = ['mark'] * len(names)\n"
+    /* This whole-manifest check exercises real scheduler admission, leaf workers,
+     * and ordered output. Dedicated tests below cover supervisor containment.
+     * Re-importing this fixture in one supervisor per no-descendant mark worker
+     * adds startup work unrelated to manifest identity (49 launches today). */
+    "    leaf_launches = []\n"
+    "    if action == 'parallel-language':\n"
+    "        original_popen = policy.subprocess.Popen\n"
+    "        def leaf_popen(command, *args, **kwargs):\n"
+    "            if len(command) == 4 and command[:3] == [sys.executable, "
+    "str(Path(policy.__file__).resolve()), '_supervise']:\n"
+    "                commands = json.loads(command[3])\n"
+    "                if len(commands) == 1 and len(commands[0]) == 5 and "
+    "commands[0][:3] == "
+    "[worker, 'parallel', root] and commands[0][3] in names and "
+    "commands[0][-1] == 'mark':\n"
+    "                    command = commands[0]\n"
+    "                    leaf_launches.append(command[3])\n"
+    "            return original_popen(command, *args, **kwargs)\n"
+    "        policy.subprocess.Popen = leaf_popen\n"
     "    if action == 'parallel-default':\n"
     "        jobs = None\n"
     "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
@@ -907,7 +926,10 @@ static const char *const driver_parallel[] = {
     "            Path(root, 'sibling-release').touch()\n"
     "            sibling.wait(timeout=6)\n"
     "        sys.exit(result)\n"
-    "    sys.exit(policy.run_group(names, jobs=jobs))\n"
+    "    result = policy.run_group(names, jobs=jobs)\n"
+    "    if action == 'parallel-language':\n"
+    "        print('leaf-launches', len(leaf_launches))\n"
+    "    sys.exit(result)\n"
 };
 
 static const char driver_source[] =
@@ -2640,6 +2662,9 @@ TEST_CASE(parallel_language_manifest_matches_serial_exactly)
         record++;
     }
     REQUIRE(records == count);
+    char expected[64];
+    snprintf(expected, sizeof expected, "leaf-launches %d\n", count);
+    REQUIRE(strstr(parallel, expected));
     free(metrics);
     free(serial);
     free(parallel);

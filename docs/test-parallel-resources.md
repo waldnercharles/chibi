@@ -92,3 +92,11 @@ escape, memory admission, fail-fast, deadline and owned-cancellation regressions
 remain applicable. These fixture checks do not constitute engine execution or a
 matched wall-time benchmark; no additional peak-RSS measurement is claimed and
 the default two-worker cap / conservative memory admission are unchanged.
+
+Rechecked when integrating `959d22d4` (prepared format 22): string-table
+interning scratch belongs to each `execution_wire`/module and authored local
+arrays. Updated compiler/seed inputs remain read-only; the integer setup and
+NULL-output bootstrap recovery paths are unchanged. This introduces no new
+shared file/cache/process resources. Allocation and compiler behavior did
+change, so prior-head engine results are not integration validation; rerun the
+current combined candidate rather than treating the old CI as current evidence.

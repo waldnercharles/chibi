@@ -539,6 +539,59 @@ TEST_CASE(prepared_runtime_shared_storage_budget_charges_only_success)
     REQUIRE(!module && error[0] && remaining == budget);
     return true;
 }
+static bool reads_within(execution_prepared_linker *link, size_t budget)
+{
+    char error[192] = { 0 };
+    size_t remaining = budget;
+    execution_module *m = execution_prepared_read_budget(
+        bytes,
+        length,
+        link,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    if (!m) {
+        REQUIRE(error[0] && remaining == budget);
+        return false;
+    }
+    REQUIRE(remaining == budget - execution_module_storage_bytes(m));
+    execution_module_free(m);
+    return true;
+}
+TEST_CASE(prepared_runtime_import_fingerprint_returns_its_scratch)
+{
+    REQUIRE(inputs());
+    REQUIRE(dependencies(BEHAVIOR_BYTECODE));
+    execution_prepared_linker link = linker();
+    char error[192] = { 0 };
+    size_t remaining = 64 * 1024 * 1024;
+    module = execution_prepared_read_budget(bytes, length, &link, BEHAVIOR_BYTECODE, &remaining, error, sizeof error);
+    REQUIRE(module);
+    const size_t retained = execution_module_storage_bytes(module);
+    unsigned char *written = NULL;
+    size_t written_length = 0, measured = 0;
+    uint64_t fingerprint = 0, hash = UINT64_C(14695981039346656037);
+    REQUIRE(execution_prepared_write(library, &written, &written_length, error, sizeof error));
+    REQUIRE(execution_prepared_measure(library, &measured, &fingerprint, error, sizeof error));
+    for (size_t i = 0; i < written_length; i++) {
+        hash = (hash ^ written[i]) * UINT64_C(1099511628211);
+    }
+    free(written);
+    REQUIRE(measured == written_length && fingerprint == hash);
+    /* Reading imports re-encodes the library to fingerprint it. That
+     * encoding's scratch, its string table included, comes out of the
+     * importer's budget while it runs and goes back afterwards, so every
+     * budget either fails untouched or keeps exactly the retained bytes. */
+    size_t low = retained - 1, high = 64 * 1024 * 1024;
+    while (high - low > 1) {
+        size_t middle = low + (high - low) / 2;
+        *(reads_within(&link, middle) ? &high : &low) = middle;
+    }
+    REQUIRE(!reads_within(&link, high - 1) && reads_within(&link, high));
+    return true;
+}
 TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
@@ -1269,6 +1322,7 @@ void test_tool_prepared_runtime(const char *path)
     RUN_TEST_CASE(prepared_runtime_rejects_missing_or_incompatible_linkage);
     RUN_TEST_CASE(prepared_runtime_rejects_malformed_wire);
     RUN_TEST_CASE(prepared_runtime_shared_storage_budget_charges_only_success);
+    RUN_TEST_CASE(prepared_runtime_import_fingerprint_returns_its_scratch);
     RUN_TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically);
     RUN_TEST_CASE(prepared_declared_event_linker_policy);
     RUN_TEST_CASE(prepared_package_validates_complete_external_closure);

@@ -327,8 +327,9 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
-          # A tag names one commit's seeds; never replace published assets.
-          if gh release view "$TAG" > /dev/null 2>&1; then
+          # A tag names one commit's seeds; never replace published assets. An
+          # interrupted draft is resumed: assets upload before it is published.
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" = false ]; then
             echo "::notice::$TAG is already published; pinning it as is."
             exit 0
           fi
@@ -339,8 +340,13 @@ jobs:
 
           Commit-specific prerelease, not latest.
           EOF
-          gh release create "$TAG" "$RUNNER_TEMP"/release/* --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title "Prepared$VERSION runtime ${GITHUB_SHA:0:12}" --notes-file "$RUNNER_TEMP/notes.md"
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --prerelease \
+              --title "Prepared$VERSION runtime ${GITHUB_SHA:0:12}" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
+          gh release upload "$TAG" "$RUNNER_TEMP"/release/* --clobber
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
 
   pin:
     name: Pin the runtime seeds on the branch

@@ -1,7 +1,7 @@
 package scalar_facts
 
-// Internal opt-in owned result for one source document holding a bounded set
-// of ordinary pure functions over numbers, bool, strings, and records and
+// Internal opt-in owned result for one source document holding a set of
+// ordinary pure functions over numbers, bool, strings, and records and
 // unions of numbers and bool, which may recurse. A function's body is
 // locals, assignments, if statements, switches over integers or a union's
 // variants, while loops, loops over int ranges, breaks, continues and
@@ -307,20 +307,3 @@ pub Fits :: (literal: i64, type: int) -> bool {
     half := i64(1) << u32(bits - 1);
     return literal >= 0 - half && literal < half;
 }
-
-// Bounds both sides check before reading counts: source bytes, records and
-// unions per module together, fields per record, variants per union and
-// payloads per union, all its variants' together, functions per module,
-// parameters, locals and statement rows per function, a switch arm's Case row
-// counting as a statement, and operands per function, counted over all its
-// statements together.
-pub MaxSource: int : 16384;
-pub MaxRecords: int : 16;
-pub MaxMembers: int : 16;
-pub MaxVariants: int : 16;
-pub MaxPayloads: int : 15;
-pub MaxFunctions: int : 32;
-pub MaxParameters: int : 8;
-pub MaxLocals: int : 16;
-pub MaxStatements: int : 32;
-pub MaxOperands: int : 64;

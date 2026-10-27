@@ -1,6 +1,6 @@
 # Runtime-free scalar LLVM backend (opt-in WIP)
 
-`llvm_native.Emit` validates a bounded scalar instruction plan and writes LLVM
+`llvm_native.Emit` validates a scalar instruction plan and writes LLVM
 IR. `native_abi` owns the exact targets (Linux x86-64, macOS arm64 and Windows
 x64) and internal scalar mapping; the selected LLVM backend supplies its actual
 data layout. This clean integration carries those reviewed pure packages from [3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
@@ -8,7 +8,7 @@ onto the current-base [authored LLVM driver](https://github.com/waldnercharles/c
 
 It deliberately does **not** carry `package_compiler/Native.chibi`,
 `native_compiler`, or the diagnostic Front/Back packet adapters. Its one source
-connection is the bounded `scalar_facts` handoff in
+connection is the `scalar_facts` handoff in
 `test/native_aot/scalar/README.md`: the compiler's `CollectScalar` produces
 owned rows and `scalar_llvm` lowers them to this plan. Private frontend
 Code/Slot IDs are not an API.
@@ -21,7 +21,7 @@ interface, or the complete allocation/memory/output/free native island.
 
 ## Emitter contract
 
-- A module of at most 32 functions, each a consecutive range of the parameter,
+- A module of one or more functions, each a consecutive range of the parameter,
   slot, local, code and argument tables. Function 0 is the exported entry,
   `chibi_scalar`, or `main` for a zero-argument `int` entry; the others are
   `internal` `chibi_scalar.N`. Each takes plain integer, `number`, `f64`
@@ -40,7 +40,7 @@ interface, or the complete allocation/memory/output/free native island.
   parameter or result has no wrapper and stays callable only inside the
   library. Libraries are Linux x86-64 only: a macOS or Windows target is
   rejected.
-- A module declares at most 16 records, each a range of at most 16 scalar
+- A module declares records, each a range of one or more scalar
   field types in the field table, emitted in that order as
   `%recordN = type { ... }`. Record type `RecordType + N` is a value: internal
   functions take and return it, slots and locals hold it, and its only
@@ -52,7 +52,7 @@ interface, or the complete allocation/memory/output/free native island.
   the C ABI.
 - A string is `native_abi.TextType()`, `{ ptr, i32 }`, the layout of the
   runtime's `pin_string`: its bytes, then its length. Its `Constant`'s
-  `literal` indexes the module's text table, at most 32,768 texts, and each
+  `literal` indexes the module's text table, and each
   text is a `private unnamed_addr` global of its bytes and a NUL. Strings
   have only `Eq` and `Ne`, which call the module's internal
   `@chibi_scalar.text_equal`, emitted only when some instruction compares
@@ -64,7 +64,9 @@ interface, or the complete allocation/memory/output/free native island.
   type and defined on every path; they load in order, so evaluation order stays
   visible at O0. Calls may recurse, directly or mutually, with no depth
   counter, as Rust's and Odin's do. Every function carries
-  `"probe-stack"="inline-asm"`, so a frame larger than a page touches each
+  `native_abi.StackProbe`: `"probe-stack"="inline-asm"`, or on Windows
+  `"probe-stack"="__chkstk"`, a call to the probe MSVC's and rustc's code
+  calls, which the program defines. A frame larger than a page touches each
   page in turn and running out of stack always faults in the guard page below
   it rather than past it. That makes an overflow a fault, never a silent write
   past the stack. What the fault prints is up to the process. A host that has
@@ -77,9 +79,9 @@ interface, or the complete allocation/memory/output/free native island.
 - Scalar locals, branches, comparisons, bitwise operations, integer and
   floating arithmetic, and conversions. Comparisons, division, remainders and
   `>>` are unsigned for an unsigned type. `bool` has `==`, `!=` and `BitNot`,
-  its `!`. Limits per function are eight parameters, 256 slots, 128 locals,
-  1,024 body instructions and 256 call arguments. These are plan bounds, not a
-  source-language acceptance claim.
+  its `!`. As in Rust and Odin, nothing bounds a module's functions, records
+  or texts, or a function's parameters, slots, locals, instructions or call
+  arguments.
 - Integer operations never fail, as the language's integer contract says.
   Add, subtract, multiply and negate wrap, with no `nsw`/`nuw` promises.
   `x / 0` is 0 and `x % 0` is `x`; `MIN / -1` is `MIN` and `MIN % -1` is 0.

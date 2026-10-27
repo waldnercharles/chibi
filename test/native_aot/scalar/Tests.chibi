@@ -105,21 +105,13 @@ Emitted :: (rows: facts.Row[]) -> string {
     }
 }
 
-// `text` and a comment that pads it to `size` bytes.
-Padded :: (text: string, size: int) -> string {
-    filler := "\n//";
-    while (strings.ByteLength(filler) < size) {
-        filler = format_text("{}{}", filler, filler);
-    }
-    return format_text("{}{}", text, strings.Slice(filler, 0, size - strings.ByteLength(text)));
-}
 // The accepted module with Pick's read of its int parameter replaced by a
 // call of Main, so the two functions recurse.
 Recursive :: () -> facts.Row[] {
     return Renamed(Changed(Changed(Accepted(), 11, Kind, facts.CallRow), 11, Value, 0), 11, "Main", "");
 }
 // Each fixture changes one fact of an otherwise valid module.
-MalformedCount: int : 28;
+MalformedCount: int : 26;
 Malformed :: (index: int) -> facts.Row[] {
     rows := Accepted();
     switch index {
@@ -175,16 +167,8 @@ Malformed :: (index: int) -> facts.Row[] {
             return rejected; // rejection keeps a partial result
         case 24:
             return Renamed(Rejected(), 1, "", ""); // rejection without a message
-        case 25:
-            return Changed(Rejected(), 1, Start, 4); // rejection outside its source
-        case 26:
-            return Renamed(rows, 0, "Scalar.chibi", Padded(rows[0].text, facts.MaxSource + 1)); // source bound
     }
-    long := rows;
-    while (length(long) <= 5410) {
-        long.append(rows[11]);
-    }
-    return long; // row bound
+    return Changed(Rejected(), 1, Start, 4); // rejection outside its source
 }
 
 pub Tests :: () -> int {
@@ -210,11 +194,6 @@ pub Tests :: () -> int {
                 projection[1].end != 3) {
                 return 5;
             }
-    }
-    // A rejection keeps any source, even one past the accepted bound.
-    large := Renamed(Rejected(), 0, "Bad.chibi", Padded("bad", facts.MaxSource + 1));
-    if (scalar.Validate(large) != "" || length(scalar.EmitBytes(large)) != 0) {
-        return 6;
     }
     for (index in 0..<MalformedCount) {
         if (!Invalid(Malformed(index))) {

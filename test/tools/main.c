@@ -189,6 +189,7 @@ void test_source_reductions();
 void test_source_reduction_benchmark();
 void test_source_execution_benchmark();
 void test_tool_scheduler_benchmark();
+void test_tool_scheduler();
 void test_code_system_runtime();
 void test_code_query_rows();
 void test_source_edit();
@@ -1420,6 +1421,7 @@ int main(int argc, char **argv)
             test_source_edit();
         } else if (system_schedule) {
             test_system_schedule();
+            test_tool_scheduler();
         } else if (source_reductions) {
             test_source_reductions();
         } else if (source_reduction_benchmark) {

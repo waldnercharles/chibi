@@ -1,6 +1,6 @@
 # Owned scalar modules → LLVM objects
 
-This is a bounded, opt-in path from Chibi source to a native object. It is not
+This is an opt-in path from Chibi source to a native object. It is not
 the default compiler, a general semantic IR or a public ABI. The authored
 compiler's `CollectScalar` entry produces an owned `scalar_facts.Row[]`; the
 separate `scalar_llvm` consumer validates those rows and lowers them to the
@@ -11,9 +11,8 @@ tracks which language features reach native code and what blocks the rest.
 ## What is supported
 
 One source document holding one package, no imports, and only ordinary
-function declarations without attributes, records, unions and constants: at
-most 32 functions. The first
-function is the module's entry and must be `() -> int`. A source that is
+function declarations without attributes, records, unions and constants.
+The first function is the module's entry and must be `() -> int`. A source that is
 instead one native library, `Name :: library { ... }` of such
 functions, has no entry: its Document row's `text` is `Name`, each Function
 row's `literal` is the function's stable symbol ID,
@@ -21,7 +20,7 @@ row's `literal` is the function's stable symbol ID,
 `scalar_llvm` emits it with `llvm_native.EmitLibrary`, whose manifest the
 runtime binds (D11 in the ledger). Every function:
 
-- takes at most eight plain number, `bool` or `string` parameters (`i8`,
+- takes plain number, `bool` or `string` parameters (`i8`,
   `u8`, `i16`, `u16`, `int`, `u32`, `i64`, `u64`, `number` or `f64`; no
   pointer or other managed, nominal or container types) and returns one
   plain number, `bool` or `string`;
@@ -30,8 +29,7 @@ runtime binds (D11 in the ledger). Every function:
   arithmetic and shift operators), if statements with any `else` or
   `else if`, switches on an integer value, `while` loops, `for` loops over an `int` range (`a..b`, `a..<b`,
   either counted down with `for <`; bounds of a narrower integer type widen),
-  `break`, `continue` and returns, at most 32 statements and 16 locals,
-  counting each loop's index. It ends in a terminating statement, as stage
+  `break`, `continue` and returns. It ends in a terminating statement, as stage
   zero requires: a return, an if statement with an `else` whose branches both
   end in one, a switch with a default arm whose arms all end in one, or a
   `while (true)` that no `break` leaves; otherwise it is
@@ -53,8 +51,7 @@ runtime binds (D11 in the ledger). Every function:
   integer type,
   `number(a)` or `f64(a)`, or a direct call
   `F(a, b, ...)` of a function of the same source with exactly its arity and
-  parameter types, whose operands are again such expressions: at most 64
-  operands per function, counted over all its statements.
+  parameter types, whose operands are again such expressions.
 
 Any expression may be parenthesized. Each operand has the type the ordinary
 compiler gives it, so mixed integer types and a signed shift count are its
@@ -139,15 +136,16 @@ or local. Unions whose payloads are numbers or `bool`s are values too: a
 variant with or without payloads, a union parameter, result, local or
 assignment, `is` and `is not` without bindings, and a switch on a union
 variable whose arms bind payloads, with a default arm or covering every
-variant. A module declares at most 16 records and unions together, a
-record at most 16 fields and a union at most 16 variants and 15 payloads; a
+variant. A
 record or union with any other field or payload, an `is` that binds and a
 switch on a union expression other than a variable are rejected. The
 exported `Main` still takes and returns scalars.
-Sources are at most 16,384 bytes. `test/scalar_facts/cases/Cases.chibi` holds
-the 96-source corpus (53 accepted) with each accepted value and statement
-trace and each rejection's exact message and source excerpt, including both
-sides of every bound.
+As in Rust and Odin, nothing bounds a source's size, a module's functions or
+records, or a function's parameters, locals, statements or operands.
+`test/scalar_facts/cases/Cases.chibi` holds the 90-source corpus (52 accepted)
+with each accepted value and statement trace and each rejection's exact
+message and source excerpt, including functions, operands and sources well
+past the bounds the facts once had.
 
 A constant expression, such as `(2147483647 + 1) / 2`, `int(42)` or `N / 20`
 of a package constant `N`, is one literal row holding the value the ordinary
@@ -183,7 +181,7 @@ record and its fields and each union with its variants and their payloads,
 and each function's signature, parameters and statements in source order, each
 followed by its operands in evaluation order; an if statement's rows bracket
 its consequence and any alternative with Else and End rows, a switch's arms
-with a Case row each and an End row, and a loop's body with an End row (`tools/compiler/scalar_facts/Facts.chibi` defines the layout and bounds). The
+with a Case row each and an End row, and a loop's body with an End row (`tools/compiler/scalar_facts/Facts.chibi` defines the layout). The
 rows own their strings and, once snapshotted, their record shape.
 
 - Across processes, `Run.ps1` passes the producer's exact stdout file as the
@@ -218,10 +216,9 @@ rows own their strings and, once snapshotted, their record shape.
   read of another type and a string argument for an int parameter. A string
   record field is rejected with the record module's variants.
 
-`scalar_llvm.Validate` checks the representation: bounds before counts, row
+`scalar_llvm.Validate` checks the representation: counts within their rows, row
 layout, canonical fields, positions, typed operand stacks and callee
-signatures. A rejection keeps its whole source; an accepted source must be within
-the bound. It does not prove that fabricated rows match their source;
+signatures. A rejection keeps its whole source. It does not prove that fabricated rows match their source;
 the caller binds the trusted producer artifact, source bytes and envelope.
 `Emit` returns `Rejected` with the producer's rows, `Invalid` or `Emitted`, and
 `EmitBytes` returns raw IR or empty bytes. Each function starts with one CHECK
@@ -342,7 +339,7 @@ it.
 `Run.ps1` runs after the two-stage self-build in `compiler-recovery.yml`. It
 binds the pinned runtime, recovered stage2, compiler and regression source
 inventories, compiles `Regression.chibi` on both VMs with identical bytes, and
-runs the authored `Tests` (28 malformed-row fixtures plus emission checks).
+runs the authored `Tests` (26 malformed-row fixtures plus emission checks).
 Statement-row validation is asserted in C, by the scalar selector above.
 Every corpus source then crosses all four producer/consumer VM combinations:
 `Regression.Check` asserts the case and the complete rejection or emitted IR,

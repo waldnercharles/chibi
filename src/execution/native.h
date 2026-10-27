@@ -8,8 +8,8 @@
  * run the native entry instead of a VM frame. Tasks, inspected calls and
  * every unbound function stay in the VM. */
 #define EXECUTION_NATIVE_ABI 1u
-/* The most parameters and results an entry takes: the native emitter's bound
- * on a function's parameters, and one result. */
+/* The most parameters and results an entry takes: native_abi.ExportParameters,
+ * and one result. The emitter exports no function with more. */
 #define EXECUTION_NATIVE_MAX_PARAMETERS 8
 #define EXECUTION_NATIVE_MAX_RESULTS 1
 /* An export's parameter and result types. */

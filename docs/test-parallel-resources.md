@@ -54,11 +54,17 @@ anchors.
 CI. Each platform builds the ASan/UBSan drivers once and restores the same-run
 artifact into three separate hosted runners. Each runner executes one complete
 assigned selector list serially. Linux and macOS have independent producer/test
-pipelines; Linux does not wait for the macOS build. The Linux producer mirrors
-the ordinary native CI Debug `-g -O1` profile,
-including assertions and ASan/UBSan; macOS keeps its existing sanitizer profile.
-A regression checks that the Linux flags stay identical and that no empty
-profile override reaches macOS. No purchased runner capacity
+pipelines; Linux does not wait for the macOS build. Both producers explicitly select
+`CHIBI_CI_SANITIZERS=ON` through `.github/native-profile.py`: the full sanitizer
+Debug `-g -O1` profile with assertions and ASan/UBSan, distinct from ordinary
+fast PR CI. A regression checks shared-helper selection on both platforms,
+verbose build capture with pipeline failure propagation, and profile evidence
+verification before artifact packing. The verifier checks actual compiler/link
+receipts and sanitizer symbols, not just intended flags. Like the full sanitizer
+lane, the producer first builds Release generation hosts and uses the Release
+planner on macOS; these build-time hosts are not consumer artifacts. Include
+that Release build and setup in the measured critical path and runner cost.
+The transferred drivers and compiler host remain sanitized. No purchased runner capacity
 or billing setting is involved. All ordinary native, material, project, language,
 tooling, Studio, graph and formatting gates remain in `.github/workflows/ci.yml`.
 
@@ -117,7 +123,7 @@ models lanes of 507/503/506 seconds, before setup, transfer and queue time: abou
 seconds. These are scheduling estimates, not a measured new CI speedup or CPU
 cost. Removing CPU contention can change individual lifetimes.
 
-Current main `15bc4b78` has an additional
+The later `15bc4b78` inventory has an additional
 `language-migration34-generic-repro` selector (48 Linux / 47 macOS total versus
 47/46 in the measured run). Its time is not measured and is not included in that
 estimate. The macOS baseline spent 1,097 seconds in its serial language group;
@@ -127,8 +133,13 @@ results. The separate O0/O1 experiment also remains independent.
 
 The manual run must establish exact-head restored runtime success on both OSes,
 complete/disjoint manifests, artifact bytes and upload/download/setup timing,
-whole-run critical path and runner-seconds before enabling the default CI split.
-Keep the ordinary CI fallback until that evidence and independent review pass.
+submission-to-result wall time (including producer and shard queues), whole-run
+critical path and runner-seconds before considering a default CI split. Ordinary
+PR CI now selects a fast unsanitized Debug profile; this sanitizer-only proof
+cannot establish that three shards improve that different lane. Compare its
+full-suite wall time and queue/setup overhead separately, without purchasing
+runner capacity. Keep ordinary CI unchanged until matched evidence and
+independent review justify any activation.
 
 ### Local regression scope
 

@@ -116,7 +116,11 @@ instrumentation cost while retaining assertions, but it needs matching
 unsanitized dependencies and must not be described as the matched O0/O1 result.
 Do not use Release/NDEBUG as that control.
 
-## Manual hosted first pass
+## Manual hosted first pass (historical O0/O1)
+
+The first pass below describes the original O0/O1 runner. The current manual
+workflow measures [O1/O2 with sanitizers on and off](optimization-instrumentation-experiment.md);
+use that protocol for new measurements. Historical results remain unchanged.
 
 `Debug optimization experiment (manual, not full CI)` is a separate Linux-only
 `workflow_dispatch` workflow. It requires an exact reviewed SHA containing the

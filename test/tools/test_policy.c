@@ -176,17 +176,27 @@ static const char driver_ci_build
          "    env = dict(os.environ, CI_TRACE=str(trace), CI_FAIL=failure, "
          "MAKEFLAGS='', MFLAGS='')\n"
          "    jobs = {'native': [], 'native-macos': []}\n"
+         "    profiles = {}\n"
          "    job = None\n"
          "    for line in "
          "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
          "        if line.startswith('  ') and not line.startswith('   '):\n"
          "            job = line.strip().removesuffix(':')\n"
+         "        if job in jobs and "
+         "line.strip().startswith('SANITIZER_CMAKE_FLAGS:'):\n"
+         "            profiles[job] = line.split(':', 1)[1].strip()\n"
          "        command = line.strip().removeprefix('run: ')\n"
          "        if job in jobs and command.startswith('make '):\n"
          "            words = shlex.split(command)\n"
          "            if words[1] in ('test-build', 'build'): "
          "jobs[job].append(words)\n"
          "    for job, commands in jobs.items():\n"
+         "        env.pop('SANITIZER_CMAKE_FLAGS', None)\n"
+         "        if job in profiles: env['SANITIZER_CMAKE_FLAGS'] = "
+         "profiles[job]\n"
+         "        if failure == 'o0' and job in profiles:\n"
+         "            commands = [c + ['SANITIZER_CMAKE_FLAGS=' + "
+         "profiles[job].replace('-O1', '-O0')] for c in commands]\n"
          "        trace.write_text('')\n"
          "        status = 0\n"
          "        for command in commands:\n"
@@ -215,7 +225,8 @@ static const char driver_ci_build
          "            if step == 'configure-native':\n"
          "                print('flags=' + ','.join(arg for arg in arguments "
          "if arg.startswith(('-DCMAKE_BUILD_TYPE=', "
-         "'-DCHIBI_ENABLE_SANITIZERS=', '-DCHIBI_SANITIZERS='))))\n"
+         "'-DCHIBI_ENABLE_SANITIZERS=', '-DCHIBI_SANITIZERS=', "
+         "'-DCMAKE_C_FLAGS_DEBUG=', '-DCMAKE_CXX_FLAGS_DEBUG='))))\n"
          "            if step == 'build':\n"
          "                print('targets=' + "
          "','.join(arguments[arguments.index('--target') + "
@@ -227,7 +238,8 @@ static const char driver_ci_build
          "arg in enumerate(arguments) if arg == '--target'))\n"
          "                print('flags=' + ','.join(arg for arg in arguments "
          "if arg.startswith(('-DCMAKE_BUILD_TYPE=', "
-         "'-DCHIBI_ENABLE_SANITIZERS=', '-DCHIBI_SANITIZERS='))))\n"
+         "'-DCHIBI_ENABLE_SANITIZERS=', '-DCHIBI_SANITIZERS=', "
+         "'-DCMAKE_C_FLAGS_DEBUG=', '-DCMAKE_CXX_FLAGS_DEBUG='))))\n"
          "                print('jobs=' + arguments[arguments.index('--jobs') "
          "+ 1])\n"
          "    sys.exit(0)\n";
@@ -923,6 +935,11 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
                           "test_tools,test_language";
     const char *flags = "flags=-DCMAKE_BUILD_TYPE=Debug,-DCHIBI_ENABLE_"
                         "SANITIZERS=ON,-DCHIBI_SANITIZERS=address,undefined\n";
+    const char
+        *linux_flags = "flags=-DCMAKE_BUILD_TYPE=Debug,-DCHIBI_ENABLE_"
+                       "SANITIZERS=ON,-DCHIBI_SANITIZERS=address,undefined,"
+                       "-DCMAKE_C_FLAGS_DEBUG=-g "
+                       "-O1,-DCMAKE_CXX_FLAGS_DEBUG=-g -O1\n";
     const char *failures[] = { "-",           "native-toolchain",
                                "third-party", "graph",
                                "cold:-",      "cold:configure-native",
@@ -935,7 +952,7 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
         strcat(expected, fail == 1 || fail == 5 || fail == 6 ? "native failed\n" : "native continued\n");
         if (cold) {
             strcat(expected, "configure-native\n");
-            strcat(expected, flags);
+            strcat(expected, linux_flags);
             if (fail != 5) {
                 strcat(expected, "build\n");
                 strcat(expected, targets);
@@ -945,7 +962,7 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
             strcat(expected, "native-toolchain\n");
             strcat(expected, targets);
             strcat(expected, "\n");
-            strcat(expected, flags);
+            strcat(expected, linux_flags);
             strcat(expected, "jobs=2\n");
         }
         strcat(expected, fail == 2 || fail == 3 || fail >= 5 ? "native-macos failed\n" : "native-macos continued\n");
@@ -969,6 +986,18 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
         free(output);
         REQUIRE(exact);
     }
+    return true;
+}
+
+TEST_CASE(ci_linux_optimization_preserves_explicit_o0)
+{
+    REQUIRE(run("ci-initial-build", "o0") == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output);
+    bool correct = strstr(output, "-DCMAKE_C_FLAGS_DEBUG=-g -O0,-DCMAKE_CXX_FLAGS_DEBUG=-g -O0\n") &&
+                   !strstr(output, "-O1") && strstr(output, "profile=sanitizer\n");
+    free(output);
+    REQUIRE(correct);
     return true;
 }
 
@@ -1971,6 +2000,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
+    RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);
     RUN_TEST_CASE(ci_preserves_failed_macos_graph_stage_log);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);

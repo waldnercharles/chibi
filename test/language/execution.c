@@ -4097,6 +4097,58 @@ TEST_CASE(execution_sequence_values_copy_at_ownership_boundaries)
     };
     return sequence_results(source, cases, sizeof cases / sizeof *cases);
 }
+/* A local that reads an unchanged local in place shares its collection, so
+ * leaving the local's scope must leave that collection to its owner. */
+TEST_CASE(execution_scoped_lent_locals_leave_their_owner_intact)
+{
+    /* Each owner is built by a call, so its length and contents are read at
+     * run time after the lent local's scope has exited. */
+    const char *source =
+        "package sequences\n"
+        "Pair :: union { Row(xs: int[]) | None }\n"
+        "Make :: (n: int) -> int[] { xs: int[] = []; "
+        "for i in 0..<n { xs.append(i + 1); } return xs; }\n"
+        "Shape :: (xs: int[]) -> int { return length(xs) * 10 + xs[length(xs) "
+        "- 1]; }\n"
+        "Width :: (p: Pair) -> int { switch p { case .Row(xs): return "
+        "Shape(xs); "
+        "case: return -1; } }\n"
+        "Param :: (xs: int[], flag: bool) -> int { if flag { alias := xs; "
+        "if length(alias) == 0 { return -1; } } return Shape(xs); }\n"
+        "pub Scoped :: () -> int { xs := Make(2); if length(xs) > 0 { "
+        "alias := xs; if length(alias) == 0 { return -1; } } return Shape(xs); "
+        "}\n"
+        "pub Passed :: () -> int { xs := Make(4); "
+        "n := Param(xs, true); return n * 100 + Shape(xs); }\n"
+        "pub Looped :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
+        "total := 0; for i in 0..<3 { row := rows[0]; total += length(row); } "
+        "return total * 100 + Shape(rows[0]); }\n"
+        "pub Broken :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
+        "total := 0; for i in 0..<3 { if i == 1 { break; } row := rows[0]; "
+        "total += length(row); } return total * 100 + Shape(rows[0]); }\n"
+        "pub Continued :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
+        "total := 0; for i in 0..<3 { if i == 1 { continue; } row := rows[0]; "
+        "total += length(row); } return total * 100 + Shape(rows[0]); }\n"
+        "pub Returned :: () -> int { rows: int[][] = [Make(3), Make(1)]; "
+        "total := 0; for i in 0..<3 { if i == 1 { return total * 100 + "
+        "Shape(rows[0]); } row := rows[0]; total += length(row); } return -1; "
+        "}\n"
+        "pub Element :: () -> int { pairs: Pair[] = [Pair.Row(Make(2)), "
+        "Pair.None]; "
+        "if length(pairs) > 0 { pair := pairs[0]; if Width(pair) < 0 { return "
+        "-1; } } "
+        "return Width(pairs[0]); }\n"
+        "pub Whole :: () -> int { held := Pair.Row(Make(3)); "
+        "if Width(held) > 0 { alias := held; if Width(alias) < 0 { return -1; "
+        "} } "
+        "return Width(held); }\n";
+    const sequence_case cases[] = {
+        { "Scoped", 22 },  { "Passed", 4444 },   { "Looped", 933 },
+        { "Broken", 333 }, { "Continued", 633 }, { "Returned", 333 },
+        { "Element", 22 }, { "Whole", 33 },
+    };
+    return sequence_results(source, cases, sizeof cases / sizeof *cases);
+}
 TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied)
 {
     const char *source =
@@ -4393,6 +4445,7 @@ void test_language_execution()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(execution_sequence_values_copy_at_ownership_boundaries);
+    RUN_TEST_CASE(execution_scoped_lent_locals_leave_their_owner_intact);
     RUN_TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied);
     RUN_TEST_CASE(execution_pointer_views_follow_rebinding_and_fixed_positions);
     RUN_TEST_CASE(execution_sequence_places_preserve_effectful_evaluation_order);

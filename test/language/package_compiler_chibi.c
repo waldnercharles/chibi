@@ -1242,6 +1242,136 @@ static const sample samples[] = {
           { .function = "ViewedPair", .arguments = "[]",
             .expected = "[2]" },
       } },
+    { .name = "scoped lent locals",
+      .group = COLLECTION_SAMPLES,
+      .source =
+                "package facts\n"
+                "Pair :: union { Row(xs: int[]) | None }\n"
+                "Make :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n"
+                "    for i in 0..<n {\n"
+                "        xs.append(i + 1);\n"
+                "    }\n"
+                "    return xs;\n"
+                "}\n"
+                "Shape :: (xs: int[]) -> int {\n"
+                "    return length(xs) * 10 + xs[length(xs) - 1];\n"
+                "}\n"
+                "Width :: (p: Pair) -> int {\n"
+                "    switch p {\n"
+                "        case .Row(xs):\n"
+                "            return Shape(xs);\n"
+                "        case:\n"
+                "            return -1;\n"
+                "    }\n"
+                "}\n"
+                "Param :: (xs: int[], flag: bool) -> int {\n"
+                "    if flag {\n"
+                "        alias := xs;\n"
+                "        if length(alias) == 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Shape(xs);\n"
+                "}\n"
+                "Scoped :: () -> int {\n"
+                "    xs := Make(2);\n"
+                "    if length(xs) > 0 {\n"
+                "        alias := xs;\n"
+                "        if length(alias) == 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Shape(xs);\n"
+                "}\n"
+                "Passed :: () -> int {\n"
+                "    xs := Make(4);\n"
+                "    n := Param(xs, true);\n"
+                "    return n * 100 + Shape(xs);\n"
+                "}\n"
+                "Looped :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
+                "    }\n"
+                "    return total * 100 + Shape(rows[0]);\n"
+                "}\n"
+                "Broken :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        if i == 1 {\n"
+                "            break;\n"
+                "        }\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
+                "    }\n"
+                "    return total * 100 + Shape(rows[0]);\n"
+                "}\n"
+                "Continued :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        if i == 1 {\n"
+                "            continue;\n"
+                "        }\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
+                "    }\n"
+                "    return total * 100 + Shape(rows[0]);\n"
+                "}\n"
+                "Returned :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        if i == 1 {\n"
+                "            return total * 100 + Shape(rows[0]);\n"
+                "        }\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
+                "    }\n"
+                "    return -1;\n"
+                "}\n"
+                "Element :: () -> int {\n"
+                "    pairs: Pair[] = [Pair.Row(Make(2)), Pair.None];\n"
+                "    if length(pairs) > 0 {\n"
+                "        pair := pairs[0];\n"
+                "        if Width(pair) < 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Width(pairs[0]);\n"
+                "}\n"
+                "Whole :: () -> int {\n"
+                "    held := Pair.Row(Make(3));\n"
+                "    if Width(held) > 0 {\n"
+                "        alias := held;\n"
+                "        if Width(alias) < 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Width(held);\n"
+                "}\n",
+      .calls = {
+          { .function = "Scoped", .arguments = "[]",
+            .expected = "[22]" },
+          { .function = "Passed", .arguments = "[]",
+            .expected = "[4444]" },
+          { .function = "Looped", .arguments = "[]",
+            .expected = "[933]" },
+          { .function = "Broken", .arguments = "[]",
+            .expected = "[333]" },
+          { .function = "Continued", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "Returned", .arguments = "[]",
+            .expected = "[333]" },
+          { .function = "Element", .arguments = "[]",
+            .expected = "[22]" },
+          { .function = "Whole", .arguments = "[]",
+            .expected = "[33]" },
+      } },
     { .name = "removed union elements",
       .group = COLLECTION_SAMPLES,
       .source =

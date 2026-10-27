@@ -67,6 +67,7 @@ typedef struct
     int borrowed_expression;
     script_occurrences *occurrences; /* Made by the first debugger point. */
     bool *written; /* Per symbol, made by the first symbol_written. */
+    bool *lent;    /* Per symbol, made by the first lent declaration. */
 } lower;
 static uint64_t document_id(const script_analysis *analysis, script_range range)
 {
@@ -5717,7 +5718,14 @@ static store_mode declaration_mode(lower *l, const script_statement *s, bool sam
         }
         return STORE_COPY;
     }
-    return lends_declaration(l, s) ? STORE_LEND : STORE_COPY;
+    if (!lends_declaration(l, s)) {
+        return STORE_COPY;
+    }
+    if (!l->lent) {
+        l->lent = xcalloc((size_t)l->a->symbol_count + 1, sizeof *l->lent);
+    }
+    l->lent[s->symbol] = true;
+    return STORE_LEND;
 }
 /* Writable locals occupy stable data banks, which are also runtime roots.
  * Drop those roots on scope exit, after moving any escaped references into
@@ -5765,7 +5773,8 @@ static void leave_scope(lower *l, int scope, script_range range)
             int bank = l->addresses[symbol];
             if (s->boxed || s->type.storage == PIN_POINTER) {
                 release(l, bank_reference(l, bank, s->type, range), range);
-            } else {
+            } else if (!l->lent || !l->lent[symbol]) {
+                /* A lent local shares its owner's value: the owner drops it. */
                 drop_value(l, host_result(l, bank, s->type, range), s->type, range);
             }
             clear_value(l, bank, s->type, range);
@@ -7571,6 +7580,7 @@ behavior_function_builder *script_lower_evaluator_reference(
     emit_value_evaluator(&l, expressions, types, count, range);
     free(l.variables);
     free(l.written);
+    free(l.lent);
     afree(l.temporaries);
     script_occurrences_free(l.occurrences);
     if (l.failed) {
@@ -8858,6 +8868,7 @@ static execution_module_plan *lower_analysis(
     }
     free(l.constant_values);
     free(l.written);
+    free(l.lent);
     afree(l.loops);
     afree(l.temporaries);
     script_occurrences_free(l.occurrences);

@@ -70,12 +70,14 @@ int source_publish(
     size_t size
 );
 /* Binds each native library manifest to the registered module that defines
- * its functions, and makes every registered program call the bound entries.
- * Call once, after the last publication and before any attachment; the
- * manifests outlive the registry. A manifest that no module defines, or that
- * does not bind, fails with why and leaves the programs in the VM. */
+ * its functions, and makes every registered program call the bound entries,
+ * which call `runtime`. Call once, after the last publication and before any
+ * attachment; the manifests outlive the registry. A manifest that no module
+ * defines, or that does not bind, fails with why and leaves the programs in
+ * the VM. */
 int source_bind_natives(
     source_registry *,
+    execution_native_runtime runtime,
     const execution_native_manifest *const *,
     int count,
     char *error,

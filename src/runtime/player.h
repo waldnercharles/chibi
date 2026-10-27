@@ -78,9 +78,10 @@ typedef struct
     int module_count;
     const execution_prepared_linker *linker;
     /* Native library manifests the modules' library functions bind to, which
-     * outlive the player. */
+     * outlive the player, and the VM's operations they call. */
     const execution_native_manifest *const *natives;
     int native_count;
+    execution_native_runtime native_runtime;
     behavior_backend backend;
     const player_prototype *prototypes;
     int prototype_count;

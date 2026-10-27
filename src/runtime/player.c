@@ -366,7 +366,8 @@ player *player_new(const player_spec *spec, char *error, size_t size)
      * destroys the unpublished-to-host player as one owned unit. */
     source_commit(stage);
     source_registry *sources = world_sources(p->world);
-    if (source_bind_natives(sources, spec->natives, spec->native_count, error, size) != 0) {
+    int bound = source_bind_natives(sources, spec->native_runtime, spec->natives, spec->native_count, error, size);
+    if (bound != 0) {
         goto reject;
     }
     for (int i = 0; i < spec->scene_count; i++) {

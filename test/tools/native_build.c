@@ -338,6 +338,11 @@ TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back)
     REQUIRE(build(launcher, "-O0", tools) == 1);
     snprintf(expected, sizeof expected, "%s/Main.chibi:a native library has no entry", game);
     REQUIRE(strstr(errors, expected));
+    /* Formatting calls the runtime, which only the VM supplies. */
+    write_at(game, "Main.chibi", "package scalar\nMain :: () -> int {\n    return text_byte_length(format_text(\"{}\", i64(7)));\n}\n");
+    REQUIRE(build(launcher, "-O0", tools) == 1);
+    snprintf(expected, sizeof expected, "%s/Main.chibi:a native program cannot call the runtime", game);
+    REQUIRE(strstr(errors, expected));
     char *after = tool_read(receipt);
     bool kept = after && !strcmp(before, after);
     free(after);

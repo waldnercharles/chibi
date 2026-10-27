@@ -380,6 +380,7 @@ player *player_prepared_read(
                          .linker = host->linker ? &linker : NULL,
                          .natives = host->natives,
                          .native_count = host->native_count,
+                         .native_runtime = host->native_runtime,
                          .backend = backend };
     player *player = NULL;
     package_module *modules = NULL;

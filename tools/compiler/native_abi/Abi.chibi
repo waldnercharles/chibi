@@ -122,7 +122,7 @@ pub TextType :: () -> string {
 // The version of the export manifest a library object holds, which the
 // runtime checks before binding it: EXECUTION_NATIVE_ABI in
 // src/execution/native.h.
-pub ExportAbi: int : 1;
+pub ExportAbi: int : 2;
 // The most parameters an entry of that ABI takes:
 // EXECUTION_NATIVE_MAX_PARAMETERS. A function with more stays callable only
 // inside its library.
@@ -141,4 +141,27 @@ pub ExportType :: (storage: int) -> int {
         }
     }
     return 0;
+}
+// The LLVM type of a value native code passes the runtime,
+// execution_native_value: its type, a text's length, a scalar's word, then a
+// text's bytes.
+pub ValueType :: () -> string {
+    return "{ i32, i32, i64, ptr }";
+}
+// EXECUTION_NATIVE_TEXT, the type of a string the runtime is passed, after
+// ExportType's.
+TextTag: int : 12;
+// The type a runtime value of this storage records: ExportType's, or a
+// string's, or 0 when none carries it.
+pub ValueTag :: (storage: int) -> int {
+    if (storage == TextStorage) {
+        return TextTag;
+    }
+    return ExportType(storage);
+}
+// The LLVM type of execution_native_context, the hidden first parameter of
+// every function of a module that calls the runtime: a pointer to each
+// operation, `format_text(context, values, count, result)` first.
+pub ContextType :: () -> string {
+    return "{ ptr }";
 }

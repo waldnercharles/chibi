@@ -5,10 +5,22 @@
 #include "execution/scalar.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/text.h"
 
 #include <assert.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+/* native_abi.ValueType() and ContextType() spell these layouts. */
+_Static_assert(offsetof(execution_native_value, type) == 0, "value type");
+_Static_assert(offsetof(execution_native_value, length) == 4, "value length");
+_Static_assert(offsetof(execution_native_value, bits) == 8, "value bits");
+_Static_assert(offsetof(execution_native_value, bytes) == 16, "value bytes");
+_Static_assert(sizeof(execution_native_value) == 24, "value size");
+_Static_assert(offsetof(execution_native_context, format_text) == 0, "context format_text");
+_Static_assert(sizeof(execution_native_context) == sizeof(void (*)()), "context size");
 
 typedef struct
 {
@@ -19,11 +31,15 @@ typedef struct
 struct execution_natives
 {
     native_binding *bindings;
+    execution_native_runtime runtime;
 };
 
-execution_natives *execution_natives_new()
+execution_natives *execution_natives_new(execution_native_runtime runtime)
 {
-    return xcalloc(1, sizeof(execution_natives));
+    assert(runtime.format_text);
+    execution_natives *natives = xcalloc(1, sizeof(execution_natives));
+    natives->runtime = runtime;
+    return natives;
 }
 void execution_natives_free(execution_natives *natives)
 {
@@ -195,7 +211,51 @@ static pin_value from_word(pin_type type, uint64_t bits)
         default: return behavior_scalar_from_bits(type, bits);
     }
 }
+/* A runtime value as the pin_value the VM would pass, its text in `text`. */
+static pin_value runtime_value(const execution_native_value *value, pin_string *text)
+{
+    if (value->type == EXECUTION_NATIVE_TEXT) {
+        *text = (pin_string){ value->bytes, value->length };
+        return (pin_value){ .type = PIN_STR, .text = text };
+    }
+    pin_type type = pin_of((int)value->type);
+    assert(type != PIN_FLOW);
+    return from_word(type, value->bits);
+}
+/* Until native code reports failures, one ends the program with its message,
+ * as an index out of range does. */
+static void format_text(
+    execution_native_context *context,
+    const execution_native_value *values,
+    int32_t count,
+    pin_string *result
+)
+{
+    assert(count >= 1);
+    execution_native_frame *frame = (execution_native_frame *)context;
+    pin_value *inputs = arena_alloc(&frame->heap, sizeof *inputs * (size_t)count);
+    pin_string *texts = arena_alloc(&frame->heap, sizeof *texts * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        inputs[i] = runtime_value(&values[i], &texts[i]);
+    }
+    pin_value text;
+    const char *error = frame->runtime.format_text(&frame->heap, inputs, count, &text);
+    if (error) {
+        fprintf(stderr, "native format_text: %s\n", error);
+        abort();
+    }
+    *result = pin_text(text);
+}
+void execution_native_frame_init(execution_native_frame *frame, execution_native_runtime runtime)
+{
+    *frame = (execution_native_frame){ .context = { format_text }, .runtime = runtime };
+}
+void execution_native_frame_free(execution_native_frame *frame)
+{
+    arena_free(&frame->heap);
+}
 void execution_native_call(
+    const execution_natives *natives,
     const execution_native_export *native,
     const behavior_function *function,
     const pin_value *arguments,
@@ -213,7 +273,10 @@ void execution_native_call(
     for (int p = 0; p < parameters; p++) {
         in[p] = word(behavior_function_argument(arguments, count, p, declared[p]));
     }
-    native->entry(in, out);
+    execution_native_frame frame;
+    execution_native_frame_init(&frame, natives->runtime);
+    native->entry(&frame.context, in, out);
+    execution_native_frame_free(&frame);
     for (int r = 0; r < result_count && r < declared_results; r++) {
         results[r] = from_word(defaults[r].type, out[r]);
     }

@@ -147,7 +147,10 @@ package scalar_facts
 // recent, a string then an index, to give the byte there, 0 to 255, or -1
 // outside the string; TextSlice consumes the three most recent, a string,
 // then a start and a count, to give the string of those bytes, its start
-// clamped to the string and its count to the bytes after the start. The
+// clamped to the string and its count to the bytes after the start; and
+// TextFormat consumes the `count` most recent, at least one, a string format
+// then each argument, a number, bool or string of its own type, to give the
+// string format_text makes of them, which the runtime allocates. The
 // indexes, starts, counts and byte counts are ints. A record
 // literal is a Zero row with the literal's range, then each
 // field's value in source order and its Update, with the field's range. An
@@ -269,10 +272,12 @@ pub Not: int : 3;
 pub LogicalAnd: int : 1;
 pub LogicalOr: int : 2;
 
-// Text operators: the runtime's text_byte_length, text_byte_at and text_slice.
+// Text operators: the runtime's text_byte_length, text_byte_at, text_slice
+// and format_text.
 pub TextLength: int : 1;
 pub TextByte: int : 2;
 pub TextSlice: int : 3;
+pub TextFormat: int : 4;
 
 // A For row's range flags.
 pub RangeExclusive: int : 1;

@@ -1882,6 +1882,26 @@ static bool registration(const char *file, const char *needle)
     REQUIRE(found);
     return true;
 }
+/* An export in another target does not make its headers visible here. These
+ * guards intentionally stay within one function's selected target block. */
+static bool graph_target_registration(const char *section, const char *target, const char *needle)
+{
+    char filename[GRAPH_PATH], declaration[128], selection[128];
+    snprintf(filename, sizeof filename, "%s/tools/graph/engine/Targets.chibi", CHIBI_SOURCE_ROOT);
+    snprintf(declaration, sizeof declaration, "pub %s ::", section);
+    snprintf(selection, sizeof selection, "if (target == \"%s\") {", target);
+    char *text = tool_read(filename);
+    REQUIRE(text);
+    const char *function = strstr(text, declaration);
+    const char *next = function ? strstr(function + 1, "\npub ") : NULL;
+    const char *block = function ? strstr(function, selection) : NULL;
+    const char *end = block ? strstr(block, "\n    }") : NULL;
+    const char *match = block ? strstr(block, needle) : NULL;
+    bool found = block && (!next || block < next) && end && match && match < end;
+    free(text);
+    REQUIRE(found);
+    return true;
+}
 TEST_CASE(language_delivery_registrations_match)
 {
     const char *calls[] = { "test_language_execution_scope",
@@ -1896,6 +1916,38 @@ TEST_CASE(language_delivery_registrations_match)
         snprintf(source, sizeof source, "test/language/%s", sources[i]);
         REQUIRE(registration("tools/graph/engine/Targets.chibi", source));
     }
+    REQUIRE(registration("test/language/main.c", "test_language_parallel"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "test/parallel.c"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "parallel.c)"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "test/parallel.h"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "CHIBI_TEST_ENKITS=1"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "Chibi::task_scheduler"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/parallel.c"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/language/parallel.c"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/parallel.h=test/parallel.h"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "CHIBI_TEST_ENKITS=1"));
+    const char *owners[] = { "conversion_capabilities",
+                             "tasks",
+                             "task_pool_runtime",
+                             "types",
+                             "types" };
+    const char *headers[] = { "runtime/conversions.h",
+                              "runtime/tasks.h",
+                              "runtime/task_pool.h",
+                              "types/text.h",
+                              "types/value_format.h" };
+    for (int i = 0; i < 5; i++) {
+        char include[128], target[128], header[128];
+        snprintf(include, sizeof include, "\"public/%s\"", owners[i]);
+        snprintf(target, sizeof target, "chibi_%s", owners[i]);
+        snprintf(header, sizeof header, "\"%s\"", headers[i]);
+        REQUIRE(graph_target_registration("Includes", "test_language", include));
+        REQUIRE(graph_target_registration("PublicHeaders", target, header));
+    }
+    REQUIRE(graph_target_registration("Defines", "test_language", "\"CHIBI_PACKAGE_TEST_POOL=1\""));
+    REQUIRE(
+        registration("test/language/CMakeLists.txt", "Chibi::task_pool_runtime Chibi::conversion_capabilities")
+    );
     REQUIRE(registration("test/language/CMakeLists.txt", "execution_scope.c"));
     REQUIRE(registration("test/language/CMakeLists.txt", "include(asset_packaging_chibi.cmake)"));
     REQUIRE(registration("test/language/CMakeLists.txt", "include(shader_source_chibi.cmake)"));

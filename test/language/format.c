@@ -1,6 +1,7 @@
 #include "authoring/source_format.h"
 #include "authoring/source_minimize.h"
 #include "runtime/core_definition.h"
+#include "test/parallel.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <ctype.h>
@@ -8,11 +9,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-static script_syntax *source, *formatted;
-static char *text, *again;
-static authoring_format_map edit_map;
-static script_analysis *state_before, *state_after;
-static native_capabilities *core_native;
+static _Thread_local script_syntax *source, *formatted;
+static _Thread_local char *text, *again;
+static _Thread_local authoring_format_map edit_map;
+static _Thread_local script_analysis *state_before, *state_after;
+static _Thread_local native_capabilities *core_native;
 
 static void cleanup()
 {
@@ -36,7 +37,7 @@ static bool format(const char *input)
     char error[192];
     text = authoring_source_format(source, error, sizeof error);
     if (!text) {
-        fprintf(stderr, "format: %s\n", error);
+        fprintf(pu_errors(), "format: %s\n", error);
         return false;
     }
     formatted = script_parse(text);
@@ -74,13 +75,19 @@ static bool configured(const char *input, authoring_format_options options)
     char error[192];
     text = authoring_source_format_with_options(source, &options, &edit_map, error, sizeof error);
     if (!text) {
-        fprintf(stderr, "configured format: %s\n", error);
+        fprintf(pu_errors(), "configured format: %s\n", error);
         return false;
     }
     formatted = script_parse(text);
     again = authoring_source_format_with_options(formatted, &options, NULL, error, sizeof error);
     if (!again || strcmp(text, again)) {
-        fprintf(stderr, "configured format is not idempotent: %s\n%s\n%s\n", error, text, again ? again : "<null>");
+        fprintf(
+            pu_errors(),
+            "configured format is not idempotent: %s\n%s\n%s\n",
+            error,
+            text,
+            again ? again : "<null>"
+        );
         return false;
     }
     return !formatted->diagnostic_count && !strcmp(source->text, input);
@@ -800,7 +807,7 @@ static bool minimize_in(const script_catalog *in, const char *input, const char 
 {
     text = authoring_source_minimize(input, in, "Demo");
     if (strcmp(text, expected)) {
-        fprintf(stderr, "minimize:\n%s\nexpected:\n%s\n", text, expected);
+        fprintf(pu_errors(), "minimize:\n%s\nexpected:\n%s\n", text, expected);
         return false;
     }
     return true;
@@ -1389,7 +1396,7 @@ TEST_CASE(source_migration_preserves_deferred_setter_actions_and_results)
     char error[256];
     text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
     if (!text) {
-        fprintf(stderr, "deferred migration: %s\n", error);
+        fprintf(pu_errors(), "deferred migration: %s\n", error);
     }
     REQUIRE(text && !strstr(text, "set_velocity_x"));
     REQUIRE(strstr(text, "action update = import_component_write_"));
@@ -1414,7 +1421,7 @@ TEST_CASE(source_canonical_is_idempotent_for_compact_property_helpers)
     REQUIRE(text);
     again = authoring_source_canonical(text, &component_catalog, "Demo", error, sizeof error);
     if (!again || strcmp(text, again)) {
-        fprintf(stderr, "canonical first:\n%s\nsecond:\n%s\n", text, again ? again : error);
+        fprintf(pu_errors(), "canonical first:\n%s\nsecond:\n%s\n", text, again ? again : error);
     }
     REQUIRE(again && !strcmp(text, again));
     REQUIRE(strstr(text, "/* retained */"));
@@ -1459,7 +1466,7 @@ static bool core_migration_catalog()
         sizeof error
     );
     if (!core_native) {
-        fprintf(stderr, "core migration catalog: %s\n", error);
+        fprintf(pu_errors(), "core migration catalog: %s\n", error);
     }
     return core_native != NULL;
 }
@@ -1489,7 +1496,7 @@ TEST_CASE(source_migration_matches_core_self_effects_in_each_program_context)
         char error[256];
         text = authoring_source_migrate_generated(inputs[i], catalog, "Demo", error, sizeof error);
         if (!text) {
-            fprintf(stderr, "core Self migration: %s\n", error);
+            fprintf(pu_errors(), "core Self migration: %s\n", error);
         }
         REQUIRE(text && !strstr(text, "Self()"));
         REQUIRE(i == 2 || strstr(text, "e := self"));
@@ -1637,7 +1644,7 @@ TEST_CASE(source_migration_normalizes_generated_calls_and_library_owner)
     char error[256];
     text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
     if (!text) {
-        fprintf(stderr, "migration: %s\n", error);
+        fprintf(pu_errors(), "migration: %s\n", error);
     }
     REQUIRE(text);
     REQUIRE(strstr(text, "e := self") && strstr(text, "self.Velocity.x"));
@@ -1707,7 +1714,7 @@ TEST_CASE(source_migration_commutes_stable_self_with_deferred_receiver)
     char error[256];
     text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
     if (!text) {
-        fprintf(stderr, "stable self migration: %s\n", error);
+        fprintf(pu_errors(), "stable self migration: %s\n", error);
     }
     REQUIRE(text && !strstr(text, "set_link_parent"));
     REQUIRE(strstr(text, "action attach = import_component_write_"));
@@ -1921,15 +1928,18 @@ TEST_CASE(source_format_preserves_explicit_reference_arguments)
 
 void test_language_root_state()
 {
+    test_parallel_begin();
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_minimize_elides_only_redundant_root_state_tokens);
     RUN_TEST_CASE(source_format_preserves_state_tokens_and_minimizer_keeps_invalid_source);
     RUN_TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes);
     pu_clear_setup();
+    test_parallel_end();
 }
 
 void test_language_format()
 {
+    test_parallel_begin();
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_spaces_managed_pointers_and_xor);
     RUN_TEST_CASE(source_format_keeps_named_payload_fields);
@@ -1994,4 +2004,5 @@ void test_language_format()
     RUN_TEST_CASE(source_format_preserves_state_tokens_and_minimizer_keeps_invalid_source);
     RUN_TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes);
     pu_setup(NULL, NULL);
+    test_parallel_end();
 }

@@ -18,6 +18,13 @@ directory, it also emits each module it runs for the other targets
   both VMs and the native Linux runs gave: `call SYMBOL EXPECTED COUNT
   ARGUMENTS...`.
 
+`native-build` (`test/tools/native_build.c`) adds programs that
+`chibi build --native --target` links on Linux, at O0 and O2, and one with a
+256 KiB frame, which Windows code probes through the program's `__chkstk`.
+`<target>/programs.txt` lists each as `program NAME STATUS`, and the program
+is `<target>/programs/NAME`. The projects group, which runs `native-build`,
+runs before the language group, so CI's bundle holds both.
+
 The Linux cases that supervise a hung or overflowing native call, and the
 lazy-arm and lookup-table checks that rewrite or hand-write IR, stay on
 Linux.
@@ -27,7 +34,9 @@ shared library, with `clang -dynamiclib` on macOS and `lld-link /dll
 /noentry /nodefaultlib` with an export per called symbol on Windows, then
 loads it and calls each symbol: `chibi_scalar` with no arguments, returning
 an `int32_t`, and each `probe_` adapter with its `int64_t` arguments,
-returning an `int64_t`. Every value must match. The engine's test drivers do
+returning an `int64_t`. Every value must match. Then it runs each listed
+program and checks its exit status; on macOS it first marks each one
+executable, since artifacts keep no file modes. The engine's test drivers do
 not build on Windows yet, so `run.c` stands alone and clang builds it with
 no other source.
 

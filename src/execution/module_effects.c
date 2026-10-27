@@ -104,6 +104,54 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
     }
     return host->capability_id;
 }
+
+bool behavior_function_hosts_pure(const behavior_function *root)
+{
+    const behavior_function **functions = NULL;
+    apush(functions, root);
+    int steps = EFFECT_STEPS;
+    bool valid = true;
+    for (int at = 0; valid && at < acount(functions); at++) {
+        const behavior_function *f = functions[at];
+        if (!f || !f->frozen || acount(functions) > EFFECT_RECORDS ||
+            acount(f->queries) || acount(f->commands)) {
+            valid = false;
+            break;
+        }
+        for (int i = 0; valid && i < acount(f->host_calls); i++) {
+            const behavior_function_host_call *host = &f->host_calls[i];
+            if (--steps < 0) {
+                valid = false;
+                break;
+            }
+            if (intrinsic(host)) {
+                continue;
+            }
+            const node_access *access = host->access;
+            valid = access && (access->flags & NODE_EFFECT_PURE) &&
+                    !(access->flags & ~(NODE_EFFECT_PURE | NODE_EFFECT_PARALLEL)) &&
+                    !access->read_count && !access->write_count &&
+                    !access->read_refs && !host->call->service &&
+                    !host->call->missing_service && !host->call->action;
+        }
+        for (int i = 0; valid && i < acount(f->calls); i++) {
+            const behavior_function_invocation *call = &f->calls[i];
+            bool seen = false;
+            for (int j = 0; j < acount(functions); j++) {
+                if (--steps < 0 || call->task) {
+                    valid = false;
+                    break;
+                }
+                seen |= functions[j] == call->function;
+            }
+            if (valid && !seen) {
+                apush(functions, call->function);
+            }
+        }
+    }
+    afree(functions);
+    return valid;
+}
 static bool plain(pin_value v)
 {
     if (v.container != PIN_CONTAINER_SINGLE) {

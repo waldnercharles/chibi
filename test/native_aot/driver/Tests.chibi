@@ -86,9 +86,9 @@ Tests :: () -> int {
     triple := "target triple = \"x86_64-unknown-linux-gnu\"";
     wrong := "target triple = \"aarch64-unknown-linux-gnu\"";
     text := build.read_file(input);
-    // Canonical metadata, not target-looking comments or a raw substring. A
-    // program links for Linux x86-64 only, though objects may be for macOS
-    // arm64 or Windows x64.
+    // Canonical metadata, not target-looking comments or a raw substring.
+    // Another target's triple with this module's Linux layout is a crossed
+    // pair.
     replacements := ["", wrong, Join([triple, "\n", wrong]),
                      "target triple = \"arm64-apple-macosx11.0.0\"",
                      "target triple = \"x86_64-pc-windows-msvc\"",

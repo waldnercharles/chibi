@@ -112,21 +112,27 @@ Lanes:
 The [census](native-compiler-census.md) (W21) gives each of the 642 functions
 in the self-hosted compiler's bootstrap closure the first rejection the
 producer gives it, after flattening imports (W13) and constants (W12) into one
-package. On main at `5877b94` (27 October 2026):
+package. With native strings (W3, #740) on main at `018755f` (27 October
+2026):
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 346 |
-| W27 | the producer's size limits | 109 |
-| W3 | string parameters and results | 99 |
-| none | passes the producer | 64 |
-| W9 | strings and arrays in records and unions | 24 |
+| W7 | array parameters, results and natives | 359 |
+| W27 | the producer's size limits | 119 |
+| none | passes the producer | 70 |
+| W9 | strings and arrays in records and unions | 47 |
+| W4 | text natives | 34 |
+| W6 | `format_text` | 9 |
+| none yet | other forms | 4 |
 
-W27's 109 are 50 functions with more than 8 parameters, 26 with a record of
-more than 16 fields, 22 naming more than 16 records and unions, 9 over 16 KB of
-flattened source and 2 over 64 operands. Of the 64 that pass, 25 need neither
-flattening, 37 need only W12 and 2 only W13. In all, 322 functions name another
-package and 265 a package constant.
+W3 removed all 99 of its first blockers. Those functions now stop at the next
+package's feature, mostly W7's arrays, W9's string fields and W4's
+`text_byte_length`. W27's 119 are 52 functions with more than 8 parameters, 28
+with a record of more than 16 fields, 22 naming more than 16 records and
+unions, 9 over 16 KB of flattened source and 8 over 64 operands. The 4 others
+build a `string[]` literal, which waits for W7. Of the 70 that pass, 30 need
+neither flattening. In all, 325 functions name another package and 267 a
+package constant.
 
 The producer checks every signature before any body, so a count shows the
 first blocker only, and the next one appears when its package lands. Rerun

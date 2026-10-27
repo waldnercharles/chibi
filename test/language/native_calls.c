@@ -6,6 +6,7 @@
 #include "execution/inspection.h"
 #include "execution/native.h"
 #include "execution/status.h"
+#include "runtime/behaviors/source.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
@@ -509,6 +510,80 @@ TEST_CASE(native_calls_bind_each_function_once)
     return true;
 }
 
+/* The Probe's states after each Tick, run as a player runs it: the library
+ * and the Probe registered as sources, then `count` manifests bound through
+ * the registry, which must give `reason` when it is not NULL. */
+static bool registered(
+    const execution_native_manifest *const *manifests,
+    int count,
+    const char *reason,
+    probe_states out[TICKS]
+)
+{
+    char error[256] = "";
+    ecs_world *ecs = ecs_world_new();
+    source_registry *registry = source_registry_new(ecs);
+    const source_publication entries[] = {
+        { .name = "Native", .module = source("Native")->module },
+        { .name = "Probe", .module = source("Probe")->module },
+    };
+    REQUIRE(source_publish(registry, entries, 2, NULL, error, sizeof error) == FLOW_OK);
+    int bound = source_bind_natives(registry, manifests, count, error, sizeof error);
+    if (reason ? bound == 0 || strcmp(error, reason) : bound != 0) {
+        fprintf(stderr, "registry natives: %s\n", error);
+    }
+    REQUIRE(reason ? bound < 0 && !strcmp(error, reason) : bound == 0);
+    ecs_entity entity = ecs_world_create_entity(ecs);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    REQUIRE(source_attach(registry, entity, "Probe", false, 0, 0) == FLOW_OK);
+    const execution_instance *instance = execution_program_instance(
+        source_program(registry, "Probe"),
+        ecs_entity_to_u64(entity)
+    );
+    for (int i = 0; i < TICKS; i++) {
+        const pin_value arg = { .type = PIN_F32, .f = CELLS[i] };
+        REQUIRE(source_dispatch(registry, entity, "Tick", &arg, 1, i, 0) >= 0);
+        REQUIRE(source_step(registry, i, 0) == FLOW_OK && states(instance, &out[i]));
+    }
+    source_registry_free(registry);
+    ecs_world_free(ecs);
+    return true;
+}
+/* A host binds manifests through the registry, as the player does: each
+ * binds to the registered module that defines its functions, and the
+ * programs then call its entries. A manifest that no module defines, or one
+ * that does not bind, fails and leaves every call in the VM; one of another
+ * ABI is not read past its version. */
+TEST_CASE(native_calls_bind_through_the_registry)
+{
+    static const uint8_t INT_INT[] = { EXECUTION_NATIVE_INT, EXECUTION_NATIVE_INT };
+    const execution_native_export absent[] = { exported("Absent", INT_INT, 1, reward) };
+    const execution_native_export twice[] = { EXPORTS[0], EXPORTS[0] };
+    const execution_native_manifest elsewhere = { EXECUTION_NATIVE_ABI, 1, absent },
+                                    unbound = { EXECUTION_NATIVE_ABI, 2, twice },
+                                    empty = { EXECUTION_NATIVE_ABI, 0, NULL },
+                                    newer = { EXECUTION_NATIVE_ABI + 1, 1, NULL };
+    const execution_native_manifest *const whole[] = { &empty, &MANIFEST };
+    const execution_native_manifest *const missing[] = { &MANIFEST, &elsewhere };
+    const execution_native_manifest *const failing[] = { &unbound };
+    const execution_native_manifest *const other[] = { &newer };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare(backends[b]));
+        probe_states vm[TICKS], native[TICKS], rejected[TICKS];
+        calls = 0;
+        REQUIRE(registered(NULL, 0, NULL, vm) && !calls);
+        REQUIRE(registered(whole, 2, NULL, native) && calls == TICK_CALLS * TICKS);
+        REQUIRE(same_states(vm, native));
+        calls = 0;
+        REQUIRE(registered(missing, 2, "native export Absent has no source module", rejected));
+        REQUIRE(registered(failing, 1, "native export Reward is exported twice", rejected));
+        REQUIRE(registered(other, 1, "native library ABI 2 differs from 1", rejected));
+        REQUIRE(!calls && same_states(vm, rejected));
+        clear();
+    }
+    return true;
+}
+
 TEST_SUITE(native_calls)
 {
     RUN_TEST_CASE(native_calls_match_the_vm);
@@ -516,6 +591,7 @@ TEST_SUITE(native_calls)
     RUN_TEST_CASE(native_calls_reject_mismatched_exports);
     RUN_TEST_CASE(native_calls_reject_reference_exports);
     RUN_TEST_CASE(native_calls_bind_each_function_once);
+    RUN_TEST_CASE(native_calls_bind_through_the_registry);
 }
 
 void test_language_native_calls()

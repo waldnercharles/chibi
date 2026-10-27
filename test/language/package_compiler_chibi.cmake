@@ -48,9 +48,11 @@ endforeach()
 configure_file(package_compiler_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/package_compiler_chibi_source.h" @ONLY)
 target_sources(test_language PRIVATE package_compiler_chibi.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/host/native_libraries.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/host/process.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/host/stack_overflow.c")
 set_source_files_properties(package_compiler_chibi.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/host/native_libraries.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/host/process.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/host/stack_overflow.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

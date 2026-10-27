@@ -271,6 +271,14 @@ static const char driver_routes
          "name.endswith('-benchmark'):\n"
          "            print(name, policy.tool_command(name)[-1])\n"
          "    sys.exit(0)\n"
+         "if sys.argv[2] == 'inner-pool-route':\n"
+         "    name = sys.argv[5]\n"
+         "    print(int(name in policy.PARALLEL_RESOURCES),\n"
+         "          policy.GROUPS['language'].count(name))\n"
+         "    if name == 'language-package-compiler-chibi-scalar':\n"
+         "        command = policy.tool_command(name)\n"
+         "        print(len(command), Path(command[0]).name, *command[1:])\n"
+         "    sys.exit(0)\n"
          "if sys.argv[2] == 'bootstrap-route':\n"
          "    command = policy.tool_command('compiler-bootstrap')\n"
          "    print(len(command), Path(command[0]).name, command[1],\n"
@@ -2728,6 +2736,34 @@ TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work)
     return true;
 }
 
+/* Inner pools own their CPU budget. Outer admission must remain exclusive,
+ * without removing the selector or replacing its real command. */
+TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered)
+{
+    const struct
+    {
+        const char *name, *expected;
+    } cases[] = {
+        { "language", "0 1\n" },
+        { "language-format", "0 1\n" },
+        /* A focused alias: the format selector already runs its three cases. */
+        { "language-root-state", "0 0\n" },
+        { "language-test-parallel", "0 1\n" },
+        { "language-package-tests", "0 1\n" },
+        { "language-compiler-fixture", "0 1\n" },
+        { "language-package-compiler-chibi-scalar",
+          "0 1\n2 test_language --package-compiler-chibi-scalar\n" }
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        REQUIRE(run("inner-pool-route", cases[i].name) == 0);
+        char *output = tool_read(logpath);
+        bool exclusive = output && !strcmp(output, cases[i].expected);
+        free(output);
+        REQUIRE(exclusive);
+    }
+    return true;
+}
+
 TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work)
 {
     const char *names[] = { "language-integer-semantics",
@@ -3439,6 +3475,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(parallel_group_serializes_conflicts_and_unknowns);
     RUN_TEST_CASE(parallel_group_preserves_manifest_and_failure);
     RUN_TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work);
+    RUN_TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered);
     RUN_TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work);
     RUN_TEST_CASE(parallel_language_manifest_matches_serial_exactly);
     RUN_TEST_CASE(parallel_admission_bounds_cpu_and_available_memory);

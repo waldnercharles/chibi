@@ -63,6 +63,12 @@ bool compiler_fixture_prepare_backends(
 );
 void test_language_compiler_fixture();
 void compiler_fixture_free(compiler_fixture *);
+/* Discover and run every authored @test in each prepared owner on that owner's
+ * backend, with private invocation storage, automatic pure-test scheduling and
+ * ordered diagnostics. CHIBI_TEST_WORKERS bounds its pool independently of C
+ * case workers. Without a pool capability it runs serially. Returns false for
+ * no tests or any failure; call only outside a parallel C case scope. */
+bool compiler_fixture_tests(const compiler_fixture *);
 const authoring_package *compiler_fixture_package(
     const compiler_fixture *,
     int backend,

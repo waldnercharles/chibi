@@ -11552,22 +11552,17 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 enum
 {
     NATIVE_BOOL = 1,
-    NATIVE_BYTE = 3,
     NATIVE_INT = 6,
     NATIVE_FLOAT = 10,
-    NATIVE_DOUBLE = 11,
     NATIVE_CONSTANT = 0,
     NATIVE_ARGUMENT = 1,
     NATIVE_PUBLISH = 4,
     NATIVE_RETURN = 5,
-    NATIVE_MOD = 11,
-    NATIVE_NEG = 12,
     NATIVE_NE = 24,
     NATIVE_BRANCH = 25,
     NATIVE_JUMP = 26,
     NATIVE_CHECK = 27,
     NATIVE_CALL = 28,
-    NATIVE_CONVERT = 29,
     NATIVE_INSERT = 30,
     NATIVE_EXTRACT = 31,
     NATIVE_TEXT = 13,
@@ -11839,24 +11834,6 @@ static bool contains(pin_string haystack, const char *needle)
     free(text);
     return found;
 }
-/* A call loads its argument slots in order and calls the callee's internal
- * definition. */
-static bool native_calls_emit_definitions(int b)
-{
-    native_module m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
-    const pin_union *value;
-    REQUIRE(native_emit(b, &m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string text = pin_text(value->values[0]);
-    REQUIRE(contains(text, "define i32 @chibi_scalar() #0 {"));
-    REQUIRE(contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) #0 {"));
-    REQUIRE(contains(text, "%v4 = call i32 @chibi_scalar.1(i32 %c4_0, i1 %c4_1, i32 %c4_2)"));
-    REQUIRE(
-        contains(text, "%c4_0 = load i32, ptr %s0\n  %c4_1 = load i1, ptr %s1\n  %c4_2 = load i32, ptr %s2")
-    );
-    REQUIRE(contains(text, "store i32 %arg2, ptr %s0"));
-    return true;
-}
 /* The call module as the library Lib: every function internal, one wrapper
  * per word signature, and the manifest the only exported symbol. */
 static bool native_libraries_export_words(int b)
@@ -11949,60 +11926,10 @@ static void change_code(native_code *code, native_change change)
     }
     memcpy((char *)item + change.field, &change.value, sizeof change.value);
 }
-/* The call module with one instruction field changed. */
-static bool native_rejects_change(int b, native_change change, const char *message)
-{
-    native_code code[CALL_CODE];
-    memcpy(code, CALLER_AND_CALLEE, sizeof code);
-    change_code(code, change);
-    native_module m = call_module(code, CALL_ARGUMENTS, 3);
-    return native_rejects(b, &m, message);
-}
-static const char
-    SIGNATURE[] = "native call differs from its callee's signature";
 static const char
     TABLES[] = "unsupported native scalar signature or table size";
 static const char OUTPUT[] = "native scalar output has an invalid type or "
                              "multiple definitions";
-static bool native_rejects_malformed_calls(int b)
-{
-    /* Argument slots swapped, so a bool slot sits where an int parameter is;
-     * a missing argument row; an argument slot past the caller's slots. */
-    static const int swapped[] = { 1, 0, 2 }, outside[] = { 0, 1, 4 };
-    native_module m = call_module(CALLER_AND_CALLEE, swapped, 3);
-    REQUIRE(native_rejects(b, &m, SIGNATURE));
-    m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 2);
-    REQUIRE(native_rejects(b, &m, TABLES));
-    m = call_module(CALLER_AND_CALLEE, outside, 3);
-    REQUIRE(native_rejects(b, &m, SIGNATURE));
-    static const struct
-    {
-        native_change change;
-        const char *message;
-    } changes[] = {
-        /* The callee is past the module's functions or negative. */
-        { { 4, offsetof(native_code, left), 2 }, SIGNATURE },
-        { { 4, offsetof(native_code, left), -1 }, SIGNATURE },
-        /* Arity, argument range and result type disagree with the callee. */
-        { { 4, offsetof(native_code, target), 2 }, SIGNATURE },
-        { { 4, offsetof(native_code, right), 1 }, SIGNATURE },
-        { { 4, offsetof(native_code, type), NATIVE_BOOL }, OUTPUT },
-        /* The call's output is an argument slot defined before it. */
-        { { 4, offsetof(native_code, output), 2 }, OUTPUT },
-        { { 2, offsetof(native_code, literal), 2 }, "native constant is outside its type" },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        REQUIRE(native_rejects_change(b, changes[i].change, changes[i].message));
-    }
-    /* An argument defined after the call that reads it. */
-    native_code late[CALL_CODE];
-    memcpy(late, CALLER_AND_CALLEE, sizeof late);
-    late[3] = CALLER_AND_CALLEE[4];
-    late[4] = CALLER_AND_CALLEE[3];
-    m = call_module(late, CALL_ARGUMENTS, 3);
-    REQUIRE(native_rejects(b, &m, "native call argument is not defined on every path"));
-    return true;
-}
 static int occurrences(pin_string haystack, const char *needle)
 {
     char *text = xmalloc(haystack.length + 1);
@@ -12104,142 +12031,6 @@ static bool native_recursion_probes_the_stack(int b)
     };
     m = (native_module){ wrapped, 3, NULL, 0, NULL, 0, returns, 12, NULL, 0 };
     REQUIRE(native_rejects(b, &m, TABLES));
-    return true;
-}
-/* main() builds {3, 4.5} from its zero, passes it through the internal
- * identity Same and returns its int field. Slots s0..s6 are main's. */
-static const native_code RECORD_CODE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_RECORD },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 3 },
-    { .op = NATIVE_INSERT, .type = NATIVE_RECORD, .output = 2, .right = 1 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_FLOAT, .output = 3, .literal = 0x40900000 },
-    { .op = NATIVE_INSERT, .type = NATIVE_RECORD, .output = 4, .left = 2, .right = 3, .literal = 1 },
-    { .op = NATIVE_CALL, .type = NATIVE_RECORD, .output = 5, .left = 1, .target = 1 },
-    { .op = NATIVE_EXTRACT, .type = NATIVE_INT, .output = 6, .left = 5, .right = NATIVE_RECORD },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 6 },
-    { .op = NATIVE_RETURN },
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_ARGUMENT, .type = NATIVE_RECORD },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_RECORD },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    RECORD_CODE_COUNT = (int)(sizeof RECORD_CODE / sizeof *RECORD_CODE)
-};
-static const native_function RECORD_FUNCTIONS[] = {
-    { NATIVE_INT, 0, 0, 0, 7, 0, 10, 0, 1 },
-    { NATIVE_RECORD, 0, 1, 7, 1, 10, 4, 1, 0 },
-};
-static const int RECORD_PARAMETERS[] = { NATIVE_RECORD };
-static const int RECORD_SLOTS[] = { NATIVE_RECORD, NATIVE_INT,    NATIVE_RECORD,
-                                    NATIVE_FLOAT,  NATIVE_RECORD, NATIVE_RECORD,
-                                    NATIVE_INT,    NATIVE_RECORD };
-static const int RECORD_ARGUMENTS[] = { 4 };
-static const native_record RECORD_TYPES[] = { { 0, 2 } };
-static const int RECORD_FIELD_TYPES[] = { NATIVE_INT, NATIVE_FLOAT };
-static native_module record_module(const native_code *code)
-{
-    return (native_module){ RECORD_FUNCTIONS,
-                            2,
-                            RECORD_PARAMETERS,
-                            1,
-                            RECORD_SLOTS,
-                            8,
-                            code,
-                            RECORD_CODE_COUNT,
-                            RECORD_ARGUMENTS,
-                            1,
-                            RECORD_TYPES,
-                            1,
-                            RECORD_FIELD_TYPES,
-                            2 };
-}
-/* The record module with one instruction field changed. */
-static bool native_rejects_record_change(int b, native_change change, const char *message)
-{
-    native_code code[RECORD_CODE_COUNT];
-    memcpy(code, RECORD_CODE, sizeof code);
-    change_code(code, change);
-    native_module m = record_module(code);
-    return native_rejects(b, &m, message);
-}
-/* A record is a named LLVM struct of its fields, built from its zero with
- * insertvalue, read with extractvalue, and passed and returned by value
- * between internal functions. The exported entry takes and returns scalars
- * only, and malformed field reads and writes are rejected. */
-static bool native_records_emit(int b)
-{
-    native_module m = record_module(RECORD_CODE);
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(contains(ir, "%record0 = type { i32, float }\n"));
-    REQUIRE(contains(ir, "store %record0 zeroinitializer, ptr %s0"));
-    REQUIRE(contains(ir, "%v3 = insertvalue %record0 %a3, i32 %b3, 0"));
-    REQUIRE(contains(ir, "%v5 = insertvalue %record0 %a5, float %b5, 1"));
-    REQUIRE(contains(ir, "%v6 = call %record0 @chibi_scalar.1(%record0 %c6_0)"));
-    REQUIRE(contains(ir, "%v7 = extractvalue %record0 %a7, 0"));
-    REQUIRE(contains(ir, "define internal %record0 @chibi_scalar.1(%record0 %arg0) #0 {"));
-    REQUIRE(contains(ir, "ret %record0 %return"));
-    static const char write[] = "native field write differs from its record",
-                      read[] = "native field read differs from its record";
-    static const struct
-    {
-        native_change change;
-        const char *message;
-    } changes[] = {
-        /* An int written to the float field, and a field past the record. */
-        { { 3, offsetof(native_code, literal), 1 }, write },
-        { { 3, offsetof(native_code, literal), 2 }, write },
-        /* A write whose record slot is the int. */
-        { { 3, offsetof(native_code, left), 1 }, write },
-        /* A read of the float field as an int, and a read of an int slot. */
-        { { 7, offsetof(native_code, literal), 1 }, read },
-        { { 7, offsetof(native_code, right), NATIVE_INT }, read },
-        { { 7, offsetof(native_code, left), 1 }, read },
-        /* A record's only constant is its zero, and record 1 is undeclared. */
-        { { 1, offsetof(native_code, literal), 1 }, "native constant is outside its type" },
-        { { 1, offsetof(native_code, type), NATIVE_RECORD + 1 }, OUTPUT },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        REQUIRE(native_rejects_record_change(b, changes[i].change, changes[i].message));
-    }
-    /* Same exported alone: the entry would return a record. */
-    static const native_function exported[] = { { NATIVE_RECORD, 0, 1, 0, 1, 0, 4, 0, 0 } };
-    native_module alone = { exported,
-                            1,
-                            RECORD_PARAMETERS,
-                            1,
-                            RECORD_SLOTS + 7,
-                            1,
-                            RECORD_CODE + 10,
-                            4,
-                            NULL,
-                            0,
-                            RECORD_TYPES,
-                            1,
-                            RECORD_FIELD_TYPES,
-                            2 };
-    REQUIRE(native_rejects(b, &alone, TABLES));
-    /* A record whose fields overrun the table, or hold a record. */
-    static const native_record overrun[] = { { 0, 3 } };
-    static const int nested[] = { NATIVE_INT, NATIVE_RECORD };
-    static const char layout[] = "native records differ from their field table";
-    m = record_module(RECORD_CODE);
-    m.records = overrun;
-    REQUIRE(native_rejects(b, &m, layout));
-    m = record_module(RECORD_CODE);
-    m.fields = nested;
-    REQUIRE(native_rejects(b, &m, layout));
-    /* Counts whose sum wraps back to the field table's length. */
-    static const native_record wrapped[] = { { 0, INT32_MAX },
-                                             { INT32_MAX, INT32_MAX },
-                                             { -2, 4 } };
-    m = record_module(RECORD_CODE);
-    m.records = wrapped;
-    m.record_count = 3;
-    REQUIRE(native_rejects(b, &m, layout));
     return true;
 }
 /* A string is `native_abi.TextType()`, the layout of the runtime's
@@ -12531,139 +12322,25 @@ static bool native_cycles_run_unchecked(int b)
     REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
     return true;
 }
-/* Returns float(d) for d, a double NaN with a payload: s0 is 1.5f, s2 widens
- * it, s3 compares it with d, s4 and s5 convert d and s2 to int, s6 narrows d
- * and s7 converts s0 to byte. */
-static const native_code FLOATS[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_FLOAT, .literal = 0x3fc00000 },
-    { .op = NATIVE_CONSTANT,
-      .type = NATIVE_DOUBLE,
-      .output = 1,
-      .literal = INT64_C(0x7ff8000000000001) },
-    { .op = NATIVE_CONVERT, .type = NATIVE_DOUBLE, .output = 2, .right = NATIVE_FLOAT },
-    { .op = NATIVE_NE, .type = NATIVE_DOUBLE, .output = 3, .left = 2, .right = 1 },
-    { .op = NATIVE_CONVERT, .type = NATIVE_INT, .output = 4, .left = 1, .right = NATIVE_DOUBLE },
-    { .op = NATIVE_CONVERT, .type = NATIVE_INT, .output = 5, .left = 2, .right = NATIVE_DOUBLE },
-    { .op = NATIVE_CONVERT, .type = NATIVE_FLOAT, .output = 6, .left = 1, .right = NATIVE_DOUBLE },
-    { .op = NATIVE_CONVERT, .type = NATIVE_BYTE, .output = 7, .right = NATIVE_FLOAT },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_FLOAT, .left = 6 },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    FLOAT_CODE = (int)(sizeof FLOATS / sizeof *FLOATS)
-};
-static const native_function FLOAT_FUNCTIONS[] = {
-    { NATIVE_FLOAT, 0, 0, 0, 8, 0, FLOAT_CODE, 0, 0 },
-};
-static const int FLOAT_SLOTS[] = { NATIVE_FLOAT, NATIVE_DOUBLE, NATIVE_DOUBLE,
-                                   NATIVE_BOOL,  NATIVE_INT,    NATIVE_INT,
-                                   NATIVE_FLOAT, NATIVE_BYTE };
-static native_module float_module(const native_code *code)
-{
-    return (native_module){
-        FLOAT_FUNCTIONS, 1, NULL, 0, FLOAT_SLOTS, 8, code, FLOAT_CODE, NULL, 0
-    };
-}
-/* Constants are their exact encodings, != is unordered, a float widens and a
- * double narrows, and each saturating intrinsic is declared once. */
-static bool native_floats_emit(int b)
-{
-    native_module m = float_module(FLOATS);
-    const pin_union *value;
-    REQUIRE(native_emit(b, &m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string text = pin_text(value->values[0]);
-    REQUIRE(contains(text, "store float 0.0, ptr %result0"));
-    REQUIRE(contains(text, "%v1 = bitcast i32 1069547520 to float"));
-    REQUIRE(contains(text, "%v2 = bitcast i64 9221120237041090561 to double"));
-    REQUIRE(contains(text, "%v3 = fpext float %a3 to double"));
-    REQUIRE(contains(text, "%v4 = fcmp une double %a4, %b4"));
-    REQUIRE(contains(text, "%v5 = call i32 @llvm.fptosi.sat.i32.f64(double %a5)"));
-    REQUIRE(contains(text, "%v6 = call i32 @llvm.fptosi.sat.i32.f64(double %a6)"));
-    REQUIRE(contains(text, "%v7 = fptrunc double %a7 to float"));
-    REQUIRE(contains(text, "%v8 = call i8 @llvm.fptoui.sat.i8.f32(float %a8)"));
-    REQUIRE(occurrences(text, "declare i32 @llvm.fptosi.sat.i32.f64(double)\n") == 1);
-    REQUIRE(occurrences(text, "declare i8 @llvm.fptoui.sat.i8.f32(float)\n") == 1);
-    return true;
-}
-/* The float module with instruction `index` replaced by `item`. */
-static bool native_rejects_float(int b, int index, native_code item, const char *message)
-{
-    native_code code[FLOAT_CODE];
-    memcpy(code, FLOATS, sizeof code);
-    code[index] = item;
-    native_module m = float_module(code);
-    return native_rejects(b, &m, message);
-}
-/* A float constant past 32 bits; float negation and remainder, which the
- * runtime does not compute; and conversions it has no cast for: an integer
- * straight to float, and bool to double. */
-static bool native_rejects_floats(int b)
-{
-    static const char OPERAND[] = "native scalar operand type mismatch",
-                      CONVERSION[] = "native conversion is not one the "
-                                     "backend implements";
-    REQUIRE(native_rejects_float(
-        b,
-        1,
-        (native_code){ .op = NATIVE_CONSTANT,
-                       .type = NATIVE_FLOAT,
-                       .literal = INT64_C(1) << 32 },
-        "native constant is outside its type"
-    ));
-    REQUIRE(native_rejects_float(
-        b,
-        3,
-        (native_code){ .op = NATIVE_NEG, .type = NATIVE_DOUBLE, .output = 2, .left = 1 },
-        OPERAND
-    ));
-    REQUIRE(native_rejects_float(
-        b,
-        3,
-        (native_code){ .op = NATIVE_MOD, .type = NATIVE_DOUBLE, .output = 2, .left = 1, .right = 1 },
-        OPERAND
-    ));
-    REQUIRE(native_rejects_float(
-        b,
-        3,
-        (
-            native_code
-        ){ .op = NATIVE_CONVERT, .type = NATIVE_FLOAT, .output = 6, .left = 4, .right = NATIVE_INT },
-        CONVERSION
-    ));
-    REQUIRE(native_rejects_float(
-        b,
-        3,
-        (native_code){ .op = NATIVE_CONVERT,
-                       .type = NATIVE_DOUBLE,
-                       .output = 2,
-                       .left = 3,
-                       .right = NATIVE_BOOL },
-        CONVERSION
-    ));
-    return true;
-}
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
 TEST_CASE(package_compiler_native_emitter_checks_calls)
 {
-    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
-    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
+    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS,
+                                             EMITTER_TEST_SOURCE_INPUTS };
+    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
+    REQUIRE(
+        compiler_fixture_prepare_packs(&consumer, sources, (int)(sizeof sources / sizeof *sources), core, 1)
+    );
     for (int b = 0; b < 2; b++) {
-        REQUIRE(native_calls_emit_definitions(b));
         REQUIRE(native_libraries_export_words(b));
-        REQUIRE(native_rejects_malformed_calls(b));
         REQUIRE(native_recursion_probes_the_stack(b));
-        REQUIRE(native_records_emit(b));
         REQUIRE(native_strings_emit(b));
         REQUIRE(native_lines_place_code(b));
         REQUIRE(native_cycles_run_unchecked(b));
-        REQUIRE(native_floats_emit(b));
-        REQUIRE(native_rejects_floats(b));
     }
+    REQUIRE(compiler_fixture_tests(&consumer));
     return true;
 }
 static const char CASES_PACKAGE[] = "project:scalar_cases";

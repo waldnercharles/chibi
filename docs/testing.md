@@ -2,8 +2,10 @@
 
 ## Fast, targeted tests
 
-Use deterministic C pico_unit tests as the primary regression checks. Cover a
-specific behavior and its failure cases through the smallest public runtime
+Prefer authored Chibi `@test` regressions whenever they can preserve the same
+behavior and oracle. Their inferred purity supplies automatic parallelism; keep
+C/pico_unit for native internals, ABI, ownership and failure boundaries Chibi
+cannot express. Cover each behavior and failure case through the smallest
 interface that exercises it. Advance a synthetic clock for time-dependent
 behavior; assert values, ownership, geometry, callback counts and work counts
 rather than elapsed-time thresholds. Keep compilation separate from execution.
@@ -24,12 +26,38 @@ preparation owns a fresh source snapshot and native catalog; preparation is not
 cached across fixture lifetimes. Scalar producer/consumer lifetime tests retain
 their original preparation of both backends.
 
-`language-compiler-fixture` adds two fixed C cases: six single-backend
+`language-compiler-fixture` retains two native ownership cases: six single-backend
 preparations and one default dual-backend preparation of a one-function source,
 with eight calls at budget 100. It checks absent unrequested owners, independent
 snapshots, mutation of the original source, concurrent fixtures, detached text
 after teardown, changed source on re-preparation, and both execution backends.
-It adds no processes, timing loops, network, rendering or GPU work.
+Three native adapter cases additionally check selected and dual-backend authored
+execution, ordered failure reporting and continuation, missing tests, and invalid
+worker settings. They add no processes, timing loops, network, rendering or GPU work.
+
+### Authored emitter regressions
+
+The ordinary `language-package-compiler-chibi-scalar` selector discovers every
+`@test` in `test/native_aot/emitter_calls/*.chibi`. CMake embeds all matching
+files in `test_language`, including the same-run binary used by manual language
+shards; no runtime source staging, bootstrap manifest or seed changes are needed.
+The generic `compiler_fixture_tests` adapter runs each prepared owner on its
+matching bytecode/SLJIT backend and fails on empty discovery, unavailable backend
+or any failed test. Results remain in source order. `CHIBI_TEST_WORKERS=1..32`
+can bound the authored pool explicitly; absent means the normal automatic pool.
+Unknown or impure host closures remain serial barriers.
+
+The first eighteen authored tests preserve call definitions/argument order,
+eleven malformed call plans, exact float and NaN payload encodings, unordered
+comparison, saturating conversions and declaration uniqueness, and five rejected
+float/conversion plans. Thirteen record tests additionally preserve field layout,
+zero initialization, insert/extract and internal value calls, eight malformed
+instructions, exported-record rejection, and overrun/nested/wrapped field tables.
+All thirty-one inspect emitted LLVM text; they do not replace
+native machine-code execution, ABI binding, detached ownership or C harness
+anti-false-consensus checks. The scalar and compiler-fixture selectors remain
+outer-exclusive because they own an authored pool. Correctness cases are fixed,
+not performance benchmark loops.
 
 ## CI profiles and release validation
 

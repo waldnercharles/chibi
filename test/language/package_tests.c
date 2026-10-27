@@ -485,15 +485,16 @@ TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
     return true;
 }
 
-/* Each run allocates managed pointers in a heap of its own. The pointer
- * tests are inferred serial and run alone between the parallel spans of a pure
- * test: serially, on a two-worker executor and on the task pool. A copy marked
- * parallel then runs them concurrently on the pool, each run with its heap. */
+/* Each run allocates managed pointers in a heap of its own. Identity tests
+ * that only compare pointers are inferred parallel and overlap with a pure
+ * test; tests that dereference or write through a pointer are inferred serial
+ * and run alone. Each mix runs serially, on a two-worker executor and on the
+ * task pool. */
 TEST_CASE(package_tests_allocate_managed_pointers)
 {
     enum
     {
-        POINTER_TESTS = 3
+        POINTER_TESTS = 5
     };
     const char
         source[] = "package facts\n"
@@ -502,6 +503,9 @@ TEST_CASE(package_tests_allocate_managed_pointers)
                    "@test\nAlias :: () { x: int = 1; p := &x; Bump(p); "
                    "p^ += 1; assert(x == 3); }\n"
                    "@test\nPure :: () { assert(1 + 2 == 3); }\n"
+                   "@test\nSame :: () { x := 1; p := &x; assert(p == p); }\n"
+                   "@test\nDistinct :: () { x := 1; y := 2; p := &x; q := &y; "
+                   "assert(p != q); }\n"
                    "@test\nCycle :: () { a: Link = {value: 1, next: nil}; "
                    "b: Link = {value: 2, next: nil}; p := &a; q := &b; "
                    "p.next = q; q.next = p; "
@@ -510,7 +514,8 @@ TEST_CASE(package_tests_allocate_managed_pointers)
     for (int b = 0; b < 2; b++) {
         /* Root.chibi and facts/A.chibi each add one test before these. */
         REQUIRE(prepare_text(backends[b], source, POINTER_TESTS + 2));
-        REQUIRE(!tests[2].parallel && tests[3].parallel && !tests[4].parallel);
+        REQUIRE(!tests[2].parallel && !tests[6].parallel);
+        REQUIRE(tests[3].parallel && tests[4].parallel && tests[5].parallel);
         package_test_result results[POINTER_TESTS];
         for (int run = 0; run < 3; run++) {
             reverse_executor executor = { 0 };
@@ -545,22 +550,6 @@ TEST_CASE(package_tests_allocate_managed_pointers)
                 REQUIRE(results[i].passed);
             }
         }
-#ifdef CHIBI_PACKAGE_TEST_POOL
-        package_test concurrent[2 * POINTER_TESTS];
-        for (int i = 0; i < 2 * POINTER_TESTS; i++) {
-            concurrent[i] = tests[2 + i % POINTER_TESTS];
-            concurrent[i].parallel = true;
-        }
-        package_test_result overlapped[2 * POINTER_TESTS];
-        task_pool *pool = task_pool_acquire_workers(2);
-        task_pool_begin(pool, true);
-        package_tests_run(concurrent, 2 * POINTER_TESTS, backends[b], BUDGET, task_pool_tasks(pool), overlapped);
-        task_pool_end(pool);
-        task_pool_release(pool);
-        for (int i = 0; i < 2 * POINTER_TESTS; i++) {
-            REQUIRE(overlapped[i].passed);
-        }
-#endif
     }
     return true;
 }

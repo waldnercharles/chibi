@@ -48,6 +48,28 @@ class ProfileTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 profile.settings(value)
 
+    def test_concurrency_finishes_main_push_but_cancels_superseded_other_runs(self):
+        text = (ROOT / '.github/workflows/ci.yml').read_text()
+        block = text.split('\nconcurrency:\n', 1)[1].split('\nenv:', 1)[0]
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ (github.event_name == 'schedule' || inputs.sanitizers == true) && 'sanitizer' || 'fast' }}", block)
+        self.assertNotIn('queue:', block)  # Default: one running and newest pending, not queue:max.
+        line = next(line for line in block.splitlines() if 'cancel-in-progress:' in line)
+        expression = line.split('${{', 1)[1].split('}}', 1)[0]
+        tokens = shlex.split(expression)
+        self.assertEqual(tokens, ['github.event_name', '!=', 'push', '||',
+                                  'github.ref', '!=', 'refs/heads/main'])
+        for event, ref, expected in (
+                ('push', 'refs/heads/main', False),
+                ('push', 'refs/heads/topic', True),
+                ('pull_request', 'refs/pull/733/merge', True),
+                ('workflow_dispatch', 'refs/heads/main', True),
+                ('schedule', 'refs/heads/main', True)):
+            with self.subTest(event=event, ref=ref):
+                context = {'github.event_name': event, 'github.ref': ref}
+                actual = any(context[field] != value
+                             for field, _, value in (tokens[:3], tokens[4:]))
+                self.assertEqual(actual, expected)
+
     def test_workflow_preserves_shared_jobs_and_groups(self):
         text = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn("cron: '0 8 * * *'", text)

@@ -69,7 +69,7 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | W1 | Named arguments | none | Call rows' argument order | LLVM lane | no | corpus `named_argument` accepted; a module calling with names in every order and with defaults agrees with both VMs at O0 and O2, in the order the call step evaluates them | no | none | decided: follow the call step |
 | W2 | Multiple and named results | records (done) | Return rows with several values; an internal struct return | LLVM lane | no | corpus `named_result` accepted; a module returning and destructuring two to four results of mixed types agrees at O0 and O2 | no | none | decided: an internal LLVM struct, as records are |
-| W3 | String values: literals, parameters, results, locals, `==` and `!=` | none | `native_abi.TextType`, the runtime's `pin_string` layout | LLVM lane | no | corpus `string_equality` accepted; a strings module (escapes, UTF-8, embedded NUL, empty, prefixes) agrees at O0 and O2; O2 objects have no undefined symbols; a C test pins `pin_string`'s layout | with this PR | none | decided: D10, by-value `{ ptr, i32 }` descriptors, no allocation |
+| W3 | String values: literals, parameters, results, locals, `==` and `!=` | none | `native_abi.TextType`, the runtime's `pin_string` layout | LLVM lane | no | corpus `string_equality` accepted; a strings module (escapes, UTF-8, embedded NUL, empty, prefixes) agrees at O0 and O2; O2 objects have no undefined symbols; a C test pins `pin_string`'s layout | yes (#740) | none | decided: D10, by-value `{ ptr, i32 }` descriptors, no allocation |
 | W4 | Text natives: byte length, byte reads, slices, `for` over a string | W3 | native catalog input to `CollectScalar` | LLVM lane | no | `core:strings` functions copied into a module (Compare, HasPrefix, Index, Split's counting) agree at O0 and O2 | no | none | proposed: a slice is a view of its source's bytes |
 | W5 | Native runtime library and context | W3 | `chibi_rt_*` symbol inventory, versioned with the prepared ABI; hidden context parameter | LLVM lane with the runtime owner | partly: the runtime side once the symbol list is fixed | an allocating object links against the runtime library; an inventory test lists exactly the reviewed symbols; ASan leak and use-after-free cases; an out-of-range index ends the program with its named message | no | none | decided: D9, D10 |
 | W6 | Allocating text: `format_text`, joins, case conversion | W4, W5 | W5's allocation calls | LLVM lane | no | the same `core:strings` functions that build strings agree at O0 and O2, with no leak under ASan | no | none | open: which text natives are lowered inline and which call the runtime |
@@ -290,3 +290,13 @@ After string interning (#719, 27 October 2026, same container):
 - The runtime pin is `compiler-runtime-prepared22-7b151ebc5`. The `ci-seed`
   label built, published and pinned it on the PR branch (see
   [starting CI with labels](testing.md#starting-ci-with-labels)).
+
+After native strings (W3, #740, 27 October 2026, same container):
+
+- The bootstrap closure went from 9,112,577 to 9,120,544 bytes, and
+  `language-package-compiler-chibi-bootstrap` still takes 62 s in Release.
+- `Run.ps1` now covers 96 sources with 52 accepted. On this container it no
+  longer finishes inside its 240 s budget, and neither does main: main
+  reached 943 host invocations in 240 s and this branch 922, so strings cost
+  about 2% more. CI, which runs about 1.36 times faster, ran main in 177 s.
+- `language-package-compiler-chibi-native` takes about 4 minutes, as before.

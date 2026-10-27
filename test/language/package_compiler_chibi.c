@@ -11895,7 +11895,7 @@ static bool native_strings_emit(int b)
         { .op = NATIVE_RETURN },
     };
     static const native_function exported[] = { { NATIVE_TEXT, 0, 0, 0, 1, 0, 4, 0, 0 } },
-                                 taking[] = { { NATIVE_BOOL, 0, 1, 2, 1, 0, 4, 0, 0 } };
+                                 taking[] = { { NATIVE_BOOL, 0, 1, 0, 1, 0, 4, 0, 0 } };
     static const int text_parameter[] = { NATIVE_TEXT };
     native_module alone = { .functions = exported,
                             .function_count = 1,
@@ -11915,7 +11915,7 @@ static bool native_strings_emit(int b)
     alone.functions = taking;
     alone.parameters = text_parameter;
     alone.parameter_count = 1;
-    alone.slot_count = 3;
+    alone.slots = TEXT_SLOTS + 2;
     alone.code = published;
     REQUIRE(native_rejects(b, &alone, "unsupported native scalar parameter"));
     enum

@@ -107,5 +107,8 @@ Type :: (type: int) -> string {
     if (type == facts.BoolType) {
         return "i1";
     }
+    if (type == facts.StringType) {
+        return "{ ptr, i32 }";
+    }
     return format_text("i{}", facts.Bits(type));
 }

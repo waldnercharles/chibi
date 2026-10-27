@@ -2,6 +2,11 @@ name: Compiler runtime seed refresh
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the seeds as a prerelease and, on a branch other than main, pin them there
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -165,6 +170,16 @@ jobs:
           Copy-Item (Join-Path $proof ('chibi-compiler-host' + $suffix)) (Join-Path $proof $name)
           $digest = (Get-FileHash (Join-Path $proof $name) -Algorithm SHA256).Hash.ToLowerInvariant()
           "$digest  $name" | Set-Content (Join-Path $proof "$name.sha256")
+      - name: List the runtime seed's native imports
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
+          $seed = Join-Path $proof ('chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' }))
+          $imports = if ($IsWindows) { dumpbin /nologo /dependents $seed }
+                     elseif ($IsMacOS) { otool -L $seed }
+                     else { readelf --program-headers --dynamic $seed | Select-String 'interpreter|NEEDED' }
+          if ($LASTEXITCODE) { throw 'Listing the native imports failed' }
+          $imports | Set-Content (Join-Path $proof 'native-imports.txt')
       - name: Upload the recovered compiler, runtime seed and evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -177,6 +192,7 @@ jobs:
             ${{ runner.temp }}/compiler-recovery-proof/evidence.json
             ${{ runner.temp }}/compiler-recovery-proof/recovery.stdout.txt
             ${{ runner.temp }}/compiler-recovery-proof/recovery.stderr.txt
+            ${{ runner.temp }}/compiler-recovery-proof/native-imports.txt
             ${{ runner.temp }}/compiler-recovery-proof/chibi-compiler-host-*
 
   compare:
@@ -214,3 +230,171 @@ jobs:
           if (@($digests | Select-Object -Unique).Count -ne 1) {
             throw 'The recovered compiler bytes differ across platforms with the validated bootstrap ABI'
           }
+
+  publish:
+    name: Publish the runtime seeds
+    needs: compare
+    if: inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # Only read: the job archives these sources and never runs them.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: compiler-recovery-*
+          path: recovered
+      - name: Assemble the release
+        id: release
+        run: |
+          version=$(sed -n 's/^#define EXECUTION_PREPARED_VERSION \([0-9][0-9]*\)$/\1/p' src/execution/prepared.h)
+          test -n "$version"
+          tag="compiler-runtime-prepared$version-$GITHUB_SHA"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          out="$RUNNER_TEMP/release"
+          mkdir "$out"
+          for pair in linux-x64:ubuntu-24.04 macos-arm64:macos-15 windows-x64:windows-2022; do
+            platform=${pair%%:*}
+            dir="recovered/compiler-recovery-${pair#*:}"
+            cp "$dir"/chibi-compiler-host-"$platform"* "$out/"
+            rm "$out/chibi-compiler-host-$platform"*.sha256
+            cp "$dir/evidence.json" "$out/seed-evidence-$platform.json"
+            cp "$dir/native-imports.txt" "$out/native-imports-$platform.txt"
+          done
+
+          # Corresponding source: this exact commit, both dependency pins as
+          # the build fetches them, and the notices the binaries carry.
+          short=${GITHUB_SHA:0:12}
+          git archive --format=tar.gz --prefix="chibi-$short/" -o "$out/chibi-source-$short.tar.gz" HEAD
+          pin() { awk -v name="$1" '$1 == "chibi_third_party(" name { getline; sub(/\)$/, "", $1); print $1 }' third_party/CMakeLists.txt; }
+          sljit=$(pin sljit)
+          tree_sitter=$(pin tree_sitter)
+          [[ $sljit =~ ^[0-9a-f]{40}$ && $tree_sitter =~ ^[0-9a-f]{40}$ ]]
+          curl -fsSL -o "$out/sljit-$sljit.tar.gz" "https://github.com/zherczeg/sljit/archive/$sljit.tar.gz"
+          curl -fsSL -o "$out/tree-sitter-$tree_sitter.tar.gz" "https://github.com/tree-sitter/tree-sitter/archive/$tree_sitter.tar.gz"
+          notices="$RUNNER_TEMP/chibi-runtime-notices"
+          mkdir -p "$notices/chibi/docs" "$notices/ckdl" "$notices/fmt" "$notices/yyjson"
+          cp COPYING COPYING.EXAMPLES COPYING.LESSER LICENSE.md "$notices/chibi/"
+          cp docs/distribution-licensing.md "$notices/chibi/docs/"
+          cp third_party/ckdl/COPYING "$notices/ckdl/"
+          cp third_party/fmt/LICENSE third_party/fmt/README.md "$notices/fmt/"
+          cp third_party/yyjson/LICENSE "$notices/yyjson/"
+          mkdir "$notices/sljit" "$notices/tree-sitter"
+          tar -xzf "$out/sljit-$sljit.tar.gz" -C "$notices/sljit" --strip-components=1 --wildcards --no-wildcards-match-slash '*/LICENSE'
+          tar -xzf "$out/tree-sitter-$tree_sitter.tar.gz" -C "$notices/tree-sitter" --strip-components=1 \
+            --wildcards --no-wildcards-match-slash '*/LICENSE' '*/lib/src/unicode/ICU_SHA' '*/lib/src/unicode/LICENSE' '*/lib/src/unicode/README.md'
+          tar -czf "$out/chibi-runtime-notices.tar.gz" -C "$RUNNER_TEMP" chibi-runtime-notices
+
+          # The pin, checked against each platform's recovery evidence.
+          RELEASE="$out" TAG="$tag" SOURCE_TREE=$(git rev-parse 'HEAD^{tree}') python3 - <<'PY'
+          import hashlib, json, os
+          out = os.environ["RELEASE"]
+          platforms = {}
+          for platform, suffix in (("macos-arm64", ""), ("linux-x64", ""), ("windows-x64", ".exe")):
+              asset = f"chibi-compiler-host-{platform}{suffix}"
+              data = open(os.path.join(out, asset), "rb").read()
+              digest = hashlib.sha256(data).hexdigest()
+              evidence = json.load(open(os.path.join(out, f"seed-evidence-{platform}.json")))
+              assert evidence["revision"] == os.environ["GITHUB_SHA"], platform
+              assert evidence["runtime_sha256"] == digest, platform
+              platforms[platform] = {"asset": asset, "sha256": digest, "bytes": len(data)}
+          manifest = {
+              "format": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "tag": os.environ["TAG"],
+              "source_revision": os.environ["GITHUB_SHA"],
+              "source_tree": os.environ["SOURCE_TREE"],
+              "run_url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              "platforms": platforms,
+          }
+          with open(os.path.join(out, "runtime.json"), "w") as f:
+              json.dump(manifest, f, indent=2)
+              f.write("\n")
+          PY
+          (cd "$out" && sha256sum -- * > "$RUNNER_TEMP/SHA256SUMS" && mv "$RUNNER_TEMP/SHA256SUMS" .)
+      - name: Publish the prerelease
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          # A tag names one commit's seeds; never replace published assets. An
+          # interrupted draft is resumed: assets upload before it is published.
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" = false ]; then
+            echo "::notice::$TAG is already published; pinning it as is."
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Prepared$VERSION compiler runtime seeds built from \`$GITHUB_SHA\` and recovered on macOS ARM64, Linux x64 and Windows x64 in [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). All three recovered identical compiler bytes.
+
+          Verify each executable against \`runtime.json\` or \`SHA256SUMS\`. \`seed-evidence-*.json\` holds each recovery's inputs, environment and timings, and \`native-imports-*.txt\` the libraries each seed loads. The corresponding source is this commit (\`chibi-source-*.tar.gz\`), the SLJIT and Tree-sitter sources it pins (SLJIT with \`third_party/sljit/arm64-immediate-negation.patch\` applied once), and their notices (\`chibi-runtime-notices.tar.gz\`).
+
+          Commit-specific prerelease, not latest.
+          EOF
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --prerelease \
+              --title "Prepared$VERSION runtime ${GITHUB_SHA:0:12}" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
+          gh release upload "$TAG" "$RUNNER_TEMP"/release/* --clobber
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
+
+  pin:
+    name: Pin the runtime seeds on the branch
+    needs: publish
+    if: github.ref_type == 'branch' && github.ref_name != github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.publish.outputs.tag }}
+    steps:
+      # Only edits tools/compiler/runtime.json and pushes; runs nothing from
+      # the branch.
+      - uses: actions/checkout@v4
+      - name: Commit the pin onto the seeded commit
+        run: |
+          head=$(gh api "repos/$GH_REPO/git/ref/heads/$GITHUB_REF_NAME" --jq .object.sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::$GITHUB_REF_NAME moved from $GITHUB_SHA to $head after seeding; pin $TAG by hand or seed the new head."
+            exit 1
+          fi
+          gh release download "$TAG" --pattern runtime.json --output tools/compiler/runtime.json --clobber
+          if git diff --quiet; then
+            echo "::notice::tools/compiler/runtime.json already pins $TAG."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -q -m "Pin the $TAG compiler runtime" \
+            -m "Published from run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID." tools/compiler/runtime.json
+          git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
+          echo "PINNED=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      # A push with this token starts no workflows, so start the PR's checks.
+      - name: Start CI and the compiler self-build on the pin
+        if: env.PINNED
+        run: |
+          for workflow in ci.yml compiler-recovery.yml; do
+            run=$(gh api -X POST "repos/$GH_REPO/actions/workflows/$workflow/dispatches" \
+              -f ref="$GITHUB_REF_NAME" -F return_run_details=true --jq .workflow_run_id)
+            sha=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .head_sha)
+            if [ "$sha" != "$PINNED" ]; then
+              gh run cancel "$run"
+              echo "::error::Run $run of $workflow built $sha instead of the pin $PINNED; cancelled it."
+              exit 1
+            fi
+            echo "Dispatched $workflow on the pin: run $run"
+          done

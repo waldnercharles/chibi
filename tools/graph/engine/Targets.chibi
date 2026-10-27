@@ -2553,7 +2553,7 @@ pub Includes :: (target: string) -> string[] {
             "public/native_prepared", "public/native_capabilities", "public/capabilities",
             "public/types", "public/execution_contract", "public/behavior_runtime", "public/execution",
             "public/ecs", "public/tasks", "public/events", "public/compiler_host",
-            "public/asset_compiler_host", "public/math_capabilities",
+            "public/asset_compiler_host", "public/math_capabilities", "public/conversion_capabilities",
             "public/project_compilation", "public/source_catalog", "public/authoring",
             "public/compiler", "public/language", "public/reference_index", "public/input_map",
             "public/input_action", "public/prototype_document", "public/scene_document",

@@ -29,7 +29,8 @@
 enum
 {
     BUDGET = 100000,
-    TESTS = 9
+    TESTS = 9,
+    DIAGNOSTIC_LIMIT = 4
 };
 static native_capabilities *table;
 static authoring_packages *packages;
@@ -210,8 +211,8 @@ static const char FIRST[] = "package facts\n@test\nFirst :: () {\n}\n";
 static const char TOP[] = "package top\n@test\nTop :: () {\n}\n";
 /* A collection's tests belong to the collection, not to this project. */
 static const char MARKS[] = "package marks\n@test\nCollected :: () {\n}\n"
-                            "Draw :: () -> number { return rand(); }\n"
-                            "Opaque :: () -> bool { return opaque(); }\n";
+                            "pub Draw :: () -> number { return rand(); }\n"
+                            "pub Opaque :: () -> bool { return opaque(); }\n";
 
 static void cleanup()
 {
@@ -260,6 +261,30 @@ static bool prepare_text(behavior_backend backend, const char *source, int expec
         backend,
         NULL
     );
+    if (!authoring_packages_valid(packages)) {
+        const char *error = authoring_packages_error(packages);
+        if (error) {
+            fprintf(stderr, "package tests: %.256s\n", error);
+        }
+        int shown = 0;
+        for (int i = 0;
+             i < authoring_packages_count(packages) && shown < DIAGNOSTIC_LIMIT;
+             i++) {
+            const authoring_package *package = authoring_packages_at(packages, i);
+            for (int d = 0; d < package->diagnostic_count && shown < DIAGNOSTIC_LIMIT;
+                 d++, shown++) {
+                const script_diagnostic *diagnostic = &package->diagnostics[d];
+                fprintf(
+                    stderr,
+                    "%.128s:%d:%d: %s\n",
+                    package->identity,
+                    diagnostic->range.line,
+                    diagnostic->range.column,
+                    diagnostic->message
+                );
+            }
+        }
+    }
     REQUIRE(authoring_packages_valid(packages));
     tests = package_tests_find(packages);
     REQUIRE(acount(tests) == expected);
@@ -437,7 +462,7 @@ TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
                    "@test\nDirect :: () { assert(rand() >= 0); }\n"
                    "@test\nIndirect :: () { assert(Draw() >= 0); }\n"
                    "@test\nImported :: () { assert(marks.Draw() >= 0); }\n"
-                   "@test\nLogs :: () { print(\"quiet\"); }\n"
+                   "@test\nLogs :: () { print_string(\"quiet\"); }\n"
                    "@test\nLocal :: () { values: int[] = [1]; values[0] = 2; "
                    "assert(values[0] == 2); }\n"
                    "Helper :: () -> bool { return opaque(); }\n"

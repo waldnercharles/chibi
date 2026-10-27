@@ -603,8 +603,9 @@ if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:
 
 GROUPS['render'] = [name for name in GPU_TOOLS if not name.startswith('studio-')
                     and (not name.endswith('-gles') or sys.platform.startswith('linux'))]
-# Native scalar execution runs on the one target the emitter admits, with
-# the LLVM tools it is given; otherwise the language group reports it unrun.
+# Native scalar execution runs on Linux x86-64, with the LLVM tools it is
+# given, and builds the bundle the other targets run (test/native_aot/targets);
+# otherwise the language group reports it unrun.
 UNRUN = {}
 if not (sys.platform.startswith('linux') and platform.machine() == 'x86_64'):
     UNRUN['language-scalar-native'] = 'it needs Linux x86-64'

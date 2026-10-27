@@ -1,9 +1,9 @@
 # Runtime-free scalar LLVM backend (opt-in WIP)
 
 `llvm_native.Emit` validates a scalar instruction plan and writes LLVM
-IR. `native_abi` owns the exact Linux x86-64 target and internal scalar mapping;
-the selected LLVM backend supplies its actual data layout. This clean integration
-carries those reviewed pure packages from [3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
+IR. `native_abi` owns the exact targets (Linux x86-64, macOS arm64 and Windows
+x64) and internal scalar mapping; the selected LLVM backend supplies its actual
+data layout. This clean integration carries those reviewed pure packages from [3571908d](https://github.com/waldnercharles/chibi/commit/3571908d0cc4f3ad395b6a4fceb66641445c3d07)
 onto the current-base [authored LLVM driver](https://github.com/waldnercharles/chibi/commit/ae4828697dfc976a657c33014513f00e047ec422).
 
 It deliberately does **not** carry `package_compiler/Native.chibi`,
@@ -38,7 +38,8 @@ interface, or the complete allocation/memory/output/free native island.
   result to 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1,
   `number` and `f64` as their bits. A function with a string or record
   parameter or result has no wrapper and stays callable only inside the
-  library.
+  library. Libraries are Linux x86-64 only: a macOS or Windows target is
+  rejected.
 - A module declares records, each a range of one or more scalar
   field types in the field table, emitted in that order as
   `%recordN = type { ... }`. Record type `RecordType + N` is a value: internal
@@ -120,7 +121,8 @@ interface, or the complete allocation/memory/output/free native island.
   each code instruction add a DWARF compile unit, one subprogram per function
   (and an artificial one for `text_equal`), and a `!dbg` location on every
   instruction. `native_abi.DebugFormat` gives the target's DWARF version
-  flag. An empty file emits the module unchanged.
+  flag. Line tables are Linux x86-64 only: a macOS or Windows module with a
+  source file is rejected. An empty file emits the module unchanged.
 
 The emitter rejects unsupported instructions/types and validates table bounds,
 operand types, constants within their type, unique scalar definitions and

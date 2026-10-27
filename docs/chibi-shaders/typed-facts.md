@@ -8,20 +8,16 @@ vec3 spelling and no public fully typed expression table. It resolves types
 while lowering. Shader work must not consume private Value/Name/Work records or
 decode prepared bytecode to rediscover meaning.
 
-The example uses the `material` form proposed in [PLAN.md](PLAN.md) (P2) and
+The example uses the function form proposed in [PLAN.md](PLAN.md) and
 built-in vectors (S2, stdlib decision D2). `Sample` and `Surface` are the
-material's contract types, so the entry needs no annotations, and unset
-Surface fields keep their defaults. `number` is `f32` on the CPU and the GPU
-(D3), so no narrowing rule applies.
+material contract's records, and unset Surface fields keep their defaults.
+`number` is `f32` on the CPU and the GPU (D3), so no narrowing rule applies.
 
 ```chibi
-Gradient :: material {
-    Tint := vec3(1, 0.5, 0.25)
-    Gain := 1.0
-    Speed := 0.5
-
-    Surface :: (sample) {
-        color := Tint * (sample.uv.x * Gain + sample.time * Speed)
+Materials :: library {
+    Gradient :: (sample: Sample, tint: vec3 = vec3(1, 0.5, 0.25),
+                 gain: number = 1, speed: number = 0.5) -> Surface {
+        color := tint * (sample.uv.x * gain + sample.time * speed)
         return {base_color: color, emission: color * 0.125, unlit: true}
     }
 }

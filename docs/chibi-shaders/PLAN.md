@@ -15,7 +15,7 @@ compiles a real `.chibi` material yet, and no thread owns the next package.
 | Area | How it is authored | Where it runs |
 | --- | --- | --- |
 | Materials, shapes, shader libraries | KDL graph assets in `materials/`, `shapes/` and `shader-libraries/` (13 in this repository, all in test fixtures; Studio's are copies in `tests/held`) | `src/graph/shader/shader_adapter.c` lowers the graph to `shader_graph` IR (`src/runtime/shaders/program.h`). `program.c` validates it, evaluates it on the CPU (previews, picking, baking) and emits a GLSL function that `render/shader_program.c` links into the surface shaders. |
-| glTF materials | Generated graphs at prepare time (R6) | As above |
+| glTF materials | `src/assets/model_import.c` writes a Standard material graph per glTF material to `content/materials/*.kdl` at import (R6) | As above |
 | Engine pipeline shaders | 102 hand-written GLSL files in `src/render/shaders`, 51 of them for HRC (3D PBR, shadows, sky, SSAO, HRC, post) | Cute's runtime shader compiler (`cf_make_shader_from_source`) compiles GLSL 450 for each SDL_GPU backend |
 | Behaviors, libraries, systems | `.chibi` source; graphs are a derived view | VM, SLJIT, and LLVM for the native subset |
 
@@ -26,7 +26,7 @@ material and shape today, and none of the engine pipeline shaders.
 
 ## Direction
 
-- Source is authoritative. A material is a `.chibi` declaration, and its graph,
+- Source is authoritative. A material is `.chibi` source, and its graph,
   IR, GLSL and source map are derived from the same revision, the way
   behaviors already work.
 - There is no second frontend. The stage-one compiler parses, resolves and
@@ -44,21 +44,25 @@ material and shape today, and none of the engine pipeline shaders.
 
 ## Proposed source form
 
-Materials and shapes become declaration kinds, like `behavior` and `library`.
-Parameters are top-level declarations with defaults, like behavior state, and
-stay overridable per entity. The declaration supplies the entry's parameter
-and result types, so they need no annotations. Surface fields have their
-current defaults, so a material returns only what it changes.
+The language rule is to infer, or reuse a form the language already has,
+before adding syntax. Existing forms are enough here, so this plan adds no
+declaration kind.
+
+A material is an ordinary library function whose result is `Surface`. That
+result type is what marks it as a material: there is no `material` keyword and
+no KDL asset. The parameters after `sample` are the material's parameters.
+Their defaults are the material's defaults, and an entity's Shader component
+overrides them by name, as it does today. Surface fields keep their current
+defaults, so a material returns only what it changes. Alpha Mode and Alpha
+Cutoff become Surface fields that must be constant, because lowering folds
+them into Opacity.
 
 ```chibi
-PulseRing :: material {
-    Radius := 35.0
-    Width := 3.0
-    Color := vec3(0.05, 0.6, 1)
-
-    Surface :: (sample) {
-        ring := ShaderMath.RingMask(sample.position, Radius, Width)
-        return {emission: Color * ring * ShaderMath.Pulse(sample.time, 2)}
+Materials :: library {
+    PulseRing :: (sample: Sample, radius: number = 35, width: number = 3,
+                  color: vec3 = vec3(0.05, 0.6, 1)) -> Surface {
+        ring := ShaderMath.RingMask(sample.position, radius, width)
+        return {emission: color * ring * ShaderMath.Pulse(sample.time, 2)}
     }
 }
 ```
@@ -75,11 +79,22 @@ ShaderMath :: library {
 }
 ```
 
-`ShaderMath` is an ordinary library. Gameplay code can call `Pulse` too; the
-shader pass checks only the functions a material reaches. Under this proposal
-the separate `shader-libraries/` kind goes away.
+The `-> Surface` annotation is needed because an untyped record literal has no
+type of its own for the result to be inferred from. Helpers like `Pulse` infer
+their results as usual.
 
-A shape has the same form, with a `Distance` entry and authored `bounds`.
+`ShaderMath` is an ordinary library. Gameplay code can call `Pulse` too; the
+shader pass checks only the functions a material reaches. The separate
+`shader-libraries/` kind goes away.
+
+A shape is a function whose result is `Shape`, a record with the signed
+`distance` and the constant half-extent `bounds` that today's shape assets
+author.
+
+A `material` declaration kind, like `behavior`, would drop the parameter
+annotations and the `-> Surface`, but it adds a keyword that the function form
+does not need. It is listed as P2 in case the function form hits a concrete
+gap.
 
 ## Shader backend options
 
@@ -101,9 +116,9 @@ and D only if measured compile times justify it. C is not recommended.
 | S1 | Compiler facts export | The stage-one compiler exports resolved facts for a reachable function closure: types, ranges, expressions, calls and constants ([typed-facts.md](typed-facts.md)). No private records or bytecode decoding. | Compiler owner. Not the LLVM lane. | not started |
 | S2 | Vector types | `vec2`/`vec3`/`vec4` with arithmetic, `vec * number`, swizzles and the common functions. Needed before any material reads naturally. | stdlib decision D2 (built-in types or library records), pending | decision |
 | S3 | Shader-domain pass | Checks reachable functions are pure and use shader-supported types and calls; lowers them to `shader_graph` IR with a source map; ranged diagnostics for everything else. Replaces #671's supplied-facts prototype. | S1, S2 | not started |
-| S4 | Material and shape declarations | `:: material` and `:: shape`; ordinary libraries replace `shader-libraries/`. A project migration rewrites the 13 KDL graph assets in this repository to source and removes the KDL graph format and `shader_adapter.c`. The graph becomes a derived view. | S3 | not started |
+| S4 | Material and shape functions | The shader pass recognizes `-> Surface` and `-> Shape` functions, and ordinary libraries replace `shader-libraries/`. In the same package, glTF import writes `.chibi` materials instead of KDL graphs, and a project migration rewrites the 13 KDL graph assets in this repository. Then the KDL graph format and `shader_adapter.c` are removed, and the graph becomes a derived view. | S3 | not started |
 | S5 | Studio | Materials open in the code editor with diagnostics and a live preview; the graph view and parameter overrides keep working; CPU watches come from `source_debug`. Shared navigation in SDK authoring modules. | S4 | not started |
-| S6 | Texture parameters and instances | Image-typed parameters bound per draw (R4d). glTF import emits instances of one shared standard material source instead of generating graphs. | S4, R4d | not started |
+| S6 | Texture parameters and instances | Image-typed parameters bound per draw (R4d). glTF import switches from one generated material function per glTF material to instances of one shared standard material. | S4, R4d | not started |
 | S7 | Control flow, matrices, integers | Option B's IR: `if`, bounded loops, matrices and integers with D1 semantics, on the CPU evaluator and in GLSL. | S3, S2 | not started |
 | S8 | Pipeline shaders in Chibi | Vertex, fragment and compute entry points with declared bindings; port the 102 engine shader files one family at a time with GPU image checks. | S7, decision P1 | decision |
 | S9 | Direct SPIR-V | Option D, only if S8's measurements show GLSL compilation is the bottleneck. | S8 | not planned |
@@ -125,7 +140,7 @@ the LLVM lane also lowers from. The overlaps are:
 | ID | Question | Recommendation | State |
 | --- | --- | --- | --- |
 | P1 | Do the engine's pipeline shaders move to Chibi too, or only authored materials and shapes? | Materials and shapes first (S1-S6). Decide on pipeline shaders once S7 lands. | open |
-| P2 | Is a material a declaration kind (`:: material`) or an ordinary function named by a KDL asset? | A declaration kind, matching `behavior` and `library`. | open |
+| P2 | Is a material an ordinary function with a `Surface` result, or a new `:: material` declaration kind? | An ordinary function: it needs no new syntax. Add a declaration kind only if the function form hits a concrete gap. | open |
 | P3 | Do shader libraries stay a separate kind? | No. One library kind; the shader pass checks what a material reaches. | open |
 | P4 | Which backend? | A now, B when needed (see above). | open |
 | D2 (stdlib) | Built-in vector types or library records? | Built-in, as the stdlib inventory recommends. | open |

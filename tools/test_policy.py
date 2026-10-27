@@ -388,6 +388,11 @@ TOOLS = {
     # and llvm-nm.
     'language-scalar-native': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-compiler-chibi-native'],
+    # W21's census summary; `make native-census` also writes its report.
+    'language-native-census': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--native-census'],
+    'language-native-census-flattening': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                          '--native-census-flattening'],
     'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                '--package-compiler-chibi-imports'],
     'language-package-compiler-chibi-imports-compiled': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
@@ -583,7 +588,8 @@ GROUPS = {
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',
                  'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',
-                 'language-migration34-generic-repro', 'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap'],
+                 'language-migration34-generic-repro', 'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap',
+                 'language-native-census-flattening'],
 }
 if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:
     GROUPS['language'].append('language-asset-compiler-host')

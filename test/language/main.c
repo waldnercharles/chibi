@@ -122,6 +122,8 @@ void test_language_format_corpus(const char *manifest);
 void test_language_prepared_write(const char *directory);
 void test_language_compiler_artifact_write(const char *directory);
 void test_language_record_producer(const char *directory);
+void test_language_native_census(const char *report);
+void test_language_native_census_flattening();
 
 int main(int argc, char **argv)
 {
@@ -229,6 +231,10 @@ int main(int argc, char **argv)
                                                           !strcmp(argv[1], "--package-compiler-chibi-native-arguments-oracle");
     bool package_compiler_chibi_native = argc == 2 &&
                                          !strcmp(argv[1], "--package-compiler-chibi-native");
+    bool native_census = (argc == 2 || argc == 3) &&
+                         !strcmp(argv[1], "--native-census");
+    bool native_census_flattening = argc == 2 &&
+                                    !strcmp(argv[1], "--native-census-flattening");
     bool package_compiler_chibi_behaviors_rest = argc == 2 &&
                                                  !strcmp(argv[1], "--package-compiler-chibi-behaviors-rest");
     bool package_compiler_chibi_imports = argc == 2 &&
@@ -332,7 +338,8 @@ int main(int argc, char **argv)
          !package_compiler_chibi_behaviors && !package_compiler_chibi_behaviors_rest &&
          !package_compiler_chibi_actions && !package_compiler_chibi_sharing &&
          !package_compiler_chibi_debug_free && !package_compiler_chibi_scalar &&
-         !package_compiler_chibi_native && !package_compiler_chibi_native_arguments &&
+         !package_compiler_chibi_native && !native_census &&
+         !native_census_flattening && !package_compiler_chibi_native_arguments &&
          !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
@@ -381,7 +388,8 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-sharing | "
             "--package-compiler-chibi-debug-free | "
             "--package-compiler-chibi-scalar | "
-            "--package-compiler-chibi-native | "
+            "--package-compiler-chibi-native | --native-census [report] | "
+            "--native-census-flattening | "
             "--package-compiler-chibi-native-arguments | "
             "--package-compiler-chibi-native-arguments-oracle | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
@@ -607,6 +615,10 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_native_arguments_oracle();
     } else if (package_compiler_chibi_native) {
         test_language_package_compiler_chibi_native();
+    } else if (native_census) {
+        test_language_native_census(argc == 3 ? argv[2] : NULL);
+    } else if (native_census_flattening) {
+        test_language_native_census_flattening();
     } else if (scalar_lowering_chibi) {
         test_language_scalar_lowering_chibi();
     } else if (lexical_binding_chibi) {

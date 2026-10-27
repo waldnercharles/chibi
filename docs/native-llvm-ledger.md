@@ -82,17 +82,18 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W13 | Imports and multi-file packages | W12 | the package graph; symbol identity | LLVM lane | no | corpus `import` and `qualified_call` accepted; two-package modules agree at O0 and O2 | no | none | open: symbol names and initialization order |
 | W14 | Calls to the native catalog | W5 for managed arguments; pure scalar natives need none | a foreign call ABI per native | LLVM lane | no | corpus `native_call` replaced by pure math natives (`max`, `vec2`) agreeing at O0 and O2 | no | none | open: D5 foreign ABI |
 | W15 | macOS arm64 and Windows x64 targets | none for scalars | `native_abi.Target`, the driver's layout check, CI legs | proposed lane | yes | `language-scalar-native`'s corpus and generated modules run natively on macOS arm64 and Windows x64 in CI; foreign `bool` decided | no | none | open: D5, D7 |
-| W16 | Calls from the VM into native code | exported scalar ABI (exists); W5 for managed values | an exported symbol ABI and its `pin_value` conversion; a loader in `src/execution` | proposed lane | yes | a running scene calls a natively compiled pure function and gets the VM's results; the editor keeps the VM | no | none | open: loading and identity of native objects |
+| W16 | Calls from the VM into native code | exported scalar ABI (exists); W3 for the emitted wrappers; W5 for managed values | an exported symbol ABI and its `pin_value` conversion (`src/execution/native.h`); a loader in the player | "Call native code from running scenes" thread | yes | a running scene calls a natively compiled pure function and gets the VM's results; the editor keeps the VM. So far `language-native-calls` checks C entries with the export ABI against the VM on both backends, inspected calls staying in the VM and every rejected manifest, and `--program` checks a query predicate's bound call | the runtime bridge (#741) | none; the emitted wrappers and the player loader follow W3 | decided: D11, identity by stable function ID and exact signature; loading open |
 | W17 | The driver in `chibi build` | none (`EmitBytes` is frozen) | stable commands; driver receipts | proposed lane | yes | process tests for an explicit native mode: relocated SDK, paths with spaces, missing and wrong tools, interrupted builds, stale partials, kept prior outputs, and no silent VM fallback | yes: `chibi build --native`, one source per program; the `native-build` selector (#736) | none | decided: keep an explicit override until M8 |
 | W18 | Linking without `cc` | W17 | the platform linker and runtime libraries, named in receipts | proposed lane | yes | an executable links with `cc`, `clang` and `gcc` unavailable, through a linker the receipt names | yes on Linux x86-64: `ld.lld -flavor gnu -static` and a start object shaped like Odin's no-CRT `_start` (#735); `native-build` runs it with an empty `PATH` | none | decided for Linux: rustc's direct `ld.lld` path; macOS and Windows linkers open with W15 (D7) |
 | W19 | Debug information and native diagnostics | W3 (emitter churn) | `llvm_native`'s output | LLVM lane | no | a debugger's backtrace of a native panic shows source lines at O0 and O2 | no | none | open: D6 |
 | W20 | Workloads and measurements | none | none | proposed lane, or the LLVM lane | yes | defined kernels (game math, compiler passes) with compile time, peak memory, size and run time recorded per milestone | in progress: four kernels and `native-workload-benchmark`, recorded under [Baseline and measurements](#baseline-and-measurements); compiler-pass kernels wait for W3 and W7 | none | decided: correctness first, no promised speedups |
-| W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | no | none | decided |
+| W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | yes: `make native-census` writes the [census](native-compiler-census.md); counts are under [Census](#census) | none | decided |
 | W22 | Native stage one and stage two | W1 to W14 as the census requires | the bootstrap generation | LLVM lane with the generation coordinator | no | a native stage one builds stage two and a checking rebuild with identical or normalized bytes, and the corpus gives the same results as the VM stages | no | none | decided: no C-frontend delegation |
 | W23 | Recovery and installed proof without `cmake`, `clang` or `gcc` | W18, W22 | CI recovery job | LLVM lane | no | a CI job with those executables unavailable goes from a clean checkout through stage one and stage two and links a checked game | no | none | decided: PLAN.md's objective |
 | W24 | Game scenarios | none | game fixtures | proposed lane | yes | deterministic scenarios for each feature the inventory finds in games | no | none | decided |
 | W25 | Native game execution | W16, W14, W7 | W16's bridge | LLVM lane | no | representative scenes run with native functions and give the VM's traces; tasks stay in the VM (D10) | no | none | decided: D10, native functions never suspend |
 | W26 | Default adoption and removal | all of the above | stable command defaults | owner decision | no | PLAN.md's deletion gate for each removed path | no | none | open: the owner decides the switch |
+| W27 | Lift the producer's size limits | none | the limits in `Facts.chibi`; `Run.ps1`'s cap | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules at the old limits and past them agree at O0 and O2 | no | none | open: raise the limits or remove them |
 
 Lanes:
 
@@ -105,6 +106,32 @@ Lanes:
   follow.
 - Coordinated centrally: changes to the facts schema, the prepared ABI and
   runtime symbol versions, bootstrap generations, and the default switch.
+
+## Census
+
+The [census](native-compiler-census.md) (W21) gives each of the 642 functions
+in the self-hosted compiler's bootstrap closure the first rejection the
+producer gives it, after flattening imports (W13) and constants (W12) into one
+package. On main at `5877b94` (27 October 2026):
+
+| Package | First blocker | Functions |
+| --- | --- | ---: |
+| W7 | array parameters, results and natives | 346 |
+| W27 | the producer's size limits | 109 |
+| W3 | string parameters and results | 99 |
+| none | passes the producer | 64 |
+| W9 | strings and arrays in records and unions | 24 |
+
+W27's 109 are 50 functions with more than 8 parameters, 26 with a record of
+more than 16 fields, 22 naming more than 16 records and unions, 9 over 16 KB of
+flattened source and 2 over 64 operands. Of the 64 that pass, 25 need neither
+flattening, 37 need only W12 and 2 only W13. In all, 322 functions name another
+package and 265 a package constant.
+
+The producer checks every signature before any body, so a count shows the
+first blocker only, and the next one appears when its package lands. Rerun
+`make native-census` (about three minutes under ASan) after each package lands
+and update this table.
 
 ## Features
 
@@ -213,6 +240,7 @@ decision.
 | D8 | Regression budget | `Run.ps1` caps at 96 sources and 240 seconds (#683 raised it from 180), and M1 reaches 96. M2's folded-constant sources and its generated width and floating modules go in the C selector (`FOLDED_SOURCES`, `widths_agree`, `floats_agree`), and its corpus edits keep 96. | A measured larger cap. | M2 cases in the C selector; cap open |
 | D9 | Out-of-range indexes | Native code panics, as Rust's and Odin's does: it ends the program with a named message. The VM keeps its recoverable error for the editor. The owner declined reading a zero value and dropping the write. (Owner, 26 October 2026.) | The message and the host hook it reports through, with D6. | decided for M4 |
 | D10 | Native ownership | Native code has no ownership scheme of its own. It calls the runtime's value operations (copy, drop, make unique, allocate) as internal `chibi_rt_*` symbols, versioned with the prepared ABI, at the copies and drops the compiler certifies. It reads strings inline and arrays only through runtime spans. A hidden first context parameter carries the heap and the failure slot, and native functions never suspend, so the heap collects only while execution is quiescent. | Lands with M4c; arrays and maps wait for #695 and #694. | set for M4c |
+| D11 | Calls from the VM into native code | A native library exports a manifest of its pure scalar functions. Each export names a function by its stable ID (`script_catalog_id("symbol", "<library path>:1:<name>:callable")`, which its prepared module records) and its exact parameter and result types, and its entry reads and writes 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1, `number` and `f64` as their bits. `execution_natives_bind` (`src/execution/native.c`) binds an export only to the effect-free authored function with that ID and signature, and rejects the whole manifest otherwise. A program given the table runs bound synchronous calls natively; tasks, inspected calls and unbound functions stay in the VM, and the editor binds nothing. The program's context layout and the prepared ABI do not change. | The emitted export wrappers and manifest symbol, loading objects in the player, and records, strings and arrays at the boundary (W5). | runtime bridge implemented; emission and loading open |
 
 ## Baseline and measurements
 

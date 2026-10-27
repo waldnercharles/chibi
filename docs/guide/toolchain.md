@@ -211,6 +211,13 @@ The output contains the player, compiled game and resources. It also contains
 engine shaders, licenses and identity files. Add `--archive` to create a `.tar.gz`
 archive beside the output.
 
+Add `--native` to compile each library source (`Name :: library { ... }`)
+with LLVM into `natives/<Name>.so`, so the player runs calls to its pure
+functions natively. Pass `--llvm DIR`, the folder of `opt`, `llc` and `ld.lld`,
+or set `CHIBI_LLVM_BIN`. A library the native compiler does not support yet stays
+in the VM, and the export says why; a failed native build fails the export.
+This works for Linux x86-64 folder exports only so far.
+
 **Export replaces an earlier export, including files you added to it.** The
 exporter uses its `.chibi-export` marker to identify its output. It refuses
 to replace an existing folder without that marker.

@@ -31,3 +31,16 @@ InspectTargets :: () -> int {
     }
     return admitted;
 }
+
+// Bit i is set when argument i names a source LibraryName reads as Mix's.
+InspectLibraryNames :: () -> int {
+    named := 0;
+    bit := 1;
+    for (path in build.arguments()) {
+        if (LibraryName(build.read_file(path)) == "Mix") {
+            named += bit;
+        }
+        bit *= 2;
+    }
+    return named;
+}

@@ -87,12 +87,13 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W18 | Linking without `cc` | W17 | the platform linker and runtime libraries, named in receipts | proposed lane | yes | an executable links with `cc`, `clang` and `gcc` unavailable, through a linker the receipt names | no | none | open: D7 linker |
 | W19 | Debug information and native diagnostics | W3 (emitter churn) | `llvm_native`'s output | LLVM lane | no | a debugger's backtrace of a native panic shows source lines at O0 and O2 | no | none | open: D6 |
 | W20 | Workloads and measurements | none | none | proposed lane, or the LLVM lane | yes | defined kernels (game math, compiler passes) with compile time, peak memory, size and run time recorded per milestone | no | none | decided: correctness first, no promised speedups |
-| W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | no | none | decided |
+| W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | yes: `make native-census` writes the [census](native-compiler-census.md); counts are under [Census](#census) | none | decided |
 | W22 | Native stage one and stage two | W1 to W14 as the census requires | the bootstrap generation | LLVM lane with the generation coordinator | no | a native stage one builds stage two and a checking rebuild with identical or normalized bytes, and the corpus gives the same results as the VM stages | no | none | decided: no C-frontend delegation |
 | W23 | Recovery and installed proof without `cmake`, `clang` or `gcc` | W18, W22 | CI recovery job | LLVM lane | no | a CI job with those executables unavailable goes from a clean checkout through stage one and stage two and links a checked game | no | none | decided: PLAN.md's objective |
 | W24 | Game scenarios | none | game fixtures | proposed lane | yes | deterministic scenarios for each feature the inventory finds in games | no | none | decided |
 | W25 | Native game execution | W16, W14, W7 | W16's bridge | LLVM lane | no | representative scenes run with native functions and give the VM's traces; tasks stay in the VM (D10) | no | none | decided: D10, native functions never suspend |
 | W26 | Default adoption and removal | all of the above | stable command defaults | owner decision | no | PLAN.md's deletion gate for each removed path | no | none | open: the owner decides the switch |
+| W27 | Lift the producer's size limits | none | the limits in `Facts.chibi`; `Run.ps1`'s cap | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules at the old limits and past them agree at O0 and O2 | no | none | open: raise the limits or remove them |
 
 Lanes:
 
@@ -105,6 +106,32 @@ Lanes:
   follow.
 - Coordinated centrally: changes to the facts schema, the prepared ABI and
   runtime symbol versions, bootstrap generations, and the default switch.
+
+## Census
+
+The [census](native-compiler-census.md) (W21) gives each of the 642 functions
+in the self-hosted compiler's bootstrap closure the first rejection the
+producer gives it, after flattening imports (W13) and constants (W12) into one
+package. On main at `5877b94` (27 October 2026):
+
+| Package | First blocker | Functions |
+| --- | --- | ---: |
+| W7 | array parameters, results and natives | 346 |
+| W27 | the producer's size limits | 109 |
+| W3 | string parameters and results | 99 |
+| none | passes the producer | 64 |
+| W9 | strings and arrays in records and unions | 24 |
+
+W27's 109 are 50 functions with more than 8 parameters, 26 with a record of
+more than 16 fields, 22 naming more than 16 records and unions, 9 over 16 KB of
+flattened source and 2 over 64 operands. Of the 64 that pass, 25 need neither
+flattening, 37 need only W12 and 2 only W13. In all, 322 functions name another
+package and 265 a package constant.
+
+The producer checks every signature before any body, so a count shows the
+first blocker only, and the next one appears when its package lands. Rerun
+`make native-census` (about three minutes under ASan) after each package lands
+and update this table.
 
 ## Features
 

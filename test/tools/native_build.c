@@ -691,6 +691,35 @@ static void bundle_program(const char *program, int t, const char *name)
     fclose(file);
 }
 
+/* What each CROSS target's object holds when a frame's probes survive O2:
+ * arm64's inline loop, `sub sp, sp, #1, lsl #12`, `cmp sp, x9` and
+ * `str xzr, [sp]`, and Windows' symbol for its call to __chkstk. */
+static const struct
+{
+    const char *bytes;
+    size_t size;
+} PROBES[] = { { "\xff\x07\x40\xd1\xff\x63\x29\xeb\xff\x03\x00\xf9", 12 },
+               { "__chkstk", 8 } };
+
+/* Whether the object.o published in `out` holds `size` bytes of `bytes`. */
+static bool object_holds(const char *out, const char *bytes, size_t size)
+{
+    char object[1024];
+    path(object, out, "object.o");
+    FILE *file = fopen(object, "rb");
+    assert(file);
+    static char data[1 << 16];
+    size_t length = fread(data, 1, sizeof data, file);
+    assert(feof(file));
+    fclose(file);
+    for (size_t i = 0; i + size <= length; i++) {
+        if (!memcmp(data + i, bytes, size)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Links `ir` to a program in `out` through the relocated SDK's Driver.Build,
  * with the tools in the tools folder at O2. */
 static bool driver_build(const char *ir, const char *out)
@@ -727,7 +756,8 @@ static bool driver_build(const char *ir, const char *out)
 
 /* Real LLVM tools on Linux link macOS arm64 and Windows x64 programs with no
  * SDK of either system. A 256 KiB frame links too: Windows code calls the
- * start object's __chkstk, and arm64 probes inline. With
+ * start object's __chkstk, and arm64 probes inline. A volatile index keeps O2
+ * from shrinking the frame to the one element it touches. With
  * CHIBI_NATIVE_BUNDLE set, the programs go into the bundle that CI's
  * native-targets job runs on macOS and Windows. */
 TEST_CASE(native_build_links_other_targets_with_llvm)
@@ -769,10 +799,12 @@ TEST_CASE(native_build_links_other_targets_with_llvm)
         snprintf(
             text,
             sizeof text,
-            "%sdefine i32 @chibi_scalar() #0 {\n"
+            "%s@index = internal global i64 60000\n"
+            "define i32 @chibi_scalar() #0 {\n"
             "  %%frame = alloca [65536 x i32]\n"
+            "  %%i = load volatile i64, ptr @index\n"
             "  %%at = getelementptr [65536 x i32], ptr %%frame, i64 0, i64 "
-            "60000\n"
+            "%%i\n"
             "  store volatile i32 42, ptr %%at\n"
             "  %%value = load volatile i32, ptr %%at\n"
             "  ret i32 %%value\n"
@@ -783,6 +815,7 @@ TEST_CASE(native_build_links_other_targets_with_llvm)
         );
         tool_write(ir, text);
         REQUIRE(driver_build(ir, out));
+        REQUIRE(object_holds(out, PROBES[t].bytes, PROBES[t].size));
         path(program, out, CROSS[t].program);
         REQUIRE(executable_for(program, t));
         bundle_program(program, t, t ? "frame-O2.exe" : "frame-O2");

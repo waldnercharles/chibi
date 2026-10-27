@@ -2759,15 +2759,19 @@ static void preserve_changes(execution_instance *next, const execution_instance 
     }
     next->query_started = true;
 }
-static bool replacement_has_pointer(pin_value root)
+/* Roots each pointer the candidate preserved, rather than the state value
+ * holding it: a root must not carry inline record fields (see
+ * behavior_managed_heap_root), while ordinary state may. */
+static void replacement_root(execution_program *candidate, pin_value root)
 {
     pin_value *pending = NULL;
     apush(pending, root);
-    bool found = false;
-    while (acount(pending) && !found) {
+    while (acount(pending)) {
         pin_value value = apop(pending);
         if (value.container == PIN_CONTAINER_SINGLE && value.type == PIN_POINTER) {
-            found = value.ptr != NULL;
+            if (value.ptr) {
+                apush(candidate->replacement_roots, value);
+            }
         } else if (value.container == PIN_CONTAINER_MAP) {
             const pin_map *map = value.ptr;
             for (int i = 0; map && i < map->count; i++) {
@@ -2800,13 +2804,6 @@ static bool replacement_has_pointer(pin_value root)
         }
     }
     afree(pending);
-    return found;
-}
-static void replacement_root(execution_program *candidate, pin_value value)
-{
-    if (replacement_has_pointer(value)) {
-        apush(candidate->replacement_roots, value);
-    }
 }
 static void replacement_scope_roots(execution_program *candidate, const execution_program *scope)
 {

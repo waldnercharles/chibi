@@ -8,43 +8,29 @@ vec3 spelling and no public fully typed expression table. It resolves types
 while lowering. Shader work must not consume private Value/Name/Work records or
 decode prepared bytecode to rediscover meaning.
 
-Use ordinary source records with float fields for the first example. `Float2`,
-`Float3`, `Sample` and `Surface` below are proposed domain records in a future
-`game:shaders` package, not names already available to source. A first coherent
-slice can use scalar arithmetic and explicit component construction without
-requiring new generic vector or matrix semantics.
+The example uses the `material` form proposed in [PLAN.md](PLAN.md) (P2) and
+built-in vectors (S2, stdlib decision D2). `Sample` and `Surface` are the
+material's contract types, so the entry needs no annotations, and unset
+Surface fields keep their defaults. `number` is `f32` on the CPU and the GPU
+(D3), so no narrowing rule applies.
 
 ```chibi
-package gradient
+Gradient :: material {
+    Tint := vec3(1, 0.5, 0.25)
+    Gain := 1.0
+    Speed := 0.5
 
-import shader "game:shaders"
-
-Parameters :: struct {
-    tint: shader.Float3;
-    gain: float;
-    speed: float;
-}
-
-TintGain :: (tint: shader.Float3, gain: float) -> shader.Float3 {
-    return {x: tint.x * gain, y: tint.y * gain, z: tint.z * gain};
-}
-
-pub Shade :: (sample: shader.Sample, parameters: Parameters) -> shader.Surface {
-    factor: float = sample.uv.x * parameters.gain + sample.time * parameters.speed;
-    color := TintGain(parameters.tint, factor);
-    emission := TintGain(color, float(0.125));
-    return {
-        base_color: color, emission: emission, roughness: float(0.5),
-        metallic: float(0), normal: {x: float(0), y: float(0), z: float(0)},
-        opacity: float(1), unlit: true, height: float(0), occlusion: float(1)
-    };
+    Surface :: (sample) {
+        color := Tint * (sample.uv.x * Gain + sample.time * Speed)
+        return {base_color: color, emission: color * 0.125, unlit: true}
+    }
 }
 ```
 
 This gradient is the first candidate fixture. Repeating bands follow when an
 existing float math capability is verified or its domain intrinsic has an
 explicit catalog contract. Do not insert an unresolved intrinsic into a working
-example or accept a precision-losing double call.
+example, and do not accept an `f64` call.
 
 The shader pass needs these resolved facts for the reachable entry/helper closure:
 
@@ -57,7 +43,7 @@ The shader pass needs these resolved facts for the reachable entry/helper closur
 | Statement | Kind and range, lexical symbol identity for immutable locals, initializer expression or returned value. Unsupported statement kinds retain ranges for rejection. |
 | Expression | Stable occurrence identity, kind, range, resolved type, ordered child IDs and referenced symbol/member/callable identity. |
 | Operator/call | Resolved scalar operator or stable native intrinsic classification, callable identity, exact argument-to-parameter mapping and effects. Helpers identify their source function. |
-| Literal | Exact typed constant bits or bool. Never parse literal text again or narrow double silently. |
+| Literal | Exact typed constant bits or bool. Never parse literal text again. `f64` constants are rejected in the shader domain. |
 | Construction/projection | Resolved field identity and expression bindings, including contextual record literals. |
 
 All referenced IDs are snapshot facts or stable semantic identities. No runtime

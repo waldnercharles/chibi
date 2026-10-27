@@ -239,7 +239,13 @@ done.
   publishes the seeds as a commit-specific prerelease and commits the new pin in
   `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
   self-build on the pin commit. Pull before pushing again. If the branch moved
-  after the seed run started, the pin step fails and the release stays unpinned.
+  after the seed run started, unrelated branch movement fails the pin step.
+  Rerunning the same workflow can resume its verified one-file pin commit and
+  dispatch only checks not already started on that exact pin. Existing published
+  seeds are reused only after verifying their tag target, source identity,
+  complete asset inventory, checksums and three-platform recovery evidence;
+  a mismatch fails without replacing published assets. Runs for the same source
+  SHA serialize across refs and do not cancel an active publication/pin.
 
 A dispatched run must build the head commit the event named. If the branch
 moved in between, the workflow cancels the run and fails, and the PR needs the

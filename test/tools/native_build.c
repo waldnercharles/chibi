@@ -228,9 +228,32 @@ static char *module_ir(bool lines)
     return found;
 }
 
+/* Whether the IR of some O0 output holds `text`. */
+static bool any_ir(const char *text)
+{
+    char folder[1024], source[1024];
+    path(folder, game, "build/native");
+    DIR *listing = opendir(folder);
+    bool found = false;
+    for (struct dirent *entry; listing && (entry = readdir(listing)) && !found;) {
+        if (strncmp(entry->d_name, "O0-", 3) || strchr(entry->d_name, '.')) {
+            continue;
+        }
+        snprintf(source, sizeof source, "%s/%s/source.ll", folder, entry->d_name);
+        char *ir = tool_read(source);
+        found = ir && strstr(ir, text);
+        free(ir);
+    }
+    if (listing) {
+        closedir(listing);
+    }
+    return found;
+}
+
 /* -g emits line tables, as rustc's -C debuginfo=line-tables-only: each
  * function a subprogram under its source name, each statement at its line and
- * column, the file in the game's folder. It is an output of its own. */
+ * column, the file in the game's folder. It is an output of its own, keyed on
+ * that folder, so moving the game rebuilds it and keeps the plain program. */
 TEST_CASE(native_build_adds_line_tables_with_g)
 {
     reset("lines", SOURCE);
@@ -260,6 +283,13 @@ TEST_CASE(native_build_adds_line_tables_with_g)
     free(ir);
     free(plain);
     REQUIRE(placed);
+    char moved[1024];
+    snprintf(moved, sizeof moved, "%s moved", game);
+    REQUIRE(!rename(game, moved));
+    strcpy(game, moved);
+    snprintf(file, sizeof file, "directory: \"%s\")", game);
+    REQUIRE(build(launcher, "-O0", tools) == 0 && strstr(errors, "is up to date"));
+    REQUIRE(build_with(launcher, lines, tools) == 0 && count("O0-") == 3 && any_ir(file));
     const char *twice[] = { "-g", "-g" };
     REQUIRE(build_with(launcher, twice, tools) == 2 && strstr(errors, "Invalid build option: -g"));
     return true;
@@ -490,7 +520,6 @@ void test_native_build(const char *binary)
     tool_remove_tree(suite);
 #else
     (void)binary;
-    fprintf(stderr, "native build: seven Linux x86-64 cases unexecuted on this platform; the driver admits only that target
-");
+    fprintf(stderr, "native build: seven Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
 #endif
 }

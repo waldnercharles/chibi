@@ -16,11 +16,11 @@ once that package lands.
 
 ## Summary
 
-Of 638 functions, 81 pass the producer, 33 of them without flattened imports or constants.
+Of 639 functions, 81 pass the producer, 33 of them without flattened imports or constants.
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 436 |
+| W7 | array parameters, results and natives | 437 |
 | none | passes the producer | 81 |
 | W9 | strings and arrays in records and unions | 68 |
 | W4 | text natives | 39 |
@@ -31,7 +31,7 @@ Each first blocker by the producer's message:
 
 | Package | Rejection | Functions |
 | --- | --- | ---: |
-| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 432 |
+| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 433 |
 | W7 | Unknown function 'length' | 4 |
 | W9 | scalar proof requires number and bool record fields | 47 |
 | W9 | scalar proof requires number and bool union payloads | 21 |
@@ -41,7 +41,7 @@ Each first blocker by the producer's message:
 | W6 | Unknown function 'format_text' | 9 |
 | none yet | scalar proof requires known effect-free scalar execution | 5 |
 
-The census flattens two features, so neither is ever a first blocker: 321 functions name another package (W13), and 264 name a package constant (W12).
+The census flattens two features, so neither is ever a first blocker: 322 functions name another package (W13), and 265 name a package constant (W12).
 
 ## Functions
 
@@ -682,6 +682,7 @@ The census flattens two features, so neither is ever a first blocker: 321 functi
 | `package_compiler/Scalar.chibi` | `ScalarPassed` | W9 |  | W13 | `message: string;` |
 | `package_compiler/Scalar.chibi` | `ScalarMembers` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarNul` | W9 |  | W13 | `message: string;` |
+| `package_compiler/Scalar.chibi` | `ScalarLibrary` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
 | `package_compiler/Scalar.chibi` | `CollectScalar` | W7 |  | W12, W13 | `scalar_facts__Row[]` |
 | `scalar_facts/Facts.chibi` | `Bits` | none |  | W12 |  |
 | `scalar_facts/Facts.chibi` | `Unsigned` | none |  | W12 |  |

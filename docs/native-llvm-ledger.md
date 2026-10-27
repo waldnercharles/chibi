@@ -110,15 +110,16 @@ Lanes:
 
 ## Census
 
-The [census](native-compiler-census.md) (W21) gives each of the 638 functions
+The [census](native-compiler-census.md) (W21) gives each of the 639 functions
 in the self-hosted compiler's bootstrap closure the first rejection the
 producer gives it, after flattening imports (W13) and constants (W12) into one
 package. With the producer's size limits removed (W27) on top of native
-strings (W3, #740) and constants (W12, #751), 27 October 2026:
+strings (W3, #740), constants (W12, #751) and native libraries (#753), 27
+October 2026:
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 436 |
+| W7 | array parameters, results and natives | 437 |
 | none | passes the producer | 81 |
 | W9 | strings and arrays in records and unions | 68 |
 | W4 | text natives | 39 |
@@ -130,7 +131,7 @@ stop at the next package's feature: 81 at W7's arrays, 21 at W9's managed
 fields, 5 at W4's text natives and 1 at another form. The closure also lost
 four functions that were W7's, the producer's helpers for the bounds. The 5 others build a
 `string[]` literal, which waits for W7. Of the 81 that pass, 33 need neither
-flattening. In all, 321 functions name another package and 264 a package
+flattening. In all, 322 functions name another package and 265 a package
 constant.
 
 The producer checks every signature before any body, so a count shows the

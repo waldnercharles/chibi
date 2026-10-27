@@ -948,7 +948,7 @@ static pin_value rows(arena *input, const pin_value *items, int count, pin_type 
 /* A port's storage as Compile takes it: a generic port's type is the one its
  * call infers (0), a wildcard takes each argument's own type (-2), and -1 is
  * a type the compiler cannot pass. */
-static int port_storage(script_type type)
+int compiler_fixture_port_storage(script_type type)
 {
     unsigned inferred = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC;
     if (type.flags & SCRIPT_TYPE_UNTYPED) {
@@ -995,7 +995,12 @@ bool compiler_fixture_natives(
             REQUIRE(
                 put(input, &port, "name", text(input, declared->name ? declared->name : ""))
             );
-            REQUIRE(put(input, &port, "storage", integer(port_storage(declared->type))));
+            REQUIRE(
+                put(input,
+                    &port,
+                    "storage",
+                    integer(compiler_fixture_port_storage(declared->type)))
+            );
             REQUIRE(put(input, &port, "container", integer((int)declared->type.container)));
             REQUIRE(put(input, &port, "c_string", boolean(declared->c_string)));
             apush(ports, port);

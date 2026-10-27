@@ -6660,7 +6660,7 @@ static bool behavior_natives(int b, pin_value tables[3])
                                                          : &c->results[j - c->parameter_count];
             pin_value port = row(b, "Port");
             REQUIRE(put_value(&port, "name", text(declared->name)));
-            REQUIRE(put(&port, "storage", port_storage(declared->type)));
+            REQUIRE(put(&port, "storage", compiler_fixture_port_storage(declared->type)));
             REQUIRE(put(&port, "container", (int)declared->type.container));
             REQUIRE(put_value(&port, "c_string", flag(false)));
             apush(ports, port);

@@ -53,7 +53,14 @@ jobs:
           "$RUNNER_TEMP/cmake/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo "$RUNNER_TEMP/cmake/bin" >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
-      - name: Build the sanitized drivers once
+      - name: Build the sanitized drivers once (Linux)
+        if: runner.os == 'Linux'
+        env:
+          # Match ordinary Linux CI: Debug, assertions, ASan/UBSan and -g -O1.
+          SANITIZER_CMAKE_FLAGS: -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=address,undefined -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON -DCMAKE_C_FLAGS_DEBUG="-g -O1" -DCMAKE_CXX_FLAGS_DEBUG="-g -O1"
+        run: make build BUILD_TARGET='test_tools test_language chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
+      - name: Build the sanitized drivers once (macOS)
+        if: runner.os == 'macOS'
         run: make build BUILD_TARGET='test_tools test_language chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
       - name: Stage exact-source runtime closure and selector manifest
         run: |

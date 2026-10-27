@@ -57,6 +57,50 @@ make benchmark          # native C benchmark selectors
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
+Groups automatically overlap source-audited independent selectors in separate
+processes, initially up to two workers (bounded by available CPU affinity and a
+conservative 2 GiB available-memory admission reserve per worker). Linux checks MemAvailable
+and visible cgroup limits; macOS checks free/inactive/speculative pages. Missing
+or uninspectable capacity selects serial execution.
+No CI sharding or flags are required: `make test-language-all` takes this route.
+The initial allowlist contains the heavy scalar, behavior, packaging, asset-host,
+compiler-bootstrap and Linux scalar-native selectors. Other selectors remain
+exclusive barriers until their resources are audited; they are not omitted.
+`make -j1` still protects cross-target fixtures. `make test-language-all
+TEST_JOBS=1` or `python3 tools/test_policy.py --jobs 1 group language` preserves
+the original fully serial group route. `--jobs N` / `TEST_JOBS=N` explicitly
+selects a worker limit; it does not make unaudited selectors parallel-safe.
+
+Each worker owns its supervisor/process group, temporary root and disk-backed
+log. Logs are emitted without interleaving in manifest order. Failure stops new
+work, cancels owned workers, prints their partial logs and reports queued selectors
+as not run. The optional group deadline still covers the whole group, including
+queueing; existing in-test child budgets are unchanged. Scratch is removed after
+worker cleanup, including on SIGINT/SIGTERM. Absolute source paths are not
+isolated by changing TMPDIR; the [resource audit](test-parallel-resources.md)
+records why each enabled selector is safe.
+
+The runner writes `Test policy: {...}` JSON diagnostics to stderr, separate from
+program stdout: selected automatic/explicit worker count and admission reason,
+CPU/memory probe availability and reserve, then manifest-ordered selector
+supervisor start/observed-finish timestamps and statuses, observed peak live
+workers and group wall time. Timestamps use the monotonic clock; intervals include
+supervisor startup/cleanup and are not CPU time or a speedup measurement. Exits
+are polled afresh before admission. These receipts distinguish actual scheduled
+overlap from a serial capacity fallback in ordinary CI logs without CI flags.
+The preserved legacy serial route explicitly reports `unobserved-serial` and a
+null peak: it does not invent per-selector intervals or claim observed overlap.
+
+This is selector-level parallelism, not individual pico_unit cases or threads.
+The initial two-worker cap is a conservative rollout policy, not a measured
+memory bound or a promise to use every core. Peak-memory and matched serial /
+parallel wall-time measurements are required before increasing the automatic
+cap; native compiler/linker children can themselves use threads. The memory
+reserve is an admission heuristic, not a measured peak-RSS limit; `--jobs N`
+overrides automatic admission when the caller has better capacity evidence.
+Finer-grained discovery should serve the Chibi-first test API rather than making C coverage
+the language's testing foundation.
+
 The runner has no default global timeout.
 `make test-fast TEST_ARGS='--test-runner'` runs a selected standalone tooling
 case; set `TEST_BINARY` to use another driver. The arguments are tokenized and
@@ -2332,6 +2376,26 @@ that always fails: the headers its libraries staged stay in place, since an
 executable stages none. Only `reflect` is linked by a test; the other links
 are compared, and a manual full build links and runs them. About 25 s.
 
+`python3 tools/test_policy.py tool build-graph-debug-optimization` is the narrow
+Linux CI route after the existing sanitized products and Release helper builds.
+It uses sanitized `build/test/tools/test_tools` and the Debug CMake reference,
+not the standalone runtime-only `build-tools` driver. CI explicitly selects
+`CHIBI_BUILD_HOST=build-release/sdk/chibi-build-host` only for this route: the
+Release helper executes authored command generation, while the emitted profiles
+retain Debug assertions and ASan/UBSan. The default focused CLI still uses the
+Debug host unless this override is supplied. The initial Debug-host CI attempt
+hit each existing 50-second child ceiling before useful output; Release-helper
+coverage does not establish sanitized-host execution speed or correctness. Three C cases compare reference-profile compile
+commands with CMake, verify default/O0/O1 Debug instrumentation and assertions,
+and reject malformed or non-Debug optimization requests before output creation.
+The eleven authored-host invocations only emit commands or reject arguments;
+they never compile graph products. Existing 50-second child limits and the CI
+job budget remain unchanged. The full graph/program routes retain their cases;
+this focused route is not a full Graph suite or an O1 performance measurement.
+It preserves CMake's exact compiler paths; compiler discovery remains covered
+only by the separate `build-graph` route. Normal macOS CI does not execute the
+new O1 cases; macOS O1 runtime validation remains unrun pending a later experiment.
+
 `python3 tools/test_policy.py tool build-graph-programs` runs the graph with
 `--commands-only on --target test_tools --target chibi`: its link commands
 name them and the programs they run (`policy_worker`, `chibi_ctl`,
@@ -3436,3 +3500,9 @@ step, and the result matches the committed projects except where they were
 hand-simplified afterwards. `project-declarations` and
 `language-query-program`, which no group runs, also failed on the checkpoint's
 base.
+
+## Debug optimization experiment
+
+See [the opt-in O0/O1 sanitizer comparison](debug-optimization-experiment.md) for
+matched build flags, correctness gates and wall-time measurements. CI defaults
+and sanitizer coverage remain unchanged.

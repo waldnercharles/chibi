@@ -11,6 +11,7 @@
 #include "toolchain/compiler_host.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,8 +29,8 @@
 #define RECOVERY_SECONDS 50
 
 static const char *host_path, *producer_path, *artifact_path;
-static char root[64], log_path[128], compiler[128], core[128];
-static char api_folder[256], api_sources[512], api_digest[65], api_error[512];
+static char root[PATH_MAX], log_path[PATH_MAX], compiler[PATH_MAX], core[PATH_MAX];
+static char api_folder[PATH_MAX], api_sources[512], api_digest[65], api_error[512];
 static unsigned char *api_bytes;
 static size_t api_length;
 static char *api_target;
@@ -40,27 +41,27 @@ static const char api_core[] = "package core\n";
 
 static void path(char *out, const char *relative)
 {
-    int length = snprintf(out, 256, "%s/%s", root, relative);
-    assert(length > 0 && length < 256);
+    int length = snprintf(out, PATH_MAX, "%s/%s", root, relative);
+    assert(length > 0 && length < PATH_MAX);
 }
 
 static void folder(const char *relative)
 {
-    char full[256];
+    char full[PATH_MAX];
     path(full, relative);
     assert(!mkdir(full, 0700));
 }
 
 static void write_file(const char *relative, const char *text)
 {
-    char full[256];
+    char full[PATH_MAX];
     path(full, relative);
     tool_write(full, text);
 }
 
 static void write_binary(const char *relative, const void *bytes, size_t length)
 {
-    char full[256];
+    char full[PATH_MAX];
     path(full, relative);
     FILE *file = fopen(full, "wb");
     assert(file && fwrite(bytes, 1, length, file) == length && !fclose(file));
@@ -113,7 +114,7 @@ static void manifest(
     const char *target
 )
 {
-    char file[256];
+    char file[PATH_MAX];
     size_t capacity = strlen(digest) + strlen(sources) + strlen(target) + 512;
     char *text = xmalloc(capacity);
     int written = snprintf(
@@ -148,7 +149,7 @@ static void artifact(
     const char *target
 )
 {
-    char file[256];
+    char file[PATH_MAX];
     folder(name);
     snprintf(file, sizeof file, "%s/compiler.chibip", name);
     write_file(file, closure);
@@ -158,7 +159,7 @@ static void artifact(
 /* The host's bootstrap check of the artifact folder name. */
 static int check(const char *name)
 {
-    char artifact_folder[256];
+    char artifact_folder[PATH_MAX];
     path(artifact_folder, name);
     const char *argv[] = { host_path,    "--bootstrap", artifact_folder,
                            "--compiler", compiler,      "--core",
@@ -267,14 +268,14 @@ TEST_CASE(bootstrap_reads_every_recorded_source)
  * another target is refused before it compiles anything. */
 TEST_CASE(bootstrap_rejects_another_target)
 {
-    char produced[256], closure[256];
+    char produced[PATH_MAX], closure[PATH_MAX];
     folder("produced");
     path(produced, "produced");
     const char *produce[] = { producer_path, "--compiler-artifact-write", produced, NULL };
     REQUIRE(tool_run_within(produce, root, log_path, 40) == 0);
     folder("other");
     path(closure, "other/compiler.chibip");
-    char source[256];
+    char source[PATH_MAX];
     path(source, "produced/compiler.artifact");
     REQUIRE(!rename(source, closure));
     contract(1, 1);
@@ -309,7 +310,7 @@ TEST_CASE(bootstrap_write_checks_the_seed)
 {
     contract(1, 1);
     folder("seed");
-    char seed[256], out[256];
+    char seed[PATH_MAX], out[PATH_MAX];
     path(seed, "seed");
     path(out, "written");
     const char *argv[] = { host_path, "--bootstrap", out,  "--compiler",
@@ -334,7 +335,7 @@ TEST_CASE(bootstrap_write_checks_the_seed)
     const size_t lengths[] = { COMPILER_HOST_MAX_OUTPUT_BYTES + 1u,
                                COMPILER_HOST_MAX_ARTIFACT_BYTES,
                                COMPILER_HOST_MAX_ARTIFACT_BYTES + 1u };
-    char closure[256];
+    char closure[PATH_MAX];
     path(closure, "seed/compiler.chibip");
     for (int i = 0; i < 3; i++) {
         REQUIRE(!truncate(closure, (off_t)lengths[i]));
@@ -376,7 +377,7 @@ static void api_manifest(const char *target)
 TEST_CASE(bootstrap_load_uses_matching_sources_without_recompilation)
 {
     folder("api-produced");
-    char produced[256], file[256];
+    char produced[PATH_MAX], file[PATH_MAX];
     path(produced, "api-produced");
     const char *produce[] = { producer_path, "--compiler-artifact-write", produced, NULL };
     REQUIRE(tool_run_within(produce, root, log_path, 40) == 0);
@@ -460,7 +461,7 @@ TEST_CASE(bootstrap_load_reads_closures_up_to_the_artifact_bound)
                                COMPILER_HOST_MAX_OUTPUT_BYTES + 1u,
                                COMPILER_HOST_MAX_ARTIFACT_BYTES,
                                COMPILER_HOST_MAX_ARTIFACT_BYTES + 1u };
-    char file[256], expected[64];
+    char file[PATH_MAX], expected[64];
     path(file, "api-bootstrap/compiler.chibip");
     for (int i = 0; i < 4; i++) {
         write_binary("api-bootstrap/compiler.chibip", "", 0);
@@ -507,7 +508,7 @@ TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
     write_file("compiler/api/Extra.chibi", "package api\n");
     REQUIRE(!load(api_folder));
     REQUIRE(strstr(api_error, "api/Extra.chibi is not among the artifact's sources"));
-    char file[256];
+    char file[PATH_MAX];
     path(file, "compiler/api/Extra.chibi");
     REQUIRE(!unlink(file));
     write_file("core/Extra.chibi", "package core\n");
@@ -545,8 +546,8 @@ TEST_CASE(bootstrap_load_does_not_cache_source_hashes)
     return true;
 }
 
-static char reuse_folder[256], reuse_compiler[256], reuse_core[256],
-    reuse_manifest_path[256];
+static char reuse_folder[PATH_MAX], reuse_compiler[PATH_MAX],
+    reuse_core[PATH_MAX], reuse_manifest_path[PATH_MAX];
 static unsigned char *reuse_bytes;
 static size_t reuse_length;
 static char *reuse_manifest_text;
@@ -596,7 +597,7 @@ static yyjson_mut_doc *reuse_input()
 
 static int reuse_request(yyjson_mut_doc *doc, const char *output)
 {
-    char request[256];
+    char request[PATH_MAX];
     path(request, "reuse-input.json");
     char *text = yyjson_mut_write(doc, 0, NULL);
     assert(text);
@@ -627,7 +628,7 @@ static bool output_is(const char *output, const void *expected, size_t expected_
 TEST_CASE(bootstrap_reuses_only_the_exact_captured_request_without_compilation)
 {
     folder("reuse-real");
-    char archive[256], extracted[256], closure[256];
+    char archive[PATH_MAX], extracted[PATH_MAX], closure[PATH_MAX];
     path(archive, "reuse-sources.tar");
     path(extracted, "reuse-real");
     const char *export[] = {
@@ -646,7 +647,7 @@ TEST_CASE(bootstrap_reuses_only_the_exact_captured_request_without_compilation)
     reuse_manifest_text = tool_read(reuse_manifest_path);
     reuse_bytes = read_bytes(closure, &reuse_length);
     REQUIRE(reuse_manifest_text && reuse_bytes && reuse_length);
-    char output[256], request[256];
+    char output[PATH_MAX], request[PATH_MAX];
     path(output, "reused.chibip");
     path(request, "reuse-input.json");
     tool_write(output, "prior output");
@@ -718,7 +719,7 @@ TEST_CASE(bootstrap_reuse_preserves_output_for_changed_captured_requests)
 {
     REQUIRE(reuse_manifest_text && reuse_bytes);
     static const char prior[] = "prior complete output";
-    char output[256];
+    char output[PATH_MAX];
     path(output, "different.chibip");
     for (int variant = 0; variant < 10; variant++) {
         yyjson_mut_doc *doc = reuse_input();
@@ -788,14 +789,14 @@ TEST_CASE(bootstrap_reuse_invalidates_changed_disk_sources_without_recovery)
 {
     REQUIRE(reuse_manifest_text && reuse_bytes);
     static const char prior[] = "prior complete output";
-    char output[256];
+    char output[PATH_MAX];
     path(output, "changed-disk.chibip");
     const char *names[] = {
         "reuse-real/tools/compiler/package_compiler/Compile.chibi",
         "reuse-real/packages/core/strings/Strings.chibi"
     };
     for (int i = 0; i < 2; i++) {
-        char file[256];
+        char file[PATH_MAX];
         path(file, names[i]);
         size_t length = 0;
         unsigned char *original = read_bytes(file, &length);
@@ -835,7 +836,7 @@ TEST_CASE(bootstrap_reuse_hard_validation_and_write_errors_preserve_output)
 {
     REQUIRE(reuse_manifest_text && reuse_bytes);
     static const char prior[] = "prior complete output";
-    char output[256], missing[256];
+    char output[PATH_MAX], missing[PATH_MAX];
     path(output, "invalid.chibip");
     path(missing, "reuse-missing-parent/output.chibip");
     yyjson_mut_doc *doc = reuse_input();
@@ -860,7 +861,7 @@ TEST_CASE(bootstrap_reuse_hard_validation_and_write_errors_preserve_output)
     REQUIRE(output_is(output, prior, sizeof prior - 1));
     write_file("reuse-real/tools/compiler/package_compiler/Extra.chibi", "package package_compiler\n");
     status = reuse_request(doc, output);
-    char extra[256];
+    char extra[PATH_MAX];
     path(extra, "reuse-real/tools/compiler/package_compiler/Extra.chibi");
     REQUIRE(!unlink(extra));
     REQUIRE(status == 1 && log_has("is not among the artifact's sources"));
@@ -874,7 +875,7 @@ TEST_CASE(bootstrap_reuse_hard_validation_and_write_errors_preserve_output)
 
 TEST_CASE(bootstrap_reuse_usage_is_separate_from_legacy_modes)
 {
-    char input[256], output[256];
+    char input[PATH_MAX], output[PATH_MAX];
     path(input, "reuse-input.json");
     path(output, "usage-output.chibip");
     const char *keys[] = { "--bootstrap", "--artifact", "--entry",
@@ -911,11 +912,18 @@ TEST_CASE(bootstrap_reuse_usage_is_separate_from_legacy_modes)
 
 static void setup_root()
 {
-    strcpy(root, "/tmp/chibi-bootstrap-XXXXXX");
+    const char *temporary = getenv("TMPDIR");
+    int length = snprintf(
+        root,
+        sizeof root,
+        "%s/chibi-bootstrap-XXXXXX",
+        temporary && *temporary ? temporary : "/tmp"
+    );
+    assert(length > 0 && (size_t)length < sizeof root);
     assert(mkdtemp(root));
-    snprintf(log_path, sizeof log_path, "%s/host.log", root);
-    snprintf(compiler, sizeof compiler, "%s/compiler", root);
-    snprintf(core, sizeof core, "%s/core", root);
+    path(log_path, "host.log");
+    path(compiler, "compiler");
+    path(core, "core");
 }
 
 void test_tool_compiler_bootstrap(const char *producer, const char *host)
@@ -962,7 +970,7 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host)
  * compiles them to itself. --recover writes that compiler. */
 TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
 {
-    char archive[256];
+    char archive[PATH_MAX];
     path(archive, "sources.tar");
     const char *export[] = {
         "git",      "-C",    tool_root(), "archive",        "--format=tar",
@@ -972,9 +980,9 @@ TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
     REQUIRE(tool_run(export, root, log_path) == 0);
     const char *extract[] = { "tar", "-xf", archive, "-C", root, NULL };
     REQUIRE(tool_run(extract, root, log_path) == 0);
-    snprintf(compiler, sizeof compiler, "%s/tools/compiler", root);
-    snprintf(core, sizeof core, "%s/packages/core", root);
-    char recovered[256], closure[4096];
+    path(compiler, "tools/compiler");
+    path(core, "packages/core");
+    char recovered[PATH_MAX], closure[4096];
     path(recovered, "recovered.chibip");
     snprintf(closure, sizeof closure, "%s/compiler.chibip", artifact_path);
     const char *argv[] = { host_path,    "--bootstrap", artifact_path,
@@ -998,8 +1006,8 @@ TEST_CASE(bootstrap_recovers_from_a_clean_checkout)
 
 TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
 {
-    char source[256], output[256];
-    snprintf(source, sizeof source, "%s/package_compiler/Compile.chibi", compiler);
+    char source[PATH_MAX], output[PATH_MAX];
+    path(source, "tools/compiler/package_compiler/Compile.chibi");
     size_t length = 0;
     unsigned char *original = read_bytes(source, &length);
     REQUIRE(original && length);

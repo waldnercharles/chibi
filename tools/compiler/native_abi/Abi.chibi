@@ -99,7 +99,7 @@ pub ExportAbi: int : 1;
 // zero-extended.
 pub ExportType :: (storage: int) -> int {
     order: int[] = [IntStorage, BoolStorage, Int8Storage, ByteStorage, Int16Storage, Uint16Storage, UintStorage,
-              Int64Storage, WordStorage, FloatStorage, DoubleStorage];
+                    Int64Storage, WordStorage, FloatStorage, DoubleStorage];
     for (index in 0..<length(order)) {
         if (order[index] == storage) {
             return index + 1;

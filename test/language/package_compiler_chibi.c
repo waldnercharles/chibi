@@ -12271,9 +12271,8 @@ static const struct
 };
 /* Each of UNION_REJECTIONS is a located rejection on both VMs, its source
  * and diagnostic and nothing else. */
-TEST_CASE(package_compiler_scalar_rejects_unsupported_unions)
+static bool scalar_rejects_unsupported_unions()
 {
-    REQUIRE(prepare());
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < (int)(sizeof UNION_REJECTIONS / sizeof *UNION_REJECTIONS);
              i++) {
@@ -12336,9 +12335,8 @@ static const struct
 };
 /* A library's Document row names it, and each Function row's literal is the
  * stable symbol ID the runtime binds the function by. */
-TEST_CASE(package_compiler_scalar_collects_libraries)
+static bool scalar_collects_libraries()
 {
-    REQUIRE(prepare());
     static const char
         source[] = "Tools :: library {\n"
                    "    Add :: (a: int, b: int) -> int { return a + b; }\n"
@@ -12380,6 +12378,14 @@ TEST_CASE(package_compiler_scalar_collects_libraries)
             arena_free(&detached);
         }
     }
+    return true;
+}
+/* One fixture load serves both, since each load takes minutes. */
+TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries)
+{
+    REQUIRE(prepare());
+    REQUIRE(scalar_rejects_unsupported_unions());
+    REQUIRE(scalar_collects_libraries());
     return true;
 }
 TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
@@ -16393,8 +16399,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
-    RUN_TEST_CASE(package_compiler_scalar_rejects_unsupported_unions);
-    RUN_TEST_CASE(package_compiler_scalar_collects_libraries);
+    RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)

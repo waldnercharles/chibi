@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#ifdef __linux__
 /* `chibi build --native` through a relocated SDK and the build tree's own
  * launcher. Controlled LLVM stand-ins (the driver's stage-tool.sh) cover the
  * process contract; CHIBI_LLVM_BIN's real tools cover the program. */
@@ -269,6 +270,41 @@ TEST_CASE(native_build_refuses_what_an_interrupted_build_left)
     return true;
 }
 
+/* A folder the key names but that lacks a valid program is refused and kept,
+ * never reported up to date or overwritten. */
+TEST_CASE(native_build_refuses_an_incomplete_output)
+{
+    reset("incomplete", SOURCE);
+    REQUIRE(build(launcher, "-O0", tools) == 0);
+    char output_folder[1024], program[1024], receipt[1024];
+    REQUIRE(only("O0-", "", output_folder));
+    path(program, output_folder, "program");
+    path(receipt, output_folder, "receipt.txt");
+    REQUIRE(!chmod(program, 0600));
+    REQUIRE(
+        build(launcher, "-O0", tools) == 1 &&
+        strstr(errors, "has no executable program; remove it")
+    );
+    REQUIRE(!chmod(program, 0700));
+    char *bytes = tool_read(program);
+    REQUIRE(bytes);
+    tool_write(program, "#!/bin/sh\nexit 7\n");
+    REQUIRE(
+        build(launcher, "-O0", tools) == 1 &&
+        strstr(errors, "does not match its receipt (program-sha256)")
+    );
+    tool_write(program, bytes);
+    free(bytes);
+    REQUIRE(!chmod(program, 0700));
+    REQUIRE(build(launcher, "-O0", tools) == 0 && strstr(errors, "is up to date"));
+    REQUIRE(!unlink(receipt) && !unlink(program));
+    REQUIRE(build(launcher, "-O0", tools) == 1 && strstr(errors, "has no receipt"));
+    REQUIRE(count("O0-") == 1 && exists(output_folder));
+    tool_remove_tree(output_folder);
+    REQUIRE(build(launcher, "-O0", tools) == 0 && count("O0-") == 1);
+    return true;
+}
+
 /* The build tree's launcher finds its sibling hosts; real LLVM tools link a
  * program that runs, with no C compiler on an empty PATH. */
 TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
@@ -311,6 +347,8 @@ TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler)
     return true;
 }
 
+#endif
+
 void test_native_build(const char *binary)
 {
 #ifdef __linux__
@@ -327,11 +365,12 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back);
     RUN_TEST_CASE(native_build_rejects_missing_and_failing_tools);
     RUN_TEST_CASE(native_build_refuses_what_an_interrupted_build_left);
+    RUN_TEST_CASE(native_build_refuses_an_incomplete_output);
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
     free(stage_tool);
     tool_remove_tree(suite);
 #else
     (void)binary;
-    fprintf(stderr, "native build: five Linux cases unexecuted on this platform\n");
+    fprintf(stderr, "native build: six Linux cases unexecuted on this platform\n");
 #endif
 }

@@ -174,8 +174,10 @@ Twice :: (value: int) -> int {
 command reads `CHIBI_LLVM_BIN`. `-O2`, the default, optimizes; `-O0` does not.
 The program and its receipt go to `build/native/O2-HASH` or `O0-HASH`, named
 by a hash of the source, the SDK and the tools, and the command prints the
-program's path. An unchanged build reuses its folder, and a changed one never
-replaces an earlier program. A source that native code cannot compile yet
+program's path. An unchanged build reuses its folder once its receipt still
+names the tools and the program's bytes and the program is executable;
+otherwise the command fails and asks you to remove the folder. A changed build
+never replaces an earlier program. A source that native code cannot compile yet
 fails with the position of its first unsupported form, and nothing falls back
 to the player's compiled game. Native code supports numbers, `bool`, records
 and unions of them, control flow and calls between the source's own functions

@@ -424,6 +424,34 @@ Emitter :: (host: string, artifact: string, compiler: string, core: string, work
     return true;
 }
 
+// Why a published output does not hold the program its key names, or "". The
+// key already covers the source and emitter; the receipt must name these tools
+// and the program's current bytes, and the program must still be executable.
+Incomplete :: (output: string, opt: string, llc: string, lld: string) -> string {
+    receipt := Join([output, "/receipt.txt"]);
+    program := Join([output, "/program"]);
+    if (build.file_kind(output) != "directory" || build.file_kind(receipt) != "file") {
+        return "has no receipt";
+    }
+    if (build.find_executable(program) == "") {
+        return "has no executable program";
+    }
+    lines := build.lines(build.read_file(receipt));
+    facts := ["native-aot-driver 1", "output-kind executable", Join(["opt-sha256 ", build.hash_file(opt)]),
+              Join(["llc-sha256 ", build.hash_file(llc)]), Join(["linker-sha256 ", build.hash_file(lld)]),
+              Join(["program-sha256 ", build.hash_file(program)])];
+    for (fact in facts) {
+        found := false;
+        for (line in lines) {
+            found = found || line == fact;
+        }
+        if (!found) {
+            return Join(["does not match its receipt (", build.before(fact, " "), ")"]);
+        }
+    }
+    return "";
+}
+
 // The inputs that decide the emitter's bytes, hashed.
 EmitterKey :: (host: string, artifact: string, compiler: string, core: string) -> string {
     lines := [build.hash_file(host), build.hash_file(artifact),
@@ -484,7 +512,12 @@ Native :: () -> int {
     ], "\n"));
     folder := Join([root, "/build/native"]);
     output := Join([folder, "/O", mode, "-", strings.Slice(key, 0, 16)]);
-    if (build.file_kind(output) == "directory") {
+    if (build.file_kind(output) != "") {
+        problem := Incomplete(output, opt, llc, lld);
+        if (problem != "") {
+            build.report(Join(["native: ", output, " ", problem, "; remove it to rebuild"]));
+            return 1;
+        }
         build.report(Join(["native: ", output, "/program is up to date"]));
         return 0;
     }

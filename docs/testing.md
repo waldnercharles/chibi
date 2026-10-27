@@ -2354,6 +2354,26 @@ that always fails: the headers its libraries staged stay in place, since an
 executable stages none. Only `reflect` is linked by a test; the other links
 are compared, and a manual full build links and runs them. About 25 s.
 
+`python3 tools/test_policy.py tool build-graph-debug-optimization` is the narrow
+Linux CI route after the existing sanitized products and Release helper builds.
+It uses sanitized `build/test/tools/test_tools` and the Debug CMake reference,
+not the standalone runtime-only `build-tools` driver. CI explicitly selects
+`CHIBI_BUILD_HOST=build-release/sdk/chibi-build-host` only for this route: the
+Release helper executes authored command generation, while the emitted profiles
+retain Debug assertions and ASan/UBSan. The default focused CLI still uses the
+Debug host unless this override is supplied. The initial Debug-host CI attempt
+hit each existing 50-second child ceiling before useful output; Release-helper
+coverage does not establish sanitized-host execution speed or correctness. Three C cases compare reference-profile compile
+commands with CMake, verify default/O0/O1 Debug instrumentation and assertions,
+and reject malformed or non-Debug optimization requests before output creation.
+The eleven authored-host invocations only emit commands or reject arguments;
+they never compile graph products. Existing 50-second child limits and the CI
+job budget remain unchanged. The full graph/program routes retain their cases;
+this focused route is not a full Graph suite or an O1 performance measurement.
+It preserves CMake's exact compiler paths; compiler discovery remains covered
+only by the separate `build-graph` route. Normal macOS CI does not execute the
+new O1 cases; macOS O1 runtime validation remains unrun pending a later experiment.
+
 `python3 tools/test_policy.py tool build-graph-programs` runs the graph with
 `--commands-only on --target test_tools --target chibi`: its link commands
 name them and the programs they run (`policy_worker`, `chibi_ctl`,
@@ -3424,3 +3444,9 @@ With matching compiler input it took 2.6 seconds on the Mac validation host. Wit
 changed compiler source and retained older input it took 71 seconds including supported
 in-process recovery. It retains the existing process budget. No second workflow
 invocation or broader suite is added.
+
+## Debug optimization experiment
+
+See [the opt-in O0/O1 sanitizer comparison](debug-optimization-experiment.md) for
+matched build flags, correctness gates and wall-time measurements. CI defaults
+and sanitizer coverage remain unchanged.

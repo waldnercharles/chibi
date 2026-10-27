@@ -2,6 +2,7 @@
 
 #include "authoring/source_collection.h"
 #include "backend.h"
+#include "execution/function_builder.h"
 #include "execution/inspection.h"
 #include "execution/native.h"
 #include "execution/status.h"
@@ -46,8 +47,8 @@ static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BA
     "    }\n"
 const char NATIVE_CALLS_LIBRARY[] = "Native :: library {\n" PURE_FUNCTIONS
                                     "}\n";
-/* With a function that waits and one with more parameters than an entry
- * takes, which no export can bind. */
+/* With functions that wait, exceed the entry's parameter bound or take a
+ * reference, which no export can bind. */
 static const char
     LIBRARY[] = "Native :: library {\n" PURE_FUNCTIONS
                 "    Pause :: (x: int) -> int { yield; return x; }\n"
@@ -59,6 +60,7 @@ static const char
                 "value^; }\n"
                 "    Read :: (value: ^int) -> int { held := value; return "
                 "held^; }\n"
+                "    UnusedRef :: (value: ^int) -> int { return 7; }\n"
                 "}\n";
 static const char PROBE[] = "Probe :: behavior {\n"
                             "    total: int = 1;\n"
@@ -442,6 +444,49 @@ TEST_CASE(native_calls_reject_mismatched_exports)
     return true;
 }
 
+/* A reference has integer-width storage, but it is not a scalar value. An
+ * unused reference is effect-free, so neither purity nor width rejects it. */
+TEST_CASE(native_calls_reject_reference_exports)
+{
+    static const uint8_t types[] = { sizeof(uintptr_t) == sizeof(uint64_t)
+                                         ? EXECUTION_NATIVE_U64
+                                         : EXECUTION_NATIVE_U32,
+                                     EXECUTION_NATIVE_INT };
+    const pin_type storage = sizeof(uintptr_t) == sizeof(uint64_t) ? PIN_U64 : PIN_U32;
+    const execution_native_export exports[] = { EXPORTS[0],
+                                                exported("UnusedRef", types, 1, reward) };
+    const execution_native_manifest manifest = { EXECUTION_NATIVE_ABI, 2, exports };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare(backends[b]));
+        const execution_module *library = source("Native")->module;
+        const behavior_function *function = NULL;
+        for (int i = 0; i < execution_module_function_count(library); i++) {
+            execution_module_function_info info = execution_module_function_at(library, i);
+            if (info.id == function_id("UnusedRef")) {
+                REQUIRE(info.kind == EXECUTION_FUNCTION_AUTHORED && !info.effects);
+                function = info.body;
+            }
+        }
+        REQUIRE(function);
+        int count;
+        const pin_value *arguments = behavior_function_arguments(function, &count);
+        REQUIRE(count == 1 && arguments[0].type == storage);
+        REQUIRE(behavior_function_kind(function, BEHAVIOR_BANK_ARGUMENT, 0) == BEHAVIOR_REFERENCE);
+        char error[256] = "";
+        REQUIRE(!execution_natives_bind(natives, library, &manifest, error, sizeof error));
+        REQUIRE(
+            !strcmp(error, "native export UnusedRef has no pure function of its signature in the library")
+        );
+        /* The valid first export must not bind when the second fails. */
+        for (int i = 0; i < execution_module_function_count(library); i++) {
+            execution_module_function_info info = execution_module_function_at(library, i);
+            REQUIRE(!execution_natives_find(natives, info.body));
+        }
+        clear();
+    }
+    return true;
+}
+
 /* A second library object cannot rebind a function, and the first binding
  * of each stays. */
 TEST_CASE(native_calls_bind_each_function_once)
@@ -471,6 +516,7 @@ TEST_SUITE(native_calls)
     RUN_TEST_CASE(native_calls_match_the_vm);
     RUN_TEST_CASE(native_calls_leave_inspected_calls_in_the_vm);
     RUN_TEST_CASE(native_calls_reject_mismatched_exports);
+    RUN_TEST_CASE(native_calls_reject_reference_exports);
     RUN_TEST_CASE(native_calls_bind_each_function_once);
 }
 

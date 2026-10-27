@@ -1,0 +1,16 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-native-calls
+revision 75e2e20a052a906ff458f03719094b75b8e17693 0 modified
+===============================================================
+[1mRunning: native_calls[0m
+---------------------------------------------------------------
+Running: native_calls_match_the_vm ([1;32mOK[0m) (0.122484 secs)
+Running: native_calls_leave_inspected_calls_in_the_vm ([1;32mOK[0m) (0.052146 secs)
+Running: native_calls_reject_mismatched_exports ([1;32mOK[0m) (0.590118 secs)
+Running: native_calls_reject_reference_exports ([1;32mOK[0m) (0.086979 secs)
+Running: native_calls_bind_each_function_once ([1;32mOK[0m) (0.041891 secs)
+===============================================================
+Summary: Passed: [1;32m5[0m Failed: [1;31m0[0m Total: 5 Suites: 1 Asserts: 287
+===============================================================
+Summary: Passed: [1;32m5[0m Failed: [1;31m0[0m Total: 5 Suites: 1 Asserts: 287
+Test command wall time: 1.045s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

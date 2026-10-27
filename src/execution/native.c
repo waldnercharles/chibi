@@ -63,12 +63,14 @@ static bool same_signature(const execution_native_export *native, const behavior
         return false;
     }
     for (int p = 0; p < parameters; p++) {
-        if (!scalar(arguments[p], native->types[p])) {
+        if (function->argument_kinds[p] != BEHAVIOR_VALUE ||
+            !scalar(arguments[p], native->types[p])) {
             return false;
         }
     }
     for (int r = 0; r < results; r++) {
-        if (!scalar(defaults[r], native->types[parameters + r])) {
+        if (function->result_kinds[r] != BEHAVIOR_VALUE ||
+            !scalar(defaults[r], native->types[parameters + r])) {
             return false;
         }
     }

@@ -1,0 +1,8 @@
+$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-package-compiler-chibi-behaviors-rest
+revision 75e2e20a052a906ff458f03719094b75b8e17693 0 modified
+Running: package_compiler_compiles_the_other_behaviors (OK) (159.062045 secs)
+Running: package_compiler_keeps_text_state_per_owner (OK) (135.107364 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 5742
+Test command wall time: 299.811s; includes in-test fixture setup; external configuration/build excluded.
+exit 0

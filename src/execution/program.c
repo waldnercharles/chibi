@@ -1675,6 +1675,7 @@ static int query_matches(execution_instance *instance, int index)
             behavior_function_context *context = &e->context;
             /* Even a non-suspending predicate can reuse its VM scratch. */
             context->activation = &e->activation;
+            e->activation.natives = p->natives;
             context->query_variables = instance->query_variables;
             context->results = &result;
             context->now = p->now;

@@ -91,6 +91,9 @@ TOOLS = {
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
     'published-docs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                        '--published-docs', str(ROOT / os.environ.get('CHIBI_COMPILE', 'build-release/sdk/chibi-compile'))],
+    # chibi build --native through a relocated copy of the build tree's SDK.
+    'native-build': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                     '--native-build', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
     'chibi-cli-installed': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--chibi-cli-installed', str(ROOT / os.environ.get('CHIBI_INSTALLED_CLI', 'dist/sdk/bin/chibi'))],
     'native-aot-driver': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
@@ -565,7 +568,7 @@ GROUPS = {
     # site and the launcher's commands.
     'projects': ['mesh-files', 'model-import', 'validate-project', 'prototype-expansion',
                  'controller', 'feature-coverage', 'render-fixture', 'material-bake', 'environment-authoring', 'terrain-checkpoint', 'terrain-storage-commands',
-                 'terrain-playable', 'published-docs', 'chibi-cli'],
+                 'terrain-playable', 'published-docs', 'chibi-cli', 'native-build'],
     # Independently reviewed fixed CPU workloads: cave<=2048x768, flow<=192x192,
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',

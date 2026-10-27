@@ -125,7 +125,12 @@ The checks:
 - `executable_links_llvm_objects_without_a_c_compiler` links the scalar fixture
   at O0 and O2 with the `opt`, `llc` and `ld.lld` in `CHIBI_LLVM_BIN`, an empty
   `PATH`, and runs each program to its exit status 42. Without `CHIBI_LLVM_BIN`
-  it says it did not run. `make test-native` passes `NATIVE_LLVM_BIN` as it.
+  it says it did not run. Each case compiles the driver in the build host, so
+  run this selector against a Release `test_tools`
+  (`CHIBI_TOOLS_BUILD_DIR=build-release/test/tools`); under the sanitizers the
+  compile outlasts the cases' 10-second deadlines. CI links real programs
+  through `chibi build --native` instead: the `native-build` selector in the
+  projects group (see `docs/guide/toolchain.md`).
 
 `fixtures/scalar/Main.ll` is the source path's own output for
 `fixtures/scalar/Main.chibi`: the bootstrap compiler's `CollectScalar` rows,

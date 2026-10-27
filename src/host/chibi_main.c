@@ -39,6 +39,8 @@ extern char **environ;
  * unavailable or broken, without changing anything.
  * chibi build [PROJECT]: prepares the project when its sources or the compiler
  * changed since the last preparation.
+ * chibi build --native [-O0|-O2] [--llvm DIR] [ROOT]: compiles ROOT's one
+ * package source to a native program with LLVM.
  * chibi check [PROJECT]: prepares the project as build does, without
  * migrating it or writing anything.
  * chibi test [ROOT]: runs the @test functions of the packages below ROOT.
@@ -164,6 +166,7 @@ static int usage(const char *program)
         "Usage: %s version\n"
         "       %s doctor [--web PLAYER]\n"
         "       %s build [PROJECT]\n"
+        "       %s build --native [-O0|-O2] [--llvm DIR] [ROOT]\n"
         "       %s check [PROJECT]\n"
         "       %s fmt [--check] [PATH...]\n"
         "       %s test [ROOT]\n"
@@ -182,6 +185,12 @@ static int usage(const char *program)
         "changing nothing; it fails only when a capability it checks is "
         "broken.\n"
         "build prepares .chibi/build/game.chibip without starting the player.\n"
+        "build --native compiles the one .chibi source in ROOT, the working\n"
+        "directory without one, whose first function is Main :: () -> int,\n"
+        "to ROOT/build/native/O2-HASH/program (-O0 for an unoptimized one)\n"
+        "with the opt, llc and ld.lld in DIR, or in CHIBI_LLVM_BIN without\n"
+        "--llvm. Native code supports a subset of the language so far; a\n"
+        "source outside it fails with the first unsupported form.\n"
         "check parses, resolves and validates the project as build does, but\n"
         "migrates and writes nothing; an older project fails until migrated.\n"
         "test runs each @test function of the packages below ROOT, the\n"
@@ -207,6 +216,7 @@ static int usage(const char *program)
         "being the working directory without one, into ROOT/build/docs;\n"
         "--serve then serves it like web until interrupted. Windows does not\n"
         "build documentation yet.\n",
+        program,
         program,
         program,
         program,
@@ -957,8 +967,109 @@ static int project_argument(int argc, char **argv, const char **requested)
     return -1;
 }
 
+/* An SDK program beside the launcher, as build trees keep them, or in
+ * ../libexec/chibi, as installed SDKs do. */
+static char *private_program(const char *bin, const char *name)
+{
+    char *program = join(bin, name);
+    if (!access(program, RUNNABLE)) {
+        return program;
+    }
+    free(program);
+    char *libexec = join(bin, "../libexec/chibi");
+    program = join(libexec, name);
+    free(libexec);
+    return program;
+}
+
+/* Runs the native driver in the build host with the SDK's compiler and core. */
+static int run_native_driver(const char *bin, const char *share, char *root, char *tools, const char *mode)
+{
+    char *host = private_program(bin, "chibi-build-host" CHIBI_EXECUTABLE_SUFFIX);
+    char *compiler_host = private_program(bin, "chibi-compiler-host" CHIBI_EXECUTABLE_SUFFIX);
+    char *driver = join(share, "tools/native_aot");
+    char *source = join(driver, "Driver.chibi");
+    char *compiler = join(share, "compiler");
+    char *core = join(share, "core");
+    char *args[] = { host,          "--root",          driver,   "--source",
+                     source,        "--core",          core,     "--compiler",
+                     compiler,      "--compiler-core", core,     "--entry",
+                     "Native",      "--timeout-ms",    "900000", "--",
+                     compiler_host, compiler,          core,     root,
+                     tools,         (char *)mode,      NULL };
+    int result = chibi_process_run(args);
+    free(core);
+    free(compiler);
+    free(source);
+    free(driver);
+    free(compiler_host);
+    free(host);
+    return result;
+}
+
+/* chibi build --native [-O0|-O2] [--llvm DIR] [ROOT]: the build host runs the
+ * native driver, which compiles ROOT's source with the SDK's compiler and the
+ * LLVM tools in DIR. A native build never falls back to the VM artifact. */
+static int build_native(int argc, char **argv)
+{
+    const char *requested = ".", *mode = "2", *llvm = getenv("CHIBI_LLVM_BIN");
+    bool optimized = false, located = false, rooted = false;
+    for (int i = 3; i < argc; i++) {
+        if ((!strcmp(argv[i], "-O0") || !strcmp(argv[i], "-O2")) && !optimized) {
+            mode = argv[i] + 2;
+            optimized = true;
+        } else if (!strcmp(argv[i], "--llvm") && i + 1 < argc && !located) {
+            llvm = argv[++i];
+            located = true;
+        } else if (argv[i][0] != '-' && !rooted) {
+            requested = argv[i];
+            rooted = true;
+        } else {
+            fprintf(stderr, "Invalid build option: %s; use --help.\n", argv[i]);
+            return 2;
+        }
+    }
+    if (!llvm || !*llvm) {
+        fprintf(
+            stderr,
+            "build --native needs LLVM: pass --llvm DIR, the folder of opt, "
+            "llc and ld.lld, or set "
+            "CHIBI_LLVM_BIN\n"
+        );
+        return 2;
+    }
+    char *root = realpath(requested, NULL);
+    char *tools = realpath(llvm, NULL);
+    char *bin = file_executable_dir();
+    char *shared = join(bin, "../share/chibi");
+    char *share = realpath(shared, NULL);
+    free(shared);
+    const char *missing = NULL;
+    if (!root) {
+        missing = requested;
+    } else if (!tools) {
+        missing = llvm;
+    } else if (!share) {
+        missing = "the SDK's share/chibi";
+    }
+    int result = 2;
+    if (missing) {
+        fprintf(stderr, "build --native: cannot find %s\n", missing);
+    } else {
+        result = run_native_driver(bin, share, root, tools, mode);
+    }
+    free(share);
+    free(bin);
+    free(tools);
+    free(root);
+    return result;
+}
+
 static int build_game(int argc, char **argv)
 {
+    if (argc > 2 && !strcmp(argv[2], "--native")) {
+        return build_native(argc, argv);
+    }
     const char *requested = NULL;
     int status = project_argument(argc, argv, &requested);
     return status >= 0 ? status : project_command(requested, 0, NULL, false);

@@ -28,6 +28,17 @@ interface, or the complete allocation/memory/output/free native island.
   and `bool` parameters (`i8` through `u64` as `iN` with no sign, and
   `number` and `f64` as LLVM `float` and `double`) and returns one scalar result. Foreign bool ABI is not promised. Storage
   ordinals are backend-internal, not public semantic IDs.
+- `EmitLibrary` emits the same tables as the native library `name`, which
+  `execution_natives_bind` (`src/execution/native.h`) binds. Every function
+  is `internal`, and the object exports one symbol, `chibi_natives_<name>`,
+  a `{ i32 abi, i32 count, ptr exports }` manifest at `native_abi.ExportAbi`.
+  Each export is `{ ptr name, i64 id, ptr types, i32 parameters, i32 results,
+  ptr entry }`, named and identified by the caller's `names` and `ids`, and
+  its entry `void (ptr in, ptr out)` reads its arguments from and writes its
+  result to 64-bit words: integers sign- or zero-extended, `bool` as 0 or 1,
+  `number` and `f64` as their bits. A function with a string or record
+  parameter or result has no wrapper and stays callable only inside the
+  library.
 - A module declares at most 16 records, each a range of at most 16 scalar
   field types in the field table, emitted in that order as
   `%recordN = type { ... }`. Record type `RecordType + N` is a value: internal
@@ -120,7 +131,8 @@ scalar ordinals.
   recursion with stack probes.
 - `tool language-package-compiler-chibi-scalar` (`test/language`): call
   definitions and argument order, malformed calls and misplaced call
-  graphs, floating encodings, comparisons, conversions and intrinsic
+  graphs, library wrappers and manifests, floating encodings, comparisons,
+  conversions and intrinsic
   declarations, and floating operations and conversions outside the native subset,
   each with its exact rejection, on both VMs.
 - `tools/compiler/scalar_llvm`: lowers producer-owned `scalar_facts` rows; see

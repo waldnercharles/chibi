@@ -645,11 +645,12 @@ Operated :: (rows: facts.Row[], at: int) -> int {
 // statement's, switch's or loop's range. A variable is visible from its declaration to the end of the
 // statements it is declared among, a For row's only in its body, and the
 // body ends in a terminating statement.
-ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int) -> string {
+ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int,
+                  is_library: bool) -> string {
     head := heads[function];
     declaration := rows[head];
     if (declaration.name == "" || declaration.text != "" || !Valued(records, declaration.type) || declaration.value != 0 ||
-        declaration.literal != 0 || !Located(declaration, starts, size)) {
+        (declaration.literal != 0) != is_library || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
     variables: int[] = [];
@@ -851,9 +852,10 @@ pub Validate :: (rows: facts.Row[]) -> string {
     }
     document := rows[1];
     if (document.kind != facts.DocumentRow || document.type != 0 || document.value != 0 || document.count != 0 ||
-        document.literal != 0 || document.name == "" || document.text != "" || !Unlocated(document)) {
+        document.literal != 0 || document.name == "" || !Unlocated(document)) {
         return "noncanonical accepted scalar module";
     }
+    is_library := document.text != "";
     records := Records(rows);
     error := ValidRecords(rows, records, starts, size);
     if (error != "") {
@@ -864,11 +866,11 @@ pub Validate :: (rows: facts.Row[]) -> string {
         return "invalid scalar module layout";
     }
     first := rows[heads[0]];
-    if (first.count != 0 || first.type != facts.IntType) {
+    if (!is_library && (first.count != 0 || first.type != facts.IntType)) {
         return "scalar module entry must take no parameters and return int";
     }
     for (function in 0..<length(heads)) {
-        failure := ValidFunction(rows, records, heads, function, starts, size);
+        failure := ValidFunction(rows, records, heads, function, starts, size, is_library);
         if (failure != "") {
             return failure;
         }
@@ -979,6 +981,8 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     records: native.Record[] = [];
     fields: int[] = [];
     texts: string[] = [];
+    names: string[] = [];
+    ids: i64[] = [];
     declared := Records(rows);
     for (head in declared) {
         record: native.Record = {first: length(fields), count: 0};
@@ -998,6 +1002,8 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     for (function in 0..<length(heads)) {
         head := heads[function];
         declaration := rows[head];
+        names.append(declaration.name);
+        ids.append(declaration.literal);
         result := NativeType(declaration.type);
         shape: native.Function = {result: result, first_parameter: length(parameters),
                                   parameters: declaration.count, first_slot: length(slots), slots: 0,
@@ -1409,8 +1415,16 @@ pub Emit :: (rows: facts.Row[]) -> Result {
         code.extend(body);
         functions.append(shape);
     }
-    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields, texts,
-                       false, 1) {
+    // A library's Document row names it.
+    emitted: native.Result = native.Result.Rejected(-1, "");
+    if (rows[1].text == "") {
+        emitted = native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields,
+                              texts, false, 1);
+    } else {
+        emitted = native.EmitLibrary(abi.LinuxX64(), rows[1].text, names, ids, functions, parameters, slots, locals,
+                                     code, arguments, records, fields, texts, 1);
+    }
+    switch emitted {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):

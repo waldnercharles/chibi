@@ -203,6 +203,11 @@ TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back)
     char expected[1100];
     snprintf(expected, sizeof expected, "%s/Main.chibi:3:5: Unknown function 'print'", game);
     REQUIRE(strstr(errors, expected));
+    /* A native library has no entry to link a program from. */
+    write_at(game, "Main.chibi", "Tools :: library {\n    Seven :: () -> int {\n        return 7;\n    }\n}\n");
+    REQUIRE(build(launcher, "-O0", tools) == 1);
+    snprintf(expected, sizeof expected, "%s/Main.chibi:a native library has no entry", game);
+    REQUIRE(strstr(errors, expected));
     char *after = tool_read(receipt);
     bool kept = after && !strcmp(before, after);
     free(after);

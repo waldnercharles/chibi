@@ -196,8 +196,12 @@ done.
   self-build runs on the head commit. It never re-runs a push or publishing
   run that shares the commit. On a PR into `main`, it dispatches a workflow
   that never ran on the head branch.
-- `ci-seed` dispatches the runtime-seed workflow on the head branch. Publishing
-  the release and moving the pin in `tools/compiler/runtime.json` stay manual.
+- `ci-seed` dispatches the runtime-seed workflow on the head branch with
+  `publish` set. Once all three platforms recover identical compiler bytes, it
+  publishes the seeds as a commit-specific prerelease and commits the new pin in
+  `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
+  self-build on the pin commit. Pull before pushing again. If the branch moved
+  after the seed run started, the pin step fails and the release stays unpinned.
 
 A dispatched run must build the head commit the event named. If the branch
 moved in between, the workflow cancels the run and fails, and the PR needs the
@@ -2077,10 +2081,11 @@ selects two cases. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
 the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
 `CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact. The API recovery case
-adds a marker and a 64 KiB string literal to the exported compiler source,
-forcing the current compiler past 16 MiB. It recovers to a fixed point, executes
-both new exports and verifies that the load API writes no output file. The
-instruction budgets and child deadlines are unchanged.
+adds a marker to the exported compiler source, recovers to a fixed point,
+executes the new export and verifies that the load API writes no output file.
+Interned strings keep the compiler near 9 MB and package sources are capped at
+8 MiB, so this case cannot cross 16 MiB; the sparse cases above cover the
+artifact bound. The instruction budgets and child deadlines are unchanged.
 
 ## Game equivalence
 

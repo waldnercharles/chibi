@@ -1015,14 +1015,6 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     REQUIRE(file);
     bool changed = fputs("\npub BootstrapLoadMarker :: () -> int { return 37; }\n", file) >=
                    0;
-    /* Main's compiler is just below 16 MiB. A retained 64 KiB literal makes
-     * this recovery cross that boundary while keeping the normal budgets. */
-    changed = changed &&
-              fputs("pub BootstrapLoadPadding :: () -> string { return \"", file) >= 0;
-    for (int i = 0; changed && i < 64 * 1024; i++) {
-        changed = fputc('x', file) != EOF;
-    }
-    changed = changed && fputs("\"; }\n", file) >= 0;
     changed = !fclose(file) && changed;
     REQUIRE(changed);
     path(output, "load-must-not-write.chibip");
@@ -1044,18 +1036,17 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     const char *compiled = strstr(api_error, "compiled a compiler of ");
     size_t recovered = 0;
     REQUIRE(compiled && sscanf(compiled, "compiled a compiler of %zu bytes", &recovered) == 1);
-    REQUIRE(recovered > COMPILER_HOST_MAX_OUTPUT_BYTES && recovered <= COMPILER_HOST_MAX_ARTIFACT_BYTES);
+    /* Interned strings keep the compiler near half the 16 MiB result bound,
+     * and sources are capped at 8 MiB, so recovery can no longer be padded
+     * past it. The artifact bound is covered by sparse closure reads and by
+     * binary_artifact_bound_does_not_widen_ordinary_results. */
+    REQUIRE(recovered > 0 && recovered <= COMPILER_HOST_MAX_ARTIFACT_BYTES);
     printf("%s\n", api_error);
     REQUIRE(access(output, F_OK) != 0);
     uint64_t entry = compiler_host_entry("project:package_compiler:1:BootstrapLoadMarker:callable");
     REQUIRE(compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result));
     REQUIRE(api_result.flow_status == FLOW_OK);
     REQUIRE(api_result.json && !strcmp(api_result.json, "[37]"));
-    free(api_result.json);
-    api_result = (compiler_host_result){ 0 };
-    entry = compiler_host_entry("project:package_compiler:1:BootstrapLoadPadding:callable");
-    REQUIRE(compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result));
-    REQUIRE(api_result.flow_status == FLOW_OK && api_result.length == 64u * 1024u + 4u);
     return true;
 }
 

@@ -835,9 +835,14 @@ isolation do not restrict the runner's filesystem.
 `.github/workflows/compiler-runtime-seed.yml` is the separate manual recovery
 route for preparing replacement runtime binaries. It uses the source-only SDK
 mode (`CHIBI_SDK_COMPILER_HOST_ONLY=ON`), a C compiler and CMake, and retains
-the recovery proof and provenance with each binary. Publish a fresh release
-and review new manifest pins when changing the runtime ABI; routine compiler
-self-builds continue to consume the pinned release. The initial runtime seeds
+the recovery proof and provenance with each binary. Dispatched with `publish`
+(the `ci-seed` PR label does this), it also publishes a commit-specific
+prerelease and, on a branch other than `main`, commits the new pin to it. The
+release holds the three seeds, `runtime.json`, `SHA256SUMS`, each platform's
+recovery evidence and native imports, the commit's `git archive`, the pinned
+SLJIT and Tree-sitter sources, and the notices. Review the pin commit with the
+change that needed it. Routine compiler self-builds continue to consume the
+pinned release. The initial runtime seeds
 were produced by the predecessor recovery workflow at the recorded revision.
 
 Rewrite the artifact only when it can no longer recover the compiler:

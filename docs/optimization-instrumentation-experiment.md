@@ -1,6 +1,6 @@
 # Opt-in O1/O2 × sanitizer experiment
 
-The manual `debug-optimization-experiment.yml` workflow measures four Debug arms:
+By default, the manual `debug-optimization-experiment.yml` workflow measures four Debug arms:
 O1 and O2, each with ASan+UBSan on and off. This supersedes the runner's original
 O0/O1 comparison; it changes neither ordinary CI nor developer/macOS defaults.
 It does not remove sanitizer coverage or substitute for full-suite validation.
@@ -44,3 +44,26 @@ may also differ across runners; retain workflow setup logs. There is no shared
 object cache or overlapping builds on one runner, but OS/file-cache warmth and
 fixed O1-before-O2 build order remain confounds. One pair per profile is exploratory
 measurement, not a statistically established speedup or a CI policy decision.
+
+## Targeted same-runner instrumentation pair
+
+Select the manual `comparison: instrumentation` input for **one job** with O1
+fixed. It builds `o1-on` then `o1-off` on the same physical runner, with fresh
+separate build directories and alternating selector order. Optimization mode
+remains the default two-job O1/O2 matrix; the instrumentation mode does not rerun
+it. Both retain the same 35-minute supervised/45-minute job ceilings.
+
+The normal sanitized/release dependency binary variants deliberately differ,
+while their source pins and manifest remain identical. Record each arm's archive
+hash; do not claim identical dependency binaries. Both configurations/downloads
+finish before either timed build. All database rows are checked for Debug,
+optimization, sanitizer mode, frame pointers and enabled assertions; actual
+representative compile commands and exported fixture arguments are checked as
+before, and actual verbose link commands must have the matching flags too.
+
+The first four-arm run at `908edab0` used different CPU models across its two jobs
+(AMD EPYC 9V74 with instrumentation, Intel Xeon 8370C without). Therefore its
+cross-job gap is not an isolated instrumentation estimate. The targeted pair
+addresses that hardware mismatch without changing native source, normal CI or
+defaults. Fixed build order, cache warmth and one repetition still limit causal
+claims; this measures the whole sanitizer profile, including third-party binaries.

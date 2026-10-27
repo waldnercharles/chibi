@@ -3,6 +3,14 @@ name: Debug optimization and instrumentation experiment (manual, not full CI)
 on:
   workflow_dispatch:
     inputs:
+      comparison:
+        description: 'Optimization: O1/O2 per profile; instrumentation: one O1 on/off pair'
+        required: true
+        type: choice
+        default: optimization
+        options:
+          - optimization
+          - instrumentation
       sha:
         description: 'Exact reviewed commit SHA containing the experiment runner'
         required: true
@@ -17,11 +25,11 @@ concurrency:
 
 jobs:
   linux-pair:
-    name: Linux O1/O2 sanitizers ${{ matrix.sanitizers }} (not full-suite validation)
+    name: Linux ${{ inputs.comparison }} pair (${{ matrix.sanitizers }}) (not full-suite validation)
     strategy:
       fail-fast: false
       matrix:
-        sanitizers: ["on", "off"]
+        sanitizers: ${{ fromJSON(inputs.comparison == 'instrumentation' && '["on"]' || '["on","off"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -29,6 +37,7 @@ jobs:
       XDG_RUNTIME_DIR: /tmp/chibi-runtime
       SDL_AUDIODRIVER: dummy
       EXPECTED_SHA: ${{ inputs.sha }}
+      EXPERIMENT_COMPARISON: ${{ inputs.comparison }}
       EXPERIMENT_SANITIZERS: ${{ matrix.sanitizers }}
     steps:
       - name: Record job start
@@ -53,12 +62,12 @@ jobs:
       # Each matrix job owns its runner; builds within it are sequential.
       # Both jobs check out the same exact source and use its pinned archives.
       - name: Measure one matched pair
-        run: python3 tools/debug_optimization_experiment.py --sha "$EXPECTED_SHA" --sanitizers "$EXPERIMENT_SANITIZERS" --output "$RUNNER_TEMP/debug-optimization-evidence"
+        run: python3 tools/debug_optimization_experiment.py --sha "$EXPECTED_SHA" --sanitizers "$EXPERIMENT_SANITIZERS" --comparison "$EXPERIMENT_COMPARISON" --output "$RUNNER_TEMP/debug-optimization-evidence"
       - name: Preserve evidence even on failure
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: debug-optimization-${{ matrix.sanitizers }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: debug-${{ inputs.comparison }}-${{ matrix.sanitizers }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/debug-optimization-evidence/*.json
             ${{ runner.temp }}/debug-optimization-evidence/*.jsonl

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One Linux O1/O2 Debug pair with fixed instrumentation; opt-in, not full CI."""
+"""One controlled Debug pair: optimization or instrumentation; opt-in, not full CI."""
 import argparse
 import hashlib
 import json
@@ -63,14 +63,18 @@ def without_dependencies(arguments):
     return result
 
 
-def verify(build, evidence, level, sanitizers=True):
+def verify(build, evidence, level, sanitizers=True, label=None):
+    label = label or f'o{level}'
     header = build / 'test/tools/testing/include/export_compiler.h'
     for path in (build / 'compile_commands.json', build / 'CMakeCache.txt', header):
         if path.is_file():
-            shutil.copyfile(path, evidence / f'o{level}-{path.name}')
+            shutil.copyfile(path, evidence / f'{label}-{path.name}')
     database = json.loads((build / 'compile_commands.json').read_text())
+    # All translation units retain the intended optimization/instrumentation and assertions.
+    for entry in database:
+        flags(shlex.split(entry['command']), level, sanitizers=sanitizers)
     actual = []
-    for line in (evidence / f'o{level}-build.log').read_text().splitlines():
+    for line in (evidence / f'{label}-build.log').read_text().splitlines():
         try:
             actual.append(shlex.split(line))
         except ValueError:
@@ -91,7 +95,15 @@ def verify(build, evidence, level, sanitizers=True):
                 for line in header.read_text().splitlines() if line.strip().startswith('"')]
     flags(exported, level, assertions=True, sanitizers=sanitizers)
     verified['export_compiler'] = exported
-    (evidence / f'o{level}-verified-argv.json').write_text(json.dumps(verified, indent=2) + '\n')
+    compilers = {shlex.split(entry['command'])[0] for entry in database}
+    links = [row[row.index(compiler):] for row in actual for compiler in compilers
+             if compiler in row and '-c' not in row and '-o' in row]
+    require(links, 'actual linker commands missing')
+    for arguments in links:
+        flags(arguments, level, sanitizers=sanitizers)
+    verified['link_commands'] = links
+    verified['compile_database_rows'] = len(database)
+    (evidence / f'{label}-verified-argv.json').write_text(json.dumps(verified, indent=2) + '\n')
     return next(line.split('=', 1)[1] for line in (build / 'CMakeCache.txt').read_text().splitlines()
                 if line.startswith('CHIBI_THIRD_PARTY_DIR:'))
 
@@ -137,14 +149,23 @@ def configure_command(build, level, sanitizers):
             '-DLIBCLANG_ROOT=/usr/lib/llvm-18']
 
 
+def arms(comparison, sanitizers):
+    if comparison == 'instrumentation':
+        return [('o1-on', 1, True), ('o1-off', 1, False)]
+    return [('o1', 1, sanitizers), ('o2', 2, sanitizers)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sha', required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--sanitizers', choices=('on', 'off'), required=True)
+    parser.add_argument('--comparison', choices=('optimization', 'instrumentation'),
+                        default='optimization')
     args = parser.parse_args()
     sanitizers = args.sanitizers == 'on'
-    levels = (1, 2)
+    selected = arms(args.comparison, sanitizers)
+    labels = [label for label, _, _ in selected]
     require(platform.system() == 'Linux' and platform.machine() == 'x86_64', 'Linux x86-64 only')
     require(re.fullmatch('[0-9a-f]{40}', args.sha) is not None, 'an exact commit SHA is required')
     require(capture('git', 'rev-parse', 'HEAD') == args.sha, 'checkout SHA differs')
@@ -163,13 +184,17 @@ def main():
                 'ccache_available': shutil.which('ccache'),
                 'compiler': capture('clang-18', '--version'), 'cxx': capture('clang++-18', '--version'),
                 'cmake': capture('cmake', '--version'), 'jobs': 4, 'ccache': 'disabled in both arms',
-                'selectors': SELECTORS, 'repetitions': 1, 'build_order': levels,
-                'sanitizers': args.sanitizers,
-                'dependency_variant': 'address-undefined' if sanitizers else 'release',
+                'selectors': SELECTORS, 'repetitions': 1, 'build_order': labels,
+                'comparison': args.comparison,
+                'arms': {label: {'optimization': level, 'sanitizers': enabled,
+                                 'dependency_variant': 'address-undefined' if enabled else 'release'}
+                         for label, level, enabled in selected},
+                'fixed_sanitizers': args.sanitizers if args.comparison == 'optimization' else None,
                 'runner': {key: os.environ.get(key) for key in
                            ('RUNNER_NAME', 'RUNNER_OS', 'ImageOS', 'ImageVersion',
                             'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'JOB_STARTED_UTC')},
-                'selector_pair_order': [[1, 2], [2, 1], [1, 2], [2, 1]],
+                'selector_pair_order': [labels if index % 2 == 0 else list(reversed(labels))
+                                        for index in range(len(SELECTORS))],
                 'archive_manifest_sha256': hashlib.sha256((ROOT / 'third_party/archives.tsv').read_bytes()).hexdigest(),
                 'note': 'First configure may download pinned dependencies; configuration is separate from build/test timing.'}
     (evidence / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
@@ -179,27 +204,29 @@ def main():
     def run(name, command, env):
         return run_phase(evidence, started + BUDGET_SECONDS, name, command, env)
 
-    builds = {level: evidence / f'build-o{level}' for level in levels}
+    builds = {label: evidence / f'build-{label}' for label in labels}
     # Configure both before either build: only immutable pinned dependency archives
     # are shared. The first download cost cannot masquerade as compiler/build cost.
-    for level, build in builds.items():
-        run(f'o{level}-configure', configure_command(build, level, sanitizers), environment)
-    archives = []
+    for label, level, enabled in selected:
+        run(f'{label}-configure', configure_command(builds[label], level, enabled), environment)
+    archives = {}
     totals = {}
     build_seconds = {}
-    test_seconds = {level: 0 for level in levels}
+    test_seconds = {label: 0 for label in labels}
     environments = {}
-    for level, build in builds.items():
-        total = run(f'o{level}-build', build_command(build), environment)
-        archives.append(verify(build, evidence, level, sanitizers))
-        variant = metadata['dependency_variant']
+    for label, level, enabled in selected:
+        build = builds[label]
+        total = run(f'{label}-build', build_command(build), environment)
+        archives[label] = verify(build, evidence, level, enabled, label)
+        variant = metadata['arms'][label]['dependency_variant']
         pinned = [line.split()[3] for line in (ROOT / 'third_party/archives.tsv').read_text().splitlines()
                   if line.startswith(f'linux-x64\t{variant}\t')]
-        require(len(pinned) == 1 and Path(archives[-1]).name == pinned[0],
+        require(len(pinned) == 1 and Path(archives[label]).name == pinned[0],
                 'dependency archive differs from pinned profile')
-        metadata['dependency_archive_sha256'] = pinned[0]
+        metadata['arms'][label]['dependency_archive_sha256'] = pinned[0]
         (evidence / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
-        require(len(set(archives)) == 1, 'arms do not use the same dependency archive')
+        if args.comparison == 'optimization':
+            require(len(set(archives.values())) == 1, 'optimization arms use different dependency archives')
         env = dict(environment, CHIBI_TOOLS_BUILD_DIR=str(build / 'test/tools'),
                    CHIBI_LANGUAGE_BUILD_DIR=str(build / 'test/language'),
                    CHIBI_BUILD_HOST=str(build / 'sdk/chibi-build-host'),
@@ -208,23 +235,24 @@ def main():
         for executable in ('test/tools/test_tools', 'test/language/test_language',
                            'sdk/chibi-build-host', 'sdk/chibi-compiler-host', 'bin/chibi_ctl'):
             require(os.access(build / executable, os.X_OK), f'missing helper: {executable}')
-        totals[level] = build_seconds[level] = total
-        environments[level] = env
+        totals[label] = build_seconds[label] = total
+        environments[label] = env
     # Pair each selector, alternating order; retain useful pairs if a later
     # selector fails. Both builds and flag verification finish before measurement.
     for index, selector in enumerate(SELECTORS):
-        for level in (levels if index % 2 == 0 else tuple(reversed(levels))):
-            elapsed = run(f'o{level}-{selector}',
-                [sys.executable, 'tools/test_policy.py', 'tool', selector], environments[level])
-            totals[level] += elapsed
-            test_seconds[level] += elapsed
+        for label in (labels if index % 2 == 0 else list(reversed(labels))):
+            elapsed = run(f'{label}-{selector}',
+                [sys.executable, 'tools/test_policy.py', 'tool', selector], environments[label])
+            totals[label] += elapsed
+            test_seconds[label] += elapsed
     require(capture('git', 'rev-parse', 'HEAD') == args.sha and
             not capture('git', 'status', '--porcelain', '--untracked-files=no'), 'source changed during experiment')
     (evidence / 'summary.json').write_text(json.dumps({
         'build_plus_four_selectors_seconds': totals, 'build_seconds': build_seconds,
-        'four_selectors_seconds': test_seconds, 'same_archive': archives[0],
-        'sanitizers': args.sanitizers, 'supervised_seconds': time.monotonic() - started,
-        'interpretation': 'One ordered O1/O2 pair, not a speedup claim or full CI pass; configuration excluded. Sanitizer comparisons span runners and include dependency profile changes.'
+        'four_selectors_seconds': test_seconds, 'dependency_archives': archives,
+        'comparison': args.comparison,
+        'fixed_sanitizers': args.sanitizers if args.comparison == 'optimization' else None, 'supervised_seconds': time.monotonic() - started,
+        'interpretation': 'One ordered within-runner pair, not a general speedup claim or full CI pass; configuration excluded. Instrumentation includes dependency profile changes. Comparisons across separate jobs remain hardware-confounded.'
     }, indent=2) + '\n')
 
 

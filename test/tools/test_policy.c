@@ -241,6 +241,27 @@ static const char driver_experiment[] =
     "        options = json.loads(sys.argv[5])\n"
     "        experiment.flags(**options)\n"
     "        sys.exit(0)\n"
+    "    if action == 'experiment-plan':\n"
+    "        options = json.loads(sys.argv[5])\n"
+    "        print(json.dumps(experiment.arms(**options)))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-mutate':\n"
+    "        mode = sys.argv[5]\n"
+    "        db = Path(root) / 'build/compile_commands.json'\n"
+    "        if mode == 'extra-ndebug':\n"
+    "            rows = json.loads(db.read_text())\n"
+    "            rows.append(dict(file='/extra.c', command=rows[0]['command'] "
+    "+ ' -DNDEBUG'))\n"
+    "            db.write_text(json.dumps(rows))\n"
+    "        if mode == 'link-sanitizer':\n"
+    "            log = Path(root) / 'o1-build.log'\n"
+    "            log.write_text(log.read_text() + '/usr/bin/clang-18 -g -O1 "
+    "-fno-omit-frame-pointer -o broken a.o\\n')\n"
+    "        if mode == 'missing-links':\n"
+    "            log = Path(root) / 'o1-build.log'\n"
+    "            log.write_text('\\n'.join(line for line in "
+    "log.read_text().splitlines() if ' -c ' in line))\n"
+    "        sys.exit(0)\n"
     "    if action == 'experiment-configure':\n"
     "        options = json.loads(sys.argv[5])\n"
     "        print(json.dumps(experiment.configure_command(Path(root), "
@@ -1863,6 +1884,13 @@ static void experiment_evidence(bool complete, bool exported, bool database, int
         }
     }
     fprintf(db, "]\n");
+    fprintf(
+        log,
+        "/usr/bin/clang-18 -g -O%d %s -fno-omit-frame-pointer -o test_tools "
+        "a.o\n",
+        level,
+        sanitizers ? "-fsanitize=address,undefined" : ""
+    );
     assert(!fclose(db) && !fclose(log));
     path(name, "build/test/tools/testing/include/export_compiler.h");
     FILE *header = fopen(name, "w");
@@ -1924,12 +1952,16 @@ TEST_CASE(debug_experiment_manual_workflow)
     REQUIRE(workflow);
     REQUIRE(strstr(workflow, "workflow_dispatch:"));
     REQUIRE(!strstr(workflow, "pull_request:") && !strstr(workflow, "push:"));
-    REQUIRE(strstr(workflow, "sanitizers: [\"on\", \"off\"]"));
+    REQUIRE(strstr(workflow, "type: choice"));
+    REQUIRE(strstr(workflow, "default: optimization"));
+    REQUIRE(
+        strstr(workflow, "fromJSON(inputs.comparison == 'instrumentation' && '[\"on\"]' || '[\"on\",\"off\"]')")
+    );
     REQUIRE(strstr(workflow, "fail-fast: false"));
     REQUIRE(strstr(workflow, "timeout-minutes: 45"));
     REQUIRE(strstr(workflow, "ref: ${{ inputs.sha }}"));
     REQUIRE(strstr(workflow, "--sanitizers \"$EXPERIMENT_SANITIZERS\""));
-    REQUIRE(strstr(workflow, "name: debug-optimization-${{ matrix.sanitizers }}-"));
+    REQUIRE(strstr(workflow, "name: debug-${{ inputs.comparison }}-${{ matrix.sanitizers }}-"));
     REQUIRE(strstr(workflow, "if: always()"));
     REQUIRE(!strstr(workflow, "actions/cache"));
     free(workflow);
@@ -1972,6 +2004,39 @@ TEST_CASE(debug_experiment_compilation_evidence)
             free(output);
         }
     }
+    return true;
+}
+
+TEST_CASE(debug_experiment_instrumentation_plan)
+{
+    REQUIRE(
+        run("experiment-plan",
+            "{\"comparison\":\"instrumentation\",\"sanitizers\":true}") == 0
+    );
+    char *output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "[[\"o1-on\", 1, true], [\"o1-off\", 1, false]]"));
+    free(output);
+    REQUIRE(run("experiment-plan", "{\"comparison\":\"optimization\",\"sanitizers\":false}") == 0);
+    output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "[[\"o1\", 1, false], [\"o2\", 2, false]]"));
+    free(output);
+    const char *mutations[] = { "extra-ndebug", "link-sanitizer", "missing-links" };
+    for (int i = 0; i < 3; i++) {
+        experiment_evidence(true, true, true, 1, true);
+        REQUIRE(run("experiment-mutate", mutations[i]) == 0);
+        REQUIRE(run("experiment-verify", "{\"level\":1,\"sanitizers\":true}") != 0);
+    }
+    experiment_evidence(true, true, true, 1, true);
+    char source[PATH_MAX], target[PATH_MAX];
+    path(source, "o1-build.log");
+    path(target, "o1-on-build.log");
+    REQUIRE(rename(source, target) == 0);
+    REQUIRE(
+        run("experiment-verify",
+            "{\"level\":1,\"sanitizers\":true,\"label\":\"o1-on\"}") == 0
+    );
+    REQUIRE(exists("o1-on-verified-argv.json"));
+    REQUIRE(exists("o1-on-CMakeCache.txt"));
     return true;
 }
 
@@ -2030,6 +2095,7 @@ void test_tool_test_policy()
     set_up();
     RUN_TEST_CASE(debug_experiment_flags);
     RUN_TEST_CASE(debug_experiment_manual_workflow);
+    RUN_TEST_CASE(debug_experiment_instrumentation_plan);
     RUN_TEST_CASE(debug_experiment_parallel_build_output);
     RUN_TEST_CASE(debug_experiment_compilation_evidence);
     RUN_TEST_CASE(debug_experiment_cancellation_and_failure_clean_up);

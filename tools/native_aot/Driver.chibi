@@ -2,7 +2,8 @@ package native_aot
 
 import strings "core:strings"
 
-// Bounded Linux-x64 LLVM CLI consumer. The build host is a transitional
+// Bounded LLVM CLI consumer. It runs on Linux x64, and its objects may be
+// for any admitted target. The build host is a transitional
 // capability provider, not part of the emitted executable or a C exemption.
 Join :: (parts: string[]) -> string {
     return strings.Join(parts, "");
@@ -31,26 +32,45 @@ Tool :: (path: string) -> string {
     return resolved;
 }
 
+// Each admitted triple, in native_abi's target order, with the canonical
+// data layout LLVM 18 gives it. The arm64 layout changes with the LLVM major,
+// so another major's layout is rejected rather than trusted.
+Admitted :: (triple: string, layout: string) -> int {
+    triples := ["x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0", "x86_64-pc-windows-msvc"];
+    layouts := ["e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+                "e-m:o-i64:64-i128:128-n32:64-S128",
+                "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"];
+    for (index in 0..<length(triples)) {
+        if (triple == Join(["target triple = \"", triples[index], "\""]) &&
+            layout == Join(["target datalayout = \"", layouts[index], "\""])) {
+            return index;
+        }
+    }
+    return -1;
+}
+
 // Only LLVM's verified, canonical textual output is inspected. This admits
 // declared target metadata, not source semantics or arbitrary LLVM syntax.
-Target :: (text: string) -> bool {
+// The result is the admitted target's index, or -1.
+Target :: (text: string) -> int {
     triples := 0;
     layouts := 0;
+    triple := "";
+    layout := "";
     for (line in build.lines(text)) {
         if (strings.HasPrefix(line, "target triple = ")) {
-            if (line != "target triple = \"x86_64-unknown-linux-gnu\"") {
-                return false;
-            }
+            triple = line;
             triples += 1;
         }
         if (strings.HasPrefix(line, "target datalayout = ")) {
-            if (line != "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"") {
-                return false;
-            }
+            layout = line;
             layouts += 1;
         }
     }
-    return triples == 1 && layouts == 1;
+    if (triples != 1 || layouts != 1) {
+        return -1;
+    }
+    return Admitted(triple, layout);
 }
 
 // Never recurse or remove anything outside the directory this invocation
@@ -188,7 +208,13 @@ Run :: (arguments: string[], executable: bool) -> int {
     if (status != 0) {
         return Failed(partial, "LLVM verification/optimization", status);
     }
-    if (build.file_kind(module) != "file" || !Target(build.read_file(module))) {
+    target := -1;
+    if (build.file_kind(module) == "file") {
+        target = Target(build.read_file(module));
+    }
+    // Objects may be for any admitted target; programs link for Linux x86-64
+    // only (W18).
+    if (target < 0 || (executable && target != 0)) {
         return Failed(partial, "canonical target/layout admission", 2);
     }
     status = build.run(compile);

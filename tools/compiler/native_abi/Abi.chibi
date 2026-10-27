@@ -1,7 +1,7 @@
 package native_abi
 
-// Internal contract for the first runtime-free LLVM slice, not a public
-// core package or a foreign ABI. These facts describe the destination, never
+// Internal contract for the runtime-free LLVM slice, not a public core
+// package or a foreign ABI. These facts describe the destination, never
 // the host running the compiler. Extend them only with a tested consumer.
 pub Target :: struct {
     triple: string;
@@ -11,19 +11,32 @@ pub Target :: struct {
 pub LinuxX64 :: () -> Target {
     return {triple: "x86_64-unknown-linux-gnu", pointer_bits: 64};
 }
+// The OS version makes llc write the object's LC_BUILD_VERSION.
+pub MacOSArm64 :: () -> Target {
+    return {triple: "arm64-apple-macosx11.0.0", pointer_bits: 64};
+}
+pub WindowsX64 :: () -> Target {
+    return {triple: "x86_64-pc-windows-msvc", pointer_bits: 64};
+}
 
+pub Same :: (target: Target, supported: Target) -> bool {
+    return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
+}
 // The module flag that selects the target's debug information format: DWARF
-// 4 on Linux, as rustc emits there. Line tables also need LLVM's own
+// 4 on Linux, as rustc emits there. Line tables are Linux-only so far, so
+// other targets have no format. Line tables also need LLVM's own
 // "Debug Info Version" flag, which no target changes.
 pub DebugFormat :: (target: Target) -> string {
+    if (!Same(target, LinuxX64())) {
+        return "";
+    }
     return "!{i32 7, !\"Dwarf Version\", i32 4}";
 }
 
-// Reject other targets rather than silently applying the first target's ABI.
+// Reject other targets rather than silently applying another target's ABI.
 // The backend supplies its data layout; no unverified layout is embedded here.
 pub Supported :: (target: Target) -> bool {
-    supported := LinuxX64();
-    return target.triple == supported.triple && target.pointer_bits == supported.pointer_bits;
+    return Same(target, LinuxX64()) || Same(target, MacOSArm64()) || Same(target, WindowsX64());
 }
 
 // Current compiler storage ordinals, not byte widths or foreign type IDs.
@@ -94,4 +107,23 @@ pub ScalarType :: (storage: int) -> string {
 // nothing reads its bytes. A string is immutable, so a copy shares its bytes.
 pub TextType :: () -> string {
     return "{ ptr, i32 }";
+}
+// The version of the export manifest a library object holds, which the
+// runtime checks before binding it: EXECUTION_NATIVE_ABI in
+// src/execution/native.h.
+pub ExportAbi: int : 1;
+// The type a manifest records for a parameter or result of this storage,
+// execution_native_type in src/execution/native.h, or 0 when no word carries
+// it. A word holds an integer sign- or zero-extended from its width, a bool as
+// 0 or 1, and a float or double as its encoding's bits, a float's
+// zero-extended.
+pub ExportType :: (storage: int) -> int {
+    order: int[] = [IntStorage, BoolStorage, Int8Storage, ByteStorage, Int16Storage, Uint16Storage, UintStorage,
+                    Int64Storage, WordStorage, FloatStorage, DoubleStorage];
+    for (index in 0..<length(order)) {
+        if (order[index] == storage) {
+            return index + 1;
+        }
+    }
+    return 0;
 }

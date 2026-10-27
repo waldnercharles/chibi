@@ -13,7 +13,13 @@ tracks which language features reach native code and what blocks the rest.
 One source document holding one package, no imports, and only ordinary
 function declarations without attributes, records, unions and constants: at
 most 32 functions. The first
-function is the module's entry and must be `() -> int`. Every function:
+function is the module's entry and must be `() -> int`. A source that is
+instead one native library, `Name :: library { ... }` of such
+functions, has no entry: its Document row's `text` is `Name`, each Function
+row's `literal` is the function's stable symbol ID,
+`script_catalog_id("symbol", "<path>:1:<function>:callable")`, and
+`scalar_llvm` emits it with `llvm_native.EmitLibrary`, whose manifest the
+runtime binds (D11 in the ledger). Every function:
 
 - takes at most eight plain number, `bool` or `string` parameters (`i8`,
   `u8`, `i16`, `u16`, `int`, `u32`, `i64`, `u64`, `number` or `f64`; no
@@ -257,9 +263,10 @@ native observation: `bool` parameters and results are internal, and any `bool`
 probe is a validation-only adapter, not an ABI.
 
 `tool language-scalar-native` (`test/language`, Linux x86-64 only) runs the
-corpus natively. `CHIBI_LLVM_BIN` names the directory of `opt`, `llc`,
-`ld.lld` and `llvm-nm`; nothing is found through `PATH`, and `make
-test-language-all` passes `NATIVE_LLVM_BIN` as it. Each case goes through
+corpus natively, and can bundle the same modules for macOS arm64 and Windows
+x64 (see [targets](../targets/README.md)). `CHIBI_LLVM_BIN` names the
+directory of `opt`, `llc`, `ld.lld` and `llvm-nm`; nothing is found through
+`PATH`, and `make test-language-all` passes `NATIVE_LLVM_BIN` as it. Each case goes through
 `CollectScalar` on one VM, alternating by case, and must be what
 `Cases.Check` expects. Each accepted module's IR becomes O0 and O2 objects
 through the driver's fixed `opt` and `llc` argument vectors, with no undefined

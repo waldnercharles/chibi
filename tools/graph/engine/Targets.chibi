@@ -1519,7 +1519,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
         // The build host's private headers, which its object library and
         // executable share.
         return [
-            "host/build_host.h", "host/build_host_internal.h", "host/build_io.h", "host/build_values.h",
+            "host/build_host.h", "host/build_host_internal.h", "host/build_timing.h", "host/build_io.h", "host/build_values.h",
             "host/process.h", "support/sha256.h", "authoring/source_package_io.h"
         ];
     }

@@ -59,6 +59,7 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 void test_native_aot_driver(const char *source);
 void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
+void test_tool_build_timings(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
 void test_build_graph(const char *host, const char *cmake_build);
 void test_build_graph_support(const char *host, const char *cmake_build);
@@ -656,12 +657,15 @@ int main(int argc, char **argv)
 #endif
     }
     if (argc == 4 && (!strcmp(argv[1], "--build-process") ||
-                      !strcmp(argv[1], "--build-process-files"))) {
+                      !strcmp(argv[1], "--build-process-files") ||
+                      !strcmp(argv[1], "--build-timings"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
         if (!strcmp(argv[1], "--build-process-files")) {
             test_tool_build_process_files(argv[2], argv[3]);
+        } else if (!strcmp(argv[1], "--build-timings")) {
+            test_tool_build_timings(argv[2], argv[3]);
         } else {
             test_tool_build_process(argv[2], argv[3]);
         }

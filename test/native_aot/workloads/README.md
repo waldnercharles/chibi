@@ -13,9 +13,9 @@ as the program's exit status:
 
 The VM gives the same statuses: a `@test` asserting `Main() == status` passes
 under `chibi test` for each kernel. Sizes stay within the VM's instruction
-budget and call depth so that this check keeps working. Kernels that need
-strings, arrays or maps (a real tokenizer or compiler pass) wait for W3 and
-W7.
+budget and call depth so that this check keeps working. A kernel over
+strings can follow W3; kernels that need arrays or maps (a real tokenizer or
+compiler pass) wait for W7.
 
 `native-workload-benchmark` (`test/tools/native_workloads.c`, Linux x86-64) builds each
 kernel with the launcher it is given and the LLVM tools in `CHIBI_LLVM_BIN`,

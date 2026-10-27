@@ -30,6 +30,11 @@ typedef struct
     chibi_process_job jobs[BUILD_MAX_JOBS];
     chibi_process_output job_outputs[BUILD_MAX_JOBS][2];
     int job_handles[BUILD_MAX_JOBS], job_count;
+    /* Trace intervals end when the host first observes completion, not at the
+     * exact child exit. Parallel intervals must not be summed as wall time. */
+    double job_started[BUILD_MAX_JOBS], job_observed[BUILD_MAX_JOBS];
+    const char *job_categories[BUILD_MAX_JOBS];
+    int job_steps[BUILD_MAX_JOBS];
 } build_host;
 
 const char *build_host_ready(build_host *);

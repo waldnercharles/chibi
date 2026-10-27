@@ -18,6 +18,7 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
         compiler_id: CompilerId(compiler),
         build_type: "Debug",
         debug_optimization: "",
+        debug_frame_pointers: false,
         architecture: "",
         sysroot: "",
         warnings: true,

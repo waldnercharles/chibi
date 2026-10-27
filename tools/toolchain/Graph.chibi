@@ -15,6 +15,7 @@ import strings "core:strings"
 //   --debug-compilation-dir DIR --debug-optimization 0|1 (Debug only)
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --clang-resource-include DIR --third-party DIR --reflect PATH
+//   --asset-generator-hosts DIR
 // The explicit profile performs no toolchain discovery; every required tool
 // and platform option must be provided. It can write commands without native
 // compilers or discovery tools installed.
@@ -102,7 +103,7 @@ Libraries :: () -> int {
         compiler: "", cxx_compiler: "", compiler_id: "", build_type: "Release",
         debug_optimization: "", architecture: "", sysroot: "", warnings: true, sanitizers: "",
         debug_compilation_dir: "", libclang_include: "", libclang_library: "",
-        clang_resource_include: "", third_party: "", reflect: ""
+        clang_resource_include: "", third_party: "", reflect: "", asset_generator_hosts: ""
     };
     if (discover) {
         found = engine.Discover(profile_name, build.root(), build_dir);
@@ -146,7 +147,8 @@ Libraries :: () -> int {
         clang_resource_include: Option(arguments, "--clang-resource-include", resource_include),
         // The archive for the profile as overridden.
         third_party: Option(arguments, "--third-party", third_party),
-        reflect: Option(arguments, "--reflect", "")
+        reflect: Option(arguments, "--reflect", ""),
+        asset_generator_hosts: Option(arguments, "--asset-generator-hosts", "")
     };
     // Reject an omitted value too: Option alone falls back at end-of-argv.
     for (i in 0..<length(arguments)) {
@@ -169,6 +171,10 @@ Libraries :: () -> int {
     if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(profile.compiler, "/") ||
         tools.archiver == "" || tools.ranlib == "" || jobs < 1) {
         build.report("graph: --build must be absolute, a compiler, archiver and ranlib must be found, and --jobs must be positive");
+        return 2;
+    }
+    if (profile.asset_generator_hosts != "" && !strings.HasPrefix(profile.asset_generator_hosts, "/")) {
+        build.report("graph: --asset-generator-hosts must be absolute");
         return 2;
     }
     selected: string[] = [];

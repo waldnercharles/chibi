@@ -1172,10 +1172,11 @@ TEST_CASE(all_commands_list_every_target)
     return true;
 }
 
-/* Four fixed rejected invocations: an unknown target alone and beside a
- * known target, and a target missing its name at the end or before an option.
- * They write no build outputs and never reach toolchain discovery. */
-TEST_CASE(invalid_targets_fail_before_writing_commands)
+/* Five fixed rejected invocations: an unknown target alone and beside a
+ * known target, a target missing its name at the end or before an option, and
+ * relative asset generator hosts. They write no build outputs and never reach
+ * toolchain discovery. */
+TEST_CASE(invalid_arguments_fail_before_writing_commands)
 {
     char build_dir[GRAPH_PATH];
     join(build_dir, suite, "invalid targets");
@@ -1190,7 +1191,10 @@ TEST_CASE(invalid_targets_fail_before_writing_commands)
           "graph: unknown target 'chibi-clt'" },
         { { "--commands-only", "on", "--target", NULL },
           "graph: --target requires a target name" },
-        { { "--target", "--commands-only", "on", NULL }, "graph: --target requires a target name" }
+        { { "--target", "--commands-only", "on", NULL },
+          "graph: --target requires a target name" },
+        { { "--commands-only", "on", "--asset-generator-hosts", "build-release/sdk", NULL },
+          "graph: --asset-generator-hosts must be absolute" }
     };
     for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
         REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, cases[i].arguments) == -1);
@@ -1538,7 +1542,7 @@ void test_build_graph_programs(const char *host, const char *cmake_build)
     set_up(host, cmake_build);
     RUN_TEST_CASE(named_programs_build_what_they_run);
     RUN_TEST_CASE(all_commands_list_every_target);
-    RUN_TEST_CASE(invalid_targets_fail_before_writing_commands);
+    RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
     RUN_TEST_CASE(authored_dependency_files_list_prerequisites);

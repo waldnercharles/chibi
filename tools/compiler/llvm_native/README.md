@@ -104,6 +104,12 @@ interface, or the complete allocation/memory/output/free native island.
 - An exhausted budget branches to `llvm.trap`. This provisional fail-stop
   contract does not supply VM diagnostics, recovery or asynchronous
   cancellation. The caller still supervises process timeout.
+- Line tables are opt-in, as rustc's `-C debuginfo=line-tables-only`: a
+  `Source` with a file, a name for each function and a line and column for
+  each code instruction add a DWARF compile unit, one subprogram per function
+  (and an artificial one for `text_equal`), and a `!dbg` location on every
+  instruction. `native_abi.DebugFormat` gives the target's DWARF version
+  flag. An empty file emits the module unchanged.
 
 The emitter rejects unsupported instructions/types and validates table bounds,
 operand types, constants within their type, unique scalar definitions and

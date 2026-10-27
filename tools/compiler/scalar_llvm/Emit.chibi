@@ -931,6 +931,15 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // and a Tag or Payload row extracts its field. A string literal is a
 // constant of the module's text table, one entry per distinct text.
 pub Emit :: (rows: facts.Row[]) -> Result {
+    return Lower(rows, "", false);
+}
+// Emit with line tables: each instruction is at the position of the
+// statement row it lowers, the function's own row before its first, and the
+// source row names the file, which is in `directory`.
+pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
+    return Lower(rows, directory, true);
+}
+Lower :: (rows: facts.Row[], directory: string, debug: bool) -> Result {
     error := Validate(rows);
     if (error != "") {
         return Result.Invalid(error);
@@ -947,6 +956,9 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     records: native.Record[] = [];
     fields: int[] = [];
     texts: string[] = [];
+    names: string[] = [];
+    lines: int[] = [];
+    columns: int[] = [];
     declared := Records(rows);
     for (head in declared) {
         record: native.Record = {first: length(fields), count: 0};
@@ -972,6 +984,9 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                                   first_local: length(locals), locals: 0, first_code: length(code), code: 0,
                                   first_argument: length(arguments), arguments: 0};
         body: native.Instruction[] = [Op(native.Check, 0, 0, 0, 0, 0)];
+        names.append(declaration.name);
+        line := declaration.line;
+        column := declaration.column;
         // Each variable's local, and the next slot and local.
         places: int[] = [];
         slot: int = 0;
@@ -1001,6 +1016,14 @@ pub Emit :: (rows: facts.Row[]) -> Result {
         last := Last(rows, heads, function);
         while (at < last) {
             row := rows[at];
+            while (length(lines) < length(code) + length(body)) {
+                lines.append(line);
+                columns.append(column);
+            }
+            if (row.line > 0) {
+                line = row.line;
+                column = row.column;
+            }
             top := length(frames) - 1;
             if (row.kind == facts.ElseRow) {
                 frame := frames[top];
@@ -1371,14 +1394,22 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                 break;
             }
         }
+        while (length(lines) < length(code) + length(body)) {
+            lines.append(line);
+            columns.append(column);
+        }
         shape.slots = slot;
         shape.locals = local;
         shape.code = length(body);
         code.extend(body);
         functions.append(shape);
     }
+    source: native.Source = {file: "", directory: ""};
+    if (debug) {
+        source = {file: rows[0].name, directory: directory};
+    }
     switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields, texts,
-                       false, 1) {
+                       source, names, lines, columns, false, 1) {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
@@ -1389,8 +1420,14 @@ pub Emit :: (rows: facts.Row[]) -> Result {
 // Existing compiler-host --output-bytes rejects an empty result before file
 // publication. Emit retains typed diagnostics; this entry adds no host codec.
 pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
+    return Bytes(Emit(rows));
+}
+pub EmitLinesBytes :: (rows: facts.Row[], directory: string) -> u8[] {
+    return Bytes(EmitLines(rows, directory));
+}
+Bytes :: (result: Result) -> u8[] {
     output: u8[] = [];
-    switch Emit(rows) {
+    switch result {
         case .Rejected(rejected):
             return output;
         case .Invalid(message):

@@ -39,8 +39,8 @@ extern char **environ;
  * unavailable or broken, without changing anything.
  * chibi build [PROJECT]: prepares the project when its sources or the compiler
  * changed since the last preparation.
- * chibi build --native [-O0|-O2] [--llvm DIR] [ROOT]: compiles ROOT's one
- * package source to a native program with LLVM.
+ * chibi build --native [-O0|-O2] [-g] [--llvm DIR] [ROOT]: compiles ROOT's
+ * one package source to a native program with LLVM, with -g line tables.
  * chibi check [PROJECT]: prepares the project as build does, without
  * migrating it or writing anything.
  * chibi test [ROOT]: runs the @test functions of the packages below ROOT.
@@ -166,7 +166,7 @@ static int usage(const char *program)
         "Usage: %s version\n"
         "       %s doctor [--web PLAYER]\n"
         "       %s build [PROJECT]\n"
-        "       %s build --native [-O0|-O2] [--llvm DIR] [ROOT]\n"
+        "       %s build --native [-O0|-O2] [-g] [--llvm DIR] [ROOT]\n"
         "       %s check [PROJECT]\n"
         "       %s fmt [--check] [PATH...]\n"
         "       %s test [ROOT]\n"
@@ -189,8 +189,10 @@ static int usage(const char *program)
         "directory without one, whose first function is Main :: () -> int,\n"
         "to ROOT/build/native/O2-HASH/program (-O0 for an unoptimized one)\n"
         "with the opt, llc and ld.lld in DIR, or in CHIBI_LLVM_BIN without\n"
-        "--llvm. Native code supports a subset of the language so far; a\n"
-        "source outside it fails with the first unsupported form.\n"
+        "--llvm. -g adds DWARF line tables, so debuggers and profilers place\n"
+        "its code in the source. Native code supports a subset of the\n"
+        "language so far; a source outside it fails with the first\n"
+        "unsupported form.\n"
         "check parses, resolves and validates the project as build does, but\n"
         "migrates and writes nothing; an older project fails until migrated.\n"
         "test runs each @test function of the packages below ROOT, the\n"
@@ -983,7 +985,14 @@ static char *private_program(const char *bin, const char *name)
 }
 
 /* Runs the native driver in the build host with the SDK's compiler and core. */
-static int run_native_driver(const char *bin, const char *share, char *root, char *tools, const char *mode)
+static int run_native_driver(
+    const char *bin,
+    const char *share,
+    char *root,
+    char *tools,
+    const char *mode,
+    const char *debug
+)
 {
     char *host = private_program(bin, "chibi-build-host" CHIBI_EXECUTABLE_SUFFIX);
     char *compiler_host = private_program(bin, "chibi-compiler-host" CHIBI_EXECUTABLE_SUFFIX);
@@ -991,12 +1000,14 @@ static int run_native_driver(const char *bin, const char *share, char *root, cha
     char *source = join(driver, "Driver.chibi");
     char *compiler = join(share, "compiler");
     char *core = join(share, "core");
-    char *args[] = { host,          "--root",          driver,   "--source",
-                     source,        "--core",          core,     "--compiler",
-                     compiler,      "--compiler-core", core,     "--entry",
-                     "Native",      "--timeout-ms",    "900000", "--",
-                     compiler_host, compiler,          core,     root,
-                     tools,         (char *)mode,      NULL };
+    char *args[] = {
+        host,          "--root",          driver,        "--source",
+        source,        "--core",          core,          "--compiler",
+        compiler,      "--compiler-core", core,          "--entry",
+        "Native",      "--timeout-ms",    "900000",      "--",
+        compiler_host, compiler,          core,          root,
+        tools,         (char *)mode,      (char *)debug, NULL
+    };
     int result = chibi_process_run(args);
     free(core);
     free(compiler);
@@ -1007,17 +1018,21 @@ static int run_native_driver(const char *bin, const char *share, char *root, cha
     return result;
 }
 
-/* chibi build --native [-O0|-O2] [--llvm DIR] [ROOT]: the build host runs the
- * native driver, which compiles ROOT's source with the SDK's compiler and the
- * LLVM tools in DIR. A native build never falls back to the VM artifact. */
+/* chibi build --native [-O0|-O2] [-g] [--llvm DIR] [ROOT]: the build host runs
+ * the native driver, which compiles ROOT's source with the SDK's compiler and
+ * the LLVM tools in DIR, with line tables for -g as rustc's
+ * -C debuginfo=line-tables-only. A native build never falls back to the VM
+ * artifact. */
 static int build_native(int argc, char **argv)
 {
     const char *requested = ".", *mode = "2", *llvm = getenv("CHIBI_LLVM_BIN");
-    bool optimized = false, located = false, rooted = false;
+    bool optimized = false, located = false, rooted = false, lines = false;
     for (int i = 3; i < argc; i++) {
         if ((!strcmp(argv[i], "-O0") || !strcmp(argv[i], "-O2")) && !optimized) {
             mode = argv[i] + 2;
             optimized = true;
+        } else if (!strcmp(argv[i], "-g") && !lines) {
+            lines = true;
         } else if (!strcmp(argv[i], "--llvm") && i + 1 < argc && !located) {
             llvm = argv[++i];
             located = true;
@@ -1056,7 +1071,7 @@ static int build_native(int argc, char **argv)
     if (missing) {
         fprintf(stderr, "build --native: cannot find %s\n", missing);
     } else {
-        result = run_native_driver(bin, share, root, tools, mode);
+        result = run_native_driver(bin, share, root, tools, mode, lines ? "lines" : "none");
     }
     free(share);
     free(bin);

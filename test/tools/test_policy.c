@@ -1337,6 +1337,12 @@ static int run(const char *action, const char *argument)
 static const char driver_scalar_batch[] =
     "if sys.argv[2] == 'scalar-batch':\n"
     "    import shutil\n"
+    "    started = time.monotonic()\n"
+    "    def trace(phase):\n"
+    "        print(f'scalar-transport phase={phase} elapsed='\n"
+    "              f'{time.monotonic() - started:.6f}', file=sys.stderr, "
+    "flush=True)\n"
+    "    trace('driver-ready')\n"
     "    source = "
     "Path('test/native_aot/scalar/Run.ps1').read_text(encoding='utf-8')\n"
     "    root = Path(sys.argv[4])\n"
@@ -1356,8 +1362,10 @@ static const char driver_scalar_batch[] =
     "TransportFixture.ps1').read_text(encoding='utf-8')\n"
     "    script.write_text('function Digest' + helpers + '\\n' + fixture, "
     "encoding='utf-8')\n"
+    "    trace('pwsh-start')\n"
     "    subprocess.run([pwsh, '-NoProfile', '-File', str(script), str(root)], "
     "check=True)\n"
+    "    trace('pwsh-exit')\n"
     "    for i in range(3):\n"
     "        print('member:' + (root / "
     "f'member-{i}.stdout').read_bytes().hex())\n"
@@ -1424,6 +1432,22 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
         REQUIRE(!getenv("GITHUB_ACTIONS"));
         return true;
     }
+    const char *phases[] = { "driver-ready",  "pwsh-start",     "fixture-enter",
+                             "split-start",   "split-done",     "join-done",
+                             "evidence-done", "singleton-done", "invalid-done",
+                             "counters-done", "corpus-start",   "corpus-done",
+                             "pwsh-exit" };
+    const char *phase = output;
+    for (int i = 0; i < (int)(sizeof phases / sizeof *phases); i++) {
+        char expected[96];
+        snprintf(expected, sizeof expected, "scalar-transport phase=%s elapsed=", phases[i]);
+        phase = strstr(phase, expected);
+        REQUIRE(phase);
+        phase += strlen(expected);
+    }
+    REQUIRE(strstr(output, "scalar-transport runtime pwsh="));
+    REQUIRE(strstr(output, " dotnet="));
+    REQUIRE(strstr(output, " cpus="));
     REQUIRE(strstr(output, "singleton=1\nsingleton-identical=True\n"));
     REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-9 rejected\n"));
     REQUIRE(

@@ -2033,10 +2033,11 @@ selects two cases. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
 the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
 `CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact. The API recovery case
-adds a marker and a 64 KiB string literal to the exported compiler source,
-forcing the current compiler past 16 MiB. It recovers to a fixed point, executes
-both new exports and verifies that the load API writes no output file. The
-instruction budgets and child deadlines are unchanged.
+adds a marker to the exported compiler source, recovers to a fixed point,
+executes the new export and verifies that the load API writes no output file.
+Interned strings keep the compiler near 9 MB and package sources are capped at
+8 MiB, so this case cannot cross 16 MiB; the sparse cases above cover the
+artifact bound. The instruction budgets and child deadlines are unchanged.
 
 ## Game equivalence
 

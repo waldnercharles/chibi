@@ -3,7 +3,8 @@
 ## Scope and dependency
 
 This candidate is based on PR #730, composed source
-`9beba415310876a462f59d6cbcc5015e8f3e9e46`, which includes #729. The initial
+`99ff8ca727447d584a87218963dd19ddc17972ac`, which includes #729 and the
+reviewed macOS temporary-path fixture repair. The initial
 startup investigation used #730 source `7f4507a6`. **Do not merge it until #730 has
 passed its independent review/validation gates and landed.** It is separate
 from #729's preserved asset-generator changes and #726's sharding work.
@@ -63,6 +64,8 @@ Local source checks: strict GCC C syntax with `-Wall -Wextra -Werror -Wpedantic
 -Woverlength-strings -UNDEBUG`; clang-format 22; and source-equivalence comparison
 of the composed Graph body and valid matrix. The exact extracted pure C
 transcript fixture passed one case/seven assertions with the same strict flags.
+The composed policy fixture passed 47 cases/617 assertions, including the
+parent's temporary-path regression, with the same strict warnings.
 A full-file scratch GCC wrapper encountered pre-existing unused-function and
 format-truncation warnings in unrelated functions; those warnings were not
 disabled. Full-driver compilation remains a CI gate. Independent source review

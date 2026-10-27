@@ -354,8 +354,10 @@ static bool read_source(int source)
     }
     return true;
 }
-/* The names the declaration being read binds: its parameters, locals, loop
- * variables and pattern bindings, which shadow package names. */
+/* The names in scope that shadow package names: parameters, locals, loop
+ * variables and pattern bindings. Each takes effect after its declaration, so
+ * a local's initializer still names the package's declaration, and ends with
+ * the block, loop or switch arm that holds it. */
 static char **bound;
 
 static bool is_bound(int source, TSNode name)
@@ -367,35 +369,23 @@ static bool is_bound(int source, TSNode name)
     }
     return false;
 }
-static void bind_names(int source, TSNode node, const char *field)
+static void bind(int source, TSNode node, const char *field)
 {
-    TSNode parent = ts_node_parent(node);
-    bool named = field && !strcmp(field, "name") &&
-                 (node_is(parent, "parameter") || node_is(parent, "local_declaration") ||
-                  node_is(parent, "for_statement"));
-    if (node_is(node, "identifier") &&
-        (named || node_is(parent, "pattern_bindings") ||
-         (field && (!strcmp(field, "key") || !strcmp(field, "binding"))))) {
-        apush(bound, node_text(source, node));
+    TSNode name = ts_node_child_by_field_name(node, field, (uint32_t)strlen(field));
+    if (!ts_node_is_null(name)) {
+        apush(bound, node_text(source, name));
     }
-    TSTreeCursor cursor = ts_tree_cursor_new(node);
-    if (ts_tree_cursor_goto_first_child(&cursor)) {
-        do {
-            bind_names(
-                source,
-                ts_tree_cursor_current_node(&cursor),
-                ts_tree_cursor_current_field_name(&cursor)
-            );
-        } while (ts_tree_cursor_goto_next_sibling(&cursor));
-    }
-    ts_tree_cursor_delete(&cursor);
 }
-static void unbind_names()
+static void unbind(int depth)
 {
-    for (int i = 0; i < acount(bound); i++) {
-        free(bound[i]);
+    while (acount(bound) > depth) {
+        free(apop(bound));
     }
-    afree(bound);
+}
+static bool scopes(TSNode node)
+{
+    return node_is(node, "block") || node_is(node, "for_statement") ||
+           node_is(node, "switch_arm");
 }
 /* The declaration `node` names from its place in `source`, or -1. */
 static int reference(int source, TSNode node, const char *field)
@@ -433,8 +423,8 @@ static int reference(int source, TSNode node, const char *field)
              ? -1
              : find_decl(sources[source].package, source, node);
 }
-/* The references under `node`, in source order. A qualified name is one
- * reference; its parts are not visited. */
+/* The references under `node`, in source order, with the names in scope at
+ * each. A qualified name is one reference; its parts are not visited. */
 static void references(int source, TSNode node, const char *field, census_edit **edits)
 {
     int decl = reference(source, node, field);
@@ -445,18 +435,30 @@ static void references(int source, TSNode node, const char *field, census_edit *
     if (node_is(node, "type_name")) {
         return;
     }
+    if (node_is(node, "identifier") && (node_is(ts_node_parent(node), "pattern_bindings") ||
+                                        (field && !strcmp(field, "binding")))) {
+        apush(bound, node_text(source, node));
+        return;
+    }
+    int depth = acount(bound);
     TSTreeCursor cursor = ts_tree_cursor_new(node);
     if (ts_tree_cursor_goto_first_child(&cursor)) {
         do {
-            references(
-                source,
-                ts_tree_cursor_current_node(&cursor),
-                ts_tree_cursor_current_field_name(&cursor),
-                edits
-            );
+            const char *name = ts_tree_cursor_current_field_name(&cursor);
+            if (node_is(node, "for_statement") && name && !strcmp(name, "body")) {
+                bind(source, node, "key");
+                bind(source, node, "name");
+            }
+            references(source, ts_tree_cursor_current_node(&cursor), name, edits);
         } while (ts_tree_cursor_goto_next_sibling(&cursor));
     }
     ts_tree_cursor_delete(&cursor);
+    if (scopes(node)) {
+        unbind(depth);
+    }
+    if (node_is(node, "parameter") || node_is(node, "local_declaration")) {
+        bind(source, node, "name");
+    }
 }
 static void append(char **text, const char *bytes, size_t length)
 {
@@ -547,9 +549,9 @@ static void emit_decl(census_build *build, int package, int decl, census_place *
     const census_decl *d = &decls[decl];
     TSNode name = field_of(d->node, "name");
     census_edit *edits = NULL;
-    bind_names(d->source, d->node, NULL);
     references(d->source, d->node, NULL, &edits);
-    unbind_names();
+    unbind(0);
+    afree(bound);
     uint32_t start = (uint32_t)acount(build->text);
     int next = 0;
     emit_range(build, package, d->source, ts_node_start_byte(d->node), ts_node_start_byte(name), edits, &next);
@@ -1090,9 +1092,9 @@ static int decl_named(const char *name)
     }
     return -1;
 }
-/* Two packages: app imports lib, whose function names its record and
- * constant, and calls a function of more parameters than the producer
- * admits. */
+/* Two packages: app imports lib, whose functions name its record and
+ * constant, shadow the constant in nested and sibling scopes, and call a
+ * function of more parameters than the producer admits. */
 static const char
     LIB_SOURCE[] = "package lib\n"
                    "pub Limit: int : 3;\n"
@@ -1100,7 +1102,15 @@ static const char
                    "pub Sum :: (p: Pair) -> int {\n"
                    "    return p.a + p.b + Limit;\n"
                    "}\n"
-                   "pub Shadow :: (Limit: int) -> int { return Limit; }\n";
+                   "pub Shadow :: (Limit: int) -> int { return Limit; }\n"
+                   "pub Scoped :: (x: int) -> int {\n"
+                   "    v := Limit;\n"
+                   "    if x > 0 { Limit := 9; v = Limit; }\n"
+                   "    if x < 0 { v = Limit; }\n"
+                   "    for Limit in 0..<x { v += Limit; }\n"
+                   "    Limit := Limit + v;\n"
+                   "    return Limit;\n"
+                   "}\n";
 static const char APP_SOURCE
     [] = "package app\n"
          "import lib \"project:lib\"\n"
@@ -1155,6 +1165,21 @@ TEST_CASE(native_census_flattens_imports_and_constants)
         "pub Shadow :: (Limit: int) -> int { return Limit; }\n"
     ));
     REQUIRE(!build->imports && !build->constants);
+    build = census_of("Scoped", NULL);
+    REQUIRE(!strcmp(
+        build->text,
+        "package lib\n"
+        "NativeCensusEntry :: () -> int { return 0; }\n"
+        "pub Scoped :: (x: int) -> int {\n"
+        "    v := int(3);\n"
+        "    if x > 0 { Limit := 9; v = Limit; }\n"
+        "    if x < 0 { v = int(3); }\n"
+        "    for Limit in 0..<x { v += Limit; }\n"
+        "    Limit := int(3) + v;\n"
+        "    return Limit;\n"
+        "}\n"
+    ));
+    REQUIRE(build->constants);
     build_free(&sample);
     return true;
 }

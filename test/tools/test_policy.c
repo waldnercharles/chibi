@@ -995,6 +995,248 @@ static const char driver_source[] =
     "    print(error, file=sys.stderr)\n"
     "    sys.exit(2)\n";
 
+static const char *driver_seed[] = {
+    "if sys.argv[2] == 'seed-workflow':\n"
+    "    import hashlib, shutil\n"
+    "    root = Path(sys.argv[4]) / 'seed'\n"
+    "    shutil.rmtree(root, ignore_errors=True)\n"
+    "    root.mkdir()\n"
+    "    workflow = "
+    "Path('.github/workflows/compiler-runtime-seed.yml').read_text()\n"
+    "    def block(name):\n"
+    "        section = workflow.split('      - name: ' + name + '\\n', "
+    "1)[1].split('\\n      - ', 1)[0]\n"
+    "        return '\\n'.join(line[10:] for line in section.split('        "
+    "run: |\\n', 1)[1].splitlines() if line.startswith('          '))\n"
+    "    case = sys.argv[5]\n"
+    "    sha, tree = 'a' * 40, 'b' * 40\n"
+    "    tag = 'compiler-runtime-prepared22-' + sha\n"
+    "    env = dict(os.environ, RUNNER_TEMP=str(root), GITHUB_SHA=sha, "
+    "SOURCE_TREE=tree,\n"
+    "               GITHUB_REPOSITORY='fixture/repo', GH_REPO='fixture/repo', "
+    "TAG=tag,\n"
+    "               GITHUB_SERVER_URL='https://github.com', "
+    "GITHUB_RUN_ID='123', GITHUB_REF_NAME='candidate')\n"
+    "    if case.startswith('release:'):\n"
+    "        assets = root / 'published'\n"
+    "        assets.mkdir()\n"
+    "        manifest = dict(format=1, repository='fixture/repo', tag=tag, "
+    "source_revision=sha, source_tree=tree, platforms={})\n"
+    "        (root / "
+    "'published.json').write_text(json.dumps(dict(isDraft=False, "
+    "isPrerelease=True, tagName=tag)))\n"
+    "        for platform, suffix in [('linux-x64', ''), ('macos-arm64', ''), "
+    "('windows-x64', '.exe')]:\n"
+    "            name = 'chibi-compiler-host-' + platform + suffix\n"
+    "            data = ('seed-' + platform).encode()\n"
+    "            digest = hashlib.sha256(data).hexdigest()\n"
+    "            (assets / name).write_bytes(data)\n"
+    "            manifest['platforms'][platform] = dict(asset=name, "
+    "sha256=digest, bytes=len(data))\n"
+    "            runner_os, runner_arch = {'linux-x64': ('Linux', 'X64'), "
+    "'macos-arm64': ('macOS', 'ARM64'), 'windows-x64': ('Windows', "
+    "'X64')}[platform]\n",
+    "            evidence = dict(revision=sha, runtime_sha256=digest, "
+    "compiler_bytes=7, compiler_sha256='c' * 64, proof_exit_code=0, "
+    "runner_os=runner_os, runner_arch=runner_arch)\n"
+    "            (assets / ('seed-evidence-' + platform + "
+    "'.json')).write_text(json.dumps(evidence))\n"
+    "            (assets / ('native-imports-' + platform + "
+    "'.txt')).write_text('imports')\n"
+    "        (assets / ('chibi-source-' + sha[:12] + "
+    "'.tar.gz')).write_bytes(b'source')\n"
+    "        (assets / "
+    "'chibi-runtime-notices.tar.gz').write_bytes(b'notices')\n"
+    "        (assets / 'runtime.json').write_text(json.dumps(manifest))\n"
+    "        def sums():\n"
+    "            (assets / "
+    "'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest("
+    ") + '  ' + p.name + '\\n' for p in sorted(assets.iterdir()) if p.name != "
+    "'SHA256SUMS'))\n"
+    "        sums()\n"
+    "        shutil.copytree(assets, root / 'release')\n"
+    "        change = case.split(':', 1)[1]\n"
+    "        if change in ('repository', 'tag', 'source_revision', "
+    "'source_tree', 'format'):\n"
+    "            manifest[change] = 'wrong'\n"
+    "            (assets / 'runtime.json').write_text(json.dumps(manifest))\n"
+    "            sums()\n"
+    "        elif change == 'draft':\n"
+    "            (root / "
+    "'published.json').write_text(json.dumps(dict(isDraft=True, "
+    "isPrerelease=True, tagName=tag)))\n"
+    "        elif change == 'asset':\n"
+    "            (assets / "
+    "'chibi-compiler-host-linux-x64').write_bytes(b'corrupt')\n"
+    "        elif change == 'missing':\n"
+    "            (assets / 'native-imports-linux-x64.txt').unlink()\n"
+    "        elif change == 'extra':\n"
+    "            (assets / 'unexpected').write_text('extra')\n"
+    "            sums()\n"
+    "        elif change == 'duplicate':\n"
+    "            with (assets / 'SHA256SUMS').open('a') as f:\n"
+    "                f.write((assets / "
+    "'SHA256SUMS').read_text().splitlines()[0] + '\\n')\n"
+    "        elif change in ('evidence', 'closure'):\n",
+    "            path = assets / 'seed-evidence-linux-x64.json'\n"
+    "            evidence = json.loads(path.read_text())\n"
+    "            evidence['runtime_sha256' if change == 'evidence' else "
+    "'compiler_sha256'] = 'd' * 64\n"
+    "            path.write_text(json.dumps(evidence))\n"
+    "            sums()\n"
+    "        elif change == 'platform':\n"
+    "            path = assets / 'seed-evidence-macos-arm64.json'\n"
+    "            evidence = json.loads(path.read_text())\n"
+    "            evidence['runner_os'], evidence['runner_arch'] = 'Linux', "
+    "'X64'\n"
+    "            path.write_text(json.dumps(evidence))\n"
+    "            sums()\n"
+    "        elif change == 'all-closures':\n"
+    "            for path in assets.glob('seed-evidence-*.json'):\n"
+    "                evidence = json.loads(path.read_text())\n"
+    "                evidence['compiler_sha256'] = 'd' * 64\n"
+    "                path.write_text(json.dumps(evidence))\n"
+    "            sums()\n"
+    "        elif change == 'source':\n"
+    "            (assets / ('chibi-source-' + sha[:12] + "
+    "'.tar.gz')).write_bytes(b'other-source')\n"
+    "            sums()\n"
+    "        elif change == 'pin-size':\n"
+    "            manifest['platforms']['linux-x64']['bytes'] += 1\n"
+    "            (assets / 'runtime.json').write_text(json.dumps(manifest))\n"
+    "            sums()\n"
+    "        code = block('Verify published assets before "
+    "pinning').split(\"<<'PY_VERIFY'\\n\", 1)[1].split('\\nPY_VERIFY', 1)[0]\n"
+    "        sys.exit(subprocess.run([sys.executable, '-c', code], "
+    "env=env).returncode)\n"
+    "    if case.startswith('publish:'):\n"
+    "        (root / 'release').mkdir()\n"
+    "        (root / 'release/fixture').write_text('asset')\n"
+    "        fake = root / 'bin'\n"
+    "        fake.mkdir()\n"
+    "        env.update(PATH=str(fake) + os.pathsep + os.environ['PATH'], "
+    "FIXTURE_ROOT=str(root), FIXTURE_CASE=case, VERSION='22')\n"
+    "        (fake / 'gh').write_text('#!' + sys.executable + '\\n' + "
+    "\"\"\"import os, sys\n"
+    "from pathlib import Path\n",
+    "root = Path(os.environ['FIXTURE_ROOT'])\n"
+    "a = sys.argv[1:]\n"
+    "case = os.environ['FIXTURE_CASE']\n"
+    "with (root / 'gh.log').open('a') as f: f.write(' '.join(a) + '\\\\n')\n"
+    "if a[:2] == ['release', 'view']:\n"
+    " if case == 'publish:api-error' or (case == 'publish:fresh' and not (root "
+    "/ 'created').exists()): sys.exit(1)\n"
+    " if 'assets' in a: print('extra' if case == 'publish:extra-draft' else "
+    "'fixture')\n"
+    " elif 'targetCommitish' in a: print('wrong' if case == "
+    "'publish:wrong-target' else os.environ['GITHUB_SHA'])\n"
+    " else: print('false' if case == 'publish:published' else 'true')\n"
+    "elif a[0] == 'api' and '/commits/' in a[1]:\n"
+    " print('wrong' if case == 'publish:wrong-target' else "
+    "os.environ['GITHUB_SHA'])\n"
+    "elif a[0] == 'api' and '/releases/tags/' in a[1]:\n"
+    " print('Not Found (HTTP 404)' if case == 'publish:fresh' else 'Forbidden "
+    "(HTTP 403)', file=sys.stderr)\n"
+    " sys.exit(1)\n"
+    "elif a[:2] == ['release', 'create']: (root / "
+    "'created').write_text('draft')\n"
+    "elif a[:2] in (['release', 'upload'], ['release', 'edit']): pass\n"
+    "else: sys.exit(99)\n"
+    "\"\"\")\n"
+    "        (fake / 'gh').chmod(0o700)\n"
+    "        result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', "
+    "block('Publish the prerelease')], env=env)\n"
+    "        print((root / 'gh.log').read_text())\n"
+    "        sys.exit(result.returncode)\n"
+    "    # Local-only Git source and remote. gh is a recording fake, never "
+    "networked.\n"
+    "    bare, repo = root / 'remote', root / 'repo'\n"
+    "    subprocess.run(['git', 'init', '--bare', '-q', str(bare)], "
+    "check=True)\n"
+    "    subprocess.run(['git', 'clone', '-q', str(bare), str(repo)], "
+    "check=True)\n"
+    "    def git(*args):\n"
+    "        return subprocess.check_output(['git', '-C', str(repo), *args], "
+    "text=True).strip()\n"
+    "    git('config', 'user.name', 'Fixture')\n"
+    "    git('config', 'user.email', 'fixture@example.invalid')\n"
+    "    (repo / 'tools/compiler').mkdir(parents=True)\n",
+    "    (repo / 'tools/compiler/runtime.json').write_text('old\\n')\n"
+    "    git('add', '.')\n"
+    "    git('commit', '-qm', 'source')\n"
+    "    git('branch', '-M', 'candidate')\n"
+    "    git('push', '-q', 'origin', 'candidate')\n"
+    "    sha = git('rev-parse', 'HEAD')\n"
+    "    tag = 'compiler-runtime-prepared22-' + sha\n"
+    "    env.update(GITHUB_SHA=sha, TAG=tag, GITHUB_ENV=str(root / 'env'))\n"
+    "    (root / 'verified-pin').mkdir()\n"
+    "    (root / 'verified-pin/runtime.json').write_text('verified pin\\n')\n"
+    "    fake = root / 'bin'\n"
+    "    fake.mkdir()\n"
+    "    env.update(PATH=str(fake) + os.pathsep + os.environ['PATH'], "
+    "FIXTURE_ROOT=str(root), FIXTURE_REMOTE=str(bare), FIXTURE_CASE=case)\n"
+    "    (fake / 'gh').write_text('#!' + sys.executable + '\\n' + '''import "
+    "json, os, subprocess, sys\n"
+    "from pathlib import Path\n"
+    "root = Path(os.environ['FIXTURE_ROOT'])\n"
+    "a = sys.argv[1:]\n"
+    "with (root / 'gh.log').open('a') as f: f.write(json.dumps(a) + '\\\\n')\n"
+    "if a[0] == 'api' and '/git/ref/heads/' in a[1]:\n"
+    " print(subprocess.check_output(['git', '--git-dir=' + "
+    "os.environ['FIXTURE_REMOTE'], 'rev-parse', 'refs/heads/candidate'], "
+    "text=True).strip())\n"
+    "elif a[0] == 'api' and '/runs?' in a[1]:\n"
+    " if 'ci.yml/' in a[1] and os.environ['FIXTURE_CASE'] == 'pin:resume': "
+    "print('10')\n"
+    "elif a[:3] == ['api', '-X', 'POST']:\n"
+    " print('11')\n"
+    "elif a[0] == 'api' and '/actions/runs/' in a[1]:\n"
+    " print(os.environ['PINNED'])\n"
+    "else: sys.exit(99)\n"
+    "''')\n"
+    "    (fake / 'gh').chmod(0o700)\n"
+    "    pin_command = block('Commit the pin onto the seeded commit')\n"
+    "    first = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', "
+    "pin_command], cwd=repo, env=env)\n"
+    "    if first.returncode: sys.exit(first.returncode)\n"
+    "    pinned = git('rev-parse', 'HEAD')\n"
+    "    # A restarted job checks out original GITHUB_SHA, as Actions does.\n"
+    "    if case == 'pin:unrelated':\n"
+    "        (repo / 'other').write_text('change')\n",
+    "        git('add', '.')\n"
+    "        git('commit', '-qm', 'unrelated')\n"
+    "        git('push', '-q', 'origin', 'candidate')\n"
+    "    elif case == 'pin:wrong-bytes':\n"
+    "        (repo / 'tools/compiler/runtime.json').write_text('different "
+    "pin')\n"
+    "        git('add', '.')\n"
+    "        git('commit', '--amend', '--no-edit', '-q')\n"
+    "        git('push', '-q', '--force', 'origin', 'candidate')\n"
+    "    elif case == 'pin:mode':\n"
+    "        (repo / 'tools/compiler/runtime.json').chmod(0o755)\n"
+    "        git('add', '.')\n"
+    "        git('commit', '--amend', '--no-edit', '-q')\n"
+    "        git('push', '-q', '--force', 'origin', 'candidate')\n"
+    "    elif case == 'pin:other-run':\n"
+    "        env['GITHUB_RUN_ID'] = '456'\n"
+    "    git('checkout', '-q', '--detach', sha)\n"
+    "    (root / 'env').write_text('')\n"
+    "    result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', "
+    "pin_command], cwd=repo, env=env)\n"
+    "    if result.returncode: sys.exit(result.returncode)\n"
+    "    env.update(dict(line.split('=', 1) for line in (root / "
+    "'env').read_text().splitlines()))\n"
+    "    result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', "
+    "block('Start CI and the compiler self-build on the pin')], cwd=repo, "
+    "env=env)\n"
+    "    print('pinned=' + str(env.get('PINNED') == pinned))\n"
+    "    calls = [json.loads(line) for line in (root / "
+    "'gh.log').read_text().splitlines()]\n"
+    "    print('dispatches=' + str(sum(a[:3] == ['api', '-X', 'POST'] for a in "
+    "calls)))\n"
+    "    sys.exit(result.returncode)\n"
+};
+
 static void path(char *output, const char *name)
 {
     int length = snprintf(output, PATH_MAX, "%s/%s", directory, name);
@@ -2742,6 +2984,81 @@ TEST_CASE(debug_experiment_cancellation_and_failure_clean_up)
     return true;
 }
 
+TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets)
+{
+    char filename[PATH_MAX];
+    snprintf(filename, sizeof filename, "%s/.github/workflows/compiler-runtime-seed.yml", tool_root());
+    char *workflow = tool_read(filename);
+    REQUIRE(workflow);
+    REQUIRE(
+        strstr(workflow, "group: compiler-runtime-seed-${{ github.sha }}\n  cancel-in-progress: false")
+    );
+    REQUIRE(!strstr(workflow, "compiler-runtime-seed-${{ github.ref }}"));
+    const char *verify = strstr(workflow, "- name: Verify published assets before pinning");
+    const char *transfer = strstr(workflow, "path: ${{ runner.temp }}/published/runtime.json");
+    const char *pin = strstr(workflow, "- name: Commit the pin onto the seeded commit");
+    REQUIRE(verify && transfer && pin && verify < transfer && transfer < pin);
+    REQUIRE(strstr(workflow, "name: verified-runtime-pin-${{ github.run_id }}\n"));
+    REQUIRE(!strstr(workflow, "gh release download \"$TAG\" --pattern runtime.json"));
+    free(workflow);
+    REQUIRE(run("seed-workflow", "publish:published") == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output && !strstr(output, "release upload") && !strstr(output, "release edit"));
+    free(output);
+    REQUIRE(run("seed-workflow", "publish:draft") == 0);
+    output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "release upload") && strstr(output, "release edit"));
+    free(output);
+    REQUIRE(run("seed-workflow", "publish:wrong-target") != 0);
+    REQUIRE(run("seed-workflow", "publish:api-error") != 0);
+    output = tool_read(logpath);
+    REQUIRE(
+        output && !strstr(output, "release create") &&
+        !strstr(output, "release upload") && !strstr(output, "release edit")
+    );
+    free(output);
+    REQUIRE(run("seed-workflow", "publish:fresh") == 0);
+    output = tool_read(logpath);
+    REQUIRE(output);
+    const char *create = strstr(output, "release create");
+    const char *upload = strstr(output, "release upload");
+    const char *edit = strstr(output, "release edit");
+    REQUIRE(create && upload && edit && create < upload && upload < edit);
+    free(output);
+    REQUIRE(run("seed-workflow", "publish:extra-draft") != 0);
+    return true;
+}
+
+TEST_CASE(runtime_seed_reuse_checks_published_provenance)
+{
+    REQUIRE(run("seed-workflow", "release:valid") == 0);
+    const char *invalid[] = { "repository",  "tag",      "source_revision",
+                              "source_tree", "format",   "draft",
+                              "asset",       "missing",  "extra",
+                              "duplicate",   "evidence", "closure",
+                              "source",      "pin-size", "all-closures",
+                              "platform" };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "release:%s", invalid[i]);
+        REQUIRE(run("seed-workflow", name) != 0);
+    }
+    return true;
+}
+
+TEST_CASE(runtime_seed_pin_resumes_only_its_own_commit)
+{
+    REQUIRE(run("seed-workflow", "pin:resume") == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "pinned=True") && strstr(output, "dispatches=1"));
+    free(output);
+    REQUIRE(run("seed-workflow", "pin:unrelated") != 0);
+    REQUIRE(run("seed-workflow", "pin:wrong-bytes") != 0);
+    REQUIRE(run("seed-workflow", "pin:other-run") != 0);
+    REQUIRE(run("seed-workflow", "pin:mode") != 0);
+    return true;
+}
+
 static void set_up()
 {
     strcpy(directory, "/tmp/chibi-policy-XXXXXX");
@@ -2769,6 +3086,9 @@ static void set_up()
     for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
         assert(fputs(driver_parallel[i], script) >= 0);
     }
+    for (size_t i = 0; i < sizeof driver_seed / sizeof *driver_seed; i++) {
+        assert(fputs(driver_seed[i], script) >= 0);
+    }
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
 }
@@ -2776,6 +3096,9 @@ static void set_up()
 void test_tool_test_policy()
 {
     set_up();
+    RUN_TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets);
+    RUN_TEST_CASE(runtime_seed_reuse_checks_published_provenance);
+    RUN_TEST_CASE(runtime_seed_pin_resumes_only_its_own_commit);
     RUN_TEST_CASE(debug_experiment_flags);
     RUN_TEST_CASE(debug_experiment_manual_workflow);
     RUN_TEST_CASE(debug_experiment_instrumentation_plan);

@@ -12227,6 +12227,13 @@ static const struct
       "\"ab\"); }\n",
       "scalar proof passes a text native's arguments in order",
       "Value: \"ab\"" },
+    /* A record among several named results. */
+    { "package scalar\nPoint :: struct { x: int; }\n"
+      "Main :: () -> int { return 1; }\n"
+      "Pair :: () -> (p: Point, n: int) { return; }\n",
+      "scalar proof requires number and bool results where a function has "
+      "several",
+      "p: Point" },
     /* No native but a text read is known. */
     { "package scalar\nMain :: () -> int { if (text_equal(\"a\", \"b\")) { "
       "return 1; } return 0; }\n",
@@ -12416,7 +12423,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 51
+    SCALAR_ACCEPTED_CASES = 52
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -14009,6 +14016,68 @@ static const struct
       "    return int(a.x) + int(a.y);\n"
       "}\n",
       1261 },
+    /* Named results: two to four of mixed types, assigned, returned in
+     * order, each value assigned before the next is evaluated, by a bare
+     * return or at the end, read by name from a call or a local; and one
+     * named result, a number or a record, which is its call's value:
+     * 132 + 146 + 10012 + 22 + 108 + 30 + 49. */
+    { "named_results",
+      "package scalar\n"
+      "Vec :: struct { x: int; y: int; }\n"
+      "Main :: () -> int { return Pairs() + Mixed() + Quads() + Orders() + "
+      "Clamps() + Single() + Records(); }\n"
+      "DivMod :: (a: int, b: int) -> (q: int, r: int) { return (a / b, a % b); "
+      "}\n"
+      "Pairs :: () -> int { d := DivMod(17, 5); return d.q * 10 + d.r + "
+      "DivMod(9, 4).r * 100; }\n"
+      "Split :: (v: f64) -> (whole: int, half: bool, rest: f64) {\n"
+      "    whole = int(v);\n"
+      "    rest = v - f64(whole);\n"
+      "    half = rest >= 0.5;\n"
+      "    return;\n"
+      "}\n"
+      "Mixed :: () -> int {\n"
+      "    s := Split(7.75);\n"
+      "    total := s.whole * 10;\n"
+      "    if (s.half) { total += 1; }\n"
+      "    return total + int(s.rest * 100.0);\n"
+      "}\n"
+      "Quad :: (seed: u8) -> (a: u8, b: i64, c: bool, d: number) {\n"
+      "    a = seed;\n"
+      "    a += 250;\n"
+      "    b = i64(seed) * 1000;\n"
+      "    c = a < seed;\n"
+      "    d = 0.25;\n"
+      "}\n"
+      "Quads :: () -> int {\n"
+      "    q := Quad(10);\n"
+      "    n := int(q.a) + int(q.b);\n"
+      "    if (q.c) { n += 7; }\n"
+      "    return n + int(q.d * 4.0);\n"
+      "}\n"
+      "Order :: () -> (p: int, q: int) { p = 1; q = 2; return (q, p); }\n"
+      "Orders :: () -> int { o := Order(); return o.p * 10 + o.q; }\n"
+      "Clamp :: (v: int) -> (low: bool, value: int) {\n"
+      "    value = v;\n"
+      "    if (v < 0) { low = true; value = 0; return; }\n"
+      "    return (false, v * 2);\n"
+      "}\n"
+      "Clamps :: () -> int {\n"
+      "    c := Clamp(-5);\n"
+      "    n := Clamp(4).value;\n"
+      "    if (c.low) { n += 100; }\n"
+      "    return n + c.value;\n"
+      "}\n"
+      "Twice :: (v: int) -> (doubled: int) { doubled = v * 2; }\n"
+      "Single :: () -> int {\n"
+      "    t := Twice(4);\n"
+      "    w: i64 = Twice(3);\n"
+      "    return t + t.doubled + Twice(1).doubled + int(w) + w.doubled;\n"
+      "}\n"
+      "Make :: (v: int) -> (p: Vec) { p.x = v; p.y = v + 1; return; }\n"
+      "Records :: () -> int { m := Make(3); return m.x + m.y * 10 + Make(5).y; "
+      "}\n",
+      10499 },
     /* A record through 50 nested calls. Each call takes one compiler frame,
      * as an int call does, so this stays within the 64 frames stage zero
      * gives the compiler; two frames per call would exceed them. */

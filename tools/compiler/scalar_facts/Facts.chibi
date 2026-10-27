@@ -31,6 +31,9 @@ package scalar_facts
 //   `value`, `count` payload fields and range, then `count` Member rows:
 //   `name`, scalar `type`, name range and `value`, the payload's ordinal
 //   among all the union's payloads in declaration order.
+// Then, for each function with several named results in declaration order,
+// a record of them: a Record row named for the function with `.results`, its
+// declaration's range, then a Member row for each result as for a field.
 // The d-th of them is type RecordType + d, which a function's result, a
 // parameter, a variable and an operand may have. Then each function follows
 // in declaration order; a package's first is the module's entry and takes no
@@ -39,6 +42,15 @@ package scalar_facts
 //   declaration range, and in a library its stable symbol ID as `literal`,
 //   the ID the runtime binds it by;
 // - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
+// - a Local row for each named result, with its name's range, whose operand
+//   is its zero: a Literal, or a Zero for a record. A function with one
+//   named result returns its value, and one with several the record of
+//   them. A return of one named result's value returns it. A return of
+//   several values is an Assign row for each, with the value's range, in
+//   order, then a Return of the record of them all with the range of the
+//   values' closing parenthesis. A bare return returns the results' values,
+//   and a body that does not end in a terminating statement does so at its
+//   closing brace;
 // - its body's statement rows in source order, each with its statement's
 //   range. The body ends in a terminating statement: a return, an if
 //   statement with an else whose two branches end in terminating statements,

@@ -1,4 +1,5 @@
 #include "host/build_host.h"
+#include "host/process.h"
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -167,8 +168,9 @@ TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings)
     path(partial, root, "reserved.partial");
     REQUIRE(!mkdir(partial, 0700) && !mkdir(output, 0700));
     write_at(output, "receipt.txt", "previous complete output\n");
-    const char *names[] = { "source.ll", "module.ll", "object.o", "program", "receipt.txt" };
-    for (int i = 0; i < 5; i++) {
+    const char *names[] = { "source.ll", "module.ll", "object.o",   "start.ll",
+                            "start.o",   "program",   "receipt.txt" };
+    for (int i = 0; i < 7; i++) {
         write_at(partial, names[i], "owned bytes\n");
     }
     write_at(partial, "prior-owner", "keep unknown bytes\n");
@@ -176,7 +178,7 @@ TEST_CASE(cleanup_removes_only_owned_names_and_preserves_siblings)
     REQUIRE(invoke("InspectCleanup", arguments, 1, true) && result.value == 1);
     REQUIRE(equals(partial, "prior-owner", "keep unknown bytes\n"));
     REQUIRE(equals(output, "receipt.txt", "previous complete output\n"));
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 7; i++) {
         char file[1024];
         path(file, partial, names[i]);
         REQUIRE(!exists(file));
@@ -206,9 +208,11 @@ TEST_CASE(stage_cancellation_requires_the_cancellation_diagnostic)
     struct sigaction action = { .sa_handler = cancel }, previous;
     sigemptyset(&action.sa_mask);
     REQUIRE(!sigaction(SIGUSR1, &action, &previous));
-    const char *arguments[] = { llc,  "-filetype=obj", "-O=0", input,
-                                "-o", output };
-    bool ok = invoke("InspectInterruption", arguments, 6, true);
+    const char *arguments[] = { llc,    "-filetype=obj",
+                                "-O=0", "-relocation-model=pic",
+                                input,  "-o",
+                                output };
+    bool ok = invoke("InspectInterruption", arguments, 7, true);
     assert(!sigaction(SIGUSR1, &previous, NULL));
     bool interrupted = cancelled;
     cancelled = 0;
@@ -330,6 +334,93 @@ TEST_CASE(object_relocates_tools_with_spaces_without_a_linker_or_path)
     return true;
 }
 
+static bool receipt_names(const char *expected)
+{
+    char receipt[1024];
+    path(receipt, output, "receipt.txt");
+    char *text = tool_read(receipt);
+    bool found = text && strstr(text, expected);
+    free(text);
+    return found;
+}
+
+TEST_CASE(executable_links_with_the_named_linker_and_start_object)
+{
+    reset("linked executable");
+    for (int mode = 0; mode < 2; mode++) {
+        path(output, root, mode ? "program O2" : "program O0");
+        REQUIRE(run(true, mode ? "2" : "0", 0));
+        char expected[4096];
+        snprintf(
+            expected,
+            sizeof expected,
+            "-filetype=obj\n-O=%d\n-relocation-model=pic\n%s.partial/"
+            "start.ll\n-o\n%s.partial/"
+            "start.o\n",
+            mode ? 2 : 0,
+            output,
+            output
+        );
+        REQUIRE(equals(root, "llc tool.start.argv", expected));
+        snprintf(
+            expected,
+            sizeof expected,
+            "-flavor\ngnu\n-static\n--gc-sections\n-e\n_start\n%s.partial/"
+            "object.o\n%s.partial/start.o\n-o\n%s."
+            "partial/program\n",
+            output,
+            output,
+            output
+        );
+        REQUIRE(equals(root, "linker tool.argv", expected));
+        REQUIRE(equals(output, "start.o", "controlled start object\n"));
+        snprintf(expected, sizeof expected, "\nlinker %s\n", linker);
+        REQUIRE(receipt_names("output-kind executable\n") && receipt_names(expected));
+        REQUIRE(receipt_names("\nstart-object-sha256 ") && receipt_names("stage llc-start\n"));
+        REQUIRE(receipt_names("stage link\n"));
+        char program[1024];
+        path(program, output, "program");
+        REQUIRE(!access(program, X_OK));
+    }
+    return true;
+}
+
+/* Real LLVM tools, an empty PATH and no C compiler: the program the driver
+ * links is the emitted object and its start object alone. */
+TEST_CASE(executable_links_llvm_objects_without_a_c_compiler)
+{
+    const char *bin = getenv("CHIBI_LLVM_BIN");
+    if (!bin || !*bin) {
+        fprintf(stderr, "native driver: set CHIBI_LLVM_BIN to link real LLVM objects\n");
+        return true;
+    }
+    reset("llvm executable");
+    path(opt, bin, "opt");
+    path(llc, bin, "llc");
+    path(linker, bin, "ld.lld");
+    for (int mode = 0; mode < 2; mode++) {
+        path(output, root, mode ? "llvm O2" : "llvm O0");
+        REQUIRE(run(true, mode ? "2" : "0", 0));
+        char program[1024];
+        path(program, output, "program");
+        const char *argv[] = { program, NULL };
+        const char *envp[] = { NULL };
+        chibi_process_output out = { 0 }, err = { 0 };
+        chibi_process_capture_result exited = chibi_process_capture(
+            program,
+            argv,
+            root,
+            envp,
+            chibi_build_now() + 10,
+            NULL,
+            &out,
+            &err
+        );
+        REQUIRE(exited.error == CHIBI_PROCESS_OK && exited.status == 42);
+    }
+    return true;
+}
+
 TEST_CASE(missing_tools_reject_before_reserving_output)
 {
     for (int executable = 0; executable < 2; executable++) {
@@ -445,6 +536,8 @@ void test_native_aot_driver(const char *source)
     assert(!setenv("PATH", "", 1));
     RUN_TEST_CASE(publication_preserves_existing_files_and_stale_partial_bytes);
     RUN_TEST_CASE(object_relocates_tools_with_spaces_without_a_linker_or_path);
+    RUN_TEST_CASE(executable_links_with_the_named_linker_and_start_object);
+    RUN_TEST_CASE(executable_links_llvm_objects_without_a_c_compiler);
     RUN_TEST_CASE(missing_tools_reject_before_reserving_output);
     RUN_TEST_CASE(failed_signalled_and_missing_objects_never_publish);
     RUN_TEST_CASE(changed_tool_identity_prevents_publication_after_object_creation);
@@ -452,7 +545,7 @@ void test_native_aot_driver(const char *source)
     assert(saved_path ? !setenv("PATH", saved_path, 1) : !unsetenv("PATH"));
     free(saved_path);
 #else
-    fprintf(stderr, "native driver: six Linux publication cases unexecuted on this platform\n");
+    fprintf(stderr, "native driver: eight Linux publication cases unexecuted on this platform\n");
 #endif
     free(stage_tool);
     free(contracts);

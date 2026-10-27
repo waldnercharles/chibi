@@ -47,3 +47,48 @@ anchors.
   cancellation and manifest-preservation regressions separately from engine
   runs. Claim iteration speedups only after matched serial/parallel wall-time
   measurements; pico_unit CPU time is not elapsed time.
+
+## Integer selector extension (source baseline `15bc4b78`)
+
+The following three selectors are also independent at the **process** boundary.
+They join the existing allowlist without changing the manifest or scheduler:
+
+| Runner selector | Resource evidence | Isolation |
+| --- | --- | --- |
+| `language-integer-semantics` | `test/language/integer_semantics.c`: `test_language_integer_semantics` runs `integer_semantics_pin_every_width`; `stage_zero` creates snapshots from literal `source_package_input` strings, and `sample_agrees` compares authored and stage-zero closures. | `native`, `authored`, `host`, result JSON and all backend state are process-private. No subprocess or output file is created. |
+| `language-integer-shift-counts` | `test_language_integer_shift_counts` uses `setup_native`, `stage_zero` and `compiles_alike`; it does not load the authored bootstrap. | Only memory-owned capabilities, snapshots, closures and bytecode/SLJIT calls; no filesystem access or child process. |
+| `language-integer-shift-counts-authored` | `test_language_integer_shift_counts_authored` uses the same `setup` and `sample_agrees` paths as integer semantics, once per shift sample. | Read-only bootstrap/compiler inputs, process-private compiler and execution state; no subprocess or generated-file write. |
+
+Shared dependencies and less obvious paths were included in this audit:
+
+- `setup` passes absolute source-root `tools/compiler/bootstrap`, `tools/compiler`
+  and `packages/core` paths to `compiler_bootstrap_load`. Its `validated` path
+  reads the manifest, closure, compiler contract and source snapshot. If sources
+  changed, `compiler_bootstrap_load` calls `recover` with **NULL output**;
+  `written` only calls `write_path` for a non-NULL output. Recovery creates an
+  in-memory host; it does not update the checked-in seed. Neither the bootstrap
+  writer nor the output-writing check/reuse APIs are called by these selectors.
+- `compiler_host_load` exposes text, array, compiler JSON and syntax capabilities,
+  not file/process capabilities or a persistent disk cache. Invocation results
+  and diagnostics are allocated JSON/text or stderr. `stage_zero` passes explicit
+  file texts, not a disk-backed project; `/compiler`, `/project` and `/sdk/core`
+  are snapshot/compile identities, not directories written by these tests.
+- Native test builds use SLJIT, not external LLVM compilation. The JIT creates
+  per-process SLJIT compilers and generated code. The configured
+  `SLJIT_WX_EXECUTABLE_ALLOCATOR=1` uses anonymous process-owned mappings on
+  Linux/macOS, not shared diagnostic files or a persistent compiler cache.
+- The adjacent `language-migration34-generic-repro` remains **exclusive**: its
+  `generic_version_34_cross_file_collisions_preserve_project` creates and mutates
+  a unique project under hardcoded `/tmp`, outside runner-owned TMPDIR cleanup.
+  This extension does not move any work across that barrier or admit the broader
+  migration selector.
+
+The pico_unit policy regression substitutes native rendezvous workers for each
+new selector and existing `language-asset-packaging-chibi`, preserving their real
+resource metadata. Both workers must be alive together and receive isolated
+scratch. Missing allowlist entries therefore fail the regression, not silently
+serialize it. The existing whole-language manifest, ordered output, serial
+escape, memory admission, fail-fast, deadline and owned-cancellation regressions
+remain applicable. These fixture checks do not constitute engine execution or a
+matched wall-time benchmark; no additional peak-RSS measurement is claimed and
+the default two-worker cap / conservative memory admission are unchanged.

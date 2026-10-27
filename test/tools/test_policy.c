@@ -105,6 +105,21 @@ static const char driver_routes
          "policy.GROUPS['language'].count('language-outliner-projection'),\n"
          "          policy.GROUPS['wasm'].count('wasm-outliner-projection'))\n"
          "    sys.exit(0)\n";
+/* Exercise real audited metadata with bounded native rendezvous workers. */
+static const char driver_integer_parallel
+    [] = "if sys.argv[2] == 'integer-parallel':\n"
+         "    root = str(Path(sys.argv[4]) / 'parallel')\n"
+         "    Path(root).mkdir(exist_ok=True)\n"
+         "    names = [sys.argv[5], 'language-asset-packaging-chibi']\n"
+         "    for name, alias in zip(names, ('first', 'second')):\n"
+         "        print(name, policy.PARALLEL_RESOURCES.get(name),\n"
+         "              policy.GROUPS['language'].count(name), flush=True)\n"
+         "        policy.TOOLS[name] = [sys.argv[3], 'parallel', root,\n"
+         "                              alias, 'barrier']\n"
+         "    print('migration-exclusive', "
+         "'language-migration34-generic-repro'\n"
+         "          not in policy.PARALLEL_RESOURCES, flush=True)\n"
+         "    sys.exit(policy.run_group(names, jobs=2))\n";
 /* Execute the workflow's group commands through the real Makefile, recording
  * only its build/test boundaries. No engine build is needed for this check. */
 static const char driver_ci
@@ -1542,6 +1557,25 @@ TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work)
     return true;
 }
 
+TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work)
+{
+    const char *names[] = { "language-integer-semantics",
+                            "language-integer-shift-counts",
+                            "language-integer-shift-counts-authored" };
+    for (int i = 0; i < 3; i++) {
+        reset_parallel();
+        REQUIRE(run("integer-parallel", names[i]) == 0);
+        REQUIRE(exists("parallel/first-overlapped") && exists("parallel/second-overlapped"));
+        char *output = tool_read(logpath);
+        REQUIRE(output && strstr(output, names[i]));
+        REQUIRE(strstr(output, "frozenset() 1\n"));
+        REQUIRE(strstr(output, "migration-exclusive True\n"));
+        free(output);
+    }
+    reset_parallel();
+    return true;
+}
+
 TEST_CASE(parallel_language_manifest_matches_serial_exactly)
 {
     reset_parallel();
@@ -1948,6 +1982,7 @@ static void set_up()
     assert(fputs(driver_imports, script) >= 0);
     assert(fputs(driver_setup, script) >= 0);
     assert(fputs(driver_routes, script) >= 0);
+    assert(fputs(driver_integer_parallel, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
     assert(fputs(driver_experiment, script) >= 0);
@@ -1987,6 +2022,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(parallel_group_serializes_conflicts_and_unknowns);
     RUN_TEST_CASE(parallel_group_preserves_manifest_and_failure);
     RUN_TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work);
+    RUN_TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work);
     RUN_TEST_CASE(parallel_language_manifest_matches_serial_exactly);
     RUN_TEST_CASE(parallel_admission_bounds_cpu_and_available_memory);
     RUN_TEST_CASE(parallel_serial_escape_uses_real_cli_and_environment);

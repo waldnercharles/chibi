@@ -33,6 +33,17 @@ pub DebugFormat :: (target: Target) -> string {
     return "!{i32 7, !\"Dwarf Version\", i32 4}";
 }
 
+// The attribute that makes each function probe every page of its frame.
+// LLVM probes inline on Linux and macOS. On Windows the attribute names a
+// probe function instead, so code calls __chkstk there, as MSVC's and
+// rustc's do, and the program that links it defines __chkstk.
+pub StackProbe :: (target: Target) -> string {
+    if (Same(target, WindowsX64())) {
+        return "\"probe-stack\"=\"__chkstk\"";
+    }
+    return "\"probe-stack\"=\"inline-asm\"";
+}
+
 // Reject other targets rather than silently applying another target's ABI.
 // The backend supplies its data layout; no unverified layout is embedded here.
 pub Supported :: (target: Target) -> bool {

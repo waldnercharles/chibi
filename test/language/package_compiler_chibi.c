@@ -11797,6 +11797,22 @@ static bool native_recursion_probes_the_stack(int b)
     REQUIRE(occurrences(ir, "define i32 @chibi_scalar() #0 {\nentry:\n") == 1);
     REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
     REQUIRE(occurrences(ir, probes) == 1 && !occurrences(ir, "depth"));
+    /* LLVM probes inline on macOS too, but on Windows the attribute names the
+     * probe function, so Windows code calls __chkstk. */
+    static const char *const targets[] = { "MacOSArm64", "WindowsX64" };
+    static const char *const target_probes[] = {
+        probes,
+        "\nattributes #0 = { \"probe-stack\"=\"__chkstk\" }\n"
+    };
+    for (int t = 0; t < 2; t++) {
+        const pin_union *value;
+        REQUIRE(native_target_emit(b, targets[t], &m, &value));
+        REQUIRE(
+            value->tag ==
+            fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted")
+        );
+        REQUIRE(occurrences(pin_text(value->values[0]), target_probes[t]) == 1);
+    }
     /* Function 0 calls 1, which calls 0. */
     native_code mutual[8];
     memcpy(mutual, recursive, sizeof mutual);
@@ -13545,20 +13561,80 @@ static int library_child(const char *library, int count, char **specs)
  * them and built with the driver's opt and llc arguments into the bundle,
  * whose runner (test/native_aot/targets) links and runs it on that target.
  * Each has native_abi's function, the bundle's subdirectory, the triple and
- * the data layout LLVM 18 gives it, which the driver admits, and the one
- * symbol its objects may leave undefined, or NULL: Windows code that uses
- * floating point references _fltused, which the platform runtime defines. */
+ * the data layout LLVM 18 gives it, which the driver admits, and the
+ * symbols its objects may leave undefined, which the bundle's runtime.o
+ * defines from `runtime`, or none. Windows code that uses floating point
+ * references _fltused, and a frame larger than a page calls __chkstk; the C
+ * runtime would define both. This __chkstk is compiler-rt's x86-64 probe, as
+ * tools/native_aot/Driver.chibi's start object defines it: it touches each
+ * page from the stack pointer down by RAX bytes and changes no register. */
+enum
+{
+    BUNDLE_RUNTIME_SYMBOLS = 2
+};
 static const struct
 {
     const char *function, *directory, *triple, *layout, *runtime;
+    const char *defines[BUNDLE_RUNTIME_SYMBOLS];
 } BUNDLE_TARGETS[] = {
-    { "MacOSArm64", "macos-arm64", "arm64-apple-macosx11.0.0", "e-m:o-i64:64-i128:128-n32:64-S128", NULL },
-    { "WindowsX64", "windows-x64", "x86_64-pc-windows-msvc", "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128", "_fltused" },
+    { "MacOSArm64",
+      "macos-arm64",
+      "arm64-apple-macosx11.0.0",
+      "e-m:o-i64:64-i128:128-n32:64-S128",
+      NULL,
+      { NULL } },
+    { "WindowsX64",
+      "windows-x64",
+      "x86_64-pc-windows-msvc",
+      "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:"
+      "64-S128",
+      "@_fltused = dso_local global i32 0\n"
+      "module asm \".text\"\n"
+      "module asm \".globl __chkstk\"\n"
+      "module asm \"__chkstk:\"\n"
+      "module asm \"pushq %rcx\"\n"
+      "module asm \"pushq %rax\"\n"
+      "module asm \"cmpq $0x1000, %rax\"\n"
+      "module asm \"leaq 24(%rsp), %rcx\"\n"
+      "module asm \"jb 1f\"\n"
+      "module asm \"2:\"\n"
+      "module asm \"subq $0x1000, %rcx\"\n"
+      "module asm \"testq %rcx, (%rcx)\"\n"
+      "module asm \"subq $0x1000, %rax\"\n"
+      "module asm \"cmpq $0x1000, %rax\"\n"
+      "module asm \"ja 2b\"\n"
+      "module asm \"1:\"\n"
+      "module asm \"subq %rax, %rcx\"\n"
+      "module asm \"testq %rcx, (%rcx)\"\n"
+      "module asm \"popq %rax\"\n"
+      "module asm \"popq %rcx\"\n"
+      "module asm \"retq\"\n",
+      { "__chkstk", "_fltused" } },
 };
 enum
 {
     BUNDLE_TARGET_COUNT = (int)(sizeof BUNDLE_TARGETS / sizeof *BUNDLE_TARGETS)
 };
+/* Whether each line of `undefined` names a symbol target `t`'s runtime
+ * defines. */
+static bool bundle_runtime_defines(int t, const char *undefined)
+{
+    for (const char *at = undefined; *at;) {
+        size_t length = strcspn(at, "\n");
+        bool defined = false;
+        for (int i = 0; i < BUNDLE_RUNTIME_SYMBOLS && BUNDLE_TARGETS[t].defines[i];
+             i++) {
+            const char *symbol = BUNDLE_TARGETS[t].defines[i];
+            defined = defined ||
+                      (strlen(symbol) == length && !strncmp(at, symbol, length));
+        }
+        if (!defined) {
+            return false;
+        }
+        at += length + (at[length] == '\n');
+    }
+    return true;
+}
 /* The modules bundled so far, which number each one's objects: generated
  * modules share some corpus cases' names. */
 static int bundled_modules;
@@ -13625,8 +13701,7 @@ static bool bundle_module(
     REQUIRE(list);
     bool built = true;
     for (int level = 0; level < 3; level += 2) {
-        char file[128], object[PATH_MAX], module[PATH_MAX],
-            undefined[NATIVE_OUTPUT], allowed[64] = "";
+        char file[128], object[PATH_MAX], module[PATH_MAX], undefined[NATIVE_OUTPUT];
         snprintf(file, sizeof file, "%d-%s-%d.o", bundled_modules, name, level);
         snprintf(
             object,
@@ -13636,12 +13711,9 @@ static bool bundle_module(
             BUNDLE_TARGETS[t].directory,
             file
         );
-        if (BUNDLE_TARGETS[t].runtime) {
-            snprintf(allowed, sizeof allowed, "%s\n", BUNDLE_TARGETS[t].runtime);
-        }
         built = native_object(directory, label, ir, adapter, level, object, module, undefined) &&
                 bundle_module_targets(module, t);
-        if (built && *undefined && strcmp(undefined, allowed)) {
+        if (built && !bundle_runtime_defines(t, undefined)) {
             fprintf(stderr, "%s has undefined symbols: %s\n", object, undefined);
             built = false;
         }
@@ -16310,14 +16382,8 @@ TEST_CASE(native_bundle_starts_empty)
         if (!started || !BUNDLE_TARGETS[t].runtime) {
             continue;
         }
-        char ir[256], object[PATH_MAX], module[PATH_MAX], undefined[NATIVE_OUTPUT];
-        snprintf(
-            ir,
-            sizeof ir,
-            "target triple = \"%s\"\n@%s = dso_local global i32 0\n",
-            BUNDLE_TARGETS[t].triple,
-            BUNDLE_TARGETS[t].runtime
-        );
+        char ir[128], object[PATH_MAX], module[PATH_MAX], undefined[NATIVE_OUTPUT];
+        snprintf(ir, sizeof ir, "target triple = \"%s\"\n", BUNDLE_TARGETS[t].triple);
         snprintf(
             object,
             sizeof object,
@@ -16325,7 +16391,7 @@ TEST_CASE(native_bundle_starts_empty)
             bundle_root(),
             BUNDLE_TARGETS[t].directory
         );
-        started = native_object(directory, "runtime", ir, "", 0, object, module, undefined) &&
+        started = native_object(directory, "runtime", ir, BUNDLE_TARGETS[t].runtime, 0, object, module, undefined) &&
                   !*undefined && bundle_module_targets(module, t);
     }
     REQUIRE(remove_native_files(directory) && started);

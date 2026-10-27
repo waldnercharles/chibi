@@ -64,7 +64,9 @@ interface, or the complete allocation/memory/output/free native island.
   type and defined on every path; they load in order, so evaluation order stays
   visible at O0. Calls may recurse, directly or mutually, with no depth
   counter, as Rust's and Odin's do. Every function carries
-  `"probe-stack"="inline-asm"`, so a frame larger than a page touches each
+  `native_abi.StackProbe`: `"probe-stack"="inline-asm"`, or on Windows
+  `"probe-stack"="__chkstk"`, a call to the probe MSVC's and rustc's code
+  calls, which the program defines. A frame larger than a page touches each
   page in turn and running out of stack always faults in the guard page below
   it rather than past it. That makes an overflow a fault, never a silent write
   past the stack. What the fault prints is up to the process. A host that has

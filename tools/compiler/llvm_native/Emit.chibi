@@ -956,7 +956,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     // Recursion is unchecked, as Rust's is: each function probes every page
     // of its frame, so running out of stack faults in the guard page below
     // it, which the host reports as a stack overflow.
-    out = format_text("{}\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n", out);
+    out = strings.Join([out, "\nattributes #0 = { ", abi.StackProbe(target), " }\n"], "");
     if (debug) {
         out = format_text("{}\n{}", out, Metadata(target, functions, source, names, lines, columns, mode, compares));
     }

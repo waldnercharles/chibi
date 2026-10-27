@@ -2489,7 +2489,14 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     return true;
 }
 
-static void build_process(const char *worker, const char *host, bool files_only)
+typedef enum
+{
+    BUILD_PROCESS_ALL,
+    BUILD_PROCESS_FILES,
+    BUILD_PROCESS_TIMINGS
+} build_process_cases;
+
+static void build_process(const char *worker, const char *host, build_process_cases cases)
 {
     worker_path = worker;
     host_path = host;
@@ -2522,7 +2529,17 @@ static void build_process(const char *worker, const char *host, bool files_only)
     saved_allowed = getenv("CHIBI_BUILD_ALLOWED")
                       ? strdup(getenv("CHIBI_BUILD_ALLOWED"))
                       : NULL;
-    if (files_only) {
+    if (cases == BUILD_PROCESS_TIMINGS) {
+        assert(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
+        RUN_TEST_CASE(build_timings_are_opt_in_bounded_and_exclusive);
+        RUN_TEST_CASE(build_timings_classify_without_recording_arguments);
+        RUN_TEST_CASE(steps_take_up_to_1023_arguments);
+        RUN_TEST_CASE(private_started_steps_run_together);
+        RUN_TEST_CASE(private_unwaited_and_late_steps_stop);
+        RUN_TEST_CASE(build_timings_record_interrupted_children);
+        goto teardown;
+    }
+    if (cases == BUILD_PROCESS_FILES) {
         RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
         RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
         RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
@@ -2602,9 +2619,13 @@ teardown:
 
 void test_tool_build_process(const char *worker, const char *host)
 {
-    build_process(worker, host, false);
+    build_process(worker, host, BUILD_PROCESS_ALL);
 }
 void test_tool_build_process_files(const char *worker, const char *host)
 {
-    build_process(worker, host, true);
+    build_process(worker, host, BUILD_PROCESS_FILES);
+}
+void test_tool_build_timings(const char *worker, const char *host)
+{
+    build_process(worker, host, BUILD_PROCESS_TIMINGS);
 }

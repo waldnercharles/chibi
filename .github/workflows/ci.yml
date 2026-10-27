@@ -115,6 +115,11 @@ jobs:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
         run: python3 tools/test_policy.py tool build-graph-debug-optimization
       # After make build, whose build/reflect the reflection identity cases run.
+      - name: Build timing host regressions (ready drivers)
+        env:
+          CHIBI_TOOLS_BUILD_DIR: build/test/tools
+          CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
+        run: python3 tools/test_policy.py --timeout 180 tool build-timings
       - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER=clang-18
       # Release helpers are already built. Avoid their repeated planner entry;
@@ -226,6 +231,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       # After make build, whose build/reflect the reflection identity cases run.
+      - name: Build timing host regressions (ready drivers)
+        env:
+          CHIBI_TOOLS_BUILD_DIR: build/test/tools
+          CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
+        run: python3 tools/test_policy.py --timeout 180 tool build-timings
       - name: Tooling and process integrations
         run: make test-tools TOOLS_C_COMPILER="$CC"
       # The selected-profile build and Release helpers above already produced

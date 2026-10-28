@@ -13177,7 +13177,7 @@ static bool native_formats_emit(int b)
     static const char *const expected[] = {
         "define i32 @chibi_scalar(ptr %ctx) #0 {\n",
         "%values4 = alloca [3 x { i32, i32, i64, ptr }]\n  %text4 = alloca { "
-        "ptr, i32 }\n",
+        "ptr, i32, ptr }\n",
         "%f4_1.word = sext i32 %f4_1 to i64\n  %f4_1.value = insertvalue { "
         "i32, i32, i64, ptr } "
         "{ i32 1, i32 0, i64 0, ptr null }, i64 %f4_1.word, 2\n",

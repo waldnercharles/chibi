@@ -1,5 +1,5 @@
 # Convenience wrapper around the build. `make` builds: with the Chibi build
-# graph on macOS, otherwise by configuring CMake.
+# graph on Linux and macOS, otherwise by configuring CMake.
 BUILD_DIR ?= build
 SDK_BUILD_DIR ?= build-sdk
 SDK_PREFIX ?= dist/sdk
@@ -34,17 +34,18 @@ ASSET_GENERATOR_HOSTS ?=
 ASSET_GENERATOR_HOSTS_PATH = $(if $(strip $(ASSET_GENERATOR_HOSTS)),$(abspath $(ASSET_GENERATOR_HOSTS)),)
 BUILD_PROGRAM ?= tools/toolchain/Build.chibi
 BUILD_TIMEOUT_MS ?= 1800000
-# On macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
+# On Linux and macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
 # profile name: sanitizer, or debug and release for build-debug and
 # build-release. CMake builds only the first build host, in a tree beside the
 # build directory, which the build-graph checks also compare against
-# (graph-reference). Linux, the SDK, web and Studio builds still use CMake.
+# (graph-reference). The SDK, web and Studio builds still use CMake.
+# GRAPH_BUILD= explicitly selects the retained CMake native route.
 # CCACHE_BASEDIR, as CMake sets it, lets worktrees share ccache objects.
 BUILD_PROFILE ?= sanitizer
 # Opt-in Graph experiment; pair with matching CMAKE_<LANG>_FLAGS_DEBUG.
 BUILD_DEBUG_OPTIMIZATION ?=
 BUILD_DEBUG_FRAME_POINTERS ?=
-GRAPH_BUILD = $(filter Darwin,$(shell uname -s))
+GRAPH_BUILD = $(filter Linux Darwin,$(shell uname -s))
 GRAPH_PROGRAM ?= tools/toolchain/Graph.chibi
 GRAPH_TIMEOUT_MS ?= 3600000
 # Optional existing native reflection tool, including cross-build wrappers.

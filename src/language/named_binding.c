@@ -183,9 +183,7 @@ script_named_resolution script_named_parsed(
         );
     }
     for (int i = 0; i < token_count; i++) {
-        if (!strcmp(tokens[i], "ref")) {
-            out.type.flags |= SCRIPT_TYPE_REFERENCE;
-        } else if (!strcmp(tokens[i], "?")) {
+        if (!strcmp(tokens[i], "?")) {
             out.type.flags |= SCRIPT_TYPE_OPTIONAL;
         } else if (!strcmp(tokens[i], "[") || !strcmp(tokens[i], "[]")) {
             out.type.container = PIN_CONTAINER_ARRAY;
@@ -210,11 +208,6 @@ script_named_resolution script_named_text(
     }
     name[count] = 0;
     unsigned flags = 0;
-    if (!strncmp(name, "ref", 3) && count > 3) {
-        memmove(name, name + 3, (size_t)count - 2);
-        count -= 3;
-        flags |= SCRIPT_TYPE_REFERENCE;
-    }
     if (count && name[count - 1] == '?') {
         name[--count] = 0;
         flags |= SCRIPT_TYPE_OPTIONAL;

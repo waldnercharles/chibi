@@ -381,10 +381,11 @@ Files :: (target: string) -> string[] {
         return [
             "src/assets/project.c", "src/assets/project_migrate.c", "src/assets/project_migrate26.c",
             "src/assets/project_migrate29.c", "src/assets/project_migrate30.c", "src/assets/project_migrate31.c",
-            "src/assets/project_migrate32.c", "src/assets/project_migrate34.c",
+            "src/assets/project_migrate32.c", "src/assets/project_migrate34.c", "src/assets/project_migrate36.c",
             "src/assets/project_parser23.c", "src/assets/project_parser24.c", "src/assets/project_parser25.c",
             "src/assets/project_parser26.c", "src/assets/project_parser27.c", "src/assets/project_parser28.c",
-            "src/assets/project_parser29.c", "src/assets/project_parser30.c", "src/assets/project_parser31.c"
+            "src/assets/project_parser29.c", "src/assets/project_parser30.c", "src/assets/project_parser31.c",
+            "src/assets/project_parser36.c"
         ];
     }
     if (target == "chibi_ui_authoring") {

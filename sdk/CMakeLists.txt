@@ -523,6 +523,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate31.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate32.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate34.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_migrate36.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
@@ -531,7 +532,8 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser36.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
@@ -542,6 +544,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser36.c"
         PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)

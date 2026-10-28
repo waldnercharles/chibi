@@ -1,6 +1,7 @@
 #include "project_migrate34.h"
 
 #include "language/syntax.h"
+#include "project_migrate26.h"
 #include "support/array.h"
 #include "support/text_edit.h"
 
@@ -295,7 +296,7 @@ static int migrate(const char *source, char **migrated, char *error, size_t size
     if (migrated) {
         *migrated = NULL;
     }
-    script_syntax *syntax = script_parse(source);
+    script_syntax *syntax = chibi_migrate_parse(source, 34);
     if (syntax->diagnostic_count) {
         script_range range = syntax->diagnostics[0].range;
         snprintf(

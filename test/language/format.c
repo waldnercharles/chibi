@@ -52,7 +52,7 @@ TEST_CASE(source_format_spaces_managed_pointers_and_xor)
         "Demo :: behavior { a: ^ int []; b: ^ int ?; c: ^ (int []); "
         "F :: (dt:number m/s^2) {} on Tick :: () { p := & value; "
         "x := p^+1; y := p ^ +q; z := p ^ q; "
-        "a := p^^; b := p^.field; c := p^[i]; F(ref p^); } }"
+        "a := p^^; b := p^.field; c := p^[i]; F(& p^); } }"
     ));
     REQUIRE(strstr(text, "a: ^int[];"));
     REQUIRE(strstr(text, "b: ^int?;"));
@@ -65,7 +65,7 @@ TEST_CASE(source_format_spaces_managed_pointers_and_xor)
     REQUIRE(strstr(text, "a := p^^;"));
     REQUIRE(strstr(text, "b := p^.field;"));
     REQUIRE(strstr(text, "c := p^[i];"));
-    REQUIRE(strstr(text, "F(ref p^);"));
+    REQUIRE(strstr(text, "F(&p^);"));
     return true;
 }
 
@@ -647,13 +647,13 @@ TEST_CASE(source_format_measured_signatures)
     REQUIRE(format(
         "Measures :: library{Travel::(speed:number u / s,elapsed:s)->u{return "
         "speed*elapsed;}"
-        "Borrow::(value:ref number charge)->ref number charge{return value;}}"
+        "Borrow::(value:^ number charge)->^number charge{return value;}}"
     ));
     REQUIRE(strstr(text, "speed: number u/s"));
     REQUIRE(strstr(text, "elapsed: s"));
     REQUIRE(strstr(text, "-> u"));
-    REQUIRE(strstr(text, "value: ref number charge"));
-    REQUIRE(strstr(text, "-> ref number charge"));
+    REQUIRE(strstr(text, "value: ^number charge"));
+    REQUIRE(strstr(text, "-> ^number charge"));
     return true;
 }
 
@@ -1874,7 +1874,7 @@ TEST_CASE(source_format_generic_types_maps_and_reference_iteration)
         "Product::(left:$ L,right:$ R)->ProductType(L,R){return left;}"
         "Use::(){scores:[string:int]=[\"Ada\":1,key:2];empty:[int:int]=[ : ];"
         "delete scores [key];gone:=key not  in scores;kept:=maybe??other??0;"
-        "for item:ref in items{item+=1;}}}"
+        "for & item in items{item+=1;}}}"
     ));
     REQUIRE(strstr(text, "Vector :: struct($Element: Type, $Size: int) {"));
     REQUIRE(strstr(text, "Identity :: (value: $T) -> T => {"));
@@ -1884,7 +1884,7 @@ TEST_CASE(source_format_generic_types_maps_and_reference_iteration)
     REQUIRE(strstr(text, "delete scores[key]"));
     REQUIRE(strstr(text, "gone := key not in scores"));
     REQUIRE(strstr(text, "kept := maybe ?? other ?? 0"));
-    REQUIRE(strstr(text, "for item: ref in items {"));
+    REQUIRE(strstr(text, "for &item in items {"));
     return true;
 }
 
@@ -1904,24 +1904,24 @@ TEST_CASE(source_format_authored_prototypes_and_relationships)
     return true;
 }
 
-TEST_CASE(source_format_preserves_explicit_reference_arguments)
+TEST_CASE(source_format_preserves_pointer_arguments)
 {
     REQUIRE(format(
-        "Refs::library{Bump::(v:ref int){v+=1;}Run::(){n:=1;"
-        "Bump(ref n);Bump(v:ref n);Bump(ref /*caller*/ n);}}"
+        "Refs::library{Bump::(v:^int){v^+=1;}Run::(){n:=1;"
+        "Bump(& n);Bump(v:&n);Bump(& /*caller*/ n);}}"
     ));
-    REQUIRE(strstr(text, "Bump(ref n)"));
-    REQUIRE(strstr(text, "Bump(v: ref n)"));
-    REQUIRE(strstr(text, "Bump(ref /*caller*/ n)"));
+    REQUIRE(strstr(text, "Bump(&n)"));
+    REQUIRE(strstr(text, "Bump(v: &n)"));
+    REQUIRE(strstr(text, "Bump(&/*caller*/ n)"));
     state_after = script_analyze_document(formatted, &catalog, "Refs");
     REQUIRE(state_after->valid);
     cleanup();
     REQUIRE(minimize_valid(
         &catalog,
-        "Refs :: library { Bump :: (v: ref int) { v += 1; } "
-        "Run :: () { n: int = 1; Bump(v: ref n); } }",
-        "Refs :: library { Bump :: (v: ref int) { v += 1 } "
-        "Run :: () { n := 1; Bump(ref n) } }"
+        "Refs :: library { Bump :: (v: ^int) { v^ += 1; } "
+        "Run :: () { n: int = 1; Bump(v: &n); } }",
+        "Refs :: library { Bump :: (v: ^int) { v^ += 1 } "
+        "Run :: () { n := 1; Bump(&n) } }"
     ));
     return true;
 }
@@ -1953,7 +1953,7 @@ void test_language_format()
     RUN_TEST_CASE(source_format_hugs_struct_braces);
     RUN_TEST_CASE(source_format_options_preserve_defaults);
     RUN_TEST_CASE(source_format_generic_types_maps_and_reference_iteration);
-    RUN_TEST_CASE(source_format_preserves_explicit_reference_arguments);
+    RUN_TEST_CASE(source_format_preserves_pointer_arguments);
     RUN_TEST_CASE(source_format_authored_prototypes_and_relationships);
     RUN_TEST_CASE(source_format_configures_indentation);
     RUN_TEST_CASE(source_format_reflows_lists_and_records);

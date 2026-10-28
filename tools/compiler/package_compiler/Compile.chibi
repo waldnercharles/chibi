@@ -126,7 +126,8 @@ Param :: struct {
     // The occurrence of the default's expression, which stage zero evaluates
     // where a call omits the argument.
     default_occurrence: u64;
-    // A `ref` parameter, whose argument is a reference to the caller's value.
+    // A scoped pointer parameter, whose argument is a reference to the
+    // caller's location.
     reference: bool;
     // The node that declares the parameter, -1 when the source declares none.
     node: int;
@@ -523,29 +524,8 @@ FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
 // array of one; storage 0 for any other.
 ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
              node: int) -> ValueType {
-    if (Field(forest, node, "trait") >= 0) {
-        return {storage: 0, container: 0, record: -1};
-    }
-    return ReadReferencedType(forest, text, types, names, package, node);
-}
-// Whether the type `node` is `ref T`: its only trait is `ref`.
-Referenced :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    traits: int = 0;
-    child := forest[node].first_child;
-    while (child >= 0) {
-        if (forest[child].field == "trait") {
-            traits += 1;
-        }
-        child = forest[child].next_sibling;
-    }
-    return traits == 1 && Text(forest, text, Field(forest, node, "trait")) == "ref";
-}
-// The type `node` names, as ReadType reads it, or the T of `ref T`.
-ReadReferencedType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
-                       node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    if (!Is(forest, node, "type") || (Field(forest, node, "trait") >= 0 && !Referenced(forest, text, node)) ||
-        Field(forest, node, "arguments") >= 0) {
+    if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0) {
         return none;
     }
     pointer := TypePointerNode(forest, node);
@@ -1597,13 +1577,18 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         if (hidden >= 0) {
             return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
         }
-        declared := ReadReferencedType(forest, text, types, aliases, package, type_node);
+        // A scoped pointer parameter takes a reference to its target.
+        pointer := PointerAnnotation(forest, type_node);
+        reference := pointer >= 0 && ScopedPointer(forest, text, member, parameter, []);
+        if (reference) {
+            type_node = Field(forest, pointer, "target");
+        }
+        declared := ReadType(forest, text, types, aliases, package, type_node);
         if (declared.storage == 0) {
             return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
         }
-        reference := Field(forest, type_node, "trait") >= 0;
         if (reference && Field(forest, parameter, "value") >= 0) {
-            return Signature.Failed(Diagnose(forest, parameter, file, "a reference parameter takes no default"));
+            return Signature.Failed(Diagnose(forest, parameter, file, "a scoped pointer parameter takes no default"));
         }
         param_name := Text(forest, text, Field(forest, parameter, "name"));
         if (param_name == "") {
@@ -1721,7 +1706,7 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
             authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
             count: types[record].count};
 }
-// A parameter's header: its type's, or a `ref` parameter's descriptor pointer.
+// A parameter's header: its type's, or a scoped parameter's descriptor pointer.
 ParamHeader :: (param: Param, types: TypeDecl[], layouts: int[], target: Target) -> writer.Value {
     if (param.reference) {
         return ScalarValue(target.pointer_storage, 0);
@@ -2063,6 +2048,11 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
         bodies.append(Body.Failed(Diagnose(forest, callable.node, callable.document, "missing prepared body")));
     }
     summaries: int[] = [];
+    // A scoped parameter's `p^` reads and writes `p` in every body.
+    scoped := forest;
+    if (AnyReference(params)) {
+        scoped = ScopedTargets(forest, documents, callables, params);
+    }
     pass: int = 0;
     while (pass < 2) {
         for (package in order) {
@@ -2082,7 +2072,7 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 callable := callables[index];
                 generic: int[] = [];
                 if (pass > 0) {
-                    generic = GenericUpdates(forest, bodies[index], summaries, context);
+                    generic = GenericUpdates(scoped, bodies[index], summaries, context);
                 }
                 if (pass == 0 || length(generic) > 0) {
                     if (!loaded) {
@@ -2101,7 +2091,7 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                     meaning := binding.ID("package-symbol",
                                           format_text("{}:{}:{}:callable", package_names[package], FunctionKind,
                                                       callable.name));
-                    body := FunctionBody(forest, documents, callables, params, types, members, used, natives, ports,
+                    body := FunctionBody(scoped, documents, callables, params, types, members, used, natives, ports,
                                          identities, Aliases(links, callable.document), [], [], [], index, solid,
                                          undeclared, meaning, context, generic, ops, target);
                     switch body {
@@ -2109,7 +2099,7 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                             return Preparation.Failed(diagnostic);
                         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                                       direct_write, facts):
-                            if (pass > 0 && !StablePreparation(forest, bodies[index], body, summaries, context)) {
+                            if (pass > 0 && !StablePreparation(scoped, bodies[index], body, summaries, context)) {
                                 return Preparation.Failed(Diagnose(forest, callable.node, callable.document,
                                                                    "array update effects changed during preparation"));
                             }

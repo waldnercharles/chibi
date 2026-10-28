@@ -22,7 +22,7 @@ runtime binds (D11 in the ledger). Every function:
 
 - takes plain number, `bool` or `string` parameters (`i8`,
   `u8`, `i16`, `u16`, `int`, `u32`, `i64`, `u64`, `number` or `f64`; no
-  `ref` or other managed, nominal or container types) and returns one
+  pointer or other managed, nominal or container types) and returns one
   plain number, `bool` or `string`;
 - has a body of locals (`x := EXPR;` or `x: T = EXPR;`), assignments to its
   parameters and locals (`x = EXPR;`, or compound, `x += EXPR;` and the other

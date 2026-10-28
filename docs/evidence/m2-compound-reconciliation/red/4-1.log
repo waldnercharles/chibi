@@ -1,6 +1,0 @@
-package compiler mixed compound reference field assignment: accepted
-(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-2/chibi-m2-compound-reconciliation/.chibi/compound-proof/red/package_compiler_chibi.c (3959): value->tag == tag(b, "Rejected"))
-Running: package_compiler_builds_runnable_collection_packages_compiled 
-===============================================================
-Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 1916
-Test command wall time: 4.194s; includes in-test fixture setup; external configuration/build excluded.

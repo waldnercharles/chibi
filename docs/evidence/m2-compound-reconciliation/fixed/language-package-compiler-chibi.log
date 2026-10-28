@@ -1,6 +1,0 @@
-Running: package_compiler_compound_diagnostics_match_stage_zero (OK) (4.072964 secs)
-Running: package_compiler_builds_runnable_packages (OK) (5.106339 secs)
-Running: package_compiler_asserts_without_native_capability (OK) (4.078018 secs)
-===============================================================
-Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 17272
-Test command wall time: 13.886s; includes in-test fixture setup; external configuration/build excluded.

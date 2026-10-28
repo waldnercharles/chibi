@@ -84,6 +84,10 @@ script_callable_header script_callable_register(
 );
 /* Shared initialization/type policy for the analyzer's non-header callers. */
 script_function script_callable_function(int parent, TSNode, int document, script_function_kind, int symbol);
+/* The `T` of `declaration`'s parameter `index` when it is a scoped pointer,
+ * a `^T` whose address never outlives the call so it aliases its argument;
+ * otherwise a null node. */
+TSNode script_scoped_pointer_target(const char *source, TSNode declaration, uint32_t index);
 script_type script_callable_result_type(uint64_t function, const script_type *results, int count);
 
 #endif

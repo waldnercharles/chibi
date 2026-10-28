@@ -760,8 +760,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         script_type type = script_analyzer_type_node(a, script_analyzer_field(node, "type"));
         result.expression = script_analyzer_expression(a, script_analyzer_field(node, "value"), type);
         if (type.flags & SCRIPT_TYPE_UNTYPED) {
+            /* A local copies what a scoped parameter or a reference item
+             * names, so it is not a reference itself. */
             type = script_analyzer_expr_type(a, result.expression);
-            type.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
+            type.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL | SCRIPT_TYPE_REFERENCE);
         } else {
             script_analyzer_require(
                 a,

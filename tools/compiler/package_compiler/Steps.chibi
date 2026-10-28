@@ -158,7 +158,7 @@ RetainStep :: (kept: Value, ops: Ops, target: Target, at: Bases, item: snapshot.
     write.offset = target.payload_offset;
     code.append(write);
     code.extend(SchemaWriteCode(kept, at.slot, ops, target, item));
-    host: Host = {intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1, result_count: 1,
+    host: Host = {command: 0, syntax_node: 0, intrinsic: SnapshotIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1, result_count: 1,
                   written: false};
     hosts.append(host);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, item));
@@ -1021,7 +1021,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         if (built.contains(binding.node)) {
             intrinsic += InResult;
         }
-        host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+        host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                       result_count: 1, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -1229,6 +1229,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             }
             return read;
         }
+        if (binding.place == LocalPlace && binding.storage == UnionStorage && binding.container == 0 &&
+            binding.record >= 0 && types[binding.record].kind == TaskResultDecl &&
+            TaskResultPresent(forest, text, binding, item.node)) {
+            return TaskResultReadStep(types, binding, ops, target, at, node);
+        }
         narrowed: int = -1;
         if (Single(Typed(-1, binding.storage, binding.container, binding.record), PointerStorage) &&
             binding.record >= 0 && types[binding.record].key != 0 &&
@@ -1324,7 +1329,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         cells.append(tag);
         made: Cell = {storage: UnionStorage, container: 0, record: sum_type, constant: 0, variant: -1, kind: ValueKind};
         cells.append(made);
-        host: Host = {intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
+        host: Host = {command: 0, syntax_node: 0, intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
                       result_count: 1, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -1762,7 +1767,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
     if ((array && BuiltLiteral(forest, built, item.node)) || Returned(forest, item.node)) {
         intrinsic += InResult;
     }
-    host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+    host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
     hosts.append(host);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -2686,7 +2691,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (kept) {
             intrinsic = UnionKeepIntrinsic + InResult;
         }
-        host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + shift + count,
+        host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + shift + count,
                       result_count: 1, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -2858,7 +2863,15 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     result := Typed(-1, -1, 0, -1);
     result_count: int = 0;
     named_results: bool = false;
-    if (linked && natives[chosen].results > 1) {
+    task := !linked && callables[item.a].waits && !ImmediatelyAwaited(forest, item.node);
+    if (task) {
+        unsupported := TaskResultSupport(callables[item.a], types, params);
+        if (unsupported != "") {
+            return Fail(forest, item.node, document, unsupported);
+        }
+        result = Typed(-1, TaskStorage, 0, item.a);
+        result_count = 1;
+    } else if (linked && natives[chosen].results > 1) {
         // Several results land in cells a local or `.name` reads.
         called := natives[chosen];
         at_result: int = 0;
@@ -2938,13 +2951,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         index += 1;
     }
     if (linked) {
-        host: Host = {intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + total,
+        host: Host = {command: 0, syntax_node: 0, intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + total,
                       result_count: result_count, written: false};
         hosts.append(host);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     } else {
         invocation: Invocation = {callee: item.a, first: at.cell, count: total, result_first: at.cell + total,
-                                  result_count: result_count};
+                                  result_count: result_count, task: task};
         calls.append(invocation);
         // Each invocation suspends the caller once; EmitBody numbers it.
         code.append(Instruction(ops.invoke, 0, 0, at.call, 0, 0, node));
@@ -2964,6 +2977,16 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             roots.append(root);
         }
         result.slot = b + total + 1;
+        if (task) {
+            // The returned handle's slot/local roots own observation; scratch
+            // protocol cells must not keep an otherwise discarded task result.
+            empty := at.slot + length(slots);
+            slots.append(ValueLocal(TaskStorage));
+            code.append(ConstantCode(ops, TaskStorage, 0, empty, node));
+            clear := Instruction(ops.write, TaskStorage, 0, empty, b + total, 0, node);
+            clear.offset = target.payload_offset;
+            code.append(clear);
+        }
     }
     if (linked && result_count == 1) {
         next.append(RecordNativeCall(item.node, chosen, result));
@@ -4029,14 +4052,14 @@ ReferenceCells :: (target: Target, record: int, facts: u64[], field: TypeMember)
 // The reference make and the field reference, written through, over the
 // cells from `first`.
 FieldReferenceHosts :: (first: int) -> Host[] {
-    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+    make: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
                   written: true};
-    field: Host = {intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first + 10, result_first: first + 14,
+    field: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first + 10, result_first: first + 14,
                    result_count: 1, written: false};
     return [make, field];
 }
 WriteHost :: (first: int) -> Host {
-    return {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: first + 15, result_first: first + 17,
+    return {command: 0, syntax_node: 0, intrinsic: ReferenceWriteIntrinsic, linked: -1, first: first + 15, result_first: first + 17,
             result_count: 1, written: false};
 }
 // The make, its reference into the first cell of the host after it, a field
@@ -4121,7 +4144,7 @@ ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMembe
     // cells after the write's.
     typed: Cell = {storage: declared.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
     cells.extend([ReferenceCell(target), typed]);
-    copy: Host = {intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 18, result_first: first + 19,
+    copy: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 18, result_first: first + 19,
                   result_count: 1, written: false};
     hosts.append(copy);
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
@@ -4151,9 +4174,9 @@ ComponentReadStep :: (before: Code[], types: TypeDecl[], component: int, written
     read: Cell = {storage: StructStorage, container: 0, record: component, constant: 0, variant: -1,
                   kind: ValueKind};
     cells := extend(MakeCells(target, component, ComponentFacts(types[component])), [ReferenceCell(target), read]);
-    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+    make: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
                   written: written};
-    copy: Host = {intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 10, result_first: first + 11,
+    copy: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 10, result_first: first + 11,
                   result_count: 1, written: false};
     code := OwnerCode(ops, target, first, entity, at.slot, node);
     code.extend(ReferenceCode(ops, target, first, first + 11, at.host, at.slot + 4, node));
@@ -4181,7 +4204,7 @@ ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, entity:
     bound: Name[] = [];
     marks: int[] = [];
     first := at.cell;
-    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+    make: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
                   written: true};
     code := OwnerCode(ops, target, first, entity, at.slot, node);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -4249,7 +4272,7 @@ ComponentAssignStep :: (forest: snapshot.SnapshotNode[], document: int, types: T
     code.extend(CellWrite(target.pointer_storage, value.slot, at.cell + 1, ops, target, at.slot + 1, node));
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-    write: Host = {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+    write: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
                    result_count: 1, written: false};
     return Step.Emitted(code, [address, address], locals, [ReferenceCell(target), record, done], [write], roots, calls,
                         bound, next, 1, NoValue(), NoValue(), marks);
@@ -4515,7 +4538,7 @@ NamedResultsStep :: (before: Code[], ops: Ops, target: Target, params: Param[], 
             read.offset = target.payload_offset;
             code.append(read);
             code.extend(CellWrite(target.pointer_storage, first + 1, input, ops, target, first + 2, node));
-            host: Host = {intrinsic: SnapshotIntrinsic, linked: -1, first: input, result_first: input + 1,
+            host: Host = {command: 0, syntax_node: 0, intrinsic: SnapshotIntrinsic, linked: -1, first: input, result_first: input + 1,
                           result_count: 1, written: false};
             hosts.append(host);
             code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0,
@@ -4758,7 +4781,7 @@ AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     }
     combined: Cell = {storage: StructStorage, container: 0, record: result.record, constant: 0, variant: -1,
                       kind: ValueKind};
-    host: Host = {intrinsic: 0, linked: native, first: at.cell, result_first: at.cell + 2, result_count: 1,
+    host: Host = {command: 0, syntax_node: 0, intrinsic: 0, linked: native, first: at.cell, result_first: at.cell + 2, result_count: 1,
                   written: false};
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     code.extend(CallCode(operands, at.cell, at.host, target.pointer_storage, at.slot + length(slots), ops,
@@ -4848,7 +4871,7 @@ NativeReadStep :: (forest: snapshot.SnapshotNode[], document: int, site: int, ty
     arguments: Value[] = [argument];
     read: Cell = {storage: result.storage, container: result.container, record: result.record, constant: 0, variant: -1,
                   kind: ValueKind};
-    host: Host = {intrinsic: 0, linked: field.read, first: at.cell, result_first: at.cell + 1, result_count: 1,
+    host: Host = {command: 0, syntax_node: 0, intrinsic: 0, linked: field.read, first: at.cell, result_first: at.cell + 1, result_count: 1,
                   written: false};
     value: Slot = {storage: SlotStorage(field.storage, 0, target), kind: SlotKind(field.storage, 0)};
     code := CallCode(arguments, at.cell, at.host, value.storage, at.slot, ops, target, node);
@@ -5074,7 +5097,7 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], 
         index += 1;
     }
     cells.append(header);
-    host: Host = {intrinsic: ConstructIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+    host: Host = {command: 0, syntax_node: 0, intrinsic: ConstructIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(target.pointer_storage, at.cell + length(cells) - 1, ops, target,
@@ -5208,7 +5231,7 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
     write := Instruction(ops.write, UnionStorage, 0, at.slot, at.slot + 1, 0, node);
     write.offset = target.payload_offset;
     code.append(write);
-    test: Host = {intrinsic: UnionTestIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
+    test: Host = {command: 0, syntax_node: 0, intrinsic: UnionTestIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
                   written: false};
     hosts.append(test);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -5260,7 +5283,7 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         put := Instruction(ops.write, UnionStorage, 0, at.slot, at.slot + length(slots) - 1, 0, node);
         put.offset = target.payload_offset;
         code.append(put);
-        get: Host = {intrinsic: UnionGetIntrinsic, linked: -1, first: first, result_first: first + 4, result_count: 1,
+        get: Host = {command: 0, syntax_node: 0, intrinsic: UnionGetIntrinsic, linked: -1, first: first, result_first: first + 4, result_count: 1,
                      written: false};
         hosts.append(get);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + length(hosts) - 1,

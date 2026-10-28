@@ -69,12 +69,16 @@ Invocation :: struct {
     count: int;
     result_first: int;
     result_count: int;
+    task: bool;
 }
 // A host call: runtime intrinsic `intrinsic`, or the native natives[linked]
 // when `linked` is not -1. A component reference's make is `written` when
 // the body writes through the reference.
 Host :: struct {
     intrinsic: int;
+    // Nonzero identifies an existing task command, rather than a host intrinsic.
+    command: int;
+    syntax_node: int;
     linked: int;
     first: int;
     result_first: int;
@@ -2089,7 +2093,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
             cell: Cell = {storage: result.storage, container: result.container, record: result.record,
                           constant: 0, variant: -1, kind: ValueKind};
             cells.extend([cell, cell]);
-            host: Host = {intrinsic: ConstructIntrinsic, linked: -1, first: length(cells) - 2,
+            host: Host = {command: 0, syntax_node: 0, intrinsic: ConstructIntrinsic, linked: -1, first: length(cells) - 2,
                           result_first: length(cells) - 1, result_count: 1, written: false};
             hosts.append(host);
             code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, length(hosts) - 1, declaration));
@@ -3124,6 +3128,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 code.append(Instruction(ops.local, BoolStorage, length(slots) - 1, item.a, 0, 0, node));
                 produced = Typed(length(slots) - 1, BoolStorage, 0, -1);
             }
+        } else if (kind == "yield_statement" || kind == "cancel_statement" || kind == "await_expression") {
+            step = TaskStep(forest, text, document, callables, natives, params, types, names, callable.package,
+                            values, value_top, item, ops, target, at);
         } else if (item.phase == CombinePhase) {
             step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
         } else if (PointerWork(item, kind)) {
@@ -3172,8 +3179,14 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             next.append(Visit(Field(forest, item.node, "value")));
             next.append(Resume(item.node, 1, 0, 0));
         } else if (kind == "is_expression") {
-            step = IsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1], values, value_top,
-                          item, ops, target, at);
+            held := values[value_top - 1];
+            if (held.storage == UnionStorage && held.record >= 0 && types[held.record].kind == TaskResultDecl) {
+                step = TaskResultIsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1],
+                                        values, value_top, item, ops, target, at);
+            } else {
+                step = IsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1], values, value_top,
+                              item, ops, target, at);
+            }
         } else {
             return Body.Failed(Diagnose(forest, item.node, document, format_text("unsupported syntax '{}'", kind)));
         }
@@ -3418,7 +3431,7 @@ NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: u64,
                                        payload: 0, text: "", has_text: false, message: "", has_message: false,
                                        start: placed.start, end: placed.end, line: placed.line, column: placed.column};
             suspension += 1;
-        } else if (op == ops.invoke || op == ops.source_point) {
+        } else if (op == ops.invoke || op == ops.source_point || op == ops.suspend) {
             numbered := numbered_code[at_point];
             numbered.target = suspension;
             numbered_code[at_point] = numbered;

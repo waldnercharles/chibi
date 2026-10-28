@@ -538,7 +538,7 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         return {storage: StateNumberStorage(forest, text, node), container: 0, record: -1};
     }
     expression: Callable = {name: "", package: document, document: document, node: node, first: 0, count: 0,
-                            result: 0, result_container: 0, result_record: -1, results: 0};
+                            result: 0, result_container: 0, result_record: -1, results: 0, waits: false};
     functions := append(callables, expression);
     expressions := ops;
     expressions.debug = false;
@@ -1205,7 +1205,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     }
     callable: Callable = {name: format_text("__query_evaluate_{}", numbered), package: document, document: document,
                           node: node, first: param_first, count: length(captures), result: 0,
-                          result_container: 0, result_record: -1, results: length(fields) + 1};
+                          result_container: 0, result_record: -1, results: length(fields) + 1, waits: false};
     callables.append(callable);
     described: QuerySpec = {node: node, evaluator: evaluator, row: row, description: descriptor, variables: variables,
                             first_capture: param_first, capture_count: length(captures)};
@@ -1273,7 +1273,7 @@ QueryCallStep :: (intrinsic: int, arguments: Value[], initial: Cell[], result: V
         }
         index += 1;
     }
-    host: Host = {intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(initial),
+    host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(initial),
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     storage := SlotStorage(result.storage, result.container, target);

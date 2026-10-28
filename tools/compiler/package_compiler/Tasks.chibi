@@ -1,0 +1,251 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import binding "project:lexical_binding"
+
+// These are the existing persistent command identities from execution/task.h.
+TaskCommandBase: u64 : 0x4348494900000100;
+DelayCommand: int : 1;
+YieldCommand: int : 2;
+JoinCommand: int : 3;
+CancelCommand: int : 4;
+RunningCommand: int : 5;
+CancelAfterCommand: int : 6;
+SuspendEffect: int : 16;
+
+TaskCommandNode :: (command: int, syntax_node: int) -> u64 {
+    return binding.ID("task-command", format_text("{}:{}", command, syntax_node));
+}
+// The native analyzer identifies waiting functions from their own await/yield
+// syntax. An unawaited call starts independent work and never makes its caller
+// wait. Nested declarations likewise have their own suspension contract.
+WaitingBody :: (forest: snapshot.SnapshotNode[], body: int) -> bool {
+    pending: int[] = [body];
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        node := pending[top];
+        if (Is(forest, node, "yield_statement") || Is(forest, node, "await_expression")) {
+            return true;
+        }
+        if (node != body && (Is(forest, node, "function_declaration") || Is(forest, node, "macro_declaration"))) {
+            continue;
+        }
+        child := forest[node].first_child;
+        while (child >= 0) {
+            if (top < length(pending)) {
+                pending[top] = child;
+            } else {
+                pending.append(child);
+            }
+            top += 1;
+            child = forest[child].next_sibling;
+        }
+    }
+    return false;
+}
+WaitingCallables :: (forest: snapshot.SnapshotNode[], callables: Callable[]) -> Callable[] {
+    marked := callables;
+    index: int = 0;
+    while (index < length(marked)) {
+        row := marked[index];
+        // Query evaluators are expressions, not declarations, and never wait.
+        body := Field(forest, row.node, "body");
+        if (body >= 0) {
+            row.waits = WaitingBody(forest, body);
+        }
+        marked[index] = row;
+        index += 1;
+    }
+    return marked;
+}
+// Parentheses do not change whether a call is immediately awaited. The call
+// runs as an ordinary invocation in that case, preserving direct-await results.
+ImmediatelyAwaited :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    at := node;
+    parent := forest[at].parent;
+    while (Is(forest, parent, "parenthesized_expression")) {
+        at = parent;
+        parent = forest[at].parent;
+    }
+    return Is(forest, parent, "await_expression") && Field(forest, parent, "value") == at;
+}
+// An instruction that names a command node. One literal holds the u64:
+// storing it into a local record's field would make every caller copy its
+// arguments, as ConstantCode notes.
+CommandCode :: (op: int, target: int, command_node: u64, node: snapshot.SnapshotNode) -> Code {
+    return {op: op, type: 0, output: 0, left: 0, right: 0, target: target, offset: 0, value_storage: 0,
+            value_container: 0, value_record: -1, payload: command_node, text: "", has_text: false, message: "",
+            has_message: false, start: node.start, end: node.end, line: node.row + 1, column: node.column + 1};
+}
+// One registry command. Its arguments and result keep body-cell coordinates;
+// assembly gives commands their separate runtime banks and remaps row indices.
+TaskCommandStep :: (forest: snapshot.SnapshotNode[], document: int, values: Value[], top: int,
+                    item: Work, command: int, success_tag: u64, result: Value, ops: Ops,
+                    target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    if (target.error_status_offset <= 0) {
+        return Fail(forest, item.node, document, "task lowering needs the target error-status offset");
+    }
+    code: Code[] = [];
+    slots: Slot[] = [];
+    locals: Slot[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    count: int = 0;
+    popped: int = 0;
+    if (command != YieldCommand && command != DelayCommand) {
+        handle := values[top - 1];
+        if (command == CancelAfterCommand) {
+            handle = values[top - 2];
+        }
+        if (!Single(handle, TaskStorage)) {
+            return Fail(forest, item.node, document, "task operation needs a task handle");
+        }
+        cells.append(TypedCell(TaskStorage, 0, -1));
+        write := Instruction(ops.command_argument, TaskStorage, 0, handle.slot, 0, at.cell, node);
+        write.offset = target.payload_offset;
+        code.append(write);
+        count = 1;
+        popped = 1;
+    }
+    if (command == JoinCommand) {
+        cells.append(QueryCell(WordStorage, -1, success_tag));
+        count = 2;
+    }
+    if (command == CancelAfterCommand || command == DelayCommand) {
+        duration := values[top - 1];
+        if (!Single(duration, DoubleStorage)) {
+            return Fail(forest, item.node, document, "cancellation duration needs an f64");
+        }
+        cells.append(TypedCell(DoubleStorage, 0, -1));
+        write := Instruction(ops.command_argument, DoubleStorage, 0, duration.slot, 0, at.cell + count, node);
+        write.offset = target.payload_offset;
+        code.append(write);
+        count += 1;
+        popped += 1;
+    }
+    result_count: int = 0;
+    if (result.storage > 0) {
+        result_count = 1;
+        cells.append(TypedCell(result.storage, result.container, result.record));
+    }
+    operation: Host = {intrinsic: 0, command: command, syntax_node: item.node,
+                       linked: -1, first: at.cell, result_first: at.cell + count, result_count: result_count,
+                       written: false};
+    hosts.append(operation);
+    command_node := TaskCommandNode(command, item.node);
+    code.append(CommandCode(ops.command_begin, at.host, command_node, node));
+    if (command != RunningCommand) {
+        // Match native await_command: synchronously completed commands proceed
+        // in this activation; only a pending request creates a suspension.
+        slots.extend([ValueLocal(IntStorage), ValueLocal(IntStorage), ValueLocal(BoolStorage)]);
+        status := Instruction(ops.context, IntStorage, at.slot, 0, 0, 0, node);
+        status.offset = target.error_status_offset;
+        code.append(status);
+        code.append(ConstantCode(ops, IntStorage, 0, at.slot + 1, node));
+        code.append(Instruction(ops.gt, IntStorage, at.slot + 2, at.slot, at.slot + 1, -1, node));
+        code.append(Instruction(ops.branch_if, 0, 0, at.slot + 2, 0, at.pc + length(code) + 2, node));
+        code.append(Instruction(ops.jump, 0, 0, 0, 0, at.pc + length(code) + 2, node));
+        code.append(CommandCode(ops.suspend, 0, command_node, node));
+    }
+    produced := NoValue();
+    if (Is(forest, item.node, "await_expression")) {
+        produced = Typed(-1, -1, 0, -1);
+    }
+    if (result_count != 0) {
+        loaded := at.slot + length(slots);
+        result_slot: Slot = {storage: SlotStorage(result.storage, result.container, target),
+                             kind: SlotKind(result.storage, result.container)};
+        slots.append(result_slot);
+        read := Instruction(ops.command_result, SlotStorage(result.storage, result.container, target), loaded,
+                            at.cell + count, 0, 0, node);
+        read.offset = target.payload_offset;
+        code.append(read);
+        produced = Typed(loaded, result.storage, result.container, result.record);
+        if (result.storage == UnionStorage) {
+            empty := at.slot + length(slots);
+            slots.append(ValueLocal(UnionStorage));
+            code.append(ConstantCode(ops, UnionStorage, 0, empty, node));
+            clear := Instruction(ops.command_output, UnionStorage, 0, empty, 0, at.cell + count, node);
+            clear.offset = target.payload_offset;
+            code.append(clear);
+        }
+    }
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, NoValue(), marks);
+}
+
+// Task syntax delegates to the same commands used by native lowering. Direct
+// authored await returns its declared values; handle await returns the typed
+// success-or-Cancelled union supplied by TaskResults.
+TaskStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
+             natives: ResolvedNative[], params: Param[], types: TypeDecl[], names: Name[], package: int,
+             values: Value[], top: int,
+             item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    kind := forest[item.node].kind;
+    if (kind == "yield_statement") {
+        return TaskCommandStep(forest, document, values, top, item, YieldCommand, 0, NoValue(), ops, target, at);
+    }
+    if (item.phase == 0) {
+        next: Work[] = [];
+        if (kind == "cancel_statement") {
+            next.append(Visit(Field(forest, item.node, "value")));
+            duration := Field(forest, item.node, "duration");
+            phase: int = 1;
+            if (duration >= 0) {
+                next.append(Expect(duration, DoubleStorage, 0, -1));
+                phase = 2;
+            }
+            next.append(Resume(item.node, phase, 0, 0));
+        } else {
+            value := Unparenthesized(forest, Field(forest, item.node, "value"));
+            if (Is(forest, value, "call_expression") && CalledFunction(forest, text, callables, natives, names, package, value) < 0) {
+                callee := Field(forest, value, "function");
+                if (Is(forest, callee, "identifier") && NameMatches(Text(forest, text, callee), "Delay")) {
+                    arguments := Members(forest, Field(forest, value, "arguments"));
+                    if (length(arguments) != 1) {
+                        return Fail(forest, value, document, "Delay requires one duration");
+                    }
+                    next.append(Expect(arguments[0], DoubleStorage, 0, -1));
+                    next.append(Resume(item.node, 3, 0, 0));
+                    return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+                }
+                return Fail(forest, value, document, "await of native commands is not supported yet");
+            }
+            next.append(Visit(value));
+            next.append(Resume(item.node, 1, 0, 0));
+        }
+        return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+    }
+    if (kind == "cancel_statement") {
+        command := CancelCommand;
+        if (item.phase == 2) {
+            command = CancelAfterCommand;
+        }
+        return TaskCommandStep(forest, document, values, top, item, command, 0, NoValue(), ops, target, at);
+    }
+    if (item.phase == 3) {
+        return TaskCommandStep(forest, document, values, top, item, DelayCommand, 0, NoValue(), ops, target, at);
+    }
+    awaited := Unparenthesized(forest, Field(forest, item.node, "value"));
+    value := values[top - 1];
+    if (Is(forest, awaited, "call_expression") && CalledFunction(forest, text, callables, natives, names, package, awaited) >= 0) {
+        return Step.Emitted([], [], [], [], [], [], [], [], [], 1, value, NoValue(), []);
+    }
+    if (!Single(value, TaskStorage) || value.record < 0 || value.record >= length(callables)) {
+        return Fail(forest, item.node, document, "await needs a task handle or authored call");
+    }
+    called := callables[value.record];
+    unsupported := TaskResultSupport(called, types, params);
+    if (unsupported != "") {
+        return Fail(forest, item.node, document, unsupported);
+    }
+    result := Typed(-1, UnionStorage, 0, TaskResultRecord(types, value.record));
+    return TaskCommandStep(forest, document, values, top, item, JoinCommand,
+                           TaskSuccessTag(called, types, params), result, ops, target, at);
+}

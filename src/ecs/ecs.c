@@ -2263,6 +2263,11 @@ static void cell_unlink(ecs_component_cell *cell)
     asetlen(world->cells, last);
     cell->world = NULL;
 }
+void ecs_component_cell_retain(ecs_component_cell *cell)
+{
+    assert(cell && cell->references > 0);
+    cell->references++;
+}
 ecs_component_cell *ecs_component_cell_acquire(ecs_world *world, ecs_entity entity, ecs_component_id id)
 {
     ecs_component *component = world ? find_component(world, id) : NULL;
@@ -2273,7 +2278,7 @@ ecs_component_cell *ecs_component_cell_acquire(ecs_world *world, ecs_entity enti
     if (entity.slot < (uint32_t)acount(component->cells) &&
         component->cells[entity.slot]) {
         ecs_component_cell *cell = component->cells[entity.slot];
-        cell->references++;
+        ecs_component_cell_retain(cell);
         return cell;
     }
     ecs_component_cell *cell = xcalloc(1, sizeof *cell);
@@ -2360,6 +2365,10 @@ pin_value ecs_component_cell_value(ecs_component_cell *cell)
                         .type_name = cell->type->name,
                         .schema = cell->schema,
                         .ptr = data };
+}
+bool ecs_component_cell_alive(ecs_component_cell *cell)
+{
+    return cell && ecs_component_cell_value(cell).ptr;
 }
 static void invalidate_cells(ecs_world *world, ecs_entity entity, ecs_component_id component)
 {

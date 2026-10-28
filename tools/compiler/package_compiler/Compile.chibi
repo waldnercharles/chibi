@@ -23,6 +23,7 @@ pub Target :: struct {
     arguments_offset: int;
     delta_seconds_offset: int;
     results_offset: int;
+    error_status_offset: int;
     type_offset: int;
     container_offset: int;
     name_offset: int;
@@ -53,6 +54,11 @@ Ops :: struct {
     write: int;
     result: int;
     host_call: int;
+    command_argument: int;
+    command_begin: int;
+    command_result: int;
+    command_output: int;
+    suspend: int;
     invoke: int;
     guard: int;
     check: int;
@@ -112,6 +118,7 @@ Callable :: struct {
     result_container: int;
     result_record: int;
     results: int;
+    waits: bool;
 }
 // A function's parameters, then its named results, and its callable.
 Signature :: union {
@@ -328,6 +335,7 @@ Assembly :: union {
 EffectCall :: struct {
     caller: int;
     callee: int;
+    task: bool;
 }
 // The target catalog's READ, WRITE, STRUCTURAL, HOST, SUSPEND, RANDOM and
 // INVOCATION_READ bits.
@@ -361,6 +369,7 @@ TextStorage: int : 13;
 HandleStorage: int : 14;
 StructStorage: int : 15;
 UnionStorage: int : 18;
+TaskStorage: int : 17;
 RecordDecl: int : 0;
 UnionDecl: int : 1;
 VariantDecl: int : 2;
@@ -401,7 +410,10 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
             array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
             string_equal: Ordinal(names, "STRING_EQUAL"), index: Ordinal(names, "INDEX"),
             load: Ordinal(names, "LOAD"), write: Ordinal(names, "WRITE"), result: Ordinal(names, "RESULT"),
-            host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
+            host_call: Ordinal(names, "HOST_CALL"),
+            command_argument: Ordinal(names, "COMMAND_ARGUMENT"), command_begin: Ordinal(names, "COMMAND_BEGIN"),
+            command_result: Ordinal(names, "COMMAND_RESULT"), command_output: Ordinal(names, "COMMAND_OUTPUT"),
+            suspend: Ordinal(names, "SUSPEND"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
             check: Ordinal(names, "CHECK"),
             branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
             end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
@@ -420,6 +432,7 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
 Complete :: (ops: Ops) -> bool {
     used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.array,
                    ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
+                   ops.command_argument, ops.command_begin, ops.command_result, ops.command_output, ops.suspend,
                    ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
                    ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
                    ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
@@ -1672,7 +1685,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
     }
     callable: Callable = {name: name, package: package, document: file, node: member, first: first, count: count,
                           result: result.storage, result_container: result.container, result_record: result.record,
-                          results: length(added) - count};
+                          results: length(added) - count, waits: false};
     return Signature.Read(callable, added);
 }
 ScalarValue :: (storage: int, wide: int) -> writer.Value {
@@ -1811,9 +1824,17 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
 // `root`. Dependencies come first, so an importer has every module it imports.
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
          files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
-         callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+         input_callables: Callable[], params: Param[], input_types: TypeDecl[], input_members: TypeMember[],
          constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], native_effects: int[], ops: Ops,
          target: Target, abi: u64) -> Result {
+    callables := WaitingCallables(forest, input_callables);
+    types := input_types;
+    members := input_members;
+    switch TaskResultDeclarations(callables, params, types, members) {
+        case .Collected(declared_types, declared_members):
+            types = declared_types;
+            members = declared_members;
+    }
     // Each package's identity and module ID, and the fingerprint of its module.
     package_names: string[] = [];
     package_ids: u64[] = [];
@@ -2225,6 +2246,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     sources: writer.Source[] = [];
     data: writer.Data[] = [];
     hosts: writer.Host[] = [];
+    commands: writer.Command[] = [];
     roots: writer.Root[] = [];
     calls: writer.Call[] = [];
     references: writer.Reference[] = [];
@@ -2255,7 +2277,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             // Stage zero's tag: the union's ID in decimal, then the variant.
             union_id := binding.ID("package-symbol",
                                    format_text("{}:{}:{}", package_names[declared.package], TypeKind, types[declared.parent].name));
-            wide.append(binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
+            tag := binding.ID("union-variant", format_text("{}:{}", union_id, declared.name));
+            if (types[declared.parent].kind == TaskResultDecl) {
+                tag = declared.id;
+            }
+            wide.append(tag);
             tags[length(tags) - 1] = length(wide) - 1;
         } else if (declared.kind == RecordDecl) {
             id := declared.id;
@@ -2333,6 +2359,19 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                         }
                     }
                 }
+                host_indices: int[] = [];
+                command_indices: int[] = [];
+                host_count: int = 0;
+                command_count: int = 0;
+                for (operation in body_hosts) {
+                    host_indices.append(host_count);
+                    command_indices.append(command_count);
+                    if (operation.command == 0) {
+                        host_count += 1;
+                    } else {
+                        command_count += 1;
+                    }
+                }
                 base := length(spans);
                 // Event payload slots remain part of the physical handler ABI.
                 // A system reads dt from context and declares no source parameter.
@@ -2408,7 +2447,20 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 // Instructions, each with its own value row and source at pc + 1.
                 spans.append(Range(length(instructions), length(body_code)));
                 pc: int = 0;
-                for (code in body_code) {
+                for (body_instruction in body_code) {
+                    code := body_instruction;
+                    if (code.op == ops.host_call) {
+                        code.target = host_indices[code.target];
+                    }
+                    if (code.op == ops.command_begin) {
+                        code.target = command_indices[code.target];
+                    }
+                    node_id: int = 0;
+                    if (code.op == ops.command_begin || code.op == ops.suspend) {
+                        wide.append(code.payload);
+                        node_id = length(wide) - 1;
+                        code.payload = 0;
+                    }
                     value := Header(code.value_storage, code.value_container, code.value_record, types, layouts);
                     if (code.has_text) {
                         value.text = code.text;
@@ -2421,7 +2473,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     values.append(value);
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
                                                left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
-                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
+                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: node_id,
                                                value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
                     instructions.append(row);
                     pc += 1;
@@ -2480,8 +2532,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     datum: writer.Data = {kind: cell.kind, initial: length(values) - 1, size: size};
                     data.append(datum);
                 }
-                spans.append(Range(length(hosts), length(body_hosts)));
+                spans.append(Range(length(hosts), host_count));
                 for (host in body_hosts) {
+                    if (host.command != 0) {
+                        continue;
+                    }
                     capability := length(wide);
                     host_abi := abi_one;
                     if (host.linked >= 0) {
@@ -2497,9 +2552,72 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                         outcome_count: 0};
                     hosts.append(row);
                 }
+                spans.append(Range(length(commands), command_count));
+                for (operation in body_hosts) {
+                    if (operation.command == 0) {
+                        continue;
+                    }
+                    wide.append(TaskCommandBase | u64(operation.command));
+                    command_abi: u64 = 2;
+                    if (operation.command == DelayCommand) {
+                        command_abi = 1;
+                    }
+                    wide.append(command_abi);
+                    wide.append(TaskCommandNode(operation.command, operation.syntax_node));
+                    command: writer.Command = {capability: length(wide) - 3, abi: length(wide) - 2,
+                                               first: operation.first, count: operation.result_first - operation.first,
+                                               node: length(wide) - 1, result_first: operation.result_first,
+                                               result_count: operation.result_count};
+                    commands.append(command);
+                    if (operation.command == CancelCommand || operation.command == CancelAfterCommand) {
+                        direct_effects = direct_effects | WriteEffect;
+                    } else {
+                        direct_effects = direct_effects | SuspendEffect;
+                    }
+                }
+                // The command banks use the same stable cell coordinates as the
+                // body's host banks. Each has independent mutable payload storage.
+                command_cells: int = 0;
+                if (command_count > 0) {
+                    command_cells = length(body_cells);
+                }
+                spans.append(Range(length(values), command_cells));
+                at = 0;
+                while (at < command_cells) {
+                    cell := body_cells[at];
+                    initial := Header(cell.storage, cell.container, cell.record, types, layouts);
+                    if (cell.constant != 0) {
+                        wide.append(cell.constant);
+                        initial.wide = length(wide) - 1;
+                    }
+                    if (cell.variant >= 0) {
+                        initial.wide = tags[cell.variant];
+                    }
+                    values.append(initial);
+                    at += 1;
+                }
+                spans.append(Range(length(ints), command_cells));
+                at = 0;
+                while (at < command_cells) {
+                    ints.append(ValueKind);
+                    at += 1;
+                }
+                spans.append(Range(length(values), command_cells));
+                at = 0;
+                while (at < command_cells) {
+                    cell := body_cells[at];
+                    values.append(Header(cell.storage, cell.container, cell.record, types, layouts));
+                    at += 1;
+                }
+                spans.append(Range(length(ints), command_cells));
+                at = 0;
+                while (at < command_cells) {
+                    ints.append(ValueKind);
+                    at += 1;
+                }
                 spans.append(Range(length(calls), length(body_calls)));
                 for (invocation in body_calls) {
-                    effect_call: EffectCall = {caller: index, callee: invocation.callee};
+                    effect_call: EffectCall = {caller: index, callee: invocation.callee, task: invocation.task};
                     effect_calls.append(effect_call);
                     callee := callables[invocation.callee];
                     if (callee.package == package) {
@@ -2525,7 +2643,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     }
                     call: writer.Call = {function: length(references) - 1, first: invocation.first,
                                          count: invocation.count, result_first: invocation.result_first,
-                                         result_count: invocation.result_count, task: false};
+                                         result_count: invocation.result_count, task: invocation.task};
                     calls.append(call);
                 }
                 // No definitions; then the components the body reads or
@@ -2637,7 +2755,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     while (changed) {
         changed = false;
         for (called in effect_calls) {
-            combined := effects[called.caller] | effects[called.callee];
+            inherited := effects[called.callee];
+            if (called.task) {
+                inherited = inherited & ~SuspendEffect;
+            }
+            combined := effects[called.caller] | inherited;
             if (combined != effects[called.caller]) {
                 effects[called.caller] = combined;
                 changed = true;
@@ -2739,7 +2861,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     }
     return Assembly.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
                                                                        fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
-                                                                       locals, parameters, frames, sources, layouts_table, data, hosts, calls,
+                                                                       locals, parameters, frames, sources, layouts_table, data, hosts, commands, calls,
                                                                        references, components, points, watches, states, entries,
                                                                        queries, system_root, system_variables, 0, descriptions,
                                                                        system_description)), effects);

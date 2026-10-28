@@ -2509,6 +2509,70 @@ TEST_CASE(execution_preparation_reserves_one_definitions_scratch)
     REQUIRE(all > first && all - first < one.scratch);
     return true;
 }
+/* The least aggregate budget that loads the module. */
+static size_t least_aggregate_budget(const unsigned char *bytes, size_t length)
+{
+    size_t low = 0, high = EXECUTION_WIRE_MAX_BYTES;
+    while (low + 1 < high) {
+        size_t middle = low + (high - low) / 2, remaining = middle;
+        execution_prepared_linker loose = { .decoded_bytes = EXECUTION_WIRE_MAX_BYTES };
+        char error[192];
+        execution_module *m = execution_prepared_read_budget(
+            bytes,
+            length,
+            &loose,
+            BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        if (m) {
+            high = middle;
+        } else {
+            low = middle;
+        }
+        execution_module_free(m);
+    }
+    return high;
+}
+TEST_CASE(execution_preparation_reserves_the_runtime_code_it_keeps)
+{
+    /* Runtime code vectors are sized once, and preparation reserves that
+     * size rather than doubled capacity. A module of many small definitions
+     * then loads within about its canonical storage plus one definition's
+     * scratch; reserving doubled vectors needs half of every definition's
+     * retained bytes more. */
+    enum
+    {
+        DEFINITIONS = 64,
+        ADDITIONS = 512
+    };
+    char error[192] = { 0 };
+    behavior_function *f = sparse_definition(2, ADDITIONS, error, sizeof error);
+    REQUIRE(f);
+    behavior_function_preparation one = behavior_function_preparation_bytes(f);
+    behavior_function_free(f);
+    unsigned char *bytes = NULL;
+    size_t length = 0;
+    REQUIRE(linked_module(4, DEFINITIONS, ADDITIONS, false, &bytes, &length));
+    size_t least = least_aggregate_budget(bytes, length), remaining = least;
+    execution_module *m = execution_prepared_read_budget(
+        bytes,
+        length,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    free(bytes);
+    REQUIRE(m);
+    size_t storage = execution_module_storage_bytes(m);
+    execution_module_free(m);
+    REQUIRE(one.retained > 0 && least >= storage);
+    REQUIRE(least - storage < one.scratch + DEFINITIONS * one.retained / 8);
+    return true;
+}
 /* The verifier admits a definition whose defined-operands matrix is larger
  * than 64 MiB, as the package compiler's EmitBody needs, and refuses one
  * past 256 MiB before allocating it: (count + 1) * 4097 words is 67.2 MB,
@@ -4342,6 +4406,9 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     pin_value alias = pointer_root;
     REQUIRE(!EXECUTION_component_pointer_call.value(&managed, make, 6, &alias));
     REQUIRE(pin_pointer_equal(pointer_root.ptr, alias.ptr));
+    ecs_component_cell *retained = ((pin_pointer *)pointer_root.ptr)->component;
+    ecs_component_cell_retain(retained);
+    REQUIRE(ecs_component_cell_alive(retained));
     pin_value project[] = { pointer_root,
                             { .type = PIN_I32 },
                             { .type = PIN_U64, .u64 = offsetof(fixture_box, value) },
@@ -4355,6 +4422,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     }
     REQUIRE(ecs_world_apply_commands(pointer_world) == ECS_OK);
     ((fixture_box *)ecs_component_data(pointer_world, entity, id))->value = 12;
+    REQUIRE(ecs_component_cell_alive(retained));
     pin_value read[] = { field, { .type = PIN_I32 } };
     REQUIRE(!EXECUTION_pointer_read_call.value(&managed, read, 2, &result));
     REQUIRE(result.i == 12);
@@ -4365,6 +4433,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     REQUIRE(ecs_component_version(pointer_world, entity, id) > before);
     REQUIRE(ecs_world_record_remove(pointer_world, entity, id, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(pointer_world) == ECS_OK);
+    REQUIRE(!ecs_component_cell_alive(retained));
     const char *error = EXECUTION_pointer_read_call.value(&managed, read, 2, &result);
     REQUIRE(error && !strcmp(error, "Component reference target is no longer available"));
     REQUIRE(EXECUTION_pointer_write_call.value(&managed, write, 2, &written));
@@ -4374,6 +4443,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     pin_value replacement = pointer_root;
     REQUIRE(!EXECUTION_component_pointer_call.value(&managed, make, 6, &replacement));
     REQUIRE(!pin_pointer_equal(pointer_root.ptr, replacement.ptr));
+    REQUIRE(!ecs_component_cell_alive(retained));
     write[1].i = 20;
     REQUIRE(EXECUTION_pointer_write_call.value(&managed, write, 2, &written));
     REQUIRE(((fixture_box *)ecs_component_data(pointer_world, entity, id))->value == 100);
@@ -4387,6 +4457,7 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     REQUIRE(!behavior_managed_heap_root(&pointer_heap, &pointer_root));
     ecs_world_free(pointer_world);
     pointer_world = NULL;
+    REQUIRE(!ecs_component_cell_alive(retained));
     REQUIRE(EXECUTION_pointer_read_call.value(&managed, read, 2, &result));
     pin_value whole_read[] = { replacement, type }, whole = type;
     error = EXECUTION_pointer_read_call.value(&managed, whole_read, 2, &whole);
@@ -4401,6 +4472,8 @@ TEST_CASE(execution_component_pointers_keep_identity_and_invalidate_removed_targ
     size_t bytes, capacity;
     arena_usage(&pointer_heap.storage, &bytes, &capacity);
     REQUIRE(bytes == 0);
+    REQUIRE(!ecs_component_cell_alive(retained));
+    ecs_component_cell_release(retained);
     return true;
 }
 
@@ -6306,6 +6379,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);
     RUN_TEST_CASE(execution_preparation_reserves_the_larger_matrix_phase);
     RUN_TEST_CASE(execution_preparation_reserves_one_definitions_scratch);
+    RUN_TEST_CASE(execution_preparation_reserves_the_runtime_code_it_keeps);
     RUN_TEST_CASE(execution_import_fingerprint_takes_the_linker_record_limit);
     RUN_TEST_CASE(execution_verifier_admits_a_large_compiler_function);
     RUN_TEST_CASE(execution_decoded_preparation_cleans_partial_live_roots);

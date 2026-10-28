@@ -1,5 +1,6 @@
 #include "toolchain/compiler_target.h"
 
+#include "ecs/ecs.h"
 #include "execution/function.h"
 #include "execution/instruction.h"
 #include "execution/prepared.h"
@@ -262,6 +263,7 @@ static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const targe
         yyjson_mut_obj_add_int(doc, native, "parameters", c->parameter_count);
         yyjson_mut_obj_add_int(doc, native, "results", c->result_count);
         yyjson_mut_obj_add_bool(doc, native, "variadic", c->variadic || c->variadic_optional);
+        yyjson_mut_obj_add_uint(doc, native, "effects", c->effects);
         if (input->rich) {
             yyjson_mut_obj_add_bool(doc, native, "direct", direct_native(input, c));
             yyjson_mut_obj_add_str(
@@ -306,11 +308,15 @@ static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const target
         { "pointer_size", (int)sizeof(void *) },
         { "value_size", (int)sizeof(pin_value) },
         { "payload_offset", (int)offsetof(pin_value, d) },
+        { "arguments_offset", (int)offsetof(behavior_function_context, arguments) },
         { "results_offset", (int)offsetof(behavior_function_context, results) },
+        { "delta_seconds_offset",
+          (int)offsetof(behavior_function_context, delta_seconds) },
         { "type_offset", (int)offsetof(pin_value, type) },
         { "container_offset", (int)offsetof(pin_value, container) },
         { "name_offset", (int)offsetof(pin_value, type_name) },
         { "record_offset", (int)offsetof(pin_value, record) },
+        { "schema_offset", (int)offsetof(pin_value, schema) },
         { "count_offset", (int)offsetof(pin_array, count) },
         { "items_offset", (int)offsetof(pin_array, items) },
         { "data_offset", (int)offsetof(pin_array, data) },
@@ -431,6 +437,8 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const target_in
         yyjson_mut_obj_add_int(doc, type, "storage", (int)t->type.storage);
         yyjson_mut_obj_add_uint(doc, type, "size", t->size);
         yyjson_mut_obj_add_uint(doc, type, "component", t->component ? t->component_id : 0);
+        yyjson_mut_obj_add_bool(doc, type, "relationship", false);
+        yyjson_mut_obj_add_uint(doc, type, "traits", 0);
         yyjson_mut_obj_add_uint(doc, type, "first", first);
         yyjson_mut_obj_add_int(doc, type, "count", t->field_count);
         first += (size_t)t->field_count;
@@ -452,6 +460,28 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const target_in
             yyjson_mut_obj_add_int(doc, field, "read", f->read ? native_index(input, f->read) : -1);
             yyjson_mut_obj_add_str(doc, field, "read_key", f->read_key ? f->read_key : "");
         }
+    }
+    for (int i = 0; i < catalog->relationship_count; i++) {
+        const script_catalog_relationship *relationship = &catalog->relationships[i];
+        yyjson_mut_val *type = yyjson_mut_arr_add_obj(doc, types);
+        yyjson_mut_obj_add_bool(doc, type, "required", false);
+        yyjson_mut_obj_add_int(doc, type, "underlying", -1);
+        yyjson_mut_obj_add_str(doc, type, "name", relationship->name);
+        yyjson_mut_obj_add_uint(doc, type, "id", relationship->id);
+        yyjson_mut_obj_add_uint(doc, type, "layout", 0);
+        yyjson_mut_obj_add_int(doc, type, "storage", PIN_HANDLE);
+        yyjson_mut_obj_add_uint(doc, type, "size", sizeof(uint64_t));
+        yyjson_mut_obj_add_uint(doc, type, "component", relationship->id);
+        yyjson_mut_obj_add_bool(doc, type, "relationship", true);
+        yyjson_mut_obj_add_uint(
+            doc,
+            type,
+            "traits",
+            (relationship->exclusive ? ECS_REL_EXCLUSIVE : 0) |
+                (relationship->traversable ? ECS_REL_TRAVERSABLE : 0)
+        );
+        yyjson_mut_obj_add_uint(doc, type, "first", first);
+        yyjson_mut_obj_add_int(doc, type, "count", 0);
     }
 }
 /* Each callable native that combines numbers, and records of them field by

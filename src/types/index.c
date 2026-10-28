@@ -147,7 +147,8 @@ static pin_array *empty_owned_set(arena *storage, const pin_value *item)
     int capacity = 4;
     pin_array source = { .element_type = item->type,
                          .type_name = item->type_name,
-                         .record = item->record };
+                         .record = item->record,
+                         .schema = item->schema };
     pin_array *array = pin_array_snapshot_like(storage, &source, capacity);
     if (!array) {
         return NULL;
@@ -173,7 +174,8 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
         *set = array;
     }
     bool nominal = item->type == PIN_ENUM || item->type == PIN_HANDLE ||
-                   item->type == PIN_STRUCT || item->type == PIN_POINTER;
+                   item->type == PIN_STRUCT || item->type == PIN_POINTER ||
+                   item->type == PIN_QUERY;
     pin_value shape = { .type = array->element_type,
                         .type_name = array->type_name,
                         .record = array->record };

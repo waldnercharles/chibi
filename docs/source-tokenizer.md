@@ -28,6 +28,7 @@ keywords are those of `src/language/grammar.js`; since Odin's names for `!`,
 `NotKeyword`, `AndKeyword` and `OrKeyword`. `self`, `min` and `max`, which the
 grammar matches only where it expects them, are identifiers. The parser
 decides where a keyword can serve as a name, as after `.`.
+`join`, `without` and `where` are ordinary identifiers.
 
 ## Tokens
 
@@ -79,8 +80,6 @@ which the parser has to handle:
 - `>` or `>>` as an operator at the end of a line gets a terminator, since the
   tokenizer cannot tell it from the end of type arguments; the parser skips a
   terminator after a binary operator;
-- a system header continued by `join` on the next line gets a terminator; the
-  parser skips one before `join` in a header;
 - a statement that starts with a struct literal, or a value-less `return`
   followed by a line that starts with `{`, does not end the line before it.
 

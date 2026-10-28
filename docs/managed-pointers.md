@@ -5,15 +5,17 @@ then finished on `claude/project-thread-7x506x` on 2026-10-24 over the shared
 prepared limits of #688. The validation ledger below records what has actually
 passed.
 
-This document's verification ledger belongs to that pointer prerequisite. The
-current collection candidate includes further source changes; its build evidence
-and unrun coverage are recorded in [value sequences](value-sequences.md).
+The ledger below records the pointer branch's checks. Two later changes extend
+this implementation and record their own evidence: the query integration
+(`codex/query-iterators-20261022`) adds retained component references and owned
+native schemas, and collections as values (#694) records its build evidence and
+unrun coverage in [value sequences](value-sequences.md).
 
 ## Contract
 
 Assignment copies the value of its type. A pointer assignment copies a
-reference to the same mutable value. Managed pointers keep their targets alive,
-including after a function returns. Users do not select shared or unique
+reference to the same mutable value. Pointers to ordinary language values keep
+their targets alive, including after a function returns. Users do not select shared or unique
 ownership, write `move`, or break reference cycles manually.
 
 The owner revised the collection contract on 2026-10-22: ordinary arrays and
@@ -57,9 +59,26 @@ q.health = 80   // actor, p and q observe 80.
 - Address-taking initially supports writable locals, value parameters and
   fields of flat authored records. Managed payloads reject inline nested record
   layouts and native reflected records until their metadata can be retained
-  independently of a replaceable catalog. Addresses of array/map entries are
-  rejected until their identity and lifetime contracts are implemented. A pointer to an entire array/map variable
+  independently of a replaceable catalog. Query bindings provide component
+  references explicitly with `component: ^T`; fields reached through an
+  existing managed pointer can be projected without borrowing a component
+  address. Addresses of array/map entries are rejected until their identity and lifetime contracts are implemented. A pointer to an entire array/map variable
   is a separate case.
+- Component references support reflected native layouts, including nested
+  native records, strings and narrow enums. A live reference observes native
+  component writes and publishes its writes through the component's owning
+  write API. Removing the component, destroying its entity or destroying its
+  world permanently invalidates that component incarnation. A later add has a
+  different identity; references never revive or follow a reused entity slot.
+  Reads, writes and field projections on an invalid target return the runtime
+  diagnostic `Component reference target is no longer available`. The embedding
+  caller receives the existing execution failure and diagnostic; the activation
+  stops. Authored code has no catch or checked recovery operation yet. An
+  invalidated reference keeps its identity and does not become `nil`.
+- Native component values and references retain exact layout metadata,
+  including nested schemas, offsets, string representation and write ranges.
+  These schemas do not extend the fields ECS components can contain: managed
+  pointer, query, task and union fields remain unsupported in component storage.
 - Managed pointers are process-local values. Persistence and native/ECS
   boundaries must explicitly support their lifetime or reject them; they must
   never serialize an address as an integer. Native calls reject arguments
@@ -87,6 +106,21 @@ managed heap belongs to the execution owner shared by imports and activations;
 an address-taken local becomes a typed cell from its initialization. Pointer
 copies preserve cell identity, and field projections retain their root cell.
 They must not retain a frame address or an entire invocation.
+
+Component references use retained ECS cells. Each cell resolves its current
+row while valid, so storage movement and suspension do not retain a row address.
+Removal, entity destruction, world destruction or a failed storage lookup
+permanently invalidates the cell. Invalid cells retain their schema metadata
+and identity without retaining a final component payload.
+The pointer descriptor retains the cell; the collector releases that ownership
+through an arena finalizer. The cell's last external release also removes an
+unused attached cell, so the world does not keep unreferenced cells alive.
+Each cell owns an immutable native schema closure from `types/schema.c`.
+The same schema representation travels with native value snapshots, allowing
+copying and tracing to resolve nested types independently of the catalog.
+Retained cell metadata contributes to the owning arena's payload accounting and
+collection admission. Invalidating a cell does not copy its component value.
+A cell shared across owning arenas contributes once to each owner's reported payload.
 
 Collection must trace all live roots: persistent values, current/suspended
 activations, action arguments, task results, cached values and queued work.
@@ -127,24 +161,38 @@ compiler-generated destructors and reference updates throughout the program.
 Reusing Chibi's existing tracing collector avoids adding that second ownership
 system. Reference: [Nim ORC source at the inspected revision](https://github.com/nim-lang/Nim/blob/2b9e94433dd9c3e8e138f8bc6fb52060d54c436a/lib/system/orc.nim).
 
+## Hot reload and cell storage
+
+- **Kept state.** A replacement keeps each state whose id the old module also
+  declares. When it cannot keep one as it is, because the state's own type
+  changed or because it reaches through a pointer an authored record whose
+  layout the new module changes, the replacement is refused: the running
+  program keeps its module and state, and a restart applies the change. Kept
+  cells are shared with the running program until commit, so commit checks
+  them again and fails the same way. Adding a field to `Actor` therefore
+  refuses a reload while `saved: ^Actor?` points at an `Actor`
+  (`program_replacement_rejects_state_reaching_changed_pointee_layouts`).
+- **Retired heaps.** The program keeps one heap handle across replacements. A
+  commit adopts the candidate's heap into that family, and every heap names
+  the family's head as its owner. The commit, and each later collection,
+  frees each adopted heap that holds no cell and no root
+  (`program_replacement_releases_empty_retired_heaps`).
+- **Items of a managed array.** A cell owns its payload alone, so element and
+  field writes through a pointer (`p^[i] = v`, `p.field = v`) change it in
+  place instead of copying the whole value first. Stage zero reads an item of `p^` or of an addressed
+  local through the cell, which copies that item alone
+  (`program_managed_array_items_copy_alone`).
+
 ## Known limitations
 
-The independent runtime review of #695 left these for follow-up work:
-
-- **Pointee layouts across hot reload.** Matching preserved state compares the
-  pointer header, not the pointee's layout. If a replacement changes a record
-  that preserved cells hold (for example, a field added to `Actor` while
-  `saved: ^Actor` is kept), those cells keep the old layout. Reads through them
-  then fail with "Reference read differs from its declared result" until a
-  restart. Nothing reads freed or misaligned memory. The fix is to compare the
-  layouts reachable through pointers when state is matched.
-- **Retired heaps.** Each committed replacement keeps the previous heap in the
-  family until the program is destroyed, even once it holds no live cell.
-  Collection and ownership checks grow linearly with the number of reloads.
-- **Elements through a pointer to an array.** `p^[i]` reads and `p^[i] = v`
-  writes copy the whole cell value, and an address-taken array local leaves the
-  in-place array path. Loops over large `^(T[])` targets are quadratic until
-  writes go into the cell in place and reads copy only the item.
+- The Chibi-written compiler (`Pointers.chibi`) still lowers `p^[i]` reads as
+  a read of the whole cell followed by an index. Programs it compiles get
+  in-place writes, but each item read copies the array.
+- Appending to an address-taken array local (`xs.append(v)` after `&xs`)
+  reads and replaces the whole cell.
+- A replacement never migrates kept state: a changed state type or pointee
+  layout is refused rather than converted. Rows that a system's query manages
+  still restart when the query's shape changes.
 
 ## Verification ledger
 

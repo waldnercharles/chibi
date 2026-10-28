@@ -108,7 +108,7 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_types") {
         return [
-            "src/types/type.c", "src/types/catalog.c", "src/types/array.c", "src/types/text.c", "src/types/map.c",
+            "src/types/type.c", "src/types/schema.c", "src/types/catalog.c", "src/types/array.c", "src/types/text.c", "src/types/map.c",
             "src/types/record.c", "src/types/copy.c", "src/types/trace.c", "src/types/union.c",
             "src/types/index.c", "src/types/value_format.c", "src/types/value_wire.c"
         ];
@@ -251,7 +251,7 @@ Files :: (target: string) -> string[] {
             "src/execution/c.c", "src/execution/call.c", "src/execution/component.c",
             "src/execution/ecs_reader.c", "src/execution/function.c", "src/execution/function_builder.c",
             "src/execution/fusion.c", "src/execution/host.c", "src/execution/inputs.c",
-            "src/execution/integer_report.c", "src/execution/intrinsics.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
+            "src/execution/integer_report.c", "src/execution/intrinsics.c", "src/execution/query.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
             "src/execution/jit_component.c", "src/execution/jit_host_call.c", "src/execution/jit_integer.c",
             "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",
             "src/execution/jit_system.c", "src/execution/jit_watch.c", "src/execution/log.c",
@@ -382,10 +382,10 @@ Files :: (target: string) -> string[] {
             "src/assets/project.c", "src/assets/project_migrate.c", "src/assets/project_migrate26.c",
             "src/assets/project_migrate29.c", "src/assets/project_migrate30.c", "src/assets/project_migrate31.c",
             "src/assets/project_migrate32.c", "src/assets/project_migrate34.c", "src/assets/project_migrate36.c",
-            "src/assets/project_parser23.c", "src/assets/project_parser24.c", "src/assets/project_parser25.c",
+            "src/assets/project_migrate37.c", "src/assets/project_parser23.c", "src/assets/project_parser24.c", "src/assets/project_parser25.c",
             "src/assets/project_parser26.c", "src/assets/project_parser27.c", "src/assets/project_parser28.c",
             "src/assets/project_parser29.c", "src/assets/project_parser30.c", "src/assets/project_parser31.c",
-            "src/assets/project_parser36.c"
+            "src/assets/project_parser36.c", "src/assets/project_parser37.c"
         ];
     }
     if (target == "chibi_ui_authoring") {
@@ -730,7 +730,8 @@ Files :: (target: string) -> string[] {
             "test/language/record_prepared.c", "test/language/runtime_attribution.c",
             "test/language/syntax.c", "test/language/semantic.c", "test/language/execution.c",
             "test/language/program.c", "test/language/retention.c", "test/language/capture.c",
-            "test/language/query_boundary.c", "test/language/incremental.c", "test/language/operations.c",
+            "test/language/query_boundary.c", "test/language/query_values.c", "test/language/query_migration.c",
+            "test/language/incremental.c", "test/language/operations.c",
             "test/language/modules.c", "test/language/native_calls.c",
             "test/language/ranges.c", "test/language/scalarize.c", "test/language/component_write.c",
             "test/language/component_write_source.c", "test/language/component_write_ir.c",
@@ -975,7 +976,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_types") {
         return [
             "types/annotate.h", "types/array.h", "types/catalog.h", "types/copy.h", "types/map.h",
-            "types/record.h", "types/pointer.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
+            "types/record.h", "types/pointer.h", "types/query.h", "types/schema.h", "types/scalar.h", "types/state_machine.h", "types/trace.h", "types/type.h",
             "types/union.h", "types/value.h", "types/text.h", "types/value_format.h", "types/value_wire.h"
         ];
     }
@@ -3528,7 +3529,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
         "test/language/package_syntax_chibi.c", "test/language/prepared_writer_chibi.c",
-        "test/language/program.c", "test/language/query_boundary.c", "test/language/ranges.c",
+        "test/language/program.c", "test/language/query_boundary.c", "test/language/query_values.c", "test/language/query_migration.c", "test/language/ranges.c",
         "test/language/record_members_chibi.c", "test/language/record_prepared.c",
         "test/language/record_prepared_runtime.c", "test/language/record_publication.c",
         "test/language/record_runtime.c", "test/language/record_semantic.c",
@@ -3709,6 +3710,8 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_NATIVE_ABI_BYTES=bytes:tools/compiler/native_abi/Abi.chibi",
             "CHIBI_NOMINAL_BINDING_BYTES=bytes:tools/compiler/nominal_binding/Nominal.chibi",
             "CHIBI_PACKAGE_COMPILER_BEHAVIOR_BYTES=bytes:tools/compiler/package_compiler/Behavior.chibi",
+            "CHIBI_PACKAGE_COMPILER_QUERIES_BYTES=bytes:tools/compiler/package_compiler/Queries.chibi",
+            "CHIBI_PACKAGE_COMPILER_QUERYLOOPS_BYTES=bytes:tools/compiler/package_compiler/QueryLoops.chibi",
             "CHIBI_PACKAGE_COMPILER_BODY_BYTES=bytes:tools/compiler/package_compiler/Body.chibi",
             "CHIBI_PACKAGE_COMPILER_COMPILE_BYTES=bytes:tools/compiler/package_compiler/Compile.chibi",
             "CHIBI_PACKAGE_COMPILER_MAPS_BYTES=bytes:tools/compiler/package_compiler/Maps.chibi",

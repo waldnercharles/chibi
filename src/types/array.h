@@ -31,6 +31,7 @@ typedef struct pin_array
     int offset;
     pin_pointer *pointer; /* Explicit view resolves the current logical pointer cell. */
     pin_array_backing *backing; /* Refcounted payload, independent of shell lifetime. */
+    const pin_schema *schema; /* Owned native element layouts, including empty arrays. */
 } pin_array;
 
 /* Explicit VALUE copy: fresh collection shell, shared immutable-until-write backing.

@@ -13,6 +13,7 @@
 #include "types/map.h"
 #include "types/pointer.h"
 #include "types/record.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
@@ -1192,14 +1193,32 @@ static pin_value reference_root(language_reference *ref)
         return root;
     }
     if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+        if (ref->managed->component) {
+            pin_value value = ecs_component_cell_value(ref->managed->component);
+            value.record = ref->managed->value.record;
+            if (value.record) {
+                value.schema = NULL;
+            }
+            return value;
+        }
         return ref->managed->value;
     }
     return ref->kind == LANGUAGE_REFERENCE_STATE
              ? ref->owner->variables[ref->variable]
              : *ref->value;
 }
+static bool invalid_component_target(const language_reference *ref, pin_value root)
+{
+    return ref->kind == LANGUAGE_REFERENCE_MANAGED && ref->managed->component &&
+           !root.ptr;
+}
+static const char invalid_component_target_error
+    [] = "Component reference target is no longer available";
 static const type_desc *reference_root_layout(const language_reference *ref)
 {
+    if (ref->kind == LANGUAGE_REFERENCE_MANAGED && ref->managed->component) {
+        return ecs_component_cell_type(ref->managed->component);
+    }
     if (ref->kind != LANGUAGE_REFERENCE_COMPONENT) {
         return NULL;
     }
@@ -1207,6 +1226,12 @@ static const type_desc *reference_root_layout(const language_reference *ref)
     return column && column->layout == ref->layout && column->stride == ref->stride
              ? column->type
              : NULL;
+}
+static type_resolver reference_resolver(const language_reference *ref)
+{
+    return ref->kind == LANGUAGE_REFERENCE_MANAGED && ref->managed->component
+             ? ecs_component_cell_resolver(ref->managed->component)
+             : (type_resolver){ 0 };
 }
 /* Whether layout has a field of the claimed type at offset: a field path
  * copies by its claimed type, which must be the field's own. Names of scalar
@@ -1231,13 +1256,14 @@ static void *reference_path_data_mode(
     const language_reference_path *path,
     pin_value *type,
     void *data,
-    const type_desc *root_layout
+    const type_desc *root_layout,
+    type_resolver resolver
 )
 {
     if (!path || !data) {
         return data;
     }
-    data = reference_path_data_mode(storage, writable, path->parent, type, data, root_layout);
+    data = reference_path_data_mode(storage, writable, path->parent, type, data, root_layout, resolver);
     if (!data) {
         return NULL;
     }
@@ -1312,7 +1338,8 @@ static void *reference_path_data_mode(
     }
     const type_desc *layout = !path->parent && root_layout ? root_layout
                             : type->type == PIN_STRUCT && type->container == PIN_CONTAINER_SINGLE
-                                ? pin_value_type(type)
+                                ? (resolver.find ? type_resolve(resolver, type->type_name)
+                                                 : pin_value_type(type))
                                 : NULL;
     if (!layout || !field_at(layout, path->offset, path->type)) {
         return NULL;
@@ -1324,10 +1351,11 @@ static void *reference_path_data(
     const language_reference_path *path,
     pin_value *type,
     void *data,
-    const type_desc *root_layout
+    const type_desc *root_layout,
+    type_resolver resolver
 )
 {
-    return reference_path_data_mode(NULL, false, path, type, data, root_layout);
+    return reference_path_data_mode(NULL, false, path, type, data, root_layout, resolver);
 }
 static void *reference_data(language_reference *ref, pin_value *root)
 {
@@ -1336,12 +1364,12 @@ static void *reference_data(language_reference *ref, pin_value *root)
     void *data = root->type == PIN_STRUCT && root->container == PIN_CONTAINER_SINGLE
                    ? root->ptr
                    : &root->d;
-    return reference_path_data(ref->path, &type, data, reference_root_layout(ref));
+    return reference_path_data(ref->path, &type, data, reference_root_layout(ref), reference_resolver(ref));
 }
-static const type_field *reference_text_field(const language_reference *ref, pin_value root)
+static const type_field *reference_member_field(const language_reference *ref, pin_value root)
 {
     const language_reference_path *path = ref->path;
-    if (!path || path->element || path->map || path->type.type != PIN_STR) {
+    if (!path || path->element || path->map) {
         return NULL;
     }
     pin_value type = root;
@@ -1349,16 +1377,23 @@ static const type_field *reference_text_field(const language_reference *ref, pin
                    ? root.ptr
                    : &root.d;
     const type_desc *root_layout = reference_root_layout(ref);
-    data = reference_path_data(path->parent, &type, data, root_layout);
+    type_resolver resolver = reference_resolver(ref);
+    data = reference_path_data(path->parent, &type, data, root_layout, resolver);
     const type_desc *layout = !path->parent && root_layout ? root_layout
-                                                           : pin_value_type(&type);
+                            : resolver.find ? type_resolve(resolver, type.type_name)
+                                            : pin_value_type(&type);
     for (int n = 0; data && layout && n < layout->field_count; n++) {
         const type_field *field = &layout->fields[n];
-        if (field->offset == path->offset && field->type == PIN_STR) {
+        if (field->offset == path->offset && field->type == path->type.type) {
             return field;
         }
     }
     return NULL;
+}
+static const type_field *reference_text_field(const language_reference *ref, pin_value root)
+{
+    const type_field *field = reference_member_field(ref, root);
+    return field && field->type == PIN_STR ? field : NULL;
 }
 static pin_array *reference_array(const language_reference *ref, pin_value *root)
 {
@@ -1368,7 +1403,7 @@ static pin_array *reference_array(const language_reference *ref, pin_value *root
     void *data = root->type == PIN_STRUCT && root->container == PIN_CONTAINER_SINGLE
                    ? root->ptr
                    : &root->d;
-    data = reference_path_data(path->parent, &type, data, reference_root_layout(ref));
+    data = reference_path_data(path->parent, &type, data, reference_root_layout(ref), reference_resolver(ref));
     if (!data || (type.container != PIN_CONTAINER_ARRAY &&
                   type.container != PIN_CONTAINER_VIEW)) {
         return NULL;
@@ -1395,16 +1430,17 @@ static int snapshot_reference_root(
     arena *storage,
     pin_value *out,
     const pin_value *source,
-    const type_desc *layout
+    const type_desc *layout,
+    type_resolver resolver
 )
 {
-    if (!layout || source->record) {
+    if (!layout || source->record || source->schema) {
         return pin_value_snapshot_to_arena(storage, out, source);
     }
     assert(source->type == PIN_STRUCT && source->container == PIN_CONTAINER_SINGLE);
     *out = *source;
     pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
-    out->record = pin_record_from_type(storage, layout);
+    out->record = pin_record_from_type_resolved(storage, layout, resolver);
     if (!out->record) {
         return -1;
     }
@@ -1467,7 +1503,15 @@ static const char *array_mutate_place(arena *storage, const pin_value *args, int
     void *data = root.type == PIN_STRUCT && root.container == PIN_CONTAINER_SINGLE
                    ? root.ptr
                    : &root.d;
-    data = reference_path_data_mode(storage, true, ref->path, &target, data, reference_root_layout(ref));
+    data = reference_path_data_mode(
+        storage,
+        true,
+        ref->path,
+        &target,
+        data,
+        reference_root_layout(ref),
+        reference_resolver(ref)
+    );
     if (!data || !sequence_array(target)) {
         if (persistent) {
             pin_value_collection_release(&root);
@@ -1517,7 +1561,15 @@ static const char *map_delete_place(arena *storage, const pin_value *args, int c
     void *data = root.type == PIN_STRUCT && root.container == PIN_CONTAINER_SINGLE
                    ? root.ptr
                    : &root.d;
-    data = reference_path_data_mode(storage, true, ref->path, &target, data, reference_root_layout(ref));
+    data = reference_path_data_mode(
+        storage,
+        true,
+        ref->path,
+        &target,
+        data,
+        reference_root_layout(ref),
+        reference_resolver(ref)
+    );
     const char *error = NULL;
     if (!data || target.container != PIN_CONTAINER_MAP) {
         error = "Map deletion place is unavailable";
@@ -1559,6 +1611,9 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
      * checked every later use against. */
     pin_value declared = *out, root;
     void *data = reference_data(ref, &root);
+    if (invalid_component_target(ref, root)) {
+        return invalid_component_target_error;
+    }
     if (!root_matches(ref, root)) {
         return "Reference type differs from its storage";
     }
@@ -1586,11 +1641,27 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
                  : NULL;
     }
     const type_desc *layout = !ref->path ? reference_root_layout(ref) : NULL;
+    type_resolver resolver = reference_resolver(ref);
+    if (!layout && resolver.find && declared.type == PIN_STRUCT) {
+        layout = type_resolve(resolver, declared.type_name);
+    }
     size_t size = layout ? layout->size : execution_value_size(ref->type);
     if ((!data && (ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT)) || !size) {
         return "Referenced storage is unavailable";
     }
     const type_field *text_field = reference_text_field(ref, root);
+    const type_field *member_field = reference_member_field(ref, root);
+    if (member_field && member_field->type == PIN_ENUM) {
+        type_field field = *member_field;
+        field.offset = 0;
+        pin_value value;
+        const char *error = pin_read_field(storage, data, &field, &value);
+        if (!error) {
+            value.type_name = ref->type.type_name;
+            *out = value;
+        }
+        return error;
+    }
     if (text_field && !text_field->text_descriptor) {
         const char *text;
         memcpy(&text, data, sizeof text);
@@ -1606,11 +1677,12 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
     *out = ref->type;
     if (out->type == PIN_STRUCT && out->container == PIN_CONTAINER_SINGLE) {
         out->ptr = data;
+        out->schema = root.schema;
     } else {
         memcpy(&out->d, data, size);
     }
     pin_value retained;
-    if (snapshot_reference_root(storage, &retained, out, layout)) {
+    if (snapshot_reference_root(storage, &retained, out, layout, resolver)) {
         return "Cannot retain referenced value";
     }
     *out = retained;
@@ -1618,8 +1690,11 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
 }
 static bool component_scalar_path(const language_reference *ref)
 {
-    if (ref->kind != LANGUAGE_REFERENCE_COMPONENT || !ref->path ||
-        ref->type.container != PIN_CONTAINER_SINGLE || ref->type.type == PIN_STRUCT) {
+    bool component = ref && (ref->kind == LANGUAGE_REFERENCE_COMPONENT ||
+                             (ref->kind == LANGUAGE_REFERENCE_MANAGED &&
+                              ref->managed && ref->managed->component));
+    if (!component || !ref->path || ref->type.container != PIN_CONTAINER_SINGLE ||
+        ref->type.type == PIN_STRUCT) {
         return false;
     }
     for (const language_reference_path *path = ref->path; path; path = path->parent) {
@@ -1631,7 +1706,7 @@ static bool component_scalar_path(const language_reference *ref)
 }
 static const char *write_reference_value(arena *owner_storage, language_reference *ref, const pin_value *args)
 {
-    if (ref->kind == LANGUAGE_REFERENCE_MANAGED) {
+    if (ref->kind == LANGUAGE_REFERENCE_MANAGED && !ref->managed->component) {
         const char *error = behavior_managed_storage_value_error(ref->managed->storage, &args[1]);
         if (error) {
             return error;
@@ -1639,6 +1714,9 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
     }
     pin_value root;
     void *current = reference_data(ref, &root);
+    if (invalid_component_target(ref, root)) {
+        return invalid_component_target_error;
+    }
     /* The value is copied by the reference's type, and an unpathed or element
      * write replaces the root's or the item's header with the value's. */
     bool element = ref->path && ref->path->element;
@@ -1651,8 +1729,17 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
         return "Reference write differs from the reference's type";
     }
     if (!current && !map &&
-        (element ? !array : ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT)) {
+        (element ? !array
+                 : ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT ||
+                       (ref->kind == LANGUAGE_REFERENCE_MANAGED &&
+                        ref->managed->component))) {
         return "Referenced storage is unavailable";
+    }
+    if (ref->kind == LANGUAGE_REFERENCE_MANAGED && ref->managed->component) {
+        size_t offset = ref->path ? (size_t)((char *)current - (char *)root.ptr) : 0;
+        return ecs_component_cell_write(ref->managed->component, offset, ref->type, args[1])
+                 ? "Cannot retain referenced component write"
+                 : NULL;
     }
     if (!owner_storage) {
         return "Referenced owner has no retained value storage";
@@ -1708,7 +1795,15 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
         void *data = retained.type == PIN_STRUCT && retained.container == PIN_CONTAINER_SINGLE
                        ? retained.ptr
                        : &retained.d;
-        void *parent = reference_path_data_mode(owner_storage, true, ref->path->parent, &type, data, root_layout);
+        void *parent = reference_path_data_mode(
+            owner_storage,
+            true,
+            ref->path->parent,
+            &type,
+            data,
+            root_layout,
+            reference_resolver(ref)
+        );
         if (!parent || type.container != PIN_CONTAINER_MAP) {
             return "Referenced Map owner is unavailable";
         }
@@ -1726,7 +1821,15 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
                                     retained.container == PIN_CONTAINER_SINGLE
                               ? retained.ptr
                               : &retained.d;
-        if (!reference_path_data_mode(owner_storage, true, ref->path->parent, &parent_type, parent_data, root_layout)) {
+        if (!reference_path_data_mode(
+                owner_storage,
+                true,
+                ref->path->parent,
+                &parent_type,
+                parent_data,
+                root_layout,
+                reference_resolver(ref)
+            )) {
             return "Referenced array owner is unavailable";
         }
         pin_array *array = reference_array(ref, &retained);
@@ -1741,7 +1844,15 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
         void *data = retained.type == PIN_STRUCT && retained.container == PIN_CONTAINER_SINGLE
                        ? retained.ptr
                        : &retained.d;
-        void *target = reference_path_data_mode(owner_storage, true, ref->path, &type, data, root_layout);
+        void *target = reference_path_data_mode(
+            owner_storage,
+            true,
+            ref->path,
+            &type,
+            data,
+            root_layout,
+            reference_resolver(ref)
+        );
         size_t size = execution_value_size(ref->type);
         if (!target || !size) {
             return "Referenced path is unavailable";
@@ -1927,6 +2038,79 @@ static const char *pointer_make(arena *storage, const pin_value *args, int count
     out->ptr = pointer;
     return NULL;
 }
+static void component_pointer_release(void *data)
+{
+    pin_pointer *pointer = data;
+    ecs_component_cell_release_storage(pointer->component, pointer->storage);
+}
+static bool pointer_header(arena *heap, pin_value *out, pin_value header)
+{
+    header.ptr = NULL;
+    if (header.record) {
+        return !pin_value_snapshot_to_arena(heap, out, &header);
+    }
+    *out = header;
+    if (header.schema) {
+        out->schema = pin_schema_snapshot(heap, header.schema);
+    }
+    if (header.type_name) {
+        size_t bytes = strlen(header.type_name) + 1;
+        char *name = arena_alloc(heap, bytes);
+        memcpy(name, header.type_name, bytes);
+        out->type_name = name;
+    }
+    return true;
+}
+static const char *component_pointer(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 6);
+    (void)count;
+    behavior_function_context *context = value_context(args[0]);
+    if (!context || !context->managed_heap ||
+        !context->managed_heap->storage.collectable || !context->world) {
+        return "Component pointer requires a managed heap and execution world";
+    }
+    ecs_component_cell *cell = ecs_component_cell_acquire(
+        (ecs_world *)context->world,
+        ecs_entity_from_u64(args[1].u64),
+        args[2].u64
+    );
+    out->type = PIN_POINTER;
+    out->container = PIN_CONTAINER_SINGLE;
+    out->ptr = NULL;
+    if (!cell) {
+        return ecs_component_has(
+                   (ecs_world *)context->world,
+                   ecs_entity_from_u64(args[1].u64),
+                   args[2].u64
+               )
+                 ? "Component pointer requires a retainable reflected layout"
+                 : NULL;
+    }
+    const type_desc *type = ecs_component_cell_type(cell);
+    const ecs_execution_column
+        *column = ecs_execution_find_column(context->world, args[2].u64);
+    if (args[3].type != PIN_STRUCT ||
+        args[3].container != PIN_CONTAINER_SINGLE || !args[3].type_name ||
+        strcmp(args[3].type_name, type->name) || args[5].u64 != type->size ||
+        args[5].u64 != column->stride || args[4].u64 != column->layout) {
+        ecs_component_cell_release(cell);
+        return "Component pointer differs from its pointee type";
+    }
+    arena *heap = &context->managed_heap->storage;
+    pin_pointer *pointer = arena_alloc(heap, sizeof *pointer);
+    *pointer = (pin_pointer){ .storage = heap, .component = cell };
+    if (!pointer_header(heap, &pointer->value, args[3])) {
+        ecs_component_cell_release(cell);
+        return "Cannot retain component pointer type";
+    }
+    ecs_component_cell_retain_storage(cell, heap);
+    pin_arena_trace_pointer(heap, pointer);
+    arena_set_cleanup(heap, pointer, component_pointer_release, pointer, 0);
+    out->ptr = pointer;
+    return NULL;
+}
 static const char *pointer_read(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count == 2);
@@ -1968,14 +2152,21 @@ static const char *pointer_field(arena *storage, const pin_value *args, int coun
     language_reference view = pointer_view(base);
     pin_value root;
     void *data = reference_data(&view, &root);
-    const type_desc *layout = pin_value_type(&base->value);
+    if (invalid_component_target(&view, root)) {
+        return invalid_component_target_error;
+    }
+    type_resolver resolver = reference_resolver(&view);
+    const type_desc *layout = !base->path ? reference_root_layout(&view) : NULL;
+    if (!layout) {
+        layout = resolver.find ? type_resolve(resolver, base->value.type_name)
+                               : pin_value_type(&base->value);
+    }
     if (!data || !layout || !field_at(layout, args[2].u64, args[1])) {
         return "Managed pointer field differs from its record layout";
     }
     arena *heap = base->storage;
-    pin_value header = args[1], owned;
-    header.ptr = NULL;
-    if (pin_value_snapshot_to_arena(heap, &owned, &header)) {
+    pin_value owned;
+    if (!pointer_header(heap, &owned, args[1])) {
         return "Cannot retain managed pointer field type";
     }
     language_reference_path *path = arena_alloc(heap, sizeof *path);
@@ -2020,15 +2211,19 @@ static const char *pointer_reference(arena *storage, const pin_value *args, int 
     return NULL;
 }
 const node_host_call EXECUTION_pointer_make_call = { .value = pointer_make };
+const node_host_call EXECUTION_component_pointer_call = { .value = component_pointer };
 const node_host_call EXECUTION_pointer_read_call = { .value = pointer_read };
 const node_host_call EXECUTION_pointer_write_call = { .value = pointer_write };
 const node_host_call EXECUTION_pointer_field_call = { .value = pointer_field };
 const node_host_call EXECUTION_pointer_reference_call = { .value = pointer_reference };
-static const char *reduce_reference(arena *storage, const pin_value *args, int count, pin_value *out)
+static const char *reduce_reference(
+    const behavior_function_context *caller,
+    void *service,
+    const pin_value *args,
+    pin_value *out
+)
 {
-    (void)storage;
-    assert(count == 3);
-    (void)count;
+    (void)service;
     language_reference *ref = (language_reference *)(uintptr_t)args[0].u64;
     if (!component_scalar_path(ref) || ref->type.type < PIN_I8 ||
         ref->type.type > PIN_F64 || args[1].type != ref->type.type ||
@@ -2038,17 +2233,29 @@ static const char *reduce_reference(arena *storage, const pin_value *args, int c
         return "Reduction requires a numeric component field and matching "
                "value";
     }
+    behavior_function_context *context = (void *)caller;
+    if (ref->kind == LANGUAGE_REFERENCE_MANAGED &&
+        !ecs_component_cell_value(ref->managed->component).ptr) {
+        return invalid_component_target_error;
+    }
+    uint64_t entity = ref->entity, component = ref->component, layout = ref->layout;
+    if (!context || !context->world || !context->reduce_component ||
+        (ref->kind == LANGUAGE_REFERENCE_MANAGED
+             ? !ecs_component_cell_target(ref->managed->component, context->world, &entity, &component, &layout)
+             : ref->owner->world != context->world)) {
+        return "Reduction destination is unavailable";
+    }
     pin_value root;
     const void *target = reference_data(ref, &root);
-    if (!target || !root.ptr || !ref->owner->reduce_component) {
+    if (!target || !root.ptr || !root_matches(ref, root)) {
         return "Reduction destination is unavailable";
     }
     size_t offset = (const char *)target - (const char *)root.ptr;
-    int status = ref->owner->reduce_component(
-        ref->owner,
-        ref->entity,
-        ref->component,
-        ref->layout,
+    int status = context->reduce_component(
+        context,
+        entity,
+        component,
+        layout,
         offset,
         ref->type,
         args[1],
@@ -2076,7 +2283,7 @@ const node_host_call EXECUTION_local_release_call = { .value = release_local };
 const node_host_call EXECUTION_reference_field_call = { .value = field_reference };
 const node_host_call EXECUTION_reference_read_call = { .value = read_reference };
 const node_host_call EXECUTION_reference_write_call = { .value = write_reference };
-const node_host_call EXECUTION_reference_reduce_call = { .value = reduce_reference };
+const node_host_call EXECUTION_reference_reduce_call = { .context = reduce_reference };
 static const char *read_action_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count == 3);
@@ -2353,6 +2560,20 @@ const node_host_call EXECUTION_string_cursor_call = { .value = string_cursor };
 const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 {
     switch (id) {
+        case EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT:
+            return &EXECUTION_component_snapshot_call;
+        case EXECUTION_INTRINSIC_QUERY_TEST: return &EXECUTION_query_test_call;
+        case EXECUTION_INTRINSIC_QUERY_MAKE: return &EXECUTION_query_make_call;
+        case EXECUTION_INTRINSIC_QUERY_BEGIN:
+            return &EXECUTION_query_begin_call;
+        case EXECUTION_INTRINSIC_QUERY_NEXT: return &EXECUTION_query_next_call;
+        case EXECUTION_INTRINSIC_QUERY_END: return &EXECUTION_query_end_call;
+        case EXECUTION_INTRINSIC_QUERY_ROW_GET:
+            return &EXECUTION_query_row_get_call;
+        case EXECUTION_INTRINSIC_QUERY_CURRENT_ROW:
+            return &EXECUTION_query_current_row_call;
+        case EXECUTION_INTRINSIC_COMPONENT_POINTER:
+            return &EXECUTION_component_pointer_call;
         case EXECUTION_INTRINSIC_POINTER_MAKE:
             return &EXECUTION_pointer_make_call;
         case EXECUTION_INTRINSIC_POINTER_READ:
@@ -2451,6 +2672,16 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 }
 uint64_t execution_intrinsic_id(const node_host_call *call)
 {
+    for (int id = EXECUTION_INTRINSIC_QUERY_MAKE;
+         id <= EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT;
+         id++) {
+        if (call == execution_intrinsic_call((execution_intrinsic)id)) {
+            return UINT64_C(0x4348494900000000) | (unsigned)id;
+        }
+    }
+    if (call == &EXECUTION_component_pointer_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_COMPONENT_POINTER;
+    }
     for (int id = EXECUTION_INTRINSIC_POINTER_MAKE;
          id <= EXECUTION_INTRINSIC_POINTER_REFERENCE;
          id++) {
@@ -2603,6 +2834,15 @@ const node_access *execution_intrinsic_access(uint64_t id)
         case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
         case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
             return &EXECUTION_sequence_read_access;
+        case EXECUTION_INTRINSIC_QUERY_MAKE:
+        case EXECUTION_INTRINSIC_QUERY_ROW_GET:
+        case EXECUTION_INTRINSIC_QUERY_CURRENT_ROW:
+            return &EXECUTION_value_access;
+        case EXECUTION_INTRINSIC_QUERY_TEST:
+            return &EXECUTION_component_read_access;
+        case EXECUTION_INTRINSIC_QUERY_BEGIN:
+        case EXECUTION_INTRINSIC_QUERY_NEXT:
+            return &EXECUTION_component_read_access;
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_ITEM:
@@ -2624,6 +2864,8 @@ const node_access *execution_intrinsic_access(uint64_t id)
         case EXECUTION_INTRINSIC_REFERENCE_UNION:
             return &EXECUTION_value_access;
         case EXECUTION_INTRINSIC_COMPONENT_HAS:
+        case EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT:
+        case EXECUTION_INTRINSIC_COMPONENT_POINTER:
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:
             return &EXECUTION_component_read_access;

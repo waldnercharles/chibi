@@ -17,7 +17,7 @@ import strings "core:strings"
 // far more than a field.
 
 Magic: u64 : 0x4348494249505245;
-Version: int : 24;
+Version: int : 26;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),
@@ -273,6 +273,28 @@ pub Entry :: struct {
     body: int;
     subscription: int;
 }
+// One structural query term. Children name ints[first, first + count), and
+// predicate indexes references, or is -1 for terms without an evaluator.
+pub Query :: struct {
+    kind: int;
+    required: bool;
+    component_id: int;
+    source_relationship: int;
+    source_traversal: int;
+    source_variable: int;
+    target_variable: int;
+    predicate: int;
+    first: int;
+    count: int;
+}
+// A reusable query's root term, entity variables, row shape and evaluator.
+// row_type indexes values; evaluate indexes references.
+pub QueryDescription :: struct {
+    query_root: int;
+    query_variable_count: int;
+    row_type: int;
+    evaluate: int;
+}
 pub Module :: union {
     Tables(id: u64, owner_type: u64, abi: u64, pointer_size: int, wide: u64[], values: Value[], ints: int[],
            requirements: Requirement[], fields: Field[], event_declarations: Event[],
@@ -280,7 +302,8 @@ pub Module :: union {
            instructions: Instruction[], locals: Local[], parameters: Parameter[], frames: Frame[],
            sources: Source[], results: ResultLayout[], data: Data[], hosts: Host[], calls: Call[],
            references: Reference[], components: Component[], points: Point[], watches: Watch[],
-           states: State[], entries: Entry[])
+           states: State[], entries: Entry[], queries: Query[], query_root: int, query_variable_count: int,
+           query_filter: int, descriptions: QueryDescription[], system_description: int)
 }
 
 // Varints of 64-bit words: seven bits at a time from the low end, the high bit
@@ -540,7 +563,7 @@ Gather :: (module: Module) -> Gathered {
         case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
                      sources, results, data, hosts, calls, references, components, points, watches, states,
-                     entries):
+                     entries, queries, query_root, query_variable_count, query_filter, descriptions, system_description):
             // Each step is a value Write writes, or -1 - n for named[n].
             named: string[] = [];
             steps: int[] = [];
@@ -659,6 +682,9 @@ Gather :: (module: Module) -> Gathered {
                     steps.append(-length(named));
                 }
             }
+            for (description in descriptions) {
+                steps.append(description.row_type);
+            }
             // A value writes its own strings, then those of its nested values
             // in order, so a stack walks each written value in that order.
             texts: string[] = [];
@@ -714,7 +740,7 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
         case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
                      sources, results, data, hosts, calls, references, components, points, watches, states,
-                     entries):
+                     entries, queries, query_root, query_variable_count, query_filter, descriptions, system_description):
             // Nested values follow their parent, so encoding from the last
             // value back finds every nested value already in the pool.
             pool: u8[] = [];
@@ -896,8 +922,28 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
                 bytes.extend(ReferenceBytes(references[item.body], wide));
                 bytes.extend(ReferenceBytes(references[item.subscription], wide));
             }
-            // No queries, query -1, no query variables or filter, bindings or actions.
-            bytes.extend(Ints([0, -1, 0, 0, 0, 0]));
+            bytes.extend(Ints([length(queries)]));
+            for (term in queries) {
+                bytes.extend(Words([Zig(term.kind), Flag(term.required), wide[term.component_id], wide[term.source_relationship],
+                                    Zig(term.source_traversal), Zig(term.source_variable), Zig(term.target_variable)]));
+                if (term.predicate < 0) {
+                    bytes.extend(Ints([-1, -1, 0, 0]));
+                } else {
+                    bytes.extend(ReferenceBytes(references[term.predicate], wide));
+                }
+                bytes.extend(Ints([term.count]));
+                bytes.extend(Ints(slice(ints, term.first, term.count)));
+            }
+            bytes.extend(Ints([query_root, query_variable_count, query_filter, length(descriptions)]));
+            for (description in descriptions) {
+                bytes.extend(Ints([description.query_root, description.query_variable_count]));
+                initial := description.row_type;
+                bytes.extend(slice(pool, starts[initial], sizes[initial]));
+                bytes.extend(ReferenceBytes(references[description.evaluate], wide));
+            }
+            // The selected system description is one-based; zero means none.
+            // Reactive bindings and actions are absent from authored compiler modules.
+            bytes.extend(Ints([system_description, 0, 0]));
             strings_at := length(bytes);
             bytes.extend(TableBytes(items));
             return extend(bytes, Word(u64(strings_at)));

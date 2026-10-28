@@ -12,7 +12,9 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/query.h"
 #include "types/record.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/trace.h"
 
@@ -318,6 +320,36 @@ void behavior_function_note_derived(behavior_function *f)
     f->builds_results = false;
     for (int i = 0; i < acount(f->host_calls); i++) {
         f->builds_results |= execution_intrinsic_in_result(f->host_calls[i].capability_id);
+        const behavior_function_host_call *host = &f->host_calls[i];
+        const node_host_call *canonical = execution_intrinsic_resolve(host->capability_id);
+        const node_host_call *actual = host->call;
+        bool intrinsic = canonical &&
+                         host->capability_abi ==
+                             execution_intrinsic_abi(host->capability_id) &&
+                         actual->invoke == canonical->invoke &&
+                         actual->value == canonical->value &&
+                         actual->context == canonical->context &&
+                         actual->action == canonical->action &&
+                         actual->service == canonical->service &&
+                         actual->missing_service == canonical->missing_service &&
+                         actual->optional_service == canonical->optional_service &&
+                         actual->variadic == canonical->variadic &&
+                         actual->reusable == canonical->reusable;
+        execution_intrinsic kind = intrinsic
+                                     ? execution_intrinsic_kind(host->capability_id)
+                                     : 0;
+        f->binds_world |= kind == EXECUTION_INTRINSIC_QUERY_BEGIN ||
+                          kind == EXECUTION_INTRINSIC_QUERY_NEXT ||
+                          kind == EXECUTION_INTRINSIC_QUERY_SOURCE ||
+                          kind == EXECUTION_INTRINSIC_QUERY_TARGET ||
+                          kind == EXECUTION_INTRINSIC_COMPONENT_HAS ||
+                          kind == EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP ||
+                          kind == EXECUTION_INTRINSIC_COMPONENT_POINTER ||
+                          kind == EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT;
+        if (kind == EXECUTION_INTRINSIC_REFERENCE_MAKE &&
+            f->data_values[host->first + 2].initial.i == LANGUAGE_REFERENCE_COMPONENT) {
+            f->binds_world = true;
+        }
     }
     /* A result moves only when execution_builds_safely proves that nothing
      * else changes or shares what the function builds there. */
@@ -1062,6 +1094,37 @@ void behavior_managed_heap_free(behavior_managed_heap *heap)
     }
     *heap = (behavior_managed_heap){ 0 };
 }
+void behavior_managed_heap_adopt(behavior_managed_heap *heap, behavior_managed_heap *other)
+{
+    assert(heap->owner == heap && other->owner == other);
+    behavior_managed_heap *tail = heap;
+    while (tail->previous) {
+        tail = tail->previous;
+    }
+    tail->previous = other;
+    /* Every heap names the head directly, so releasing one never strands an
+     * owner link. */
+    for (; other; other = other->previous) {
+        other->owner = heap;
+    }
+}
+void behavior_managed_heap_release_empty(behavior_managed_heap *heap)
+{
+    assert(heap->owner == heap);
+    for (behavior_managed_heap **link = &heap->previous; *link;) {
+        behavior_managed_heap *scope = *link;
+        size_t live, capacity;
+        arena_usage(&scope->storage, &live, &capacity);
+        if (live || acount(scope->roots)) {
+            link = &scope->previous;
+            continue;
+        }
+        *link = scope->previous;
+        scope->previous = NULL;
+        behavior_managed_heap_free(scope);
+        free(scope);
+    }
+}
 static behavior_managed_heap *managed_owner(behavior_managed_heap *heap)
 {
     while (heap->owner && heap->owner != heap) {
@@ -1091,8 +1154,9 @@ static size_t managed_seen_slot(managed_seen_entry entry, size_t capacity)
 }
 static bool managed_seen_before(managed_seen *seen, pin_value value, bool restricted)
 {
-    if (!value.ptr || (value.container == PIN_CONTAINER_SINGLE && value.type != PIN_STRUCT &&
-                       value.type != PIN_UNION && value.type != PIN_POINTER)) {
+    if (!value.ptr || (value.container == PIN_CONTAINER_SINGLE &&
+                       value.type != PIN_STRUCT && value.type != PIN_UNION &&
+                       value.type != PIN_POINTER && value.type != PIN_QUERY)) {
         return false;
     }
     managed_seen_entry entry = { .address = value.ptr,
@@ -1153,22 +1217,28 @@ static bool managed_family_owns(const behavior_managed_heap *heap, const arena *
     }
     return false;
 }
+/* Native schemas resolve their own nested layouts. */
+static type_resolver value_resolver(const pin_value *value)
+{
+    return value->schema ? pin_schema_resolver(value->schema) : (type_resolver){ 0 };
+}
 /* Whether a record holds nothing a scan checks: no union or pointer, its own
  * or a nested record's, and, for a newly retained value, no nested layout
  * whose freeze is still unchecked. */
-static bool managed_plain_record(const type_desc *layout, bool restricted)
+static bool managed_plain_record(const type_desc *layout, type_resolver resolver, bool restricted)
 {
     for (int i = 0; i < layout->field_count; i++) {
         const type_field *field = &layout->fields[i];
-        if (field->type == PIN_UNION || field->type == PIN_POINTER) {
+        if (field->type == PIN_UNION || field->type == PIN_POINTER ||
+            field->type == PIN_QUERY) {
             return false;
         }
         if (field->type != PIN_STRUCT) {
             continue;
         }
-        const type_desc *child = type_field_type(field, (type_resolver){ 0 });
+        const type_desc *child = type_field_type(field, resolver);
         if (!child || (restricted && !child->carrier) ||
-            !managed_plain_record(child, restricted)) {
+            !managed_plain_record(child, resolver, restricted)) {
             return false;
         }
     }
@@ -1204,7 +1274,7 @@ static const char *managed_scan(
     if (root->container == PIN_CONTAINER_SINGLE && root->type == PIN_STRUCT &&
         (!restricted || root->record)) {
         const type_desc *layout = pin_value_type(root);
-        if (layout && managed_plain_record(layout, restricted)) {
+        if (layout && managed_plain_record(layout, value_resolver(root), restricted)) {
             return NULL;
         }
     }
@@ -1284,6 +1354,21 @@ static const char *managed_scan(
                 break;
             }
         }
+        if (value.type == PIN_QUERY &&
+            value.container == PIN_CONTAINER_SINGLE && value.ptr) {
+            const pin_query *query = value.ptr;
+            if (arrays) {
+                *arrays |= 4u;
+            }
+            if (heap && (!managed_family_contains(heap, query) ||
+                         !managed_family_owns(heap, query->storage, query))) {
+                error = "Queries cannot cross heap owners";
+                break;
+            }
+            for (int i = 0; i < query->count; i++) {
+                PUSH_VALUE(query->values[i]);
+            }
+        }
         /* Synthetic nested-collection headers describe boxed containers, not
          * native struct payloads. Their actual items carry their own shapes. */
         bool collection_header = value.container != PIN_CONTAINER_SINGLE &&
@@ -1297,7 +1382,7 @@ static const char *managed_scan(
                 error = "Managed value requires a resolved record layout";
                 break;
             }
-            if (current.restricted && !value.record) {
+            if (current.restricted && !value.record && !value.schema) {
                 const pin_record *frozen = NULL;
                 for (int i = 0; i < acount(checked); i++) {
                     if (checked[i].source == layout) {
@@ -1319,10 +1404,12 @@ static const char *managed_scan(
                 if (value.container != PIN_CONTAINER_SINGLE || !value.ptr) {
                     continue;
                 }
-                pin_value member = { .type = field->type, .type_name = field->type_name };
+                pin_value member = { .type = field->type,
+                                     .type_name = field->type_name,
+                                     .schema = value.schema };
                 const void *data = (const char *)value.ptr + field->offset;
                 if (field->type == PIN_STRUCT) {
-                    const type_desc *child = type_field_type(field, (type_resolver){ 0 });
+                    const type_desc *child = type_field_type(field, value_resolver(&value));
                     if (!child) {
                         error = "Managed value requires a resolved nested "
                                 "record layout";
@@ -1331,7 +1418,7 @@ static const char *managed_scan(
                     member.ptr = (void *)data;
                     member.type_name = child->name;
                     member.record = child->carrier;
-                } else if (field->type == PIN_POINTER || field->type == PIN_UNION) {
+                } else if (field->type == PIN_POINTER || field->type == PIN_QUERY || field->type == PIN_UNION) {
                     memcpy(&member.ptr, data, sizeof member.ptr);
                 } else {
                     continue;
@@ -1606,14 +1693,16 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
             for (int i = 0; layout && i < layout->field_count; i++) {
                 const type_field *field = &layout->fields[i];
                 const void *data = (const char *)value.ptr + field->offset;
-                pin_value member = { .type = field->type, .type_name = field->type_name };
+                pin_value member = { .type = field->type,
+                                     .type_name = field->type_name,
+                                     .schema = value.schema };
                 if (field->type == PIN_STRUCT) {
-                    const type_desc *child = type_field_type(field, (type_resolver){ 0 });
+                    const type_desc *child = type_field_type(field, value_resolver(&value));
                     assert(child);
                     member.ptr = (void *)data;
                     member.type_name = child->name;
                     member.record = child->carrier;
-                } else if (field->type == PIN_POINTER || field->type == PIN_UNION) {
+                } else if (field->type == PIN_POINTER || field->type == PIN_QUERY || field->type == PIN_UNION) {
                     memcpy(&member.ptr, data, sizeof member.ptr);
                 } else {
                     continue;

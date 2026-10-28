@@ -10,6 +10,7 @@
 #include "types/pointer.h"
 #include "types/record.h"
 #include "types/scalar.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
@@ -155,16 +156,16 @@ static int value_string(pin_type type)
     return type == PIN_STR || type == PIN_NAME;
 }
 
-static bool packed_layout(const type_desc *type, int depth)
+static bool packed_layout(const type_desc *type, int depth, type_resolver resolver)
 {
     if (!type || !type->size || type->field_count < 0 ||
         (type->field_count && !type->fields) || depth > 16) {
         return false;
     }
     if (type_alias_layout(type)) {
-        const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
+        const type_desc *target = type_alias_type(type, resolver);
         return target && target->size == type->size &&
-               packed_layout(target, depth + 1);
+               packed_layout(target, depth + 1, resolver);
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
@@ -172,14 +173,15 @@ static bool packed_layout(const type_desc *type, int depth)
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
-            if (!packed_layout(nested, depth + 1) || nested->size != field->size) {
+            const type_desc *nested = type_field_type(field, resolver);
+            if (!packed_layout(nested, depth + 1, resolver) ||
+                nested->size != field->size) {
                 return false;
             }
         } else if (
             !((field->type >= PIN_BOOL && field->type <= PIN_F64) ||
               field->type == PIN_HANDLE || field->type == PIN_ENUM ||
-              field->type == PIN_POINTER) ||
+              field->type == PIN_POINTER || field->type == PIN_QUERY) ||
             field->size != behavior_scalar_size(field->type)
         ) {
             return false;
@@ -187,21 +189,30 @@ static bool packed_layout(const type_desc *type, int depth)
     }
     return true;
 }
-size_t pin_array_element_stride(pin_type storage, const char *name, const pin_record *record)
+static size_t element_stride(pin_type storage, const char *name, const pin_record *record, const pin_schema *schema)
 {
     if (name && !strncmp(name, "__collection_", 13)) {
         return 0;
     }
     if ((storage >= PIN_BOOL && storage <= PIN_F64) || storage == PIN_HANDLE ||
-        storage == PIN_ENUM || storage == PIN_POINTER) {
+        storage == PIN_ENUM || storage == PIN_POINTER || storage == PIN_QUERY) {
         return record ? 0 : behavior_scalar_size(storage);
     }
     if (storage != PIN_STRUCT) {
         return 0;
     }
-    pin_value shape = { .type = PIN_STRUCT, .type_name = name, .record = record };
+    pin_value shape = { .type = PIN_STRUCT,
+                        .type_name = name,
+                        .record = record,
+                        .schema = schema };
     const type_desc *type = pin_value_type(&shape);
-    return packed_layout(type, 0) ? type->size : 0;
+    type_resolver resolver = schema ? pin_schema_resolver(schema)
+                                    : (type_resolver){ 0 };
+    return packed_layout(type, 0, resolver) ? type->size : 0;
+}
+size_t pin_array_element_stride(pin_type storage, const char *name, const pin_record *record)
+{
+    return element_stride(storage, name, record, NULL);
 }
 const pin_array *pin_array_owner(const pin_array *array)
 {
@@ -261,10 +272,11 @@ bool pin_array_valid(const pin_array *array)
     }
     if (array->stride) {
         return !array->items &&
-               array->stride == pin_array_element_stride(
+               array->stride == element_stride(
                                     array->element_type,
                                     array->type_name,
-                                    array->record
+                                    array->record,
+                                    array->schema
                                 ) &&
                (!array->count || array->data) &&
                (size_t)array->capacity <= SIZE_MAX / array->stride;
@@ -322,11 +334,16 @@ pin_value pin_array_get(const pin_array *array, int index)
     assert(pin_array_view_valid(array) && index >= 0 && index < array->count);
     const pin_array *owner = pin_array_owner(array);
     if (!owner->stride) {
-        return owner->items[index + pin_array_offset(array)];
+        pin_value value = owner->items[index + pin_array_offset(array)];
+        if (value.type == PIN_STRUCT && !value.schema) {
+            value.schema = owner->schema;
+        }
+        return value;
     }
     pin_value value = { .type = owner->element_type,
                         .type_name = owner->type_name,
-                        .record = owner->record };
+                        .record = owner->record,
+                        .schema = owner->schema };
     const void *data = pin_array_data(array, index);
     if (value.type == PIN_STRUCT) {
         value.ptr = (void *)data;
@@ -335,16 +352,60 @@ pin_value pin_array_get(const pin_array *array, int index)
     }
     return value;
 }
+static const pin_schema *element_schema(const pin_array *array)
+{
+    array = pin_array_owner(array);
+    if (array->schema || array->stride || array->element_type != PIN_STRUCT) {
+        return array->schema;
+    }
+    for (int i = 0; i < array->count; i++) {
+        const pin_value *value = &array->items[i];
+        if (value->schema && value->type == PIN_STRUCT && value->type_name &&
+            array->type_name && !strcmp(value->type_name, array->type_name)) {
+            return value->schema;
+        }
+    }
+    return NULL;
+}
+static bool native_layout_same(
+    const pin_schema *left,
+    const pin_schema *right,
+    const char *name,
+    const pin_record *record
+)
+{
+    if (left == right) {
+        return true;
+    }
+    const type_desc *a_type = record ? &record->type
+                            : left   ? pin_schema_type(left, name)
+                                     : type_catalog_find(name);
+    const type_desc *b_type = record ? &record->type
+                            : right  ? pin_schema_type(right, name)
+                                     : type_catalog_find(name);
+    uint64_t a = left ? pin_schema_layout_type(left, a_type)
+                      : type_layout_hash(a_type);
+    uint64_t b = right ? pin_schema_layout_type(right, b_type)
+                       : type_layout_hash(b_type);
+    return a && a == b;
+}
 static bool compatible(const pin_array *array, const pin_value *value)
 {
     bool nominal = value->type == PIN_STRUCT || value->type == PIN_ENUM ||
-                   value->type == PIN_HANDLE || value->type == PIN_POINTER;
+                   value->type == PIN_HANDLE || value->type == PIN_POINTER ||
+                   value->type == PIN_QUERY;
     pin_value shape = { .type = array->element_type,
                         .type_name = array->type_name,
                         .record = array->record };
     return value->container == PIN_CONTAINER_SINGLE &&
            value->type == array->element_type &&
            pin_value_layout_same(value, &shape) &&
+           (value->type != PIN_STRUCT || native_layout_same(
+                                             array->schema,
+                                             value->schema,
+                                             array->type_name,
+                                             array->record
+                                         )) &&
            (!nominal || !strcmp(
                             value->type_name ? value->type_name : "",
                             array->type_name ? array->type_name : ""
@@ -624,6 +685,7 @@ static pin_array *array_clone_heap(const pin_array *src)
     }
     pin_array *dst = pin_array_new(src->element_type, src->type_name, src->count);
     dst->record = src->record;
+    dst->schema = src->schema;
     dst->count = src->count;
     for (int i = 0; i < src->count; i++) {
         pin_value item = pin_array_get(src, i);
@@ -696,8 +758,8 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
                 const char *text = *(const char **)member;
                 *(const char **)member = arena_string(a, text, PIN_COPY_TEXT);
             }
-        } else if (field->type == PIN_POINTER) {
-            if (field->size != sizeof(pin_pointer *)) {
+        } else if (field->type == PIN_POINTER || field->type == PIN_QUERY) {
+            if (field->size != sizeof(void *)) {
                 return -1;
             }
         } else if (field->type == PIN_UNION) {
@@ -729,9 +791,21 @@ int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data)
 {
     return pin_struct_snapshot_fields_resolved(a, type, data, (type_resolver){ 0 });
 }
+/* A native schema resolves and traces its own nested layouts. */
+static int snapshot_struct_fields(arena *a, const type_desc *type, void *data, const pin_schema *schema)
+{
+    if (!schema) {
+        return pin_struct_snapshot_fields(a, type, data);
+    }
+    int status = snapshot_fields(a, type, data, 0, pin_schema_resolver(schema));
+    if (!status) {
+        pin_schema_trace_struct(a, data, schema, type);
+    }
+    return status;
+}
 static int snapshot_record(arena *a, pin_value *dst, const pin_value *src, const type_desc *type)
 {
-    if (!type || !type->size || (dst->record && !pin_record_current(dst->record))) {
+    if (!type || !type->size || (dst->record && !pin_value_record_current(dst))) {
         return -1;
     }
     if (!src->ptr) {
@@ -740,7 +814,7 @@ static int snapshot_record(arena *a, pin_value *dst, const pin_value *src, const
     dst->ptr = arena_alloc(a, type->size);
     memcpy(dst->ptr, src->ptr, type->size);
     pin_copy_record(PIN_COPY_RECORD, type->size);
-    return pin_struct_snapshot_fields(a, type, dst->ptr);
+    return snapshot_struct_fields(a, type, dst->ptr, dst->schema);
 }
 static const pin_record *snapshot_layout(arena *storage, pin_type type, const char *name, const pin_record *record)
 {
@@ -765,6 +839,9 @@ static int snapshot_value(arena *a, pin_value *dst, const pin_value *src)
         return 0;
     }
     *dst = *src;
+    if (src->schema) {
+        dst->schema = pin_schema_snapshot(a, src->schema);
+    }
     pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     dst->type_name = src->record
                        ? NULL
@@ -778,7 +855,7 @@ static int snapshot_value(arena *a, pin_value *dst, const pin_value *src)
             return -1;
         }
         dst->type_name = dst->record->type.name;
-    } else if (src->type == PIN_STRUCT) {
+    } else if (src->type == PIN_STRUCT && !src->schema) {
         dst->record = snapshot_layout(a, src->type, src->type_name, NULL);
         if (layout_failed(src->type, src->type_name, NULL, dst->record)) {
             return -1;
@@ -804,7 +881,14 @@ static int snapshot_value(arena *a, pin_value *dst, const pin_value *src)
         if (array && !pin_value_layout_same(src, &shape)) {
             return -1;
         }
-        dst->ptr = pin_array_snapshot_to_arena(a, array);
+        const pin_array *copy = pin_array_snapshot_to_arena(a, array);
+        dst->ptr = (void *)copy;
+        /* The header names the layout its copy owns. */
+        if (copy) {
+            dst->record = copy->record;
+            dst->type_name = copy->type_name;
+            dst->schema = copy->schema ? copy->schema : dst->schema;
+        }
         if (src->container == PIN_CONTAINER_SET) {
             pin_array_index(a, dst->ptr);
         }
@@ -883,12 +967,14 @@ static bool packable_window(const pin_array *array, int start, int count)
     if (pin_array_owner(array)->stride) {
         return true;
     }
-    if (!pin_array_element_stride(array->element_type, array->type_name, array->record)) {
+    pin_array shape = *array;
+    shape.schema = element_schema(array);
+    if (!element_stride(shape.element_type, shape.type_name, shape.record, shape.schema)) {
         return false;
     }
     for (int i = start; i < start + count; i++) {
         pin_value item = pin_array_get(array, i);
-        if (!compatible(array, &item) || (item.type == PIN_STRUCT && !item.ptr)) {
+        if (!compatible(&shape, &item) || (item.type == PIN_STRUCT && !item.ptr)) {
             return false;
         }
     }
@@ -904,16 +990,21 @@ static pin_array *snapshot_like(arena *a, const pin_array *src, int count, bool 
         (size_t)count > (SIZE_MAX - sizeof(pin_array)) / sizeof(pin_value)) {
         return NULL;
     }
-    const pin_record *record = snapshot_layout(a, src->element_type, src->type_name, src->record);
-    if (layout_failed(src->element_type, src->type_name, src->record, record)) {
-        return NULL;
+    /* An owned schema already holds a native element layout. */
+    const pin_schema *schema = pin_schema_snapshot(a, element_schema(src));
+    const pin_record *record = NULL;
+    if (src->record || !schema) {
+        record = snapshot_layout(a, src->element_type, src->type_name, src->record);
+        if (layout_failed(src->element_type, src->type_name, src->record, record)) {
+            return NULL;
+        }
     }
     if (src->record && (!record || src->element_type != PIN_STRUCT || !src->type_name ||
                         strcmp(src->type_name, record->type.name))) {
         return NULL;
     }
     const char *name = record ? record->type.name : src->type_name;
-    size_t stride = packed ? pin_array_element_stride(src->element_type, name, record)
+    size_t stride = packed ? element_stride(src->element_type, name, record, schema)
                            : 0;
     if (stride && (size_t)count > SIZE_MAX / stride) {
         return NULL;
@@ -925,6 +1016,7 @@ static pin_array *snapshot_like(arena *a, const pin_array *src, int count, bool 
             .element_type = src->element_type,
             .type_name = record ? name : arena_string(a, name, PIN_COPY_NOMINAL),
             .record = record,
+            .schema = schema,
             .count = count,
             .capacity = count,
             .stride = stride,
@@ -940,6 +1032,7 @@ static pin_array *snapshot_like(arena *a, const pin_array *src, int count, bool 
             return NULL;
         }
         dst->record = record;
+        dst->schema = schema;
         if (record) {
             dst->type_name = record->type.name;
         }
@@ -1087,6 +1180,7 @@ static int snapshot_items(arena *a, const pin_record *record, pin_value *out, co
         }
         pin_value copy = *value;
         copy.record = record;
+        copy.schema = pin_schema_snapshot(a, value->schema);
         copy.type_name = record->type.name;
         pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
         if (snapshot_record(a, &copy, value, &record->type)) {
@@ -1157,6 +1251,7 @@ pin_value pin_array_add(const pin_value *inputs, int count, arena *a)
                         .container = PIN_CONTAINER_ARRAY,
                         .type_name = array ? array->type_name : NULL,
                         .record = array ? array->record : NULL,
+                        .schema = array ? array->schema : NULL,
                         .ptr = array };
 }
 
@@ -1256,6 +1351,16 @@ typedef struct
 static int manage_layout(arena *storage, pin_array *array)
 {
     if (array->storage) {
+        return 0;
+    }
+    if (!array->record && array->schema) {
+        /* An owned schema already holds the native element layout. */
+        array->schema = pin_schema_snapshot(storage, array->schema);
+        const type_desc *type = pin_schema_type(array->schema, array->type_name);
+        if (!type) {
+            return -1;
+        }
+        array->type_name = type->name;
         return 0;
     }
     if (array->record || (array->element_type == PIN_STRUCT && array->type_name &&
@@ -1384,33 +1489,43 @@ static int manage_owned_graph(arena *storage, pin_array *array)
             }
             continue;
         }
-        value.record = snapshot_layout(
-            storage,
-            value.type,
-            value.type_name,
-            value.record
-        );
-        if (!value.record) {
-            error = -1;
-            break;
+        /* An owned schema already holds a native layout; others are owned
+         * as records. */
+        bool schema = !value.record && value.schema;
+        if (schema) {
+            value.schema = pin_schema_snapshot(storage, value.schema);
+            if (at.slot) {
+                at.slot->schema = value.schema;
+            }
+        } else {
+            value.record = snapshot_layout(
+                storage,
+                value.type,
+                value.type_name,
+                value.record
+            );
         }
-        value.type_name = value.record->type.name;
-        manage_header(&visited, &value, at.slot, value.record, value.type_name);
         const type_desc *type = pin_value_type(&value);
-        if (!type) {
+        if (!type || (!schema && !value.record)) {
             error = -1;
             break;
         }
+        value.type_name = type->name;
+        manage_header(&visited, &value, at.slot, value.record, value.type_name);
+        type_resolver resolver = schema ? pin_schema_resolver(value.schema)
+                                        : (type_resolver){ 0 };
         while (type_alias_layout(type)) {
-            type = type_alias_type(type, (type_resolver){ 0 });
+            type = type_alias_type(type, resolver);
             assert(type);
         }
         for (int i = 0; i < type->field_count; i++) {
             const type_field *field = &type->fields[i];
             const void *member = (const char *)value.ptr + field->offset;
-            pin_value child = { .type = field->type, .type_name = field->type_name };
+            pin_value child = { .type = field->type,
+                                .type_name = field->type_name,
+                                .schema = schema ? value.schema : NULL };
             if (field->type == PIN_STRUCT) {
-                const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
+                const type_desc *nested = type_field_type(field, resolver);
                 child.ptr = (void *)member;
                 child.record = nested ? nested->carrier : NULL;
             } else if (field->type == PIN_UNION) {
@@ -1438,6 +1553,10 @@ static int graph_header(arena *storage, pin_value *out, const pin_value *source)
             return -1;
         }
         out->type_name = out->record->type.name;
+    } else if (source->schema) {
+        /* An owned schema already holds the native layout. */
+        out->schema = pin_schema_snapshot(storage, source->schema);
+        out->type_name = arena_string(storage, source->type_name, PIN_COPY_NOMINAL);
     } else {
         out->record = snapshot_layout(storage, source->type, source->type_name, NULL);
         if (layout_failed(source->type, source->type_name, NULL, out->record)) {
@@ -1636,7 +1755,7 @@ static int graph_value_inner(graph_copy *graph, pin_value *out, const pin_value 
         memcpy(copy.ptr, source->ptr, type->size);
         graph_remember(graph, source, copy);
         pin_copy_record(PIN_COPY_RECORD, type->size);
-        error = pin_struct_snapshot_fields(graph->storage, type, copy.ptr);
+        error = snapshot_struct_fields(graph->storage, type, copy.ptr, copy.schema);
     }
     if (error) {
         return -1;
@@ -1829,6 +1948,7 @@ pin_array *pin_array_value_copy(arena *storage, const pin_array *source)
                                                          : PIN_CONTAINER_ARRAY,
                             .type_name = source->type_name,
                             .record = source->record,
+                            .schema = source->schema,
                             .ptr = (void *)source },
                   copy;
         if (pin_value_capture_to_arena(storage, &copy, &input)) {
@@ -2294,6 +2414,13 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
     if (share_managed_array(dst, src)) {
         return 0;
     }
+    const pin_array *array = src->container == PIN_CONTAINER_ARRAY ||
+                                     src->container == PIN_CONTAINER_SET
+                               ? src->ptr
+                               : NULL;
+    if (src->schema || (array && array->schema)) {
+        return pin_value_snapshot_to_arena(a, dst, src);
+    }
     *dst = *src;
     pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     if (src->type == PIN_UNION && src->container == PIN_CONTAINER_SINGLE) {
@@ -2341,6 +2468,14 @@ void pin_value_destroy(pin_value *value)
 }
 
 static int array_equal(const pin_array *, const pin_array *);
+static bool record_current(const pin_value *value)
+{
+    if (!value->record) {
+        return true;
+    }
+    return value->schema ? pin_value_record_current(value)
+                         : pin_record_current(value->record);
+}
 static int value_equal(const pin_value *a, const pin_value *b)
 {
     if (!a || !b || a->type != b->type || a->container != b->container) {
@@ -2380,16 +2515,18 @@ static int value_equal(const pin_value *a, const pin_value *b)
         if (!a->ptr || !b->ptr) {
             return a->ptr == b->ptr;
         }
-        if ((a->record && !pin_record_current(a->record)) ||
-            (b->record && !pin_record_current(b->record))) {
+        if (!native_layout_same(a->schema, b->schema, a->type_name, a->record) ||
+            !record_current(a) || !record_current(b)) {
             return 0;
         }
         const type_desc *type = pin_value_type(a);
+        type_resolver resolver = a->schema ? pin_schema_resolver(a->schema)
+                                           : (type_resolver){ 0 };
         for (int depth = 0; type && type_alias_layout(type); depth++) {
             if (depth >= TYPE_MAX_NESTING) {
                 return 0;
             }
-            type = type_alias_type(type, (type_resolver){ 0 });
+            type = type_alias_type(type, resolver);
         }
         if (!type || !type->field_count) {
             return a->ptr == b->ptr;
@@ -2416,6 +2553,10 @@ static int value_equal(const pin_value *a, const pin_value *b)
                     pin_read_field(NULL, b->ptr, field, &right)) {
                     return 0;
                 }
+                if (field->type == PIN_STRUCT) {
+                    left.schema = a->schema;
+                    right.schema = b->schema;
+                }
             }
             if (!pin_value_equal(&left, &right)) {
                 return 0;
@@ -2436,6 +2577,9 @@ static int value_equal(const pin_value *a, const pin_value *b)
         case PIN_I64: return a->i64 == b->i64;
         case PIN_U64: return a->u64 == b->u64;
         case PIN_TASK: return a->u64 == b->u64;
+        case PIN_QUERY:
+            return !strcmp(a->type_name ? a->type_name : "", b->type_name ? b->type_name : "") &&
+                   a->ptr == b->ptr;
         case PIN_POINTER:
             return !strcmp(a->type_name ? a->type_name : "", b->type_name ? b->type_name : "") &&
                    pin_pointer_equal(a->ptr, b->ptr);

@@ -271,7 +271,7 @@ pub Compile :: (project: string, paths: string[], sources: string[], abi: lower.
         return InputFailure(-1, "bounded compiler requires one to three complete source files");
     }
     if (strings.ByteLength(project) == 0 || strings.ByteLength(project) > 240 ||
-        abi.schema != 1 || abi.prepared != 24 || (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
+        abi.schema != 1 || abi.prepared != 26 || (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
         prepared_abi == 0 || length(opcodes) != WireOpcodes) {
         return InputFailure(-1, "unsupported bounded compiler root or target");
     }

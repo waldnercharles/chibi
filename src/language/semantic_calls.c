@@ -348,6 +348,58 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                  .right = -1,
                                  .type = script_analyzer_bad_type(),
                                  .effects = receiver.effects };
+    if (receiver.type.flags & SCRIPT_TYPE_QUERY_ROW) {
+        const script_catalog_type
+            *row = script_catalog_type_by_id(a->catalog, receiver.type.nominal);
+        int index = row ? script_catalog_find_field(row, name) : -1;
+        if (index < 0) {
+            script_analyzer_diagnostic(a, member, "Query row has no field '%s'", name);
+        } else {
+            result.kind = SCRIPT_EXPR_QUERY_FIELD;
+            result.type = row->fields[index].type;
+            result.member = row->fields[index].id;
+            script_analyzer_use(a, member, -1, SCRIPT_READ, result.member);
+            result.offset = (size_t)index;
+            result.symbol = -1;
+            result.writable = false;
+            if (receiver.kind == SCRIPT_EXPR_SYMBOL && receiver.symbol >= 0 &&
+                (result.type.flags & SCRIPT_TYPE_OPTIONAL)) {
+                int proof = -1;
+                for (int i = 0; i < acount(a->out->symbols); i++) {
+                    if (a->out->symbols[i].query_row_owner == receiver.symbol + 1 &&
+                        a->out->symbols[i].query_field == index) {
+                        proof = i;
+                        break;
+                    }
+                }
+                if (proof < 0) {
+                    apush(
+                        a->out->symbols,
+                        ((script_symbol){ .id = result.member,
+                                          .name = xstrdup("__query_field"),
+                                          .kind = SCRIPT_LOCAL,
+                                          .type = result.type,
+                                          .scope = a->scope,
+                                          .initializer = -1,
+                                          .function = -1,
+                                          .disabled = true,
+                                          .query_row_owner = receiver.symbol + 1,
+                                          .query_field = index,
+                                          .declaration = { .start = -1, .end = -1 } })
+                    );
+                    proof = acount(a->out->symbols) - 1;
+                }
+                a->out->symbols[proof]
+                    .mutations = a->out->symbols[receiver.symbol].mutations;
+                result.symbol = proof;
+                if (script_analyzer_present(a, proof)) {
+                    result.type.flags &= ~SCRIPT_TYPE_OPTIONAL;
+                }
+            }
+        }
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
     if ((receiver.type.flags & SCRIPT_TYPE_TASK) &&
         receiver.type.container == PIN_CONTAINER_SINGLE) {
         script_analyzer_diagnostic(a, member, "Await this task to read '%s'", name);
@@ -2232,6 +2284,9 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     (void)expected;
     free(name);
     afree(selected_parameters);
-    script_analyzer_invalidate_pointers(a);
+    /* Ordered header bindings remain immutable across proved-pure calls. */
+    if (!a->query) {
+        script_analyzer_invalidate_pointers(a);
+    }
     return script_analyzer_expr_add(a, result);
 }

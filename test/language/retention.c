@@ -161,9 +161,9 @@ TEST_CASE(retention_helpers_keep_owner_state_and_copy_plain_values)
 }
 TEST_CASE(retention_system_owner_survives_row_exit_and_registration_isolation)
 {
-    const char *source = "Counter :: system( row: RetentionMarker) { total: "
-                         "retain int = 0; visits: retain int = 0; "
-                         "Next :: () { calls:retain int=0; calls+=1; } "
+    const char *source = "Counter :: system( row: ^RetentionMarker) { total: "
+                         "retain int = 0; visits: retain int = "
+                         "0; Next :: () { calls:retain int=0; calls+=1; } "
                          "total += 1; visits += 1; Next(); }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {

@@ -148,10 +148,12 @@ Prepare :: (plan: lower.Plan, module: u64, function: u64, name: string,
             points: writer.Point[] = [];
             watches: writer.Watch[] = [];
             states: writer.State[] = [];
+            queries: writer.Query[] = [];
+            descriptions: writer.QueryDescription[] = [];
             return writer.Write(writer.Module.Tables(module, 0, abi, pointer_size, wide, values, ints, requirements, fields,
                                                      event_declarations, event_fields, imports, functions, spans, roots,
                                                      instructions, prepared_locals, parameters, frames, sources, layouts,
                                                      data, hosts, calls, references, components, points, watches, states,
-                                                     entries));
+                                                     entries, queries, -1, 0, 0, descriptions, 0));
     }
 }

@@ -148,6 +148,7 @@ endif()
 
 add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/type.c"
+    "${CHIBI_SDK_ROOT}/src/types/schema.c"
     "${CHIBI_SDK_ROOT}/src/types/catalog.c"
     "${CHIBI_SDK_ROOT}/src/types/array.c"
     "${CHIBI_SDK_ROOT}/src/types/text.c"
@@ -161,7 +162,7 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/value_wire.c")
 add_library(Chibi::types ALIAS chibi_types)
 set_target_properties(chibi_types PROPERTIES EXPORT_NAME types)
-chibi_sdk_headers(chibi_types PUBLIC types/value.h types/text.h types/pointer.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/map.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
+chibi_sdk_headers(chibi_types PUBLIC types/value.h types/text.h types/pointer.h types/query.h types/schema.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/map.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
 configure_file("${CHIBI_SDK_ROOT}/src/types/array_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/types/types/array_internal.h" COPYONLY)
 configure_file("${CHIBI_SDK_ROOT}/src/types/copy_internal.h"
@@ -524,6 +525,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate32.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate34.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate36.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_migrate37.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
@@ -533,7 +535,8 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser36.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser36.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser37.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
@@ -545,6 +548,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser30.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser31.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser36.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser37.c"
         PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)

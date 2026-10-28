@@ -200,9 +200,15 @@ static bool persistent_wait_membership(behavior_backend backend)
         ecs_world_create_entity(f.world);
     }
     ecs_entity a = health(&f), b = health(&f);
-    REQUIRE(
-        prepare(&f, "Counters :: system(health:Health) { total:retain f64=0; health.Current+=1; saved:=health.Current; total+=1; await delay(Duration:1); health.Current=saved+10; total+=10; }", backend)
-    );
+    REQUIRE(prepare(
+        &f,
+        "Counters :: system(health:^Health) { total:retain f64=0; "
+        "health.Current+=1; "
+        "saved:=health.Current; total+=1; await delay(Duration:1); "
+        "health.Current=saved+10; "
+        "total+=10; }",
+        backend
+    ));
     REQUIRE(tick(&f, 0));
     REQUIRE(instance(&f, a) && instance(&f, b));
     REQUIRE(execution_instance_pending(instance(&f, a)) == 1);
@@ -270,9 +276,13 @@ static bool host_spawn_resume(behavior_backend backend)
     system_fixture f = fixture_new();
     REQUIRE(register_child(&f));
     ecs_entity owner = health(&f);
-    REQUIRE(
-        prepare(&f, "Spawner :: system(health:Health) { completed:retain f64=0; total:retain f64=0; await spawn_prototype(Prototype:Child); completed+=1; total+=1; }", backend)
-    );
+    REQUIRE(prepare(
+        &f,
+        "Spawner :: system(health:^Health) { completed:retain f64=0; "
+        "total:retain f64=0; "
+        "await spawn_prototype(Prototype:Child); completed+=1; total+=1; }",
+        backend
+    ));
     REQUIRE(tick(&f, 0));
     REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
     REQUIRE(state(&f, owner, "completed") == 0);
@@ -328,9 +338,13 @@ static bool live_component_resume(behavior_backend backend)
     system_fixture f = fixture_new();
     ecs_entity owner = health(&f);
     Health_get(f.world, owner)->current = 2;
-    REQUIRE(
-        prepare(&f, "ReadHealth :: system(health:Health) { observed:retain f64=0; await delay(Duration:1); observed=health.Current; }", backend)
-    );
+    REQUIRE(prepare(
+        &f,
+        "ReadHealth :: system(health:^Health) { observed:retain f64=0; "
+        "await delay(Duration:1); "
+        "observed=health.Current; }",
+        backend
+    ));
     REQUIRE(tick(&f, 0));
     Health_get(f.world, owner)->current = 7;
     REQUIRE(tick(&f, 1.1));
@@ -340,9 +354,10 @@ static bool live_component_resume(behavior_backend backend)
 }
 static bool optional_membership_roundtrip(behavior_backend backend)
 {
-    const char *text = "Optional :: system(health:Health, trigger:Aim?) "
-                       "without Collider { if trigger { if trigger.Firing { "
-                       "health.Current+=7; } } else { health.Current+=2; } }";
+    const char *text = "Optional :: system(health:^Health, trigger:^Aim? , if "
+                       "! Collider) { if trigger { if "
+                       "trigger.Firing { health.Current+=7; } } else { "
+                       "health.Current+=2; } }";
     script_syntax *syntax = script_parse(text);
     char error[256];
     char *saved = authoring_source_format(syntax, error, sizeof error);
@@ -383,9 +398,13 @@ static bool any_query_membership(behavior_backend backend)
     REQUIRE(!Aim_add(f.world, collider, 0));
     REQUIRE(!Collider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(
-        prepare(&f, "AnyQuery :: system(health:Health) { query any(has(Collider), not(has(Aim))); health.Current+=1; }", backend)
-    );
+    REQUIRE(prepare(
+        &f,
+        "AnyQuery :: system(health:^Health, if any(has(Collider), "
+        "not(has(Aim)))) { "
+        "health.Current+=1; }",
+        backend
+    ));
     REQUIRE(tick(&f, 0));
     REQUIRE(instance(&f, bare) && !instance(&f, aimed) && instance(&f, collider));
     REQUIRE(Health_get_const(f.world, bare)->current == 1);
@@ -401,7 +420,7 @@ static bool empty_any_query(behavior_backend backend)
     REQUIRE(!Collider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(
-        prepare(&f, "EmptyAny :: system(health:Health) { query any(has(Collider), any()); health.Current+=1; }", backend)
+        prepare(&f, "EmptyAny :: system(health:^Health, if any(has(Collider), any())) { health.Current+=1; }", backend)
     );
     REQUIRE(tick(&f, 0));
     REQUIRE(!instance(&f, bare) && instance(&f, collider));
@@ -414,7 +433,7 @@ static bool reactive_checkpoint(behavior_backend backend)
     ecs_entity owner = ecs_world_create_entity(f.world);
     REQUIRE(!Aim_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(prepare(&f, "Watch :: system(aim:Aim) { bind aim.Manual=!aim.Firing; }", backend));
+    REQUIRE(prepare(&f, "Watch :: system(aim:^Aim) { bind aim.Manual=!aim.Firing; }", backend));
     REQUIRE(tick(&f, 0));
     REQUIRE(Aim_get(f.world, owner)->manual);
     Aim_get(f.world, owner)->firing = true;
@@ -438,9 +457,13 @@ static bool synchronous_batch_path(behavior_backend backend)
     REQUIRE(!Movement_add(f.world, owner, 0));
     REQUIRE(!Input_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(
-        prepare(&f, "Movement :: system(position:Transform, movement:Movement, input:Input) on Tick :: (dt: number s) { position.X+=input.Move.X*movement.Speed*dt; }", backend)
-    );
+    REQUIRE(prepare(
+        &f,
+        "Movement :: system(position:^Transform, movement:^Movement, "
+        "input:^Input)       { "
+        "position.X+=input.Move.X*movement.Speed*dt; }",
+        backend
+    ));
     Input_get(f.world, owner)->move.x = 2;
     Movement_get(f.world, owner)->speed = 3;
     REQUIRE(tick(&f, 0));
@@ -635,8 +658,9 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
         input_source = authoring_source_prepare_document(
             "Input.chibi",
             "systems/Input.chibi",
-            "InputWatch :: system(controls:Input){ pulses:retain f64=0; on "
-            "Pulse :: () {pulses+=1;} }",
+            "InputWatch :: system(controls:^Input){ pulses:retain f64=0; on "
+            "Pulse :: () "
+            "{pulses+=1;} }",
             authoring_language_catalog_view(input_catalog),
             &bindings,
             backends[b]
@@ -713,9 +737,10 @@ TEST_CASE(source_query_tuple_locals_wait_shared_reload_and_generation)
                    second = aim_target(&f, owner, false);
         REQUIRE(prepare(
             &f,
-            "Rows :: system( h:Health) join target in self.Targets join a:Aim "
-            "from target { starts:retain f64=0; starts+=1; progress:=1; "
-            "if a.Firing { progress=10; } await delay(Duration:1); "
+            "Rows :: system( h:^Health , target in self.Targets , a:^Aim from "
+            "target) { starts:retain "
+            "f64=0; starts+=1; progress:=1; if a.Firing { progress=10; } "
+            "await delay(Duration:1); "
             "h.Current+=progress; }",
             backends[backend]
         ));
@@ -761,8 +786,9 @@ TEST_CASE(source_query_changed_consumers_preserve_busy_writes)
         ecs_entity owner = health(&f);
         REQUIRE(prepare(
             &f,
-            "Changed :: system( h:Health) where changed(h) { calls:retain "
-            "f64=0; calls+=1; await delay(Duration:1); }",
+            "Changed :: system( h:^Health , if changed(h)) { calls:retain "
+            "f64=0; calls+=1; await "
+            "delay(Duration:1); }",
             backends[backend]
         ));
         REQUIRE(tick(&f, 0));
@@ -814,10 +840,11 @@ TEST_CASE(source_query_changed_provider_and_pure_helper)
         REQUIRE(!ecs_world_apply_commands(f.world));
         REQUIRE(prepare(
             &f,
-            "Providers :: system( h:Health, a:Aim, base:Health from "
-            "ancestor(ChildOf)) where changed(base) and Accept(h) { "
-            "calls:retain f64=0; calls+=1; Accept :: (value:Health)->bool { "
-            "return value.Current>=0; } }",
+            "Providers :: system( h:^Health, a:^Aim, base:^Health from "
+            "ancestor(ChildOf) , if "
+            "changed(base) and Accept(h^)) { calls:retain f64=0; calls+=1; "
+            "Accept :: "
+            "(value:Health)->bool { return value.Current>=0; } }",
             backends[backend]
         ));
         REQUIRE(tick(&f, 0));
@@ -841,9 +868,13 @@ TEST_CASE(source_query_value_snapshot_streams_without_instances)
         for (int i = 0; i < 32; i++) {
             aim_target(&f, owner, true);
         }
-        REQUIRE(
-            prepare(&f, "Stream :: system( h:Health) join target in self.Targets join a:Aim from target where h.Current==0 and a.Firing { h.Current+=1; }", backends[backend])
-        );
+        REQUIRE(prepare(
+            &f,
+            "Stream :: system( h:^Health , target in self.Targets , a:^Aim "
+            "from target , if "
+            "h.Current==0 and a.Firing) { h.Current+=1; }",
+            backends[backend]
+        ));
         REQUIRE(!execution_program_prepare_system(f.program, 0, .1, 10000));
         execution_memory_usage memory = execution_program_memory_usage(f.program);
         int run = execution_program_run_system(f.program);
@@ -869,9 +900,13 @@ TEST_CASE(source_query_filters_gate_both_binding_paths)
         REQUIRE(!Aim_add(f.world, owner, 0));
         REQUIRE(!ecs_world_apply_commands(f.world));
         Health_get(f.world, owner)->current = 1;
-        REQUIRE(
-            prepare(&f, "Gate :: system( h:Health, a:Aim) where h.Current>0 or has(Disabled) { bind a.Manual=!a.Firing; }", backends[backend])
-        );
+        REQUIRE(prepare(
+            &f,
+            "Gate :: system( h:^Health, a:^Aim , if h.Current>0 or "
+            "has(Disabled)) { bind "
+            "a.Manual=!a.Firing; }",
+            backends[backend]
+        ));
         REQUIRE(tick(&f, 0));
         REQUIRE(Aim_get_const(f.world, owner)->manual);
         Health_get(f.world, owner)->current = 0;
@@ -906,10 +941,12 @@ TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
         }
         REQUIRE(prepare(
             &f,
-            "Chains :: system( h:Health) join middle in self.Targets join "
-            "target in middle.Targets join a:Aim from target { ticks:retain "
-            "f64=0; pulses:retain f64=0; on Begin :: () { pulses+=1; } "
-            "ticks+=1; if a.Firing { h.Current+=10; } else { h.Current+=1; } }",
+            "Chains :: system( h:^Health , middle in self.Targets , target in "
+            "middle.Targets , a:^Aim "
+            "from target) { ticks:retain f64=0; pulses:retain f64=0; on "
+            "Begin :: () { pulses+=1; "
+            "} ticks+=1; if a.Firing { h.Current+=10; } else { h.Current+=1; } "
+            "}",
             backends[backend]
         ));
         query_debugger = execution_program_inspector(f.program);

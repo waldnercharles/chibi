@@ -494,7 +494,7 @@ TEST_CASE(owner_alias_preserves_invocation_effects)
     REQUIRE(analysis->functions[0].effects & SCRIPT_EFFECT_INVOCATION_READ);
     script_analysis_free(analysis);
     script_syntax_free(syntax);
-    syntax = script_parse("Probe :: system() where owner_alias() == owner_alias() {}");
+    syntax = script_parse("Probe :: system(if owner_alias() == owner_alias()) {}");
     analysis = script_analyze(syntax, catalog);
     REQUIRE(!syntax->diagnostic_count && !analysis->valid);
     bool rejected = false;

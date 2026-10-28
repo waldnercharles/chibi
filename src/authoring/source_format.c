@@ -59,10 +59,10 @@ static bool nest(TSNode node)
 {
     return !block(node) &&
            (kind(node, "argument_list") || kind(node, "parameter_list") ||
-            kind(node, "pattern_bindings") || kind(node, "array_expression") ||
-            kind(node, "map_expression") || kind(node, "struct_expression") ||
-            kind(node, "prototype_bases") || kind(node, "struct_field") ||
-            kind(node, "parenthesized_expression"));
+            kind(node, "query_list") || kind(node, "pattern_bindings") ||
+            kind(node, "array_expression") || kind(node, "map_expression") ||
+            kind(node, "struct_expression") || kind(node, "prototype_bases") ||
+            kind(node, "struct_field") || kind(node, "parenthesized_expression"));
 }
 
 /* The outermost operator of an expression, whose operands may continue on
@@ -211,10 +211,11 @@ static bool tight_before(token t)
            (kind(n, ".") && !kind(p, "variant_pattern")) || kind(n, "..") ||
            kind(n, "..<") || kind(n, ")") || kind(n, "]") ||
            (kind(n, "}") && kind(p, "struct_expression")) ||
-           (kind(n, "(") &&
-            (kind(p, "parameter_list") || kind(p, "pattern_bindings") ||
-             kind(p, "reduce_statement") || kind(p, "prototype_bases") ||
-             (kind(p, "argument_list") && !kind(ts_node_parent(p), "return_statement")))) ||
+           (kind(n, "(") && (kind(p, "parameter_list") || kind(p, "query_list") ||
+                             kind(p, "pattern_bindings") ||
+                             kind(p, "reduce_statement") || kind(p, "prototype_bases") ||
+                             (kind(p, "argument_list") &&
+                              !kind(ts_node_parent(p), "return_statement")))) ||
            (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression"))) ||
            (kind(n, "?") && kind(p, "type")) ||
            (kind(n, "^") && kind(p, "dereference_expression")) ||

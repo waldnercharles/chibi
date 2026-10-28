@@ -1,4 +1,4 @@
-Recharge :: system(charge: Charge) on Tick :: (dt: number s) {
+Recharge :: system(charge: ^Charge) {
     if !charge.full {
         charge.level += charge.rate * dt
         if charge.level >= charge.capacity {

@@ -455,6 +455,7 @@ static int parse_field(
             }
             break;
         }
+        case PIN_QUERY:
         case PIN_POINTER:
         case PIN_TASK:
         case PIN_UNION:
@@ -1182,7 +1183,7 @@ static int compare_strings(const void *left_ptr, const void *right_ptr)
     return strcmp(*left, *right);
 }
 
-/* Prototype documents cannot preserve managed pointer identity or ownership. */
+/* Runtime identities cannot be preserved in prototype documents. */
 static bool serializable_type(const prototype_registry *registry, const type_desc *type, int depth)
 {
     if (!type || depth == 64) {
@@ -1190,7 +1191,7 @@ static bool serializable_type(const prototype_registry *registry, const type_des
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
-        if (field->type == PIN_POINTER) {
+        if (field->type == PIN_POINTER || field->type == PIN_QUERY) {
             return false;
         }
         if (field->type == PIN_STRUCT) {
@@ -1247,6 +1248,7 @@ static bool zero_field(const void *base, const type_field *field)
         case PIN_STR:
             return !*(const void *const *)((const char *)base + field->offset);
         case PIN_STRUCT: return !value.ptr;
+        case PIN_QUERY:
         case PIN_POINTER: return false;
         case PIN_HANDLE:
         case PIN_TASK:
@@ -1291,6 +1293,7 @@ static av_value *write_value(av_doc *doc, const prototype *document, const void 
             }
             return object;
         }
+        case PIN_QUERY:
         case PIN_POINTER: return NULL;
         case PIN_HANDLE:
         case PIN_TASK:

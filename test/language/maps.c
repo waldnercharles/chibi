@@ -259,8 +259,8 @@ TEST_CASE(maps_local_updates_in_place)
                                                 .body;
             for (int h = 0; body && h < acount(body->host_calls); h++) {
                 uint64_t id = body->host_calls[h].capability_id;
-                stores |= id == execution_intrinsic_id(&EXECUTION_map_store_call);
-                deletes |= id == execution_intrinsic_id(&EXECUTION_map_delete_call);
+                stores |= id == execution_intrinsic_id(&EXECUTION_reference_write_call);
+                deletes |= id == execution_intrinsic_id(&EXECUTION_map_delete_place_call);
             }
             for (int w = 0; body && w < acount(body->source_watches); w++) {
                 watched |= body->source_watches[w].origin.start == removal &&

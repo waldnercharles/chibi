@@ -32,6 +32,12 @@ typedef struct behavior_managed_heap
 #define BEHAVIOR_CALL_COLLECTION_BYTES ((size_t)64 * 1024 * 1024)
 void behavior_managed_heap_init(behavior_managed_heap *);
 void behavior_managed_heap_free(behavior_managed_heap *);
+/* Appends other's family to heap's and makes heap their canonical owner.
+ * Cells keep their addresses, so their pointers stay valid. */
+void behavior_managed_heap_adopt(behavior_managed_heap *heap, behavior_managed_heap *other);
+/* Frees each adopted heap that holds no value and no root. Call after a
+ * collection, while execution is quiescent. */
+void behavior_managed_heap_release_empty(behavior_managed_heap *);
 /* Returns an error without changing the slot or registering it on failure. */
 const char *behavior_managed_heap_root(behavior_managed_heap *, pin_value *);
 const char *behavior_managed_value_error(const pin_value *);

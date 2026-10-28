@@ -348,6 +348,10 @@ typedef struct behavior_function_context
     int error_status;
     uint64_t owner;
     const uint64_t *query_variables; /* Current tuple; borrowed instance storage. */
+    const pin_value *query_row;      /* Current scheduled query row. */
+    int (*query_test)(struct behavior_function_context *, int term);
+    const struct execution_module *module; /* Immutable producer generation. */
+    struct execution_program *program; /* Borrowed evaluator scratch cache owner. */
     const char *owner_type_name;
     const struct ecs_execution_view *world, *binding_world;
     /* Optional column table for a synchronous span with stable ECS storage. */

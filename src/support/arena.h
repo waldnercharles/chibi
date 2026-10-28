@@ -30,6 +30,7 @@ typedef struct arena
     arena_resource *resources; /* Unique resources retained by live allocations. */
     size_t resource_capacity, resource_count, retained_bytes;
     size_t cleanup_count;
+    size_t external; /* Retained external payloads, including ownership overhead. */
     arena_copy copies[ARENA_COPY_CACHE];
     int next_copy; /* The entry the next remembered copy replaces. */
     bool collectable;
@@ -77,6 +78,9 @@ void arena_replace_cleanup(
     void *resource,
     size_t retained_bytes
 );
+/* Charge an external retained allocation to a collectable owner. Growth counts
+ * toward normal collection admission; release it from that owner's cleanup. */
+void arena_external_resize(arena *, size_t previous, size_t bytes);
 /* One mark and sweep over collectable arenas whose values may point into one
  * another. A mark finds its value by address in time logarithmic in the
  * arenas' slabs, and each marked value is traced once. The arenas must outlive

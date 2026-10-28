@@ -593,6 +593,8 @@ static const struct
       "    w := split\n"
       "    v := c.if\n"
       "    u := join\n"
+      "    q := without\n"
+      "    r := where\n"
       "    t := d.prototype\n"
       "    if t {\n"
       "        if u {\n"

@@ -69,6 +69,17 @@ typedef enum
     EXECUTION_INTRINSIC_REFERENCE_UNION = 60,
     EXECUTION_INTRINSIC_MAP_DELETE_PLACE = 61,
     EXECUTION_INTRINSIC_SEQUENCE_BORROW = 62,
+    /* 63-79 are free. Query operations own 80-95 in the coordinated intrinsic
+     * registry. */
+    EXECUTION_INTRINSIC_QUERY_MAKE = 80,
+    EXECUTION_INTRINSIC_QUERY_BEGIN = 81,
+    EXECUTION_INTRINSIC_QUERY_NEXT = 82,
+    EXECUTION_INTRINSIC_QUERY_END = 83,
+    EXECUTION_INTRINSIC_QUERY_ROW_GET = 84,
+    EXECUTION_INTRINSIC_COMPONENT_POINTER = 85,
+    EXECUTION_INTRINSIC_QUERY_CURRENT_ROW = 86,
+    EXECUTION_INTRINSIC_QUERY_TEST = 87,
+    EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT = 88,
 } execution_intrinsic;
 /* A host capability id with this bit runs its intrinsic in the caller's
  * storage, where a function builds the locals it returns: construct, array
@@ -131,6 +142,9 @@ extern const node_host_call EXECUTION_union_keep_call;
 extern const node_host_call EXECUTION_pointer_make_call,
     EXECUTION_pointer_read_call, EXECUTION_pointer_write_call,
     EXECUTION_pointer_field_call, EXECUTION_pointer_reference_call;
+/* (context, entity, component id, pointee header, layout hash, size). Missing components yield a
+ * null pointer; required query bindings establish presence before this call. */
+extern const node_host_call EXECUTION_component_pointer_call;
 extern const node_host_call EXECUTION_reference_make_call;
 extern const node_host_call EXECUTION_reference_field_call;
 extern const node_host_call EXECUTION_reference_key_call;
@@ -145,6 +159,10 @@ extern const node_host_call EXECUTION_component_has_call,
     EXECUTION_component_membership_call;
 extern const node_host_call EXECUTION_query_source_call;
 extern const node_host_call EXECUTION_query_target_call;
+extern const node_host_call EXECUTION_query_make_call, EXECUTION_query_begin_call,
+    EXECUTION_query_next_call, EXECUTION_query_end_call,
+    EXECUTION_query_row_get_call, EXECUTION_query_current_row_call,
+    EXECUTION_query_test_call, EXECUTION_component_snapshot_call;
 extern const node_access EXECUTION_component_read_access,
     EXECUTION_component_membership_access;
 extern const node_access EXECUTION_assignment_access, EXECUTION_value_access,

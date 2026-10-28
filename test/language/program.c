@@ -35,8 +35,11 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/copy.h"
 #include "types/map.h"
 #include "types/pointer.h"
+#include "types/query.h"
+#include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
 
@@ -808,7 +811,7 @@ TEST_CASE(program_handlers_name_payload_fields)
         { "A :: behavior { x: f64 = 0; on Impulse :: () { x = event.amount; "
           "} }",
           "list the field instead" },
-        { "M :: system(p: Position) { on Impulse :: (enabled: bool) { p.x = "
+        { "M :: system(p: ^Position) { on Impulse :: (enabled: bool) { p.x = "
           "event.dt; } }",
           "list the field instead" },
     };
@@ -1171,8 +1174,8 @@ TEST_CASE(program_prepared_integer_reports_include_imported_functions)
     cleanup();
     return true;
 }
-/* A system names the fields of its step's payload in its header, as a
- * handler does; only its body reads them, and it has no `event`. */
+/* Systems receive dt implicitly in their body, and helpers receive it as
+ * an ordinary explicit argument. */
 TEST_CASE(program_systems_name_their_step)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -1180,81 +1183,52 @@ TEST_CASE(program_systems_name_their_step)
         prepare();
         ecs_entity moving = positioned(1, true);
         REQUIRE(compile(
-            "Motion :: system(position: Position, velocity: Velocity) on Tick "
-            ":: (dt: f64) { position.x += velocity.x * dt; }",
+            "Motion :: system(position: ^Position, velocity: Velocity) {"
+            " Scale :: (step: f64) -> f64 { return step * 2; }"
+            " position.x += velocity.x * Scale(dt); }",
             backends[backend]
         ));
         REQUIRE(execution_program_step(program, 0, .5, 1000) == FLOW_OK);
         const program_position *position = ecs_component_data_const(world, moving, 501);
-        REQUIRE(position && position->x == 3);
+        REQUIRE(position && position->x == 5);
     }
     const struct
     {
         const char *source, *message;
     } refused[] = {
-        { "Motion :: system(p: Position) on Impulse :: (amount: f64) { p.x "
-          "+= amount; }",
-          "A system runs on Tick" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) { p.x += "
-          "event.dt; }",
-          "Unknown value" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) { Step :: () "
-          "-> f64 { return dt; } p.x += Step(); }",
+        { "Motion :: system(p: ^Position) { p.x += event.dt; }", "Unknown value" },
+        { "Motion :: system(p: ^Position) { Step :: () -> f64 { return dt; "
+          "} p.x += Step(); }",
           "Read the step in the system's body" },
-        { "Motion :: system(p: Position) on Tick :: (step: f64) { p.x += 1; "
-          "}",
-          "Tick has no payload field 'step'" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) {\n"
-          "Step :: () { return dt; }\np.x += Step(); }",
+        { "Motion :: system(p: ^Position) { on Impulse :: (amount: f64) { "
+          "p.x += dt; } }",
           "Read the step in the system's body" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) {\n"
-          "on Impulse :: (amount: f64) { p.x += dt; } }",
+        { "Motion :: system(p: ^Position) { bind self.Position.x = dt; p.x += "
+          "1; }",
           "Read the step in the system's body" },
-        { "Motion :: system(p: Position) on Tick :: () { p.x += 1; }",
-          "List the step's fields" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) {\n"
-          "bind self.Position.x = dt;\np.x += 1; }",
-          "Read the step in the system's body" },
-        { "Motion :: system(p: Position) { p.x += event.dt; }", "Unknown value 'event'" },
-        { "Motion :: system(p: Position) where dt > 0 on Tick :: (dt: f64) "
-          "{ p.x += dt; }",
+        { "Motion :: system(p: ^Position, if dt > 0) { p.x += dt; }",
           "Query predicate cannot read" },
     };
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < (int)(sizeof refused / sizeof *refused); i++) {
         prepare();
         syntax = script_parse(refused[i].source);
         REQUIRE(!syntax->diagnostic_count);
         analysis = script_analyze(syntax, &catalog);
-        bool found = false, inner = false;
+        bool found = false;
         for (int d = 0; d < analysis->diagnostic_count; d++) {
             found |= strstr(analysis->diagnostics[d].message, refused[i].message) != NULL;
-            inner |= strstr(analysis->diagnostics[d].message, "Read the step") != NULL;
         }
         REQUIRE(!analysis->valid && found);
-        /* A query reads no callable's step; it says so once. */
-        REQUIRE(i != 9 || !inner);
     }
-    /* Lowering reads Tick's one field as the step, so a Tick with more
-     * fields has no system step. */
-    script_catalog_capability wider[64];
-    REQUIRE(catalog.capability_count <= 64);
-    memcpy(wider, catalog.capabilities, (size_t)catalog.capability_count * sizeof *wider);
-    for (int i = 0; i < catalog.capability_count; i++) {
-        if (wider[i].id == catalog.tick_event) {
-            wider[i].parameters = impulse_parameters;
-            wider[i].parameter_count = 2;
-        }
+    const char *obsolete[] = {
+        "Motion :: system(p: ^Position) on Tick :: (dt: f64) {}",
+        "Motion :: system(p: ^Position) on Impulse :: (amount: f64) {}",
+    };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        syntax = script_parse(obsolete[i]);
+        REQUIRE(syntax->diagnostic_count);
     }
-    script_catalog two = catalog;
-    two.capabilities = wider;
-    prepare();
-    syntax = script_parse("Motion :: system(p: Position) on Tick :: (amount: f64) { p.x += amount; }");
-    analysis = script_analyze(syntax, &two);
-    bool step = false;
-    for (int d = 0; d < analysis->diagnostic_count; d++) {
-        step |= strstr(analysis->diagnostics[d].message, "reads only the step") != NULL;
-    }
-    REQUIRE(!analysis->valid && step);
     return true;
 }
 TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
@@ -1264,9 +1238,9 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
         prepare();
         ecs_entity moving = positioned(1, true);
         REQUIRE(compile(
-            "Motion :: system( position: Position, velocity: Velocity) on Tick "
-            ":: (dt: number s) { position.x += velocity.x * dt; position.y = "
-            "position.x + velocity.x; }",
+            "Motion :: system( position: ^Position, velocity: ^Velocity)       "
+            "{ position.x += "
+            "velocity.x * dt; position.y = position.x + velocity.x; }",
             backends[backend]
         ));
         execution_effect_summary effects = execution_module_effects(module);
@@ -1289,10 +1263,32 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
     return true;
 }
 
+TEST_CASE(program_query_projected_component_pointers_keep_serial_effects)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity moving = positioned(1, false);
+        REQUIRE(compile(
+            "Motion :: system(position: ^Position) { "
+            "projected := &position.x; projected^ += 1; }",
+            backends[backend]
+        ));
+        execution_effect_summary effects = execution_module_effects(module);
+        REQUIRE(effects.declared && effects.deterministic && !effects.parallel_safe);
+        REQUIRE(!effects.structural && !effects.host_sink && !effects.world_read);
+        REQUIRE(effects.write_count == 1 && effects.writes[0] == 501);
+        REQUIRE(execution_program_step(program, 0, .5, 1000) == FLOW_OK);
+        const program_position *position = ecs_component_data_const(world, moving, 501);
+        REQUIRE(position && position->x == 2 && position->y == 0);
+    }
+    return true;
+}
+
 TEST_CASE(program_system_membership_exit_cancels_pending_work)
 {
-    const char *source = "Motion :: system(position: Position, velocity: "
-                         "Velocity) on Tick :: (dt: number s) {\n"
+    const char *source = "Motion :: system(position: ^Position, velocity: "
+                         "^Velocity)       {\n"
                          "    position.x += velocity.x * dt;\n"
                          "    await Delay(10);\n"
                          "    position.y = 99;\n"
@@ -1357,9 +1353,10 @@ TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors)
         REQUIRE(ecs_world_record_add_pair(world, child, targets.id, root, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Follow :: system( p: Position, aim: Targets.Position?, team: "
-            "Position from ancestor(ChildOf)) where not Velocity { p.x = "
-            "team.x; if aim { p.y = aim.x; } }",
+            "Follow :: system( p: ^Position, aim: ^Position? from Targets, "
+            "team: ^Position from "
+            "ancestor(ChildOf) , if not Velocity) { p.x = team.x; if aim { p.y "
+            "= aim.x; } }",
             backends[backend],
             native_capabilities_catalog(state_native)
         ));
@@ -1426,8 +1423,9 @@ TEST_CASE(program_query_required_path_keeps_one_instance_per_root)
         REQUIRE(ecs_world_record_add_pair(world, second, targets.id, target, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Follow :: system( p: Position, aim: Targets.Position) where not "
-            "self.Velocity { p.x += 1; aim.y += 1; }",
+            "Follow :: system( p: ^Position, aim: ^Position from Targets , if "
+            "not self.Velocity) { p.x "
+            "+= 1; aim.y += 1; }",
             backends[backend],
             &active
         ));
@@ -1480,10 +1478,11 @@ TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension)
         REQUIRE(ecs_world_record_add_pair(world, root, targets.id, first, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Follow :: system( p: Position from self) join aim: "
-            "Targets.Position where not self.Velocity and Targets.Velocity and "
-            "has(Likes) { count: retain f64 = 0; count += 1; p.x = count; "
-            "await Delay(1); p.y = aim.x; }",
+            "Follow :: system( p: ^Position from self , aim: ^Position from "
+            "Targets , if not "
+            "self.Velocity and Targets.Velocity and has(Likes)) { count: "
+            "retain f64 = 0; count += "
+            "1; p.x = count; await Delay(1); p.y = aim.x; }",
             backends[backend],
             &active
         ));
@@ -1520,13 +1519,15 @@ TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension)
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
         row = ecs_component_data_const(world, root, 501);
-        REQUIRE(row && row->x == 2 && row->y == 20);
+        /* This invocation retains the component selected before suspension.
+         * The new relationship target is bound by the next invocation. */
+        REQUIRE(row && row->x == 2 && row->y == 10);
         REQUIRE(ecs_world_record_remove(world, second, 502, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(execution_program_step(program, 2, 0, 1000) == FLOW_OK);
         REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(root)));
         row = ecs_component_data_const(world, root, 501);
-        REQUIRE(row && row->x == 2 && row->y == 20);
+        REQUIRE(row && row->x == 2 && row->y == 10);
         REQUIRE(ecs_world_record_add_pair(world, root, targets.id, first, 0) == ECS_OK);
         REQUIRE(ecs_world_record_remove_pair(world, root, likes.id, first, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
@@ -1568,9 +1569,9 @@ TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions)
         REQUIRE(ecs_world_record_add_pair(world, filtered, targets.id, target, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Follow :: system( p: Position) join aim: Targets.Position? where "
-            "not self.Velocity and not Targets.Velocity { p.y += 1; if aim { "
-            "p.x = aim.x; } }",
+            "Follow :: system( p: ^Position , aim: ^Position? from Targets , "
+            "if not self.Velocity and "
+            "not Targets.Velocity) { p.y += 1; if aim { p.x = aim.x; } }",
             backends[backend],
             &active
         ));
@@ -1614,10 +1615,11 @@ TEST_CASE(program_relationship_loops_stream_targets_explicitly)
         REQUIRE(ecs_world_record_add_pair(world, source, targets.id, empty, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Sum :: system( p: Position) where not Velocity { ticks: retain "
-            "f64 = 0; ticks += 1; p.y = ticks; p.x = 0; for target in "
-            "self.Targets { if not target.Position { continue; } p.x += "
-            "target.Position.x; } }",
+            "Sum :: system( p: ^Position , if not Velocity) { ticks: retain "
+            "f64 = 0; ticks += 1; "
+            "p.y = ticks; p.x = 0; for target in self.Targets { if not "
+            "target.Position { continue; } "
+            "p.x += target.Position.x; } }",
             backends[backend],
             &active
         ));
@@ -1657,7 +1659,7 @@ TEST_CASE(program_relationship_loops_stream_targets_explicitly)
         REQUIRE(count && count->type == PIN_I32 && count->i == 1);
     }
     prepare();
-    syntax = script_parse("Bad :: system( p: Position) { for target in self.Targets { await Delay(1); } }");
+    syntax = script_parse("Bad :: system( p: ^Position) { for target in self.Targets { await Delay(1); } }");
     analysis = script_analyze(syntax, &active);
     REQUIRE(!analysis->valid);
     bool rejected = false;
@@ -1768,13 +1770,15 @@ TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples)
             }
             REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
             REQUIRE(compile_catalog(
-                "Chained :: system( p:Position) join middle in self.Targets "
-                "join leaf in middle.Leaves join mid:Position from middle join "
-                "aim:Position from leaf where aim.x > mid.x { ticks:retain "
+                "Chained :: system( p:^Position , middle in self.Targets , "
+                "leaf in middle.Leaves , "
+                "mid:^Position from middle , aim:^Position from leaf , if "
+                "aim.x > mid.x) { ticks:retain "
                 "f64=0; seen:retain f64=0; on Impulse :: (amount: "
-                "f64, enabled: bool) { "
-                "if enabled { seen=amount; p.x+=amount+mid.x+aim.x; } } "
-                "ticks+=1; p.y+=mid.x+aim.x; aim.y+=mid.x; }",
+                "f64, enabled: bool) { if "
+                "enabled { seen=amount; p.x+=amount+mid.x+aim.x; } } ticks+=1; "
+                "p.y+=mid.x+aim.x; "
+                "aim.y+=mid.x; }",
                 backends[backend],
                 &active
             ));
@@ -1861,9 +1865,10 @@ TEST_CASE(program_query_rows_keep_locals_and_cancel_removed_tuple)
         REQUIRE(ecs_world_record_add_pair(world, owner, row_targets.id, second, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Rows :: system( p:Position) join target in self.Targets join "
-            "aim:Position from target { starts:retain f64=0; starts+=1; "
-            "saved:=aim.x; await Delay(1); p.y+=saved; }",
+            "Rows :: system( p:^Position , target in self.Targets , "
+            "aim:^Position from target) { "
+            "starts:retain f64=0; starts+=1; saved:=aim.x; await Delay(1); "
+            "p.y+=saved; }",
             backends[backend],
             &active
         ));
@@ -1910,9 +1915,11 @@ TEST_CASE(program_query_changed_preserves_busy_published_writes)
         prepare();
         ecs_entity owner = positioned(0, false);
         REQUIRE(compile_module(
-            "Changed :: system( p:Position) where changed(p) and Accept(p.x) { "
-            "Accept :: (value:f64)->bool { return value>=0; } calls:retain "
-            "f64=0; calls+=1; await Delay(1); }",
+            "Changed :: system( p:^Position , if changed(p) and Accept(p.x)) { "
+            "Accept :: "
+            "(value:f64)->bool { return value>=0; } calls:retain f64=0; "
+            "calls+=1; await "
+            "Delay(1); }",
             backends[backend]
         ));
         unsigned char *bytes = NULL;
@@ -1969,8 +1976,8 @@ TEST_CASE(program_query_admission_is_frozen_before_row_writes)
         }
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Snapshot :: system( p:Position) join target in self.Targets where "
-            "p.x==0 { p.x+=1; }",
+            "Snapshot :: system( p:^Position , target in self.Targets , if "
+            "p.x==0) { p.x+=1; }",
             backends[backend],
             &active
         ));
@@ -1982,6 +1989,37 @@ TEST_CASE(program_query_admission_is_frozen_before_row_writes)
                             ->x;
         int run = execution_program_run_system(program);
         int finish = execution_program_finish_system(program);
+        if (memory.instance_count || memory.activation_bytes) {
+            execution_effect_summary effects = execution_module_effects(module);
+            fprintf(
+                stderr,
+                "stream row backend=%d instances=%d activation=%zu rows=%llu "
+                "history=%zu effects=%d/%d/%d\n",
+                backend,
+                memory.instance_count,
+                memory.activation_bytes,
+                (unsigned long long)memory.query_rows,
+                memory.query_history_bytes,
+                effects.declared,
+                effects.parallel_safe,
+                effects.deterministic
+            );
+            fprintf(
+                stderr,
+                "stream eligibility selected=%d functions=%d states=%d "
+                "bindings=%d actions=%d imports=%d changes=%d structural=%d "
+                "sink=%d\n",
+                program->query_streaming,
+                module->plan.function_count,
+                module->plan.state_count,
+                module->plan.binding_count,
+                module->plan.action_count,
+                module->plan.import_count,
+                acount(program->change_queries),
+                effects.structural,
+                effects.host_sink
+            );
+        }
         REQUIRE(memory.instance_count == 0 && memory.activation_bytes == 0);
         REQUIRE(memory.query_rows == 3 && memory.query_history_bytes == sizeof(uint64_t));
         REQUIRE(before == 0);
@@ -2003,12 +2041,12 @@ TEST_CASE(program_query_admission_is_frozen_before_row_writes)
 TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order)
 {
     const char *sources[] = {
-        "Ordered :: system() where Risky(int(self.Position.x)) and "
-        "has(Velocity) { Risky :: (index:int)->bool { values:=[10,20]; return "
-        "values[index]>0; } }",
-        "Guarded :: system() where has(Velocity) and "
-        "Risky(int(self.Position.x)) { Risky :: (index:int)->bool { "
-        "values:=[10,20]; return values[index]>0; } }",
+        "Ordered :: system( if Risky(int(self.Position.x)) and has(Velocity)) "
+        "{ Risky :: "
+        "(index:int)->bool { values:=[10,20]; return values[index]>0; } }",
+        "Guarded :: system( if has(Velocity) and Risky(int(self.Position.x))) "
+        "{ Risky :: "
+        "(index:int)->bool { values:=[10,20]; return values[index]>0; } }",
     };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
@@ -2052,10 +2090,12 @@ TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values)
             owners[i] = positioned(2 * i - 1, false);
         }
         REQUIRE(compile(
-            "Filter :: system( p:Position) where Above(p.x) and Below(p.x) and "
-            "p.x<100 { Above :: (value:f64)->bool { return Positive(value); "
-            "} Positive :: (value:f64)->bool { return value>0; } Below :: "
-            "(value:f64)->bool { return value<4; } p.y+=1; }",
+            "Filter :: system( p:^Position , if Above(p.x) and Below(p.x) and "
+            "p.x<100) { Above :: "
+            "(value:f64)->bool { return Positive(value); } Positive :: "
+            "(value:f64)->bool { "
+            "return value>0; } Below :: (value:f64)->bool { return value<4; "
+            "} p.y+=1; }",
             backends[backend]
         ));
         REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
@@ -2087,10 +2127,12 @@ TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values)
         script_syntax_free(syntax);
         syntax = NULL;
         REQUIRE(compile_module(
-            "Filter :: system( p:Position) where Above(p.x) and Below(p.x) { "
-            "Above :: (value:f64)->bool { return Negative(value); } "
-            "Negative :: (value:f64)->bool { return value<0; } Below :: "
-            "(value:f64)->bool { return value<4; } p.y+=1; }",
+            "Filter :: system( p:^Position , if Above(p.x) and Below(p.x)) { "
+            "Above :: "
+            "(value:f64)->bool { return Negative(value); } Negative :: "
+            "(value:f64)->bool { "
+            "return value<0; } Below :: (value:f64)->bool { return value<4; "
+            "} p.y+=1; }",
             backends[backend]
         ));
         REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
@@ -2127,7 +2169,7 @@ TEST_CASE(program_query_predicates_call_bound_natives)
                                  positioned(1, false),
                                  positioned(3, false) };
         REQUIRE(compile(
-            "Filter :: system(p: Position) where Above(p.x) { "
+            "Filter :: system(p: ^Position, if Above(p.x)) { "
             "Above :: (value: f64) -> bool { return value > 0; } p.y += 1; }",
             backends[backend]
         ));
@@ -2266,9 +2308,9 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
 }
 TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned)
 {
-    const char *source = "Shared :: system(position: Position) { total: "
-                         "retain f64 = 0; position.x += 1; total += 1; "
-                         "position.y = total; }";
+    const char *source = "Shared :: system(position: ^Position) { total: "
+                         "retain f64 = 0; position.x += 1; total "
+                         "+= 1; position.y = total; }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2929,8 +2971,10 @@ TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_res
                     execution_memory_usage steady = execution_program_memory_usage(program);
                     /* Payloads grow by 32 bytes per native call. Live bytes can
                      * grow with them; capacity must stay within one live wave
-                     * plus 4KiB, rather than retaining every smaller dead slot. */
-                    REQUIRE(steady.payload_bytes >= warm.payload_bytes);
+                     * plus 4KiB, rather than retaining every smaller dead slot.
+                     * Either sample may fall anywhere between collections, so
+                     * only the retained text bounds them from below. */
+                    REQUIRE(steady.payload_bytes >= MEMORY_TEXT_MIN);
                     REQUIRE(steady.payload_bytes <= warm.payload_bytes * 3 + MEMORY_PLATEAU_SLACK);
                     REQUIRE(steady.payload_capacity <= steady.payload_bytes * 2 + MEMORY_PLATEAU_SLACK);
                 }
@@ -5100,6 +5144,59 @@ TEST_CASE(program_task_results_keep_nested_task_handles_alive)
     return true;
 }
 
+TEST_CASE(program_query_staging_roots_keep_completed_tasks_alive)
+{
+    const char *source = "Held :: behavior { work: task;"
+                         "Work :: () -> (value: f64) { yield; return 7; }"
+                         "on Impulse :: () { work = Work(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        for (int staging = 0; staging < 3; staging++) {
+            prepare();
+            REQUIRE(compile(source, backends[backend]));
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            const pin_value arguments[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+            REQUIRE(execution_instance_dispatch(instance, 11, arguments, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            pin_value handle = *execution_instance_state(instance, state_id("work"));
+            REQUIRE(handle.type == PIN_TASK && handle.u64);
+            pin_query query = { .kind = PIN_QUERY_ROW, .values = &handle, .count = 1 };
+            pin_value row = { .type = PIN_QUERY, .ptr = &query };
+            if (staging == 0) {
+                instance->query_row = row;
+            } else if (staging == 1) {
+                apush(program->query_values, row);
+            } else {
+                apush(program->system_values, row);
+            }
+            /* Isolate task reachability from payload collection: these row
+             * fields are already retained by the caller of the task scan. */
+            execution_activation deferred = { 0 };
+            instance->running = &deferred;
+            int status = execution_instance_set_state(
+                instance,
+                state_id("work"),
+                (pin_value){ .type = PIN_TASK }
+            );
+            instance->running = NULL;
+            REQUIRE(status == FLOW_OK);
+            program_tasks_collect(program);
+            execution_memory_usage memory = execution_program_memory_usage(program);
+            REQUIRE(memory.retained_tasks == 1 && memory.task_result_bytes > 0);
+            instance->query_row = (pin_value){ 0 };
+            asetlen(program->query_values, 0);
+            asetlen(program->system_values, 0);
+            program_tasks_collect(program);
+            memory = execution_program_memory_usage(program);
+            REQUIRE(memory.retained_tasks == 0 && memory.task_result_bytes == 0);
+        }
+    }
+    return true;
+}
+
 static bool program_prepared_type(void *, uint64_t id, execution_prepared_type *out)
 {
     const script_catalog_type *type = script_catalog_type_by_id(&catalog, id);
@@ -5251,7 +5348,7 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
           "" },
         /* System-retained bindings belong to the registration, not a row's
          * activation, and cannot own tasks. */
-        { "S :: system(p: Position) { worker: retain task }", "System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals" },
+        { "S :: system(p: ^Position) { worker: retain task }", "System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals" },
         /* An unawaited action continues before its result exists. */
         { "B :: behavior { n: f64 = 0; on Impulse :: () { x := "
           "make_thing(); n = x } }",
@@ -11163,7 +11260,7 @@ TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
             snprintf(
                 source,
                 sizeof source,
-                "Ordered :: system(p:Position,v:Velocity) { "
+                "Ordered :: system(p:^Position,v:^Velocity) { "
                 "resumed:retain f64=0; event_clock:retain f64=0; "
                 "queued_value:retain f64=0; finished:retain f64=0; "
                 "on Impulse :: (amount: f64, enabled: bool) { "
@@ -11235,6 +11332,17 @@ TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
                 REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_OK);
                 status = execution_program_update(program, 30, 7, 1000);
             }
+            if (status != FLOW_OK) {
+                const execution_program_failure *failure = execution_program_error(program);
+                fprintf(
+                    stderr,
+                    "ordered system backend=%d mode=%d status=%d error=%s\n",
+                    backend,
+                    mode,
+                    status,
+                    failure ? failure->message : "none"
+                );
+            }
             REQUIRE(status == FLOW_OK);
             REQUIRE(number_state(instance, "resumed", .5));
             REQUIRE(number_state(instance, "event_clock", .5));
@@ -11263,13 +11371,24 @@ TEST_CASE(program_reduction_query_rows_count_filtered_candidates)
             ((program_velocity *)ecs_component_data(world, entities[i], 502))->x = i - 1;
         }
         REQUIRE(
-            compile_module("Count :: system( p:Position,v:Velocity) where v.x>0 { reduce p.x+=v.x; }", backends[backend])
+            compile_module("Count :: system( p:^Position,v:^Velocity , if v.x>0) { reduce p.x+=v.x; }", backends[backend])
         );
         program = execution_program_new(module, world, NULL);
         REQUIRE(program);
         REQUIRE(execution_program_prepare_system(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(execution_program_memory_usage(program).query_rows == 3);
-        REQUIRE(execution_program_run_system(program) == FLOW_OK);
+        int status = execution_program_run_system(program);
+        if (status != FLOW_OK) {
+            const execution_program_failure *failure = execution_program_error(program);
+            fprintf(
+                stderr,
+                "count rows backend=%d status=%d error=%s\n",
+                backend,
+                status,
+                failure ? failure->message : "none"
+            );
+        }
+        REQUIRE(status == FLOW_OK);
         REQUIRE(execution_program_memory_usage(program).query_rows == 3);
         REQUIRE(execution_program_finish_system(program) == FLOW_OK);
         REQUIRE(execution_program_memory_usage(program).query_rows == 3);
@@ -11623,7 +11742,7 @@ TEST_CASE(program_suspended_union_reads_keep_pointer_targets)
  * the cell is still there when the system resumes. */
 TEST_CASE(program_paused_reducing_systems_keep_pointer_targets)
 {
-    const char *source = "Held :: system(p: Position, v: Velocity) { "
+    const char *source = "Held :: system(p: ^Position, v: ^Velocity) { "
                          "kept: retain number = 0; finished: retain f64 = 0; "
                          "ps: ^number[] = []; if true { x := 3.0; ps = [&x]; } "
                          "reduce p.x += v.x; finished += 1; kept = ps[0]^; }";
@@ -11861,6 +11980,171 @@ TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers)
     REQUIRE(!execution_instance_state(foreign, id)->ptr && cell->value.i == 17);
     return true;
 }
+static int managed_heap_count()
+{
+    int count = 0;
+    for (const behavior_managed_heap *heap = program->managed; heap;
+         heap = heap->previous) {
+        count++;
+    }
+    return count;
+}
+/* One entity on bytecode. The program keeps one heap handle across reloads,
+ * and each commit frees the candidate's heap once it holds no cell, without
+ * waiting for a collection. */
+TEST_CASE(program_replacement_releases_empty_retired_heaps)
+{
+    const char
+        *source = "Keeper :: behavior { saved: ^f64?; seen: f64 = 0; "
+                  "on Impulse :: (amount: f64, enabled: bool) { "
+                  "if enabled { x := amount; saved = &x; } "
+                  "if !enabled { if saved != nil { seen = saved^; } } } }";
+    prepare();
+    REQUIRE(compile(source, BEHAVIOR_BYTECODE));
+    uint64_t entity = ecs_entity_to_u64(ecs_world_create_entity(world));
+    execution_instance *instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    pin_value args[] = { { .type = PIN_F64, .d = 5 }, { .type = PIN_BOOL, .b = true } };
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    behavior_managed_heap *heap = execution_program_managed_heap(program);
+    for (int reload = 0; reload < 8; reload++) {
+        REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+        REQUIRE(execution_program_managed_heap(program) == heap && managed_heap_count() == 1);
+    }
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    args[1].b = false;
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(instance, "seen", 5));
+    REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+    REQUIRE(execution_program_managed_heap(program) == heap && managed_heap_count() == 1);
+    return true;
+}
+static bool replace_library(const char *source)
+{
+    execution_module_free(prior_module);
+    prior_module = module;
+    module = NULL;
+    script_analysis_free(analysis);
+    analysis = NULL;
+    script_syntax_free(syntax);
+    syntax = NULL;
+    return compile_module(source, BEHAVIOR_BYTECODE);
+}
+/* One library owner on bytecode. A reload that keeps Actor's layout preserves
+ * a pointer to an Actor. One that adds a field is refused while kept state
+ * reaches an old Actor: at preparation, or at commit when the running program
+ * stores one in a kept cell after preparation. The program keeps its state
+ * and module, and a restart applies the change. */
+TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts)
+{
+    const char
+        *same = "Store :: library { Actor :: struct { hp: f64; } "
+                "saved: ^Actor?; slot: ^(^Actor?)?; kept: ^int?; }",
+        *added = "Store :: library { Actor :: struct { hp: f64; armor: f64; } "
+                 "saved: ^Actor?; slot: ^(^Actor?)?; kept: ^int?; }";
+    prepare();
+    REQUIRE(compile(same, BEHAVIOR_BYTECODE));
+    uint64_t entity = ecs_entity_to_u64(ecs_world_create_entity(world));
+    uint64_t saved = state_id("saved"), slot = state_id("slot"),
+             kept = state_id("kept");
+    execution_instance *instance = execution_program_attach(program, entity);
+    REQUIRE(instance && saved && slot && kept);
+    const pin_record *actor = NULL;
+    for (int i = 0; i < module->plan.type_count; i++) {
+        if (module->plan.types[i].record &&
+            !strcmp(module->plan.types[i].name, "Store.Actor")) {
+            actor = module->plan.types[i].record;
+        }
+    }
+    REQUIRE(actor && actor->type.size == sizeof(double));
+    arena *heap = &program->managed->storage;
+    double hp = 5;
+    pin_value data = { .type = PIN_STRUCT,
+                       .type_name = actor->type.name,
+                       .record = actor,
+                       .ptr = &hp };
+    REQUIRE(!pin_value_snapshot_to_arena(heap, &data, &data));
+    /* Pointer headers are copied from each state's initial nil. */
+    pin_value absent, outer, number;
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &absent, execution_instance_state(instance, saved))
+    );
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &outer, execution_instance_state(instance, slot))
+    );
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &number, execution_instance_state(instance, kept))
+    );
+    pin_value target = absent;
+    target.ptr = managed_cell(heap, data);
+    pin_pointer *inner = managed_cell(heap, absent);
+    outer.ptr = inner;
+    number.ptr = managed_cell(heap, (pin_value){ .type = PIN_I32, .i = 7 });
+    REQUIRE(execution_instance_set_state(instance, saved, target) == FLOW_OK);
+    REQUIRE(execution_instance_set_state(instance, slot, outer) == FLOW_OK);
+    REQUIRE(execution_instance_set_state(instance, kept, number) == FLOW_OK);
+    REQUIRE(replace_library(same));
+    REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance && execution_instance_state(instance, saved)->ptr == target.ptr);
+    REQUIRE(replace_library(added));
+    REQUIRE(execution_program_replace(program, module, false) == FLOW_ERR_COMPILE);
+    REQUIRE(execution_program_module(program) == prior_module);
+    REQUIRE(execution_instance_state(instance, saved)->ptr == target.ptr);
+    REQUIRE(execution_instance_set_state(instance, saved, absent) == FLOW_OK);
+    other_program = execution_program_prepare_replace(program, module, false);
+    REQUIRE(other_program);
+    inner->value = target;
+    REQUIRE(execution_program_commit_replace(program, other_program) == FLOW_ERR_STATE);
+    other_program = NULL;
+    REQUIRE(execution_program_module(program) == prior_module);
+    REQUIRE(execution_instance_state(instance, slot)->ptr == inner);
+    REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance && !execution_instance_state(instance, slot)->ptr);
+    REQUIRE(!execution_instance_state(instance, kept)->ptr);
+    return true;
+}
+/* One entity on two backends. Items of an array behind a pointer, and of an
+ * addressed local, are read and written through the cell: the copies counted
+ * stay near one array, not one per access. A copy taken through the pointer
+ * keeps its items when the cell changes in place, and an index that empties
+ * the cell still reads the array as it was before the index ran. */
+TEST_CASE(program_managed_array_items_copy_alone)
+{
+    const char *source =
+        "Keeper :: behavior { total: f64 = 0; copied: f64 = 0; first: f64 = 0; "
+        "Clear :: (target: ^(f64[])) -> int { target^ = []; return 0; } "
+        "on Impulse :: (amount: f64, enabled: bool) { "
+        "xs: f64[] = []; for i in 0..<256 { xs.append(amount); } "
+        "ys := xs; p := &ys; sum: f64 = 0; "
+        "for i in 0..<256 { p^[i] = amount + 1; sum += p^[i] + ys[i]; } "
+        "zs := p^; p^[0] = 9; copied = zs[0] + ys[0]; total = sum; "
+        "ws: f64[] = [7]; q := &ws; first = q^[Clear(q)]; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 }, { .type = PIN_BOOL } };
+        pin_copy_scope copies = { 0 };
+        pin_copy_scope_begin(&copies);
+        int status = execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1u << 20);
+        pin_copy_scope_end(&copies);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(number_state(instance, "total", 1024) && number_state(instance, "copied", 11));
+        REQUIRE(number_state(instance, "first", 7));
+        uint64_t moved = copies.counts.value_buffer_bytes +
+                         copies.counts.value_header_moves * sizeof(pin_value);
+        REQUIRE(!copies.counts.overflow && moved < 64 * 256 * sizeof(pin_value));
+    }
+    return true;
+}
 void test_language_migration34()
 {
     pu_setup(NULL, cleanup);
@@ -11887,6 +12171,9 @@ void test_language_program()
     RUN_TEST_CASE(program_suspended_union_reads_keep_pointer_targets);
     RUN_TEST_CASE(program_paused_reducing_systems_keep_pointer_targets);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
+    RUN_TEST_CASE(program_replacement_releases_empty_retired_heaps);
+    RUN_TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts);
+    RUN_TEST_CASE(program_managed_array_items_copy_alone);
     RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
     RUN_TEST_CASE(program_reduction_query_rows_count_filtered_candidates);
@@ -11906,6 +12193,7 @@ void test_language_program()
     RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);
     RUN_TEST_CASE(program_systems_name_their_step);
     RUN_TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects);
+    RUN_TEST_CASE(program_query_projected_component_pointers_keep_serial_effects);
     RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);
     RUN_TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors);
     RUN_TEST_CASE(program_query_required_path_keeps_one_instance_per_root);
@@ -11964,6 +12252,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_collection_indexes_handles_across_many_owners);
     RUN_TEST_CASE(program_task_collection_follows_long_pointer_chains);
     RUN_TEST_CASE(program_task_results_keep_nested_task_handles_alive);
+    RUN_TEST_CASE(program_query_staging_roots_keep_completed_tasks_alive);
     RUN_TEST_CASE(program_prepared_tasks_preserve_cancellation_union_and_deadlines);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_many_tasks_collect_in_linear_mark_work);

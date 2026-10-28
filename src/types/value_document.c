@@ -4,6 +4,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/type.h"
 #include "types/union.h"
@@ -21,10 +22,13 @@ typedef struct
 
 static av_value *shape(av_doc *doc, const pin_value *value)
 {
-    if (value->type < PIN_BOOL || value->type > PIN_POINTER ||
+    if (value->type < PIN_BOOL || value->type > PIN_QUERY ||
         value->container < PIN_CONTAINER_SINGLE || value->container > PIN_CONTAINER_MAP ||
-        (value->record && (!pin_record_valid(value->record) || value->type != PIN_STRUCT ||
-                           !pin_record_fields_current(value->record)))) {
+        (value->record &&
+         ((value->schema ? !pin_value_record_current(value)
+                         : !pin_record_valid(value->record) ||
+                               !pin_record_fields_current(value->record)) ||
+          value->type != PIN_STRUCT))) {
         return NULL;
     }
     static const char *containers[] = { "value", "array", "set", "map" };
@@ -109,8 +113,11 @@ static bool record_header(const pin_value *value, const pin_record *validated)
            (value->container == PIN_CONTAINER_SINGLE ||
             value->container == PIN_CONTAINER_ARRAY ||
             value->container == PIN_CONTAINER_SET) &&
-           (value->record == validated || pin_record_valid(value->record)) &&
-           pin_record_fields_current(value->record) && pin_value_type(value);
+           (value->schema
+                ? pin_value_record_current(value)
+                : (value->record == validated || pin_record_valid(value->record)) &&
+                      pin_record_fields_current(value->record)) &&
+           pin_value_type(value);
 }
 /* NULL means invalid input. A valid document null is a distinct av_value. Build
  * each whole subtree before exposing it through the caller's destination key. */
@@ -147,8 +154,11 @@ static av_value *project(
             return NULL;
         }
         if (items->record || v->record) {
-            if (!v->record || !items->record ||
-                (items->record != v->record && !pin_record_valid(items->record)) ||
+            pin_value element = { .type = items->element_type,
+                                  .type_name = items->type_name,
+                                  .record = items->record,
+                                  .schema = items->schema };
+            if (!v->record || !items->record || !record_header(&element, v->record) ||
                 !pin_record_same(items->record, v->record) ||
                 items->element_type != PIN_STRUCT || !items->type_name ||
                 strcmp(items->type_name, v->type_name)) {
@@ -232,12 +242,15 @@ static av_value *project(
         }
         case PIN_STRUCT:
             if (v->ptr && type_name) {
-                const type_desc *type = v->record ? pin_value_type(v)
-                                                  : type_catalog_find(type_name);
+                const type_desc *type = v->record || v->schema
+                                          ? pin_value_type(v)
+                                          : type_catalog_find(type_name);
                 const type_desc *layout = type;
+                type_resolver resolver = v->schema ? pin_schema_resolver(v->schema)
+                                                   : (type_resolver){ 0 };
                 for (int depth = 0; type && type->alias_of && depth < TYPE_MAX_NESTING;
                      depth++) {
-                    type = type_alias_type(type, (type_resolver){ 0 });
+                    type = type_alias_type(type, resolver);
                 }
                 if (layout && (!type || type->alias_of || type->size != layout->size)) {
                     return NULL;
@@ -248,6 +261,9 @@ static av_value *project(
                         pin_value field;
                         if (pin_read_field(&writer->temporary, v->ptr, &type->fields[i], &field)) {
                             return NULL;
+                        }
+                        if (field.type == PIN_STRUCT) {
+                            field.schema = v->schema;
                         }
                         av_value *child = project(
                             doc,
@@ -271,6 +287,7 @@ static av_value *project(
                 }
             }
             return value ? value : av_null(doc);
+        case PIN_QUERY:
         case PIN_POINTER: return v->ptr ? NULL : av_null(doc);
         case PIN_FLOW: return av_null(doc);
         case PIN_HANDLE:

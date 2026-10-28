@@ -1,6 +1,5 @@
 #include "project_migrate36.h"
 
-#include "assets/project.h"
 #include "project_migrate26.h"
 #include "support/array.h"
 #include "support/text_edit.h"
@@ -189,8 +188,8 @@ int chibi_migrate36_pointers(const char *source, char **migrated, char *error, s
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
         /* A retry after an interrupted upgrade reads this step's own output,
-         * whose `for &item` only the current version spells. */
-        syntax = chibi_migrate_parse(source, CHIBI_PROJECT_VERSION);
+         * whose `for &item` only version 37 on spells. */
+        syntax = chibi_migrate_parse(source, 37);
         bool current = !syntax->diagnostic_count;
         script_syntax_free(syntax);
         if (current) {

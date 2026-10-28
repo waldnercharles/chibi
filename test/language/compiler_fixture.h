@@ -105,6 +105,9 @@ bool compiler_fixture_call(
     arena *detached,
     pin_value *out
 );
+/* A port's storage as Compile takes it: the inferred generic type (0), each
+ * argument's own type (-2), or a type the compiler cannot pass (-1). */
+int compiler_fixture_port_storage(script_type);
 /* The data functions `catalog` links, which take no flow, outcomes or
  * suspension, as Compile and CollectScalar take them: out[0] holds a Native
  * row of `identity` for each, out[1] its Port rows and out[2] its ID and ABI.

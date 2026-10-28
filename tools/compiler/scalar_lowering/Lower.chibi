@@ -254,7 +254,7 @@ pub Lower :: (request: Request) -> Plan {
                 !ValidIndex(request_range, length(ranges))) {
                 return Reject(-1, "scalar lowering input exceeds its schema limits");
             }
-            if (abi.schema != 1 || abi.prepared != 24 ||
+            if (abi.schema != 1 || abi.prepared != 26 ||
                 (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
                 abi.value_size < 1 || abi.value_size > 256 || abi.payload_offset < 0 ||
                 abi.payload_offset > abi.value_size - 4 || abi.results_offset < 0 || abi.results_offset > 4096) {

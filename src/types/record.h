@@ -66,6 +66,8 @@ bool pin_record_valid(const pin_record *);
 /* Frozen layouts validate their owned closure after catalog retirement. Flat
  * authored declarations still require their original nested catalog layout. */
 bool pin_record_current(const pin_record *);
+/* A retained native child closure validates the original authored layout. */
+bool pin_value_record_current(const pin_value *);
 bool pin_record_same(const pin_record *, const pin_record *);
 /* Values resolve a carried authored/native layout before catalog lookup.
  * A conflicting carried/name identity never falls back to the catalog. */

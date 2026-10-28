@@ -57,7 +57,9 @@ typedef struct
     uint64_t query_rows, query_lookup_steps;
 } execution_memory_usage;
 /* After each safe event/update boundary, bytes describe live managed values;
- * capacity includes reusable allocation slots. Task result bytes include their
+ * capacity includes reusable allocation slots. Retained external component cell
+ * backing is included once per owning arena; a cell shared by distinct arenas
+ * is conservatively counted once for each owner. Task result bytes include their
  * owned snapshots; task slots include reusable slots. Instance/activation headers,
  * fixed state banks, query history and index slots are logical byte counts and
  * exclude allocator overhead and nested buffers. activation_cache_bytes counts
@@ -69,7 +71,9 @@ typedef struct
  * when idle and at most the executor worker budget (maximum 32 chunks).
  * ecs_change_bytes is shared
  * world-owned storage (do not sum across programs); query counters describe the
- * latest refresh. Stateless streaming retains no instance headers. Binding
+ * latest refresh. system_row_bytes/capacity include staged query row headers;
+ * their payloads belong to the managed heap. Stateless streaming retains no
+ * instance headers. Binding
  * schedule bytes include retained buffers and an upper bound for shared
  * generation keys, which may also belong to another program's cache. */
 execution_memory_usage execution_program_memory_usage(const execution_program *);
@@ -276,8 +280,10 @@ int execution_instance_dispatch(
 const pin_value *execution_instance_state(const execution_instance *instance, uint64_t id);
 int execution_instance_set_state(execution_instance *instance, uint64_t id, pin_value value);
 int execution_instance_pending(const execution_instance *instance);
-/* Matching stable IDs and reflected layouts preserve state. Replacement cancels
- * old activations before releasing the prior module generation. */
+/* Matching stable IDs and reflected layouts preserve state. A replacement that
+ * would drop a kept value fails and leaves the program running; a restart
+ * applies it. Replacement cancels old activations before releasing the prior
+ * module generation. */
 int execution_program_replace(execution_program *program, execution_module *module, bool restart);
 /* Preparation leaves live state/work untouched. Discard with program_free.
  * The original program must outlive its staged candidate. Commit consumes the
@@ -296,7 +302,9 @@ execution_program *execution_program_prepare_replace_services(
     const service_binding *defaults,
     const service_binding *overrides
 );
-void execution_program_commit_replace(execution_program *, execution_program *prepared);
+/* Fails, freeing prepared and leaving the program running, when a value kept
+ * since preparation now reaches a record layout the replacement changed. */
+int execution_program_commit_replace(execution_program *, execution_program *prepared);
 /* Borrowed current finalized generation; ends at replacement or program free. */
 const execution_module *execution_program_module(const execution_program *);
 #endif

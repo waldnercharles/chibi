@@ -504,14 +504,16 @@ TEST_CASE(language_system_retention_rejects_non_system_owners_and_tasks)
 TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments)
 {
     parse(
-        "Motion :: system(position: Position) { step := position.x; "
-        "Apply :: (value: number) { position.y = value; } Apply(step); }"
+        "Motion :: system(position: ^Position) { step := position.x; Apply :: "
+        "(value: number) { "
+        "position.y = value; } Apply(step); }"
     );
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     parse(
-        "Motion :: system(position: Position) { step := position.x; "
-        "Apply :: () { position.y = step; } Apply(); }"
+        "Motion :: system(position: ^Position) { step := position.x; Apply :: "
+        "() { position.y = "
+        "step; } Apply(); }"
     );
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
@@ -525,25 +527,28 @@ TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments)
 
 TEST_CASE(language_optional_component_requires_presence_guard)
 {
-    parse("Motion :: system(position: Position?) { position.x = 1; }");
+    parse("Motion :: system(position: ^Position?) { position.x = 1; }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
     const script_diagnostic *error = diagnostic(
-        "Optional component requires a presence guard before member access"
+        "Nullable pointer requires a presence guard before dereference"
     );
-    int member = (int)(strstr(analysis->text, "position.x") - analysis->text) +
-                 (int)strlen("position.");
-    REQUIRE(error && error->range.start == member && error->range.end == member + 1);
-    parse("Motion :: system(position: Position?) { if (position) { position.x = 1; } }");
+    int receiver = (int)(strstr(analysis->text, "position.x") - analysis->text);
+    REQUIRE(
+        error && error->range.start == receiver &&
+        error->range.end == receiver + (int)strlen("position")
+    );
+    parse("Motion :: system(position: ^Position?) { if (position) { position.x = 1; } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     parse(
-        "Motion :: system(position: Position?) { Change :: () { mutate(); } "
-        "if position { Change(); position.x = 1; } }"
+        "Motion :: system(position: ^Position?) { Change :: () { mutate(); } "
+        "if position { "
+        "Change(); position.x = 1; } }"
     );
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Optional component requires a presence guard before member access"));
+    REQUIRE(diagnostic("Nullable pointer requires a presence guard before dereference"));
     return true;
 }
 /* `??` needs an optional on its left and a fallback of its value type; an
@@ -558,7 +563,7 @@ TEST_CASE(language_coalesce_types_its_operands)
         "L :: library { F :: (a: int) -> int { return a ?? 1; } }",
         "L :: library { F :: (a: int?) -> int { return a ?? \"x\"; } }",
         "L :: library { F :: (a: int?, b: int?) -> int { return a ?? b; } }",
-        "Motion :: system(position: Position?) { x := position ?? position; }",
+        "Motion :: system(position: ^Position?) { x := position ?? 1; }",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         parse(invalid[i]);
@@ -571,10 +576,11 @@ TEST_CASE(language_coalesce_types_its_operands)
 TEST_CASE(language_reductions_resolve_stored_fields_and_membership)
 {
     parse(
-        "Motion :: system(position: Position?) where has(Position) { "
-        "Amount :: () -> number { return 2; } "
-        "if position { reduce position.x += Amount(); "
-        "reduce min(position.x, 3); reduce max(position.y, 4); } }"
+        "Motion :: system(position: ^Position? , if has(Position)) { Amount :: "
+        "() -> number { "
+        "return 2; } if position { reduce position.x += Amount(); reduce "
+        "min(position.x, 3); "
+        "reduce max(position.y, 4); } }"
     );
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
@@ -588,9 +594,9 @@ TEST_CASE(language_reductions_resolve_stored_fields_and_membership)
         }
     }
     REQUIRE(reductions == 3);
-    parse("Motion :: system(position: Position) { reduce self.Position.x += 1; }");
+    parse("Motion :: system(position: ^Position) { reduce self.Position.x += 1; }");
     REQUIRE(analysis->valid);
-    parse("Motion :: system(position: Position?) { if position != nil { reduce position.x += 1; } }");
+    parse("Motion :: system(position: ^Position?) { if position != nil { reduce position.x += 1; } }");
     REQUIRE(analysis->valid);
     return true;
 }
@@ -599,9 +605,10 @@ TEST_CASE(language_reductions_require_system_component_fields)
     const char *invalid_targets[] = {
         "Motion :: system() { total := 0; reduce total += 1; }",
         "Motion :: system() { if true { total := 0; reduce total += 1; } }",
-        "Motion :: system(position: Position) { reduce position += position; }",
-        "Motion :: system(position: Placement) { reduce position.x += 1; }",
-        "Motion :: system(position: Position?) { reduce position.x += 1; }",
+        "Motion :: system(position: ^Position) { reduce position^ += "
+        "position^; }",
+        "Motion :: system(position: ^Placement) { reduce position.x += 1; }",
+        "Motion :: system(position: ^Position?) { reduce position.x += 1; }",
     };
     for (int i = 0; i < (int)(sizeof invalid_targets / sizeof *invalid_targets); i++) {
         parse(invalid_targets[i]);
@@ -610,41 +617,43 @@ TEST_CASE(language_reductions_require_system_component_fields)
     }
     parse("Motion :: behavior { on Tick :: () { reduce self.Position.x += 1; } }");
     REQUIRE(diagnostic("Reduction requires a synchronous system body"));
-    parse("Motion :: system(position: Position) { Update :: () { reduce position.x += 1; } Update(); }");
+    parse(
+        "Motion :: system(position: ^Position) { Update :: () { reduce "
+        "position.x += 1; } "
+        "Update(); }"
+    );
     REQUIRE(diagnostic("Reduction requires a synchronous system body"));
     return true;
 }
 TEST_CASE(language_reduction_producers_reject_conflicting_component_values)
 {
     const char *sources[] = {
-        "Motion :: system(position: Position) { reduce position.x += "
-        "position.y; "
-        "}",
-        "Motion :: system(position: Position) { position.y = 0; reduce "
-        "position.x "
-        "+= 1; }",
-        "Motion :: system(position: Position) { if position.y > 0 { reduce "
+        "Motion :: system(position: ^Position) { reduce position.x += "
+        "position.y; }",
+        "Motion :: system(position: ^Position) { position.y = 0; reduce "
+        "position.x += 1; }",
+        "Motion :: system(position: ^Position) { if position.y > 0 { reduce "
         "position.x += 1; } }",
-        "Motion :: system(position: Position) where position.y > 0 { reduce "
+        "Motion :: system(position: ^Position , if position.y > 0) { reduce "
         "position.x += 1; }",
-        "Motion :: system(position: Position) where changed(position) { reduce "
+        "Motion :: system(position: ^Position , if changed(position)) { reduce "
         "position.x += 1; }",
-        "Motion :: system(position: Position) { if true { snapshot := "
-        "position; "
-        "reduce position.x += 1; } }",
-        "Motion :: system(position: Position) { Read :: () -> number { return "
-        "position.y; } reduce position.x += Read(); }",
-        "Motion :: system(position: Position) { reduce position.x += 1; "
+        "Motion :: system(position: ^Position) { if true { snapshot := "
+        "position^; reduce "
+        "position.x += 1; } }",
+        "Motion :: system(position: ^Position) { Read :: () -> number { return "
+        "position.y; } reduce "
+        "position.x += Read(); }",
+        "Motion :: system(position: ^Position) { reduce position.x += 1; "
         "self.Position.y = 2; }",
-        "Motion :: system(position: Position) { bind position.y = 2; reduce "
+        "Motion :: system(position: ^Position) { bind position.y = 2; reduce "
         "position.x += 1; }",
-        "Motion :: system(position: Position) { Read :: (n: int) -> number { "
-        "if "
-        "n "
-        "> 0 { return Read(n - 1); } return position.y; } reduce position.x += "
-        "Read(1); }",
-        "Motion :: system(position: Position) { Owner :: () -> entity { "
-        "position.y = 1; return self; } reduce Owner().Position.x += 1; }",
+        "Motion :: system(position: ^Position) { Read :: (n: int) -> number { "
+        "if n > 0 { return "
+        "Read(n - 1); } return position.y; } reduce position.x += Read(1); }",
+        "Motion :: system(position: ^Position) { Owner :: () -> entity { "
+        "position.y = 1; return "
+        "self; } reduce Owner().Position.x += 1; }",
     };
     for (int i = 0; i < (int)(sizeof sources / sizeof *sources); i++) {
         parse(sources[i]);
@@ -653,25 +662,33 @@ TEST_CASE(language_reduction_producers_reject_conflicting_component_values)
             diagnostic("Reduction producer cannot read or write component 'Position' outside reductions")
         );
     }
-    parse("Motion :: system(position: Position) { mutate(); reduce position.x += 1; }");
+    parse("Motion :: system(position: ^Position) { mutate(); reduce position.x += 1; }");
     REQUIRE(diagnostic("Reduction producer cannot call an opaque component accessor"));
-    parse("Motion :: system(position: Position) { opaque_host(); reduce position.x += 1; }");
+    parse("Motion :: system(position: ^Position) { opaque_host(); reduce position.x += 1; }");
     REQUIRE(diagnostic("Reduction producer cannot call an opaque component accessor"));
-    parse("Motion :: system(position: Position, other: Placement) { reduce position.x += other.y; }");
+    parse("Motion :: system(position: ^Position, other: ^Placement) { reduce position.x += other.y; }");
     REQUIRE(analysis->valid);
     return true;
 }
 TEST_CASE(language_reduction_producers_cannot_suspend_or_start_tasks)
 {
-    parse("Motion :: system(position: Position) { reduce position.x += 1; yield; }");
+    parse("Motion :: system(position: ^Position) { reduce position.x += 1; yield; }");
     REQUIRE(diagnostic("Reduction requires a synchronous system body without tasks"));
-    parse("Motion :: system(position: Position) { Work :: () { yield; } Work(); reduce position.x += 1; }");
+    parse(
+        "Motion :: system(position: ^Position) { Work :: () { yield; } Work(); "
+        "reduce position.x "
+        "+= 1; }"
+    );
     REQUIRE(diagnostic("Reduction requires a synchronous system body without tasks"));
     return true;
 }
 TEST_CASE(language_unordered_reductions_require_unbounded_isolated_components)
 {
-    parse("Motion :: system(position: Position) { reduce unordered position.x += 1; reduce unordered position.y += 2; }");
+    parse(
+        "Motion :: system(position: ^Position) { reduce unordered position.x "
+        "+= 1; reduce "
+        "unordered position.y += 2; }"
+    );
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     int count = 0;
@@ -682,11 +699,19 @@ TEST_CASE(language_unordered_reductions_require_unbounded_isolated_components)
         }
     }
     REQUIRE(count == 2);
-    parse("Motion :: system(unordered: Position) { reduce unordered.x += 1; }");
+    parse("Motion :: system(unordered: ^Position) { reduce unordered.x += 1; }");
     REQUIRE(analysis->valid);
-    parse("Motion :: system(position: Position) { reduce unordered position.x += 1; reduce position.y += 2; }");
+    parse(
+        "Motion :: system(position: ^Position) { reduce unordered position.x "
+        "+= 1; reduce "
+        "position.y += 2; }"
+    );
     REQUIRE(diagnostic("A component cannot mix ordered and unordered reductions in one system"));
-    parse("Motion :: system(position: Position) { reduce min(position.y, 2); reduce unordered position.x += 1; }");
+    parse(
+        "Motion :: system(position: ^Position) { reduce min(position.y, 2); "
+        "reduce unordered "
+        "position.x += 1; }"
+    );
     REQUIRE(diagnostic("A component cannot mix ordered and unordered reductions in one system"));
 
     script_catalog_field bounded_fields[2];
@@ -700,16 +725,16 @@ TEST_CASE(language_unordered_reductions_require_unbounded_isolated_components)
     bounded.types = &bounded_type;
     bounded.type_count = 1;
     cleanup();
-    syntax = script_parse("Motion :: system(position: Position) { reduce unordered position.x += 1; }");
+    syntax = script_parse("Motion :: system(position: ^Position) { reduce unordered position.x += 1; }");
     analysis = script_analyze(syntax, &bounded);
     REQUIRE(diagnostic("Unordered reduction requires an unbounded component field"));
     cleanup();
-    syntax = script_parse("Motion :: system(position: Position) { reduce position.x += 1; }");
+    syntax = script_parse("Motion :: system(position: ^Position) { reduce position.x += 1; }");
     analysis = script_analyze(syntax, &bounded);
     REQUIRE(analysis->valid);
     cleanup();
     bounded_fields[0].range_contract = false;
-    syntax = script_parse("Motion :: system(position: Position) { reduce unordered position.x += 1; }");
+    syntax = script_parse("Motion :: system(position: ^Position) { reduce unordered position.x += 1; }");
     analysis = script_analyze(syntax, &bounded);
     REQUIRE(analysis->valid); /* A slider hint is not a stored range contract. */
     return true;
@@ -725,10 +750,11 @@ TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
     queries.relationship_count = 2;
     cleanup();
     syntax = script_parse(
-        "Follow :: system(p: Position, aim: Targets.Position?, "
-        "up: Placement from ancestor(ChildOf) "
-        ") where (Position or Placement) and not self.Placement "
-        "{ if aim { p.x = aim.x + up.x; } }"
+        "Follow :: system(p: ^Position, aim: ^Position? from Targets, up: "
+        "^Placement from "
+        "ancestor(ChildOf)  , if (Position or Placement) and not "
+        "self.Placement) { if aim { p.x = "
+        "aim.x + up.x; } }"
     );
     analysis = script_analyze(syntax, &queries);
     REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
@@ -742,40 +768,35 @@ TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
     }
     REQUIRE(found_path && found_ancestor && analysis->query >= 0);
     cleanup();
-    syntax = script_parse(
-        "Follow :: system(target: Targets.Position ) without Position { "
-        "target.x += 1; }"
-    );
+    syntax = script_parse("Follow :: system(target: ^Position from Targets  , if ! Position) { target.x += 1; }");
     analysis = script_analyze(syntax, &queries);
     REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
-    parse("Bad :: system(p: Position ) without Position { p.x = 1; }");
+    parse("Bad :: system(p: ^Position  , if ! Position) { p.x = 1; }");
     REQUIRE(!analysis->valid);
     REQUIRE(diagnostic("A component cannot be both a parameter and excluded"));
-    parse(
-        "Inherit :: system(p: Position from ancestor(ChildOf) ) without "
-        "Position { p.x += 1; }"
-    );
+    parse("Inherit :: system(p: ^Position from ancestor(ChildOf)  , if ! Position) { p.x += 1; }");
     REQUIRE(analysis->valid);
     parse(
-        "Inherit :: system(p: Position from self_or_ancestor(ChildOf) "
-        ") without Position { p.x += 1; }"
+        "Inherit :: system(p: ^Position from self_or_ancestor(ChildOf)  , if ! "
+        "Position) { p.x += "
+        "1; }"
     );
     REQUIRE(analysis->valid);
     cleanup();
-    syntax = script_parse("Bad :: system(p: Likes.Position ) { p.x = 1; }");
+    syntax = script_parse("Bad :: system(p: ^Position from Likes ) { p.x = 1; }");
     analysis = script_analyze(syntax, &queries);
     REQUIRE(syntax->diagnostic_count == 0 && !analysis->valid);
     REQUIRE(
         diagnostic("Scalar query path requires an exclusive relationship; iterate multiple targets explicitly")
     );
-    parse("Bad :: system(p: Position ) where target.Position { p.x = 1; }");
+    parse("Bad :: system(p: ^Position  , if target.Position) { p.x = 1; }");
     REQUIRE(!analysis->valid && diagnostic("Unknown query relationship 'target'"));
-    parse("Safe :: system(p: Position? ) { if p { p.x = 1; p.y = 2; } }");
+    parse("Safe :: system(p: ^Position? ) { if p { p.x = 1; p.y = 2; } }");
     REQUIRE(analysis->valid);
-    parse("Waiting :: system(p: Position? ) { if p { yield; p.x = 1; } }");
+    parse("Waiting :: system(p: ^Position? ) { if p { yield; p.x = 1; } }");
     REQUIRE(
         !analysis->valid &&
-        diagnostic("Optional component requires a presence guard before member access")
+        diagnostic("Nullable pointer requires a presence guard before dereference")
     );
     script_catalog_capability structural_capabilities[sizeof capabilities / sizeof *capabilities];
     memcpy(structural_capabilities, capabilities, sizeof structural_capabilities);
@@ -784,11 +805,11 @@ TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
     queries.capability_count = (int)(sizeof structural_capabilities /
                                      sizeof *structural_capabilities);
     cleanup();
-    syntax = script_parse("Changed :: system(p: Position? ) { if p { mutate(); p.x = 1; } }");
+    syntax = script_parse("Changed :: system(p: ^Position? ) { if p { mutate(); p.x = 1; } }");
     analysis = script_analyze(syntax, &queries);
     REQUIRE(
         !analysis->valid &&
-        diagnostic("Optional component requires a presence guard before member access")
+        diagnostic("Nullable pointer requires a presence guard before dereference")
     );
     const script_catalog_relationship shadow = { .id = 601,
                                                  .name = "ChildOf",
@@ -796,7 +817,7 @@ TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
     queries.relationships = &shadow;
     queries.relationship_count = 1;
     cleanup();
-    syntax = script_parse("Builtin :: system(p: ChildOf.Position ) { for target in self.ChildOf {} }");
+    syntax = script_parse("Builtin :: system(p: ^Position from ChildOf ) { for target in self.ChildOf {} }");
     analysis = script_analyze(syntax, &queries);
     REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
     bool builtin_path = false, builtin_stream = false;
@@ -822,12 +843,12 @@ TEST_CASE(language_query_joins_and_filters_share_source_rules)
     queries.relationship_count = 2;
     cleanup();
     syntax = script_parse(
-        "Follow :: system(p: Position from self "
-        ") join aim: Position? from Targets "
-        "join up: Placement from ancestor(ChildOf) "
-        "where self.Position and not Targets.Placement and "
-        "ancestor(ChildOf).Position and has(Likes) "
-        "{ if aim { p.x = aim.x + up.x; } }"
+        "Follow :: system(p: ^Position from self  , aim: ^Position? from "
+        "Targets , up: ^Placement "
+        "from ancestor(ChildOf) , if self.Position and not Targets.Placement "
+        "and "
+        "ancestor(ChildOf).Position and has(Likes)) { if aim { p.x = aim.x + "
+        "up.x; } }"
     );
     analysis = script_analyze(syntax, &queries);
     REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
@@ -844,19 +865,20 @@ TEST_CASE(language_query_joins_and_filters_share_source_rules)
     }
     REQUIRE(target_filter && ancestor_filter && existential);
     const char *valid[] = {
-        "Follow :: system(p: Position ) join aim: Targets.Position { p.x = "
+        "Follow :: system(p: ^Position  , aim: ^Position from Targets) { p.x = "
         "aim.x; }",
-        "Follow :: system() join aim: Targets.Position? where not "
-        "Targets.Placement "
-        "{ if aim { aim.x = 1; } }",
-        "Follow :: system(p: Position ) where has(Targets.Position) or not "
-        "has(Likes) { p.x = 1; }",
-        "Follow :: system(p: Position ) where "
-        "self_or_ancestor(ChildOf).Placement { p.x = 1; }",
-        "Follow :: system(p: Position ) join up: Position from "
-        "ancestor(/* parent */ ChildOf /* edge */) where "
-        "has(/* any target */ Likes) and "
-        "self_or_ancestor(/* provider */ ChildOf).Position { p.x = up.x; }",
+        "Follow :: system(  aim: ^Position? from Targets , if not "
+        "Targets.Placement) { if aim { "
+        "aim.x = 1; } }",
+        "Follow :: system(p: ^Position  , if has(Targets.Position) or not "
+        "has(Likes)) { p.x = 1; }",
+        "Follow :: system(p: ^Position  , if "
+        "self_or_ancestor(ChildOf).Placement) { p.x = 1; }",
+        "Follow :: system(p: ^Position  , up: ^Position from ancestor(/* "
+        "parent */ ChildOf /* edge "
+        "*/) , if has(/* any target */ Likes) and self_or_ancestor(/* provider "
+        "*/ "
+        "ChildOf).Position) { p.x = up.x; }",
     };
     for (size_t i = 0; i < sizeof valid / sizeof *valid; i++) {
         cleanup();
@@ -865,14 +887,15 @@ TEST_CASE(language_query_joins_and_filters_share_source_rules)
         REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
     }
     const char *invalid[] = {
-        "Bad :: system() join p: Position {}",
-        "Bad :: system() join p: Targets.Position from self {}",
-        "Bad :: system() join p: Likes.Position {}",
-        "Bad :: system(p: Position ) where Likes.Placement {}",
-        "Bad :: system(p: Position ) join aim: Targets.Position? { if aim { "
-        "yield; p.x = aim.x; } }",
-        "Bad :: system(p: Position ) join aim: Targets.Position? where "
-        "Targets.Position { p.x = aim.x; }",
+        "Bad :: system(  p: ^Targets.Position from self) {}",
+        "Bad :: system(  p: ^Position from Likes) {}",
+        "Bad :: system(p: ^Position  , if Likes.Placement) {}",
+        "Bad :: system(p: ^Position  , aim: ^Position? from Targets) { if aim "
+        "{ yield; p.x = "
+        "aim.x; } }",
+        "Bad :: system(p: ^Position  , aim: ^Position? from Targets , if "
+        "Targets.Position) { p.x = "
+        "aim.x; }",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         cleanup();
@@ -893,15 +916,20 @@ TEST_CASE(language_query_generators_bind_rows_and_pure_value_filters)
     queries.relationship_count = 2;
     cleanup();
     syntax = script_parse(
-        "Follow :: system(p: Position ) join target in self.Targets "
-        "join next in target.Likes join aim: Position? from next "
-        "where Positive(p.x) and (aim and aim.x > p.x) and changed(aim) "
-        "and has(target.Likes) and not has(next.Placement) "
-        "{ Positive :: (x: number) -> bool { positive := x > 0; return "
-        "positive; } "
-        "if aim { p.x = aim.x; } }"
+        "Follow :: system(p: ^Position  , target in self.Targets , next in "
+        "target.Likes , aim: "
+        "^Position? from next , if Positive(p.x) and (aim and aim.x > p.x) and "
+        "changed(aim) and "
+        "has(target.Likes) and not has(next.Placement)) { Positive :: (x: "
+        "number) -> bool { "
+        "positive := x > 0; return positive; } if aim { p.x = aim.x; } }"
     );
     analysis = script_analyze(syntax, &queries);
+    if (!analysis->valid) {
+        for (int i = 0; i < analysis->diagnostic_count; i++) {
+            fprintf(stderr, "query generator: %s\n", analysis->diagnostics[i].message);
+        }
+    }
     REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
     REQUIRE(analysis->query_variable_count == 2);
     int generators = 0, predicates = 0;
@@ -939,51 +967,50 @@ TEST_CASE(language_query_filters_reject_effects_and_unbound_variables)
     queries.relationships = &targets;
     queries.relationship_count = 1;
     const char *invalid[] = {
-        "Bad :: system() join target in later.Targets join later in "
-        "self.Targets {}",
-        "Bad :: system() join target in target.Targets {}",
-        "Bad :: system() join target in self.Unknown {}",
-        "Bad :: system() join target in self.Targets join target in "
-        "self.Targets {}",
-        "Bad :: system() join target in self.Targets join p: Position? from "
-        "target "
-        "where p.x > 0 {}",
-        "Bad :: system() join target in self.Targets join p: Position? from "
-        "target "
-        "where p or p.x > 0 {}",
-        "Bad :: system() join target in self.Targets join p: Position from "
-        "target { "
+        "Bad :: system(  target in later.Targets , later in self.Targets) {}",
+        "Bad :: system(  target in target.Targets) {}",
+        "Bad :: system(  target in self.Unknown) {}",
+        "Bad :: system(  target in self.Targets , target in self.Targets) {}",
+        "Bad :: system(  target in self.Targets , p: ^Position? from target , "
+        "if p.x > 0) {}",
+        "Bad :: system(  target in self.Targets , p: ^Position? from target , "
+        "if p or p.x > 0) {}",
+        "Bad :: system(  target in self.Targets , p: ^Position from target) { "
         "bind p.x = 1; }",
-        "Bad :: system(p: Position ) where changed(p.x) {}",
-        "Bad :: system(p: Position ) where p.x > 0 { query changed(p); }",
-        "Bad :: system(p: Position ) { query p.x > 0; }",
-        "Bad :: system(p: Position ) where changed(p, p) {}",
-        "Bad :: system(p: Position ) where p.x {}",
-        "Bad :: system(p: Position ) where Mutating() { Mutating :: () -> "
-        "bool { mutate(); return true; } }",
-        "Bad :: system(p: Position ) where Deferred() { Deferred :: () -> "
-        "bool { yield; return true; } }",
-        "Bad :: system(p: Position ) where await Deferred() { "
-        "A :: () {} B :: () {} C :: () {} D :: () {} E :: () {} F :: () {} "
-        "Deferred :: () -> bool { yield; return true; } }",
-        "Bad :: system(p: Position ) where enabled { enabled: retain = true; "
-        "}",
-        "Bad :: system(p: Position ) where enabled { enabled := true; }",
-        "Bad :: system(p: Position ) where ReadLocal() { enabled := true; "
-        "ReadLocal :: () -> bool { return enabled; } }",
-        "Bad :: system(p: Position ) where ReadState() { enabled: "
-        "retain = "
-        "true; ReadState :: () -> bool { return enabled; } }",
-        "Bad :: system(p: Position ) where ReadState() { enabled: retain = "
-        "true; ReadState :: () -> bool { return Inner(); } Inner :: () -> bool "
+        "Bad :: system(p: ^Position  , if changed(p.x)) {}",
+        "Bad :: system(p: ^Position  , if changed(p, p)) {}",
+        "Bad :: system(p: ^Position  , if p.x) {}",
+        "Bad :: system(p: ^Position  , if Mutating()) { Mutating :: () -> bool "
+        "{ mutate(); return "
+        "true; } }",
+        "Bad :: system(p: ^Position  , if Deferred()) { Deferred :: () -> bool "
+        "{ yield; return "
+        "true; } }",
+        "Bad :: system(p: ^Position  , if await Deferred()) { A :: () {} B :: "
+        "() {} C :: () {} D "
+        ":: () {} E :: () {} F :: () {} Deferred :: () -> bool { yield; return "
+        "true; } }",
+        "Bad :: system(p: ^Position  , if enabled) { enabled: retain = true; }",
+        "Bad :: system(p: ^Position  , if enabled) { enabled := true; }",
+        "Bad :: system(p: ^Position  , if ReadLocal()) { enabled := true; "
+        "ReadLocal :: () -> bool "
         "{ return enabled; } }",
-        "Bad :: system(p: Position ) where dt > 0 on Tick :: (dt: f64) {}",
+        "Bad :: system(p: ^Position  , if ReadState()) { enabled: retain = "
+        "true; ReadState :: () "
+        "-> bool { return enabled; } }",
+        "Bad :: system(p: ^Position  , if ReadState()) { enabled: retain = "
+        "true; ReadState :: () "
+        "-> bool { return Inner(); } Inner :: () -> bool { return enabled; } }",
+        "Bad :: system(p: ^Position, if dt > 0) {}",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         cleanup();
         syntax = script_parse(invalid[i]);
         analysis = script_analyze(syntax, &queries);
         REQUIRE(syntax->diagnostic_count == 0);
+        if (analysis->valid) {
+            fprintf(stderr, "query filter unexpectedly accepted case %zu: %s\n", i, invalid[i]);
+        }
         REQUIRE(!analysis->valid);
     }
     REQUIRE(
@@ -991,10 +1018,10 @@ TEST_CASE(language_query_filters_reject_effects_and_unbound_variables)
     );
     cleanup();
     syntax = script_parse(
-        "Many :: system() join a in self.Targets join b in a.Targets "
-        "join c in b.Targets join d in c.Targets join e in d.Targets "
-        "join f in e.Targets join g in f.Targets join h in g.Targets "
-        "join i in h.Targets {}"
+        "Many :: system(  a in self.Targets , b in a.Targets , c in b.Targets "
+        ", d in c.Targets , e "
+        "in d.Targets , f in e.Targets , g in f.Targets , h in g.Targets , i "
+        "in h.Targets) {}"
     );
     analysis = script_analyze(syntax, &queries);
     REQUIRE(syntax->diagnostic_count == 0 && !analysis->valid);
@@ -1003,10 +1030,10 @@ TEST_CASE(language_query_filters_reject_effects_and_unbound_variables)
 }
 TEST_CASE(language_derived_component_is_read_only)
 {
-    parse("Follow :: system(placement: Placement, position: Position) { position.x = placement.x; }");
+    parse("Follow :: system(placement: ^Placement, position: ^Position) { position.x = placement.x; }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
-    parse("Follow :: system(placement: Placement) { placement.x = 1; }");
+    parse("Follow :: system(placement: ^Placement) { placement.x = 1; }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
     parse("Follow :: behavior { on Tick :: (dt: number s) { self.Placement.y = dt; } }");
@@ -1566,7 +1593,7 @@ TEST_CASE(language_hex_literal_fills_integer_storage)
 }
 TEST_CASE(language_vector_operator_resolves_catalog_identity)
 {
-    parse("Motion :: system(position: Position) { position = position + position; }");
+    parse("Motion :: system(position: ^Position) { position^ = position^ + position^; }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     bool found = false;
@@ -1645,18 +1672,26 @@ TEST_CASE(language_external_record_and_index_writes_are_effects)
 }
 TEST_CASE(language_discarded_pure_result_rejected)
 {
-    parse("Motion :: system(position: Position) { VectorAdd(position, position); mutate(); }");
+    parse("Motion :: system(position: ^Position) { VectorAdd(position^, position^); mutate(); }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
     REQUIRE(diagnostic("VectorAdd returns a new value and changes nothing; assign its result"));
-    parse("Motion :: system(position: Position) { action sum = VectorAdd(position, position); sum(); mutate(); }");
+    parse(
+        "Motion :: system(position: ^Position) { action sum = "
+        "VectorAdd(position^, position^); "
+        "sum(); mutate(); }"
+    );
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
     REQUIRE(diagnostic("sum returns a new value and changes nothing; assign its result"));
     parse("Values :: library { One :: () -> (count: int) { return 1; } Use :: () -> () { One(); } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
-    parse("Motion :: system(position: Position) { position = VectorAdd(position, position); mutate(); }");
+    parse(
+        "Motion :: system(position: ^Position) { position^ = "
+        "VectorAdd(position^, position^); "
+        "mutate(); }"
+    );
     REQUIRE(analysis->valid);
     return true;
 }
@@ -2006,7 +2041,7 @@ static void measure(const char *body)
 {
     char source[1024];
     /* Inside a block, `:=` declares a local rather than system state. */
-    snprintf(source, sizeof source, "Move :: system(body: Body) {\nif true {\n%s}\n}\n", body);
+    snprintf(source, sizeof source, "Move :: system(body: ^Body) {\nif true {\n%s}\n}\n", body);
     cleanup();
     syntax = script_parse(source);
     analysis = script_analyze(syntax, &measured);
@@ -2107,7 +2142,7 @@ TEST_CASE(language_units_reject_mismatch)
 }
 TEST_CASE(language_units_check_struct_field_initializers)
 {
-    measure("copy: Body = {x: body.speed}; body = copy;\n");
+    measure("copy: Body = {x: body.speed}; body^ = copy;\n");
     REQUIRE(!analysis->valid && diagnostic("Units differ: u = u/s"));
     measure("copy: Body = {x: dt}; body.x = copy.x;\n");
     REQUIRE(!analysis->valid && diagnostic("Units differ: u = s"));
@@ -2117,7 +2152,7 @@ TEST_CASE(language_units_check_struct_field_initializers)
 }
 TEST_CASE(language_units_check_empty_struct_defaults)
 {
-    measure("copy: Body = null; body = copy;\n");
+    measure("copy: Body = null; body^ = copy;\n");
     REQUIRE(analysis->valid);
     parse("Reset :: behavior { Pair :: () -> (a: int, b: int) { return (1, 2) } on Tick :: () { if true { copy := Pair(); copy = null; } } }");
     REQUIRE(!analysis->valid && diagnostic("Incompatible result tuple shape"));
@@ -2142,7 +2177,7 @@ TEST_CASE(language_units_skip_invalid_sources)
 {
     /* Recovery closes this source to analyze it; it stays unchecked. */
     cleanup();
-    syntax = script_parse("Move :: system(body: Body) {\n    body.x = (body.speed + 1");
+    syntax = script_parse("Move :: system(body: ^Body) {\n    body.x = (body.speed + 1");
     analysis = script_analyze(syntax, &measured);
     REQUIRE(!analysis->valid && analysis->warning_count == 0);
     REQUIRE(!diagnostic("Units differ: u = u/s"));
@@ -2163,12 +2198,10 @@ TEST_CASE(language_units_check_all_fallback_values)
 TEST_CASE(language_units_follow_constant_and_state_initializers)
 {
     const char *sources[] = {
-        "Move :: system(body: Body) { elapsed := dt; if true { body.x = "
-        "elapsed; "
-        "} }",
-        "Move :: system(body: Body) { elapsed: retain = dt; if true { "
-        "body.x = "
+        "Move :: system(body: ^Body) { elapsed := dt; if true { body.x = "
         "elapsed; } }",
+        "Move :: system(body: ^Body) { elapsed: retain = dt; if true { body.x "
+        "= elapsed; } }",
     };
     for (size_t i = 0; i < sizeof sources / sizeof *sources; i++) {
         cleanup();
@@ -2196,7 +2229,7 @@ TEST_CASE(language_units_follow_constant_and_state_initializers)
     REQUIRE(diagnostic("Units differ: u/s = u"));
 
     cleanup();
-    syntax = script_parse("Move :: system(body: Body) { elapsed: retain = dt; if true { elapsed = body.x; } }");
+    syntax = script_parse("Move :: system(body: ^Body) { elapsed: retain = dt; if true { elapsed = body.x; } }");
     analysis = script_analyze(syntax, &measured);
     REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
     REQUIRE(diagnostic("Units differ: s = u"));

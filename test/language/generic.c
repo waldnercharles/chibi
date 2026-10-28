@@ -28,6 +28,7 @@ static execution_program *program;
 static ecs_world *world;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap heap;
 static behavior_run_scope runs;
 static arena storage;
 static pin_value result;
@@ -54,6 +55,7 @@ static void cleanup()
     }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
     context = (behavior_function_context){ 0 };
     activation = (behavior_function_activation){ 0 };
     arena_free(&storage);
@@ -174,14 +176,16 @@ TEST_CASE(generic_argument_types_specialize_once_and_execute)
 }
 TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls)
 {
-    const char *source =
-        "Constants :: behavior { result: retain int = 0; real:retain f64=0; "
-        "Factorial :: (n: int) -> int { if n <= 1 { return 1 } "
-        "return n * Factorial(n - 1) } "
-        "Size :: Factorial(5); "
-        "Scale :: (value: $T, $N: int) -> T { return value * N } "
-        "Gain :: (value:$T,$Amount:f64)->T{return value*Amount} "
-        "on Run :: () { result = Scale(int(2), Size); real=Gain(3.0,0.5); } }";
+    const char
+        *source = "Constants :: behavior { result: retain int = 0; real:retain "
+                  "f64=0; "
+                  "Factorial :: (n: int) -> int { if n <= 1 { return 1 } "
+                  "return n * Factorial(n - 1) } "
+                  "Size :: Factorial(5); "
+                  "Scale :: (value: $T, $N: int) -> T { return value * N } "
+                  "Gain :: (value:$T,$Amount:f64)->T{return value*Amount} "
+                  "on Run :: () { result = Scale(int(2), Size); "
+                  "real=Gain(f64(3),0.5); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         REQUIRE(compile(source, backends[i]));
@@ -767,7 +771,7 @@ TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings)
         }
         pin_value value = analysis->expressions[symbol->initializer].constant;
         if (!strcmp(symbol->name, "Fraction")) {
-            fraction = value.type == PIN_F64 && value.d == 0.5;
+            fraction = value.type == PIN_F32 && value.f == 0.5f;
         }
         if (!strcmp(symbol->name, "Whole")) {
             whole = value.type == PIN_I32 && value.i == 0;
@@ -970,9 +974,12 @@ TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifi
         behavior_function_prepare_results(function, &result, &storage);
         behavior_function_activation_init(function, &activation);
         pin_value variables[] = { *saved };
+        /* Run's dynamic arrays live in the caller's managed heap. */
+        behavior_managed_heap_init(&heap);
         context = (behavior_function_context){ .activation = &activation,
                                                .variables = variables,
                                                .results = &result,
+                                               .managed_heap = &heap,
                                                .budget = 10000 };
         behavior_function_bind_storage(&context, &storage);
         REQUIRE(behavior_function_bind(function, &context, NULL, 0));

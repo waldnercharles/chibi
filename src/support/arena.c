@@ -532,6 +532,19 @@ void arena_set_trace(arena *a, const void *data, arena_tracer trace, const void 
     value->trace = trace;
     value->shape = shape;
 }
+void arena_external_resize(arena *a, size_t previous, size_t bytes)
+{
+    assert(
+        a->collectable && a->external >= previous &&
+        bytes <= SIZE_MAX - (a->external - previous)
+    );
+    a->external = a->external - previous + bytes;
+    if (bytes > previous) {
+        size_t growth = bytes - previous;
+        assert(growth <= SIZE_MAX - a->allocated);
+        a->allocated += growth;
+    }
+}
 void arena_set_cleanup(arena *a, const void *allocation, void (*release)(void *), void *resource, size_t retained_bytes)
 {
     assert(release && resource);
@@ -643,15 +656,15 @@ void arena_collect_end(arena_collection *c)
         a->allocated = 0;
         a->kept = 0;
         sweep_slabs(a, false);
-        a->kept += a->retained_bytes;
+        a->kept += a->retained_bytes + a->external;
         fit_resources(a);
     }
     afree(c->pending);
 }
 void arena_usage(const arena *a, size_t *bytes, size_t *capacity)
 {
-    *bytes = a->retained_bytes;
-    *capacity = a->retained_bytes;
+    *bytes = a->retained_bytes + a->external;
+    *capacity = a->retained_bytes + a->external;
     for (int i = 0; a->slabs && i < acount(a->slabs->slabs); i++) {
         const arena_slab *slab = a->slabs->slabs[i];
         *capacity += slab->slot * (size_t)slab->count;
@@ -677,7 +690,8 @@ size_t arena_storage_bytes(const arena *a)
     for (const arena_block *block = a->first; block; block = block->next) {
         bytes += sizeof *block + block->cap;
     }
-    return bytes + a->retained_bytes + a->resource_capacity * sizeof *a->resources +
+    return bytes + a->retained_bytes + a->external +
+           a->resource_capacity * sizeof *a->resources +
            a->cleanup_count * sizeof(arena_cleanup);
 }
 void *arena_alloc_bounded(arena *a, size_t size, size_t budget)

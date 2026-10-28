@@ -225,9 +225,15 @@ static void live_system()
     }
     assert(fabsf(observed_x - 12) < .001f);
     assert(schedule_count(engine_system_schedule(runtime)) == 1);
-    assert(
-        !publish_source(live->runtime, catalog, "FreeMotion :: system(position:Transform, velocity:Velocity, appearance:Appearance, health:Health) without Collider, Body on Tick :: (dt: number s) { position += velocity * dt; }", true)
-    );
+    assert(!publish_source(
+        live->runtime,
+        catalog,
+        "FreeMotion :: system(position:^Transform, velocity:^Velocity, "
+        "appearance:^Appearance, "
+        "health:^Health , if ! Collider && ! Body)       { position^ += "
+        "velocity^ * dt; }",
+        true
+    ));
     assert(!engine_frame(runtime, 61 / 60.));
     assert(fabsf(Transform_get_const(world, marker)->x - 12) < .001f);
     execution_program *applied = source_program(live->runtime->sources, "FreeMotion");
@@ -303,9 +309,9 @@ static void source_cohorts()
             *catalog = authoring_language_catalog_new(&input, error, sizeof error);
         native_capabilities_free(native);
         assert(catalog);
-        publish_system(live->runtime, catalog, "Motion", "Motion :: system(position:Transform,velocity:Velocity)on Tick :: (dt: number s) {position.x+=velocity.x*dt;}", backend);
-        publish_system(live->runtime, catalog, "Heal", "Heal :: system(health:Health){health.current+=1;}", backend);
-        publish_system(live->runtime, catalog, "Scale", "Scale :: system(position:Transform){position.x*=2;}", backend);
+        publish_system(live->runtime, catalog, "Motion", "Motion :: system(position:^Transform,velocity:^Velocity)      {position.x+=velocity.x*dt;}", backend);
+        publish_system(live->runtime, catalog, "Heal", "Heal :: system(health:^Health){health.current+=1;}", backend);
+        publish_system(live->runtime, catalog, "Scale", "Scale :: system(position:^Transform){position.x*=2;}", backend);
         ecs_entity owners[4];
         for (int i = 0; i < 4; i++) {
             owners[i] = ecs_world_create_entity(world);
@@ -392,7 +398,7 @@ static void source_cohorts()
         assert(source_profile_count(live->runtime->sources) > 0);
         engine_set_behavior_profiling(runtime, false);
         execution_program *heal = source_program(live->runtime->sources, "Heal");
-        uint64_t hits = publish_system(live->runtime, catalog, "Heal", "Heal :: system(health:Health){hits:retain int=0;health.current+=1;hits+=1;}", backend);
+        uint64_t hits = publish_system(live->runtime, catalog, "Heal", "Heal :: system(health:^Health){hits:retain int=0;health.current+=1;hits+=1;}", backend);
         assert(hits && source_program(live->runtime->sources, "Heal") == heal);
         assert(!engine_frame(runtime, 3.0 / 60));
         assert(schedule_parallel_batches(engine_system_schedule(runtime)) == batches);
@@ -401,7 +407,7 @@ static void source_cohorts()
             hits
         );
         assert(shared && shared->type == PIN_I32 && shared->i == 4);
-        publish_system(live->runtime, catalog, "Heal", "Heal :: system(health:Health){health.current+=1;}", backend);
+        publish_system(live->runtime, catalog, "Heal", "Heal :: system(health:^Health){health.current+=1;}", backend);
         assert(source_program(live->runtime->sources, "Heal") == heal);
         assert(!engine_frame(runtime, 4.0 / 60));
         assert(schedule_parallel_batches(engine_system_schedule(runtime)) > batches);
@@ -416,7 +422,7 @@ static void source_cohorts()
             assert(Health_get_const(world, owners[i])->current == 15);
         }
         execution_program *previous = source_program(live->runtime->sources, "Scale");
-        publish_system(live->runtime, catalog, "Scale", "Scale :: system(position:Transform){position.x*=3;}", backend);
+        publish_system(live->runtime, catalog, "Scale", "Scale :: system(position:^Transform){position.x*=3;}", backend);
         assert(source_program(live->runtime->sources, "Scale") == previous);
         assert(!engine_frame(runtime, 6.0 / 60));
         for (int i = 0; i < 4; i++) {
@@ -427,7 +433,7 @@ static void source_cohorts()
         /* A fresh program has no attached inspector; isolate the mixed-phase
          * preparation barrier from the earlier instrumentation barrier. */
         assert(!source_remove(live->runtime->sources, "Motion"));
-        publish_system(live->runtime, catalog, "Motion", "Motion :: system(position:Transform,velocity:Velocity)on Tick :: (dt: number s) {position.x+=velocity.x*dt;}", backend);
+        publish_system(live->runtime, catalog, "Motion", "Motion :: system(position:^Transform,velocity:^Velocity)      {position.x+=velocity.x*dt;}", backend);
         ecs_entity added = { 0 };
         schedule_desc native_row = { .name = "Add query owner",
                                      .phase = SYSTEM_PRE_PHYSICS,

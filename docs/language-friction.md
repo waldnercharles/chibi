@@ -44,10 +44,15 @@ operations from remaining limits.
 - Hot replacement must retain both the old allocations and their type layouts.
   Keeping bytes alive alone is insufficient when tracing depends on a record
   shape that a later catalog can replace.
-- Native reflected records and inline nested record payloads currently lack
-  independently retained layout metadata. Managed cells reject them until
-  that metadata can outlive catalog replacement; flat authored records and
-  recursive links through pointer fields are supported.
+- Query component references retain exact native schema closures, including
+  nested records, strings, offsets and enum widths. Removing a component or
+  destroying its entity or world permanently invalidates the original target;
+  a later add has a new identity. Invalid access produces an execution failure
+  and diagnostic. Authored catch or checked recovery operations remain absent.
+  Native query value snapshots use the same owned schema representation.
+  Ordinary `&native_local` and address-taking on authored records with inline
+  record fields remain rejected by the language's address-taking rules. Flat
+  authored records and recursive links through pointer fields are supported.
 - Stage one's body emitter receives a fixed type catalog. Its address prepass
   conservatively constructs pointer layers using the number of address
   expressions, including unused combinations. Before pointer-heavy packages
@@ -78,6 +83,29 @@ Odin supplies the familiar `^T`, `&value` and `pointer^` spelling. Go's managed
 pointers provide a lifetime precedent; Nim's ORC implementation was inspected
 before choosing Chibi's existing tracing collector. These are semantic
 references, not a claim that their implementations were ported.
+
+## Flat typed queries and iterators
+
+Language and runtime. Decision (owner, 2026-10-22): systems and explicit query
+iteration share a flat typed binding list. `in` generates relationship rows;
+`from` binds a component on an existing source. `T` is a read-only component
+value and `^T` is managed reference access. Ordinary inferred intermediates
+and `if` filters compose in source order. Systems receive `dt` implicitly in
+the body; helpers receive it explicitly. `join`, `without`, runtime `where`
+query clauses and system Tick payload headers are removed.
+
+`query(...)` describes reusable iteration with captured outer values. Each
+loop owns an independent cursor and performs cleanup on early exits. Systems
+also own scheduling and independent continuations per root/target tuple.
+Grouped source bindings are a future exploration, recorded in
+[design notes](design-notes.md#decisions-owner-2026-10-22).
+
+Project version 38 migrates legacy live-component query parameters to pointers,
+flattens clauses and makes bare whole-component value/lvalue access explicit
+with `name^`. Migration preserves lexical shadows, comments and literals.
+Ambiguous optional whole-value reads and obsolete body query declarations
+require an explicit author rewrite; the migration stages all sources before
+replacing any. [Query reference](code-language.md#components-and-systems).
 
 ## Stage one rejects untyped locals
 
@@ -835,6 +863,10 @@ The build identity's version reader named a parameter `macro`; the graph
 failed with only "Unexpected syntax", and `chibi fmt --check` only said the
 file had syntax errors, until bisecting copies of the file found it; it
 became `define` (#650).
+
+The 2026-10-22 flat-query change removes the `join`, `without` and query
+`where` clauses and their keyword reservations. The other examples above
+remain separate parser and diagnostic concerns.
 
 - Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
   column; Rust and Python also name the token (Rust: "expected identifier,

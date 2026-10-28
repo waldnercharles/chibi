@@ -466,101 +466,8 @@
           "name": "parameters",
           "content": {
             "type": "SYMBOL",
-            "name": "parameter_list"
+            "name": "query_list"
           }
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "FIELD",
-            "name": "join",
-            "content": {
-              "type": "SYMBOL",
-              "name": "query_join"
-            }
-          }
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "FIELD",
-              "name": "without",
-              "content": {
-                "type": "SYMBOL",
-                "name": "without_clause"
-              }
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "where"
-                },
-                {
-                  "type": "FIELD",
-                  "name": "where",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "_expression"
-                  }
-                }
-              ]
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "on"
-                },
-                {
-                  "type": "FIELD",
-                  "name": "event",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "_handler_name"
-                  }
-                },
-                {
-                  "type": "FIELD",
-                  "name": "binding",
-                  "content": {
-                    "type": "STRING",
-                    "value": "::"
-                  }
-                },
-                {
-                  "type": "FIELD",
-                  "name": "payload",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "parameter_list"
-                  }
-                }
-              ]
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
         },
         {
           "type": "FIELD",
@@ -935,52 +842,6 @@
         }
       ]
     },
-    "without_clause": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "without"
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "type"
-            },
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": ","
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "type"
-                  }
-                ]
-              }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": ","
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
     "declaration_body": {
       "type": "SEQ",
       "members": [
@@ -1323,10 +1184,6 @@
         {
           "type": "SYMBOL",
           "name": "exit_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "query_declaration"
         }
       ]
     },
@@ -2430,68 +2287,153 @@
         }
       ]
     },
-    "query_parameter_list": {
+    "query_list": {
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "parameter"
+          "type": "STRING",
+          "value": "("
         },
         {
-          "type": "REPEAT",
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "ALIAS",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "_query_parameter"
+                      },
+                      "named": true,
+                      "value": "parameter"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "query_generator"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "query_binding"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "query_guard"
+                    }
+                  ]
+                },
+                {
+                  "type": "REPEAT",
+                  "content": {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "STRING",
+                        "value": ","
+                      },
+                      {
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "ALIAS",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "_query_parameter"
+                            },
+                            "named": true,
+                            "value": "parameter"
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "query_generator"
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "query_binding"
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "query_guard"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "STRING",
+                      "value": ","
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "_query_parameter": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "name",
           "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "STRING",
-                "value": ","
-              },
-              {
-                "type": "SYMBOL",
-                "name": "parameter"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "_name"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "FIELD",
+          "name": "type",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_signature_type"
           }
         },
         {
           "type": "CHOICE",
           "members": [
             {
-              "type": "STRING",
-              "value": ","
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "from"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "source",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "_expression"
+                  }
+                }
+              ]
             },
             {
               "type": "BLANK"
-            }
-          ]
-        }
-      ]
-    },
-    "query_join": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "join"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "FIELD",
-              "name": "parameters",
-              "content": {
-                "type": "SYMBOL",
-                "name": "query_parameter_list"
-              }
-            },
-            {
-              "type": "FIELD",
-              "name": "generator",
-              "content": {
-                "type": "SYMBOL",
-                "name": "query_generator"
-              }
             }
           ]
         }
@@ -2509,6 +2451,31 @@
           }
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": ":"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "type",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "type"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "STRING",
           "value": "in"
         },
@@ -2518,6 +2485,91 @@
           "content": {
             "type": "SYMBOL",
             "name": "_expression"
+          }
+        }
+      ]
+    },
+    "query_binding": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_name"
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": ":="
+            },
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": ":"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "type",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "type"
+                  }
+                },
+                {
+                  "type": "STRING",
+                  "value": "="
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        }
+      ]
+    },
+    "query_guard": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "if"
+        },
+        {
+          "type": "FIELD",
+          "name": "condition",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        }
+      ]
+    },
+    "query_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "query"
+        },
+        {
+          "type": "FIELD",
+          "name": "parameters",
+          "content": {
+            "type": "SYMBOL",
+            "name": "query_list"
           }
         }
       ]
@@ -2698,27 +2750,6 @@
           "content": {
             "type": "SYMBOL",
             "name": "_name"
-          }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_end"
-        }
-      ]
-    },
-    "query_declaration": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "query"
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_expression"
           }
         },
         {
@@ -4250,6 +4281,10 @@
         {
           "type": "SYMBOL",
           "name": "await_expression"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "query_expression"
         }
       ]
     },
@@ -6074,15 +6109,6 @@
           "type": "ALIAS",
           "content": {
             "type": "STRING",
-            "value": "join"
-          },
-          "named": true,
-          "value": "identifier"
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "STRING",
             "value": "unordered"
           },
           "named": true,
@@ -6131,15 +6157,6 @@
             "content": {
               "type": "STRING",
               "value": "system"
-            },
-            "named": true,
-            "value": "identifier"
-          },
-          {
-            "type": "ALIAS",
-            "content": {
-              "type": "STRING",
-              "value": "without"
             },
             "named": true,
             "value": "identifier"
@@ -6275,15 +6292,6 @@
             "content": {
               "type": "STRING",
               "value": "or"
-            },
-            "named": true,
-            "value": "identifier"
-          },
-          {
-            "type": "ALIAS",
-            "content": {
-              "type": "STRING",
-              "value": "where"
             },
             "named": true,
             "value": "identifier"
@@ -6775,9 +6783,6 @@
       "type_name"
     ],
     [
-      "query_parameter_list"
-    ],
-    [
       "record_declaration",
       "_name"
     ],
@@ -6874,10 +6879,6 @@
       },
       {
         "type": "STRING",
-        "value": "without"
-      },
-      {
-        "type": "STRING",
         "value": "state"
       },
       {
@@ -6935,10 +6936,6 @@
       {
         "type": "STRING",
         "value": "or"
-      },
-      {
-        "type": "STRING",
-        "value": "where"
       },
       {
         "type": "STRING",

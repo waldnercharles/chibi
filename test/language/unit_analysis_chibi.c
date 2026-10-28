@@ -18,7 +18,7 @@
 #include <string.h>
 
 /* Twenty-five fixed raw typed-IR requests and four actual analyzed programs:
- * 58 authored calls at500k steps. Five compiler sources per backend and four
+ * 60 authored calls at500k steps. Five compiler sources per backend and four
  * analyzed sources give14 parses. Compiler sources <48KiB, fact sources <256B.
  * Actual caps:64expressions/32symbols/4functions/64statements/8bindings;
  * raw caps:16expressions/8symbols/2functions/4statements/1binding, except one
@@ -1195,9 +1195,11 @@ TEST_CASE(unit_analysis_actual_analyzer_facts_match)
         "return value; } }",
         "M :: library { Run :: (x: s) -> number { return Sum(x, x); } }",
         "M :: library { Run :: (x: s) -> s { row: Row = {Value: x}; return "
-        "row.Value; } }"
+        "row.Value; } }",
+        "M :: library { Run :: (x: u, dt: s) -> u { q := query(amount := x); "
+        "for row in q { return row.amount + dt; } return x; } }"
     };
-    for (int c = 0; c < 4; c++) {
+    for (int c = 0; c < 5; c++) {
         script_analysis_free(analysis);
         analysis = NULL;
         script_syntax_free(syntax);
@@ -1293,14 +1295,14 @@ TEST_CASE(unit_analysis_actual_analyzer_facts_match)
             found[match] = true;
         }
     }
-    REQUIRE(calls == 58);
+    REQUIRE(calls == 60);
     return true;
 }
 TEST_CASE(unit_analysis_cache_and_diagnostics_outlive_all_inputs)
 {
     cleanup();
     compiler_fixture_free(&fixture);
-    REQUIRE(calls == 58);
+    REQUIRE(calls == 60);
     for (int i = 0; i < 2; i++) {
         const script_unit_analysis_result *expected = &saved_expected[i];
         REQUIRE(

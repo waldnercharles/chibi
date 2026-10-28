@@ -260,7 +260,8 @@ Example :: library {
 }
 ```
 
-A pointer keeps its target alive after the declaring function returns.
+A pointer to an ordinary language value keeps its target alive after the
+declaring function returns.
 Unreachable cycles are collected automatically. No ownership-transfer keyword
 is needed. Memory reclamation does not replace explicitly closing a file or
 another external resource.
@@ -272,7 +273,15 @@ touch its operand: `pointer^`. Binary xor has spaces: `a ^ b`.
 Taking a managed address currently requires a writable local, value parameter
 or field of a flat authored record. Managed payloads containing inline nested
 records or native reflected records are rejected until their layouts can be
-retained safely. Array and map elements do not yet support address-taking.
+retained safely. Query bindings such as `health: ^Health` provide managed
+references to reflected components, including native components with nested
+records. The reference retains its identity and exact schema; removing the
+component or destroying its entity or world permanently invalidates its
+target. A later add creates a separate target. Invalid-target reads and writes
+stop the activation with a runtime diagnostic. Authored code does not yet have
+a catch or checked recovery operation. Fields reached through an existing
+managed pointer can be projected without retaining an ECS row address. Array
+and map elements do not yet support address-taking.
 Managed pointers cannot cross ordinary native-service or persistence boundaries.
 
 ## Conditions and loops
@@ -780,9 +789,12 @@ Counter :: behavior {
 Use components for entity-visible state. Use invocation locals for temporary
 work. All matches of one system share its retained state.
 
-Live replacement preserves matching retained values. New or incompatible
-bindings use their defaults. Replacement cancels old continuations and tasks.
-An explicit restart resets the owner's retained state.
+Live replacement preserves matching retained values, and new bindings use
+their defaults. A replacement that cannot keep a retained value, because its
+type changed or a record it points at changed layout, is refused: the running
+program keeps its code and values. Replacement cancels old continuations and
+tasks. An explicit restart applies any change and resets the owner's retained
+state.
 
 ## Components and systems
 
@@ -808,14 +820,17 @@ Damage :: behavior {
 }
 ```
 
-A system runs its body for each matching entity. Its header names the required
-components. `?` makes a component optional. `without` excludes components.
+A system runs its body for each matching query row. Its flat header declares
+component bindings, relationship generators, computed values and `if` filters.
+A component value is a read-only snapshot for that row; a pointer binding
+accesses the stored component. `?` makes a component binding optional.
 
 ```chibi
 EmitterControl :: system(
-    emitter: ParticleEmitter,
-    trigger: Aim?
-) without Collider on Tick :: (dt: s) {
+    emitter: ^ParticleEmitter,
+    trigger: Aim?,
+    if !Collider,
+) {
     if trigger {
         emitter.Active = trigger.Firing
     }
@@ -823,16 +838,69 @@ EmitterControl :: system(
 }
 ```
 
-The optional `on Tick` clause names the step fields that the system reads.
-Only the system body can read them. Pass a step value to helpers that need it.
-Systems cannot read `event`. Omit the clause when the body needs no step fields.
+Every system runs on Tick and has a read-only local `dt` in seconds. Pass it
+explicitly to helpers that need it. Behavior event handlers continue to list
+the payload fields they read.
+An empty `system()` header keeps manual registration: it runs for its attached
+entity and does not create a world query.
 
-Optional component fields need a presence guard. An `await` invalidates the
-proof, so check presence again after suspension.
+`in` generates one row for each relationship target. `from` binds a component
+on a source already in the row. A required component excludes rows where it
+is absent. A computed binding uses ordinary `:=` inference or an explicit
+type and initializer. Header expressions are pure and cannot suspend.
+Pass values explicitly to header helpers, such as `Alive(health.current)`;
+helpers cannot implicitly capture the header's bindings or enclosing locals.
 
-System-body locals belong to each query invocation. They survive suspension
-until that invocation completes. Entity state belongs in components when it
-must outlive the invocation.
+```chibi
+DamageTargets :: system(
+    damage: Damage,
+    target: entity in self.Targets,
+    health: ^Health from target,
+    if health.current > 0,
+    amount := damage.amount,
+) {
+    health.current -= amount
+}
+```
+
+Names become available from left to right. A failed `if` skips the remaining
+header entries for that row. Assigning a field of a component value is an
+error; use a pointer binding when the component should change. Pointer fields
+inside a copied value keep their ordinary shared-target semantics.
+
+The same description can be used explicitly as an iterable query:
+
+```chibi
+Combat :: behavior {
+    ApplyDamage :: () {
+        matches := query(
+            damage: Damage,
+            target in self.Targets,
+            health: ^Health from target,
+            if health.current > 0,
+        )
+        for row in matches {
+            row.health.current -= row.damage.amount
+        }
+    }
+}
+```
+
+Query descriptions capture outer values when constructed. Each loop has its
+own iteration state and releases it when the loop completes or exits.
+Component references resolve current storage while their original component
+incarnation exists. Removing the component or destroying its entity or world
+permanently invalidates the reference; later access fails with a runtime
+diagnostic. Re-adding a component creates a new identity. An existing reference
+never reattaches to a reused entity slot.
+A `from` binding selects its component when the row is admitted. Changing
+the relationship during a suspended invocation does not retarget its pointer;
+the next invocation binds the new target.
+
+System-body locals belong to each complete root/target tuple. They survive
+suspension until that invocation completes. Entity state belongs in components
+when it must outlive the invocation. Structural tuple loss cancels that tuple's
+work; failing a value filter does not cancel work that is already suspended.
 
 A reduction collects contributions to a numeric component field. It publishes
 them after the system batch completes.

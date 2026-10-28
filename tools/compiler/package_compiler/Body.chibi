@@ -110,6 +110,7 @@ WriteFact: int : 3;
 UnknownWrite: int : -1;
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
+    | Inferred(value: ValueType)
     | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
               hosts: Host[], roots: Root[], points: SourcePoint[], watches: SourceWatch[], effects: int,
               direct_write: int, facts: SemanticFact[])
@@ -171,6 +172,7 @@ Work :: struct {
     storage: int;
     container: int;
     record: int;
+    capture: bool;
 }
 Value :: struct {
     cell: int;
@@ -181,6 +183,8 @@ Value :: struct {
     storage: int;
     container: int;
     record: int;
+    // Slot containing a native record header schema, or -1 when absent.
+    schema: int;
 }
 // The resolved singleton result of a native call in this body. Its AST node
 // identifies the original selection even through local aliases.
@@ -296,6 +300,7 @@ StatePlace: int : 5;
 SelfPlace: int : 6;
 // A name the game binds; its index is the global's.
 GlobalPlace: int : 7;
+SystemStepPlace: int : 15;
 ArrayContainer: int : 1;
 // A bounded shared array view, as PIN_CONTAINER_VIEW.
 ViewContainer: int : 4;
@@ -778,14 +783,14 @@ Instruction :: (op: int, type: int, output: int, left: int, right: int, target: 
             column: item.column + 1};
 }
 Visit :: (node: int) -> Work {
-    return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: 0, container: 0, record: -1};
+    return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: 0, container: 0, record: -1, capture: false};
 }
 RecordEffects :: (effects: int) -> Work {
-    return {node: -1, phase: EffectsPhase, a: effects, b: 0, c: 0, storage: 0, container: 0, record: -1};
+    return {node: -1, phase: EffectsPhase, a: effects, b: 0, c: 0, storage: 0, container: 0, record: -1, capture: false};
 }
 RecordSemantic :: (node: int, kind: int, target: int) -> Work {
     return {node: node, phase: SemanticPhase, a: kind, b: target, c: 0,
-            storage: 0, container: 0, record: -1};
+            storage: 0, container: 0, record: -1, capture: false};
 }
 // WRITE dominates unknown, which dominates a proven clear summary.
 JoinWrite :: (left: int, right: int) -> int {
@@ -890,23 +895,23 @@ StepFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct: int
 }
 RecordNativeCall :: (node: int, native: int, result: Value) -> Work {
     return {node: node, phase: NativeCallPhase, a: native, b: 0, c: 0,
-            storage: result.storage, container: result.container, record: result.record};
+            storage: result.storage, container: result.container, record: result.record, capture: false};
 }
 Expect :: (node: int, storage: int, container: int, record: int) -> Work {
-    return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record};
+    return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record, capture: false};
 }
 Resume :: (node: int, phase: int, a: int, b: int) -> Work {
-    return {node: node, phase: phase, a: a, b: b, c: 0, storage: 0, container: 0, record: -1};
+    return {node: node, phase: phase, a: a, b: b, c: 0, storage: 0, container: 0, record: -1, capture: false};
 }
 // Bases for a step whose code stands alone, such as a state's initial value.
 NoBases :: () -> Bases {
     return {pc: 0, slot: 0, local: 0, cell: 0, host: 0, call: 0};
 }
 NoValue :: () -> Value {
-    return {cell: -1, owned: false, place: false, newkey: false, slot: -1, storage: 0, container: 0, record: -1};
+    return {cell: -1, owned: false, place: false, newkey: false, slot: -1, storage: 0, container: 0, record: -1, schema: -1};
 }
 Typed :: (slot: int, storage: int, container: int, record: int) -> Value {
-    return {cell: -1, owned: false, place: false, newkey: false, slot: slot, storage: storage, container: container, record: record};
+    return {cell: -1, owned: false, place: false, newkey: false, slot: slot, storage: storage, container: container, record: record, schema: -1};
 }
 Fail :: (forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> Step {
     return Step.Failed(Diagnose(forest, node, document, message));
@@ -2040,7 +2045,7 @@ Start :: union {
 }
 Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
              key: string, solid: int[], meaning: u64, referenced: string[], mutated: string[], addressed: string[],
-             ops: Ops, target: Target) -> Start {
+             ops: Ops, target: Target, evaluating: bool) -> Start {
     declaration := forest[callable.node];
     // Import aliases are the outermost names; every local may hide one.
     names := aliases;
@@ -2053,6 +2058,9 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
     // other form. Calls lend their arguments, so written pointer parameters
     // get local copies before the body runs.
     work: Work[] = [Visit(Field(forest, callable.node, "body"))];
+    if (evaluating) {
+        work = [Visit(callable.node)];
+    }
     index: int = 0;
     while (index < callable.count) {
         param := params[callable.first + index];
@@ -2093,9 +2101,10 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
     }
     // Named results reserve consecutive locals. A record local holds its
     // stable cell's header address, while its name reads the cell's payload.
+    // A query evaluator returns its row instead.
     named := length(locals);
     index = 0;
-    while (index < callable.results) {
+    while (!evaluating && index < callable.results) {
         result := params[callable.first + callable.count + index];
         place := LocalPlace;
         location := length(locals);
@@ -2135,6 +2144,250 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
     code.append(PointCode(ops, 0, declaration));
     return Start.Begun(work, names, slots, locals, cells, hosts, code, points, named);
 }
+
+// The back edge of a counted loop, kept separate from body dispatch so the
+// compiler's own dispatch stays within the runtime definition budget.
+ForTail :: union {
+    Finished(code: Code[], slots: Slot[], breaks: int[], continues: int[])
+}
+FinishFor :: (forest: snapshot.SnapshotNode[], item: Work, input_code: Code[], input_slots: Slot[], input_breaks: int[],
+              input_continues: int[], loop: Loop, ops: Ops, node: snapshot.SnapshotNode) -> ForTail {
+    code := input_code;
+    slots := input_slots;
+    breaks := input_breaks;
+    continues := input_continues;
+    at_continue := loop.first_continue;
+    while (at_continue < length(continues)) {
+        resume := code[continues[at_continue]];
+        resume.target = length(code);
+        code[continues[at_continue]] = resume;
+        at_continue += 1;
+    }
+    continues = slice(continues, 0, loop.first_continue);
+    slots.append(ValueLocal(IntStorage));
+    current := length(slots) - 1;
+    code.append(Instruction(ops.local, IntStorage, current, loop.index, 0, 0, node));
+    // An inclusive or reversed range ends once the index reaches
+    // its bound, so neither INT_MAX nor INT_MIN wraps.
+    at_bound: int = -1;
+    if (loop.counted) {
+        slots.append(ValueLocal(IntStorage));
+        code.append(Instruction(ops.local, IntStorage, length(slots) - 1, loop.bound, 0, 0, node));
+        slots.append(ValueLocal(BoolStorage));
+        code.append(Instruction(ops.eq, IntStorage, length(slots) - 1, current, length(slots) - 2,
+                                -1, node));
+        at_bound = length(code);
+        code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, Pending, node));
+    }
+    slots.append(ValueLocal(IntStorage));
+    code.append(ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
+    step_op := ops.add;
+    if (loop.reverse) {
+        step_op = ops.sub;
+    }
+    slots.append(ValueLocal(IntStorage));
+    code.append(Instruction(step_op, IntStorage, length(slots) - 1, current, length(slots) - 2,
+                            -1, node));
+    code.append(Instruction(ops.save, IntStorage, 0, length(slots) - 1, 0, loop.index, node));
+    if (Field(forest, item.node, "bound") >= 0) {
+        code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
+    }
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, loop.head, node));
+    exits_here: int[] = [loop.leave, at_bound, loop.empty];
+    for (pending in exits_here) {
+        if (pending >= 0) {
+            done := code[pending];
+            done.target = length(code);
+            code[pending] = done;
+        }
+    }
+    at_break := loop.first_break;
+    while (at_break < length(breaks)) {
+        escape := code[breaks[at_break]];
+        escape.target = length(code);
+        code[breaks[at_break]] = escape;
+        at_break += 1;
+    }
+    breaks = slice(breaks, 0, loop.first_break);
+    return ForTail.Finished(code, slots, breaks, continues);
+}
+
+RangeHead :: union {
+    Failed(diagnostic: syntax.Diagnostic) | Ready(code: Code[], slots: Slot[], locals: Slot[], bound: Name, loop: Loop)
+}
+StartRange :: (forest: snapshot.SnapshotNode[], text: string, document: int, bounds: Value[], item: Work, ops: Ops,
+               input_code: Code[], input_slots: Slot[], input_locals: Slot[], break_count: int, continue_count: int,
+               name_count: int) -> RangeHead {
+    code := input_code;
+    slots := input_slots;
+    locals := input_locals;
+    node := forest[item.node];
+    ends: int[] = [];
+    end_index: int = 0;
+    while (end_index < 2) {
+        end := bounds[end_index];
+        if (end.container != 0 || !Integer(end.storage) ||
+            (end.storage != IntStorage && !Widens(end.storage, IntStorage))) {
+            return RangeHead.Failed(Diagnose(forest, item.node, document, "range bounds need int values"));
+        }
+        if (end.storage != IntStorage) {
+            slots.append(ValueLocal(IntStorage));
+            code.append(CastCode(ops, IntStorage, length(slots) - 1, end.slot, 0, node));
+            end = Typed(length(slots) - 1, IntStorage, 0, -1);
+        }
+        ends.append(end.slot);
+        end_index += 1;
+    }
+    reverse := Field(forest, item.node, "reverse") >= 0;
+    exclusive := Text(forest, text, Field(forest, item.node, "bound")) == "..<";
+    start := ends[0];
+    stop := ends[1];
+    if (reverse) {
+        start = ends[1];
+        stop = ends[0];
+    }
+    empty: int = -1;
+    if (reverse && exclusive) {
+        slots.append(ValueLocal(BoolStorage));
+        code.append(Instruction(ops.lt, IntStorage, length(slots) - 1, ends[0], ends[1], -1, node));
+        code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+        empty = length(code);
+        code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+        slots.append(ValueLocal(IntStorage));
+        code.append(ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
+        slots.append(ValueLocal(IntStorage));
+        code.append(Instruction(ops.sub, IntStorage, length(slots) - 1, ends[1], length(slots) - 2,
+                                -1, node));
+        start = length(slots) - 1;
+    }
+    locals.append(ValueLocal(IntStorage));
+    index_local := length(locals) - 1;
+    code.append(Instruction(ops.save, IntStorage, 0, start, 0, index_local, node));
+    // The range's name is stored before the loop and at each step.
+    code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
+    locals.append(ValueLocal(IntStorage));
+    bound_local := length(locals) - 1;
+    code.append(Instruction(ops.save, IntStorage, 0, stop, 0, bound_local, node));
+    head := length(code);
+    code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+    slots.append(ValueLocal(IntStorage));
+    code.append(Instruction(ops.local, IntStorage, length(slots) - 1, index_local, 0, 0, node));
+    slots.append(ValueLocal(IntStorage));
+    code.append(Instruction(ops.local, IntStorage, length(slots) - 1, bound_local, 0, 0, node));
+    compare := ops.lt;
+    if (reverse) {
+        compare = ops.ge;
+    } else if (!exclusive) {
+        compare = ops.le;
+    }
+    slots.append(ValueLocal(BoolStorage));
+    code.append(Instruction(compare, IntStorage, length(slots) - 1, length(slots) - 3,
+                            length(slots) - 2, -1, node));
+    code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+    loop: Loop = {held_slot: -1, held_storage: 0, held_container: 0, held_record: -1, held_owned: false, head: head,
+                  first_break: break_count, first_continue: continue_count, each: true,
+                  index: index_local, mark: name_count, leave: length(code), reverse: reverse,
+                  counted: !exclusive || reverse, bound: bound_local, empty: empty};
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+    binding: Name = {owned: false, name: Text(forest, text, Field(forest, item.node, "name")), place: LocalPlace,
+                     index: index_local, storage: IntStorage, container: 0, record: -1, writable: false,
+                     node: Field(forest, item.node, "name")};
+    return RangeHead.Ready(code, slots, locals, binding, loop);
+}
+
+QueryGuardCallPhase: int : 71;
+GuardCall :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Scheduled(code: Code[], slots: Slot[], locals: Slot[], next: Work[], popped: int, produced: Value)
+}
+// Each argument stores the result before its early exit. Pending branches
+// link through their targets until the last argument patches the whole chain.
+QueryGuardCall :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                   values: Value[], top: int, item: Work, ops: Ops,
+                   input_code: Code[], input_slots: Slot[], input_locals: Slot[]) -> GuardCall {
+    code := input_code;
+    slots := input_slots;
+    locals := input_locals;
+    node := forest[item.node];
+    function := Text(forest, text, Field(forest, item.node, "function"));
+    if (function != "all" && function != "any" && function != "not") {
+        return GuardCall.Failed(Diagnose(forest, item.node, document, "unknown query guard call"));
+    }
+    if (item.phase == 0) {
+        first := FirstMember(forest, Field(forest, item.node, "arguments"));
+        if (function == "not" && (first < 0 || NextMember(forest, first) >= 0)) {
+            return GuardCall.Failed(Diagnose(forest, item.node, document, "not needs exactly one Boolean argument"));
+        }
+        argument := first;
+        while (argument >= 0) {
+            if (Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument") ||
+                Is(forest, argument, "reference_argument")) {
+                return GuardCall.Failed(Diagnose(forest, argument, document, "query guards need positional Boolean arguments"));
+            }
+            argument = NextMember(forest, argument);
+        }
+        locals.append(ValueLocal(BoolStorage));
+        held := length(locals) - 1;
+        if (first < 0) {
+            identity: u64 = 0;
+            if (function == "all") {
+                identity = 1;
+            }
+            slots.append(ValueLocal(BoolStorage));
+            output := length(slots) - 1;
+            code.append(ConstantCode(ops, BoolStorage, identity, output, node));
+            code.append(Instruction(ops.save, BoolStorage, 0, output, 0, held, node));
+            return GuardCall.Scheduled(code, slots, locals, [], 0, Typed(output, BoolStorage, 0, -1));
+        }
+        resume := Resume(item.node, QueryGuardCallPhase, first, held);
+        resume.c = -1;
+        return GuardCall.Scheduled(code, slots, locals, [Visit(first), resume], 0, NoValue());
+    }
+    if (top <= 0 || values[top - 1].storage != BoolStorage || values[top - 1].container != 0) {
+        return GuardCall.Failed(Diagnose(forest, item.a, document, "query guard arguments need Boolean values"));
+    }
+    value := values[top - 1];
+    result := value.slot;
+    if (function == "not") {
+        slots.append(ValueLocal(BoolStorage));
+        zero := length(slots) - 1;
+        code.append(ConstantCode(ops, BoolStorage, 0, zero, node));
+        slots.append(ValueLocal(BoolStorage));
+        result = length(slots) - 1;
+        code.append(Instruction(ops.eq, BoolStorage, result, value.slot, zero, -1, node));
+    }
+    code.append(Instruction(ops.save, BoolStorage, 0, result, 0, item.b, node));
+    argument := NextMember(forest, item.a);
+    if (argument >= 0) {
+        condition := value.slot;
+        if (function == "all") {
+            slots.append(ValueLocal(BoolStorage));
+            zero := length(slots) - 1;
+            code.append(ConstantCode(ops, BoolStorage, 0, zero, node));
+            slots.append(ValueLocal(BoolStorage));
+            condition = length(slots) - 1;
+            code.append(Instruction(ops.eq, BoolStorage, condition, value.slot, zero, -1, node));
+        }
+        jump := length(code);
+        code.append(Instruction(ops.branch_if, 0, 0, condition, 0, item.c, node));
+        resume := Resume(item.node, QueryGuardCallPhase, argument, item.b);
+        resume.c = jump;
+        return GuardCall.Scheduled(code, slots, locals, [Visit(argument), resume], 1, NoValue());
+    }
+    pending := item.c;
+    while (pending >= 0) {
+        patched := code[pending];
+        prior := patched.target;
+        patched.target = length(code);
+        code[pending] = patched;
+        pending = prior;
+    }
+    slots.append(ValueLocal(BoolStorage));
+    output := length(slots) - 1;
+    code.append(Instruction(ops.local, BoolStorage, output, item.b, 0, 0, node));
+    return GuardCall.Scheduled(code, slots, locals, [], 1, Typed(output, BoolStorage, 0, -1));
+}
+
 OwnerCodes :: union {
     Failed(diagnostic: syntax.Diagnostic) | Read(code: Code[])
 }
@@ -2309,10 +2562,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
              solid: int[], undeclared: u64, meaning: u64, function: int, referenced: string[],
              mutated: string[], built: int[], context: BodyContext, generic_updates: int[],
-             ops: Ops, target: Target) -> Body {
+             ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
     types := table^;
     callable := callables[function];
     declaration := forest[callable.node];
+    inferring := Expression(declaration.kind);
     document_hash := DocumentHash(key);
     slots: Slot[] = [];
     // Locals hold scalars and the header addresses of named record results.
@@ -2326,11 +2580,19 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     work: Work[] = [];
     points: SourcePoint[] = [];
     named: int = 0;
-    addressed := AddressedNames(forest, text, Field(forest, callable.node, "body"),
+    evaluating := QueryEvaluator(query_specs, function);
+    address_root := Field(forest, callable.node, "body");
+    if (inferring) {
+        address_root = callable.node;
+    }
+    if (evaluating >= 0) {
+        address_root = Field(forest, callable.node, "parameters");
+    }
+    addressed := AddressedNames(forest, text, address_root,
                                 ScopedArguments(forest, text, callables, params, natives, aliases, callable.package,
-                                                Field(forest, callable.node, "body")));
+                                                address_root));
     begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, addressed, ops,
-                      target);
+                      target, evaluating >= 0);
     switch begun {
         case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_cells, begun_hosts, begun_code,
                     begun_points, begun_named):
@@ -2343,6 +2605,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             code = begun_code;
             points = begun_points;
             named = begun_named;
+    }
+    if (inferring) {
+        work = [Visit(callable.node)];
     }
     values: Value[] = [];
     native_calls: NativeCallFact[] = [];
@@ -2447,14 +2712,41 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                      host: length(hosts), call: length(calls)};
         step := Fail(forest, item.node, document, "");
-        if (item.phase == CopyValuePhase) {
+        query_handled := false;
+        switch QueryStep(forest, text, document, types, members, params, query_specs, evaluating, names, values,
+                         value_top, item, ops, target, at) {
+            case .Handled(emitted):
+                step = emitted;
+                query_handled = true;
+            case .Ordinary:
+                query_handled = false;
+        }
+        if (query_handled) {
+        } else if (item.phase == CopyValuePhase) {
             step = CopyValueStep(values[value_top - 1], 1, ops, target, at, node);
         } else if (item.phase == MapDeletePlacePhase || item.phase == MapDeleteDonePhase) {
             step = MapPlaceDeleteStep(forest, document, types, values, value_top, item, ops, target, at);
         } else if ((item.phase >= PlacePhase && item.phase <= PlacePointerPhase) || item.phase == PlaceComponentPhase) {
             step = SequencePlaceStep(forest, text, document, types, members, names, values, value_top,
                                      item, ops, target, at);
-        } else if (kind == "callable_body" || kind == "block") {
+        } else if (QueryGuardFunction(forest, text, item.node)) {
+            stepped = false;
+            switch QueryGuardCall(forest, text, document, values, value_top, item, ops, code, slots, locals) {
+                case .Failed(diagnostic):
+                    return Body.Failed(diagnostic);
+                case .Scheduled(full_code, full_slots, full_locals, scheduled, popped, value):
+                    code = full_code;
+                    slots = full_slots;
+                    locals = full_locals;
+                    next = scheduled;
+                    value_top -= popped;
+                    produced = value;
+            }
+        } else if ((kind == "state_declaration" || kind == "function_declaration" || kind == "handler") &&
+                   Is(forest, forest[item.node].parent, "system_body")) {
+            // System declarations share the behavior collector; only statements execute per row.
+            stepped = false;
+        } else if (kind == "callable_body" || kind == "block" || kind == "system_body") {
             stepped = false;
             if (item.phase == 0) {
                 child := FirstMember(forest, item.node);
@@ -2580,84 +2872,31 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     next.append(Visit(Field(forest, item.node, "value")));
                     next.append(Resume(item.node, 1, 0, 0));
                 }
+            } else if (item.phase == QueryIteratorEndPhase) {
+                loop := loops[length(loops) - 1];
+                switch QueryFinishLoop(code, breaks, continues, loop, ops, target, at, node) {
+                    case .Finished(finished_code, finished_breaks, finished_continues, tail_step):
+                        code = finished_code;
+                        breaks = finished_breaks;
+                        continues = finished_continues;
+                        step = tail_step;
+                }
+                names = slice(names, 0, loop.mark);
+                loops = slice(loops, 0, length(loops) - 1);
             } else if (item.phase == 5) {
-                // A range loop, as stage zero emits it: the index starts at
-                // `first`, or at `last` counting down, and the other end waits
-                // in a local. `..<` stops before `last`; reversed, it starts at
-                // `last - 1` only once `first < last` shows that cannot wrap.
                 stepped = false;
                 value_top -= 2;
-                ends: int[] = [];
-                end_index: int = 0;
-                while (end_index < 2) {
-                    end := values[value_top + end_index];
-                    if (end.container != 0 || !Integer(end.storage) ||
-                        (end.storage != IntStorage && !Widens(end.storage, IntStorage))) {
-                        return Body.Failed(Diagnose(forest, item.node, document, "range bounds need int values"));
-                    }
-                    if (end.storage != IntStorage) {
-                        slots.append(ValueLocal(IntStorage));
-                        code.append(CastCode(ops, IntStorage, length(slots) - 1, end.slot, 0, node));
-                        end = Typed(length(slots) - 1, IntStorage, 0, -1);
-                    }
-                    ends.append(end.slot);
-                    end_index += 1;
+                switch StartRange(forest, text, document, slice(values, value_top, 2), item, ops, code, slots, locals,
+                                  length(breaks), length(continues), length(names)) {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Ready(range_code, range_slots, range_locals, range_name, range_loop):
+                        code = range_code;
+                        slots = range_slots;
+                        locals = range_locals;
+                        names.append(range_name);
+                        loops.append(range_loop);
                 }
-                reverse := Field(forest, item.node, "reverse") >= 0;
-                exclusive := Text(forest, text, Field(forest, item.node, "bound")) == "..<";
-                start := ends[0];
-                stop := ends[1];
-                if (reverse) {
-                    start = ends[1];
-                    stop = ends[0];
-                }
-                empty: int = -1;
-                if (reverse && exclusive) {
-                    slots.append(ValueLocal(BoolStorage));
-                    code.append(Instruction(ops.lt, IntStorage, length(slots) - 1, ends[0], ends[1], -1, node));
-                    code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
-                    empty = length(code);
-                    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
-                    slots.append(ValueLocal(IntStorage));
-                    code.append(ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
-                    slots.append(ValueLocal(IntStorage));
-                    code.append(Instruction(ops.sub, IntStorage, length(slots) - 1, ends[1], length(slots) - 2,
-                                            -1, node));
-                    start = length(slots) - 1;
-                }
-                locals.append(ValueLocal(IntStorage));
-                index_local := length(locals) - 1;
-                code.append(Instruction(ops.save, IntStorage, 0, start, 0, index_local, node));
-                // The range's name is stored before the loop and at each step.
-                code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
-                locals.append(ValueLocal(IntStorage));
-                bound_local := length(locals) - 1;
-                code.append(Instruction(ops.save, IntStorage, 0, stop, 0, bound_local, node));
-                head := length(code);
-                code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
-                slots.append(ValueLocal(IntStorage));
-                code.append(Instruction(ops.local, IntStorage, length(slots) - 1, index_local, 0, 0, node));
-                slots.append(ValueLocal(IntStorage));
-                code.append(Instruction(ops.local, IntStorage, length(slots) - 1, bound_local, 0, 0, node));
-                compare := ops.lt;
-                if (reverse) {
-                    compare = ops.ge;
-                } else if (!exclusive) {
-                    compare = ops.le;
-                }
-                slots.append(ValueLocal(BoolStorage));
-                code.append(Instruction(compare, IntStorage, length(slots) - 1, length(slots) - 3,
-                                        length(slots) - 2, -1, node));
-                code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
-                loop: Loop = {held_slot: -1, held_storage: 0, held_container: 0, held_record: -1, held_owned: false, head: head, first_break: length(breaks), first_continue: length(continues), each: true,
-                              index: index_local, mark: length(names), leave: length(code), reverse: reverse,
-                              counted: !exclusive || reverse, bound: bound_local, empty: empty};
-                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
-                loops.append(loop);
-                binding: Name = {owned: false, name: Text(forest, text, Field(forest, item.node, "name")), place: LocalPlace,
-                                 index: index_local, storage: IntStorage, container: 0, record: -1, writable: false,
-                                 node: Field(forest, item.node, "name")};
-                names.append(binding);
                 next.append(Visit(Field(forest, item.node, "body")));
                 next.append(Resume(item.node, 4, 0, 0));
             } else if (item.phase == 1) {
@@ -2666,12 +2905,14 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 stepped = false;
                 value_top -= 1;
                 array := values[value_top];
-                if (array.container != ArrayContainer && array.container != ViewContainer && !IsMap(array)) {
-                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "for needs an array"));
-                }
                 iterable := Unparenthesized(forest, Field(forest, item.node, "value"));
-                if (array.container == ArrayContainer && FixedArray(forest, text, names, referenced, mutated, addressed,
-                                                                    iterable)) {
+                if (array.storage == QueryStorage && array.container == 0) {
+                    stepped = true;
+                    step = QueryIteratorStep(forest, text, document, types, array, item, ops, target, at);
+                } else if (array.container != ArrayContainer && array.container != ViewContainer && !IsMap(array)) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "for needs an array"));
+                } else if (array.container == ArrayContainer && FixedArray(forest, text, names, referenced, mutated, addressed,
+                                                                           iterable)) {
                     // A local or parameter nothing changes stays as it is
                     // while the loop walks it, so the loop walks it itself.
                     cells.append(MovedCell(array));
@@ -2689,7 +2930,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                             Typed(-1, array.storage, ArrayContainer, array.record),
                                             u64(0), false, 0, ops, target, at, node);
                 }
-                next.append(Resume(item.node, 2, 0, 0));
+                if (array.storage != QueryStorage) {
+                    next.append(Resume(item.node, 2, 0, 0));
+                }
             } else if (item.phase == 2) {
                 // The array or its copy is in the last cell; the step loads each element.
                 value_top -= 1;
@@ -2746,59 +2989,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                         roots.extend(drop_roots);
                         calls.extend(drop_calls);
                 }
-                at_continue := loop.first_continue;
-                while (at_continue < length(continues)) {
-                    resume := code[continues[at_continue]];
-                    resume.target = length(code);
-                    code[continues[at_continue]] = resume;
-                    at_continue += 1;
+                switch FinishFor(forest, item, code, slots, breaks, continues, loop, ops, node) {
+                    case .Finished(done_code, done_slots, done_breaks, done_continues):
+                        code = done_code;
+                        slots = done_slots;
+                        breaks = done_breaks;
+                        continues = done_continues;
                 }
-                continues = slice(continues, 0, loop.first_continue);
-                slots.append(ValueLocal(IntStorage));
-                current := length(slots) - 1;
-                code.append(Instruction(ops.local, IntStorage, current, loop.index, 0, 0, node));
-                // An inclusive or reversed range ends once the index reaches
-                // its bound, so neither INT_MAX nor INT_MIN wraps.
-                at_bound: int = -1;
-                if (loop.counted) {
-                    slots.append(ValueLocal(IntStorage));
-                    code.append(Instruction(ops.local, IntStorage, length(slots) - 1, loop.bound, 0, 0, node));
-                    slots.append(ValueLocal(BoolStorage));
-                    code.append(Instruction(ops.eq, IntStorage, length(slots) - 1, current, length(slots) - 2,
-                                            -1, node));
-                    at_bound = length(code);
-                    code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, Pending, node));
-                }
-                slots.append(ValueLocal(IntStorage));
-                code.append(ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
-                step_op := ops.add;
-                if (loop.reverse) {
-                    step_op = ops.sub;
-                }
-                slots.append(ValueLocal(IntStorage));
-                code.append(Instruction(step_op, IntStorage, length(slots) - 1, current, length(slots) - 2,
-                                        -1, node));
-                code.append(Instruction(ops.save, IntStorage, 0, length(slots) - 1, 0, loop.index, node));
-                if (Field(forest, item.node, "bound") >= 0) {
-                    code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
-                }
-                code.append(Instruction(ops.jump, 0, 0, 0, 0, loop.head, node));
-                exits_here: int[] = [loop.leave, at_bound, loop.empty];
-                for (pending in exits_here) {
-                    if (pending >= 0) {
-                        done := code[pending];
-                        done.target = length(code);
-                        code[pending] = done;
-                    }
-                }
-                at_break := loop.first_break;
-                while (at_break < length(breaks)) {
-                    escape := code[breaks[at_break]];
-                    escape.target = length(code);
-                    code[breaks[at_break]] = escape;
-                    at_break += 1;
-                }
-                breaks = slice(breaks, 0, loop.first_break);
                 owner_drop_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
                                         cell: length(cells), host: length(hosts), call: length(calls)};
                 held := Typed(loop.held_slot, loop.held_storage, loop.held_container, loop.held_record);
@@ -3226,6 +3423,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 if (pass == 0 && kind == "return_statement") {
                     step = DropBeforeFinish(step, names, natives, ports, ops, target, at, node);
                 }
+                if (kind == "return_statement") {
+                    step = QueryCleanReturn(step, loops, ops, target, at, node);
+                }
+                if (pass == 0 && !item.capture && QueryBooleanPosition(forest, text, item.node)) {
+                    step = QueryBooleanStep(types, step, ops, target, at, node);
+                }
                 switch step {
                     case .Failed(diagnostic):
                         return Body.Failed(diagnostic);
@@ -3330,6 +3533,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                 next.append(Resume(item.node, 4, 0, 0));
                             }
                         }
+                        if (length(marks) == 4) {
+                            loop: Loop = {held_slot: -1, held_storage: 0, held_container: 0, held_record: -1,
+                                          held_owned: false, head: marks[0], first_break: length(breaks),
+                                          first_continue: length(continues), each: true, index: -1, mark: length(names) - length(added_names), leave: marks[1],
+                                          reverse: false, counted: false, bound: marks[2], empty: -1};
+                            loops.append(loop);
+                        }
                 }
             }
             pass += 1;
@@ -3369,10 +3579,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         // Run scheduled items in order: the last pushed runs first.
         at_next := length(next) - 1;
         while (at_next >= 0) {
+            scheduled := next[at_next];
+            scheduled.capture = scheduled.capture || item.capture;
             if (work_top < length(work)) {
-                work[work_top] = next[at_next];
+                work[work_top] = scheduled;
             } else {
-                work.append(next[at_next]);
+                work.append(scheduled);
             }
             work_top += 1;
             at_next -= 1;
@@ -3395,9 +3607,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     }
     // A function completes at its end, and one with named results returns
     // them.
+    if (inferring && value_top > 0) {
+        value := values[value_top - 1];
+        return Body.Inferred({storage: value.storage, container: value.container, record: value.record});
+    }
     points.append(PointAt(key, solid, FunctionRecord, meaning, true, declaration, declaration));
     code.append(PointCode(ops, length(points) - 1, declaration));
-    if (callable.results > 0) {
+    if (callable.results > 0 && evaluating < 0) {
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
                      host: length(hosts), call: length(calls)};
         switch NamedResultsStep([], ops, target, params, callable, named, at, declaration) {

@@ -217,9 +217,8 @@ the drivers `make test-build` produced and those Release tools, except
 `python3 tools/test_policy.py tool fixture-format` checks the fixed thirteen
 checked-in fixture projects with Release `chibi_ctl --format --check`.
 It refuses outdated manifests before launching any child, because opening an
-old project can migrate it. Standalone selectors,
-including `language-query-program` and `language-row-array`, can be outside the
-aggregate groups; use `make test-list` for the current inventory.
+old project can migrate it. Some selectors run separately from the aggregate
+groups; use `make test-list` for the current inventory.
 
 `make language-build` builds a standalone, faster `test_language` in
 `build-language/` for the `test-language*` targets. Add a case to the selector
@@ -318,6 +317,18 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 `projects` group, and so CI, runs it on the fixture.
 
 ## Focused regression coverage
+
+The flat query syntax is covered by the syntax, format, semantic and
+`language-query-program` selectors. `test_language --query-values` isolates
+query descriptions, ordered bindings and guards, captured values, repeated
+iteration, optional row fields, component snapshots and pointer access on the
+bytecode and compiled backends. Query expressions add no component, native
+function or event catalog entry, so they need no `coverage-gaps.txt` entry.
+`language-package-compiler-chibi-queries` checks the authored compiler's matching
+query, iterator and system contracts, including implicit `dt`, captures,
+generators, snapshots, pointer access and rejected legacy forms.
+`test_language --query-migration` checks project 33-to-34 rewriting, preserved
+value copies, nested providers, refusals and idempotence.
 
 The length-carrying string migration adds the following fixed CPU workloads.
 These counts describe coverage and do not record a pass.
@@ -2045,17 +2056,18 @@ The validator remains recursive; source review is not evidence that the runtime
 executes its depth-boundary workload. The normal union analyzer is unchanged.
 
 `python3 tools/test_policy.py tool language-effect-analysis-chibi` selects four
-C/pico_unit cases: 24 raw Analyze graphs, six Order graphs and four analyzed
-source replays, for 34 requests and 68 authored calls across bytecode and SLJIT.
+C/pico_unit cases: 24 raw Analyze graphs, six Order graphs and seventeen analyzed
+source replays, for 47 requests and 94 authored calls across bytecode and SLJIT.
 The supplied 500,000 instruction budget is inherited/reset per activation,
 not a whole-call or corpus instruction ceiling. Three compiler sources per
-backend below 32 KiB plus four fact sources below 512 bytes total ten parses.
+backend below 48 KiB plus seventeen fact sources below 512 bytes total 23 parses.
 Raw maxima are 24 expressions except one fixed 85-expression graph, 16 statements,
 six functions, eight symbols/scopes, two queries, four bindings, eight arguments,
 16 children, six capabilities, three catalog types and sixteen read/write IDs.
 Actual facts cap expressions/statements at 64, functions at eight, symbols at 32,
-scopes at sixteen, queries at four and bindings at eight; shared bounds are
-128 IDs, 256 ranges, 32 diagnostics and 240 text bytes.
+scopes at sixteen, queries at five, bindings/descriptions at eight, ordered
+stages at 32 and catalog types at four; shared bounds are 128 IDs, 256 ranges,
+32 diagnostics and 240 text bytes.
 
 The corpus retains the function-count-plus-one propagation stop, dependency
 cycles, task masks, diagnostic phases, stable binding order and owned outputs.
@@ -2064,7 +2076,10 @@ effects and only establish schema, diagnostics and ownership. The two existing
 forward-edge graphs assert the finite propagation stop, and actual diagnostic
 matching is an ordered subsequence without reusing matches. The reviewed
 explicit-int generic inference correction is included in `Effects.chibi`.
-The normal effect analyzer and binding finalizer are unchanged.
+Query replays cover intermediate bindings, explicit helper arguments, hidden
+captures, system invocation reads, ad hoc captures, side effects, suspension
+and component reads in reduction producers, including unused snapshots,
+computed bindings and pointer aliases that copy only component identity.
 
 These union/effects routes add private C reference helpers and exact authored
 source embeddings to the existing language driver; there is no active production

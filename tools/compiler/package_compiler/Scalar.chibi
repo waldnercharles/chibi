@@ -1378,7 +1378,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
     aliases: Name[] = [];
     empty_names: string[] = [];
     names: Name[] = [];
-    switch Prologue(forest, text, params, callable, aliases, key, solid, 0, empty_names, empty_names, empty_names, ops, target) {
+    switch Prologue(forest, text, params, callable, aliases, key, solid, 0, empty_names, empty_names, empty_names, ops, target, false) {
         case .Begun(work, begun_names, slots, locals, cells, hosts, code, points, named):
             names = begun_names;
     }
@@ -1825,9 +1825,12 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     table := types;
     switch EmitBody(forest, text, 0, callables, params, &table, members, constants, natives, ports, identities,
                     operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
-                    empty_names, indices, BodyContext.Known(writes), indices, ops, target) {
+                    empty_names, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):
             return diagnostic;
+        case .Inferred(value):
+            return Diagnose(forest, Field(forest, callables[function].node, "body"), 0,
+                            "scalar proof requires a callable body");
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
             if (effects != 0 || direct_write != 0 || !ScalarHosts(hosts, roots) ||

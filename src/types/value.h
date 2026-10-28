@@ -27,7 +27,8 @@
     X(PIN_ENUM, "enum")                                                        \
     X(PIN_TASK, "task")                                                        \
     X(PIN_UNION, "union")                                                      \
-    X(PIN_POINTER, "pointer")
+    X(PIN_POINTER, "pointer")                                                  \
+    X(PIN_QUERY, "query")
 
 DEFINE_ENUM(pin_type, PIN_TYPE_LIST)
 
@@ -41,6 +42,7 @@ typedef enum
 } pin_container;
 
 typedef struct pin_record pin_record;
+typedef struct pin_schema pin_schema;
 typedef struct arena arena;
 typedef struct pin_text_owner pin_text_owner;
 typedef struct pin_string
@@ -75,6 +77,7 @@ typedef struct
     pin_container container;
     const char *type_name;
     const pin_record *record; /* Authored layout; native reflected values use NULL. */
+    const pin_schema *schema; /* Owned native layout closure, runtime metadata. */
 } pin_value;
 
 #endif

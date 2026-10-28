@@ -9,6 +9,7 @@
 #include "project_migrate32.h"
 #include "project_migrate34.h"
 #include "project_migrate36.h"
+#include "project_migrate37.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -43,6 +44,7 @@ const TSLanguage *tree_sitter_chibi_project29();
 const TSLanguage *tree_sitter_chibi_project30();
 const TSLanguage *tree_sitter_chibi_project31();
 const TSLanguage *tree_sitter_chibi_project36();
+const TSLanguage *tree_sitter_chibi_project37();
 
 void *tree_sitter_chibi_external_scanner_create();
 void tree_sitter_chibi_external_scanner_destroy(void *);
@@ -92,7 +94,8 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         /* Version 32 kept version 31's grammar, and versions 34 to 36 kept
          * version 33's. */
         : version <= 32 ? tree_sitter_chibi_project31()
-                        : tree_sitter_chibi_project36()
+        : version <= 36 ? tree_sitter_chibi_project36()
+                        : tree_sitter_chibi_project37()
     );
     assert(compatible);
     (void)compatible;
@@ -7000,6 +7003,17 @@ int chibi_project_migrate_content(
                 error[0] = '\0';
                 migrated = migrate_pointers(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
+                break;
+            case 37:
+                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+                for (int i = 0; i < count && !status; i++) {
+                    status = chibi_migrate37_queries(sources[i], &migrated[i], error, error_size);
+                    if (status) {
+                        char *message = xstrdup(error);
+                        snprintf(error, error_size, "%s: %s", paths[i], message);
+                        free(message);
+                    }
+                }
                 break;
             default: assert(false);
         }

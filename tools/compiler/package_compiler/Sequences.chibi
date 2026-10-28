@@ -68,6 +68,9 @@ SequenceCallStep :: (arguments: Value[], intrinsic: int, result: Value, tag: u64
                              argument.slot, at.slot + index, 0, node);
         write.offset = target.payload_offset;
         code.append(write);
+        if (!argument.place) {
+            code.extend(SchemaWriteCode(argument, at.slot + index, ops, target, node));
+        }
         index += 1;
     }
     if (tagged) {
@@ -99,7 +102,8 @@ SequenceCallStep :: (arguments: Value[], intrinsic: int, result: Value, tag: u64
     result.cell = output;
     result.owned = intrinsic == ValueCopyIntrinsic || intrinsic == SequenceSliceIntrinsic ||
                    intrinsic == SequenceCloneIntrinsic || intrinsic == SequenceViewIntrinsic;
-    return Step.Emitted(code, slots, [], cells, hosts, roots, [], [], [], popped, result, NoValue(), []);
+    return CellSchemaStep(Step.Emitted(code, slots, [], cells, hosts, roots, [], [], [], popped, result, NoValue(), []),
+                          output, ops, target, at, node);
 }
 
 SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, table: ^(TypeDecl[]),

@@ -90,7 +90,7 @@ bool behavior_function_builder_kind(
     behavior_value_kind kind
 )
 {
-    if (index < 0 || kind < BEHAVIOR_VALUE || kind > BEHAVIOR_STRING_CURSOR) {
+    if (index < 0 || kind < BEHAVIOR_VALUE || kind > BEHAVIOR_QUERY_CURSOR) {
         return false;
     }
     behavior_function *f = b->function;
@@ -524,7 +524,8 @@ static bool index_valid(int index, int count)
 static bool scalar_type(pin_type type)
 {
     return (type >= PIN_BOOL && type <= PIN_HANDLE) || type == PIN_ENUM ||
-           type == PIN_TASK || type == PIN_UNION || type == PIN_POINTER;
+           type == PIN_TASK || type == PIN_UNION || type == PIN_POINTER ||
+           type == PIN_QUERY;
 }
 static bool same_type(pin_value a, pin_value b)
 {
@@ -1501,6 +1502,37 @@ static bool intrinsic_schema(
         case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
                    INPUT(1, PIN_U64) && INPUT(2, PIN_F64) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_QUERY_TEST:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   INPUT(1, PIN_I32) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_QUERY_MAKE:
+            return count >= 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   INPUT(1, PIN_I32) && OUTPUT(PIN_QUERY);
+        case EXECUTION_INTRINSIC_QUERY_BEGIN:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   INPUT(1, PIN_QUERY) && OUTPUT(BF_POINTER_TYPE);
+        case EXECUTION_INTRINSIC_QUERY_NEXT:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   INPUT(1, BF_POINTER_TYPE) && host->result_count == 2 &&
+                   OUTPUT(PIN_BOOL) &&
+                   scalar_bank(f->data_values[host->result_first + 1].initial, PIN_QUERY);
+        case EXECUTION_INTRINSIC_QUERY_END:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   INPUT(1, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_QUERY_ROW_GET:
+            return count == 2 && INPUT(0, PIN_QUERY) && INPUT(1, PIN_I32);
+        case EXECUTION_INTRINSIC_QUERY_CURRENT_ROW:
+            return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_QUERY);
+        case EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT:
+            return count == 6 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
+                   INPUT(2, PIN_U64) && values[3].initial.type == PIN_STRUCT &&
+                   same_type(values[3].initial, output) && INPUT(4, PIN_U64) &&
+                   INPUT(5, PIN_U64);
+        case EXECUTION_INTRINSIC_COMPONENT_POINTER:
+            return count == 6 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
+                   INPUT(2, PIN_U64) && values[3].initial.type == PIN_STRUCT &&
+                   value_type_valid(records, values[3].initial) &&
+                   INPUT(4, PIN_U64) && INPUT(5, PIN_U64) && OUTPUT(PIN_POINTER);
         case EXECUTION_INTRINSIC_POINTER_MAKE:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
                    same_type(values[1].initial, values[2].initial) &&
@@ -1587,7 +1619,7 @@ static bool intrinsic_schema(
 }
 static bool value_kind_valid(behavior_value_kind kind, pin_value initial)
 {
-    return kind >= BEHAVIOR_VALUE && kind <= BEHAVIOR_STRING_CURSOR &&
+    return kind >= BEHAVIOR_VALUE && kind <= BEHAVIOR_QUERY_CURSOR &&
            (kind == BEHAVIOR_VALUE || ((scalar_bank(initial, BF_POINTER_TYPE) ||
                                         scalar_bank(initial, PIN_UNION)) &&
                                        !initial.u64));
@@ -1700,7 +1732,11 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
                                   f->data_values[bank].kind
                               )
                 );
-            } else if (bank >= 0 && (i->offset == offsetof(pin_value, type_name) || i->offset == offsetof(pin_value, record))) {
+            } else if (
+                bank >= 0 && (i->offset == offsetof(pin_value, type_name) ||
+                              i->offset == offsetof(pin_value, record) ||
+                              i->offset == offsetof(pin_value, schema))
+            ) {
                 CHECK_KIND(output == BEHAVIOR_ADDRESS);
             } else {
                 CHECK_KIND(output == BEHAVIOR_VALUE || output == BEHAVIOR_ADDRESS);
@@ -1721,7 +1757,11 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
                                          f->data_values[bank].kind
                                      )
                 );
-            } else if (bank >= 0 && (i->offset == offsetof(pin_value, type_name) || i->offset == offsetof(pin_value, record))) {
+            } else if (
+                bank >= 0 && (i->offset == offsetof(pin_value, type_name) ||
+                              i->offset == offsetof(pin_value, record) ||
+                              i->offset == offsetof(pin_value, schema))
+            ) {
                 CHECK_KIND(KIND(i->left) == BEHAVIOR_ADDRESS);
             } else if (bank >= 0) {
                 /* Snapshots and constructors copy by the runtime type and
@@ -1878,7 +1918,7 @@ static const char *verify_kinds(const behavior_function *f)
     }
     for (int i = 0; i < acount(f->slots); i++) {
         behavior_value_kind kind = f->slot_kinds[i];
-        if (kind < BEHAVIOR_VALUE || kind > BEHAVIOR_STRING_CURSOR ||
+        if (kind < BEHAVIOR_VALUE || kind > BEHAVIOR_QUERY_CURSOR ||
             (kind != BEHAVIOR_VALUE && f->slots[i] != BF_POINTER_TYPE &&
              f->slots[i] != PIN_UNION)) {
             return "invalid slot provenance";
@@ -1896,7 +1936,8 @@ static const char *verify_kinds(const behavior_function *f)
         for (int i = 0; i < acount(kinds[bank]); i++) {
             /* Cursors belong to this invocation, never to callable/event
              * ingress, results, tasks or external command payloads. */
-            if (kinds[bank][i] == BEHAVIOR_STRING_CURSOR) {
+            if ((kinds[bank][i] == BEHAVIOR_STRING_CURSOR ||
+                 kinds[bank][i] == BEHAVIOR_QUERY_CURSOR)) {
                 return "string cursor cannot cross an invocation boundary";
             }
             if (!value_kind_valid(kinds[bank][i], banks[bank][i])) {
@@ -1970,6 +2011,14 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_MAP_DELETE_PLACE:
                     expected = BEHAVIOR_REFERENCE;
                     break;
+                case EXECUTION_INTRINSIC_QUERY_TEST:
+                case EXECUTION_INTRINSIC_QUERY_MAKE:
+                case EXECUTION_INTRINSIC_QUERY_BEGIN:
+                case EXECUTION_INTRINSIC_QUERY_NEXT:
+                case EXECUTION_INTRINSIC_QUERY_END:
+                case EXECUTION_INTRINSIC_QUERY_CURRENT_ROW:
+                case EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT:
+                case EXECUTION_INTRINSIC_COMPONENT_POINTER:
                 case EXECUTION_INTRINSIC_POINTER_MAKE:
                 case EXECUTION_INTRINSIC_REFERENCE_MAKE:
                 case EXECUTION_INTRINSIC_ACTION_READ:
@@ -1992,6 +2041,10 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                     break;
             }
         }
+        if ((id == EXECUTION_INTRINSIC_QUERY_NEXT || id == EXECUTION_INTRINSIC_QUERY_END) &&
+            i == 1) {
+            expected = BEHAVIOR_QUERY_CURSOR;
+        }
         if (id == EXECUTION_INTRINSIC_REFERENCE_MAKE && i == 4) {
             expected = BEHAVIOR_ADDRESS;
         }
@@ -2001,6 +2054,9 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
     }
     if (id == EXECUTION_INTRINSIC_STRING_CURSOR) {
         return result == BEHAVIOR_STRING_CURSOR;
+    }
+    if (id == EXECUTION_INTRINSIC_QUERY_BEGIN) {
+        return result == BEHAVIOR_QUERY_CURSOR;
     }
     return result == (id == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
                               id == EXECUTION_INTRINSIC_REFERENCE_UNION ||

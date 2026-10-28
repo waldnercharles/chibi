@@ -153,7 +153,71 @@ AddressSlot :: (target: Target) -> Slot {
 MoveCode :: (value: Value, ops: Ops, target: Target, slot: int, cell: int, item: snapshot.SnapshotNode) -> Code[] {
     write := Instruction(ops.write, target.pointer_storage, 0, value.slot, slot, 0, item);
     write.offset = target.payload_offset;
-    return [Instruction(ops.host_slot, target.pointer_storage, slot, cell, 0, 0, item), write];
+    code: Code[] = [Instruction(ops.host_slot, target.pointer_storage, slot, cell, 0, 0, item), write];
+    return extend(code, SchemaWriteCode(value, slot, ops, target, item));
+}
+
+// A runtime native record schema travels beside its payload pointer. These
+// helpers add no cells or locals, and keep the original step's numbering.
+SchemaWriteCode :: (value: Value, address: int, ops: Ops, target: Target, node: snapshot.SnapshotNode) -> Code[] {
+    if (value.storage != StructStorage || value.container != 0 || value.schema < 0) {
+        return [];
+    }
+    write := Instruction(ops.write, target.pointer_storage, 0, value.schema, address, 0, node);
+    write.offset = target.schema_offset;
+    return [write];
+}
+ValueWriteCode :: (value: Value, cell: int, ops: Ops, target: Target, slot: int,
+                   node: snapshot.SnapshotNode) -> Code[] {
+    code := CellWrite(SlotStorage(value.storage, value.container, target), value.slot, cell, ops, target, slot, node);
+    return extend(code, SchemaWriteCode(value, slot, ops, target, node));
+}
+CellSchemaStep :: (step: Step, cell: int, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
+            body_code := code;
+            body_slots := slots;
+            value := produced;
+            if (value.storage == StructStorage && value.container == 0) {
+                first := at.slot + length(body_slots);
+                body_code.append(Instruction(ops.host_slot, target.pointer_storage, first, cell, 0, 0, node));
+                load := Instruction(ops.load, target.pointer_storage, first + 1, first, 0, 0, node);
+                load.offset = target.schema_offset;
+                body_code.append(load);
+                body_slots.extend([AddressSlot(target), AddressSlot(target)]);
+                value.schema = first + 1;
+            }
+            return Step.Emitted(body_code, body_slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks);
+    }
+}
+ArgumentSchemaStep :: (step: Step, argument: int, ops: Ops, target: Target, at: Bases,
+                       node: snapshot.SnapshotNode) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
+            body_code := code;
+            body_slots := slots;
+            value := produced;
+            if (value.storage == StructStorage && value.container == 0) {
+                first := at.slot + length(body_slots);
+                bank := Instruction(ops.context, target.pointer_storage, first, 0, 0, 0, node);
+                bank.offset = target.arguments_offset;
+                body_code.append(bank);
+                body_code.append(ConstantCode(ops, IntStorage, u64(argument), first + 1, node));
+                header := Instruction(ops.index, target.pointer_storage, first + 2, first, first + 1, 0, node);
+                header.offset = target.value_size;
+                body_code.append(header);
+                load := Instruction(ops.load, target.pointer_storage, first + 3, first + 2, 0, 0, node);
+                load.offset = target.schema_offset;
+                body_code.append(load);
+                body_slots.extend([AddressSlot(target), ValueLocal(IntStorage), AddressSlot(target), AddressSlot(target)]);
+                value.schema = first + 3;
+            }
+            return Step.Emitted(body_code, body_slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks);
+    }
 }
 
 // A literal without context takes its storage from its spelling, as stage zero
@@ -239,6 +303,10 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                           item.node);
     if (item.phase == 0) {
         code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+        if (kind == "assignment" && QueryReadonlyDestination(forest, text, types, members, names,
+                                                             StatementTarget(forest, item.node))) {
+            return Fail(forest, item.node, document, "Query value bindings are read-only; use a component pointer to modify storage");
+        }
         value := Field(forest, item.node, "value");
         if (kind == "expression_statement") {
             value = FirstMember(forest, item.node);
@@ -873,6 +941,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             write := Instruction(ops.write, target.pointer_storage, 0, kept.slot, at.slot + 2, 0, node);
             write.offset = target.payload_offset;
             code.append(write);
+            code.extend(SchemaWriteCode(kept, at.slot + 2, ops, target, node));
             emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
                                     popped, NoValue(), NoValue(), marks);
             return CleanupSequenceValues(emitted, Held(types, members, [old]), ops, target, at, node);
@@ -897,9 +966,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             element.offset = target.value_size;
             code.append(element);
             header: int[] = [target.type_offset, target.container_offset, target.name_offset,
-                             target.record_offset, target.payload_offset];
+                             target.record_offset, target.schema_offset, target.payload_offset];
             part: int = 0;
-            while (part < 5) {
+            while (part < 6) {
                 loaded := address;
                 if (part < 2) {
                     loaded = zero;
@@ -1253,9 +1322,35 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                                  Resume(item.node, NarrowedReadPhase, 0, 0)],
                                 0, NoValue(), NoValue(), marks);
         }
+        if (binding.place == SystemStepPlace) {
+            read := Instruction(ops.context, DoubleStorage, at.slot, 0, 0, 0, node);
+            read.offset = binding.index;
+            code := [read, Instruction(ops.convert, FloatStorage, at.slot + 1, at.slot, 0, 0, node)];
+            slots := [ValueLocal(DoubleStorage), ValueLocal(FloatStorage)];
+            if (binding.storage == DoubleStorage) {
+                code.append(Instruction(ops.convert, DoubleStorage, at.slot + 2, at.slot + 1, 0, 0, node));
+                slots.append(ValueLocal(DoubleStorage));
+            }
+            return Step.Emitted(code, slots, [], [], [], [], [], [], [], 0,
+                                Typed(at.slot + length(slots) - 1, binding.storage, 0, -1), NoValue(), []);
+        }
+        if (binding.place == QuerySnapshotPlace) {
+            return QuerySnapshotReadStep(binding, names, ops, target, at, node);
+        }
+        if (binding.place == QueryFieldPlace) {
+            read := QueryFieldReadStep(binding, QueryFieldRow(types, members, binding.node),
+                                       values, top, item, ops, target, at, node);
+            if (item.phase != 0 && binding.storage == PointerStorage && binding.record >= 0 &&
+                types[binding.record].key != 0 && QueryAccessPresent(forest, text, types, names, item.node)) {
+                element := PointerElement(types, Typed(-1, PointerStorage, 0, binding.record));
+                return PointerNarrow(read, FindPointer(types, element, false));
+            }
+            return read;
+        }
         narrowed: int = -1;
         if (Single(Typed(-1, binding.storage, binding.container, binding.record), PointerStorage) &&
-            binding.record >= 0 && types[binding.record].key != 0 && PointerPresent(forest, text, binding, item.node)) {
+            binding.record >= 0 && types[binding.record].key != 0 &&
+            (PointerPresent(forest, text, binding, item.node) || QueryAccessPresent(forest, text, types, names, item.node))) {
             element := PointerElement(types, Typed(-1, PointerStorage, 0, binding.record));
             narrowed = FindPointer(types, element, false);
         }
@@ -1276,6 +1371,12 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         }
         if (binding.place == ReferencePlace || binding.place == BoxPlace) {
             read := PlaceReadStep(binding, ops, target, at, node);
+            if (binding.place == ReferencePlace) {
+                read = CellSchemaStep(read, at.cell + 1, ops, target, at, node);
+            }
+            if (binding.place == BoxPlace) {
+                read = CellSchemaStep(read, binding.index, ops, target, at, node);
+            }
             if (narrowed >= 0) {
                 return PointerNarrow(read, narrowed);
             }
@@ -1314,6 +1415,15 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         if (narrowed >= 0) {
             produced.record = narrowed;
         }
+        if (produced.storage == StructStorage && produced.container == 0) {
+            read := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, produced, NoValue(), marks);
+            if (binding.place == CellPlace) {
+                return CellSchemaStep(read, binding.index, ops, target, at, node);
+            }
+            if (binding.place == ParameterPlace) {
+                return ArgumentSchemaStep(read, binding.index, ops, target, at, node);
+            }
+        }
     } else if (kind == "parenthesized_expression") {
         next.append(Expect(Field(forest, item.node, "expression"), item.storage, item.container, item.record));
     } else if (item.phase == 0 && kind == "member_expression" &&
@@ -1351,7 +1461,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         field := members[KeyedMember(forest, text, types, members, names, item.node)];
         port := ports[natives[field.read].first];
         key: Value = {cell: -1, owned: false, place: false, newkey: false, slot: at.slot, storage: port.storage,
-                      container: port.container, record: port.record};
+                      container: port.container, record: port.record, schema: -1};
         constant := ConstantCode(ops, key.storage, 0, at.slot, node);
         constant.text = field.read_key;
         constant.has_text = true;
@@ -1363,6 +1473,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             case .Emitted(read_code, read_slots, read_locals, read_cells, read_hosts, read_roots, read_calls,
                           read_bound, read_next, read_popped, read_value, read_retain, read_marks):
                 read := Typed(read_value.slot, read_value.storage, 0, field.record);
+                read.schema = read_value.schema;
                 return Step.Emitted(extend([constant], read_code), extend([ValueLocal(key.storage)], read_slots),
                                     read_locals, read_cells, read_hosts, read_roots, read_calls, read_bound,
                                     read_next, 0, read, NoValue(), read_marks);
@@ -1403,6 +1514,31 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         popped = 1;
         object := values[top - 1];
         member := Text(forest, text, Field(forest, item.node, "member"));
+        if (Single(object, QueryStorage) && object.record >= 0) {
+            if (types[object.record].kind != QueryDecl) {
+                return Fail(forest, item.node, document, "Query description fields are available through iteration");
+            }
+            field := FindField(types, members, object.record, member);
+            if (field < 0) {
+                return Fail(forest, item.node, document, format_text("Unknown query row field '{}'", member));
+            }
+            declared := members[field];
+            read := QueryGetStep(object, field - types[object.record].first,
+                                 {storage: declared.storage, container: declared.container, record: declared.record},
+                                 1, ops, target, at, node);
+            if (declared.storage == PointerStorage && declared.record >= 0 && types[declared.record].key != 0 &&
+                QueryAccessPresent(forest, text, types, names, item.node)) {
+                element := PointerElement(types, Typed(-1, PointerStorage, 0, declared.record));
+                return PointerNarrow(read, FindPointer(types, element, false));
+            }
+            return read;
+        }
+        if (Single(object, StructStorage) && object.record >= 0 && types[object.record].kind == OptionalComponentDecl) {
+            if (!QueryAccessPresent(forest, text, types, names, Field(forest, item.node, "object"))) {
+                return Fail(forest, item.node, document, "Optional component requires a presence guard before field access");
+            }
+            object.record = types[object.record].parent;
+        }
         if (member == "") {
             return Fail(forest, Field(forest, item.node, "member"), document, "Invalid string or embedded NUL");
         }
@@ -1479,8 +1615,10 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                 root: Root = {slot: at.slot + 1, storage: port.storage, container: port.container, record: port.record};
                 roots.append(root);
             }
-            emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
-                                    Typed(at.slot + 1, port.storage, port.container, port.record), NoValue(), marks);
+            emitted := CellSchemaStep(Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+                                                   Typed(at.slot + 1, port.storage, port.container, port.record),
+                                                   NoValue(), marks),
+                                      object.slot + index, ops, target, at, node);
             return CleanupProjectionStep(emitted, object, natives, ports, ops, target, at, node);
         }
         if (Single(object, FunctionResultsStorage)) {
@@ -1500,8 +1638,10 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                               record: result.record};
                 roots.append(root);
             }
-            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
-                                Typed(at.slot + 1, result.storage, result.container, result.record), NoValue(), marks);
+            return CellSchemaStep(Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+                                               Typed(at.slot + 1, result.storage, result.container, result.record),
+                                               NoValue(), marks),
+                                  object.slot + index, ops, target, at, node);
         }
         if (Single(object, HandleStorage) && OwnerHandle(types, names, object.record) &&
             Component(types, member) >= 0) {
@@ -1543,8 +1683,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             slots.append(address);
             code.append(Instruction(ops.add, target.pointer_storage, at.slot + 1, object.slot, at.slot, -1,
                                     node));
-            emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
-                                    Typed(at.slot + 1, StructStorage, 0, field.record), NoValue(), marks);
+            nested := Typed(at.slot + 1, StructStorage, 0, field.record);
+            nested.schema = object.schema;
+            emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, nested, NoValue(), marks);
             return CleanupProjectionStep(emitted, object, natives, ports, ops, target, at, node);
         }
         slot: Slot = {storage: SlotStorage(field.storage, field.container, target),
@@ -1854,6 +1995,7 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
                              at.slot + length(slots) - 1, 0, forest[member]);
         write.offset = target.payload_offset;
         code.append(write);
+        code.extend(SchemaWriteCode(value, at.slot + length(slots) - 1, ops, target, forest[member]));
         index += 1;
         member = NextMember(forest, member);
     }
@@ -1881,8 +2023,9 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ta
     result := Typed(made, item.storage, item.container, record);
     result.cell = at.cell + length(cells) - 1;
     result.owned = true;
-    emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, item.a,
-                            result, NoValue(), marks);
+    emitted := CellSchemaStep(Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, item.a,
+                                           result, NoValue(), marks),
+                              at.cell + length(cells) - 1, ops, target, at, node);
     return CleanupSequenceValues(emitted, Held(types, members, slice(values, top - item.a, item.a)), ops, target, at,
                                  node);
 }
@@ -2474,6 +2617,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 }
                 mode = 1;
                 value = Field(forest, argument, "value");
+            }
+            if (Floating(conversion) && mode != 0) {
+                return Fail(forest, argument, document, "wrap and clamp apply only to integer conversions");
             }
             if (mode == 0) {
                 next.append(Expect(value, conversion, 0, -1));
@@ -3086,6 +3232,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         write := Instruction(ops.write, written, 0, argument.slot, b + index, 0, node);
         write.offset = target.payload_offset;
         code.append(write);
+        code.extend(SchemaWriteCode(argument, b + index, ops, target, node));
         index += 1;
     }
     if (linked) {
@@ -3122,8 +3269,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     if (linked && result_count == 1) {
         next.append(RecordNativeCall(item.node, chosen, result));
     }
-    emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, result, NoValue(),
-                            marks);
+    emitted := CellSchemaStep(Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, result,
+                                           NoValue(), marks),
+                              at.cell + total, ops, target, at, node);
     // The call lent its arguments; the caller drops those it owns.
     return CleanupSequenceValues(emitted, Held(types, members, slice(values, first, count)), ops, target, at, node);
 }
@@ -4338,8 +4486,8 @@ ComponentReadStep :: (before: Code[], types: TypeDecl[], component: int, written
     if (entity >= 0) {
         popped = 1;
     }
-    return Step.Emitted(extend(before, code), slots, locals, cells, [make, copy], roots, calls, bound, next, popped,
-                        Typed(value, StructStorage, 0, component), NoValue(), marks);
+    return CellSchemaStep(Step.Emitted(extend(before, code), slots, locals, cells, [make, copy], roots, calls, bound, next, popped,
+                                       Typed(value, StructStorage, 0, component), NoValue(), marks), first + 11, ops, target, at, node);
 }
 // `self.C = v`: the reference to the owner's component types[component],
 // made to be written through, after `before`; `next` writes the value.
@@ -4392,7 +4540,7 @@ Canonical :: (types: TypeDecl[], record: int) -> int {
     at := record;
     steps: int = 0;
     while (at >= 0 && at < length(types) && steps < length(types)) {
-        if (types[at].kind != NativeDecl || types[at].parent < 0) {
+        if ((types[at].kind != NativeDecl && types[at].kind != OptionalComponentDecl) || types[at].parent < 0) {
             return at;
         }
         at = types[at].parent;
@@ -4939,8 +5087,8 @@ AggregateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     made := at.slot + length(slots) - 1;
     root: Root = {slot: made, storage: StructStorage, container: 0, record: result.record};
     roots.append(root);
-    return Step.Emitted(code, slots, locals, CallCells(operands, combined), [host], roots, calls, bound, next, 2,
-                        Typed(made, StructStorage, 0, result.record), NoValue(), marks);
+    return CellSchemaStep(Step.Emitted(code, slots, locals, CallCells(operands, combined), [host], roots, calls, bound, next, 2,
+                                       Typed(made, StructStorage, 0, result.record), NoValue(), marks), at.cell + 2, ops, target, at, node);
 }
 // A native char pointer is read through its reflected field adapter.
 NativeTextReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,
@@ -5028,8 +5176,9 @@ NativeReadStep :: (forest: snapshot.SnapshotNode[], document: int, site: int, ty
         root: Root = {slot: at.slot + 2, storage: field.storage, container: 0, record: field.record};
         roots.append(root);
     }
-    return Step.Emitted(code, CallSlots(1, value, target), locals, CallCells(arguments, read), [host], roots, calls,
-                        bound, next, 1, Typed(at.slot + 2, field.storage, 0, field.record), NoValue(), marks);
+    return CellSchemaStep(Step.Emitted(code, CallSlots(1, value, target), locals, CallCells(arguments, read), [host], roots, calls,
+                                       bound, next, 1, Typed(at.slot + 2, field.storage, 0, field.record), NoValue(), marks),
+                          at.cell + 1, ops, target, at, node);
 }
 // The type a fixed native port declares, including its catalog identity.
 NativePortType :: (port: ResolvedPort) -> Value {
@@ -5241,8 +5390,7 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], 
                          constant: 0, variant: -1, kind: ValueKind};
         cells.extend([offset, content]);
         slots.append(address);
-        code.extend(CellWrite(SlotStorage(value.storage, 0, target), value.slot, at.cell + length(cells) - 1,
-                              ops, target, at.slot + length(slots) - 1, node));
+        code.extend(ValueWriteCode(value, at.cell + length(cells) - 1, ops, target, at.slot + length(slots) - 1, node));
         index += 1;
     }
     cells.append(header);
@@ -5258,8 +5406,9 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], 
     result.cell = at.cell + length(cells) - 1;
     result.owned = true;
     next.append(RecordNativeCall(call, make.native, result));
-    return Step.Emitted(code, slots, locals, cells, [host], roots, calls, bound, next, count,
-                        result, NoValue(), marks);
+    return CellSchemaStep(Step.Emitted(code, slots, locals, cells, [host], roots, calls, bound, next, count,
+                                       result, NoValue(), marks),
+                          at.cell + length(cells) - 1, ops, target, at, node);
 }
 // The cells of a native call: one for each argument, then its result.
 CallCells :: (arguments: Value[], result: Cell) -> Cell[] {
@@ -5279,8 +5428,7 @@ CallCode :: (arguments: Value[], first: int, host: int, storage: int, slot: int,
     code: Code[] = [];
     index: int = 0;
     for (argument in arguments) {
-        code.extend(CellWrite(SlotStorage(argument.storage, argument.container, target), argument.slot,
-                              first + index, ops, target, slot + index, node));
+        code.extend(ValueWriteCode(argument, first + index, ops, target, slot + index, node));
         index += 1;
     }
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));

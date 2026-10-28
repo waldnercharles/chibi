@@ -92,7 +92,8 @@ typedef struct
     TSNode changing; /* The array method call a statement makes, which may change its array. */
     int scope, function, loops, depth;
     bool declarations_only, migration_import;
-    bool query; /* Analyzing a system's `where`, which reports its own reads. */
+    bool query;            /* Analyzing an ordered query header. */
+    int query_description; /* Active one-based description. */
 } analyzer;
 
 script_named_facts script_analyzer_named_facts(const analyzer *);
@@ -245,6 +246,7 @@ int script_analyzer_query_expression(analyzer *a, TSNode node);
 int script_analyzer_query_component(analyzer *a, TSNode node, uint64_t component, bool excluded);
 void script_analyzer_query_intersect(analyzer *a, int term);
 void script_analyzer_system_parameters(analyzer *a, TSNode root);
+int script_analyzer_query_description(analyzer *, TSNode, bool);
 void script_analyzer_declaration_pass(analyzer *a, TSNode body);
 void script_analyzer_value_declarations(analyzer *a, TSNode body);
 int script_analyzer_scope_at(const analyzer *a, TSNode body);

@@ -15,13 +15,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 24 fixed Analyze graphs, six Order graphs and four actual analyzed replays:
- * 68 authored calls,500k steps each. Effects/Diagnostics/CoreStrings prepared
- * once per backend: six parses, plus four tiny actual sources =10 parses.
- * Fact sources<512B/compiler sources<32KiB. Raw caps24expr (one fixed85expr depth witness)/16stmt/6functions/
+/* 24 fixed Analyze graphs, six Order graphs and seventeen actual analyzed replays:
+ * 94 authored calls,500k steps each. Effects/Diagnostics/CoreStrings prepared
+ * once per backend: six parses, plus seventeen tiny actual sources =23 parses.
+ * Fact sources<512B/compiler sources<48KiB. Raw caps24expr (one fixed85expr depth witness)/16stmt/6functions/
  * 8symbols/8scopes/2queries/4bindings/8arguments/16children/6capabilities/
  * 3catalogtypes/16read-writeIDs. Actual caps64expr/64stmt/8functions/32symbols/
- * 16scopes/4queries/8bindings. Both:128IDs/256ranges,32diagnostics,text240B.
+ * 16scopes/5queries/8bindings/8descriptions/32stages/4catalogtypes (component,
+ * pointer, query row and coroutine task). Both:128IDs/256ranges,32diagnostics,text240B.
+ * A component, computed-stage marker and guard form three query leaves and
+ * two intersections.
  * Raw seeds and resolved edges test propagation; actual replays already contain
  * final effects and verify real schema/diagnostics/ownership, not seed discovery.
  * No IO, tasks, native callbacks, generated combinations or timing loops. */
@@ -153,10 +156,10 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
     REQUIRE(
         c && f->expression_count <= 85 && f->statement_count <= 64 &&
         f->function_count <= 8 && f->symbol_count <= 32 &&
-        f->scope_count <= 16 && f->query_count <= 4 && f->binding_count <= 8 &&
-        c->capability_count <= 6 && c->type_count <= 3
+        f->scope_count <= 16 && f->query_count <= 5 && f->binding_count <= 8 &&
+        f->description_count <= 8 && c->capability_count <= 6 && c->type_count <= 4
     );
-    int arguments = 0, children = 0, reads = 0, writes = 0;
+    int arguments = 0, children = 0, reads = 0, writes = 0, stages = 0;
     for (int i = 0; i < f->expression_count; i++) {
         arguments += f->expressions[i].argument_count;
     }
@@ -167,13 +170,18 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
         reads += f->bindings[i].read_count;
         writes += f->bindings[i].write_count;
     }
+    for (int i = 0; i < f->description_count; i++) {
+        stages += acount(f->descriptions[i].stages);
+    }
+    REQUIRE(stages <= 32);
     REQUIRE(arguments <= 8 && children <= 128 && reads <= 16 && writes <= 16);
-    pin_value a[15];
+    pin_value a[17];
     memset(a, 0, sizeof a);
     const char *names[] = { "Expression",  NULL,     "Statement", NULL,
                             "Function",    "Symbol", "Scope",     "Query",
                             "Binding",     NULL,     NULL,        "Capability",
-                            "CatalogType", NULL,     "Range" };
+                            "CatalogType", NULL,     "Range",     "Description",
+                            "Stage" };
     int counts[] = { f->expression_count,
                      arguments,
                      f->statement_count,
@@ -188,8 +196,10 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
                      c->capability_count,
                      c->type_count,
                      0,
-                     0 };
-    for (int i = 0; i < 15; i++) {
+                     0,
+                     f->description_count,
+                     stages };
+    for (int i = 0; i < 17; i++) {
         if (names[i] && i != 14) {
             REQUIRE(rows(b, names[i], counts[i], &a[i]));
         }
@@ -236,7 +246,8 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
         int range = location(e->range);
         REQUIRE(
             range >= 0 && put(v, "task", boolean(e->task)) &&
-            put(v, "range", integer(range))
+            put(v, "range", integer(range)) &&
+            put(v, "storage", integer(e->type.storage))
         );
         for (int j = 0; j < e->argument_count; j++) {
             row(&a[1], arg++)[0] = integer(e->arguments[j].value);
@@ -279,14 +290,20 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
     for (int i = 0; i < f->symbol_count; i++) {
         const script_symbol *s = &f->symbols[i];
         pin_value *v = row(&a[5], i);
-        int nominal = slot(s->type.nominal), range = location(s->declaration);
-        REQUIRE(nominal >= -1 && range >= 0);
+        int nominal = slot(s->type.nominal),
+            component = slot(s->component_type.nominal),
+            range = location(s->declaration);
+        REQUIRE(nominal >= -1 && component >= -1 && range >= 0);
         REQUIRE(
             put(v, "kind", integer(s->kind)) && put(v, "scope", integer(s->scope)) &&
             put(v, "initializer", integer(s->initializer)) &&
             put(v, "nominal_slot", integer(nominal)) &&
             put(v, "range", integer(range)) &&
-            put(v, "flags", integer((int)s->type.flags))
+            put(v, "flags", integer((int)s->type.flags)) &&
+            put(v, "query_description", integer(s->query_description)) &&
+            put(v, "component_slot", integer(component)) &&
+            put(v, "storage", integer(s->type.storage)) &&
+            put(v, "mutations", integer(s->mutations))
         );
     }
     for (int i = 0; i < f->scope_count; i++) {
@@ -300,6 +317,7 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
         REQUIRE(
             put(v, "kind", integer(q->kind)) && put(v, "value", integer(q->value)) &&
             put(v, "component_slot", integer(component)) &&
+            put(v, "description", integer(q->description)) &&
             put(v, "range", integer(range))
         );
     }
@@ -350,6 +368,26 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
             put(v, "name", text(t->name))
         );
     }
+    int stage = 0;
+    for (int i = 0; i < f->description_count; i++) {
+        const script_query_description *description = &f->descriptions[i];
+        pin_value *v = row(&a[15], i);
+        REQUIRE(
+            put(v, "system", boolean(description->system)) &&
+            put(v, "stage_start", integer(stage)) &&
+            put(v, "stage_count", integer(acount(description->stages)))
+        );
+        for (int j = 0; j < acount(description->stages); j++) {
+            const script_query_stage *entry = &description->stages[j];
+            pin_value *current = row(&a[16], stage++);
+            int range = location(entry->range);
+            REQUIRE(
+                range >= 0 && put(current, "symbol", integer(entry->symbol)) &&
+                put(current, "expression", integer(entry->expression)) &&
+                put(current, "range", integer(range))
+            );
+        }
+    }
     pin_array *numbers = pin_array_snapshot_allocate(&input, PIN_U64, NULL, id_count);
     REQUIRE(numbers);
     a[13] = (pin_value){ .type = PIN_U64, .container = PIN_CONTAINER_ARRAY, .ptr = numbers };
@@ -368,7 +406,7 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
     }
     const script_catalog_variant *v = variant(b, "Environment", "Tables");
     REQUIRE(v);
-    REQUIRE(!compiler_fixture_union(&input, v->tag, a, 15, out));
+    REQUIRE(!compiler_fixture_union(&input, v->tag, a, 17, out));
     return true;
 }
 static bool get(const pin_value *value, const char *name, pin_value *out)
@@ -598,7 +636,7 @@ static bool prepare()
         { "/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE, sizeof CORE_STRINGS_SOURCE - 1 }
     };
     for (int i = 0; i < 3; i++) {
-        REQUIRE(files[i].size < 32768);
+        REQUIRE(files[i].size < 48 * 1024);
     }
     prepared = compiler_fixture_prepare(&fixture, files, 3);
     REQUIRE(prepared);
@@ -632,7 +670,7 @@ static void raw_init(raw_facts *r)
     r->facts = (script_effect_facts){
         &r->catalog, r->expressions, 0, r->statements, 0, r->functions,
         0,           r->symbols,     0, r->scopes,     0, r->queries,
-        0,           r->bindings,    0
+        0,           r->bindings,    0, NULL,          0
     };
 }
 static int expr(raw_facts *r, script_expression_kind kind, int left, int right, unsigned effects)
@@ -673,11 +711,14 @@ static int function(raw_facts *r, int body, script_function_kind kind, int paren
 static int symbol(raw_facts *r, script_symbol_kind kind, int scope, uint64_t nominal)
 {
     int i = r->facts.symbol_count++;
-    r->symbols[i] = (script_symbol){ .kind = kind,
-                                     .scope = scope,
-                                     .initializer = -1,
-                                     .type = { .storage = PIN_STRUCT, .nominal = nominal },
-                                     .declaration = range_at(i + 70) };
+    r->symbols[i] = (script_symbol){
+        .kind = kind,
+        .scope = scope,
+        .initializer = -1,
+        .type = { .storage = PIN_STRUCT, .nominal = nominal },
+        .component_type = { .storage = PIN_STRUCT, .nominal = nominal },
+        .declaration = range_at(i + 70)
+    };
     return i;
 }
 static int symbol_expr(raw_facts *r, int index)
@@ -1124,7 +1165,7 @@ TEST_CASE(effect_analysis_raw_seeds_dependencies_and_restrictions_match)
         script_effect_result expected;
         REQUIRE(compare(&r.facts, c == 23 ? 0 : -1, &expected));
         /* Purity is inferred, so cases 6 and 8 report no declared-purity diagnostic. */
-        const int count[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 2,
+        const int count[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 3,
                               1, 0, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2 };
         REQUIRE(expected.diagnostic_count == count[c]);
         if (c == 1) {
@@ -1287,13 +1328,47 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
 {
     REQUIRE(prepared);
     const char *sources[] = {
-        "E :: system(position: Position) where Touch() { Touch :: () -> "
-        "bool { mutate(); return true; } }",
-        "E :: system(position: Position) where Deferred() { Deferred :: () -> "
-        "bool { yield; return true; } }",
-        "E :: system(position: Position) { reduce position.x += position.y; }",
+        "E :: system(position: ^Position , if Touch()) { Touch :: () -> bool { "
+        "mutate(); return "
+        "true; } }",
+        "E :: system(position: ^Position , if Deferred()) { Deferred :: () -> "
+        "bool { yield; return "
+        "true; } }",
+        "E :: system(position: ^Position) { reduce position.x += position.y; }",
         "E :: behavior { bind self.Position.x = self.Position.y; bind "
-        "self.Position.y = self.Position.x; }"
+        "self.Position.y = self.Position.x; }",
+        "E :: system(p: Position, amount := p.x * 2, if amount > 0) {}",
+        "E :: system(p: Position, amount := saved) { saved: retain number = 2; "
+        "}",
+        "E :: system(p: Position, amount := Twice(p.x), if amount > 0) { Twice "
+        ":: (value: number) -> number { return value * 2; } }",
+        "E :: system(p: Position, amount := Read()) { Read :: () -> number { "
+        "return p.x; } }",
+        "E :: system(p: Position, amount := noise()) {}",
+        "E :: system(p: Position, amount := Deferred()) { Deferred :: () -> "
+        "number { yield; return 2; } }",
+        "E :: library { Run :: (threshold: number) { q := query(p: Position, "
+        "if "
+        "p.x > threshold); } }",
+        "E :: behavior { threshold: number = 2; Threshold :: () -> number { "
+        "return threshold; } Run :: () { q := query(p: Position, if p.x > "
+        "Threshold()); } }",
+        "E :: behavior { threshold: number = 2; Run :: () { q := query(p: "
+        "Position, amount := p.x + threshold, if amount > 0); } }",
+        "E :: system(p: Position, amount := Touch()) { Touch :: () -> number { "
+        "mutate(); return 1; } }",
+        "E :: system(snapshot: Position, live: ^Position) { reduce live.x += "
+        "1; }",
+        "E :: system(live: ^Position, seen := live.x) { reduce live.x += 1; }",
+        "E :: system(live: ^Position, alias := live, unused := live) { reduce "
+        "alias.x += 1; }",
+    };
+    const bool valid[] = { false, false, false, false, true, false,
+                           true,  false, false, false, true, false,
+                           true,  false, false, false, true };
+    enum
+    {
+        CASES = sizeof sources / sizeof *sources
     };
     script_catalog_field fields[] = {
         { .id = 20, .name = "x", .type = { .storage = PIN_F32 }, .writable = true },
@@ -1311,15 +1386,21 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
                                  .size = 2 * sizeof(float),
                                  .component = true,
                                  .component_id = 501 };
-    script_catalog_capability cap = { .id = 32,
-                                      .name = "mutate",
-                                      .effects = SCRIPT_EFFECT_WRITE };
+    const script_catalog_parameter noise_result = { .type = { .storage = PIN_F32 } };
+    script_catalog_capability caps[] = {
+        { .id = 32, .name = "mutate", .effects = SCRIPT_EFFECT_WRITE },
+        { .id = 33,
+          .name = "noise",
+          .effects = SCRIPT_EFFECT_RANDOM,
+          .results = &noise_result,
+          .result_count = 1 },
+    };
     script_catalog native = { .types = &type,
                               .type_count = 1,
-                              .capabilities = &cap,
-                              .capability_count = 1,
+                              .capabilities = caps,
+                              .capability_count = 2,
                               .entity_type = 40 };
-    for (int c = 0; c < 4; c++) {
+    for (int c = 0; c < CASES; c++) {
         script_analysis_free(analysis);
         analysis = NULL;
         script_syntax_free(syntax);
@@ -1336,15 +1417,42 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
         }
         REQUIRE(syntax && !syntax->diagnostic_count);
         analysis = script_analyze_document(syntax, &native, "effect-fact-source");
-        REQUIRE(
-            analysis && analysis->expression_count <= 64 &&
-            analysis->statement_count <= 64 && analysis->function_count <= 8 &&
-            analysis->symbol_count <= 32 && analysis->scope_count <= 16 &&
-            analysis->query_count <= 4 && analysis->binding_count <= 8 &&
-            analysis->diagnostic_count > 0 && analysis->diagnostic_count <= 32 &&
-            native.type_count + analysis->type_count <= 3
-        );
-        script_catalog_type types[3];
+        bool bounded = analysis && analysis->expression_count <= 64 &&
+                       analysis->statement_count <= 64 &&
+                       analysis->function_count <= 8 && analysis->symbol_count <= 32 &&
+                       analysis->scope_count <= 16 && analysis->query_count <= 5 &&
+                       analysis->binding_count <= 8 && analysis->valid == valid[c] &&
+                       analysis->diagnostic_count <= 32 &&
+                       native.type_count + analysis->type_count <= 4;
+        if (!bounded && analysis) {
+            fprintf(
+                stderr,
+                "effect fact case %d: valid=%d expected=%d expressions=%d "
+                "statements=%d functions=%d symbols=%d scopes=%d queries=%d "
+                "bindings=%d types=%d diagnostics=%d\n",
+                c,
+                analysis->valid,
+                valid[c],
+                analysis->expression_count,
+                analysis->statement_count,
+                analysis->function_count,
+                analysis->symbol_count,
+                analysis->scope_count,
+                analysis->query_count,
+                analysis->binding_count,
+                native.type_count + analysis->type_count,
+                analysis->diagnostic_count
+            );
+            for (int i = 0; i < analysis->diagnostic_count; i++) {
+                fprintf(
+                    stderr,
+                    "effect fact diagnostic: %s\n",
+                    analysis->diagnostics[i].message
+                );
+            }
+        }
+        REQUIRE(bounded);
+        script_catalog_type types[4];
         types[0] = type;
         for (int i = 0; i < analysis->type_count; i++) {
             types[1 + i] = analysis->types[i];
@@ -1366,7 +1474,9 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
                                       analysis->queries,
                                       analysis->query_count,
                                       analysis->bindings,
-                                      analysis->binding_count };
+                                      analysis->binding_count,
+                                      analysis->descriptions,
+                                      analysis->description_count };
         const script_diagnostic *diagnostics;
         int count;
         if (c == 3) {
@@ -1391,7 +1501,17 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
                 REQUIRE(expected.function_effects[i] == analysis->functions[i].effects);
             }
         }
-        REQUIRE(count > 0);
+        REQUIRE(valid[c] ? count == 0 : count > 0);
+        if (c == 14 || c == 15) {
+            REQUIRE(
+                count == 1 &&
+                !strcmp(
+                    diagnostics[0].message,
+                    "Reduction producer cannot read or write component "
+                    "'Position' outside reductions"
+                )
+            );
+        }
         int next = 0;
         for (int i = 0; i < count; i++) {
             while (next < analysis->diagnostic_count &&
@@ -1402,14 +1522,14 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
             next++;
         }
     }
-    REQUIRE(calls == 68);
+    REQUIRE(calls == 60 + 2 * CASES);
     return true;
 }
 TEST_CASE(effect_analysis_original_oracle_and_detached_results_outlive_inputs)
 {
     cleanup();
     compiler_fixture_free(&fixture);
-    REQUIRE(calls == 68);
+    REQUIRE(calls == 94);
     for (int i = 0; i < 2; i++) {
         const script_effect_result *e = &saved_expected[i];
         REQUIRE(

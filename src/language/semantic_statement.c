@@ -274,8 +274,9 @@ void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool tr
         return;
     }
     const script_expression *condition = &a->out->expressions[expression_index];
-    if (condition->kind == SCRIPT_EXPR_SYMBOL &&
-        condition->type.flags & SCRIPT_TYPE_OPTIONAL) {
+    if ((condition->kind == SCRIPT_EXPR_SYMBOL ||
+         condition->kind == SCRIPT_EXPR_QUERY_FIELD) &&
+        condition->symbol >= 0 && (condition->type.flags & SCRIPT_TYPE_OPTIONAL)) {
         apush(
             a->narrowed,
             ((narrowing){ .symbol = condition->symbol,
@@ -363,7 +364,12 @@ script_type script_analyzer_presence(analyzer *a, int value)
 void script_analyzer_condition_type(analyzer *a, TSNode node, int value)
 {
     script_type type = script_analyzer_presence(a, value);
-    if (!(type.flags & SCRIPT_TYPE_OPTIONAL) &&
+    const script_expression *condition = &a->out->expressions[value];
+    bool narrowed_optional = (type.storage == PIN_POINTER || type.storage == PIN_STRUCT) &&
+                             condition->symbol >= 0 &&
+                             (a->out->symbols[condition->symbol].type.flags &
+                              SCRIPT_TYPE_OPTIONAL);
+    if (!narrowed_optional && !(type.flags & SCRIPT_TYPE_OPTIONAL) &&
         !((type.flags & SCRIPT_TYPE_TASK) && type.container == PIN_CONTAINER_SINGLE)) {
         script_analyzer_require(a, node, script_analyzer_boolean_type(), type);
     }
@@ -591,23 +597,31 @@ static void infer_type(analyzer *a, int symbol, int expression, TSNode node)
 /* Only stored member paths rooted in ECS storage can receive contributions. */
 uint64_t script_analyzer_component_target(const script_analysis *out, int index)
 {
-    while (index >= 0 && out->expressions[index].kind == SCRIPT_EXPR_MEMBER) {
+    int remaining = acount(out->expressions);
+    while (index >= 0 && remaining--) {
         const script_expression *e = &out->expressions[index];
-        if (e->read || e->write || e->type.container != PIN_CONTAINER_SINGLE) {
-            return 0;
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_DEREFERENCE) {
+            if (e->read || e->write || e->type.container != PIN_CONTAINER_SINGLE) {
+                return 0;
+            }
+            index = e->left;
+            continue;
         }
-        index = e->left;
-    }
-    if (index < 0) {
+        if (e->kind == SCRIPT_EXPR_COMPONENT) {
+            return e->capability;
+        }
+        if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0) {
+            const script_symbol *symbol = &out->symbols[e->symbol];
+            if (symbol->kind == SCRIPT_COMPONENT) {
+                return symbol->component_type.nominal;
+            }
+            if (symbol->kind == SCRIPT_LOCAL && symbol->type.storage == PIN_POINTER &&
+                !symbol->mutations && symbol->initializer >= 0) {
+                index = symbol->initializer;
+                continue;
+            }
+        }
         return 0;
-    }
-    const script_expression *e = &out->expressions[index];
-    if (e->kind == SCRIPT_EXPR_COMPONENT) {
-        return e->capability;
-    }
-    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
-        out->symbols[e->symbol].kind == SCRIPT_COMPONENT) {
-        return out->symbols[e->symbol].type.nominal;
     }
     return 0;
 }
@@ -1084,13 +1098,14 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
             );
             element = script_analyzer_expr_type(a, result.expression);
+            bool query = (element.flags & SCRIPT_TYPE_QUERY) != 0;
             bool text = element.container == PIN_CONTAINER_SINGLE &&
                         element.storage == PIN_STR &&
                         !(element.flags & SCRIPT_TYPE_OPTIONAL);
             if (element.container != PIN_CONTAINER_ARRAY &&
                 element.container != PIN_CONTAINER_VIEW &&
-                element.container != PIN_CONTAINER_MAP && !text) {
-                script_analyzer_diagnostic(a, collection, "For requires an array, Map or string");
+                element.container != PIN_CONTAINER_MAP && !text && !query) {
+                script_analyzer_diagnostic(a, collection, "For requires an array, Map, string or query");
             }
             if (result.reverse && ((element.container != PIN_CONTAINER_ARRAY &&
                                     element.container != PIN_CONTAINER_VIEW) ||
@@ -1100,8 +1115,8 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             }
             TSNode key = script_analyzer_field(node, "key");
             if (!ts_node_is_null(key)) {
-                if (text) {
-                    script_analyzer_diagnostic(a, key, "String iteration binds one Unicode scalar at a time");
+                if (text || query) {
+                    script_analyzer_diagnostic(a, key, "This iterator binds one value at a time");
                 }
                 if (element.container == PIN_CONTAINER_ARRAY ||
                     element.container == PIN_CONTAINER_VIEW) {
@@ -1124,8 +1139,11 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                     );
                 }
             }
-            element = text ? (script_type){ .storage = PIN_STR }
-                           : script_catalog_element_type(a->catalog, element);
+            element = text  ? (script_type){ .storage = PIN_STR }
+                    : query ? (script_type){ .storage = PIN_QUERY,
+                                             .nominal = element.nominal,
+                                             .flags = SCRIPT_TYPE_QUERY_ROW }
+                            : script_catalog_element_type(a->catalog, element);
             if (reference_iteration) {
                 const script_expression *source = &a->out->expressions[result.expression];
                 const script_symbol *binding = source->kind == SCRIPT_EXPR_SYMBOL &&

@@ -36,6 +36,9 @@ const char *pin_value_to_string(const pin_value *v)
     }
 
     switch (v->type) {
+        case PIN_QUERY:
+            snprintf(buf, PIN_FMT_CAP, "%s", v->ptr ? "query" : "null");
+            break;
         case PIN_POINTER:
             snprintf(buf, PIN_FMT_CAP, "%s", v->ptr ? "pointer" : "null");
             break;

@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,8 +24,8 @@
 
 typedef struct
 {
-    bool owner, context, world, constant, private, readable;
-    int bank;
+    bool owner, context, world, constant, private, readable, row, owned_payload;
+    int bank, row_field, local_reference;
     uint64_t bits, component;
     size_t offset, extent;
 } origin;
@@ -34,6 +35,7 @@ typedef struct
     uint64_t *reads, *writes, *reduces;
     size_t capacity, records;
     bool counting, valid, predicate, reducing;
+    const execution_module_plan *plan;
     const behavior_function *scalar_root, *scalar_functions[SCALAR_HELPERS];
     int scalar_count, reduction_modes;
     int operation, instruction;
@@ -80,6 +82,23 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
             }
             break;
         }
+        case EXECUTION_INTRINSIC_QUERY_MAKE:
+            if (count < 2 || host->result_count != 1) {
+                return 0;
+            }
+            break;
+        case EXECUTION_INTRINSIC_QUERY_NEXT:
+            if (count != 2 || host->result_count != 2) {
+                return 0;
+            }
+            break;
+        case EXECUTION_INTRINSIC_QUERY_TEST:
+        case EXECUTION_INTRINSIC_QUERY_BEGIN:
+        case EXECUTION_INTRINSIC_QUERY_END:
+        case EXECUTION_INTRINSIC_QUERY_ROW_GET: expected = 2; break;
+        case EXECUTION_INTRINSIC_QUERY_CURRENT_ROW: expected = 1; break;
+        case EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT:
+        case EXECUTION_INTRINSIC_COMPONENT_POINTER: expected = 6; break;
         case EXECUTION_INTRINSIC_POINTER_MAKE: expected = 3; break;
         case EXECUTION_INTRINSIC_POINTER_READ:
         case EXECUTION_INTRINSIC_POINTER_WRITE: expected = 2; break;
@@ -89,6 +108,7 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
         case EXECUTION_INTRINSIC_REFERENCE_UNION: expected = 4; break;
         case EXECUTION_INTRINSIC_REFERENCE_READ:
+        case EXECUTION_INTRINSIC_LOCAL_RELEASE:
         case EXECUTION_INTRINSIC_STRING_CURSOR:
         case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_SNAPSHOT:
@@ -209,6 +229,17 @@ static bool plain(pin_value v)
 }
 static origin slot_origin(const behavior_function *, int, int, int, int *);
 static bool control_write(const behavior_function_instruction *, origin);
+static bool collection_header_fixed(const behavior_function *, int bank, int depth, int *steps);
+static bool same_origin(origin a, origin b)
+{
+    return a.owner == b.owner && a.context == b.context && a.world == b.world &&
+           a.constant == b.constant && a.private == b.private &&
+           a.readable == b.readable && a.row == b.row &&
+           a.owned_payload == b.owned_payload && a.bank == b.bank &&
+           a.row_field == b.row_field && a.local_reference == b.local_reference &&
+           a.bits == b.bits && a.component == b.component &&
+           a.offset == b.offset && a.extent == b.extent;
+}
 static origin bank_origin(const behavior_function *f, int pc, int bank, int depth, int *steps)
 {
     origin none = { 0 };
@@ -226,12 +257,22 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
         if (i->op == BF_WRITE) {
             origin address = slot_origin(f, j, i->right, depth + 1, steps);
             if (!address.bank) {
-                if (control_write(i, address)) {
+                if (control_write(i, address) || address.private) {
                     continue;
                 }
                 return none;
             }
             if (address.bank == bank + 1) {
+                size_t width = behavior_scalar_size(i->type);
+                if (i->offset > SIZE_MAX - address.offset) {
+                    return none;
+                }
+                size_t offset = address.offset + i->offset;
+                if (width && (offset >= offsetof(pin_value, d) + sizeof(double) ||
+                              (offset < offsetof(pin_value, d) &&
+                               width <= offsetof(pin_value, d) - offset))) {
+                    continue;
+                }
                 if (crossing || address.offset > offsetof(pin_value, d) ||
                     i->offset != offsetof(pin_value, d) - address.offset) {
                     return none;
@@ -250,11 +291,54 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
             return none;
         }
         uint64_t id = intrinsic(call);
+        if (id == execution_intrinsic_id(&EXECUTION_query_current_row_call)) {
+            origin context = bank_origin(f, j, call->first, depth + 1, steps);
+            return (origin){ .row = context.context };
+        }
+        if (id == execution_intrinsic_id(&EXECUTION_query_row_get_call)) {
+            origin row = bank_origin(f, j, call->first, depth + 1, steps);
+            origin field = bank_origin(f, j, call->first + 1, depth + 1, steps);
+            if (!row.row || !field.constant || field.bits >= INT_MAX) {
+                return none;
+            }
+            pin_value value = f->data_values[bank].initial;
+            const type_desc *type = value.type == PIN_STRUCT ? pin_value_type(&value)
+                                                             : NULL;
+            return (origin){ .row_field = (int)field.bits + 1,
+                             .readable = value.type == PIN_STRUCT ||
+                                         value.container != PIN_CONTAINER_SINGLE,
+                             .extent = type && type_is_plain(type) ? type->size : 0 };
+        }
+        if (id == execution_intrinsic_id(&EXECUTION_component_pointer_call) ||
+            id == execution_intrinsic_id(&EXECUTION_component_snapshot_call)) {
+            origin context = bank_origin(f, j, call->first, depth + 1, steps);
+            origin entity = bank_origin(f, j, call->first + 1, depth + 1, steps);
+            origin component = bank_origin(f, j, call->first + 2, depth + 1, steps);
+            pin_value value = f->data_values[call->first + 3].initial;
+            const type_desc *type = value.type == PIN_STRUCT ? pin_value_type(&value)
+                                                             : NULL;
+            if (context.context && component.constant && component.bits &&
+                type && type_is_plain(type)) {
+                return (origin){ .owner = entity.owner,
+                                 .component = component.bits,
+                                 .readable = true,
+                                 .extent = type->size };
+            }
+            return none;
+        }
         if (id == execution_intrinsic_id(&EXECUTION_reference_make_call)) {
             origin kind = bank_origin(f, j, call->first + 2, depth + 1, steps);
             origin entity = bank_origin(f, j, call->first + 5, depth + 1, steps);
             origin component = bank_origin(f, j, call->first + 6, depth + 1, steps);
             origin context = bank_origin(f, j, call->first, depth + 1, steps);
+            if (kind.constant && kind.bits == LANGUAGE_REFERENCE_VALUE &&
+                context.context &&
+                f->data_values[call->first + 1].initial.type == PIN_POINTER) {
+                origin address = bank_origin(f, j, call->first + 4, depth + 1, steps);
+                if (address.private && address.bank && !address.offset) {
+                    return (origin){ .local_reference = address.bank };
+                }
+            }
             if (kind.constant && kind.bits == LANGUAGE_REFERENCE_COMPONENT &&
                 component.constant && component.bits && context.context &&
                 plain(f->data_values[call->first + 1].initial)) {
@@ -273,26 +357,41 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
         }
         if (id == execution_intrinsic_id(&EXECUTION_reference_field_call) ||
             id == execution_intrinsic_id(&EXECUTION_reference_union_call) ||
+            id == execution_intrinsic_id(&EXECUTION_pointer_reference_call) ||
+            id == execution_intrinsic_id(&EXECUTION_pointer_field_call) ||
             id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
             origin source = bank_origin(f, j, call->first, depth + 1, steps);
             pin_value value = f->data_values[bank].initial;
+            if (id == execution_intrinsic_id(&EXECUTION_pointer_field_call)) {
+                pin_value field = f->data_values[call->first + 1].initial;
+                const type_desc *type = field.type == PIN_STRUCT
+                                          ? pin_value_type(&field)
+                                          : NULL;
+                source.extent = type ? type->size : behavior_scalar_size(field.type);
+                source.offset = 0;
+            }
             if (id == execution_intrinsic_id(&EXECUTION_snapshot_call) &&
                 (value.type == PIN_STRUCT || value.container != PIN_CONTAINER_SINGLE)) {
                 source.readable = true;
+                source.owned_payload = value.container != PIN_CONTAINER_SINGLE &&
+                                       i->right != BF_HOST_BORROW_ARRAY &&
+                                       collection_header_fixed(f, call->first, depth + 1, steps);
             }
             return source;
         }
-        if (id == execution_intrinsic_id(&EXECUTION_reference_read_call)) {
+        if (id == execution_intrinsic_id(&EXECUTION_reference_read_call) ||
+            id == execution_intrinsic_id(&EXECUTION_pointer_read_call)) {
             origin target = bank_origin(f, j, call->first, depth + 1, steps);
             pin_value value = f->data_values[bank].initial;
             const type_desc *type = value.type == PIN_STRUCT &&
                                             value.container == PIN_CONTAINER_SINGLE
                                       ? pin_value_type(&value)
                                       : NULL;
-            if (target.component && type && type_is_plain(type)) {
+            if ((target.component || target.row_field) && type && type_is_plain(type)) {
                 /* The snapshot retains its source access, with its own bounds. */
                 return (origin){ .owner = target.owner,
                                  .component = target.component,
+                                 .row_field = target.row_field,
                                  .readable = true,
                                  .extent = type->size };
             }
@@ -373,13 +472,42 @@ static origin slot_origin(const behavior_function *f, int pc, int slot, int dept
                     const behavior_function_instruction *save = &f->instructions[at];
                     if (--*steps < 0 || save->op == BF_BRANCH || save->op == BF_JUMP ||
                         save->op == BF_ENTER || save->op == BF_LEAVE) {
-                        return none;
+                        break;
                     }
                     if (save->op == BF_SAVE && save->target == i->left) {
                         return slot_origin(f, at, save->left, depth + 1, steps);
                     }
                 }
-                return none;
+                /* Guards can separate a saved component pointer from its
+                 * use. A null initial value has no external effects; every
+                 * assignment must prove the same source before crossing those
+                 * guards. Other locals keep the bounded backward scan: this
+                 * one reads the whole function. */
+                pin_value initial = f->locals[i->left].initial;
+                if (initial.type != PIN_POINTER ||
+                    initial.container != PIN_CONTAINER_SINGLE || initial.ptr) {
+                    return none;
+                }
+                {
+                    origin source = { 0 };
+                    bool found = false;
+                    for (int at = 0; at < acount(f->instructions); at++) {
+                        const behavior_function_instruction *save = &f->instructions[at];
+                        if (--*steps < 0) {
+                            return none;
+                        }
+                        if (save->op != BF_SAVE || save->target != i->left) {
+                            continue;
+                        }
+                        origin value = slot_origin(f, at, save->left, depth + 1, steps);
+                        if (found && !same_origin(source, value)) {
+                            return none;
+                        }
+                        source = value;
+                        found = true;
+                    }
+                    return found ? source : none;
+                }
             case BF_WORLD: return (origin){ .world = true };
             case BF_ENTITY: {
                 origin world = slot_origin(f, j, i->left, depth + 1, steps);
@@ -447,6 +575,78 @@ static origin slot_origin(const behavior_function *f, int pc, int slot, int dept
     }
     return none;
 }
+static origin effect_origin(const effects *e, origin value)
+{
+    if (!value.row_field || !e->plan || !e->plan->system_description) {
+        return value;
+    }
+    const behavior_function
+        *f = e->plan->descriptions[e->plan->system_description - 1].evaluate;
+    int result = value.row_field;
+    if (!f || result >= f->result_count || f->result_defaults[result].u64) {
+        return (origin){ 0 };
+    }
+    origin source = { 0 };
+    bool found = false;
+    int steps = EFFECT_STEPS;
+    size_t payload = (size_t)result * sizeof(pin_value) + offsetof(pin_value, d);
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (--steps < 0) {
+            return (origin){ 0 };
+        }
+        if ((i->op == BF_RESULT_ARRAY || i->op == BF_RESULT_PRESENT ||
+             i->op == BF_RESULT_TYPE_NAME) &&
+            i->target == result) {
+            return (origin){ 0 };
+        }
+        if (i->op != BF_WRITE && i->op != BF_RESULT) {
+            continue;
+        }
+        size_t width = behavior_scalar_size(i->type);
+        if (i->op == BF_RESULT) {
+            if (i->target != result) {
+                continue;
+            }
+            if (i->indirect || width != sizeof(uint64_t)) {
+                return (origin){ 0 };
+            }
+        } else {
+            origin address = slot_origin(f, pc, i->right, 0, &steps);
+            if (control_write(i, address) || address.bank) {
+                continue;
+            }
+            if (!address.private || !width || i->offset > SIZE_MAX - address.offset) {
+                return (origin){ 0 };
+            }
+            size_t offset = address.offset + i->offset;
+            if (offset >= payload + sizeof(uint64_t) ||
+                (offset < payload && width <= payload - offset)) {
+                continue;
+            }
+            if (offset != payload || width != sizeof(uint64_t)) {
+                return (origin){ 0 };
+            }
+        }
+        origin candidate = slot_origin(f, pc, i->left, 0, &steps);
+        if (candidate.row_field || (found && !same_origin(source, candidate))) {
+            return (origin){ 0 };
+        }
+        source = candidate;
+        found = true;
+    }
+    if (!found) {
+        return (origin){ 0 };
+    }
+    value.owner = source.owner;
+    value.component = source.component;
+    value.row_field = 0;
+    if (!value.extent) {
+        value.extent = source.extent;
+    }
+    value.readable |= source.readable;
+    return value;
+}
 static bool context_bank(const behavior_function *f, int bank)
 {
     bool found = false;
@@ -461,7 +661,11 @@ static bool context_bank(const behavior_function *f, int bank)
              id != execution_intrinsic_id(&EXECUTION_query_source_call) &&
              id != execution_intrinsic_id(&EXECUTION_query_target_call) &&
              id != execution_intrinsic_id(&EXECUTION_component_has_call) &&
-             id != execution_intrinsic_id(&EXECUTION_local_release_call))) {
+             id != execution_intrinsic_id(&EXECUTION_component_pointer_call) &&
+             id != execution_intrinsic_id(&EXECUTION_component_snapshot_call) &&
+             id != execution_intrinsic_id(&EXECUTION_query_test_call) &&
+             id != execution_intrinsic_id(&EXECUTION_query_current_row_call) &&
+             id != execution_intrinsic_id(&EXECUTION_query_make_call))) {
             return false;
         }
         found = true;
@@ -511,8 +715,187 @@ static bool context_uses(const behavior_function *f, int slot, int *steps)
     }
     return true;
 }
+/* Row snapshots remain readable after later guards. The general effect proof
+ * stops at branches; here every possible local assignment must independently
+ * resolve to a readable value before crossing that guard. */
+static bool row_readable(const behavior_function *f, int pc, int slot, int depth, int *steps)
+{
+    if (depth == EFFECT_DEPTH || --*steps < 0) {
+        return false;
+    }
+    origin address = slot_origin(f, pc, slot, 0, steps);
+    if (address.context || (address.bank && context_bank(f, address.bank - 1))) {
+        return false;
+    }
+    if (address.bank || address.private || address.readable || address.component) {
+        return true;
+    }
+    for (int at = pc - 1; at >= 0; at--) {
+        const behavior_function_instruction *instruction = &f->instructions[at];
+        if (--*steps < 0) {
+            return false;
+        }
+        if (instruction->op >= BF_STORE || instruction->output != slot) {
+            continue;
+        }
+        if (instruction->op == BF_LOCAL) {
+            bool found = false;
+            for (int save = 0; save < acount(f->instructions); save++) {
+                const behavior_function_instruction *value = &f->instructions[save];
+                if (value->op != BF_SAVE || value->target != instruction->left) {
+                    continue;
+                }
+                found = true;
+                if (!row_readable(f, save, value->left, depth + 1, steps)) {
+                    return false;
+                }
+            }
+            return found;
+        }
+        if (instruction->op == BF_ADD || instruction->op == BF_INDEX) {
+            origin offset = slot_origin(f, at, instruction->right, 0, steps);
+            return offset.constant &&
+                   row_readable(f, at, instruction->left, depth + 1, steps);
+        }
+        return false;
+    }
+    return false;
+}
+static bool owned_payload(const behavior_function *f, int pc, int slot, int depth, int *steps)
+{
+    if (depth == EFFECT_DEPTH || --*steps < 0) {
+        return false;
+    }
+    origin value = slot_origin(f, pc, slot, depth, steps);
+    if (value.owned_payload || (value.constant && !value.bits)) {
+        return true;
+    }
+    for (int at = pc - 1; at >= 0; at--) {
+        const behavior_function_instruction *i = &f->instructions[at];
+        if (--*steps < 0) {
+            return false;
+        }
+        if (i->op >= BF_STORE || i->output != slot) {
+            continue;
+        }
+        if (i->op != BF_LOCAL || f->locals[i->left].initial.u64) {
+            return false;
+        }
+        bool found = false;
+        for (int save = 0; save < acount(f->instructions); save++) {
+            const behavior_function_instruction *assignment = &f->instructions[save];
+            if (assignment->op != BF_SAVE || assignment->target != i->left) {
+                continue;
+            }
+            found = true;
+            if (!owned_payload(f, save, assignment->left, depth + 1, steps)) {
+                return false;
+            }
+        }
+        return found;
+    }
+    return false;
+}
+static bool byte_overlap(size_t offset, size_t width, size_t field, size_t size)
+{
+    return offset < field + size && width > (offset < field ? field - offset : 0);
+}
+/* SNAPSHOT copies the runtime header. A forged alias of its input header must
+ * not turn a collection copy into an identity copy of an opaque handle. */
+static bool collection_header_fixed(const behavior_function *f, int bank, int depth, int *steps)
+{
+    if (depth == EFFECT_DEPTH || --*steps < 0 || bank < 0 ||
+        bank >= acount(f->data_values) ||
+        f->data_values[bank].initial.container == PIN_CONTAINER_SINGLE) {
+        return false;
+    }
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (--*steps < 0) {
+            return false;
+        }
+        if (i->op == BF_HOST_CALL) {
+            const behavior_function_host_call *host = &f->host_calls[i->target];
+            if (bank >= host->result_first &&
+                bank < host->result_first + host->result_count) {
+                return false;
+            }
+        }
+        if (i->op != BF_WRITE) {
+            continue;
+        }
+        origin address = slot_origin(f, pc, i->right, depth + 1, steps);
+        if (address.bank != bank + 1) {
+            continue;
+        }
+        size_t width = behavior_scalar_size(i->type);
+        if (!width || i->offset > SIZE_MAX - address.offset) {
+            return false;
+        }
+        size_t offset = address.offset + i->offset;
+        if (byte_overlap(offset, width, offsetof(pin_value, type), sizeof(pin_type)) ||
+            byte_overlap(offset, width, offsetof(pin_value, container), sizeof(pin_container))) {
+            return false;
+        }
+    }
+    return true;
+}
+/* A private header may still point at a capture or module constant. Every
+ * payload assignment must be a fresh snapshot or the empty value, including
+ * assignments separated from this mutation by guards or back edges. */
+static bool owned_collection(const behavior_function *f, origin target, int *steps)
+{
+    if (!target.private || !target.bank || target.offset) {
+        return false;
+    }
+    int bank = target.bank - 1;
+    pin_value initial = f->data_values[bank].initial;
+    if (initial.ptr || (initial.container != PIN_CONTAINER_ARRAY &&
+                        initial.container != PIN_CONTAINER_MAP)) {
+        return false;
+    }
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (--*steps < 0) {
+            return false;
+        }
+        if (i->op == BF_HOST_CALL) {
+            const behavior_function_host_call *host = &f->host_calls[i->target];
+            if (bank >= host->result_first &&
+                bank < host->result_first + host->result_count &&
+                (intrinsic(host) != execution_intrinsic_id(&EXECUTION_snapshot_call) ||
+                 i->right == BF_HOST_BORROW_ARRAY ||
+                 !collection_header_fixed(f, host->first, 0, steps))) {
+                return false;
+            }
+        }
+        if (i->op != BF_WRITE) {
+            continue;
+        }
+        origin address = slot_origin(f, pc, i->right, 0, steps);
+        if (address.bank != target.bank) {
+            continue;
+        }
+        size_t width = behavior_scalar_size(i->type);
+        if (i->offset > SIZE_MAX - address.offset || !width) {
+            return false;
+        }
+        size_t offset = address.offset + i->offset;
+        if (byte_overlap(offset, width, offsetof(pin_value, d), sizeof(void *))) {
+            if (offset != offsetof(pin_value, d) || width != sizeof(void *) ||
+                !owned_payload(f, pc, i->left, 0, steps)) {
+                return false;
+            }
+        }
+        if (byte_overlap(offset, width, offsetof(pin_value, type), sizeof(pin_type)) ||
+            byte_overlap(offset, width, offsetof(pin_value, container), sizeof(pin_container))) {
+            return false;
+        }
+    }
+    return true;
+}
 static bool share_local(const behavior_function *, bool built, bool *returned);
-static bool predicate_host(const behavior_function *f, int pc, bool local_arrays)
+static bool predicate_host(const behavior_function *f, int pc, bool row, bool local_arrays)
 {
     const behavior_function_host_call *host = &f->host_calls[f->instructions[pc].target];
     uint64_t id = intrinsic(host);
@@ -529,11 +912,17 @@ static bool predicate_host(const behavior_function *f, int pc, bool local_arrays
         /* Managed cells can be shared with persistent state or other calls.
          * Query predicates cannot observe or mutate that heap. */
         case EXECUTION_INTRINSIC_POINTER_MAKE:
-        case EXECUTION_INTRINSIC_POINTER_READ:
         case EXECUTION_INTRINSIC_POINTER_WRITE:
-        case EXECUTION_INTRINSIC_POINTER_FIELD:
         case EXECUTION_INTRINSIC_POINTER_REFERENCE:
         case EXECUTION_INTRINSIC_SEQUENCE_VIEW: return false;
+        case EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT:
+        case EXECUTION_INTRINSIC_COMPONENT_POINTER:
+        case EXECUTION_INTRINSIC_POINTER_READ:
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+        case EXECUTION_INTRINSIC_QUERY_ROW_GET:
+        case EXECUTION_INTRINSIC_QUERY_TEST:
+        case EXECUTION_INTRINSIC_QUERY_CURRENT_ROW:
+        case EXECUTION_INTRINSIC_QUERY_MAKE: return row;
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: {
             origin kind = bank_origin(f, pc, host->first + 2, 0, &steps);
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
@@ -551,7 +940,7 @@ static bool predicate_host(const behavior_function *f, int pc, bool local_arrays
         case EXECUTION_INTRINSIC_MAP_DELETE: {
             /* In-place updates write only the function's own local collection. */
             origin target = bank_origin(f, pc, host->first, 0, &steps);
-            return target.private && target.bank;
+            return owned_collection(f, target, &steps);
         }
         case EXECUTION_INTRINSIC_SNAPSHOT:
         case EXECUTION_INTRINSIC_STRING_CURSOR:
@@ -571,8 +960,9 @@ static bool predicate_host(const behavior_function *f, int pc, bool local_arrays
         case EXECUTION_INTRINSIC_UNION_KEEP:
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_UNION_TEST:
-        case EXECUTION_INTRINSIC_UNION_GET:
-        case EXECUTION_INTRINSIC_LOCAL_RELEASE: return true;
+        case EXECUTION_INTRINSIC_UNION_GET: return true;
+        case EXECUTION_INTRINSIC_LOCAL_RELEASE:
+            return bank_origin(f, pc, host->first, 0, &steps).local_reference != 0;
         case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
         case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
         case EXECUTION_INTRINSIC_SEQUENCE_GET:
@@ -582,7 +972,7 @@ static bool predicate_host(const behavior_function *f, int pc, bool local_arrays
         default: return false;
     }
 }
-bool execution_query_predicate_valid(const behavior_function *root, unsigned bound)
+static bool query_evaluator_valid(const behavior_function *root, unsigned bound, bool row)
 {
     const behavior_function **functions = NULL;
     apush(functions, root);
@@ -609,6 +999,7 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
                 break;
             }
             switch (i->op) {
+                case BF_RESULT: valid = !i->indirect; break;
                 case BF_VARIABLE:
                 case BF_STORAGE_NAME:
                 case BF_QUERY:
@@ -664,6 +1055,9 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
                     if (address.bank && context_bank(f, address.bank - 1)) {
                         valid = false;
                     }
+                    if (row && !valid) {
+                        valid = row_readable(f, pc, i->left, 0, &origin_steps);
+                    }
                     break;
                 }
                 case BF_WRITE: {
@@ -677,7 +1071,7 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
                     break;
                 }
                 case BF_HOST_CALL:
-                    valid = predicate_host(f, pc, local_arrays);
+                    valid = predicate_host(f, pc, row, local_arrays);
                     break;
                 case BF_INVOKE: {
                     const behavior_function_invocation *call = &f->calls[i->left];
@@ -1037,7 +1431,7 @@ static void payload_read(effects *e, const behavior_function *f, int pc, int ban
         return;
     }
     int steps = EFFECT_STEPS;
-    origin source = bank_origin(f, pc, bank, 0, &steps);
+    origin source = effect_origin(e, bank_origin(f, pc, bank, 0, &steps));
     pin_value value = f->data_values[bank].initial;
     if (source.component) {
         add(e, false, source.component);
@@ -1083,22 +1477,64 @@ static void function(effects *e, const behavior_function *f, int depth)
                 const behavior_function_host_call *call = &f->host_calls[i->target];
                 e->capability = call->capability_id;
                 uint64_t id = intrinsic(call);
+                if (id == execution_intrinsic_id(&EXECUTION_component_snapshot_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_component_pointer_call)) {
+                    int steps = EFFECT_STEPS;
+                    origin source = bank_origin(f, pc + 1, call->result_first, 0, &steps);
+                    if (!source.component) {
+                        unknown(e);
+                    } else if (id == execution_intrinsic_id(&EXECUTION_component_snapshot_call)) {
+                        add(e, false, source.component);
+                    }
+                    /* Scheduled row evaluators run serially before workers.
+                     * Creating component cells in a body mutates their shared
+                     * managed heap and cannot run on row workers. */
+                    if (!e->counting && !e->predicate &&
+                        id == execution_intrinsic_id(&EXECUTION_component_pointer_call)) {
+                        e->summary->parallel_safe = false;
+                    }
+                    break;
+                }
+                if (id == execution_intrinsic_id(&EXECUTION_query_current_row_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_query_row_get_call)) {
+                    int steps = EFFECT_STEPS;
+                    origin source = bank_origin(f, pc + 1, call->result_first, 0, &steps);
+                    if (id == execution_intrinsic_id(&EXECUTION_query_current_row_call)) {
+                        if (!source.row || !e->plan->system_description) {
+                            unknown(e);
+                        }
+                    } else if (!source.row_field || !e->plan->system_description) {
+                        unknown(e);
+                    }
+                    break;
+                }
                 if (id == execution_intrinsic_id(&EXECUTION_reference_make_call) ||
                     id == execution_intrinsic_id(&EXECUTION_query_source_call) ||
                     id == execution_intrinsic_id(&EXECUTION_component_has_call)) {
                     int steps = EFFECT_STEPS;
+                    if (id == execution_intrinsic_id(&EXECUTION_reference_make_call) &&
+                        bank_origin(f, pc + 1, call->result_first, 0, &steps).local_reference) {
+                        break;
+                    }
                     int ordinal = id == execution_intrinsic_id(&EXECUTION_reference_make_call)
                                     ? 6
                                     : 2;
                     origin component = bank_origin(f, pc, call->first + ordinal, 0, &steps);
                     if (component.constant && component.bits) {
-                        if (!e->reducing ||
-                            id != execution_intrinsic_id(&EXECUTION_reference_make_call)) {
+                        if (!e->reducing &&
+                            id == execution_intrinsic_id(&EXECUTION_reference_make_call)) {
                             add(e, false, component.bits);
                         }
                     } else {
                         unknown(e);
                     }
+                }
+                if (id == execution_intrinsic_id(&EXECUTION_local_release_call)) {
+                    int steps = EFFECT_STEPS;
+                    if (!bank_origin(f, pc, call->first, 0, &steps).local_reference) {
+                        unknown(e);
+                    }
+                    break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_query_source_call) ||
                     id == execution_intrinsic_id(&EXECUTION_query_target_call) ||
@@ -1111,6 +1547,26 @@ static void function(effects *e, const behavior_function *f, int depth)
                     if (id != execution_intrinsic_id(&EXECUTION_component_has_call) &&
                         relationship.constant && relationship.bits) {
                         add(e, false, relationship.bits);
+                    }
+                    bool membership = e->predicate &&
+                                      id == execution_intrinsic_id(&EXECUTION_component_has_call);
+                    if (e->predicate &&
+                        id == execution_intrinsic_id(&EXECUTION_query_source_call)) {
+                        origin traversal = bank_origin(f, pc, call->first + 4, 0, &steps);
+                        membership = relationship.constant && !relationship.bits &&
+                                     traversal.constant && !traversal.bits;
+                    }
+                    if (id != execution_intrinsic_id(&EXECUTION_query_target_call) &&
+                        (!e->reducing || !membership)) {
+                        origin component = bank_origin(f, pc, call->first + 2, 0, &steps);
+                        if (component.constant && component.bits) {
+                            add(e, false, component.bits);
+                        }
+                    }
+                    if (membership) {
+                        /* Plain membership is already a declared read of its
+                         * component; it does not inspect arbitrary world data. */
+                        break;
                     }
                     if (!e->counting) {
                         e->summary->world_read = true;
@@ -1130,7 +1586,7 @@ static void function(effects *e, const behavior_function *f, int depth)
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_reference_reduce_call)) {
                     int steps = EFFECT_STEPS;
-                    origin target = bank_origin(f, pc, call->first, 0, &steps);
+                    origin target = effect_origin(e, bank_origin(f, pc, call->first, 0, &steps));
                     origin op = bank_origin(f, pc, call->first + 2, 0, &steps);
                     pin_value value = f->data_values[call->first + 1].initial;
                     if (!target.component || value.container != PIN_CONTAINER_SINGLE ||
@@ -1163,7 +1619,7 @@ static void function(effects *e, const behavior_function *f, int depth)
                         break;
                     }
                     int steps = EFFECT_STEPS;
-                    origin target = bank_origin(f, pc, call->first, 0, &steps);
+                    origin target = effect_origin(e, bank_origin(f, pc, call->first, 0, &steps));
                     bool write = place_write ||
                                  id == execution_intrinsic_id(&EXECUTION_reference_write_call);
                     if (place_write && target.private && target.bank) {
@@ -1189,10 +1645,41 @@ static void function(effects *e, const behavior_function *f, int depth)
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
+                    pin_value value = f->data_values[call->result_first].initial;
+                    if (value.container == PIN_CONTAINER_SINGLE &&
+                        (value.type == PIN_POINTER || value.type == PIN_QUERY ||
+                         value.type == PIN_HANDLE || value.type == PIN_ENUM)) {
+                        /* Identity copies do not read the pointee or mutate its
+                         * shared storage. Dereferences are checked separately. */
+                        break;
+                    }
                     payload_read(e, f, pc, call->first);
-                    if (!e->counting &&
-                        !plain(f->data_values[call->result_first].initial)) {
+                    if (!e->counting && !plain(value)) {
                         unknown(e);
+                    }
+                    break;
+                }
+                if (id == execution_intrinsic_id(&EXECUTION_pointer_read_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_pointer_write_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_pointer_reference_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_pointer_field_call)) {
+                    int steps = EFFECT_STEPS;
+                    origin target = effect_origin(e, bank_origin(f, pc, call->first, 0, &steps));
+                    bool read = id == execution_intrinsic_id(&EXECUTION_pointer_read_call);
+                    bool write = id == execution_intrinsic_id(&EXECUTION_pointer_write_call);
+                    pin_value value = f->data_values[write ? call->first + 1 : call->result_first]
+                                          .initial;
+                    if (!target.component || ((read || write) && !plain(value))) {
+                        unknown(e);
+                    }
+                    if (read || write) {
+                        add(e, write, target.component);
+                    }
+                    if (!e->counting &&
+                        ((!target.owner && (!e->reducing || write)) ||
+                         (!e->predicate &&
+                          id == execution_intrinsic_id(&EXECUTION_pointer_field_call)))) {
+                        e->summary->parallel_safe = false;
                     }
                     break;
                 }
@@ -1258,14 +1745,14 @@ static void function(effects *e, const behavior_function *f, int depth)
             case BF_LOAD:
                 if (e->reducing) {
                     int steps = EFFECT_STEPS;
-                    origin address = slot_origin(f, pc, i->left, 0, &steps);
+                    origin address = effect_origin(e, slot_origin(f, pc, i->left, 0, &steps));
                     if (e->counting || address.component) {
                         add(e, false, address.component);
                     }
                 }
                 if (!e->counting) {
                     int steps = EFFECT_STEPS;
-                    origin address = slot_origin(f, pc, i->left, 0, &steps);
+                    origin address = effect_origin(e, slot_origin(f, pc, i->left, 0, &steps));
                     bool scalar = (i->type >= PIN_BOOL && i->type <= PIN_F64) ||
                                   (e->reducing && i->type == PIN_HANDLE);
                     size_t width = scalar ? behavior_scalar_size(i->type) : 0;
@@ -1349,7 +1836,15 @@ static void function(effects *e, const behavior_function *f, int depth)
             case BF_LOCAL:
             case BF_SAVE:
                 if (!e->predicate && !e->reducing) {
-                    unknown(e);
+                    int steps = EFFECT_STEPS;
+                    origin value = i->op == BF_SAVE
+                                     ? slot_origin(f, pc, i->left, 0, &steps)
+                                     : slot_origin(f, pc + 1, i->output, 0, &steps);
+                    pin_value type = f->locals[i->op == BF_SAVE ? i->target : i->left]
+                                         .initial;
+                    if (type.type != PIN_POINTER || !effect_origin(e, value).component) {
+                        unknown(e);
+                    }
                 }
                 break;
             case BF_RANDOM:
@@ -1402,6 +1897,7 @@ static void predicate_effects(effects *e, const behavior_function *root)
 }
 static void plan(effects *e, const execution_module_plan *p)
 {
+    e->plan = p;
     for (int i = 0; i < p->query_count; i++) {
         if (p->queries[i].component &&
             (!e->reducing || p->queries[i].kind == EXECUTION_QUERY_CHANGED)) {
@@ -1421,6 +1917,9 @@ static void plan(effects *e, const execution_module_plan *p)
     if (!e->counting && (p->state_count || p->binding_count ||
                          p->action_count || p->import_count)) {
         e->summary->parallel_safe = false;
+    }
+    for (int i = 0; i < p->description_count; i++) {
+        predicate_effects(e, p->descriptions[i].evaluate);
     }
     for (int i = 0; i < p->function_count; i++) {
         const execution_module_function *f = &p->functions[i];
@@ -1565,10 +2064,10 @@ static bool snapshot_storage(pin_value value)
 
 static bool managed_value(pin_value value)
 {
-    return value.container != PIN_CONTAINER_SINGLE ||
-           value.type == PIN_STRUCT || value.type == PIN_STR ||
-           value.type == PIN_NAME || value.type == PIN_UNION ||
-           value.type == PIN_TASK || value.type == PIN_POINTER;
+    return value.container != PIN_CONTAINER_SINGLE || value.type == PIN_STRUCT ||
+           value.type == PIN_STR || value.type == PIN_NAME ||
+           value.type == PIN_UNION || value.type == PIN_TASK ||
+           value.type == PIN_POINTER || value.type == PIN_QUERY;
 }
 
 static void cost_host(costs *c, const behavior_function *f, int pc)
@@ -1852,6 +2351,9 @@ static void cost_module(costs *c, const execution_module *m, int depth)
         cost_function(c, m->plan.bindings[i].body);
         cost_function(c, m->plan.bindings[i].dependencies);
     }
+    for (int i = 0; i < m->plan.description_count; i++) {
+        cost_function(c, m->plan.descriptions[i].evaluate);
+    }
     for (int i = 0; i < m->plan.query_count; i++) {
         cost_function(c, m->plan.queries[i].predicate);
     }
@@ -1921,8 +2423,9 @@ typedef struct
 static bool pointer_value(pin_value v, behavior_value_kind kind)
 {
     return kind != BEHAVIOR_VALUE || v.container != PIN_CONTAINER_SINGLE ||
-           v.type == BF_POINTER_TYPE || v.type == PIN_STRUCT || v.type == PIN_STR ||
-           v.type == PIN_NAME || v.type == PIN_UNION || v.type == PIN_POINTER;
+           v.type == BF_POINTER_TYPE || v.type == PIN_STRUCT ||
+           v.type == PIN_STR || v.type == PIN_NAME || v.type == PIN_UNION ||
+           v.type == PIN_POINTER || v.type == PIN_QUERY;
 }
 static bool text_type(pin_type type)
 {
@@ -1932,12 +2435,12 @@ static bool pointer_slot(const behavior_function *f, int slot)
 {
     return pointer_value((pin_value){ .type = f->slots[slot] }, f->slot_kinds[slot]);
 }
-/* VALUE copies separate collection owners. Explicit pointers and views still
- * reach shared targets; opaque union payloads may contain either. */
+/* VALUE copies separate collection owners. Explicit pointers, queries and
+ * views still reach shared targets; opaque union payloads may contain either. */
 static bool shared_targets(pin_value value, int depth)
 {
     if (value.container == PIN_CONTAINER_VIEW || value.type == PIN_POINTER ||
-        value.type == PIN_UNION) {
+        value.type == PIN_QUERY || value.type == PIN_UNION) {
         return true;
     }
     value.container = PIN_CONTAINER_SINGLE;
@@ -2086,7 +2589,8 @@ static bool value_field(size_t offset)
 {
     return offset == offsetof(pin_value, d) ||
            offset == offsetof(pin_value, type_name) ||
-           offset == offsetof(pin_value, record);
+           offset == offsetof(pin_value, record) ||
+           offset == offsetof(pin_value, schema);
 }
 /* The own, untainted cell whose address host argument `cell` holds, or -1. */
 static int share_target(const share_flow *s, int cell)
@@ -2806,4 +3310,13 @@ void execution_prepare_argument_sharing(behavior_function *root)
     free(sorted);
     free(starts);
     free(fill);
+}
+
+bool execution_query_predicate_valid(const behavior_function *function, unsigned bound)
+{
+    return query_evaluator_valid(function, bound, false);
+}
+bool execution_query_evaluator_valid(const behavior_function *function, unsigned bound)
+{
+    return query_evaluator_valid(function, bound, true);
 }

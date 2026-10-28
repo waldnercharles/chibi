@@ -243,6 +243,7 @@ static uint64_t context_abi()
                               offsetof(pin_value, container),
                               offsetof(pin_value, type_name),
                               offsetof(pin_value, record),
+                              offsetof(pin_value, schema),
                               sizeof(pin_string),
                               offsetof(pin_string, bytes),
                               offsetof(pin_string, length),
@@ -264,6 +265,7 @@ static uint64_t context_abi()
                               offsetof(pin_array, element_type),
                               offsetof(pin_array, type_name),
                               offsetof(pin_array, record),
+                              offsetof(pin_array, schema),
                               offsetof(pin_array, count),
                               offsetof(pin_array, capacity),
                               offsetof(pin_array, items),
@@ -359,6 +361,10 @@ static uint64_t context_abi()
                               FIELD(binding_world),
                               FIELD(columns),
                               FIELD(query_variables),
+                              FIELD(query_row),
+                              FIELD(query_test),
+                              FIELD(module),
+                              FIELD(program),
                               FIELD(variable_storage),
                               FIELD(value_owner),
                               FIELD(value_storage),
@@ -593,6 +599,7 @@ static void payload(prepared_context *c)
     ARRAY(queries, query_count, {
         execution_module_query *v = &p->queries[index];
         ENUM(v->kind);
+        BOOL(v->required);
         U64(v->component);
         U64(v->source_relationship);
         INT(v->source_traversal);
@@ -604,6 +611,14 @@ static void payload(prepared_context *c)
     INT(p->query);
     INT(p->query_variable_count);
     INT(p->query_filter);
+    ARRAY(descriptions, description_count, {
+        execution_module_query_description *v = &p->descriptions[index];
+        INT(v->query);
+        INT(v->query_variable_count);
+        VALUE(v->row_type);
+        root_ref(c, &v->evaluate);
+    });
+    INT(p->system_description);
     ARRAY(bindings, binding_count, {
         execution_module_binding *v = &p->bindings[index];
         U64(v->target);
@@ -698,6 +713,9 @@ static bool owners(prepared_context *c)
         OWNER(p->bindings[i].body);
         OWNER(p->bindings[i].dependencies);
     }
+    for (int i = 0; i < p->description_count; i++) {
+        OWNER(p->descriptions[i].evaluate);
+    }
     for (int i = 0; i < p->query_count; i++) {
         OWNER(p->queries[i].predicate);
     }
@@ -722,6 +740,9 @@ static bool owners(prepared_context *c)
     for (int i = 0; i < p->binding_count; i++) {
         valid &= reached(c, p->bindings[i].body, seen, 0);
         valid &= reached(c, p->bindings[i].dependencies, seen, 0);
+    }
+    for (int i = 0; i < p->description_count; i++) {
+        valid &= reached(c, p->descriptions[i].evaluate, seen, 0);
     }
     for (int i = 0; i < p->query_count; i++) {
         valid &= reached(c, p->queries[i].predicate, seen, 0);
@@ -749,6 +770,9 @@ static void discard_functions(prepared_context *c)
     for (int i = 0; i < c->plan->binding_count; i++) {
         c->plan->bindings[i].body = NULL;
         c->plan->bindings[i].dependencies = NULL;
+    }
+    for (int i = 0; i < c->plan->description_count; i++) {
+        c->plan->descriptions[i].evaluate = NULL;
     }
     for (int i = 0; i < c->plan->query_count; i++) {
         c->plan->queries[i].predicate = NULL;
@@ -792,6 +816,9 @@ static bool write_depth(
     for (int i = 0; i < c.plan->binding_count && !c.wire.error; i++) {
         add_function(&c, c.plan->bindings[i].body, 0);
         add_function(&c, c.plan->bindings[i].dependencies, 0);
+    }
+    for (int i = 0; i < c.plan->description_count && !c.wire.error; i++) {
+        add_function(&c, c.plan->descriptions[i].evaluate, 0);
     }
     for (int i = 0; i < c.plan->query_count && !c.wire.error; i++) {
         add_function(&c, c.plan->queries[i].predicate, 0);

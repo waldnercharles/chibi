@@ -595,6 +595,10 @@ static yyjson_mut_doc *reuse_input()
     return doc;
 }
 
+/* Reuse loads and checks the closure, several seconds for the 13 MB package
+ * compiler under the sanitizers; recompiling it takes minutes. */
+#define REUSE_SECONDS 30
+
 static int reuse_request(yyjson_mut_doc *doc, const char *output)
 {
     char request[PATH_MAX];
@@ -609,7 +613,7 @@ static int reuse_request(yyjson_mut_doc *doc, const char *output)
                            reuse_core,     "--input",
                            request,        "--output-artifact",
                            output,         NULL };
-    return tool_run_within(argv, root, log_path, 10);
+    return tool_run_within(argv, root, log_path, REUSE_SECONDS);
 }
 
 static bool output_is(const char *output, const void *expected, size_t expected_length)

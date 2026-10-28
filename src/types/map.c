@@ -4,6 +4,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/record.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/trace.h"
 
@@ -15,8 +16,19 @@
 
 static bool same_type(pin_value a, pin_value b)
 {
-    return a.type == b.type && a.container == b.container &&
-           pin_value_layout_same(&a, &b);
+    if (a.type != b.type || a.container != b.container ||
+        !pin_value_layout_same(&a, &b)) {
+        return false;
+    }
+    if (a.type != PIN_STRUCT || a.record || (!a.schema && !b.schema)) {
+        return true;
+    }
+    const type_desc *expected = pin_value_type(&a), *actual = pin_value_type(&b);
+    uint64_t left = a.schema ? pin_schema_layout(a.schema, a.type_name)
+                             : type_layout_hash(expected);
+    uint64_t right = b.schema ? pin_schema_layout(b.schema, b.type_name)
+                              : type_layout_hash(actual);
+    return expected && actual && expected->size == actual->size && left && left == right;
 }
 
 bool pin_map_key_supported(pin_value value)

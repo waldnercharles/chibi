@@ -59,6 +59,15 @@ jobs:
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
       - name: Build chibi and chibi-compile
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Preserve failed Graph stage log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-graph-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .chibi/logs/*-graph.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build the site
         run: build/sdk/chibi doc
       - uses: mymindstorm/setup-emsdk@v14

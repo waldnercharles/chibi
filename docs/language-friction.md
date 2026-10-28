@@ -33,9 +33,9 @@ operations from remaining limits.
   removes an entry or changes through another value copy. Address-taking
   currently rejects these locations. A pointer to the whole container remains
   a separate operation.
-- An invocation `ref` can name temporary frame storage. Taking its address
-  must wait for a lifetime contract; `F(ref pointer^)` can already pass a
-  managed target in the other direction.
+- A scoped pointer parameter can name temporary frame storage, so taking its
+  address makes it an ordinary managed pointer instead; `F(pointer)` already
+  lends a managed target to a scoped parameter.
 - A presence guard on a nullable local can be tracked. Repeated mutable field
   reads cannot assume an alias left the field unchanged. Bind the pointer to a
   local before checking and dereferencing it.
@@ -360,10 +360,10 @@ lookup.
 ## The compiler counts with `while`
 
 Stage one. Stage zero has `for i in first..last` with inclusive bounds, keyed
-loops and `for item: ref in items` (#420), and since #542 half-open
+loops, and since #542 half-open
 `first..<last` and reverse `for <` loops, as the owner decided on 2026-10-20
 after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
-range, keyed and reverse forms too, but not `ref` loops, and the compiler's
+range, keyed and reverse forms too, and the compiler's
 own counting loops and `core:strings`' scans are still
 `while (index < n) { ...; index += 1; }`, where a `continue` before the step
 hangs (#503). The authored tokenizer now recognizes `..<` with independently pinned byte
@@ -376,7 +376,7 @@ ranges too.
   Python `for i in range(n)`; C, C++ and C# three-part `for`.
 
 Suggestion: `core:strings` and the compiler replace their counting `while`
-loops with range loops, and stage one compiles `ref` loops.
+loops with range loops.
 
 ## Stage one has no constant arrays
 
@@ -527,38 +527,37 @@ each loop instead and leaves the `_proc` API out.
 
 Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
 
-### Stage one's reference parameters reach locals and fields only
+### Stage one's scoped pointer parameters reach locals and fields only
 
 Stage one. Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator`
-and `fields_iterator` advance the caller's string. The language has `ref`
-parameters since #420, and since the stage-one ref parameters PR stage one
-compiles them: a callee reads, assigns and compound-assigns a `ref`
-parameter, reads and writes its record's fields, and passes it on. A caller
-passes a local or parameter, a field of a local record, or its own `ref`
-parameter. A number, bool or string that a `ref` argument reaches lives in a
-data cell, as stage zero keeps every local. Stage one still refuses:
+and `fields_iterator` advance the caller's string. Version 37 replaced `ref`
+parameters with `^T` pointers: a `^T` parameter whose pointer never outlives
+the call is scoped, and both compiler stages lend it the caller's location
+through the reference ABI. A callee reads, assigns and compound-assigns
+`p^`, reads and writes `p.field`, and passes `p` on. A caller passes `&x` for
+a local or parameter, `&x.field` of a local record, a managed pointer, or
+its own scoped parameter. A number, bool or string whose address a scoped
+argument takes lives in a data cell, as stage zero keeps every local. Stage
+one still refuses:
 
-- a reference to an array element or a map entry;
-- `v[i] = x` and `m[k] = x` through a reference;
-- a `ref` parameter with a default.
+- a pointer to an array element or a map entry;
+- `v[i] = x` and `m[k] = x` through a scoped parameter;
+- a scoped parameter with a default.
 
 `core:strings`, which stage one compiles, has no iterators yet.
 
 - Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
   Ruby use generators.
 
-Calls now mark reference arguments: `Nudge(ref v)` may write `v`. Both
-compiler stages reject an omitted marker or a marker on a value parameter.
-This follows C#'s explicit `ref v` at the declaration and call; Swift (`&v`),
-Rust (`&mut v`), Odin and Zig (`&v`) also mark the call site. The native
-compiler accepts `Nudge(value: ref v)`; general named calls remain a
-stage-one gap.
+Calls mark the location they lend: `Nudge(&v)` may write `v`, as in Swift,
+Odin and Zig. Whether the parameter is scoped or managed is inferred, so the
+caller writes the same `&v` either way.
 
-Authoring refuses to inline a callable with `ref` parameters. Its expansion
-would declare a local `ref` initialized from the argument's value, but local
-declaration lowering does not create a reference to that argument. Supporting
-local reference aliases is a prerequisite for preserving caller mutation when
-inlining these calls; the original call remains intact.
+Authoring refuses to inline a callable with scoped pointer parameters. Its
+expansion would declare a local alias initialized from the argument's value,
+but local declaration lowering does not create a reference to that argument.
+Supporting local reference aliases is a prerequisite for preserving caller
+mutation when inlining these calls; the original call remains intact.
 
 Suggestion: `core:strings` gains Odin's iterators, then stage one compiles
 references to elements and entries. Keep ownership transfers automatic:

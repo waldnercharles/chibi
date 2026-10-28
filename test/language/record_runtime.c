@@ -467,18 +467,18 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
                      "return local; } }";
     static const char reference_consumer
         [] = "Rows :: library { " ROW
-             "Change :: (row: ref Row, rows: ref Row[]) -> Row { "
-             "row.label = \"reference\"; rows[0].label = \"reference-array\"; "
-             "rows[0].depth += 7; return rows[0]; } }";
+             "Change :: (row: ^Row, rows: ^(Row[])) -> Row { "
+             "row.label = \"reference\"; rows^[0].label = \"reference-array\"; "
+             "rows^[0].depth += 7; return rows^[0]; } }";
     static const char exposed_consumer
         [] = "Rows :: library { " ROW
              "Change :: (row: Row, rows: Row[], count: int) -> Row { "
-             "Mutate(ref row, ref rows, ref count); row.depth += count; "
+             "Mutate(&row, &rows, &count); row.depth += count; "
              "if rows[0].label != \"exposed-array\" { row.depth = -100; } "
              "return row; } "
-             "Mutate :: (row: ref Row, rows: ref Row[], count: ref int) { "
-             "row.label = \"exposed\"; rows[0].label = \"exposed-array\"; "
-             "count += 5; } }";
+             "Mutate :: (row: ^Row, rows: ^(Row[]), count: ^int) { "
+             "row.label = \"exposed\"; rows^[0].label = \"exposed-array\"; "
+             "count^ += 5; } }";
     static const char
         inline_consumer[] = "Rows :: library { " ROW
                             "Change :: (row: Row, rows: Row[], count: "

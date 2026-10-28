@@ -23,9 +23,9 @@ Pointer elements retain their target identities. `a[1..<3]` and
 Mutable views require an array pointer: `p := &a; v := p.view(1..<3)`. They
 retain that pointer and fixed indices, resolve its current pointee on every
 access, and can become invalid after shrink until the whole range fits again.
-Reassigning `a` changes what the view resolves. The sequence chat owns this
-migration; the pointer prerequisite alone does not implement the revised
-collection contract. Its existing `ref` parameters remain invocation aliases.
+Reassigning `a` changes what the view resolves. [Value
+sequences](value-sequences.md) records the collection implementation. A call
+that can change the caller's variable takes its address, `F(&value)`.
 
 ```chibi
 actor: Actor = {health: 100}
@@ -47,15 +47,18 @@ q.health = 80   // actor, p and q observe 80.
   to refer to the same target after its containing record is copied.
 - Assigning a pointer redirects that pointer variable. Assigning through it
   replaces the target's value while preserving the target's identity.
-- Existing `ref` parameters remain invocation aliases. `F(ref p^)` passes the
-  managed pointee as a writable argument. Pointer and integer conversions are
-  not implicit, and managed pointers have no address arithmetic.
+- A `^T` parameter whose pointer never outlives the call is scoped: its body
+  only dereferences it, reads its target's fields or passes it on to another
+  scoped parameter. Its callers lend a location for the call: `F(&value)`,
+  `F(&self.Component.field)` or `F(p)`, which lends `p`'s target. The compiler
+  infers this, so scoped and managed parameters share one spelling. Pointer and
+  integer conversions are not implicit, and managed pointers have no address
+  arithmetic.
 - Address-taking initially supports writable locals, value parameters and
   fields of flat authored records. Managed payloads reject inline nested record
   layouts and native reflected records until their metadata can be retained
-  independently of a replaceable catalog. Addresses of array/map entries and
-  existing invocation `ref` parameters are rejected until their identity and
-  lifetime contracts are implemented. A pointer to an entire array/map variable
+  independently of a replaceable catalog. Addresses of array/map entries are
+  rejected until their identity and lifetime contracts are implemented. A pointer to an entire array/map variable
   is a separate case.
 - Managed pointers are process-local values. Persistence and native/ECS
   boundaries must explicitly support their lifetime or reject them; they must
@@ -117,9 +120,7 @@ allocate managed targets in resettable frame storage.
    `tools/compiler/package_compiler/`. Share the runtime intrinsic ABI, preserve
    the full pointee type, and keep ordinary value-copy rules distinct from
    physical pointer storage.
-5. Integrate examples, diagnostics and bounded tests. Recheck the explicit-ref
-   prerequisite against this newer main; its previous results belong to the
-   older checkout.
+5. Integrate examples, diagnostics and bounded tests.
 
 Nim ORC was examined as prior art. It depends on reference-counted headers,
 compiler-generated destructors and reference updates throughout the program.

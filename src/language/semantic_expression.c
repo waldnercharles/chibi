@@ -1124,11 +1124,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "dereference_expression")) {
-        int value = script_analyzer_expression(
-            a,
-            script_analyzer_field(node, "operand"),
-            (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
-        );
+        TSNode operand = script_analyzer_field(node, "operand");
+        int value = script_analyzer_expression(a, operand, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+        const script_expression *source = &a->out->expressions[value];
+        if (script_analyzer_is(operand, "identifier") &&
+            source->kind == SCRIPT_EXPR_SYMBOL && source->symbol >= 0 &&
+            (a->out->symbols[source->symbol].type.flags & SCRIPT_TYPE_REFERENCE)) {
+            return value; /* A scoped pointer parameter names its target. */
+        }
         return script_analyzer_dereference(a, node, value);
     }
     if (script_analyzer_is(node, "parenthesized_expression")) {
@@ -1717,10 +1720,6 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
                                  .right = -1,
                                  .range = script_analyzer_range(a, node) }
         );
-    }
-    if (script_analyzer_is(node, "reference_argument")) {
-        script_analyzer_diagnostic(a, node, "ref argument requires a reference parameter");
-        node = script_analyzer_field(node, "value");
     }
     a->depth++;
     int result = script_analyzer_expression_inner(a, node, expected);

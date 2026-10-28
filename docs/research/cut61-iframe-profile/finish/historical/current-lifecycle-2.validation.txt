@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/Users/cwaldner/.codex/worktrees/a948/c-blueprints/.chibi/cut61-finish/validate_lifecycle.py", line 63, in <module>
-    assert subtotal <= r['seconds'] + 5e-9, 'Context subparts exceed total'
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError: Context subparts exceed total

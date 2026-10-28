@@ -4,6 +4,7 @@
 #include "execution/function_builder.h"
 #include "execution/integer_report.h"
 #include "execution/intrinsics.h"
+#include "execution/jit_internal.h"
 #include "execution/log.h"
 #include "execution/managed.h"
 #include "execution/module_effects.h"
@@ -4312,10 +4313,10 @@ TEST_CASE(execution_calls_lend_arguments_and_callees_copy_writes)
         "return length(xs); }\n"
         "pub PointedElement :: () -> int { a: int[][] = [[1]]; p := &a; "
         "n := Behind(p^[0], p); return n * 10 + length(a[0]); }\n"
-        "Grow :: (xs: ref int[]) -> int { xs[0] = 5; return 0; }\n"
+        "Grow :: (xs: ^(int[])) -> int { xs^[0] = 5; return 0; }\n"
         "Observe :: (xs: int[], ignored: int) -> int { return xs[0]; }\n"
         "pub ReferencedLater :: () -> int { a: int[] = [1]; "
-        "n := Observe(a, Grow(ref a)); return n * 10 + a[0]; }\n"
+        "n := Observe(a, Grow(&a)); return n * 10 + a[0]; }\n"
         "pub LocalAfterWrite :: () -> int { rows: Row[] = [{key: \"a\", depth: "
         "1}]; "
         "row := rows[0]; rows[0].depth = 7; nested: int[][] = [[1]]; inner := "
@@ -4469,9 +4470,64 @@ TEST_CASE(execution_lent_records_copy_nothing)
     }
     return true;
 }
+TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries)
+{
+    behavior_function f = { 0 };
+    asetlen(f.slots, 8);
+    asetlen(f.instructions, 7);
+    asetlen(f.runtime_map, 8);
+    memset(f.runtime_map, 0, 8 * sizeof *f.runtime_map);
+    f.instructions[0] = (behavior_function_instruction){ .op = BF_CONSTANT };
+    f.instructions[1] = (behavior_function_instruction){ .op = BF_ADD,
+                                                         .left = 0,
+                                                         .right = 0 };
+    f.instructions[2] = (behavior_function_instruction){ .op = BF_SELECT,
+                                                         .left = 1,
+                                                         .right = 2,
+                                                         .target = 3 };
+    f.instructions[3] = (behavior_function_instruction){ .op = BF_FMA,
+                                                         .left = 2,
+                                                         .right = 2,
+                                                         .target = 4 };
+    f.instructions[4] = (behavior_function_instruction){ .op = BF_BRANCH,
+                                                         .left = 5,
+                                                         .target = 6 };
+    f.instructions[5] = (behavior_function_instruction){ .op = BF_JUMP, .target = 1 };
+    f.instructions[6] = (behavior_function_instruction){ .op = BF_CONSTANT };
+    int *uses;
+    bool *targets;
+    behavior_jit_usage(&f, &uses, &targets);
+    /* A repeated operand at one PC is one use; a second PC is not. Even
+     * instructions omitted by runtime_map participate in the original proof. */
+    const int expected[] = { 1, 2, -2, 2, 3, 4, -1, -1, -1 };
+    int observed[9];
+    memcpy(observed, uses, sizeof observed);
+    bool entries[8];
+    memcpy(entries, targets, sizeof entries);
+    free(uses);
+    free(targets);
+    f.instructions[6] = (behavior_function_instruction){ .op = BF_NEG, .left = 0 };
+    behavior_jit_usage(&f, &uses, &targets);
+    int repeated = uses[0];
+    free(uses);
+    free(targets);
+    afree(f.slots);
+    afree(f.instructions);
+    afree(f.runtime_map);
+    for (int i = 0; i < 9; i++) {
+        REQUIRE(observed[i] == expected[i]);
+    }
+    for (int pc = 0; pc < 8; pc++) {
+        REQUIRE(entries[pc] == (pc == 1 || pc == 6));
+    }
+    REQUIRE(repeated == -2);
+    return true;
+}
+
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries);
     RUN_TEST_CASE(execution_sequence_values_copy_at_ownership_boundaries);
     RUN_TEST_CASE(execution_scoped_lent_locals_leave_their_owner_intact);
     RUN_TEST_CASE(execution_strict_sequence_ranges_are_optional_and_copied);

@@ -948,7 +948,7 @@ RootOf :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     return at;
 }
 // The names a body changes: each assignment's root, each map a key is
-// deleted from, and each name a ref argument reaches. Shadowing is ignored,
+// deleted from, and each name a scoped argument lends. Shadowing is ignored,
 // so another local of the same spelling counts too.
 MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, referenced: string[]) -> string[] {
     found := referenced;
@@ -960,8 +960,6 @@ MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, refer
         target: int = -1;
         if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
             target = Field(forest, at, "target");
-        } else if (Is(forest, at, "reference_argument")) {
-            target = Field(forest, at, "value");
         } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression") &&
                    ChangingMethod(Text(forest, text, Field(forest, Field(forest, at, "function"), "member")))) {
             target = Field(forest, at, "function");
@@ -1081,7 +1079,7 @@ ReturnedNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
 // The array locals a function builds in its caller's storage, by the nodes
 // that name them. Each is declared once, at the top of the body, from an
 // array literal; changed only by `append`, `extend` and element stores; never
-// assigned, deleted from or reached by a ref argument; and returned, itself or
+// assigned, deleted from or lent to a scoped parameter; and returned, itself or
 // as a payload of a returned variant, so the return need not copy it.
 BuiltLocals :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[], package: int,
                 body: int, referenced: string[]) -> int[] {
@@ -2210,7 +2208,8 @@ DebugPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ty
             code.append(PointCode(ops, point_base + length(points) - 1, forest[each]));
         }
     }
-    if (Expression(kind) && !negated && !ConstantElement(forest, item.node)) {
+    if (Expression(kind) && !negated && !ConstantElement(forest, item.node) &&
+        !ElidedTarget(forest, text, names, item.node)) {
         points.append(PointIn(document_hash, solid, ExpressionRecord, node));
         code.append(PointCode(ops, point_base + length(points) - 1, node));
         // A name's symbol, or a package constant's, which is a symbol of
@@ -2327,7 +2326,9 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     work: Work[] = [];
     points: SourcePoint[] = [];
     named: int = 0;
-    addressed := AddressedNames(forest, text, Field(forest, callable.node, "body"));
+    addressed := AddressedNames(forest, text, Field(forest, callable.node, "body"),
+                                ScopedArguments(forest, text, callables, params, natives, aliases, callable.package,
+                                                Field(forest, callable.node, "body")));
     begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, addressed, ops,
                       target);
     switch begun {
@@ -2558,7 +2559,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (kind == "for_statement") {
             if (item.phase == 0) {
                 if (Field(forest, item.node, "reference") >= 0) {
-                    return Body.Failed(Diagnose(forest, item.node, document, "for loops do not support `ref` yet"));
+                    return Body.Failed(Diagnose(forest, item.node, document, "`for &item` loops are not supported yet"));
                 }
                 stepped = false;
                 code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
@@ -3139,10 +3140,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (PointerWork(item, kind)) {
             step = PointerStep(forest, text, document, types, members, names, params, callable.first,
                                values, value_top, item, ops, target, at);
-        } else if (item.phase == ReferencePhase) {
+        } else if (item.phase == ReferencePhase || item.phase == ScopedPhase) {
             step = ReferenceArgumentStep(forest, text, document, types, members, names, item, ops, target, at);
-        } else if (kind == "reference_argument") {
-            step = Fail(forest, item.node, document, "ref argument requires a reference parameter");
         } else if (item.phase == AggregatePhase) {
             step = AggregateStep(forest, text, document, types, members, operators, natives, values, value_top, item, ops,
                                  target, at);

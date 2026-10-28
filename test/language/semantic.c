@@ -133,8 +133,8 @@ TEST_CASE(language_managed_pointers_reject_invalid_storage_and_types)
         { "L :: library { F :: () -> ^int { x := 1; p: ^int? = &x; "
           "if p != nil { q := &p; q^ = nil; return p; } return &x; } }",
           NULL },
-        { "L :: library { Take :: (p: ref ^int) {} F :: () { x := 1; "
-          "p: ^int? = &x; if p != nil { Take(ref p); } } }",
+        { "L :: library { Take :: (p: ^(^int)) {} F :: () { x := 1; "
+          "p: ^int? = &x; if p != nil { Take(&p); } } }",
           NULL },
         { "L :: library { I :: struct { x: int; } O :: struct { inner: I; y: "
           "int; } "
@@ -266,12 +266,12 @@ TEST_CASE(language_pub_marks_only_package_declarations)
     }
     return true;
 }
-TEST_CASE(language_ref_calls_require_explicit_mutable_arguments)
+TEST_CASE(language_scoped_pointer_calls_require_addresses)
 {
     parse(
-        "Refs :: library { Bump :: (value: ref int) { value += 1; } "
-        "Relay :: (value: ref int) { Bump(value: ref value); } "
-        "Run :: () -> int { value := 4; Relay(ref value); return value; } }"
+        "Refs :: library { Bump :: (value: ^int) { value^ += 1; } "
+        "Relay :: (value: ^int) { Bump(value: value); } "
+        "Run :: () -> int { value := 4; Relay(&value); return value; } }"
     );
     REQUIRE(!syntax->diagnostic_count && analysis->valid);
     static const struct
@@ -279,49 +279,44 @@ TEST_CASE(language_ref_calls_require_explicit_mutable_arguments)
         const char *source, *message, *argument;
         int offset;
     } cases[] = {
-        { "R :: library { F :: (n: ref int) {} Run :: () { n := 1; F(n); } }",
-          "Reference parameter requires an explicit ref argument",
+        { "R :: library { F :: (n: ^int) {} Run :: () { n := 1; F(n); } }",
+          "Pointer parameter requires &value or a pointer",
           "F(n)",
           2 },
-        { "R :: library { Value :: (n: int) {} Run :: () { n := 1; Value(ref "
-          "n); } }",
-          "ref argument requires a reference parameter",
-          "Value(ref n)",
+        { "R :: library { Value :: (n: int) {} Run :: () { n := 1; Value(&n); "
+          "} }",
+          "Incompatible types: expected int, got pointer",
+          "Value(&n)",
           6 },
-        { "R :: library { F :: (n: ref int) {} Run :: () { F(ref 1); } }",
-          "Reference argument requires a writable value",
-          "F(ref 1)",
-          6 },
-        { "R :: library { F :: (n: ref int) {} Run :: () { Frozen :: 1; F(ref "
-          "Frozen); } }",
-          "Reference argument requires a writable value",
-          "F(ref Frozen)",
-          6 },
-        { "R :: library { F :: (n: ref int) {} Run :: () { flag := true; F(ref "
-          "flag); } }",
+        { "R :: library { F :: (n: ^int) {} Run :: () { F(&1); } }",
+          "Pointer argument requires a writable location",
+          "F(&1)",
+          2 },
+        { "R :: library { F :: (n: ^int) {} Run :: () { Frozen :: 1; "
+          "F(&Frozen); } }",
+          "Pointer argument requires a writable location",
+          "F(&Frozen)",
+          2 },
+        { "R :: library { F :: (n: ^int) {} Run :: () { flag := true; "
+          "F(&flag); } }",
           "Incompatible types: expected int, got bool",
-          "F(ref flag)",
-          6 },
-        { "R :: library { F :: (n: ref i64) {} Run :: () { n: int = 1; F(ref "
-          "n); } }",
-          "Reference argument requires the exact parameter type",
-          "F(ref n)",
-          6 },
-        { "R :: library { F :: (n: ref i64) {} Run :: () { n: int = 1; F(n: "
-          "int = ref n); } }",
-          "Reference argument requires the exact parameter type",
-          "F(n: int = ref n)",
+          "F(&flag)",
+          2 },
+        { "R :: library { F :: (n: ^i64) {} Run :: () { n: int = 1; F(&n); "
+          "} }",
+          "Pointer argument requires the exact parameter type",
+          "F(&n)",
+          2 },
+        { "R :: library { F :: (n: ^i64) {} Run :: () { n: int = 1; F(n: "
+          "^int = &n); } }",
+          "Pointer argument requires the exact parameter type",
+          "F(n: ^int = &n)",
           5 },
-        { "R :: library { F :: (row: ref Position) {} Run "
+        { "R :: library { F :: (row: ^Position) {} Run "
           ":: () { F(row.x: 1.0); } }",
-          "Reference parameter requires an explicit ref argument",
+          "Pointer parameter members cannot be named",
           "F(row.x: 1.0)",
-          9 },
-        { "R :: library { F :: (row: ref Position) {} Run "
-          ":: () { n: number = 1; F(row.x: ref n); } }",
-          "Reference argument requires a writable value",
-          "F(row.x: ref n)",
-          9 },
+          2 },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         parse(cases[i].source);
@@ -334,6 +329,80 @@ TEST_CASE(language_ref_calls_require_explicit_mutable_arguments)
                             (int)(argument - cases[i].source) + cases[i].offset
         );
     }
+    return true;
+}
+
+static const script_symbol *parameter_named(const char *name)
+{
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        if (analysis->symbols[i].kind == SCRIPT_PARAMETER &&
+            !strcmp(analysis->symbols[i].name, name)) {
+            return &analysis->symbols[i];
+        }
+    }
+    return NULL;
+}
+/* A `^T` parameter whose address stays inside the call aliases its argument;
+ * any escaping use makes it a managed pointer. */
+TEST_CASE(language_pointer_parameters_infer_scope)
+{
+    parse(
+        "Scope :: library { Row :: struct { x: int; } "
+        "Write :: (written: ^int) { written^ = 1; } "
+        "Member :: (row: ^Row) { row.x += 1; } "
+        "Forward :: (forwarded: ^int) { Write(forwarded); } "
+        "Field :: (fielded: ^Row) { Write(&fielded.x); } "
+        "Loop :: (looped: ^int, n: int) { if n > 0 { Loop(looped, n - 1); } } "
+        "Keep :: (kept: ^int) -> ^int { return kept; } "
+        "Pass :: (passed: ^int) -> ^int { return Keep(passed); } "
+        "Optional :: (maybe: ^int?) {} "
+        "Shadow :: (shadowed: ^int) { if true { shadowed := 1; } } }"
+    );
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    static const struct
+    {
+        const char *name;
+        bool scoped;
+    } cases[] = { { "written", true },   { "row", true },
+                  { "forwarded", true }, { "fielded", true },
+                  { "looped", true },    { "kept", false },
+                  { "passed", false },   { "maybe", false },
+                  { "shadowed", false } };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        const script_symbol *symbol = parameter_named(cases[i].name);
+        REQUIRE(symbol);
+        bool scoped = (symbol->type.flags & SCRIPT_TYPE_REFERENCE) != 0;
+        REQUIRE(scoped == cases[i].scoped);
+        REQUIRE(scoped || symbol->type.storage == PIN_POINTER);
+    }
+    parse(
+        "Labels :: library { Store :: (into: ^int) { into^ = 2; } "
+        "Relay :: (into: ^int) { Store(into: into); } }"
+    );
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        const script_symbol *symbol = &analysis->symbols[i];
+        REQUIRE(symbol->kind != SCRIPT_PARAMETER || (symbol->type.flags & SCRIPT_TYPE_REFERENCE));
+    }
+    return true;
+}
+/* Only a scoped parameter accepts an engine-owned location. */
+TEST_CASE(language_scoped_pointers_accept_engine_locations)
+{
+    parse(
+        "Weapon :: behavior { elapsed: number = 0; "
+        "Advance :: (value: ^number, dt: number) { value^ += dt; } "
+        "Run :: () { Advance(&elapsed, 1.0); Advance(&self.Position.x, 1.0); } "
+        "}"
+    );
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    parse(
+        "Weapon :: behavior { elapsed: number = 0; "
+        "Keep :: (value: ^number) -> ^number { return value; } "
+        "Run :: () { Keep(&elapsed); } }"
+    );
+    REQUIRE(!syntax->diagnostic_count && !analysis->valid);
+    REQUIRE(diagnostic("Managed pointer requires a writable local or record field"));
     return true;
 }
 
@@ -1546,12 +1615,12 @@ TEST_CASE(language_owned_record_and_index_writes_stay_pure)
 TEST_CASE(language_external_record_and_index_writes_are_effects)
 {
     const char *sources[] = {
-        "Effects :: library { Run :: (value: ref int) { value = 2; } }",
+        "Effects :: library { Run :: (value: ^int) { value^ = 2; } }",
         "Effects :: library { Row :: struct { value: int; }; "
-        "Run :: (row: ref Row) { row.value = 2; } }",
+        "Run :: (row: ^Row) { row.value = 2; } }",
         "Effects :: library { Row :: struct { value: int; }; "
-        "Run :: (rows: ref Row[]) { rows[0].value += 2; } }",
-        "Effects :: library { Run :: (values: ref int[]) { values[0] = 2; } }",
+        "Run :: (rows: ^(Row[])) { rows^[0].value += 2; } }",
+        "Effects :: library { Run :: (values: ^(int[])) { values^[0] = 2; } }",
         "Effects :: behavior { value: int = 1; Run :: () { value = 2; } }",
         "Effects :: behavior { values: int[] = [1]; Run :: () { values[0] = 2; "
         "} }",
@@ -2168,7 +2237,7 @@ TEST_CASE(language_units_check_callable_contracts)
         "First :: (value: u) -> u { return Later(value); } "
         "Later :: (value: u) -> u { if value > 0 { return First(value - 1); } "
         "return value; } "
-        "Borrow :: (value: ref number u) -> ref number u { return value; } "
+        "Borrow :: (value: ^number u, other: number u) { value^ = other; } "
         "Pair :: (distance: u, elapsed: s) -> (Distance: u, Elapsed: s) { "
         "return(distance, elapsed); } "
         "Use :: (distance: u, elapsed: s) -> u { pair := Pair(distance, "
@@ -2202,18 +2271,14 @@ TEST_CASE(language_units_reject_callable_mismatches)
         { "M :: library { Bad :: (elapsed: s) { Later(elapsed); } Later :: "
           "(distance: u) {} }",
           "Units differ: u argument s" },
-        { "M :: library { Bad :: (distance: ref number u, elapsed: s) { "
-          "distance "
+        { "M :: library { Bad :: (distance: ^number u, elapsed: s) { "
+          "distance^ "
           "= elapsed; } }",
           "Units differ: u = s" },
-        { "M :: library { Bad :: (body: Body) { Later(ref body.speed); } Later "
+        { "M :: library { Bad :: (body: Body) { Later(&body.speed); } Later "
           ":: "
-          "(distance: ref number u) {} }",
+          "(distance: ^number u) {} }",
           "Units differ: u argument u/s" },
-        { "M :: library { Bad :: (elapsed: ref number s) -> ref number u { "
-          "return "
-          "elapsed; } }",
-          "Units differ: u = s" },
         { "M :: library { Bad :: (distance: u = dt) {} }", "Units differ: u default s" },
         { "M :: library { Bad :: () -> (Distance: u = dt) { return } }",
           "Units differ: u default s" },
@@ -2709,7 +2774,9 @@ void test_language_semantic()
     RUN_TEST_CASE(language_pub_marks_only_package_declarations);
     RUN_TEST_CASE(language_literals_are_typed_by_spelling);
     RUN_TEST_CASE(language_authored_map_method_names_preserve_callable_identity);
-    RUN_TEST_CASE(language_ref_calls_require_explicit_mutable_arguments);
+    RUN_TEST_CASE(language_scoped_pointer_calls_require_addresses);
+    RUN_TEST_CASE(language_pointer_parameters_infer_scope);
+    RUN_TEST_CASE(language_scoped_pointers_accept_engine_locations);
     RUN_TEST_CASE(language_retained_bindings_preserve_owner_and_value_type);
     RUN_TEST_CASE(language_system_retention_rejects_non_system_owners_and_tasks);
     RUN_TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments);

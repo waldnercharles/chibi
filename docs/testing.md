@@ -494,7 +494,7 @@ The historical Debug Clang 23 run with ASan/UBSan passed 12 cases and 1,638
 assertions in 0.881 seconds on 2026-10-07 (`.chibi/architecture/language-program-fields.log`).
 
 The authored package-compiler collections sample includes twelve fixed
-scalar-result pointer calls. They cover aliases and `ref` mutation, escaped
+scalar-result pointer calls. They cover aliases and scoped-parameter mutation, escaped
 locals and parameters, field projections, record/array value copies containing
 pointers, separate allocation identity, nullable/grouped types, numeric widening,
 whole-array replacement and a two-node cycle.

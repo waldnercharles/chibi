@@ -578,6 +578,7 @@ static int run_calls(const behavior_function *function, behavior_function_contex
             if (native) {
                 pin_value *values = context->data->values;
                 execution_native_call(
+                    root->activation->natives,
                     native,
                     call->function,
                     &values[call->first],

@@ -26,6 +26,7 @@ static inline int behavior_jit_stack_slots(const behavior_function *f, const int
     }
     return count;
 }
+void behavior_jit_usage(const behavior_function *f, int **uses, bool **targets);
 #if CHIBI_HAVE_SJLIT
 #include <sljitLir.h>
 
@@ -69,6 +70,8 @@ typedef struct
     struct sljit_label *system_loop;
     struct sljit_jump **system_exits;
     bool countdown, inspected, scoped, system_registers;
+    const int *single_uses;
+    const bool *branch_targets;
 } behavior_machine;
 void behavior_jit_system_enter(behavior_machine *machine);
 void behavior_jit_system_begin(behavior_machine *machine);

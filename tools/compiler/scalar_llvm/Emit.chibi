@@ -402,7 +402,8 @@ Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
     return length(rows);
 }
 // The operands a Text row's operator consumes: its string, then its index,
-// or its start and count; 0 for no operator.
+// or its start and count; 0 for no operator. A TextFormat row's count says
+// how many it consumes.
 TextOperands :: (operator: int) -> int {
     if (operator == facts.TextLength) {
         return 1;
@@ -588,18 +589,26 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             }
             stack = slice(stack, 0, base);
         } else if (operand.kind == facts.TextRow) {
+            formats := operand.value == facts.TextFormat;
             consumed := TextOperands(operand.value);
-            base := length(stack) - consumed;
             output := facts.IntType;
-            if (operand.value == facts.TextSlice) {
+            if (operand.value == facts.TextSlice || formats) {
                 output = facts.StringType;
             }
+            if (formats && operand.count >= 1) {
+                consumed = operand.count;
+            }
+            base := length(stack) - consumed;
             if (operand.name != "" || consumed == 0 || operand.count != consumed || operand.type != output ||
                 base < floor || stack[base] != facts.StringType) {
                 return "scalar text read differs from its operands";
             }
+            // format_text's arguments are numbers, bools and strings; the
+            // other natives' are ints.
             for (index in 1..<consumed) {
-                if (stack[base + index] != facts.IntType) {
+                given := stack[base + index];
+                if ((formats && (given < facts.IntType || given > facts.StringType)) ||
+                    (!formats && given != facts.IntType)) {
                     return "scalar text read differs from its operands";
                 }
             }
@@ -941,8 +950,9 @@ Aimed :: (code: native.Instruction[], at: int, target: int) -> native.Instructio
 Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
     return Aimed(code, at, length(code));
 }
-// Explicit backend-fixture policy: the entry is chibi_scalar() -> i32 and the
-// other functions are internal. Every function starts with one CHECK under
+// Explicit backend-fixture policy: the entry is chibi_scalar() -> i32, which
+// takes the context first when the module calls the runtime, and the other
+// functions are internal. Every function starts with one CHECK under
 // budget 1, and loops and recursion run unchecked, as Odin's and Rust's do.
 // Neither the export name nor the budget is inferred from source identity,
 // and no general runtime/default budget is introduced. Each operand row is
@@ -1327,6 +1337,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     base := length(stack) - 2;
                     item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
                     item.literal = i64(operand.value);
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.TextRow && operand.value == facts.TextFormat) {
+                    // The format and its arguments are argument slots, as a
+                    // call's are.
+                    item = Op(native.Format, type, slot, 0, shape.arguments, operand.count);
+                    base := length(stack) - operand.count;
+                    for (argument in 0..<operand.count) {
+                        arguments.append(stack[base + argument]);
+                    }
+                    shape.arguments += operand.count;
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.TextRow) {
                     base := length(stack) - operand.count;

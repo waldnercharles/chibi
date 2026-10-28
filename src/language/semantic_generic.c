@@ -1,3 +1,4 @@
+#include "language/callable_headers.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -22,6 +23,18 @@ static TSNode binder(TSNode node)
         TSNode found = binder(ts_node_named_child(node, i));
         if (!ts_node_is_null(found)) {
             return found;
+        }
+    }
+    return (TSNode){ 0 };
+}
+/* The `T` of a scoped `^T` parameter, which binds like a `T` parameter. */
+static TSNode scoped_target(analyzer *a, TSNode parameter)
+{
+    TSNode list = ts_node_parent(parameter);
+    for (uint32_t i = 0; i < script_analyzer_named_count(list); i++) {
+        if (ts_node_eq(ts_node_named_child(list, i), parameter)) {
+            const char *source = script_analyzer_syntax(a, parameter)->text;
+            return script_scoped_pointer_target(source, ts_node_parent(list), i);
         }
     }
     return (TSNode){ 0 };
@@ -406,13 +419,10 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
             valid = false;
             continue;
         }
-        if (script_analyzer_is(value, "reference_argument")) {
-            if (!ts_node_is_null(script_analyzer_field(parameter, "comptime"))) {
-                script_analyzer_diagnostic(a, value, "ref argument requires a reference parameter");
-            }
-            value = script_analyzer_field(value, "value");
-        }
-        TSNode type = script_analyzer_field(parameter, "type");
+        TSNode target = scoped_target(a, parameter);
+        TSNode type = ts_node_is_null(target)
+                        ? script_analyzer_field(parameter, "type")
+                        : target;
         TSNode type_binder = binder(type);
         char *name = script_analyzer_name_copy(
             a,
@@ -445,7 +455,9 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
             script_type expected = previous >= 0 && bindings[previous].value.is_type
                                      ? bindings[previous].value.type
                                      : (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
-            values[i] = script_analyzer_expression(a, value, expected);
+            values[i] = ts_node_is_null(target)
+                          ? script_analyzer_expression(a, value, expected)
+                          : script_analyzer_scoped_argument(a, value, expected);
             script_type actual = concrete(script_analyzer_expr_type(a, values[i]));
             if (!ts_node_is_null(type_binder) || previous >= 0) {
                 if (script_analyzer_token_present(a, type, "[") ||
@@ -941,7 +953,10 @@ void script_analyzer_generic_export(analyzer *a, TSNode node, int symbol)
         if (ts_node_is_extra(parameter)) {
             continue;
         }
-        TSNode type_node = script_analyzer_field(parameter, "type");
+        TSNode target = scoped_target(a, parameter);
+        TSNode type_node = ts_node_is_null(target)
+                             ? script_analyzer_field(parameter, "type")
+                             : target;
         TSNode type_binder = binder(type_node);
         TSNode name_node = ts_node_is_null(type_binder)
                              ? script_analyzer_field(type_node, "name")
@@ -964,7 +979,7 @@ void script_analyzer_generic_export(analyzer *a, TSNode node, int symbol)
                 bind_name = own(a, spelling);
             }
         }
-        if (script_analyzer_token_present(a, type_node, "ref")) {
+        if (!ts_node_is_null(target)) {
             type.flags |= SCRIPT_TYPE_REFERENCE;
         }
         if (script_analyzer_token_present(a, type_node, "[") ||
@@ -1119,12 +1134,6 @@ static const script_catalog_specialization *import_request(
         if (ts_node_is_null(value)) {
             value = argument;
         }
-        if (script_analyzer_is(value, "reference_argument")) {
-            if (parameter->comptime || parameter->type_value) {
-                script_analyzer_diagnostic(a, value, "ref argument requires a reference parameter");
-            }
-            value = script_analyzer_field(value, "value");
-        }
         if (evaluate || parameter->comptime || parameter->type_value) {
             compile_value constant = { 0 };
             bool ok = script_analyzer_compile_as(
@@ -1183,7 +1192,9 @@ static const script_catalog_specialization *import_request(
             if (parameter->binder) {
                 expected = (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
             }
-            values[i] = script_analyzer_expression(a, value, expected);
+            values[i] = parameter->type.flags & SCRIPT_TYPE_REFERENCE
+                          ? script_analyzer_scoped_argument(a, value, expected)
+                          : script_analyzer_expression(a, value, expected);
             script_type actual = concrete(script_analyzer_expr_type(a, values[i]));
             if (actual.flags & SCRIPT_TYPE_ERROR) {
                 valid = false;

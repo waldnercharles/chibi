@@ -112,7 +112,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
     endforeach()
     target_include_directories(chibi-player PRIVATE "${player_private}")
     target_link_libraries(chibi-player PRIVATE Chibi::render Chibi::player
-        Chibi::native_prepared Chibi::host_native_default ${CMAKE_DL_LIBS})
+        Chibi::native_prepared Chibi::host_native_default Chibi::text_capabilities ${CMAKE_DL_LIBS})
     set_target_properties(chibi-player PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 if(CHIBI_WEB_PLAYER)

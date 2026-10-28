@@ -1,8 +1,0 @@
-authored rejection: game:assets/Assets.chibi:24:21 Assertion failed: Duplicate asset object field
-compile rejection: :2:36 Unknown function 'Missing'
-Running: asset_source_public_scene_build_and_reuse (OK) (2.800229 secs)
-Running: asset_source_authored_validation_rejects_duplicate_field (OK) (2.807395 secs)
-Running: asset_source_malformed_build_reports_position (OK) (1.390565 secs)
-===============================================================
-Summary: Passed: 3 Failed: 0 Total: 3 Suites: 0 Asserts: 21
-Test command wall time: 7.203s; includes in-test fixture setup; external configuration/build excluded.

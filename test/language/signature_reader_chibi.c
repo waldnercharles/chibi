@@ -38,7 +38,7 @@
  * the separate deep case stays below640bytes/512nodes/depth256.
  * Compiler sources stay below48KiB. Inputs have2scopes/2symbols/1function/2documents,
  * 3catalog definitions/2variants/1import/export; one chained definition adds1.
- * Outputs:9publications/9newtypes/4uses/4diagnostics,64types/128IDs.
+ * Outputs:10publications/10newtypes/4uses/4diagnostics,64types/128IDs.
  * Four retained readings serialize before/after producer retirement: eight
  * bounded128KiB projections. No runtimeIO/services/processes or tasks execute. */
 enum
@@ -700,7 +700,7 @@ static script_signature_facts facts(bool chained)
 static const char *annotations[] = {
     NULL,
     "int",
-    "ref Row?[]",
+    "Row?[]",
     "task(int)",
     "task",
     "task(int, number)",
@@ -710,7 +710,7 @@ static const char *annotations[] = {
     "Row[]?",
     "int | number",
     "Row?",
-    "ref Row",
+    "^Row",
     "array",
     "Row",
     "map",
@@ -722,7 +722,7 @@ static const char *annotations[] = {
     "string int/s",
     "u",
     "u",
-    "^int",
+    "^int u",
     "^int?",
     "^int[]",
     "^(int[])",
@@ -878,7 +878,7 @@ static bool execute(int index)
     if (index == 7) {
         REQUIRE(reading.publication_count == 2);
     }
-    if (index == 10) {
+    if (index == 10 || index == 12) {
         REQUIRE(reading.publication_count == 1);
     }
     if (index == 14) {
@@ -963,8 +963,8 @@ TEST_CASE(signature_reader_units_names_diagnostics_and_uses_match)
     for (int i = 16; i < 29; i++) {
         REQUIRE(execute(i));
     }
-    REQUIRE(calls == 58 && parses == 29 && publication_count == 9);
-    printf("Signature reader:29 raw trees,58 calls,9 publications, max%d nodes/depth%d\n", max_nodes, max_depth);
+    REQUIRE(calls == 58 && parses == 29 && publication_count == 10);
+    printf("Signature reader:29 raw trees,58 calls,10 publications, max%d nodes/depth%d\n", max_nodes, max_depth);
     return true;
 }
 TEST_CASE(signature_reader_deep_parentheses_do_not_consume_callable_depth)
@@ -1050,7 +1050,7 @@ TEST_CASE(signature_reader_deep_parentheses_do_not_consume_callable_depth)
             reading_value(b, &result, &before, &context, &reading, &updated)
         );
     }
-    REQUIRE(calls == 60 && parses == 30 && publication_count == 9);
+    REQUIRE(calls == 60 && parses == 30 && publication_count == 10);
     printf("Signature deep parentheses:65 wrappers,%d bytes,%d nodes/depth%d,2 calls\n", length, count, deepest);
     return true;
 }

@@ -169,7 +169,7 @@ function result, has no dimensional proof. Measured initializers propagate their
 through locals, constants and state; every possible `fallback` value is checked.
 Function parameters and results can declare erased units, for example
 `Distance :: (speed: u/s, elapsed: s) -> u`. Calls, defaults, returns and writes
-through `ref` parameters check these contracts, including across libraries.
+through pointer parameters check these contracts, including across libraries.
 Unannotated signatures remain dimensionally unknown. The engine's own fields carry
 units too: a `Movement.speed` is in `u/s` and a collider's `radius` is in `u`.
 Proven mismatches and malformed referenced unit metadata are compile errors;

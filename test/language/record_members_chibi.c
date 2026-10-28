@@ -822,9 +822,10 @@ TEST_CASE(record_members_selection_keeps_original_guards)
     return true;
 }
 static const char *const fields[] = {
-    "value:int;",  "value:string;",   "value:bool=Unknown();", "value:number;",
-    "value:int?;", "value:string[];", "value:ref int;",        "value:Missing;",
-    "value:int;",  "label:string;",   "value:int|string;",     "value:Peer;"
+    "value:int;",    "value:string;",     "value:bool=Unknown();",
+    "value:number;", "value:int?;",       "value:string[];",
+    "value:i64;",    "value:Missing;",    "value:int;",
+    "label:string;", "value:int|string;", "value:Peer;"
 };
 TEST_CASE(record_members_annotations_and_diagnostics)
 {

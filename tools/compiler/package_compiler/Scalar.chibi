@@ -403,7 +403,7 @@ ScalarOperandStorage :: (forest: snapshot.SnapshotNode[], text: string, callable
             return callables[callee].result;
         }
         operator := ScalarTextOperator(forest, text, node);
-        if (operator == facts.TextSlice) {
+        if (operator == facts.TextSlice || operator == facts.TextFormat) {
             return TextStorage;
         }
         if (operator != 0) {
@@ -670,9 +670,9 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     output.append(ScalarAt(forest, node, facts.CallRow, type, callee, count, target.name));
     return ScalarOperands.Built(output);
 }
-// The Text operator of `node` when it calls text_byte_length, text_byte_at
-// or text_slice by name, 0 otherwise. When no function of the source has
-// that name, EmitBody binds the call to that runtime native.
+// The Text operator of `node` when it calls text_byte_length, text_byte_at,
+// text_slice or format_text by name, 0 otherwise. When no function of the
+// source has that name, EmitBody binds the call to that runtime native.
 ScalarTextOperator :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     function := Field(forest, node, "function");
     if (!Is(forest, function, "identifier")) {
@@ -688,16 +688,18 @@ ScalarTextOperator :: (forest: snapshot.SnapshotNode[], text: string, node: int)
     if (name == "text_slice") {
         return facts.TextSlice;
     }
+    if (name == "format_text") {
+        return facts.TextFormat;
+    }
     return 0;
 }
 // Appends the rows of `node`, a text native's call, after `rows`: its string,
 // then its int index, or start and count, each converted as the call step
-// converts it, then its Text row.
+// converts it, or for format_text each argument as it is, then its Text row.
 ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                node: int, rows: facts.Row[]) -> ScalarOperands {
     operator := ScalarTextOperator(forest, text, node);
-    expected := [TextStorage, IntStorage, IntStorage];
     output := rows;
     count: int = 0;
     for (argument in Members(forest, Field(forest, node, "arguments"))) {
@@ -705,8 +707,14 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
             return ScalarOperands.Failed(Diagnose(forest, argument, 0,
                                                   "scalar proof passes a text native's arguments in order"));
         }
+        expected := ScalarTextArgument(forest, text, callables, params, callable, names, types, members, constants,
+                                       operator, count, argument);
+        if (expected == 0) {
+            return ScalarOperands.Failed(Diagnose(forest, argument, 0,
+                                                  "scalar proof formats only numbers, bools and strings"));
+        }
         switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants, argument,
-                             argument, expected[count], expected[count], facts.Clamp, output) {
+                             argument, expected, expected, facts.Clamp, output) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(built):
@@ -715,11 +723,31 @@ ScalarText :: (forest: snapshot.SnapshotNode[], text: string, callables: Callabl
         count += 1;
     }
     type := facts.IntType;
-    if (operator == facts.TextSlice) {
+    if (operator == facts.TextSlice || operator == facts.TextFormat) {
         type = facts.StringType;
     }
     output.append(ScalarAt(forest, node, facts.TextRow, type, operator, count, ""));
     return ScalarOperands.Built(output);
+}
+// The storage a text native's argument `index`, `argument`, takes, or 0 when
+// none can carry it: a text native's string, then its ints, and for
+// format_text its format then any number, bool or string as it is. The call
+// step rejects an untyped number there first.
+ScalarTextArgument :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                       constants: ConstDecl[], operator: int, index: int, argument: int) -> int {
+    if (index == 0) {
+        return TextStorage;
+    }
+    if (operator != facts.TextFormat) {
+        return IntStorage;
+    }
+    storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
+                                    argument, 0);
+    if (ScalarTypeOf(storage) == 0) {
+        return 0;
+    }
+    return storage;
 }
 // Appends the rows of `node`, the variant `U.V` or `U.V(payloads)` of union
 // `held`, after `rows`: each payload converted to its field's storage, as the
@@ -1697,11 +1725,11 @@ ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[]) -> bool {
     }
     return true;
 }
-// Whether `native` is the runtime's text_byte_length, text_byte_at or
-// text_slice.
+// Whether `native` is the runtime's text_byte_length, text_byte_at,
+// text_slice or format_text.
 ScalarTextNative :: (native: ResolvedNative) -> bool {
     return NativeNameMatches(native, "text_byte_length") || NativeNameMatches(native, "text_byte_at") ||
-           NativeNameMatches(native, "text_slice");
+           NativeNameMatches(native, "text_slice") || NativeNameMatches(native, "format_text");
 }
 // The text natives of `natives`, each with its ports at their place among
 // ScalarTextPorts's.
@@ -2073,8 +2101,9 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
 
 // The facts rows of `text` at `path`. `names`, `natives`, `ports` and
 // `identities` are the host's instruction names and native catalog, as
-// Compile takes them. Its text_byte_length, text_byte_at and text_slice are
-// the only natives the source calls; any other is an unknown function.
+// Compile takes them. Its text_byte_length, text_byte_at, text_slice and
+// format_text are the only natives the source calls; any other is an unknown
+// function.
 pub CollectScalar :: (project: string, path: string, text: string, target: Target, names: string[], natives: Native[],
                       ports: Port[], identities: u64[]) -> facts.Row[] {
     ops := ResolveOps(names, false);

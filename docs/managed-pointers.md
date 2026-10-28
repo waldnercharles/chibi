@@ -128,10 +128,13 @@ system. Reference: [Nim ORC source at the inspected revision](https://github.com
 ## Hot reload and cell storage
 
 - **Kept state.** A replacement keeps each state whose id the old module also
-  declares. When it cannot keep one as it is, because the state's own type
-  changed or because it reaches through a pointer an authored record whose
-  layout the new module changes, the replacement is refused: the running
-  program keeps its module and state, and a restart applies the change. Kept
+  declares. A state whose type changed is converted when that is automatic
+  (`program_migrate_value`): record fields match by name, new fields take the
+  new initializer's values, removed fields are dropped, numbers widen, and
+  array items convert one by one. When a state cannot be converted, or reaches
+  through a pointer an authored record whose layout the new module changes,
+  the replacement is refused: the running program keeps its module and state,
+  and a restart applies the change. Kept
   cells are shared with the running program until commit, so commit checks
   them again and fails the same way. Adding a field to `Actor` therefore
   refuses a reload while `saved: ^Actor?` points at an `Actor`
@@ -154,9 +157,11 @@ system. Reference: [Nim ORC source at the inspected revision](https://github.com
   in-place writes, but each item read copies the array.
 - Appending to an address-taken array local (`xs.append(v)` after `&xs`)
   reads and replaces the whole cell.
-- A replacement never migrates kept state: a changed state type or pointee
-  layout is refused rather than converted. Rows that a system's query manages
-  still restart when the query's shape changes.
+- A replacement converts kept state values, but not cells: a pointee whose
+  layout changed is refused rather than rewritten. Array items cannot take a
+  new field's default, because prepared modules carry no record defaults.
+  Rows that a system's query manages still restart when the query's shape
+  changes.
 
 ## Verification ledger
 

@@ -162,6 +162,20 @@ static inline bool behavior_scalar_integer_widens(pin_type from, pin_type to)
            behavior_scalar_integer_high(to) >= behavior_scalar_integer_high(from);
 }
 
+/* Numeric storages convert implicitly when no integer value is lost: integer
+ * widening and any conversion to a floating type except f64 to number.
+ * Integer narrowing and sign changes require an explicit T(value). */
+static inline bool behavior_scalar_implicit(pin_type from, pin_type to)
+{
+    if (to == PIN_F64) {
+        return true;
+    }
+    if (to == PIN_F32) {
+        return from != PIN_F64;
+    }
+    return from <= PIN_U64 && behavior_scalar_integer_widens(from, to);
+}
+
 /* The operand type that holds both integers exactly: the wider operand, or
  * int or int64 for a signed/unsigned pair, since no backend computes in
  * narrower types. Returns PIN_FLOW for int64 with uint64 or a non-integer. */

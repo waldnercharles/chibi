@@ -732,8 +732,12 @@ Use components for entity-visible state. Use invocation locals for temporary
 work. All matches of one system share its retained state.
 
 Live replacement preserves matching retained values, and new bindings use
-their defaults. A replacement that cannot keep a retained value, because its
-type changed or a record it points at changed layout, is refused: the running
+their defaults. A retained value whose type changed is converted when that is
+automatic: record fields match by name, new fields take their defaults,
+removed fields are dropped, and numbers widen as they do in an assignment.
+Items of an array convert the same way, except that they cannot take a new
+field's default yet. A replacement that cannot convert a retained value, or
+that keeps a pointer to a record whose layout changed, is refused: the running
 program keeps its code and values. Replacement cancels old continuations and
 tasks. An explicit restart applies any change and resets the owner's retained
 state.

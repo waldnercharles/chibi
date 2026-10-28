@@ -2635,9 +2635,24 @@ static int prior_state(const execution_module *before, const execution_module_st
     }
     return -1;
 }
-static bool same_state(const execution_module_state *a, const execution_module_state *b)
+/* A kept value of prior as state keeps it: unchanged, or converted when its
+ * type changed. False when no automatic conversion exists. */
+static bool kept_value(
+    arena *scratch,
+    const execution_module_state *prior,
+    const execution_module_state *state,
+    pin_value value,
+    pin_value *out
+)
 {
-    return a->shared == b->shared && program_same_type(a->initial, b->initial);
+    if (prior->shared != state->shared) {
+        return false;
+    }
+    if (program_same_type(prior->initial, state->initial)) {
+        *out = value;
+        return true;
+    }
+    return program_migrate_value(scratch, value, state->initial, out);
 }
 static bool record_current(const execution_module *module, const pin_record *record)
 {
@@ -2732,9 +2747,10 @@ static bool pointees_current(layout_check *c, pin_value value)
     }
     return true;
 }
-/* Rejects a replacement that would drop a kept value: the old program keeps
- * running, and a restart applies the change. A shared value always exists;
- * preserve_state checks instance values per row. */
+/* Rejects a replacement that would drop a kept value it cannot convert: the
+ * old program keeps running, and a restart applies the change. A shared value
+ * always exists; preserve_state checks instance values per row. Preparation
+ * frees a candidate that either rejects, however much of it was filled. */
 static int preserve_shared(execution_program *next, const execution_program *before)
 {
     for (int i = 0; i < next->module->plan.state_count; i++) {
@@ -2743,13 +2759,22 @@ static int preserve_shared(execution_program *next, const execution_program *bef
         if (old < 0 || !registration_state(before, old)) {
             continue;
         }
-        if (!registration_state(next, i) ||
-            !same_state(&before->module->plan.states[old], state)) {
+        arena scratch = { 0 };
+        pin_value value;
+        if (!registration_state(next, i) || !kept_value(
+                                                &scratch,
+                                                &before->module->plan.states[old],
+                                                state,
+                                                before->shared[old].value,
+                                                &value
+                                            )) {
+            arena_free(&scratch);
             return FLOW_ERR_ARGUMENT;
         }
-        int status = state_assign(&next->shared[i], &before->shared[old].value);
+        int status = state_assign(&next->shared[i], &value);
         assert(!status);
         (void)status;
+        arena_free(&scratch);
     }
     return FLOW_OK;
 }
@@ -2794,18 +2819,24 @@ static int preserve_state(
         if (index < 0 || registration_state(before, index)) {
             continue;
         }
-        if (registration_state(next, i) ||
-            !same_state(&before->module->plan.states[index], state)) {
+        arena scratch = { 0 };
+        pin_value value;
+        if (registration_state(next, i) || !kept_value(
+                                               &scratch,
+                                               &before->module->plan.states[index],
+                                               state,
+                                               old->states[index].value,
+                                               &value
+                                           )) {
+            arena_free(&scratch);
             return FLOW_ERR_ARGUMENT;
         }
         /* A staged candidate deliberately retains the original family's
          * identities; its stable root snapshots pin them until adoption. */
-        int status = state_assign(
-            instance_storage(instance, i),
-            &old->states[index].value
-        );
+        int status = state_assign(instance_storage(instance, i), &value);
         assert(!status);
         (void)status;
+        arena_free(&scratch);
         sync_state(instance);
     }
     return FLOW_OK;

@@ -3,8 +3,11 @@
 #include "ecs/ecs.h"
 #include "execution/status.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
+#include "types/record.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -327,6 +330,135 @@ TEST_CASE(modules_replacement_checks_imported_pointee_layouts)
     REQUIRE(execution_program_replace(program, source(2, "Caller")->module, false) == FLOW_ERR_COMPILE);
     REQUIRE(execution_program_module(program) == source(1, "Caller")->module);
     REQUIRE(execution_program_replace(program, source(2, "Caller")->module, true) == FLOW_OK);
+    clear();
+    return true;
+}
+
+static uint64_t caller_state(const char *name)
+{
+    const authoring_source *s = source(0, "Caller");
+    for (int i = 0; i < s->analysis->symbol_count; i++) {
+        const script_symbol *symbol = &s->analysis->symbols[i];
+        if (symbol->kind == SCRIPT_STATE && !strcmp(symbol->name, name)) {
+            return symbol->id;
+        }
+    }
+    return 0;
+}
+/* Reads a record field of value as f64, or NAN when it has none. */
+static double record_number(pin_value value, const char *name)
+{
+    for (int i = 0; value.record && i < value.record->type.field_count; i++) {
+        const type_field *field = &value.record->type.fields[i];
+        pin_value read;
+        if (!strcmp(field->name, name) &&
+            !pin_read_field(NULL, value.ptr, field, &read)) {
+            return read.type == PIN_F64 ? read.d
+                 : read.type == PIN_F32 ? read.f
+                                        : NAN;
+        }
+    }
+    return NAN;
+}
+static execution_instance *run_caller(int collection)
+{
+    program = execution_program_new(source(collection, "Caller")->module, NULL, NULL);
+    execution_instance *instance = program ? execution_program_attach(program, 1)
+                                           : NULL;
+    const pin_value amount = { .type = PIN_F32, .f = 5 };
+    return instance &&
+                   execution_instance_dispatch(instance, tick.id, &amount, 1, 0, 0, 1000) == FLOW_OK
+             ? instance
+             : NULL;
+}
+/* One owner on bytecode. A reload keeps record and number state whose types
+ * changed: fields match by name, a new field takes its default, a removed one
+ * is dropped, and number widens to f64. Narrowing a kept number is refused. */
+TEST_CASE(modules_replacement_migrates_kept_records_and_numbers)
+{
+    static const input inputs
+        [] = { { "libraries/Store.chibi", "Store :: library { Actor :: struct { hp: number; name: string; old: number; } }" },
+               { "behaviors/Caller.chibi",
+                 "Caller :: behavior { a: Store.Actor = {hp: 1, name: \"a\", "
+                 "old: 2}; n: number = 0; "
+                 "on Tick :: (cells: number) { a.hp = cells; a.name = \"set\"; "
+                 "n = cells; } }" } },
+  changed[] = { { "libraries/Store.chibi",
+                  "Store :: library { Actor :: struct { hp: f64; name: string; "
+                  "armor: number = 7; } }" },
+                { "behaviors/Caller.chibi",
+                  "Caller :: behavior { a: Store.Actor = {hp: 1, name: \"a\"}; "
+                  "n: f64 = 0; "
+                  "on Tick :: (cells: number) { a.hp = cells; n = cells; } "
+                  "}" } },
+  narrowed[] = { inputs[0],
+                 { "behaviors/Caller.chibi",
+                   "Caller :: behavior { a: Store.Actor = {hp: 1, name: \"a\", "
+                   "old: 2}; n: int = 0; "
+                   "on Tick :: (cells: number) { n = int(cells); } }" } };
+    prepare(0, inputs, 2, false, BEHAVIOR_BYTECODE);
+    prepare(1, changed, 2, false, BEHAVIOR_BYTECODE);
+    prepare(2, narrowed, 2, false, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(0) && valid(1) && valid(2));
+    uint64_t a = caller_state("a"), n = caller_state("n");
+    execution_instance *instance = run_caller(0);
+    REQUIRE(a && n && instance);
+    REQUIRE(execution_program_replace(program, source(2, "Caller")->module, false) == FLOW_ERR_COMPILE);
+    REQUIRE(execution_program_replace(program, source(1, "Caller")->module, false) == FLOW_OK);
+    instance = execution_program_instance(program, 1);
+    const pin_value *actor = execution_instance_state(instance, a),
+                    *number = execution_instance_state(instance, n);
+    REQUIRE(actor && record_number(*actor, "hp") == 5 && record_number(*actor, "armor") == 7);
+    REQUIRE(isnan(record_number(*actor, "old")));
+    pin_value name;
+    REQUIRE(!pin_read_field_path(NULL, actor->ptr, &actor->record->type, "name", &name));
+    REQUIRE(
+        name.type == PIN_STR && name.text && name.text->length == 3 &&
+        !memcmp(name.text->bytes, "set", 3)
+    );
+    REQUIRE(number && number->type == PIN_F64 && number->d == 5);
+    clear();
+    return true;
+}
+/* One owner on bytecode. Items of a kept array migrate when every field they
+ * keep converts; an item cannot take a new field's default, so adding one to
+ * the record refuses the reload. */
+TEST_CASE(modules_replacement_migrates_kept_array_items)
+{
+#define STORE(fields) "Store :: library { Actor :: struct { " fields " } }"
+#define CALLER(items)                                                          \
+    "Caller :: behavior { xs: Store.Actor[] = []; "                            \
+    "on Tick :: (cells: number) { xs = [" items "]; } }"
+    static const input
+        inputs[] = { { "libraries/Store.chibi", STORE("hp: number; old: number;") },
+                     { "behaviors/Caller.chibi",
+                       CALLER("{hp: cells, old: 1}, {hp: 2, old: 1}") } },
+        removed[] = { { "libraries/Store.chibi", STORE("hp: f64;") },
+                      { "behaviors/Caller.chibi", CALLER("{hp: cells}") } },
+        added[] = { { "libraries/Store.chibi",
+                      STORE("hp: number; old: number; armor: number = 7;") },
+                    { "behaviors/Caller.chibi", CALLER("{hp: cells, old: 1}") } };
+#undef STORE
+#undef CALLER
+    prepare(0, inputs, 2, false, BEHAVIOR_BYTECODE);
+    prepare(1, removed, 2, false, BEHAVIOR_BYTECODE);
+    prepare(2, added, 2, false, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(0) && valid(1) && valid(2));
+    uint64_t xs = caller_state("xs");
+    execution_instance *instance = run_caller(0);
+    REQUIRE(xs && instance);
+    REQUIRE(execution_program_replace(program, source(2, "Caller")->module, false) == FLOW_ERR_COMPILE);
+    REQUIRE(execution_program_replace(program, source(1, "Caller")->module, false) == FLOW_OK);
+    instance = execution_program_instance(program, 1);
+    const pin_value *items = execution_instance_state(instance, xs);
+    REQUIRE(items && items->container == PIN_CONTAINER_ARRAY);
+    const pin_array *array = items->ptr;
+    REQUIRE(array && array->count == 2);
+    REQUIRE(
+        record_number(pin_array_get(array, 0), "hp") == 5 &&
+        record_number(pin_array_get(array, 1), "hp") == 2
+    );
+    REQUIRE(isnan(record_number(pin_array_get(array, 0), "old")));
     clear();
     return true;
 }
@@ -890,6 +1022,8 @@ void test_language_modules()
     RUN_TEST_CASE(modules_cross_library_cycles_reject_callers_without_generations);
     RUN_TEST_CASE(modules_library_state_is_not_an_exported_value);
     RUN_TEST_CASE(modules_replacement_checks_imported_pointee_layouts);
+    RUN_TEST_CASE(modules_replacement_migrates_kept_records_and_numbers);
+    RUN_TEST_CASE(modules_replacement_migrates_kept_array_items);
     RUN_TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies);
     RUN_TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope);
     RUN_TEST_CASE(modules_imported_scalar_templates_resolve_nested_calls_without_record_types);

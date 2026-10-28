@@ -1,0 +1,16 @@
+{
+  "head": "b54ad3e5c6b475290d73781cac95402e172eda27",
+  "command": [
+    "python3",
+    "tools/test_policy.py",
+    "tool",
+    "language-compiler-fixture"
+  ],
+  "environment": {
+    "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/language"
+  },
+  "exit_code": 1,
+  "wall_seconds": 2.214947332860902,
+  "log": ".chibi/reach/compiler-fixture-before.log",
+  "log_sha256": "8d74adc0bd79027048a3c2f29df8c9112c5fa10f8925ee2380d81fc645d5c0a0"
+}

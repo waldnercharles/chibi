@@ -1,0 +1,8 @@
+[
+  {
+    "file": "logs/fixture-before.log",
+    "original_sha256": "8d74adc0bd79027048a3c2f29df8c9112c5fa10f8925ee2380d81fc645d5c0a0",
+    "stored_sha256": "366aed78b1826e58448bff83b24f08c8c978ea29acf5893ea4992d5e4d16b2e9",
+    "change": "trailing spaces removed from repository copy; original ignored task log retained"
+  }
+]

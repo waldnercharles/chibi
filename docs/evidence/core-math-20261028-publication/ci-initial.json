@@ -1,0 +1,222 @@
+{
+  "head": "b54ad3e5c6b475290d73781cac95402e172eda27",
+  "pull_request": "https://github.com/waldnercharles/chibi/pull/790",
+  "compiler_self_build": {
+    "run": 40651486960,
+    "platforms": [
+      "ubuntu-24.04",
+      "macos-15",
+      "windows-2022"
+    ],
+    "stage1_stage2_equal": true,
+    "bytes": 13960686,
+    "sha256": "a9d7b571108772ea56c8ed9aecd3e9246aa027974a89149eda297f14ce57489e",
+    "failure": "test/native_aot/scalar/Run.ps1:244 recovered stage2 differs from reviewed compiler artifact",
+    "reviewed_artifact_and_guard_unchanged": true
+  },
+  "native_linux": {
+    "run": 40651486978,
+    "job": 122692350755,
+    "build": "success",
+    "failure": "build-graph-debug-optimization: four existing 50-second host operation deadlines before graph output or argument validation",
+    "passed": 1,
+    "failed": 4,
+    "assertions": 12,
+    "wall_seconds": 200.147,
+    "baseline_classified": false
+  },
+  "status": {
+    "headRevision": "b54ad3e5c6b475290d73781cac95402e172eda27",
+    "checks": [
+      {
+        "id": 122695322581,
+        "name": "Native scalar modules (${{ matrix.platform }})",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "skipped",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122695322581",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 0
+        }
+      },
+      {
+        "id": 122693256894,
+        "name": "Compiler self-build across platforms",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "failure",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486960/job/122693256894",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 1
+        }
+      },
+      {
+        "id": 122692352799,
+        "name": "Paired Studio SDK verification",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "skipped",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122692352799",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 0
+        }
+      },
+      {
+        "id": 122692352747,
+        "name": "Studio build (Windows)",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "skipped",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122692352747",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 0
+        }
+      },
+      {
+        "id": 122692352555,
+        "name": "Engine build and compile smoke test (Windows)",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "skipped",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122692352555",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 0
+        }
+      },
+      {
+        "id": 122692351067,
+        "name": "Engine build and native tests (macOS)",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122692351067",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 0
+        }
+      },
+      {
+        "id": 122692350988,
+        "name": "Graph SDK packaging and relocation (Linux)",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122692350988",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 0
+        }
+      },
+      {
+        "id": 122692350981,
+        "name": "Studio build and startup",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122692350981",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 1
+        }
+      },
+      {
+        "id": 122692350905,
+        "name": "clang-format",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122692350905",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 1
+        }
+      },
+      {
+        "id": 122692350755,
+        "name": "Engine build and native tests",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "failure",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486978/job/122692350755",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 2
+        }
+      },
+      {
+        "id": 122692350125,
+        "name": "Compiler self-build (macos-15)",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "failure",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486960/job/122692350125",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 3
+        }
+      },
+      {
+        "id": 122692350036,
+        "name": "Compiler self-build (windows-2022)",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "failure",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486960/job/122692350036",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 2
+        }
+      },
+      {
+        "id": 122692349761,
+        "name": "Compiler self-build (ubuntu-24.04)",
+        "head_sha": "b54ad3e5c6b475290d73781cac95402e172eda27",
+        "status": "completed",
+        "conclusion": "failure",
+        "details_url": "https://github.com/waldnercharles/chibi/actions/runs/40651486960/job/122692349761",
+        "output": {
+          "title": null,
+          "summary": null,
+          "text": null,
+          "annotations_count": 2
+        }
+      }
+    ],
+    "statuses": [],
+    "annotations": [],
+    "hasMore": false,
+    "job": null,
+    "jobs": [],
+    "log": null,
+    "logTruncated": false
+  }
+}

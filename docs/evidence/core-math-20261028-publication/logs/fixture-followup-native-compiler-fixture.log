@@ -1,0 +1,12 @@
+Running: compiler_fixture_prepares_only_selected_backend (OK) (0.002051 secs)
+Running: compiler_fixture_default_keeps_both_backends (OK) (0.000117 secs)
+Running: compiler_fixture_runs_authored_tests_on_selected_backends (OK) (0.001668 secs)
+Running: compiler_fixture_rejects_missing_and_failed_authored_tests (OK) (0.001455 secs)
+Running: compiler_fixture_bounds_each_authored_test (OK) (1.629178 secs)
+Running: compiler_fixture_preserves_a_custom_authored_budget (OK) (0.001917 secs)
+Running: compiler_fixture_selects_an_exact_collection (OK) (0.001585 secs)
+Running: compiler_fixture_uses_replacement_test_bodies (OK) (0.002719 secs)
+Running: compiler_fixture_rejects_invalid_authored_worker_settings (OK) (0.003307 secs)
+===============================================================
+Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 414
+Test command wall time: 2.290s; includes in-test fixture setup; external configuration/build excluded.

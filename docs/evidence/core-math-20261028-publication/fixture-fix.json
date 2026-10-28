@@ -1,0 +1,18 @@
+{
+  "head": "b54ad3e5c6b475290d73781cac95402e172eda27",
+  "source_diff": "diff --git a/test/language/compiler_fixture.c b/test/language/compiler_fixture.c\nindex 793ce99ea..68cd79c90 100644\n--- a/test/language/compiler_fixture.c\n+++ b/test/language/compiler_fixture.c\n@@ -923,6 +923,7 @@ TEST_CASE(compiler_fixture_preserves_a_custom_authored_budget)\n TEST_CASE(compiler_fixture_selects_an_exact_collection)\n {\n     const char project[] = \"package fixture\\n\"\n+                           \"import _ \\\"core:core_fixture\\\"\\n\"\n                            \"@test ProjectOnly :: () { assert(false, \"\n                            \"\\\"project-only\\\"); }\\n\";\n     const char collection[] = \"package core_fixture\\n\"\n@@ -971,10 +972,10 @@ TEST_CASE(compiler_fixture_selects_an_exact_collection)\n         expected,\n         sizeof expected,\n         \"FAIL fixture.ProjectOnly (BYTECODE)\\n  \"\n-        \"/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\\n\"\n+        \"/compiler/fixture/Tests.chibi:3:27: Assertion failed: project-only\\n\"\n         \"BYTECODE: 1 tests, 1 failed\\n\"\n         \"FAIL fixture.ProjectOnly (%s)\\n  \"\n-        \"/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\\n\"\n+        \"/compiler/fixture/Tests.chibi:3:27: Assertion failed: project-only\\n\"\n         \"%s: 1 tests, 1 failed\\n\",\n         backend,\n         backend\n",
+  "command": [
+    "python3",
+    "tools/test_policy.py",
+    "tool",
+    "language-compiler-fixture"
+  ],
+  "environment": {
+    "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/language"
+  },
+  "exit_code": 0,
+  "wall_seconds": 2.8439886250998825,
+  "source_sha256": "ddc2d6cf271bae9538078c167bc1e4f63bcfc5ea67c2c5e142d819340fa7890c",
+  "log": ".chibi/reach/compiler-fixture-after.log",
+  "log_sha256": "3a8d5041e51cb802a8796c58a5ae2126916512fc5c533903bd5adf9d817e25b8"
+}

@@ -1,0 +1,70 @@
+{
+  "head": "4021969a24b42fb19efe4a6d0f51fddcc067808e",
+  "tree": "9fb1286a864a1fb17282475f167e9d6890a375ce",
+  "tracked_status_before": "",
+  "changed_since_prior_checkpoint": [
+    "test/language/compiler_fixture.c"
+  ],
+  "fixture_sha256": "ddc2d6cf271bae9538078c167bc1e4f63bcfc5ea67c2c5e142d819340fa7890c",
+  "profile": "native",
+  "environment_overrides": {
+    "CHIBI_LANGUAGE_BUILD_DIR": ".chibi/math/language"
+  },
+  "commands": [
+    {
+      "name": "build",
+      "command": [
+        "cmake",
+        "--build",
+        ".chibi/math/language",
+        "--target",
+        "test_language",
+        "--parallel",
+        "4"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 1.5648781249765307,
+      "log": ".chibi/math/fixture-followup/native-build.log",
+      "log_sha256": "90309dcde7d74838eed952c1fe0617135812c944578053d57d07d7b6e0bdb68c",
+      "summary": []
+    },
+    {
+      "name": "compiler-fixture",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-compiler-fixture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 2.365659625036642,
+      "log": ".chibi/math/fixture-followup/native-compiler-fixture.log",
+      "log_sha256": "f643406f0a63adc727479cba6055011b7f4beb4f7274d0ffec6ad1bdf4423efc",
+      "summary": [
+        "Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 414",
+        "Test command wall time: 2.290s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-math",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-math"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.42123129102401435,
+      "log": ".chibi/math/fixture-followup/native-package-math.log",
+      "log_sha256": "569afc7bdd3fe8db1f0dcc36fccc60a450bbfc164f093a64eeb249ac3708e0d4",
+      "summary": [
+        "Running: package_math_runs_shipped_authored_tests MATH_TESTS backend=BYTECODE tests=29 prepare_ms=20.245",
+        "MATH_TESTS backend=SLJIT tests=29 prepare_ms=21.091",
+        "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 4132",
+        "Test command wall time: 0.372s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    }
+  ],
+  "artifact_sha256": "37f1e5418dac137a91e5dbaa985a02d796bb82a194847528eededc8df2f7239f",
+  "tracked_status_after": ""
+}

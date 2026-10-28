@@ -12,8 +12,10 @@ from the general compiler prerequisite; no seed or ABI version changed.
 | Original development base | `7f35662ac53a3d6635eaac7b95af3f0cafbdc586` |
 | Accepted retirement base | `c4f75f125ddb5e36b7f481584f1d12d26abe955a` |
 | Accepted strings base | `286f69ddf8e118b099bdb50aa17767f24079e011` |
-| General prerequisite, PR #790 | `b54ad3e5c6b475290d73781cac95402e172eda27` |
+| Initial general prerequisite, PR #790 | `b54ad3e5c6b475290d73781cac95402e172eda27` |
 | Math feature tested after strings integration | `525f2be83b0702c9120f4ecc5fd8aa1b9b6a2007` |
+| General prerequisite with collection fixture correction | `8f5685e021fca09b9a0edd827b10261e2b0ff1ca` |
+| Math plus corrected prerequisite tested below | `4021969a24b42fb19efe4a6d0f51fddcc067808e` |
 
 [inputs.json](inputs.json) fingerprints all 34 changed code/build/test files of
 the last checkpoint relative to accepted strings main. Subsequent documentation
@@ -21,10 +23,16 @@ commits do not change these inputs. The only rebase conflict was the language
 group registration: math, package tests, core strings and Markdown each remain
 registered exactly once, alongside the Wasm math selector.
 
+[followup-inputs.json](followup-inputs.json) records the later fixture correction.
+All original 34 inputs are unchanged. The new manifest adds the corrected
+`test/language/compiler_fixture.c`, for 35 inputs in total. The math package,
+runtime and production compiler sources are identical.
+
 The [general prerequisite PR](https://github.com/waldnercharles/chibi/pull/790)
-contains four separable commits: fixture portability, imported-package
+contains five separable commits: fixture portability, imported-package
 reachability, the recorded-core bootstrap bridge and a corrected reuse unit
-fixture. Its eleven files contain no math package or native/graph math retirement.
+fixture, followed by the selected-collection fixture correction below. Its twelve
+files contain no math package or native/graph math retirement.
 Its merge remains queued behind costs PR #788 and the shared generator
 input-role reconciliation.
 
@@ -141,6 +149,64 @@ project-document CMake linkage; the reconciled source-comparison record shows
 that difference explicitly. See the
 [baseline proof](../core-math-20261027/baseline-classification/classification.json).
 
+## Initial server checks and fixture follow-up
+
+The initial [PR #790 server run](https://github.com/waldnercharles/chibi/actions/runs/40651486978)
+at `b54ad3e5c` is not green. Linux builds successfully, then four graph commands
+hit the existing 50-second operation deadline before authored argument handling.
+The [accepted strings run](https://github.com/waldnercharles/chibi/actions/runs/40647145953)
+passed the same five graph cases, so this timeout is not classified as baseline.
+
+The controlled [startup measurement](graph-startup.json) used the same Release
+host binary and unchanged deadline. With current compiler inputs, loading took
+24.190 s and Graph preparation 1.711 s; with the exact recorded baseline inputs
+and unchanged seed, loading took 0.426 s and Graph preparation 1.920 s. A separate
+standalone Release host measured 24.527 s loading and 1.716 s preparing. Only
+`package_compiler/Compile.chibi` differs from the checked compiler manifest.
+The changed source triggers two compiler recovery passes in every host process.
+This is a startup regression introduced by the prerequisite. A matching reviewed
+artifact remains required; the operation guard and checked seed were not changed.
+Copied baseline sources and compiler bytes were removed after the comparison.
+
+All three compiler self-build platforms recovered identical first and second
+stages: 13,960,686 bytes, SHA-256
+`a9d7b571108772ea56c8ed9aecd3e9246aa027974a89149eda297f14ce57489e`.
+The subsequent scalar gate correctly rejected the difference from the reviewed
+checked artifact at `test/native_aot/scalar/Run.ps1:244`. Recovery and
+self-reproduction passed; reviewed-artifact parity did not. The
+[initial CI snapshot](ci-initial.json) preserves the separate outcomes.
+
+The macOS language run also found an interaction with the new strings test
+fixture. `compiler_fixture_selects_an_exact_collection` supplied an unimported
+collection, then attempted to run its tests. Preparation now correctly omits
+that unreachable collection; execution selection only filters prepared owners.
+The [original failure](fixture-before.json) was reproduced locally: 8 cases
+passed, 1 failed, 410 assertions. The correction explicitly blank-imports
+`core:core_fixture` and adjusts only the project's shifted diagnostic lines.
+Independent reviews found no issue. Exact `core` versus `cor` filtering, custom
+instruction-budget failures and default project-only execution remain asserted.
+The [fixture log normalization](fixture-log-normalization.json) records the
+trailing-space removal from the repository's failure-log copy; the original task
+log remains unchanged.
+
+The corrected clean prerequisite passes 9 cases and 414 assertions. After merging
+it into the clean math source at `4021969a`, the focused results are:
+
+| Check | Cases / assertions | Command time |
+| --- | ---: | ---: |
+| Native compiler fixture | 9 / 414 | 2.366 s |
+| Native package math | 6 / 4,132 | 0.421 s |
+| Wasm compiler fixture | 9 / 414 | 1.825 s |
+| Wasm package math | 6 / 4,132 | 0.628 s |
+
+Native and Wasm drivers rebuilt in 1.565 s and 10.346 s. Math still executes
+29 authored tests per selected backend. The [native](fixture-followup-native.json)
+and [Wasm](fixture-followup-wasm.json) receipts identify the clean source, exact
+commands, artifact hashes and logs. This fixture-only follow-up does not replace
+the earlier compiler, SDK, sanitizer or broader group evidence. No server success
+is claimed for the updated drafts. Main advanced while CI ran; integration onto
+the eventual accepted costs head still needs its own review and affected checks.
+
 ## Remaining boundaries
 
 The math draft still carries its explicit SDK publication hold. The general
@@ -154,7 +220,7 @@ separately owned lowercase synthetic vector builtin `step(edge, value)`. The
 builtin owner acknowledged that it must lower without the retired native/graph
 Step dependency and preserve ordinary qualified function resolution.
 
-No Windows execution, full Wasm suite or additional GPU/UI coverage is claimed.
+No math Windows execution, full Wasm suite or additional GPU/UI coverage is claimed.
 The baseline tooling failure is not presented as a green full release gate.
 Original scratch probes, the baseline checkout and the Studio clone were
 removed; ignored ordinary build products and diagnostic logs remain for review.

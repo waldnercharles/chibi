@@ -1,0 +1,11 @@
+Running: package_math_runs_shipped_authored_tests MATH_TESTS backend=BYTECODE tests=29 prepare_ms=20.245
+MATH_TESTS backend=SLJIT tests=29 prepare_ms=21.091
+(OK) (0.046301 secs)
+Running: package_math_imports_preserve_ieee_and_number_precision (OK) (0.043771 secs)
+Running: package_math_imports_reject_invalid_domains (OK) (0.043322 secs)
+Running: package_math_imports_keep_identity_and_extreme_finite_state (OK) (0.042196 secs)
+Running: package_math_number_api_requires_explicit_f64_narrowing (OK) (0.069828 secs)
+Running: package_math_catalog_retires_high_level_native_names (OK) (0.020304 secs)
+===============================================================
+Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 4132
+Test command wall time: 0.372s; includes in-test fixture setup; external configuration/build excluded.

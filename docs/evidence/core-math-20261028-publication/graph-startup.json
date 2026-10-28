@@ -1,0 +1,247 @@
+{
+  "source_differences": {
+    "286f69ddf8e118b099bdb50aa17767f24079e011": [],
+    "b54ad3e5c6b475290d73781cac95402e172eda27": [
+      {
+        "path": "tools/compiler/package_compiler/Compile.chibi",
+        "bytes": 146105,
+        "sha256": "a4d88081bf6c58308c70bd4d318240921a12423c529ae9c540d4e7b7bd64f175",
+        "recorded_sha256": "523d0b178927046b367dc5abf597a440932ccc65787e00edd59b64209a61a42b"
+      }
+    ]
+  },
+  "checked_seed_sha256": "f118baeb67ad23b7e2f1fda3be150474abe1fe4e8a00f0290bc5c3771df154e7",
+  "checked_manifest_sha256": "9a428c2f14f2f1639807900113e887bf27906e9036e3581bfbc05744303b56b4",
+  "ci_failure": {
+    "run": 40651486978,
+    "job": 122692350755,
+    "cases_passed": 1,
+    "cases_failed": 4,
+    "deadline_seconds": 50
+  },
+  "ci_baseline": {
+    "run": 40647145953,
+    "job": 122678496016,
+    "cases_passed": 5,
+    "cases_failed": 0,
+    "selector_seconds": 113.017,
+    "first_graph_parity_seconds": 5.378
+  },
+  "receipts": {
+    "graph-current": {
+      "kind": "graph-current",
+      "argv": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/build/sdk/chibi-build-host",
+        "--root",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi",
+        "--source",
+        "tools/toolchain/Graph.chibi",
+        "--core",
+        "packages/core",
+        "--collection",
+        "graph=tools/graph",
+        "--entry",
+        "Libraries",
+        "--timeout-ms",
+        "50000",
+        "--",
+        "--build",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/graph-current/invalid-output",
+        "--jobs",
+        "8",
+        "--profile",
+        "explicit",
+        "--build-type",
+        "Debug",
+        "--debug-optimization",
+        "2"
+      ],
+      "exit_code": 2,
+      "elapsed_s": 26.034174166154116,
+      "events": [
+        {
+          "category": "graph-host",
+          "seconds": 0.0,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "startup",
+          "seconds": 0.001054,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "compiler-load",
+          "seconds": 24.190446,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "prepare",
+          "seconds": 1.711237,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "execute",
+          "seconds": 0.00017,
+          "status": "2",
+          "error": "0"
+        },
+        {
+          "category": "invocation",
+          "seconds": 25.91519,
+          "status": "2",
+          "error": "0"
+        }
+      ],
+      "binary_sha256": "a50dfaebcf7298e73eac260a09d0575f2a3851bfaf2f5cba61bc157599ef02f6"
+    },
+    "graph-matching": {
+      "kind": "graph-matching",
+      "argv": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/build/sdk/chibi-build-host",
+        "--root",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi",
+        "--source",
+        "tools/toolchain/Graph.chibi",
+        "--core",
+        "packages/core",
+        "--collection",
+        "graph=tools/graph",
+        "--entry",
+        "Libraries",
+        "--timeout-ms",
+        "50000",
+        "--compiler",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/matching-main286f/tools/compiler",
+        "--compiler-core",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/matching-main286f/packages/core",
+        "--",
+        "--build",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/graph-matching/invalid-output",
+        "--jobs",
+        "8",
+        "--profile",
+        "explicit",
+        "--build-type",
+        "Debug",
+        "--debug-optimization",
+        "2"
+      ],
+      "exit_code": 2,
+      "elapsed_s": 2.3701298339292407,
+      "events": [
+        {
+          "category": "graph-host",
+          "seconds": 0.0,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "startup",
+          "seconds": 0.000467,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "compiler-load",
+          "seconds": 0.425852,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "prepare",
+          "seconds": 1.920241,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "execute",
+          "seconds": 0.000155,
+          "status": "2",
+          "error": "0"
+        },
+        {
+          "category": "invocation",
+          "seconds": 2.362186,
+          "status": "2",
+          "error": "0"
+        }
+      ],
+      "binary_sha256": "a50dfaebcf7298e73eac260a09d0575f2a3851bfaf2f5cba61bc157599ef02f6"
+    },
+    "standalone-current": {
+      "kind": "standalone-current",
+      "argv": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/language/sdk/chibi-build-host",
+        "--root",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi",
+        "--source",
+        "tools/toolchain/Graph.chibi",
+        "--core",
+        "packages/core",
+        "--collection",
+        "graph=tools/graph",
+        "--entry",
+        "Libraries",
+        "--timeout-ms",
+        "50000",
+        "--",
+        "--build",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/standalone-current/invalid-output",
+        "--jobs",
+        "8",
+        "--profile",
+        "explicit",
+        "--build-type",
+        "Debug",
+        "--debug-optimization",
+        "2"
+      ],
+      "exit_code": 2,
+      "elapsed_s": 26.363866582978517,
+      "events": [
+        {
+          "category": "graph-host",
+          "seconds": 0.0,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "startup",
+          "seconds": 0.000306,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "compiler-load",
+          "seconds": 24.526909,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "prepare",
+          "seconds": 1.716079,
+          "status": "0",
+          "error": "0"
+        },
+        {
+          "category": "execute",
+          "seconds": 0.000158,
+          "status": "2",
+          "error": "0"
+        },
+        {
+          "category": "invocation",
+          "seconds": 26.29423,
+          "status": "2",
+          "error": "0"
+        }
+      ],
+      "binary_sha256": "013c38cbd128f93460c7732dc9f25d5622483ef7abdd8101c4704ed17d211c39"
+    }
+  },
+  "matching_control": "Exact source files named by the unchanged checked manifest were exported from acceptedmain286f and verified against every recorded SHA256. The unchanged checked manifest and closure were copied. No artifact regenerated. Scratch control copy removed after comparison; receipt keeps exact argv."
+}

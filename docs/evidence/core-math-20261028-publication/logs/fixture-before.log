@@ -1,0 +1,16 @@
+authored adapter report: BYTECODE: no authored tests found
+SLJIT: no authored tests found
+Compiler fixture contains no authored tests
+(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/test/language/compiler_fixture.c (958): passed)
+Running: compiler_fixture_prepares_only_selected_backend (OK) (0.001891 secs)
+Running: compiler_fixture_default_keeps_both_backends (OK) (0.000098 secs)
+Running: compiler_fixture_runs_authored_tests_on_selected_backends (OK) (0.001669 secs)
+Running: compiler_fixture_rejects_missing_and_failed_authored_tests (OK) (0.001174 secs)
+Running: compiler_fixture_bounds_each_authored_test (OK) (1.708166 secs)
+Running: compiler_fixture_preserves_a_custom_authored_budget (OK) (0.002063 secs)
+Running: compiler_fixture_selects_an_exact_collection
+Running: compiler_fixture_uses_replacement_test_bodies (OK) (0.001984 secs)
+Running: compiler_fixture_rejects_invalid_authored_worker_settings (OK) (0.002780 secs)
+===============================================================
+Summary: Passed: 8 Failed: 1 Total: 9 Suites: 0 Asserts: 410
+Test command wall time: 2.081s; includes in-test fixture setup; external configuration/build excluded.

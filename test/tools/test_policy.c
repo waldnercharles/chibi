@@ -1479,9 +1479,10 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
     REQUIRE(strstr(output, " dotnet="));
     REQUIRE(strstr(output, " cpus="));
     REQUIRE(strstr(output, "singleton=1\nsingleton-identical=True\n"));
-    REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-9 rejected\n"));
+    REQUIRE(strstr(output, "full=64\nfull-identical=True\n"));
+    REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-65 rejected\n"));
     REQUIRE(
-        strstr(output, "empty rejected\nnine rejected\njson rejected\njson rejected\njson rejected\nutf8 rejected\n")
+        strstr(output, "empty rejected\noversized rejected\njson rejected\njson rejected\njson rejected\nutf8 rejected\n")
     );
     REQUIRE(
         strstr(output, "Compiler invocation 16-sljit-produce-batch failed: compiler batch item 2: compiler argument count mismatch\n")
@@ -1491,6 +1492,9 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
     );
     REQUIRE(
         strstr(output, "published=0-bytecode-bytecode-raw,0-bytecode-sljit-raw,0-sljit-bytecode-raw,0-sljit-sljit-raw,1-bytecode-bytecode-raw,1-bytecode-sljit-raw\ncrossings=6\nnext-batch=False\n")
+    );
+    REQUIRE(
+        strstr(output, "partial-crossings=260\npartial-raw=260\npartial-last=64-sljit-sljit-raw\npartial-size=1\n")
     );
     REQUIRE(!strstr(output, "bad counters accepted"));
     REQUIRE(strstr(output, "bytecode counters accepted\nbytecode counters rejected\n"));

@@ -354,12 +354,14 @@ which must define every function and call each recorded callee. The runner
 only transports, checks identity and requires selected-backend counters with
 no fallback. Rejected sources must publish no raw IR and preserve a prior
 output. Pure producer and authored-check requests use the pinned host's existing
-`--batch` API in groups of at most eight; each request still gets a fresh
-activation, arena and instruction budget. All 384 raw-byte CLI crossings and
-four prior-output preservation probes remain individual child invocations.
-This reduces the 96-case process count from 970 to 466 without a new runtime,
-entry point or server. Compiler/source identity and all four backend crossings
-remain mandatory.
+`--batch` API in groups of at most 64, the pinned host's existing limit;
+each request still gets a fresh activation, arena and instruction budget.
+All four raw-byte CLI crossings per case and four prior-output preservation
+probes remain individual child invocations. The current 90-case corpus keeps
+360 raw crossings and reduces process starts from 442 to 382; the maximum
+96-case corpus keeps 384 raw crossings and needs 406 starts instead of 466.
+No new runtime, entry point or server is needed. Compiler/source identity and
+all four backend crossings remain mandatory.
 
 Producer batch bytes are forwarded unchanged to the consumer batch. Individual
 raw calls receive original producer byte ranges, not runner JSON reserialization.
@@ -376,7 +378,7 @@ adds unsigned per-item counters, so a zero other-backend/fallback aggregate
 cannot hide a member's fallback behind another member's selected count.
 
 Classification and raw publication retain original case/producer/consumer order.
-Up to seven later pure cases (including their other crossings) may already have
+Up to 63 later pure cases (including their other crossings) may already have
 been computed in the current batch. The first negative classification stops all
 later raw publications and the next batch; a failed host batch stops immediately
 at its reported item index and publishes no partial result. No side-effectful

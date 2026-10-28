@@ -736,6 +736,7 @@ Files :: (target: string) -> string[] {
             "test/language/publication.c", "test/language/field_runtime.c", "test/language/prototype.c",
             "test/language/ui.c", "test/language/text_format.c", "test/language/graph_model.c",
             "test/language/graph_authoring.c", "test/authoring/model_runtime.c",
+            "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/packages.c", "test/language/package_syntax.c",
             "test/language/package_execution.c", "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",
@@ -743,7 +744,6 @@ Files :: (target: string) -> string[] {
             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
-            "test/language/host_packages.c", "test/language/host_packages_compiler.c",
             "test/language/package_paths_chibi.c", "test/language/source_tokenizer_chibi.c",
             "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
 

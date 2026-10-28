@@ -12432,7 +12432,7 @@ TEST_CASE(program_descriptor_field_observers_compare_all_bytes)
     const ecs_component_desc *component = ecs_world_component(world, declared.id);
     REQUIRE(component && component->layout_hash);
     ecs_entity entity = ecs_world_create_entity(world);
-    const pin_string initial = { "A\0B", 3 };
+    const pin_string initial = { .bytes = "A\0B", .length = 3 };
     const pin_string *initial_field = &initial;
     REQUIRE(ecs_world_record_add(world, entity, component->id, &initial_field, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
@@ -12534,7 +12534,7 @@ TEST_CASE(program_descriptor_field_observers_compare_all_bytes)
     REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
     const pin_value *seen = execution_instance_state(instance, 811);
     REQUIRE(seen && !pin_text(*seen).length);
-    const pin_string changed = { "A\0C", 3 };
+    const pin_string changed = { .bytes = "A\0C", .length = 3 };
     REQUIRE(
         ecs_component_write_field(
             world,

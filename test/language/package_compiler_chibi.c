@@ -416,7 +416,7 @@ static const char *action_kind_function(void *, const pin_value *arguments, pin_
 static const char *action_kind_action(void *, const pin_value *arguments, pin_value *results)
 {
     if (arguments[0].type != PIN_STR ||
-        !pin_text_equal(pin_text(arguments[0]), (pin_string){ "text", 4 }) ||
+        !pin_text_equal(pin_text(arguments[0]), (pin_string){ .bytes = "text", .length = 4 }) ||
         results[0].type != PIN_I32) {
         return "qualified action argument or result differs";
     }
@@ -9540,7 +9540,10 @@ static bool library_plays(execution_module *expected, execution_module *actual, 
         REQUIRE(left->y == 3.5f * tick && right->y == left->y);
         const pin_value *x = execution_instance_state(e.instance, label);
         const pin_value *y = execution_instance_state(a.instance, label);
-        REQUIRE(x && y && pin_text_equal(pin_text(*x), (pin_string){ "a\0b", 3 }));
+        REQUIRE(
+            x && y &&
+            pin_text_equal(pin_text(*x), (pin_string){ .bytes = "a\0b", .length = 3 })
+        );
         REQUIRE(pin_text_equal(pin_text(*x), pin_text(*y)));
     }
     stop(&e);
@@ -11681,8 +11684,12 @@ TEST_CASE(package_compiler_keeps_text_state_per_owner)
     const pin_value *first_value = execution_instance_state(p.instance, state);
     const pin_value *second_value = execution_instance_state(second, state);
     REQUIRE(first_value && second_value);
-    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "a\0b", 3 }));
-    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "seed", 4 }));
+    REQUIRE(
+        pin_text_equal(pin_text(*first_value), (pin_string){ .bytes = "a\0b", .length = 3 })
+    );
+    REQUIRE(
+        pin_text_equal(pin_text(*second_value), (pin_string){ .bytes = "seed", .length = 4 })
+    );
     behavior_run_scope_begin(&runs);
     int repeated = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
     int other_result = execution_instance_dispatch(second, TICK, &delta, 1, 0, 0, 1000);
@@ -11691,8 +11698,12 @@ TEST_CASE(package_compiler_keeps_text_state_per_owner)
     first_value = execution_instance_state(p.instance, state);
     second_value = execution_instance_state(second, state);
     REQUIRE(first_value && second_value);
-    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "seed", 4 }));
-    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "a\0b", 3 }));
+    REQUIRE(
+        pin_text_equal(pin_text(*first_value), (pin_string){ .bytes = "seed", .length = 4 })
+    );
+    REQUIRE(
+        pin_text_equal(pin_text(*second_value), (pin_string){ .bytes = "a\0b", .length = 3 })
+    );
     REQUIRE(
         TEST_COMPILED_BACKEND == BEHAVIOR_WASM ? runs.counts.wasm_entries > 0
                                                : runs.counts.sljit_entries > 0
@@ -11870,7 +11881,9 @@ static bool retained_text(const pin_value *row, const char *name, const char *ex
 {
     pin_value value = scalar_field(row, name);
     REQUIRE(value.type == PIN_STR && arena_contains(&detached, value.text));
-    REQUIRE(pin_text_equal(pin_text(value), (pin_string){ expected, strlen(expected) }));
+    REQUIRE(
+        pin_text_equal(pin_text(value), (pin_string){ .bytes = expected, .length = strlen(expected) })
+    );
     return true;
 }
 static const char
@@ -12773,7 +12786,10 @@ static bool validated(int b, pin_value *rows, const char *message)
         compiler_fixture_call(&consumer, b, "project:scalar_llvm", "Validate", rows, 1, COMPILE_BUDGET, &input, &error)
     );
     REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
-    bool valid = pin_text_equal(pin_text(error), (pin_string){ message, strlen(message) });
+    bool valid = pin_text_equal(
+        pin_text(error),
+        (pin_string){ .bytes = message, .length = strlen(message) }
+    );
     if (!valid) {
         fprintf(
             stderr,
@@ -13535,7 +13551,7 @@ static bool native_rejects(int b, const native_module *m, const char *message)
     REQUIRE(native_emit(b, m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
     pin_string text = pin_text(value->values[1]);
-    REQUIRE(pin_text_equal(text, (pin_string){ message, strlen(message) }));
+    REQUIRE(pin_text_equal(text, (pin_string){ .bytes = message, .length = strlen(message) }));
     return true;
 }
 /* main() returns Pick(7, true, 9), and Pick :: (int, bool, int) -> int
@@ -13659,7 +13675,8 @@ static bool native_libraries_export_words(int b)
         pin_string message = pin_text(value->values[1]);
         REQUIRE(pin_text_equal(
             message,
-            (pin_string){ rejected[i].message, strlen(rejected[i].message) }
+            (pin_string){ .bytes = rejected[i].message,
+                          .length = strlen(rejected[i].message) }
         ));
     }
     return true;
@@ -13961,7 +13978,9 @@ static bool native_strings_emit(int b)
     REQUIRE(
         compiler_fixture_call(&consumer, b, "project:native_abi", "TextType", NULL, 0, COMPILE_BUDGET, &input, &type)
     );
-    REQUIRE(pin_text_equal(pin_text(type), (pin_string){ "{ ptr, i32, ptr }", 17 }));
+    REQUIRE(
+        pin_text_equal(pin_text(type), (pin_string){ .bytes = "{ ptr, i32, ptr }", .length = 17 })
+    );
     native_module m = text_module(TEXT_CODE);
     pin_string ir;
     REQUIRE(native_text(b, &m, &ir));
@@ -14335,7 +14354,10 @@ enum
 static bool deep_case(pin_string name)
 {
     for (int i = 0; i < DEEP_CASE_COUNT; i++) {
-        if (pin_text_equal(name, (pin_string){ DEEP_CASES[i], strlen(DEEP_CASES[i]) })) {
+        if (pin_text_equal(
+                name,
+                (pin_string){ .bytes = DEEP_CASES[i], .length = strlen(DEEP_CASES[i]) }
+            )) {
             return true;
         }
     }
@@ -16719,9 +16741,16 @@ static bool module_gives(const char *directory, int b, const char *name, const c
     }
     REQUIRE(ir);
     scalar_call calls[MAX_CASE_CALLS];
-    REQUIRE(
-        module_agrees(directory, b, name, (pin_string){ source, strlen(source) }, &rows, ir, entry, calls)
-    );
+    REQUIRE(module_agrees(
+        directory,
+        b,
+        name,
+        (pin_string){ .bytes = source, .length = strlen(source) },
+        &rows,
+        ir,
+        entry,
+        calls
+    ));
     if (calls[0].values[0] != entry) {
         fprintf(
             stderr,
@@ -17187,7 +17216,7 @@ static bool width_module_agrees(
         directory,
         b,
         name,
-        (pin_string){ source, strlen(source) },
+        (pin_string){ .bytes = source, .length = strlen(source) },
         &rows,
         ir,
         calls,
@@ -18341,7 +18370,9 @@ static bool vms_fail(const char *source, const char *function, int64_t argument,
 {
     unsigned char *closure;
     size_t length;
-    REQUIRE(vm_closure(0, (pin_string){ source, strlen(source) }, &closure, &length));
+    REQUIRE(
+        vm_closure(0, (pin_string){ .bytes = source, .length = strlen(source) }, &closure, &length)
+    );
     char id[128], arguments[32];
     snprintf(id, sizeof id, "project:scalar:1:%s:callable", function);
     int n = snprintf(arguments, sizeof arguments, "[%" PRId64 "]", argument);

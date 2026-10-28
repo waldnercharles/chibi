@@ -635,8 +635,8 @@ TEST_CASE(text_bytes_ownership_and_c_boundary)
     pin_value read;
     REQUIRE(!pin_read_field(&other, &field, &native, &read));
     native_bytes[0] = 'x';
-    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ "native", 6 }));
-    const pin_string slice = { "abc", 2 };
+    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ .bytes = "native", .length = 6 }));
+    const pin_string slice = { .bytes = "abc", .length = 2 };
     REQUIRE(
         !pin_text_cstring(&other, (pin_value){ .type = PIN_STR, .text = &slice }, &converted, &offset)
     );
@@ -674,7 +674,8 @@ TEST_CASE(text_utf8_validation)
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         REQUIRE(
-            pin_text_valid_utf8((pin_string){ cases[i].bytes, cases[i].length }) ==
+            pin_text_valid_utf8((pin_string){ .bytes = cases[i].bytes,
+                                              .length = cases[i].length }) ==
             cases[i].valid
         );
     }

@@ -651,8 +651,33 @@ static const char driver_ci_build_run[] =
     "                print('jobs=' + arguments[arguments.index('--jobs') + "
     "1])\n"
     "    sys.exit(0)\n";
-/* Inject only the expensive workload; exercise the experiment's real CLI
- * handlers and policy supervisor over the existing native worker. */
+/* Trigger timeout cleanup after the native descendant publishes its complete
+ * PID marker. The fixture clock controls this controller's deadline; production
+ * wait/cleanup code and the existing outer startup guards remain active. */
+static const char driver_experiment_clock
+    [] = "def fixture_experiment_cli(experiment, root, mode):\n"
+         "    if mode != 'timeout':\n"
+         "        return experiment.cli()\n"
+         "    clock = policy.time\n"
+         "    epoch = clock.monotonic()\n"
+         "    class ReadyTimeoutClock:\n"
+         "        def monotonic(self):\n"
+         "            try:\n"
+         "                record = Path(root, 'started').read_text()\n"
+         "                if record.endswith('\\n') and int(record) > 0:\n"
+         "                    return epoch + .3\n"
+         "            except (OSError, ValueError):\n"
+         "                pass\n"
+         "            return epoch\n"
+         "        def __getattr__(self, name):\n"
+         "            return getattr(clock, name)\n"
+         "    policy.time = ReadyTimeoutClock()\n"
+         "    try:\n"
+         "        return experiment.cli()\n"
+         "    finally:\n"
+         "        policy.time = clock\n";
+/* Inject the expensive workload; exercise the experiment's real CLI handlers
+ * and policy supervisor over the existing native worker. */
 static const char driver_experiment[] =
     "if sys.argv[2].startswith('experiment-'):\n"
     "    import debug_optimization_experiment as experiment\n"
@@ -722,7 +747,7 @@ static const char driver_experiment[] =
     "'error-failure',\n"
     "                    [worker, 'exit', '7'], dict(os.environ))\n"
     "        experiment.main = workload\n"
-    "        sys.exit(experiment.cli())\n"
+    "        sys.exit(fixture_experiment_cli(experiment, root, sys.argv[5]))\n"
     "    child = subprocess.Popen([sys.executable, __file__, "
     "sys.argv[1],\n"
     "        'experiment-inner', worker, root, sys.argv[5]])\n"
@@ -3480,6 +3505,7 @@ static void set_up()
     assert(fputs(driver_ci_build, script) >= 0);
     assert(fputs(driver_ci_build_workflow, script) >= 0);
     assert(fputs(driver_ci_build_run, script) >= 0);
+    assert(fputs(driver_experiment_clock, script) >= 0);
     assert(fputs(driver_experiment, script) >= 0);
     for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
         assert(fputs(driver_parallel[i], script) >= 0);

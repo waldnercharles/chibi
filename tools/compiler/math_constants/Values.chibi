@@ -1,0 +1,403 @@
+package math_constants
+
+// Constant-folding helpers, not a runtime representation of built-in math.
+// Matrices contain f32 columns in order; quaternions contain x, y, z, w.
+// Results own their component arrays and never mutate an input array.
+// Rejected ordinary arithmetic means the compiler must decline to fold it,
+// not diagnose a source error or change IEEE runtime arithmetic. Inverse and
+// normalization separately report their recoverable domain failures.
+pub Result :: union {
+    Value(components: number[]) | Rejected(message: string)
+}
+
+Finite :: (value: number) -> bool {
+    return value <= 3.4028234663852886e38 && value >= -3.4028234663852886e38;
+}
+FiniteValues :: (values: number[]) -> bool {
+    for (value in values) {
+        if (!Finite(value)) {
+            return false;
+        }
+    }
+    return true;
+}
+Magnitude :: (value: number) -> number {
+    if (value < 0.0) {
+        return -value;
+    }
+    return value;
+}
+MatrixShape :: (width: int, values: number[]) -> bool {
+    return width >= 2 && width <= 4 && length(values) == width * width;
+}
+Finished :: (values: number[]) -> Result {
+    if (!FiniteValues(values)) {
+        return Result.Rejected("math constant exceeds the finite f32 range");
+    }
+    return Result.Value(values);
+}
+Zeros :: (count: int) -> number[] {
+    result: number[] = [];
+    index: int = 0;
+    while (index < count) {
+        result.append(0.0);
+        index += 1;
+    }
+    return result;
+}
+
+SwizzleShape :: (value: number[], components: int[]) -> string {
+    if (length(value) < 2 || length(value) > 4) {
+        return "a swizzle receiver needs two, three or four components";
+    }
+    if (length(components) < 1 || length(components) > 4) {
+        return "a swizzle needs one to four components";
+    }
+    for (component in components) {
+        if (component < 0 || component >= length(value)) {
+            return "swizzle component is outside the receiver width";
+        }
+    }
+    return "";
+}
+
+pub ReadSwizzle :: (value: number[], components: int[]) -> Result {
+    failure := SwizzleShape(value, components);
+    if (failure != "") {
+        return Result.Rejected(failure);
+    }
+    result: number[] = [];
+    for (component in components) {
+        result.append(value[component]);
+    }
+    // Projection copies bits, including nonfinite values. It does no math.
+    return Result.Value(result);
+}
+
+pub WriteSwizzle :: (value: number[], components: int[], replacement: number[]) -> Result {
+    failure := SwizzleShape(value, components);
+    if (failure != "") {
+        return Result.Rejected(failure);
+    }
+    if (length(replacement) != length(components)) {
+        return Result.Rejected("swizzle replacement width must match the destinations");
+    }
+    index: int = 0;
+    while (index < length(components)) {
+        earlier: int = 0;
+        while (earlier < index) {
+            if (components[earlier] == components[index]) {
+                return Result.Rejected("a writable swizzle cannot repeat a destination");
+            }
+            earlier += 1;
+        }
+        index += 1;
+    }
+    snapshot: number[] = [];
+    for (component in replacement) {
+        snapshot.append(component);
+    }
+    result: number[] = [];
+    for (component in value) {
+        result.append(component);
+    }
+    index = 0;
+    while (index < length(components)) {
+        result[components[index]] = snapshot[index];
+        index += 1;
+    }
+    return Result.Value(result);
+}
+
+pub MatrixMultiply :: (width: int, left: number[], right: number[]) -> Result {
+    if (!MatrixShape(width, left) || !MatrixShape(width, right)) {
+        return Result.Rejected("matrix multiplication needs two square matrices of the same width");
+    }
+    if (!FiniteValues(left) || !FiniteValues(right)) {
+        return Result.Rejected("matrix constant contains a nonfinite component");
+    }
+    result: number[] = [];
+    column: int = 0;
+    while (column < width) {
+        row: int = 0;
+        while (row < width) {
+            value: number = 0.0;
+            inner: int = 0;
+            while (inner < width) {
+                value += left[inner * width + row] * right[column * width + inner];
+                inner += 1;
+            }
+            result.append(value);
+            row += 1;
+        }
+        column += 1;
+    }
+    return Finished(result);
+}
+
+pub MatrixVector :: (width: int, matrix: number[], vector: number[]) -> Result {
+    if (!MatrixShape(width, matrix) || length(vector) != width) {
+        return Result.Rejected("matrix multiplication needs a column vector of the matrix width");
+    }
+    if (!FiniteValues(matrix) || !FiniteValues(vector)) {
+        return Result.Rejected("math constant contains a nonfinite component");
+    }
+    result: number[] = [];
+    row: int = 0;
+    while (row < width) {
+        value: number = 0.0;
+        column: int = 0;
+        while (column < width) {
+            value += matrix[column * width + row] * vector[column];
+            column += 1;
+        }
+        result.append(value);
+        row += 1;
+    }
+    return Finished(result);
+}
+
+pub Transpose :: (width: int, matrix: number[]) -> Result {
+    if (!MatrixShape(width, matrix)) {
+        return Result.Rejected("transpose needs a square mat2, mat3 or mat4 constant");
+    }
+    result: number[] = [];
+    column: int = 0;
+    while (column < width) {
+        row: int = 0;
+        while (row < width) {
+            result.append(matrix[row * width + column]);
+            row += 1;
+        }
+        column += 1;
+    }
+    return Finished(result);
+}
+
+// Expansion by the first row has at most 4! products. It needs no division,
+// so singular matrices return determinant zero rather than a failed inverse.
+DeterminantValue :: (width: int, matrix: number[]) -> number {
+    if (width == 1) {
+        return matrix[0];
+    }
+    value: number = 0.0;
+    column: int = 0;
+    sign: number = 1.0;
+    while (column < width) {
+        minor: number[] = [];
+        minor_column: int = 0;
+        while (minor_column < width) {
+            if (minor_column != column) {
+                row: int = 1;
+                while (row < width) {
+                    minor.append(matrix[minor_column * width + row]);
+                    row += 1;
+                }
+            }
+            minor_column += 1;
+        }
+        value += sign * matrix[column * width] * DeterminantValue(width - 1, minor);
+        sign = -sign;
+        column += 1;
+    }
+    return value;
+}
+pub Determinant :: (width: int, matrix: number[]) -> Result {
+    if (!MatrixShape(width, matrix)) {
+        return Result.Rejected("determinant needs a square mat2, mat3 or mat4 constant");
+    }
+    if (!FiniteValues(matrix)) {
+        return Result.Rejected("matrix constant contains a nonfinite component");
+    }
+    result: number[] = [DeterminantValue(width, matrix)];
+    return Finished(result);
+}
+
+// Partial-pivot Gauss-Jordan elimination. A zero pivot means singular at
+// f32 precision; no arbitrary epsilon classifies small matrices as singular.
+// Finite output does not establish that an ill-conditioned inverse is useful.
+pub Inverse :: (width: int, matrix: number[]) -> Result {
+    if (!MatrixShape(width, matrix)) {
+        return Result.Rejected("inverse needs a square mat2, mat3 or mat4 constant");
+    }
+    if (!FiniteValues(matrix)) {
+        return Result.Rejected("matrix constant contains a nonfinite component");
+    }
+    work: number[] = [];
+    for (value in matrix) {
+        work.append(value);
+    }
+    result := Zeros(width * width);
+    column: int = 0;
+    while (column < width) {
+        result[column * width + column] = 1.0;
+        column += 1;
+    }
+    pivot: int = 0;
+    while (pivot < width) {
+        best := pivot;
+        row := pivot + 1;
+        while (row < width) {
+            if (Magnitude(work[pivot * width + row]) > Magnitude(work[pivot * width + best])) {
+                best = row;
+            }
+            row += 1;
+        }
+        if (work[pivot * width + best] == 0.0) {
+            return Result.Rejected("cannot invert a singular matrix");
+        }
+        column = 0;
+        while (column < width) {
+            temporary := work[column * width + pivot];
+            work[column * width + pivot] = work[column * width + best];
+            work[column * width + best] = temporary;
+            temporary = result[column * width + pivot];
+            result[column * width + pivot] = result[column * width + best];
+            result[column * width + best] = temporary;
+            column += 1;
+        }
+        divisor := work[pivot * width + pivot];
+        column = 0;
+        while (column < width) {
+            work[column * width + pivot] /= divisor;
+            result[column * width + pivot] /= divisor;
+            column += 1;
+        }
+        row = 0;
+        while (row < width) {
+            if (row != pivot) {
+                factor := work[pivot * width + row];
+                column = 0;
+                while (column < width) {
+                    work[column * width + row] -= factor * work[column * width + pivot];
+                    result[column * width + row] -= factor * result[column * width + pivot];
+                    column += 1;
+                }
+            }
+            row += 1;
+        }
+        if (!FiniteValues(work) || !FiniteValues(result)) {
+            return Result.Rejected("matrix inverse exceeds the finite f32 range");
+        }
+        pivot += 1;
+    }
+    return Result.Value(result);
+}
+
+pub QuaternionMultiply :: (left: number[], right: number[]) -> Result {
+    if (length(left) != 4 || length(right) != 4) {
+        return Result.Rejected("quaternion multiplication needs two xyzw quaternion constants");
+    }
+    if (!FiniteValues(left) || !FiniteValues(right)) {
+        return Result.Rejected("quaternion constant contains a nonfinite component");
+    }
+    result: number[] = [
+        left[3] * right[0] + left[0] * right[3] + left[1] * right[2] - left[2] * right[1],
+        left[3] * right[1] - left[0] * right[2] + left[1] * right[3] + left[2] * right[0],
+        left[3] * right[2] + left[0] * right[1] - left[1] * right[0] + left[2] * right[3],
+        left[3] * right[3] - left[0] * right[0] - left[1] * right[1] - left[2] * right[2]
+    ];
+    return Finished(result);
+}
+
+pub QuaternionConjugate :: (quaternion: number[]) -> Result {
+    if (length(quaternion) != 4) {
+        return Result.Rejected("quaternion conjugate needs an xyzw quaternion constant");
+    }
+    result: number[] = [-quaternion[0], -quaternion[1], -quaternion[2], quaternion[3]];
+    return Finished(result);
+}
+
+NormalizeValues :: (values: number[], zero_message: string, nonfinite_message: string) -> Result {
+    if (!FiniteValues(values)) {
+        return Result.Rejected(nonfinite_message);
+    }
+    scale: number = 0.0;
+    for (value in values) {
+        if (Magnitude(value) > scale) {
+            scale = Magnitude(value);
+        }
+    }
+    if (scale == 0.0) {
+        return Result.Rejected(zero_message);
+    }
+    scaled: number[] = [];
+    squared: number = 0.0;
+    for (value in values) {
+        component := value / scale;
+        scaled.append(component);
+        squared += component * component;
+    }
+    norm: number = sqrt(squared);
+    result: number[] = [];
+    for (value in scaled) {
+        result.append(value / norm);
+    }
+    return Finished(result);
+}
+
+pub VectorNormalize :: (value: number[]) -> Result {
+    if (length(value) < 2 || length(value) > 4) {
+        return Result.Rejected("vector normalization needs two, three or four components");
+    }
+    return NormalizeValues(value, "cannot normalize a zero vector", "cannot normalize a nonfinite vector");
+}
+
+// The fallback is an explicit result, not another direction to normalize.
+pub VectorNormalizeOr :: (value: number[], fallback: number[]) -> Result {
+    if (length(value) < 2 || length(value) > 4) {
+        return Result.Rejected("vector normalization needs two, three or four components");
+    }
+    if (length(fallback) != length(value) || !FiniteValues(fallback)) {
+        return Result.Rejected("normalization fallback must be finite and match the vector width");
+    }
+    switch VectorNormalize(value) {
+        case .Value(normalized):
+            return Result.Value(normalized);
+        case .Rejected(message):
+            result: number[] = [];
+            for (component in fallback) {
+                result.append(component);
+            }
+            return Result.Value(result);
+    }
+}
+
+pub VectorNormalizeOrZero :: (value: number[]) -> Result {
+    if (length(value) < 2 || length(value) > 4) {
+        return Result.Rejected("vector normalization needs two, three or four components");
+    }
+    return VectorNormalizeOr(value, Zeros(length(value)));
+}
+
+pub QuaternionNormalize :: (quaternion: number[]) -> Result {
+    if (length(quaternion) != 4) {
+        return Result.Rejected("quaternion normalization needs an xyzw quaternion constant");
+    }
+    return NormalizeValues(quaternion, "cannot normalize a zero quaternion", "cannot normalize a nonfinite quaternion");
+}
+
+// Rotation uses the orientation of a finite nonzero quaternion. Normalize
+// explicitly here so large/small quaternion magnitudes cannot overflow the
+// inverse, and q and -q always describe the same orientation.
+pub QuaternionRotate :: (quaternion: number[], vector: number[]) -> Result {
+    if (length(vector) != 3 || !FiniteValues(vector)) {
+        return Result.Rejected("quaternion rotation needs a finite vec3 constant");
+    }
+    switch QuaternionNormalize(quaternion) {
+        case .Rejected(message):
+            return Result.Rejected(message);
+        case .Value(unit):
+            x := unit[0];
+            y := unit[1];
+            z := unit[2];
+            w := unit[3];
+            tx := 2.0 * (y * vector[2] - z * vector[1]);
+            ty := 2.0 * (z * vector[0] - x * vector[2]);
+            tz := 2.0 * (x * vector[1] - y * vector[0]);
+            result: number[] = [vector[0] + w * tx + y * tz - z * ty,
+                                vector[1] + w * ty + z * tx - x * tz,
+                                vector[2] + w * tz + x * ty - y * tx];
+            return Finished(result);
+    }
+}

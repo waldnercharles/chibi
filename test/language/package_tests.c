@@ -2,6 +2,7 @@
 
 #include "authoring/native_bindings.h"
 #include "backend.h"
+#include "compiler_fixture.h"
 #include "package_core_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
@@ -14,11 +15,16 @@
 #endif
 #include "runtime/text_definition.h"
 #include "support/array.h"
+#include "support/file_io.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/value_format.h"
 
 #include <assert.h>
+#include <cute_math.h>
+#include <cute_math3d.h>
 #include <stdatomic.h>
+#include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -612,6 +618,68 @@ TEST_CASE(package_tests_overlap_with_private_storage_and_exclusive_barriers)
 }
 #endif
 
+/* Keep assertions in the authored packages. This adapter only supplies the
+ * real source files, core collection and native sqrt boundary to both VMs.
+ * Source paths follow this file so a relocated worktree is tested as-is. */
+static_assert(sizeof(float) == 4);
+static_assert(sizeof(CF_V2) == 8 && alignof(CF_V2) == alignof(float));
+static_assert(sizeof(CF_V3) == 12 && alignof(CF_V3) == alignof(float));
+static_assert(sizeof(CF_V4) == 16 && alignof(CF_V4) == alignof(float));
+static_assert(sizeof(CF_Quat) == 16 && alignof(CF_Quat) == alignof(float));
+static_assert(
+    offsetof(CF_Quat, x) == 0 && offsetof(CF_Quat, y) == 4 &&
+    offsetof(CF_Quat, z) == 8 && offsetof(CF_Quat, w) == 12
+);
+TEST_CASE(package_tests_builtin_math_contracts)
+{
+    static const char *const parts[] = {
+        "math_types/Types.chibi",     "math_types/Functions.chibi",
+        "math_types/Tests.chibi",     "math_constants/Values.chibi",
+        "math_constants/Tests.chibi", "math_layout/Layout.chibi",
+        "math_layout/Tests.chibi",
+    };
+    enum
+    {
+        PARTS = sizeof parts / sizeof *parts
+    };
+    char *texts[PARTS] = { 0 };
+    char paths[PARTS][128];
+    source_package_input files[PARTS + 1];
+    static const char suffix[] = "test/language/package_tests.c";
+    const char *source = __FILE__;
+    REQUIRE(strlen(source) >= sizeof suffix - 1);
+    size_t prefix = strlen(source) - (sizeof suffix - 1);
+    REQUIRE(!strcmp(source + prefix, suffix));
+    for (int i = 0; i < PARTS; i++) {
+        char path[4096];
+        int length = snprintf(path, sizeof path, "%.*stools/compiler/%s", (int)prefix, source, parts[i]);
+        REQUIRE(length > 0 && length < (int)sizeof path);
+        texts[i] = file_read_text(path);
+        if (!texts[i]) {
+            for (int n = 0; n < i; n++) {
+                free(texts[n]);
+            }
+            REQUIRE(texts[i]);
+        }
+        snprintf(paths[i], sizeof paths[i], "/compiler/%s", parts[i]);
+        files[i] = (source_package_input){ paths[i], texts[i], strlen(texts[i]) };
+    }
+    files[PARTS] = (source_package_input){ "/sdk/core/strings/Strings.chibi",
+                                           (const char *)CORE_STRINGS_SOURCE,
+                                           sizeof CORE_STRINGS_SOURCE - 1 };
+    compiler_fixture fixture = { 0 };
+    const native_definition_pack math[] = { CORE_DEFINITION_PACK,
+                                            NATIVE_MATH_DEFINITION_PACK };
+    bool valid = compiler_fixture_prepare_packs(&fixture, files, PARTS + 1, math, 2);
+    bool passed = valid && compiler_fixture_tests(&fixture);
+    compiler_fixture_free(&fixture);
+    for (int i = 0; i < PARTS; i++) {
+        free(texts[i]);
+    }
+    REQUIRE(valid && passed);
+    return true;
+}
+
 void test_language_package_tests()
 {
     pu_setup(NULL, cleanup);
@@ -620,6 +688,7 @@ void test_language_package_tests()
     RUN_TEST_CASE(package_tests_keep_results_and_failures_in_discovery_order);
     RUN_TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports);
     RUN_TEST_CASE(package_tests_allocate_managed_pointers);
+    RUN_TEST_CASE(package_tests_builtin_math_contracts);
 #ifdef CHIBI_PACKAGE_TEST_POOL
     RUN_TEST_CASE(package_tests_overlap_with_private_storage_and_exclusive_barriers);
 #endif

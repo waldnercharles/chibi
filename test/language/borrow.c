@@ -830,7 +830,8 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
     REQUIRE(guarded() == 1);
     for (int mode = 0; mode < 4; mode++) {
         for (int variant = 0; variant < 8; variant++) {
-            const pin_string retained_text = { "retained", sizeof("retained") - 1 };
+            const pin_string retained_text = { .bytes = "retained",
+                                               .length = sizeof("retained") - 1 };
             pin_value item = { .type = PIN_F64, .d = 7 };
             pin_array array = { .element_type = PIN_F64,
                                 .count = 1,
@@ -1644,7 +1645,8 @@ static pin_value strings(pin_array *array, pin_value *items, const char *const *
 {
     pin_string *descriptors = arena_alloc(&string_inputs, (size_t)count * sizeof *descriptors);
     for (int i = 0; i < count; i++) {
-        descriptors[i] = (pin_string){ texts[i], (uint32_t)strlen(texts[i]) };
+        descriptors[i] = (pin_string){ .bytes = texts[i],
+                                       .length = (uint32_t)strlen(texts[i]) };
         items[i] = (pin_value){ .type = PIN_STR, .text = &descriptors[i] };
     }
     *array = (pin_array){ .element_type = PIN_STR,

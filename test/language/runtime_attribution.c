@@ -272,8 +272,10 @@ TEST_CASE(runtime_attribution_copy_sites)
         /* S2: null, empty, heap text, ordinary arena text, owning empty. */
         const char *texts[] = { NULL, "", "abc" };
         for (int i = 0; i < 3; i++) {
-            const pin_string borrowed = { texts[i] ? texts[i] : "",
-                                          texts[i] ? (uint32_t)strlen(texts[i]) : 0 };
+            const pin_string borrowed = { .bytes = texts[i] ? texts[i] : "",
+                                          .length = texts[i]
+                                                      ? (uint32_t)strlen(texts[i])
+                                                      : 0 };
             pin_value source = { .type = PIN_STR, .text = texts[i] ? &borrowed : NULL };
             copy_begin(enabled);
             REQUIRE(pin_value_copy(&fixture.heap[0], &source) == 0);

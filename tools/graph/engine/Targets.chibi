@@ -736,7 +736,7 @@ Files :: (target: string) -> string[] {
             "test/language/packages.c", "test/language/package_syntax.c",
             "test/language/package_execution.c", "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",
-            "test/language/package_core.c", "test/language/package_tests.c",
+            "test/language/package_core.c", "test/language/package_tests.c", "test/language/argument_effects_chibi.c",
             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",

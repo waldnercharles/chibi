@@ -29,7 +29,7 @@ static char *generator_prefix;
 /* CompilerSources.txt lists the bootstrap compiler; the facade adds its own. */
 enum
 {
-    COMPILER_SOURCES = 25,
+    COMPILER_SOURCES = 27,
     SOURCES = COMPILER_SOURCES + 12
 };
 static char *source_texts[SOURCES];

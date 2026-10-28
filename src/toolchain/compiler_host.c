@@ -632,7 +632,9 @@ static bool invoke(
                                            .argument_count = argument_count,
                                            .results = results,
                                            .budget = budget };
-    behavior_function_bind_storage(&context, &storage);
+    /* Values live in the heap, so collections also reclaim what long-running
+     * frames stop using. */
+    behavior_function_bind_storage(&context, &managed.storage);
     if (!behavior_function_bind(function, &context, NULL, 0)) {
         failure = "compiler runtime binding failed";
         goto done;

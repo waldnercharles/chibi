@@ -12,8 +12,6 @@ typedef struct arena_cleanup arena_cleanup;
 typedef struct arena_resource arena_resource;
 typedef void (*arena_marker)(void *user, const void *address);
 typedef void (*arena_tracer)(const void *value, const void *shape, arena_marker mark, void *user);
-/* Recent copies an arena remembers; values often alternate a few layouts. */
-#define ARENA_COPY_CACHE 8
 typedef struct arena_copy
 {
     const void *source;
@@ -31,8 +29,8 @@ typedef struct arena
     size_t resource_capacity, resource_count, retained_bytes;
     size_t cleanup_count;
     size_t external; /* Retained external payloads, including ownership overhead. */
-    arena_copy copies[ARENA_COPY_CACHE];
-    int next_copy; /* The entry the next remembered copy replaces. */
+    arena_copy *copies; /* By source, open addressing. */
+    size_t copy_capacity, copy_count;
     bool collectable;
 } arena;
 
@@ -98,9 +96,10 @@ void arena_collect_mark(void *collection, const void *address);
 uint64_t arena_collect_marks();
 /* Traces what the marks reach and sweeps the rest. */
 void arena_collect_end(arena_collection *);
-/* The copy of source that a remembers, or NULL. An arena remembers its last
- * ARENA_COPY_CACHE copies until a reset, free or collection. Source's address may since hold
- * another object, so the caller checks that the copy still matches it. */
+/* The copy of source that a remembers, or NULL. An arena remembers each
+ * source's latest copy until a reset, free or collection. Source's address
+ * may since hold another object, so the caller checks that the copy still
+ * matches it. */
 const void *arena_copy_find(const arena *a, const void *source);
 void arena_copy_remember(arena *a, const void *source, const void *copy);
 void arena_usage(const arena *a, size_t *bytes, size_t *capacity);

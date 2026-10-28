@@ -1491,7 +1491,7 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
                              "split-start",   "split-done",     "join-done",
                              "evidence-done", "singleton-done", "invalid-done",
                              "counters-done", "corpus-start",   "corpus-done",
-                             "pwsh-exit" };
+                             "partial-start", "partial-done",   "pwsh-exit" };
     const char *phase = output;
     for (int i = 0; i < (int)(sizeof phases / sizeof *phases); i++) {
         char expected[96];
@@ -1503,6 +1503,22 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
     REQUIRE(strstr(output, "scalar-transport runtime pwsh="));
     REQUIRE(strstr(output, " dotnet="));
     REQUIRE(strstr(output, " cpus="));
+    REQUIRE(
+        strstr(output, "digest-empty=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-binary=07357c2e935267e3b90071a4d9edef497ab0d9e0a8a87a78258a3a173574b10d\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-overwrite=91d6b1c484360131d3d95d4df0d4ad95377f04cdf2de124f6ff9cb7d8bb0d5e7\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-three-byte=4234f1064f32788dc9487507f9eeecd0cdf7df6bd010fd1dad8026226e222813\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-changed=d67e2e944994496c8d8ec76eed0cf9f09679448d584b532bebf941852a37f5ed\n")
+    );
+    REQUIRE(strstr(output, "digest-missing rejected\ndigest-directory rejected\n"));
     REQUIRE(strstr(output, "singleton=1\nsingleton-identical=True\n"));
     REQUIRE(strstr(output, "full=64\nfull-identical=True\n"));
     REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-65 rejected\n"));
@@ -1519,7 +1535,7 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
         strstr(output, "published=0-bytecode-bytecode-raw,0-bytecode-sljit-raw,0-sljit-bytecode-raw,0-sljit-sljit-raw,1-bytecode-bytecode-raw,1-bytecode-sljit-raw\ncrossings=6\nnext-batch=False\n")
     );
     REQUIRE(
-        strstr(output, "partial-crossings=260\npartial-raw=260\npartial-last=64-sljit-sljit-raw\npartial-size=1\n")
+        strstr(output, "partial-crossings=260\npartial-raw=260\npartial-last=64-sljit-sljit-raw\npartial-size=1\npartial-order=True\n")
     );
     REQUIRE(!strstr(output, "bad counters accepted"));
     REQUIRE(strstr(output, "bytecode counters accepted\nbytecode counters rejected\n"));

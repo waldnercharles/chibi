@@ -529,7 +529,7 @@ static const char *sequence_element(arena *storage, const pin_value *args, int c
     }
     const pin_array *array = args[0].ptr;
     if (!array || !pin_array_valid(array) || index < 0 || index >= array->count) {
-        return "Array index out of range";
+        return "array index out of range";
     }
     pin_value item = pin_array_get(array, index);
     if (!same_storage(*out, item)) {

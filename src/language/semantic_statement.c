@@ -1169,8 +1169,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                          script_analyzer_expr_effects(a, result.second) |
                          a->out->statements[result.body].effects;
         script_type source_type = script_analyzer_expr_type(a, result.expression);
-        if (source_type.container == PIN_CONTAINER_ARRAY ||
-            source_type.container == PIN_CONTAINER_VIEW) {
+        if (source_type.container == PIN_CONTAINER_VIEW) {
             result.effects |= SCRIPT_EFFECT_READ;
         }
         a->scope = old_scope;

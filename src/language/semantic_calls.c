@@ -1320,6 +1320,8 @@ static int sequence_expression(
     result.type = pointer_view ? pointee : script_analyzer_expr_type(a, result.left);
     bool array = result.type.container == PIN_CONTAINER_ARRAY ||
                  result.type.container == PIN_CONTAINER_VIEW;
+    /* A view reads its pointer's array; an owned array is the caller's value. */
+    bool through_view = result.type.container == PIN_CONTAINER_VIEW;
     bool text = result.type.container == PIN_CONTAINER_SINGLE &&
                 result.type.storage == PIN_STR;
     if (pointer_view && (receiver_type.flags & SCRIPT_TYPE_OPTIONAL)) {
@@ -1342,7 +1344,7 @@ static int sequence_expression(
                                   : PIN_CONTAINER_ARRAY;
     }
     result.effects = script_analyzer_expr_effects(a, result.left);
-    if (array) {
+    if (through_view) {
         result.effects |= SCRIPT_EFFECT_READ;
     }
     if (operation == SCRIPT_SEQUENCE_LENGTH) {

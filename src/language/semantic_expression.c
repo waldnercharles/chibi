@@ -1622,8 +1622,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         result.effects = script_analyzer_expr_effects(a, result.left) |
                          script_analyzer_expr_effects(a, result.right);
-        if (collection_type.container == PIN_CONTAINER_ARRAY ||
-            collection_type.container == PIN_CONTAINER_VIEW) {
+        /* An element of a view is read through its pointer. */
+        if (collection_type.container == PIN_CONTAINER_VIEW) {
             result.effects |= SCRIPT_EFFECT_READ;
         }
         result.writable = collection_type.container == PIN_CONTAINER_VIEW ||

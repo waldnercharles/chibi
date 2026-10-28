@@ -425,6 +425,43 @@ TEST_CASE(modules_replacement_migrates_kept_records_and_numbers)
     clear();
     return true;
 }
+/* One owner on bytecode. A kept i64 or u64 that becomes number converts as an
+ * assignment does, through f64: 2^54 + 2^30 + 1 rounds twice, unlike a direct
+ * cast to f32. */
+TEST_CASE(modules_replacement_converts_integers_as_assignments_do)
+{
+    static const input inputs
+        [] = { { "behaviors/Caller.chibi",
+                 "Caller :: behavior { n: i64 = 0; m: number = 0; u: u64 = 0; "
+                 "v: number = 0; on Tick :: (cells: number) { "
+                 "n = 18014399583223809; m = n; u = 18014399583223809; "
+                 "v = u; } }" } },
+  numbers[] = { { "behaviors/Caller.chibi",
+                  "Caller :: behavior { n: number = 0; m: number = 0; "
+                  "u: number = 0; v: number = 0; "
+                  "on Tick :: (cells: number) { m = cells; } }" } };
+    prepare(0, inputs, 1, false, BEHAVIOR_BYTECODE);
+    prepare(1, numbers, 1, false, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(0) && valid(1));
+    uint64_t n = caller_state("n"), m = caller_state("m"),
+             u = caller_state("u"), v = caller_state("v");
+    execution_instance *instance = run_caller(0);
+    REQUIRE(n && m && u && v && instance);
+    REQUIRE(execution_program_replace(program, source(1, "Caller")->module, false) == FLOW_OK);
+    instance = execution_program_instance(program, 1);
+    const pin_value *kept = execution_instance_state(instance, n),
+                    *assigned = execution_instance_state(instance, m),
+                    *kept_unsigned = execution_instance_state(instance, u),
+                    *assigned_unsigned = execution_instance_state(instance, v);
+    float twice = (float)(double)18014399583223809LL;
+    REQUIRE(twice != (float)18014399583223809LL);
+    REQUIRE(kept->type == PIN_F32 && assigned->type == PIN_F32);
+    REQUIRE(kept->f == assigned->f && kept->f == twice);
+    REQUIRE(kept_unsigned->type == PIN_F32 && assigned_unsigned->type == PIN_F32);
+    REQUIRE(kept_unsigned->f == assigned_unsigned->f && kept_unsigned->f == twice);
+    clear();
+    return true;
+}
 /* One owner on bytecode. Items of a kept array migrate when every field they
  * keep converts. An item cannot take a new field's default, so adding one to
  * the record resets the array to its initializer. */
@@ -1043,6 +1080,7 @@ void test_language_modules()
     RUN_TEST_CASE(modules_library_state_is_not_an_exported_value);
     RUN_TEST_CASE(modules_replacement_resets_imported_pointee_layouts);
     RUN_TEST_CASE(modules_replacement_migrates_kept_records_and_numbers);
+    RUN_TEST_CASE(modules_replacement_converts_integers_as_assignments_do);
     RUN_TEST_CASE(modules_replacement_migrates_kept_array_items);
     RUN_TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies);
     RUN_TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope);

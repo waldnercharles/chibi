@@ -18,15 +18,13 @@ static bool convert(pin_value value, pin_type type, pin_value *out)
         *out = value;
         return true;
     }
-    if (type == PIN_F32 && value.type == PIN_F64) {
-        *out = (pin_value){ .type = PIN_F32, .f = (float)value.d };
-        return true;
-    }
+    /* Assignment composes an integer to f32 through f64, so it rounds twice. */
     if (type == PIN_F32) {
-        uint64_t bits = behavior_scalar_bits(value);
-        float f = behavior_scalar_signed(value.type) ? (float)(int64_t)bits
-                                                     : (float)bits;
-        *out = (pin_value){ .type = PIN_F32, .f = f };
+        pin_value wide = value;
+        if (value.type != PIN_F64) {
+            behavior_scalar_cast(value, PIN_F64, BEHAVIOR_CAST_EXACT, &wide);
+        }
+        *out = (pin_value){ .type = PIN_F32, .f = (float)wide.d };
         return true;
     }
     if (value.type == PIN_F32 && type == PIN_F64) {

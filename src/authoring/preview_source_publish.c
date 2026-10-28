@@ -1,4 +1,5 @@
 #include "authoring/preview_source_internal.h"
+#include "authoring/source_asset.h"
 #include "authoring/source_presentation.h"
 #include "runtime/engine.h"
 #include "runtime/world.h"
@@ -159,6 +160,59 @@ static bool relink_fields(preview_source_staging *stage, const bool *changed, ch
     afree(names);
     return relinked;
 }
+static bool install_relationships(
+    preview_world *world,
+    const authoring_sources *sources,
+    char *error,
+    size_t size
+)
+{
+    ecs_relationship_desc **relationships = NULL;
+    ecs_world *ecs = world->runtime->ecs;
+    bool installed = false;
+    const source_catalog_definition *definitions = authoring_sources_definitions(sources);
+    for (int i = 0; i < authoring_sources_definition_count(sources); i++) {
+        if (!definitions[i].relationship) {
+            continue;
+        }
+        ecs_relationship_desc
+            *desc = authoring_relationship_source_read(definitions[i].text, error, size);
+        if (!desc) {
+            goto done;
+        }
+        apush(relationships, desc);
+        const ecs_relationship_desc *found = ecs_world_relationship(ecs, desc->id);
+        if (ecs_world_component(ecs, desc->id) ||
+            (found && (strcmp(found->name, desc->name) || !found->key ||
+                       strcmp(found->key, desc->key) || found->traits != desc->traits ||
+                       found->on_delete_target != desc->on_delete_target))) {
+            if (error && size) {
+                snprintf(error, size, "Relationship %s schema differs from the world", desc->name);
+            }
+            goto done;
+        }
+    }
+    /* Query plans validate their required relationships during publication,
+     * before a preview has loaded any scenes. Use the prepared snapshot so
+     * unsaved declarations and mirrored worlds install the same schemas. */
+    for (int i = 0; i < acount(relationships); i++) {
+        const ecs_relationship_desc *desc = relationships[i];
+        if (!ecs_world_relationship(ecs, desc->id) &&
+            ecs_world_register_relationship(ecs, desc, NULL)) {
+            if (error && size) {
+                snprintf(error, size, "Relationship %s could not be registered", desc->name);
+            }
+            goto done;
+        }
+    }
+    installed = true;
+done:
+    for (int i = 0; i < acount(relationships); i++) {
+        authoring_relationship_source_free(relationships[i]);
+    }
+    afree(relationships);
+    return installed;
+}
 preview_source_staging *preview_sources_stage(
     preview_world *world,
     const char *restart_path,
@@ -260,6 +314,11 @@ preview_source_staging *preview_sources_stage(
         if (!source_at_identity(stage->sources, old->analysis->identity)) {
             apush(entries, ((source_publication){ .previous_name = old->analysis->name }));
         }
+    }
+    if (!install_relationships(world, stage->sources, error, size)) {
+        afree(entries);
+        stage_free(stage);
+        return NULL;
     }
     stage->runtime = source_stage(world->runtime->sources, entries, acount(entries), NULL, error, size);
     afree(entries);

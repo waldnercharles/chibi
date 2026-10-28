@@ -267,8 +267,10 @@ bool script_type_equal(script_type a, script_type b)
            a.collection == b.collection && a.nominal == b.nominal &&
            (!(a.flags & SCRIPT_TYPE_LITERAL) ||
             !(b.flags & SCRIPT_TYPE_LITERAL) || a.parameter == b.parameter) &&
-           (a.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS)) ==
-               (b.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS));
+           (a.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS |
+                       SCRIPT_TYPE_QUERY | SCRIPT_TYPE_QUERY_ROW)) ==
+               (b.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS |
+                           SCRIPT_TYPE_QUERY | SCRIPT_TYPE_QUERY_ROW));
 }
 script_type script_catalog_pointee_type(const script_catalog *catalog, script_type type)
 {

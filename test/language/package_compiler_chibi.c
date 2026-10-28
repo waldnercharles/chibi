@@ -3741,11 +3741,16 @@ static bool target(int b, pin_value *out)
     REQUIRE(put(out, "pointer_size", (int)sizeof(void *)));
     REQUIRE(put(out, "value_size", (int)sizeof(pin_value)));
     REQUIRE(put(out, "payload_offset", (int)offsetof(pin_value, d)));
+    REQUIRE(put(out, "arguments_offset", (int)offsetof(behavior_function_context, arguments)));
+    REQUIRE(
+        put(out, "delta_seconds_offset", (int)offsetof(behavior_function_context, delta_seconds))
+    );
     REQUIRE(put(out, "results_offset", (int)offsetof(behavior_function_context, results)));
     REQUIRE(put(out, "type_offset", (int)offsetof(pin_value, type)));
     REQUIRE(put(out, "container_offset", (int)offsetof(pin_value, container)));
     REQUIRE(put(out, "name_offset", (int)offsetof(pin_value, type_name)));
     REQUIRE(put(out, "record_offset", (int)offsetof(pin_value, record)));
+    REQUIRE(put(out, "schema_offset", (int)offsetof(pin_value, schema)));
     REQUIRE(put(out, "count_offset", (int)offsetof(pin_array, count)));
     REQUIRE(put(out, "items_offset", (int)offsetof(pin_array, items)));
     REQUIRE(put(out, "data_offset", (int)offsetof(pin_array, data)));
@@ -6274,6 +6279,7 @@ enum
 {
     SPOT = 101,
     SPOT_COMPONENT = 901,
+    QUERY_TARGETS = 902,
     TICK = 11,
     MOVE = 12,
     OWNER = 30,
@@ -6284,6 +6290,7 @@ enum
     GET_OTHER = 801,
     GET_RESOLVED = 802,
     GET_TARGET = 803,
+    BEHAVIOR_ARGUMENTS = 17,
     TICKS = 5
 };
 typedef struct
@@ -6601,6 +6608,14 @@ static execution_module *stage_zero_behavior(const char *source)
     script_syntax_free(syntax);
     return module;
 }
+static pin_value u64(uint64_t value)
+{
+    return (pin_value){ .type = PIN_U64, .u64 = value };
+}
+static pin_value flag(bool value)
+{
+    return (pin_value){ .type = PIN_BOOL, .b = value };
+}
 /* The index of the type `id` among the catalog's, -1 for none. */
 static int type_index(const script_catalog *catalog, uint64_t id)
 {
@@ -6610,6 +6625,165 @@ static int type_index(const script_catalog *catalog, uint64_t id)
         }
     }
     return -1;
+}
+/* Behavior targets append these fixture getters after the production host
+ * natives. Package compilation and bootstrap keep their original tables. */
+static bool behavior_natives(int b, pin_value tables[3])
+{
+    script_catalog catalog = game_catalog();
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
+    pin_array *before[] = { tables[0].ptr, tables[1].ptr, tables[2].ptr };
+    for (int i = 0; i < before[0]->count; i++) {
+        apush(functions, pin_array_get(before[0], i));
+    }
+    for (int i = 0; i < before[1]->count; i++) {
+        apush(ports, pin_array_get(before[1], i));
+    }
+    for (int i = 0; i < before[2]->count; i++) {
+        apush(identities, pin_array_get(before[2], i));
+    }
+    for (int i = 0; i < catalog.capability_count; i++) {
+        const script_catalog_capability *c = &catalog.capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
+            continue;
+        }
+        pin_value function = row(b, "Native");
+        REQUIRE(put_value(&function, "name", text(c->name)));
+        REQUIRE(put(&function, "first", acount(ports)));
+        REQUIRE(put(&function, "parameters", c->parameter_count));
+        REQUIRE(put(&function, "results", c->result_count));
+        REQUIRE(put_value(&function, "variadic", flag(false)));
+        apush(functions, function);
+        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
+            const script_catalog_parameter *declared = j < c->parameter_count
+                                                         ? &c->parameters[j]
+                                                         : &c->results[j - c->parameter_count];
+            pin_value port = row(b, "Port");
+            REQUIRE(put_value(&port, "name", text(declared->name)));
+            REQUIRE(put(&port, "storage", compiler_fixture_port_storage(declared->type)));
+            REQUIRE(put(&port, "container", (int)declared->type.container));
+            REQUIRE(put_value(&port, "c_string", flag(false)));
+            apush(ports, port);
+        }
+        apush(identities, u64(c->id));
+        apush(identities, u64(script_catalog_capability_abi(&catalog, c)));
+    }
+    tables[0] = rows(functions, acount(functions), PIN_STRUCT, tables[0].record);
+    tables[1] = rows(ports, acount(ports), PIN_STRUCT, tables[1].record);
+    tables[2] = rows(identities, acount(identities), PIN_U64, NULL);
+    afree(functions);
+    afree(ports);
+    afree(identities);
+    return true;
+}
+static int game_native_index(const script_catalog *catalog, uint64_t id, int first)
+{
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
+            continue;
+        }
+        if (c->id == id) {
+            return first;
+        }
+        first++;
+    }
+    return -1;
+}
+/* CompileBehavior's game arguments, as the game target exports them: each
+ * event and its payload fields, each type and its fields, the entity type,
+ * no operators that combine records, the globals, and no record makes. */
+static bool game_arguments(int b, int first_native, pin_value *out)
+{
+    script_catalog catalog = game_catalog();
+    pin_value *declared = NULL, *payloads = NULL, *types = NULL, *fields = NULL;
+    for (int i = 0; i < catalog.capability_count; i++) {
+        const script_catalog_capability *c = &catalog.capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_EVENT) {
+            continue;
+        }
+        pin_value event = row(b, "GameEvent");
+        REQUIRE(put_value(&event, "name", text(c->name)));
+        REQUIRE(put_value(&event, "id", u64(c->id)));
+        REQUIRE(put_value(&event, "abi", u64(script_catalog_capability_abi(&catalog, c))));
+        REQUIRE(put(&event, "first", acount(payloads)));
+        REQUIRE(put(&event, "count", c->parameter_count));
+        apush(declared, event);
+        for (int j = 0; j < c->parameter_count; j++) {
+            pin_value payload = row(b, "GameEventField");
+            REQUIRE(put_value(&payload, "name", text(c->parameters[j].name)));
+            REQUIRE(put(&payload, "storage", (int)c->parameters[j].type.storage));
+            REQUIRE(put_value(&payload, "nominal", u64(c->parameters[j].type.nominal)));
+            REQUIRE(put_value(&payload, "has_default", flag(c->parameters[j].has_default)));
+            REQUIRE(put_value(&payload, "default_owner", flag(c->parameters[j].default_owner)));
+            apush(payloads, payload);
+        }
+    }
+    for (int i = 0; i < catalog.type_count; i++) {
+        const script_catalog_type *t = &catalog.types[i];
+        pin_value type = row(b, "GameType");
+        REQUIRE(put_value(&type, "required", flag(!(t->type.flags & SCRIPT_TYPE_NAMESPACE))));
+        REQUIRE(put(&type, "underlying", type_index(&catalog, t->underlying)));
+        REQUIRE(put_value(&type, "name", text(t->name)));
+        REQUIRE(put_value(&type, "id", u64(t->id)));
+        REQUIRE(put_value(&type, "layout", u64(t->layout)));
+        REQUIRE(put(&type, "storage", (int)t->type.storage));
+        REQUIRE(put(&type, "size", (int)t->size));
+        REQUIRE(put_value(&type, "component", u64(t->component ? t->component_id : 0)));
+        REQUIRE(put(&type, "first", acount(fields)));
+        REQUIRE(put(&type, "count", t->field_count));
+        REQUIRE(put_value(&type, "relationship", flag(false)));
+        REQUIRE(put(&type, "traits", 0));
+        apush(types, type);
+        for (int j = 0; j < t->field_count; j++) {
+            pin_value field = row(b, "GameField");
+            REQUIRE(put_value(&field, "name", text(t->fields[j].name)));
+            REQUIRE(put(&field, "storage", (int)t->fields[j].type.storage));
+            REQUIRE(put(&field, "offset", (int)t->fields[j].offset));
+            REQUIRE(put_value(&field, "writable", flag(t->fields[j].writable)));
+            REQUIRE(put_value(&field, "c_string", flag(t->fields[j].c_string)));
+            REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
+            REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
+            REQUIRE(
+                put(&field, "read", game_native_index(&catalog, t->fields[j].read, first_native))
+            );
+            REQUIRE(put_value(
+                &field,
+                "read_key",
+                text(t->fields[j].read_key ? t->fields[j].read_key : "")
+            ));
+            apush(fields, field);
+        }
+    }
+    out[0] = rows(declared, acount(declared), PIN_STRUCT, declared[0].record);
+    out[1] = rows(payloads, acount(payloads), PIN_STRUCT, payloads[0].record);
+    out[2] = rows(types, acount(types), PIN_STRUCT, types[0].record);
+    out[3] = rows(fields, acount(fields), PIN_STRUCT, fields[0].record);
+    out[4] = u64(catalog.entity_type);
+    out[5] = rows(
+        NULL,
+        0,
+        PIN_STRUCT,
+        compiler_fixture_record(&fixture, b, PACKAGE, "NumericOperator", &input)
+    );
+    pin_value *globals = NULL;
+    for (int i = 0; i < catalog.global_count; i++) {
+        const script_catalog_global *g = &catalog.globals[i];
+        pin_value global = row(b, "GameGlobal");
+        REQUIRE(put_value(&global, "name", text(g->name)));
+        REQUIRE(put(&global, "storage", (int)g->type.storage));
+        REQUIRE(put(&global, "record", type_index(&catalog, g->type.nominal)));
+        apush(globals, global);
+    }
+    out[6] = rows(globals, acount(globals), PIN_STRUCT, globals[0].record);
+    out[7] = rows(NULL, 0, PIN_STRUCT, compiler_fixture_record(&fixture, b, PACKAGE, "NativeMake", &input));
+    out[8] = rows(NULL, 0, PIN_I32, NULL);
+    afree(declared);
+    afree(payloads);
+    afree(types);
+    afree(fields);
+    afree(globals);
+    return true;
 }
 static bool catalog_compile(
     int b,
@@ -6741,6 +6915,16 @@ static bool play(execution_module *module, player *out)
                                            .element_size = sizeof(spot),
                                            .type = &spot_type };
     REQUIRE(ecs_world_register_component(out->world, &component, NULL) == ECS_OK);
+    for (int i = 0; i < module->plan.query_count; i++) {
+        if (module->plan.queries[i].kind == EXECUTION_QUERY_GENERATOR &&
+            module->plan.queries[i].component == QUERY_TARGETS) {
+            const ecs_relationship_desc targets = { .id = QUERY_TARGETS,
+                                                    .key = "test.query-targets",
+                                                    .name = "Targets" };
+            REQUIRE(ecs_world_register_relationship(out->world, &targets, NULL) == ECS_OK);
+            break;
+        }
+    }
     out->program = execution_program_new(module, out->world, NULL);
     REQUIRE(out->program);
     out->owner = ecs_world_create_entity(out->world);
@@ -6761,8 +6945,10 @@ static bool play(execution_module *module, player *out)
     aimed.owner = target;
     REQUIRE(ecs_world_record_add(out->world, out->target, SPOT_COMPONENT, &aimed, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
-    out->instance = execution_program_attach(out->program, ecs_entity_to_u64(out->owner));
-    REQUIRE(out->instance);
+    if (!module->plan.query_variable_count) {
+        out->instance = execution_program_attach(out->program, ecs_entity_to_u64(out->owner));
+        REQUIRE(out->instance);
+    }
     return true;
 }
 static void stop(player *p)
@@ -17653,6 +17839,948 @@ TEST_CASE(package_compiler_scalar_runs_natively_like_the_vm)
     return true;
 }
 #endif
+/* Query tests use the target's canonical Tick(dt: number), while the older
+ * behavior fixtures above exercise an event named DeltaSeconds. */
+static script_catalog query_game_catalog()
+{
+    static const script_catalog_parameter dt = { .name = "dt",
+                                                 .type = { .storage = PIN_F32 } };
+    static script_catalog_capability events[sizeof game_capabilities / sizeof *game_capabilities];
+    memcpy(events, game_capabilities, sizeof events);
+    events[0].parameters = &dt;
+    static const script_catalog_relationship targets = { .id = QUERY_TARGETS,
+                                                         .name = "Targets" };
+    script_catalog catalog = game_catalog();
+    catalog.capabilities = events;
+    catalog.relationships = &targets;
+    catalog.relationship_count = 1;
+    return catalog;
+}
+static bool query_compile_result(int b, const char *identity, const char *source, pin_value *out)
+{
+    fixture.observe_failures = true;
+    pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
+    REQUIRE(arguments(b, false, NULL, 0, compile));
+    args[0] = text(identity);
+    args[1] = text(source);
+    memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
+    int first_native = ((pin_array *)args[5].ptr)->count;
+    REQUIRE(behavior_natives(b, &args[5]));
+    REQUIRE(game_arguments(b, first_native, &args[8]));
+    pin_array *events = args[8].ptr, *payloads = args[9].ptr;
+    script_catalog catalog = query_game_catalog();
+    pin_value *types = NULL;
+    const pin_array *existing = args[10].ptr;
+    for (int i = 0; i < existing->count; i++) {
+        apush(types, existing->items[i]);
+    }
+    pin_value relationship = row(b, "GameType");
+    REQUIRE(put_value(&relationship, "required", flag(false)));
+    REQUIRE(put(&relationship, "underlying", -1));
+    REQUIRE(put_value(&relationship, "name", text("Targets")));
+    REQUIRE(put_value(&relationship, "id", u64(QUERY_TARGETS)));
+    REQUIRE(put_value(&relationship, "layout", u64(0)));
+    REQUIRE(put(&relationship, "storage", PIN_HANDLE));
+    REQUIRE(put(&relationship, "size", sizeof(uint64_t)));
+    REQUIRE(put_value(&relationship, "component", u64(QUERY_TARGETS)));
+    REQUIRE(put(&relationship, "first", 0));
+    REQUIRE(put(&relationship, "count", 0));
+    REQUIRE(put_value(&relationship, "relationship", flag(true)));
+    REQUIRE(put(&relationship, "traits", 0));
+    apush(types, relationship);
+    args[10] = rows(types, acount(types), PIN_STRUCT, relationship.record);
+    afree(types);
+    REQUIRE(put_value(&payloads->items[0], "name", text("dt")));
+    REQUIRE(put(&payloads->items[0], "storage", PIN_F32));
+    REQUIRE(put_value(
+        &events->items[0],
+        "abi",
+        u64(script_catalog_capability_abi(&catalog, &catalog.capabilities[0]))
+    ));
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
+    );
+    REQUIRE(out->type == PIN_UNION && out->ptr);
+    return true;
+}
+static bool query_stage_one_module(int b, const char *identity, const char *source, execution_module **module)
+{
+    *module = NULL;
+    pin_value out;
+    REQUIRE(query_compile_result(b, identity, source, &out));
+    const pin_union *value = out.ptr;
+    if (value->tag != tag(b, "Compiled")) {
+        pin_value message = { 0 }, line = { 0 }, column = { 0 };
+        get(&value->values[0], "message", &message);
+        get(&value->values[0], "line", &line);
+        get(&value->values[0], "column", &column);
+        fprintf(
+            stderr,
+            "stage one query %s rejected: %s at %d:%d\n",
+            identity,
+            pin_text(message).bytes,
+            line.i,
+            column.i
+        );
+        arena_free(&detached);
+        return false;
+    }
+    size_t length = 0;
+    unsigned char *bytes = closure_bytes(value, &length);
+    arena_free(&detached);
+    script_catalog catalog = query_game_catalog();
+    const execution_prepared_linker linker = { .user = &catalog,
+                                               .type = link_game_type,
+                                               .event = link_game_event,
+                                               .host = link_game_host };
+    char error[256] = { 0 };
+    *module = execution_prepared_read(
+        bytes,
+        length,
+        &linker,
+        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
+    if (!*module) {
+        fprintf(stderr, "stage one query %s load: %s\n", identity, error);
+    }
+    free(bytes);
+    return *module != NULL;
+}
+/* Play without the target entity, so a query's rows are the owner and the
+ * entities the test adds. */
+static bool query_play(execution_module *module, player *out)
+{
+    REQUIRE(play(module, out));
+    REQUIRE(ecs_world_destroy_entity(out->world, out->target) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
+    return true;
+}
+static ecs_entity query_add_spot(player *p, float x)
+{
+    ecs_entity entity = ecs_world_create_entity(p->world);
+    const spot initial = { .x = x, .w = 9 };
+    if (ecs_world_record_add(p->world, entity, SPOT_COMPONENT, &initial, 0) != ECS_OK ||
+        ecs_world_apply_commands(p->world) != ECS_OK) {
+        return (ecs_entity){ 0 };
+    }
+    return entity;
+}
+static bool query_spot_equals(const player *p, ecs_entity entity, float x, float y)
+{
+    const spot *value = ecs_component_data_const(p->world, entity, SPOT_COMPONENT);
+    if (!value || value->x != x || value->y != y) {
+        fprintf(
+            stderr,
+            "query Spot: expected %g,%g, got %g,%g\n",
+            x,
+            y,
+            value ? value->x : -1.0,
+            value ? value->y : -1.0
+        );
+        return false;
+    }
+    return true;
+}
+static bool query_step(player *p, double now, double delta)
+{
+    int status = execution_program_step(p->program, now, delta, 100000);
+    if (status != FLOW_OK) {
+        const execution_program_failure *failure = execution_program_error(p->program);
+        fprintf(
+            stderr,
+            "query step at %g: status %d, %s at %d:%d\n",
+            now,
+            status,
+            failure ? failure->message : "no failure recorded",
+            failure ? failure->line : 0,
+            failure ? failure->column : 0
+        );
+    }
+    return status == FLOW_OK;
+}
+static void query_register_types()
+{
+    static const type_desc *const reflected[] = { &spot_type };
+    static const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+}
+TEST_CASE(package_compiler_query_rows_capture_and_restart)
+{
+    static const char source
+        [] = "Rows :: behavior {\n"
+             "    total: int = 0\n"
+             "    Bump :: (value: number) -> number { total := value; "
+             "total += 1; return total }\n"
+             "    on Tick :: () {\n"
+             "        threshold: number = 3\n"
+             "        matches := query(before: Spot, live: ^Spot, if "
+             "before.x > threshold, amount := Bump(before.x + threshold - 1))\n"
+             "        threshold = 100\n"
+             "        for row in matches {\n"
+             "            total += 1\n"
+             "            row.live.y = row.amount\n"
+             "            copy := row.before\n"
+             "            copy.x += 1\n"
+             "            self.Spot.y += copy.x - row.before.x\n"
+             "            if row.before.x == 5 { continue }\n"
+             "            row.live.x += 10\n"
+             "            self.Spot.y += row.before.x\n"
+             "        }\n"
+             "        for row in matches { total += 100; break }\n"
+             "        for row in matches { total += 1000 }\n"
+             "    }\n"
+             "}\n";
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        execution_module *module = NULL;
+        player p = { 0 };
+        passed = query_stage_one_module(b, "Rows", source, &module) &&
+                 query_play(module, &p);
+        if (passed) {
+            ecs_entity skipped = query_add_spot(&p, 1);
+            ecs_entity continued = query_add_spot(&p, 5);
+            ecs_entity changed = query_add_spot(&p, 9);
+            const pin_value delta = { .type = PIN_F32, .f = .25 };
+            passed = ecs_entity_to_u64(skipped) &&
+                     ecs_entity_to_u64(continued) && ecs_entity_to_u64(changed) &&
+                     execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
+                         FLOW_OK &&
+                     query_spot_equals(&p, p.owner, 0, 11) &&
+                     query_spot_equals(&p, skipped, 1, 0) &&
+                     query_spot_equals(&p, continued, 5, 8) &&
+                     query_spot_equals(&p, changed, 19, 12);
+            const pin_value *total = execution_instance_state(
+                p.instance,
+                script_catalog_id("symbol", "Rows:1:total")
+            );
+            passed = passed && total && total->type == PIN_I32 && total->i == 2102;
+        }
+        stop(&p);
+        execution_module_free(module);
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(package_compiler_query_nested_return_and_empty_iteration)
+{
+    static const char
+        source[] = "Nested :: behavior {\n"
+                   "    First :: () -> number {\n"
+                   "        matches := query(point: Spot, if point.x > 0)\n"
+                   "        for outer in matches {\n"
+                   "            for inner in matches { return outer.point.x + "
+                   "inner.point.x }\n"
+                   "        }\n"
+                   "        return -1\n"
+                   "    }\n"
+                   "    on Tick :: () {\n"
+                   "        self.Spot.y = First()\n"
+                   "        for row in query(point: Spot, if point.x < 0) { "
+                   "self.Spot.y = -100 }\n"
+                   "        for row in query(point: Spot, if point.x > 0) { "
+                   "self.Spot.x += row.point.x }\n"
+                   "    }\n"
+                   "}\n";
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        execution_module *module = NULL;
+        player p = { 0 };
+        passed = query_stage_one_module(b, "Nested", source, &module) &&
+                 query_play(module, &p);
+        if (passed) {
+            ecs_entity other = query_add_spot(&p, 7);
+            const pin_value delta = { .type = PIN_F32, .f = .25 };
+            passed = ecs_entity_to_u64(other) &&
+                     execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
+                         FLOW_OK &&
+                     query_spot_equals(&p, p.owner, 7, 14) &&
+                     query_spot_equals(&p, other, 7, 0);
+        }
+        stop(&p);
+        execution_module_free(module);
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(package_compiler_query_header_constructs_captured_description)
+{
+    static const char source[] =
+        "NestedHeader :: behavior {\n"
+        "    total: int = 0\n"
+        "    on Tick :: () {\n"
+        "        for outer in query(point: Spot, if point.x > 0, "
+        "inner := query(other: Spot, if other.x > point.x)) {\n"
+        "            for row in outer.inner { self.Spot.y += row.other.x }\n"
+        "            for row in outer.inner { total += int(row.other.x) }\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        execution_module *module = NULL;
+        player p = { 0 };
+        passed = query_stage_one_module(b, "NestedHeader", source, &module) &&
+                 query_play(module, &p);
+        if (passed) {
+            ecs_entity first = query_add_spot(&p, 2);
+            ecs_entity second = query_add_spot(&p, 7);
+            const pin_value delta = { .type = PIN_F32, .f = .25 };
+            passed = ecs_entity_to_u64(first) && ecs_entity_to_u64(second) &&
+                     execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
+                         FLOW_OK &&
+                     query_spot_equals(&p, p.owner, 0, 7);
+            const pin_value *total = execution_instance_state(
+                p.instance,
+                script_catalog_id("symbol", "NestedHeader:1:total")
+            );
+            passed = passed && total && total->type == PIN_I32 && total->i == 7;
+        }
+        stop(&p);
+        execution_module_free(module);
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt)
+{
+    static const char
+        source[] = "Apply :: system(before: Spot, live: ^Spot, if before.x > "
+                   "0, amount := number(10 / int(before.x))) {\n"
+                   "    live.x += amount\n"
+                   "    live.y = before.x + number(dt)\n"
+                   "}\n";
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        execution_module *module = NULL;
+        player p = { 0 };
+        passed = query_stage_one_module(b, "Apply", source, &module) &&
+                 query_play(module, &p);
+        if (passed) {
+            ecs_entity first = query_add_spot(&p, 2);
+            ecs_entity second = query_add_spot(&p, 5);
+            passed = module->plan.system_description == 1 &&
+                     ecs_entity_to_u64(first) && ecs_entity_to_u64(second) &&
+                     query_step(&p, 0, .25) && query_spot_equals(&p, p.owner, 0, 0) &&
+                     query_spot_equals(&p, first, 7, 2.25f) &&
+                     query_spot_equals(&p, second, 7, 5.25f);
+        }
+        stop(&p);
+        execution_module_free(module);
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+/* Each source's queries and system header compile into its own module, in
+ * whatever position the project lists it: each module matches the one its
+ * source compiles to alone, and its queries run. */
+/* Compile `sources` together, then play each query-bearing module alone. A
+ * system adds 2 to every row's y; a behavior's rows end at (x, y). */
+static bool query_sources_compose(
+    int b,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    float x,
+    float y
+)
+{
+    script_catalog catalog = query_game_catalog();
+    pin_value out;
+    REQUIRE(
+        catalog_compile_sources(b, &catalog, identities, sources, count, "CompileBehaviorsWithCatalog", &out)
+    );
+    const pin_array *array = out.ptr;
+    if (!array || !array->count) {
+        arena_free(&detached);
+        REQUIRE(
+            catalog_compile_sources(b, &catalog, identities, sources, count, "BehaviorRejectionWithCatalog", &out)
+        );
+        fprintf(stderr, "query sources rejected: %s\n", pin_text(out).bytes);
+        arena_free(&detached);
+        return false;
+    }
+    size_t length = (size_t)array->count;
+    unsigned char *bytes = xmalloc(length);
+    for (size_t i = 0; i < length; i++) {
+        bytes[i] = array->items[i].u8;
+    }
+    arena_free(&detached);
+    const execution_prepared_linker linker = { .user = &catalog,
+                                               .type = link_game_type,
+                                               .event = link_game_event,
+                                               .host = link_game_host };
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    char error[256] = { 0 };
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        &linker,
+        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    free(bytes);
+    if (!packages) {
+        fprintf(stderr, "query sources load: %s\n", error);
+    }
+    REQUIRE(packages && package_collection_count(packages) == count);
+    bool passed = true;
+    for (int i = 0; passed && i < count; i++) {
+        execution_module *alone = NULL;
+        passed = query_stage_one_module(b, identities[i], sources[i], &alone);
+        execution_module *composed = NULL;
+        for (int j = 0; passed && j < count; j++) {
+            execution_module *candidate = package_collection_module(packages, j);
+            if (execution_module_id(candidate) == execution_module_id(alone)) {
+                composed = candidate;
+            }
+        }
+        passed = passed && composed &&
+                 composed->plan.function_count == alone->plan.function_count &&
+                 composed->plan.description_count == alone->plan.description_count &&
+                 composed->plan.system_description == alone->plan.system_description;
+        execution_module_free(alone);
+        if (!passed || !composed->plan.description_count) {
+            continue;
+        }
+        player p = { 0 };
+        passed = query_play(composed, &p);
+        ecs_entity other = passed ? query_add_spot(&p, 4) : (ecs_entity){ 0 };
+        const pin_value delta = { .type = PIN_F32, .f = .25 };
+        passed = passed && ecs_entity_to_u64(other) &&
+                 (composed->plan.system_description
+                      ? query_step(&p, 0, .25) && query_spot_equals(&p, other, 4, 2)
+                      : execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
+                                FLOW_OK &&
+                            query_spot_equals(&p, other, x, y));
+        stop(&p);
+    }
+    package_collection_free(packages);
+    return passed;
+}
+TEST_CASE(package_compiler_queries_compose_in_any_source_order)
+{
+    static const char *const plain = "Plain :: behavior {}\n";
+    static const char *const
+        rows = "Rows :: behavior {\n"
+               "    on Tick :: () {\n"
+               "        matches := query(live: ^Spot)\n"
+               "        for row in matches { row.live.x += 1 }\n"
+               "    }\n"
+               "}\n";
+    static const char *const apply = "Apply :: system(live: ^Spot) {\n"
+                                     "    live.y += 2\n"
+                                     "}\n";
+    static const char *const orders[][2] = {
+        { "Plain", "Rows" },
+        { "Rows", "Plain" },
+        { "Rows", "Apply" },
+        { "Apply", "Rows" },
+    };
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t o = 0; passed && o < sizeof orders / sizeof *orders; o++) {
+            const char *sources[2];
+            for (int i = 0; i < 2; i++) {
+                const char *name = orders[o][i];
+                sources[i] = !strcmp(name, "Plain") ? plain
+                           : !strcmp(name, "Rows")  ? rows
+                                                    : apply;
+            }
+            passed = query_sources_compose(b, orders[o], sources, 2, 5, 0);
+        }
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+/* A query captures a local and calls a helper whose loop changes a local
+ * that shadows a state. An earlier source whose offsets run past the query's
+ * must hide neither from the later one: each scan stays in its own source. */
+TEST_CASE(package_compiler_query_captures_resolve_in_any_source_order)
+{
+    char padded[600];
+    snprintf(padded, sizeof padded, "Padded :: behavior {%512s\n    pad: int = 0\n}\n", "");
+    static const char *const
+        captured = "Captured :: behavior {\n"
+                   "    sum: number = 0\n"
+                   "    Twice :: (value: number) -> number {\n"
+                   "        sum: number = 0\n"
+                   "        count: int = 0\n"
+                   "        while count < 2 { sum += value; count += 1 }\n"
+                   "        return sum\n"
+                   "    }\n"
+                   "    on Tick :: () {\n"
+                   "        threshold: number = 3\n"
+                   "        matches := query(before: Spot, live: ^Spot, if "
+                   "before.x > threshold, "
+                   "amount := Twice(before.x))\n"
+                   "        for row in matches { row.live.y = row.amount }\n"
+                   "    }\n"
+                   "}\n";
+    static const char *const orders[][2] = {
+        { "Padded", "Captured" },
+        { "Captured", "Padded" },
+    };
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t o = 0; passed && o < sizeof orders / sizeof *orders; o++) {
+            const char *sources[2];
+            for (int i = 0; i < 2; i++) {
+                sources[i] = !strcmp(orders[o][i], "Padded") ? padded : captured;
+            }
+            passed = query_sources_compose(b, orders[o], sources, 2, 4, 8);
+        }
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper)
+{
+    static const char source
+        [] = "Accumulate :: system(before: Spot, live: ^Spot, if before.x > 0, "
+             "amount := Bump(before.x)) {\n"
+             "    total: retain int = 0\n"
+             "    Bump :: (value: number) -> number { return value + 1 }\n"
+             "    Add :: (step: number) -> number { total += 1; return step }\n"
+             "    step := Add(number(dt))\n"
+             "    live.y += amount + step\n"
+             "}\n";
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        execution_module *module = NULL;
+        player p = { 0 };
+        passed = query_stage_one_module(b, "Accumulate", source, &module) &&
+                 query_play(module, &p);
+        if (passed) {
+            ecs_entity first = query_add_spot(&p, 2);
+            ecs_entity second = query_add_spot(&p, 5);
+            passed = ecs_entity_to_u64(first) && ecs_entity_to_u64(second) &&
+                     query_step(&p, 0, .25) && query_step(&p, .25, .25) &&
+                     query_spot_equals(&p, first, 2, 6.5f) &&
+                     query_spot_equals(&p, second, 5, 12.5f);
+            const pin_value *total = execution_instance_state(
+                p.instance,
+                script_catalog_id("symbol", "Accumulate:1:total")
+            );
+            passed = passed && total && total->type == PIN_I32 && total->i == 4;
+        }
+        stop(&p);
+        execution_module_free(module);
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(package_compiler_empty_system_runs_only_attached_owner)
+{
+    static const char
+        source[] = "Empty :: system(/* empty */) { self.Spot.x += 1; "
+                   "self.Spot.y += number(dt) }";
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        execution_module *module = NULL;
+        player p = { 0 };
+        passed = query_stage_one_module(b, "Empty", source, &module) &&
+                 module->plan.system_description == 0 &&
+                 module->plan.query == -1 && query_play(module, &p);
+        if (passed) {
+            ecs_entity other = query_add_spot(&p, 7);
+            passed = ecs_entity_to_u64(other) && query_step(&p, 0, .25) &&
+                     query_spot_equals(&p, p.owner, 1, .25f) &&
+                     query_spot_equals(&p, other, 7, 0);
+        }
+        stop(&p);
+        execution_module_free(module);
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(package_compiler_query_generators_bind_target_components)
+{
+    static const char *const sources[] = {
+        "Targets :: system(target: entity in self.Targets, before: Spot from "
+        "target, "
+        "live: ^Spot from target, if before.x > 0) { live.y += before.x }",
+        "Targets :: behavior { on Tick :: () { for row in query("
+        "target: entity in self.Targets, before: Spot from target, "
+        "live: ^Spot from target, if before.x > 0) { row.live.y += "
+        "row.before.x } } }",
+    };
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (int sample = 0; passed && sample < 2; sample++) {
+            execution_module *module = NULL;
+            player p = { 0 };
+            passed = query_stage_one_module(b, "Targets", sources[sample], &module) &&
+                     query_play(module, &p);
+            if (passed) {
+                ecs_entity first = query_add_spot(&p, 2);
+                ecs_entity second = query_add_spot(&p, 5);
+                ecs_entity missing = ecs_world_create_entity(p.world);
+                passed = ecs_entity_to_u64(first) && ecs_entity_to_u64(second) &&
+                         ecs_entity_to_u64(missing) &&
+                         ecs_world_record_add_pair(p.world, p.owner, QUERY_TARGETS, first, 0) ==
+                             ECS_OK &&
+                         ecs_world_record_add_pair(p.world, p.owner, QUERY_TARGETS, second, 0) ==
+                             ECS_OK &&
+                         ecs_world_record_add_pair(p.world, p.owner, QUERY_TARGETS, missing, 0) ==
+                             ECS_OK &&
+                         ecs_world_apply_commands(p.world) == ECS_OK;
+                const pin_value delta = { .type = PIN_F32, .f = .25 };
+                int status = FLOW_ERR_UNKNOWN_EVENT;
+                if (passed && sample == 0) {
+                    status = query_step(&p, 0, .25) ? FLOW_OK : FLOW_ERR_STATE;
+                } else if (passed) {
+                    status = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000);
+                }
+                passed = passed && status == FLOW_OK &&
+                         query_spot_equals(&p, p.owner, 0, 0) &&
+                         query_spot_equals(&p, first, 2, 2) &&
+                         query_spot_equals(&p, second, 5, 5);
+            }
+            stop(&p);
+            execution_module_free(module);
+        }
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(package_compiler_query_optional_guards_and_inferred_values)
+{
+    static const char source
+        [] = "Optional :: behavior {\n"
+             "    total: int = 0\n"
+             "    on Tick :: () {\n"
+             "        for row in query(point: ^Spot?, alias := point, if "
+             "all(alias, "
+             "any(alias.x > 0, false)), "
+             "if any(true, 10 / int(alias.x - alias.x) > 0), "
+             "copy := alias^, first := [int(copy.x)][0]) {\n"
+             "            total += row.first\n"
+             "            row.alias.y = row.copy.x\n"
+             "        }\n"
+             "        for row in query(point: Spot?, if point) { total += 100 "
+             "}\n"
+             "    }\n"
+             "}\n";
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        execution_module *module = NULL;
+        player p = { 0 };
+        passed = query_stage_one_module(b, "Optional", source, &module) &&
+                 query_play(module, &p);
+        if (passed) {
+            ecs_entity present = query_add_spot(&p, 7);
+            ecs_entity absent = ecs_world_create_entity(p.world);
+            const pin_value delta = { .type = PIN_F32, .f = .25 };
+            passed = ecs_entity_to_u64(present) && ecs_entity_to_u64(absent) &&
+                     ecs_world_apply_commands(p.world) == ECS_OK &&
+                     execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, .25, 100000) ==
+                         FLOW_OK &&
+                     query_spot_equals(&p, present, 7, 7);
+            const pin_value *total = execution_instance_state(
+                p.instance,
+                script_catalog_id("symbol", "Optional:1:total")
+            );
+            passed = passed && total && total->type == PIN_I32 && total->i == 207;
+        }
+        stop(&p);
+        execution_module_free(module);
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(package_compiler_query_rejects_hidden_mutation_and_old_headers)
+{
+    static const char *const sources[] = {
+        "Fixed :: system(point: ^Spot) { Read :: () -> number { return "
+        "number(dt) }; "
+        "point.y = Read() }",
+        "Fixed :: system(target: Missing in self.Targets) {}",
+        "Fixed :: system(amount: Missing = 1) {}",
+        "Fixed :: system(point: Spot, amount := total) { total: retain int = 1 "
+        "}",
+        "Fixed :: system(point: Spot, amount := Read()) { total: retain int = "
+        "1; "
+        "Read :: () -> int { return total } }",
+        "Fixed :: system(inner := query(point: Spot, if point.x > dt)) {}",
+        "Fixed :: behavior { total: int = 1; on Tick :: () { "
+        "matches := query(point: Spot, inner := query(other: Spot, "
+        "if other.x > Read())) } Read :: () -> number { return number(total) } "
+        "}",
+        "Fixed :: behavior { total: int = 1; "
+        "Read :: () -> int { for row in query(p: Spot, "
+        "if p.x > number(total)) { return 1 }; return 0 } "
+        "on Tick :: () { matches := query(point: Spot, amount := Read()) } }",
+        "Fixed :: behavior { on Tick :: () { value := 1; "
+        "matches := query(point: Spot, pointer := &value) } }",
+        "Fixed :: behavior { total: int = 0; Read :: () -> int { return total "
+        "}; "
+        "on Tick :: () { matches := query(point: Spot, amount := Read()) } }",
+        "Fixed :: system(point: Spot, amount := dt) {}",
+        "Fixed :: system(point: Spot, dt := 1) {}",
+        "Fixed :: system(point: ^Spot?, if point.x > 0 && point) {}",
+        "Fixed :: behavior { on Tick :: () { matches := query(point: Spot); "
+        "self.Spot.x = matches.point.x } }",
+        "Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
+        "for other in row {} } } }",
+        "Fixed :: system(point: Spot) on Tick {}",
+        "Fixed :: system(point: Spot) without Frozen {}",
+        "Fixed :: system(point: Spot) where point.x > 0 {}",
+        "Fixed :: system(point: Spot) join target in self.Targets {}",
+        "Fixed :: behavior { on Tick :: () { matches := "
+        "query(point: Spot = self) } }",
+    };
+    REQUIRE(prepare());
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t i = 0; passed && i < sizeof sources / sizeof *sources; i++) {
+            pin_value out;
+            passed = query_compile_result(b, "Fixed", sources[i], &out);
+            if (passed) {
+                const pin_union *value = out.ptr;
+                passed = value->tag == tag(b, "Rejected");
+                if (!passed) {
+                    fprintf(stderr, "stage one accepted invalid query: %s\n", sources[i]);
+                }
+            }
+            arena_free(&detached);
+        }
+    }
+    REQUIRE(passed);
+    return true;
+}
+/* This test-only source joins the compiler fixture's package, so its probe
+ * can exercise private scope collection without adding a shipped export. */
+static const char QUERY_SCOPE_PROBE[] =
+    "package package_compiler\n"
+    "import snapshot \"project:source_snapshot\"\n"
+    "import raw \"project:compiler_syntax\"\n"
+    "pub ScopeCaptures :: (source: string, instruction_names: string[], "
+    "target: Target) -> string[] {\n"
+    "    forest: snapshot.SnapshotNode[] = []; root: int = -1;\n"
+    "    switch raw.Parse(source) {\n"
+    "        case .Parsed(nodes, fields, is_named, is_extra, top):\n"
+    "            root = top; index: int = 0;\n"
+    "            while index < length(nodes) {\n"
+    "                forest.append(snapshot.Node(nodes[index], fields[index], "
+    "is_named[index], is_extra[index], 0));\n"
+    "                index += 1;\n"
+    "            }\n"
+    "    }\n"
+    "    document: snapshot.Document = {original_path: \"scope/Main.chibi\", "
+    "path: \"scope/Main.chibi\",\n"
+    "        directory: \"scope\", key: \"scope/Main.chibi\", identity: "
+    "\"project:scope\", text: source, root: 0,\n"
+    "        syntax_root: root, header_start: 0, header_end: 0, header_line: "
+    "0, header_column: 0, header_document: 0,\n"
+    "        node_start: 0, node_count: length(forest), first_import: 0, "
+    "import_count: 0, has_key: true,\n"
+    "        has_syntax: true, has_header: false};\n"
+    "    switch DeclarePackage(forest, [document], [0], 0, \"scope\", [], "
+    "target, [], [], [], [], []) {\n"
+    "        case .Failed(diagnostic): return [format_text(\"ERROR {}\", "
+    "diagnostic.message)];\n"
+    "        case .Collected(callables, params, types, members, constants):\n"
+    "            switch CollectQueries(forest, source, \"project:scope\", 0, "
+    "0, length(forest), types, members, callables, params, [], [], [],\n"
+    "                                  [], 0, target, "
+    "ResolveOps(instruction_names, false)) {\n"
+    "                case .Failed(diagnostic): return [format_text(\"ERROR "
+    "{}\", diagnostic.message)];\n"
+    "                case .Collected(more_types, more_members, more_callables, "
+    "more_params, descriptions):\n"
+    "                    captures: string[] = [];\n"
+    "                    for description in descriptions {\n"
+    "                        index: int = 0;\n"
+    "                        while index < description.capture_count {\n"
+    "                            param := "
+    "more_params[description.first_capture + index];\n"
+    "                            captures.append(format_text(\"{}:{}:{}\", "
+    "param.name, param.storage, param.container));\n"
+    "                            index += 1;\n"
+    "                        }\n"
+    "                        captures.append(\"|\");\n"
+    "                    }\n"
+    "                    return captures;\n"
+    "            }\n"
+    "    }\n"
+    "}\n";
+TEST_CASE(package_compiler_query_captures_lexical_bindings)
+{
+    static const char source
+        [] = "package scope\n"
+             "Choice :: union { Some(amount: int) | None }\n"
+             "Probe :: () -> int {\n"
+             "    threshold: f64 = 20; payload: f64 = 40;\n"
+             "    for threshold in 0..<2 { captured := query(value := "
+             "threshold); }\n"
+             "    values: f64[] = [3, 7]; alias := values;\n"
+             "    for value, index in alias { captured := query(v := value, n "
+             ":= index); }\n"
+             "    pairs: [string: int] = [\"a\": 3]; pair_alias := pairs;\n"
+             "    for key, value in pair_alias { captured := query(k := key, v "
+             ":= value); }\n"
+             "    matches := query(amount := 1);\n"
+             "    for row in matches { alias_row := row; captured := query(x "
+             ":= row.amount, y := alias_row.amount); }\n"
+             "    choice := Choice.Some(5);\n"
+             "    if choice is .Some(payload) { captured := query(x := "
+             "payload); }\n"
+             "    while choice is .Some(loop_payload) { captured := query(x := "
+             "loop_payload); break; }\n"
+             "    switch choice { case .Some(payload): captured := query(x := "
+             "payload); case .None: {} }\n"
+             "    after := query(x := threshold, y := payload);\n"
+             "    return 0;\n"
+             "}\n";
+    static const char *const expected[] = {
+        "threshold:6:0",
+        "|",
+        "value:11:0",
+        "index:6:0",
+        "|",
+        "key:13:0",
+        "value:6:0",
+        "|",
+        "|",
+        "row:20:0",
+        "alias_row:20:0",
+        "|",
+        "payload:6:0",
+        "|",
+        "loop_payload:6:0",
+        "|",
+        "payload:6:0",
+        "|",
+        "threshold:11:0",
+        "payload:11:0",
+        "|",
+    };
+    const source_package_input sources[] = {
+        PACKAGE_COMPILER_SOURCE_INPUTS,
+        { "package_compiler/ScopeTest.chibi", QUERY_SCOPE_PROBE, sizeof QUERY_SCOPE_PROBE - 1 },
+    };
+    const native_definition_pack packs[] = {
+        COMPILER_JSON_DEFINITION_PACK,
+        COMPILER_SYNTAX_DEFINITION_PACK,
+        CSTRING_PACK,
+    };
+    REQUIRE(
+        compiler_fixture_prepare_packs(&fixture, sources, sizeof sources / sizeof *sources, packs, 3)
+    );
+    for (int b = 0; b < 2; b++) {
+        pin_value compile[ARGUMENTS];
+        REQUIRE(arguments(b, false, NULL, 0, compile));
+        pin_value args[] = { text(source),
+                             compile[TARGET_ARGUMENT + 2],
+                             compile[TARGET_ARGUMENT] };
+        pin_value out = { 0 };
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "ScopeCaptures", args, 3, COMPILE_BUDGET, &detached, &out)
+        );
+        const pin_array *captures = out.ptr;
+        if (!captures || captures->count != sizeof expected / sizeof *expected) {
+            fprintf(
+                stderr,
+                "query scope returned %d entries\n",
+                captures ? captures->count : -1
+            );
+            for (int i = 0; captures && i < captures->count; i++) {
+                fprintf(stderr, "  %s\n", pin_text(pin_array_get(captures, i)).bytes);
+            }
+        }
+        REQUIRE(captures && captures->count == sizeof expected / sizeof *expected);
+        for (int i = 0; i < captures->count; i++) {
+            const pin_string found = pin_text(pin_array_get(captures, i));
+            if (found.length != strlen(expected[i]) ||
+                memcmp(found.bytes, expected[i], found.length)) {
+                fprintf(
+                    stderr,
+                    "query scope %d: expected %s, got %s\n",
+                    i,
+                    expected[i],
+                    found.bytes
+                );
+            }
+            REQUIRE(
+                found.length == strlen(expected[i]) &&
+                !memcmp(found.bytes, expected[i], found.length)
+            );
+        }
+        arena_free(&detached);
+    }
+    return true;
+}
+TEST_CASE(package_compiler_query_values_are_readonly)
+{
+    static const char *const sources[] = {
+        "Fixed :: system(point: Spot) { point.x = 2 }",
+        "Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
+        "row.point.x = 2 } } }",
+        "Fixed :: system(point: ^Spot, amount := 2) { amount = 3 }",
+        "Fixed :: system(point: ^Spot) { point = null }",
+        "Fixed :: system(point: ^Spot) { point.w = 3 }",
+    };
+    REQUIRE(prepare());
+    query_register_types();
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t i = 0; passed && i < sizeof sources / sizeof *sources; i++) {
+            pin_value out;
+            passed = query_compile_result(b, "Fixed", sources[i], &out);
+            if (passed) {
+                const pin_union *value = out.ptr;
+                pin_value message = { 0 };
+                passed = value->tag == tag(b, "Rejected") &&
+                         get(&value->values[0], "message", &message) &&
+                         (strstr(pin_text(message).bytes, "writable") ||
+                          strstr(pin_text(message).bytes, "read-only"));
+                if (!passed) {
+                    fprintf(stderr, "query readonly binding accepted: %s\n", sources[i]);
+                }
+            }
+            arena_free(&detached);
+        }
+    }
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
@@ -17743,6 +18871,24 @@ void test_language_package_compiler_chibi_behaviors_rest()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
     RUN_TEST_CASE(package_compiler_keeps_text_state_per_owner);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_queries()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_query_rows_capture_and_restart);
+    RUN_TEST_CASE(package_compiler_query_nested_return_and_empty_iteration);
+    RUN_TEST_CASE(package_compiler_query_header_constructs_captured_description);
+    RUN_TEST_CASE(package_compiler_system_query_shares_snapshot_and_implicit_dt);
+    RUN_TEST_CASE(package_compiler_queries_compose_in_any_source_order);
+    RUN_TEST_CASE(package_compiler_query_captures_resolve_in_any_source_order);
+    RUN_TEST_CASE(package_compiler_system_keeps_state_and_calls_pure_header_helper);
+    RUN_TEST_CASE(package_compiler_empty_system_runs_only_attached_owner);
+    RUN_TEST_CASE(package_compiler_query_optional_guards_and_inferred_values);
+    RUN_TEST_CASE(package_compiler_query_generators_bind_target_components);
+    RUN_TEST_CASE(package_compiler_query_rejects_hidden_mutation_and_old_headers);
+    RUN_TEST_CASE(package_compiler_query_values_are_readonly);
+    RUN_TEST_CASE(package_compiler_query_captures_lexical_bindings);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_sharing()

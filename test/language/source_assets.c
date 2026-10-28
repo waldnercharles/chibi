@@ -439,7 +439,7 @@ TEST_CASE(source_authored_relationship_rows_retire_and_restart_on_membership_cha
     relation = authoring_relationship_source_read("Targets :: relationship {}", error, sizeof error);
     REQUIRE(relation);
     script_catalog_type type = { .id = 12002,
-                                 .name = "Health",
+                                 .name = health_type.name,
                                  .type = { .storage = PIN_STRUCT, .nominal = 12002 },
                                  .component = true,
                                  .component_id = health_component.id,
@@ -451,7 +451,14 @@ TEST_CASE(source_authored_relationship_rows_retire_and_restart_on_membership_cha
                                      .type_count = 1,
                                      .relationships = &relationship,
                                      .relationship_count = 1 };
-    syntax = script_parse("Rows :: system(h: Health) join target in self.Targets { visits: retain int = 0; visits += 1 }");
+    type_catalog_set_project(&health_pack);
+    health_catalog_installed = true;
+    syntax = script_parse(
+        "Rows :: system(h: ^AssetHealth, target in self.Targets) { visits: "
+        "retain "
+        "int = 0; visits += 1 "
+        "}"
+    );
     analysis = script_analyze(syntax, &catalog);
     for (int i = 0; i < analysis->diagnostic_count; i++) {
         fprintf(stderr, "asset query: %s\n", analysis->diagnostics[i].message);

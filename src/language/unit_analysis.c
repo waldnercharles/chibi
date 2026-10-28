@@ -323,6 +323,13 @@ static script_unit compute(pass *p, const script_expression *e)
             }
             return UNKNOWN;
         }
+        case SCRIPT_EXPR_QUERY_FIELD:
+            for (int i = 0; i < p->facts->symbol_count; i++) {
+                if (p->facts->symbols[i].id == e->member) {
+                    return symbol(p, i, e->range);
+                }
+            }
+            return UNKNOWN;
         case SCRIPT_EXPR_MEMBER: return member(p, e);
         default: return UNKNOWN;
     }

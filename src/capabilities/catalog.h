@@ -30,6 +30,8 @@ enum
     SCRIPT_TYPE_SINGLETON = 1u << 9,
     SCRIPT_TYPE_LITERAL = 1u << 10,
     SCRIPT_TYPE_BOXED_OPTIONAL = 1u << 11,
+    SCRIPT_TYPE_QUERY = 1u << 12,
+    SCRIPT_TYPE_QUERY_ROW = 1u << 13,
 };
 enum
 {

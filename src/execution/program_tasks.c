@@ -12,6 +12,7 @@
 #include "types/copy_internal.h"
 #include "types/map.h"
 #include "types/pointer.h"
+#include "types/query.h"
 #include "types/record.h"
 #include "types/union.h"
 
@@ -486,6 +487,7 @@ typedef struct
     execution_task **pending;
     pin_value *values; /* Reached values whose contents are not yet marked. */
     program_pointer_set pointers; /* Visited pointer roots. */
+    const pin_query **queries;    /* Visited query values. */
     uint64_t lookup_steps;
 } task_roots;
 static int compare_roots(const void *left, const void *right)
@@ -554,17 +556,19 @@ bool program_pointer_first_visit(program_pointer_set *set, const pin_pointer *po
     set->count++;
     return true;
 }
-static void push_fields(task_roots *roots, const type_desc *type, const void *data)
+static void push_fields(task_roots *roots, const type_desc *type, const void *data, const pin_schema *schema)
 {
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         const void *member = (const char *)data + field->offset;
-        pin_value value = { .type = field->type, .type_name = field->type_name };
+        pin_value value = { .type = field->type,
+                            .type_name = field->type_name,
+                            .schema = schema };
         if (field->type == PIN_STRUCT) {
             value.ptr = (void *)member;
         } else if (field->type == PIN_TASK) {
             memcpy(&value.u64, member, sizeof value.u64);
-        } else if (field->type == PIN_UNION || field->type == PIN_POINTER) {
+        } else if (field->type == PIN_UNION || field->type == PIN_POINTER || field->type == PIN_QUERY) {
             memcpy(&value.ptr, member, sizeof value.ptr);
         } else {
             continue;
@@ -575,6 +579,22 @@ static void push_fields(task_roots *roots, const type_desc *type, const void *da
 /* Marks one value's own task handle and queues the values it reaches. */
 static void mark_one(task_roots *roots, const pin_value *value)
 {
+    if (value->type == PIN_QUERY && value->container == PIN_CONTAINER_SINGLE) {
+        const pin_query *query = value->ptr;
+        if (!query) {
+            return;
+        }
+        for (int i = 0; i < acount(roots->queries); i++) {
+            if (roots->queries[i] == query) {
+                return;
+            }
+        }
+        apush(roots->queries, query);
+        for (int i = 0; i < query->count; i++) {
+            apush(roots->values, query->values[i]);
+        }
+        return;
+    }
     if (value->type == PIN_POINTER && value->container == PIN_CONTAINER_SINGLE) {
         const pin_pointer *pointer = value->ptr;
         if (!pointer) {
@@ -600,8 +620,8 @@ static void mark_one(task_roots *roots, const pin_value *value)
         const pin_array *array = value->ptr;
         /* Packed pointer and record arrays can reach managed task handles. */
         if (array && array->stride && value->type != PIN_POINTER &&
-            value->type != PIN_STRUCT && value->type != PIN_TASK &&
-            value->type != PIN_UNION) {
+            value->type != PIN_QUERY && value->type != PIN_STRUCT &&
+            value->type != PIN_TASK && value->type != PIN_UNION) {
             return;
         }
         for (int i = 0; array && i < array->count; i++) {
@@ -622,7 +642,7 @@ static void mark_one(task_roots *roots, const pin_value *value)
             if (value->ptr) {
                 const type_desc *type = pin_value_type(value);
                 assert(type);
-                push_fields(roots, type, value->ptr);
+                push_fields(roots, type, value->ptr, value->schema);
             }
             break;
         default: break;
@@ -684,6 +704,12 @@ void program_tasks_collect(execution_program *p)
     qsort(roots.index, (size_t)acount(roots.index), sizeof *roots.index, compare_roots);
     for (int scope = -1; scope < acount(p->imports); scope++) {
         execution_program *program = scope < 0 ? p : p->imports[scope];
+        for (int i = 0; i < acount(program->query_values); i++) {
+            mark_value(&roots, &program->query_values[i]);
+        }
+        for (int i = 0; i < acount(program->system_values); i++) {
+            mark_value(&roots, &program->system_values[i]);
+        }
         for (int i = 0; i < program->module->plan.state_count; i++) {
             mark_value(&roots, &program->shared[i].value);
         }
@@ -702,6 +728,7 @@ void program_tasks_collect(execution_program *p)
         }
         for (int i = 0; i < acount(program->instances); i++) {
             execution_instance *instance = program->instances[i];
+            mark_value(&roots, &instance->query_row);
             for (int j = 0; j < program->module->plan.state_count; j++) {
                 mark_value(&roots, &instance->values[j]);
             }
@@ -733,6 +760,7 @@ void program_tasks_collect(execution_program *p)
     afree(roots.pending);
     afree(roots.values);
     free(roots.pointers.slots);
+    afree(roots.queries);
     afree(roots.index);
 }
 

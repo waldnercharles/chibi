@@ -884,13 +884,11 @@ TEST_CASE(query_binding_publication_and_prepared_reader_reject_forged_bound_mask
     REQUIRE(!loaded && strstr(error, "query"));
     return true;
 }
-static bool direct_binding_structure(const behavior_function *function, int *reads)
+static bool query_variable_structure(const behavior_function *function, int *reads)
 {
     REQUIRE(function);
-    REQUIRE(!function->host_calls && !function->data_values);
     for (int i = 0; i < acount(function->instructions); i++) {
         const behavior_function_instruction *instruction = &function->instructions[i];
-        REQUIRE(instruction->op != BF_HOST_CALL && instruction->op != BF_HOST_SLOT);
         if (instruction->op == BF_QUERY_VARIABLE) {
             REQUIRE(instruction->type == PIN_HANDLE && instruction->target == 1);
             (*reads)++;
@@ -907,7 +905,7 @@ static bool binding_global(void *user, uint64_t id, behavior_function_instructio
     *out = (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE };
     return true;
 }
-TEST_CASE(query_binding_authored_join_lowers_without_host_banks)
+TEST_CASE(query_binding_authored_generators_share_evaluated_rows)
 {
     /* Reuse the registered scalar Position fixture's real reflected layout. */
     const type_desc *position = type_catalog_find("Position");
@@ -939,22 +937,47 @@ TEST_CASE(query_binding_authored_join_lowers_without_host_banks)
                                      .globals = &owner,
                                      .global_count = 1,
                                      .entity_type = 700 };
-    binding_syntax = script_parse("Direct :: system( root:Position) join entity in self.Targets where entity != self { if entity == self {} }");
+    binding_syntax = script_parse("Direct :: system(root: ^Position, entity in self.Targets, if entity != self) { root.x += 1; }");
     binding_analysis = script_analyze(binding_syntax, &catalog);
     REQUIRE(binding_analysis && binding_analysis->valid);
     plan = script_lower(binding_analysis, &catalog, &(script_lower_bindings){ .global = binding_global });
     REQUIRE(plan && plan->valid);
-    int body_reads = 0, predicate_reads = 0;
-    for (int i = 0; i < plan->function_count; i++) {
-        REQUIRE(direct_binding_structure(plan->functions[i].body, &body_reads));
-    }
-    for (int i = 0; i < plan->query_count; i++) {
-        if (plan->queries[i].predicate) {
-            REQUIRE(direct_binding_structure(plan->queries[i].predicate, &predicate_reads));
-        }
-    }
-    REQUIRE(body_reads > 0 && predicate_reads > 0);
-    REQUIRE(plan->query_variable_count == 1);
+    int reads = 0;
+    REQUIRE(plan->description_count == 1 && plan->system_description == 1);
+    REQUIRE(query_variable_structure(plan->descriptions[0].evaluate, &reads));
+    REQUIRE(reads > 0 && plan->query_variable_count == 1);
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(module);
+    world = ecs_world_new();
+    const ecs_relationship_desc relation = { .id = 601,
+                                             .key = "query.targets",
+                                             .name = "Targets",
+                                             .traits = ECS_REL_EXCLUSIVE };
+    REQUIRE(ecs_world_register_relationship(world, &relation, NULL) == ECS_OK);
+    const ecs_component_desc component = { .id = 501,
+                                           .key = "query.position",
+                                           .name = "Position",
+                                           .type = position,
+                                           .element_size = position->size };
+    REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
+    ecs_entity root = ecs_world_create_entity(world);
+    ecs_entity excluded = ecs_world_create_entity(world);
+    ecs_entity target = ecs_world_create_entity(world);
+    double value[2] = { 1, 0 }, unchanged[2] = { 5, 0 };
+    REQUIRE(ecs_world_record_add(world, root, 501, value, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, excluded, 501, unchanged, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(world, root, 601, target, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(world, excluded, 601, excluded, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    execution_program *program = execution_program_new(module, world, NULL);
+    REQUIRE(program);
+    int status = execution_program_step(program, 0, .1, 10000);
+    const double *changed = ecs_component_data_const(world, root, 501);
+    const double *filtered = ecs_component_data_const(world, excluded, 501);
+    bool correct = status == FLOW_OK && changed && changed[0] == 2 &&
+                   filtered && filtered[0] == 5;
+    execution_program_free(program);
+    REQUIRE(correct);
     return true;
 }
 TEST_CASE(query_binding_order_is_checked_before_publication)
@@ -1126,7 +1149,7 @@ void test_language_query_boundary()
     RUN_TEST_CASE(query_change_versions_saturate);
     RUN_TEST_CASE(query_predicates_roundtrip_with_services_effects_and_preflight);
     RUN_TEST_CASE(query_binding_publication_and_prepared_reader_reject_forged_bound_masks);
-    RUN_TEST_CASE(query_binding_authored_join_lowers_without_host_banks);
+    RUN_TEST_CASE(query_binding_authored_generators_share_evaluated_rows);
     RUN_TEST_CASE(query_binding_order_is_checked_before_publication);
     RUN_TEST_CASE(query_predicate_purity_is_rechecked_after_native_linking);
     RUN_TEST_CASE(query_predicate_purity_follows_each_outlined_callee);

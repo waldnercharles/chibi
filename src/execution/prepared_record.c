@@ -3,6 +3,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/schema.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -131,7 +132,7 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
     if (w->error) {
         return;
     }
-    if (v->storage == PIN_POINTER) {
+    if ((v->storage == PIN_POINTER || v->storage == PIN_QUERY)) {
         if (authored || v->size != sizeof(void *)) {
             w->error = "invalid prepared pointer type";
         }
@@ -212,7 +213,8 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         }
         size_t bytes = name_bytes(c, name);
         if (!name || !*name || !bytes || bytes > SIZE_MAX - names ||
-            !((kind >= PIN_BOOL && kind <= PIN_ENUM) || kind == PIN_POINTER)) {
+            !((kind >= PIN_BOOL && kind <= PIN_ENUM) || kind == PIN_POINTER ||
+              kind == PIN_QUERY)) {
             w->error = "invalid prepared authored field";
             break;
         }
@@ -334,7 +336,7 @@ void prepared_types(prepared_context *c)
         }
         c->records[i].name_bytes = name_bytes(c, v->name);
         if (!v->id || !v->name || !*v->name || v->storage < PIN_BOOL ||
-            v->storage > PIN_POINTER) {
+            v->storage > PIN_QUERY) {
             w->error = "invalid prepared type requirement";
             break;
         }
@@ -466,7 +468,8 @@ void prepared_value(prepared_context *c, pin_value *v)
         if (type->record || !type->id || !type->layout || !type->size ||
             type->size > EXECUTION_WIRE_MAX_BYTES ||
             (native && (native->size != type->size ||
-                        type_layout_hash(native) != type->layout))) {
+                        (v->schema ? pin_schema_layout_type(v->schema, native)
+                                   : type_layout_hash(native)) != type->layout))) {
             w->error = "prepared native header lacks a stable layout "
                        "requirement";
             return;

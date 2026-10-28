@@ -102,6 +102,7 @@ struct execution_instance
     bool query_seen, query_ready, query_started, query_new;
     uint64_t query_variables[ECS_QUERY_VARS];
     uint64_t query_order;
+    pin_value query_row;
     query_change *query_changes, *query_snapshot;
     pin_value *values, *node_states;
     state_value *states;
@@ -180,6 +181,7 @@ struct execution_program
     bool query_streaming;
     int stream_system;
     uint64_t *query_admissions;
+    pin_value *query_values, *system_values; /* Ordered accepted row snapshots. */
     struct query_evaluator *query_evaluators;
     size_t query_cache_bytes;
     /* Detached scalar contributions and immutable prepared query row IDs. */

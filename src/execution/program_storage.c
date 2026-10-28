@@ -128,8 +128,15 @@ static void managed_scope_roots(const execution_program *p, arena_collection *co
     for (int i = 0; i < acount(p->reductions); i++) {
         managed_value(collection, &p->reductions[i].value);
     }
+    for (int i = 0; i < acount(p->query_values); i++) {
+        managed_value(collection, &p->query_values[i]);
+    }
+    for (int i = 0; i < acount(p->system_values); i++) {
+        managed_value(collection, &p->system_values[i]);
+    }
     for (int i = 0; i < acount(p->instances); i++) {
         const execution_instance *instance = p->instances[i];
+        managed_value(collection, &instance->query_row);
         for (int j = 0; j < plan->state_count; j++) {
             managed_value(collection, &instance->values[j]);
             managed_value(collection, &instance->states[j].value);
@@ -246,6 +253,19 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
         result.reduction_peak_bytes += program->reduction_peak_bytes;
         result.system_row_bytes += (size_t)acount(program->system_rows) *
                                    sizeof *program->system_rows;
+        result.system_row_bytes += (size_t)(acount(program->query_values) +
+                                            acount(program->system_values)) *
+                                   sizeof(pin_value);
+        if (program->query_values) {
+            result.system_row_capacity += sizeof(dyna_hdr) +
+                                          (size_t)acap(program->query_values) *
+                                              sizeof(pin_value);
+        }
+        if (program->system_values) {
+            result.system_row_capacity += sizeof(dyna_hdr) +
+                                          (size_t)acap(program->system_values) *
+                                              sizeof(pin_value);
+        }
         result.system_row_capacity += program->system_rows
                                         ? sizeof(dyna_hdr) +
                                               (size_t)acap(program->system_rows) *

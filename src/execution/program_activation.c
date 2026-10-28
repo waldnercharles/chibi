@@ -233,6 +233,8 @@ execution_activation *program_activation_new(
         .value_owner = instance,
         .value_storage = &a->payload,
         .managed_heap = instance->program->owner_program->managed,
+        .module = instance->program->module,
+        .program = instance->program,
         .result_storage = &a->payload,
 
         .arguments = args,
@@ -250,6 +252,11 @@ execution_activation *program_activation_new(
 
         .inspection_user = a
     };
+    if (instance->query_row.type == PIN_QUERY) {
+        pin_value *row = arena_alloc(&a->payload, sizeof *row);
+        *row = instance->query_row;
+        a->context.query_row = row;
+    }
     program_bind_world_callbacks(&a->context);
     program_bind_commands(&a->context);
     program_bind_tasks(&a->context);

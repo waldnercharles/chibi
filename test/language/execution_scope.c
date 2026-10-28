@@ -168,7 +168,9 @@ typedef struct
     const behavior_function *source_function;
     double value;
     bool returned;
-    const char *message;
+    /* The message lives in the run's storage, so it is copied out. */
+    bool has_message;
+    char message[256];
     behavior_run_counts counts;
 } observation;
 static int start_task(behavior_function_context *context, int call)
@@ -213,8 +215,11 @@ static observation invoke(const behavior_function *f)
                         .stack = context.error_stack,
                         .value = result.d,
                         .returned = context.returned,
-                        .message = context.error_message,
+                        .has_message = context.error_message != NULL,
                         .counts = runs.counts };
+    if (out.has_message) {
+        snprintf(out.message, sizeof out.message, "%s", context.error_message);
+    }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
     arena_free(&storage);
@@ -240,8 +245,8 @@ static bool parity(const behavior_function *root, const observation *a, const ob
     REQUIRE(a->node_id == b->node_id && a->error_pin == b->error_pin);
     REQUIRE(a->steps == b->steps && a->error_steps == b->error_steps);
     REQUIRE(a->source_function == b->source_function);
-    REQUIRE(!a->message == !b->message);
-    REQUIRE(!a->message || !strcmp(a->message, b->message));
+    REQUIRE(a->has_message == b->has_message);
+    REQUIRE(!strcmp(a->message, b->message));
     if (a->status == FLOW_OK) {
         REQUIRE(a->returned && a->value == 42 && b->value == 42);
     } else {
@@ -274,7 +279,7 @@ TEST_CASE(scoped_native_matches_canonical_vm)
             }
             if (!budgets[i]) {
                 REQUIRE(a.status == FLOW_ERR_STEP_BUDGET && a.source == 1);
-                REQUIRE(a.message && !strcmp(a.message, "shared instruction budget exhausted"));
+                REQUIRE(a.has_message && !strcmp(a.message, "shared instruction budget exhausted"));
                 REQUIRE(a.node_id == functions[f]->instructions[0].node_id);
             }
             if (f && budgets[i] == 1) {
@@ -290,7 +295,7 @@ TEST_CASE(scoped_native_matches_canonical_vm)
         observation a = run(functions[f], &vm), b = run(functions[f], &jit);
         REQUIRE(parity(functions[f], &a, &b));
         REQUIRE(vm.remaining == 125 && jit.remaining == 125);
-        REQUIRE(a.message && !strcmp(a.message, "execution cancelled"));
+        REQUIRE(a.has_message && !strcmp(a.message, "execution cancelled"));
         REQUIRE(a.source_function == scalar);
         REQUIRE(!native || b.counts.sljit_entries > 0);
     }
@@ -648,7 +653,7 @@ TEST_CASE(scoped_pure_rejects_task_before_suspension)
         REQUIRE(!task_starts && !value.pc);
         REQUIRE(value.status == FLOW_ERR_STEP_BUDGET && !value.returned);
         REQUIRE(
-            value.message &&
+            value.has_message &&
             !strcmp(value.message, "operation is unavailable during pure evaluation")
         );
         REQUIRE(value.source_function == caller && value.source == 1);

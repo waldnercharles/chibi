@@ -508,10 +508,10 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
     p[index].default_value.container = p[index].container;
     p[index].default_value.type_name = p[index].type_name;
     if (p[index].container >= PIN_CONTAINER_ARRAY && value->ptr) {
-        p[index].default_value.ptr = pin_array_clone_to_graph(
-            g,
-            (const pin_array *)value->ptr
-        );
+        pin_value array = p[index].default_value;
+        if (pin_value_copy_to_graph(g, &p[index].default_value, &array)) {
+            return -1;
+        }
     }
     if (p[index].container == PIN_CONTAINER_SINGLE &&
         (value->type == PIN_STR || value->type == PIN_NAME)) {

@@ -673,5 +673,13 @@ uint64_t script_catalog_capability_abi(const script_catalog *catalog, const scri
     hash = abi_word(hash, capability->variadic);
     hash = abi_word(hash, capability->variadic_optional);
     hash = abi_word(hash, capability->event_sender);
-    return abi_word(hash, capability->numeric_aggregate);
+    hash = abi_word(hash, capability->numeric_aggregate);
+    /* Only a capability that takes language values or owns its result
+     * hashes them, so every other capability keeps its identity. */
+    if (capability->language_values || capability->owned_result) {
+        hash = abi_text(hash, "language-values");
+        hash = abi_word(hash, capability->language_values);
+        hash = abi_word(hash, capability->owned_result);
+    }
+    return hash;
 }

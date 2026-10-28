@@ -134,6 +134,12 @@ void compiler_fixture_free(compiler_fixture *fixture)
     native_capabilities_free(fixture->native);
     *fixture = (compiler_fixture){ 0 };
 }
+void compiler_fixture_init_heap(compiler_fixture *fixture)
+{
+    fixture->managed = xmalloc(sizeof *fixture->managed);
+    behavior_managed_heap_init(fixture->managed);
+    fixture->managed->call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
+}
 bool compiler_fixture_prepare(compiler_fixture *fixture, const source_package_input *files, int count)
 {
     return compiler_fixture_prepare_packs(fixture, files, count, NULL, 0);
@@ -160,8 +166,7 @@ bool compiler_fixture_prepare_backends(
     assert(selected && !(selected & ~COMPILER_FIXTURE_BOTH));
     assert(!fixture->native && !fixture->owners[0] && !fixture->owners[1]);
     REQUIRE(additional_count >= 0 && (!additional_count || additional));
-    fixture->managed = xmalloc(sizeof *fixture->managed);
-    behavior_managed_heap_init(fixture->managed);
+    compiler_fixture_init_heap(fixture);
     native_definition_pack *packs = xmalloc(((size_t)additional_count + 2) * sizeof *packs);
     packs[0] = NATIVE_TEXT_DEFINITION_PACK;
     packs[1] = NATIVE_ARRAY_DEFINITION_PACK;
@@ -275,6 +280,60 @@ static bool test_workers(int *workers)
 }
 bool compiler_fixture_tests(const compiler_fixture *fixture)
 {
+    return compiler_fixture_tests_budget(fixture, FIXTURE_TEST_BUDGET);
+}
+static bool module_tests(
+    const authoring_packages *owner,
+    package_test *tests,
+    int count,
+    const execution_module *module
+)
+{
+    for (int t = 0; t < count; t++) {
+        uint64_t id = 0;
+        int originals = 0, replacements = 0;
+        for (int p = 0; p < authoring_packages_count(owner); p++) {
+            const execution_module *source = authoring_packages_at(owner, p)->module;
+            for (int i = 0; i < execution_module_function_count(source); i++) {
+                execution_module_function_info info = execution_module_function_at(source, i);
+                if (info.body == tests[t].body) {
+                    id = info.id;
+                    originals++;
+                }
+            }
+        }
+        execution_module_function_info replacement = { 0 };
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info info = execution_module_function_at(module, i);
+            if (info.id == id) {
+                replacement = info;
+                replacements++;
+            }
+        }
+        if (originals != 1 || replacements != 1 || !replacement.body) {
+            fprintf(
+                pu_errors(),
+                "Authored test %s.%s has no unique compiled body\n",
+                tests[t].package,
+                tests[t].name
+            );
+            return false;
+        }
+        tests[t].body = replacement.body;
+        tests[t].parallel = tests[t].parallel && !replacement.effects &&
+                            behavior_function_hosts_pure(replacement.body);
+    }
+    return true;
+}
+static bool fixture_tests(
+    const compiler_fixture *fixture,
+    uintptr_t budget,
+    int selected,
+    const execution_module *module,
+    const char *collection
+)
+{
+    assert(budget > 0);
     int workers;
     if (!test_workers(&workers)) {
         return false;
@@ -288,7 +347,7 @@ bool compiler_fixture_tests(const compiler_fixture *fixture)
 #endif
     bool found = false, passed = true;
     for (int b = 0; b < 2; b++) {
-        if (!fixture->owners[b]) {
+        if (!fixture->owners[b] || (selected >= 0 && b != selected)) {
             continue;
         }
         const char *backend = behavior_backend_name(backends[b]);
@@ -297,7 +356,7 @@ bool compiler_fixture_tests(const compiler_fixture *fixture)
             passed = false;
             continue;
         }
-        package_test *tests = package_tests_find(fixture->owners[b]);
+        package_test *tests = package_tests_find_collection(fixture->owners[b], collection);
         int count = acount(tests);
         if (!count) {
             fprintf(pu_errors(), "%s: no authored tests found\n", backend);
@@ -306,11 +365,16 @@ bool compiler_fixture_tests(const compiler_fixture *fixture)
             continue;
         }
         found = true;
+        if (module && !module_tests(fixture->owners[b], tests, count, module)) {
+            passed = false;
+            afree(tests);
+            continue;
+        }
         package_test_result *results = xcalloc((size_t)count, sizeof *results);
 #ifdef CHIBI_PACKAGE_TEST_POOL
         task_pool_begin(pool, count > 1);
 #endif
-        package_tests_run(tests, count, backends[b], FIXTURE_TEST_BUDGET, tasks, results);
+        package_tests_run(tests, count, backends[b], budget, tasks, results);
 #ifdef CHIBI_PACKAGE_TEST_POOL
         task_pool_end(pool);
 #endif
@@ -354,6 +418,26 @@ bool compiler_fixture_tests(const compiler_fixture *fixture)
         fprintf(pu_errors(), "Compiler fixture contains no authored tests\n");
     }
     return found && passed;
+}
+bool compiler_fixture_tests_budget(const compiler_fixture *fixture, uintptr_t budget)
+{
+    return compiler_fixture_tests_in_collection(fixture, "project", budget);
+}
+bool compiler_fixture_tests_in_collection(const compiler_fixture *fixture, const char *collection, uintptr_t budget)
+{
+    assert(collection);
+    return fixture_tests(fixture, budget, -1, NULL, collection);
+}
+bool compiler_fixture_module_tests(
+    const compiler_fixture *fixture,
+    int backend,
+    const execution_module *module,
+    uintptr_t budget
+)
+{
+    assert(backend >= 0 && backend < 2 && module);
+    assert(execution_module_backend(module) == backends[backend]);
+    return fixture_tests(fixture, budget, backend, module, "project");
 }
 const pin_record *compiler_fixture_record(
     const compiler_fixture *fixture,
@@ -535,7 +619,9 @@ static bool run(
 }
 int compiler_fixture_snapshot(arena *storage, pin_value *out, const pin_value *value)
 {
-    if (pin_value_snapshot_to_arena(storage, out, value)) {
+    /* A snapshot keeps managed collections' identity, so results that outlive
+     * the fixture's heap are captured. */
+    if (pin_value_capture_to_arena(storage, out, value)) {
         return -1;
     }
     box(storage, out, 0);
@@ -655,18 +741,37 @@ TEST_CASE(compiler_fixture_default_keeps_both_backends)
 /* Capture deliberate authored failures without changing the enclosing case's
  * pico result or leaking expected FAIL reports into its normal output. */
 static const compiler_fixture *captured_fixture;
+static uintptr_t captured_budget;
+static const execution_module *captured_module;
+static const char *captured_collection;
+static int captured_backend;
 static bool run_captured_tests()
 {
-    return compiler_fixture_tests(captured_fixture);
+    if (captured_module) {
+        return compiler_fixture_module_tests(captured_fixture, captured_backend, captured_module, captured_budget);
+    }
+    if (captured_collection) {
+        return compiler_fixture_tests_in_collection(captured_fixture, captured_collection, captured_budget);
+    }
+    return captured_budget
+             ? compiler_fixture_tests_budget(captured_fixture, captured_budget)
+             : compiler_fixture_tests(captured_fixture);
 }
-static bool fixture_test_report(const compiler_fixture *fixture, bool passed, const char *expected)
+static bool fixture_test_report_budget(
+    const compiler_fixture *fixture,
+    uintptr_t budget,
+    bool passed,
+    const char *expected
+)
 {
     FILE *output = tmpfile();
     REQUIRE(output);
     pu_test_context context = { .quiet = true, .output = output, .errors = output };
     captured_fixture = fixture;
+    captured_budget = budget;
     pu_run_test_context(&context, "authored adapter", run_captured_tests);
     captured_fixture = NULL;
+    captured_budget = 0;
     rewind(output);
     char text[2048];
     size_t count = fread(text, 1, sizeof text - 1, output);
@@ -679,6 +784,10 @@ static bool fixture_test_report(const compiler_fixture *fixture, bool passed, co
     }
     fclose(output);
     return valid;
+}
+static bool fixture_test_report(const compiler_fixture *fixture, bool passed, const char *expected)
+{
+    return fixture_test_report_budget(fixture, 0, passed, expected);
 }
 TEST_CASE(compiler_fixture_runs_authored_tests_on_selected_backends)
 {
@@ -781,6 +890,158 @@ TEST_CASE(compiler_fixture_bounds_each_authored_test)
     REQUIRE(fixture_test_report(fixture, false, expected));
     return true;
 }
+TEST_CASE(compiler_fixture_preserves_a_custom_authored_budget)
+{
+    const char source[] = "package fixture\n"
+                          "@test Exhausts :: () { for i in 0..<10000 {} }\n"
+                          "@test After :: () {}\n";
+    source_package_input file = { "fixture/Tests.chibi", source, sizeof source - 1 };
+    compiler_fixture *fixture = &prepared_fixtures[0];
+    REQUIRE(compiler_fixture_prepare(fixture, &file, 1));
+    char expected[1024];
+    snprintf(
+        expected,
+        sizeof expected,
+        "PASS fixture.Exhausts (BYTECODE)\nPASS fixture.After "
+        "(BYTECODE)\nBYTECODE: 2 tests, 0 failed\n"
+        "PASS fixture.Exhausts (%s)\nPASS fixture.After (%s)\n%s: 2 tests, 0 "
+        "failed\n",
+        behavior_backend_name(backends[1]),
+        behavior_backend_name(backends[1]),
+        behavior_backend_name(backends[1])
+    );
+    REQUIRE(fixture_test_report(fixture, true, expected));
+    snprintf(
+        expected,
+        sizeof expected,
+        "FAIL fixture.Exhausts (BYTECODE)\n  "
+        "/compiler/fixture/Tests.chibi:2:43: instruction budget exhausted\n"
+        "PASS fixture.After (BYTECODE)\nBYTECODE: 2 tests, 1 failed\n"
+        "FAIL fixture.Exhausts (%s)\n  /compiler/fixture/Tests.chibi:2:43: "
+        "instruction budget exhausted\n"
+        "PASS fixture.After (%s)\n%s: 2 tests, 1 failed\n",
+        behavior_backend_name(backends[1]),
+        behavior_backend_name(backends[1]),
+        behavior_backend_name(backends[1])
+    );
+    REQUIRE(fixture_test_report_budget(fixture, 100, false, expected));
+    return true;
+}
+TEST_CASE(compiler_fixture_selects_an_exact_collection)
+{
+    const char project[] = "package fixture\n"
+                           "@test ProjectOnly :: () { assert(false, "
+                           "\"project-only\"); }\n";
+    const char collection[] = "package core_fixture\n"
+                              "@test Exhausts :: () { for i in 0..<10000 {} }\n"
+                              "@test After :: () {}\n";
+    source_package_input files[] = {
+        { "fixture/Tests.chibi", project, sizeof project - 1 },
+        { "/sdk/core/core_fixture/Tests.chibi", collection, sizeof collection - 1 },
+    };
+    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
+    compiler_fixture *fixture = &prepared_fixtures[0];
+    REQUIRE(compiler_fixture_prepare_packs(fixture, files, 2, core, 1));
+    const char *backend = behavior_backend_name(backends[1]);
+    char expected[1024];
+    snprintf(
+        expected,
+        sizeof expected,
+        "FAIL core_fixture.Exhausts (BYTECODE)\n  "
+        "/sdk/core/core_fixture/Tests.chibi:2:43: instruction budget "
+        "exhausted\n"
+        "PASS core_fixture.After (BYTECODE)\nBYTECODE: 2 tests, 1 failed\n"
+        "FAIL core_fixture.Exhausts (%s)\n  "
+        "/sdk/core/core_fixture/Tests.chibi:2:43: instruction budget "
+        "exhausted\n"
+        "PASS core_fixture.After (%s)\n%s: 2 tests, 1 failed\n",
+        backend,
+        backend,
+        backend
+    );
+    captured_collection = "core";
+    bool passed = fixture_test_report_budget(fixture, 100, false, expected);
+    captured_collection = NULL;
+    REQUIRE(passed);
+    snprintf(
+        expected,
+        sizeof expected,
+        "BYTECODE: no authored tests found\n%s: no authored tests found\n"
+        "Compiler fixture contains no authored tests\n",
+        backend
+    );
+    captured_collection = "cor";
+    passed = fixture_test_report_budget(fixture, 100, false, expected);
+    captured_collection = NULL;
+    REQUIRE(passed);
+    snprintf(
+        expected,
+        sizeof expected,
+        "FAIL fixture.ProjectOnly (BYTECODE)\n  "
+        "/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\n"
+        "BYTECODE: 1 tests, 1 failed\n"
+        "FAIL fixture.ProjectOnly (%s)\n  "
+        "/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\n"
+        "%s: 1 tests, 1 failed\n",
+        backend,
+        backend
+    );
+    REQUIRE(fixture_test_report(fixture, false, expected));
+    return true;
+}
+TEST_CASE(compiler_fixture_uses_replacement_test_bodies)
+{
+    const char source[] = "package fixture\n"
+                          "@test First :: () { assert(true); }\n"
+                          "@test After :: () {}\n";
+    const char replacement[] = "package fixture\n"
+                               "@test First :: () { assert(false, "
+                               "\"replacement\"); }\n"
+                               "@test After :: () {}\n";
+    source_package_input file = { "fixture/Tests.chibi", source, sizeof source - 1 };
+    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
+    compiler_fixture *metadata = &prepared_fixtures[0],
+                     *compiled = &prepared_fixtures[1];
+    REQUIRE(compiler_fixture_prepare_packs(metadata, &file, 1, core, 1));
+    file = (source_package_input){ "fixture/Tests.chibi",
+                                   replacement,
+                                   sizeof replacement - 1 };
+    REQUIRE(compiler_fixture_prepare_packs(compiled, &file, 1, core, 1));
+    for (int b = 0; b < 2; b++) {
+        captured_backend = b;
+        captured_module = compiler_fixture_package(compiled, b, "project:fixture")
+                              ->module;
+        char expected[512];
+        const char *backend = behavior_backend_name(backends[b]);
+        snprintf(
+            expected,
+            sizeof expected,
+            "FAIL fixture.First (%s)\n  /compiler/fixture/Tests.chibi:2:21: "
+            "Assertion failed: replacement\n"
+            "PASS fixture.After (%s)\n%s: 2 tests, 1 failed\n",
+            backend,
+            backend,
+            backend
+        );
+        bool passed = fixture_test_report_budget(metadata, 10000, false, expected);
+        captured_module = NULL;
+        REQUIRE(passed);
+    }
+    compiler_fixture_free(compiled);
+    const char
+        missing[] = "package fixture\n@test First :: () { assert(false); }\n";
+    file = (source_package_input){ "fixture/Tests.chibi", missing, sizeof missing - 1 };
+    REQUIRE(compiler_fixture_prepare_packs(compiled, &file, 1, core, 1));
+    for (int b = 0; b < 2; b++) {
+        captured_backend = b;
+        captured_module = compiler_fixture_package(compiled, b, "project:fixture")
+                              ->module;
+        bool passed = fixture_test_report_budget(metadata, 10000, false, "Authored test fixture.After has no unique compiled body\n");
+        captured_module = NULL;
+        REQUIRE(passed);
+    }
+    return true;
+}
 TEST_CASE(compiler_fixture_rejects_invalid_authored_worker_settings)
 {
     const char *setting = getenv("CHIBI_TEST_WORKERS");
@@ -806,6 +1067,9 @@ void test_language_compiler_fixture()
     RUN_TEST_CASE(compiler_fixture_runs_authored_tests_on_selected_backends);
     RUN_TEST_CASE(compiler_fixture_rejects_missing_and_failed_authored_tests);
     RUN_TEST_CASE(compiler_fixture_bounds_each_authored_test);
+    RUN_TEST_CASE(compiler_fixture_preserves_a_custom_authored_budget);
+    RUN_TEST_CASE(compiler_fixture_selects_an_exact_collection);
+    RUN_TEST_CASE(compiler_fixture_uses_replacement_test_bodies);
     RUN_TEST_CASE(compiler_fixture_rejects_invalid_authored_worker_settings);
     pu_clear_setup();
 }

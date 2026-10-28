@@ -827,7 +827,7 @@ static void record_defaults(analyzer *a, TSNode node, script_expression *result)
             continue;
         }
         pin_value owned = { 0 };
-        if (pin_value_snapshot_to_arena(&a->out->constants, &owned, &field->default_value)) {
+        if (pin_value_capture_to_arena(&a->out->constants, &owned, &field->default_value)) {
             script_analyzer_diagnostic(
                 a,
                 node,
@@ -879,6 +879,9 @@ static bool hides_parameter(const analyzer *a, const script_symbol *symbol)
  * of its field defaults, or zero. */
 static int zero_value(analyzer *a, TSNode node, script_type type)
 {
+    if (type.container == PIN_CONTAINER_VIEW && !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        script_analyzer_diagnostic(a, node, "A nonoptional view requires an initializer");
+    }
     if (type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE &&
         !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
         script_analyzer_diagnostic(a, node, "A non-null pointer requires an initializer");
@@ -916,7 +919,8 @@ static int absent_value(analyzer *a, TSNode node, script_type type)
                                  .right = -1 }
         );
     }
-    if ((type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE) ||
+    if (type.container == PIN_CONTAINER_VIEW ||
+        (type.storage == PIN_POINTER && type.container == PIN_CONTAINER_SINGLE) ||
         type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_UNION | SCRIPT_TYPE_TASK |
                       SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_ERROR | SCRIPT_TYPE_UNTYPED) ||
         (type.storage == PIN_UNION && type.container == PIN_CONTAINER_SINGLE)) {
@@ -1367,6 +1371,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                      .symbol = -1,
                                      .entry = -1,
                                      .tag = 0,
+                                     .writable = result.writable,
                                      .effects = result.effects }
             );
         }
@@ -1566,6 +1571,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "index_expression")) {
+        TSNode bounds = script_analyzer_field(node, "index");
+        if (script_analyzer_is(bounds, "range_expression")) {
+            return script_analyzer_sequence(a, node, script_analyzer_field(node, "object"), bounds, SCRIPT_SEQUENCE_SLICE);
+        }
         result.kind = SCRIPT_EXPR_INDEX;
         result.left = script_analyzer_expression(
             a,
@@ -1573,17 +1582,25 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
         );
         script_type collection_type = script_analyzer_expr_type(a, result.left);
+        if (collection_type.flags & SCRIPT_TYPE_OPTIONAL) {
+            script_analyzer_diagnostic(a, node, "Narrow an optional sequence before indexing it");
+        }
         script_type key_type = collection_type.container == PIN_CONTAINER_MAP
                                  ? script_catalog_key_type(a->catalog, collection_type)
                                  : (script_type){ .storage = PIN_I32 };
         result.right = script_analyzer_expression(a, script_analyzer_field(node, "index"), key_type);
         result.type = script_analyzer_expr_type(a, result.left);
-        if (result.type.container != PIN_CONTAINER_ARRAY &&
+        /* A string's index reads one of its bytes. */
+        bool text = result.type.storage == PIN_STR &&
+                    result.type.container == PIN_CONTAINER_SINGLE;
+        if (!text && result.type.container != PIN_CONTAINER_ARRAY &&
+            result.type.container != PIN_CONTAINER_VIEW &&
             result.type.container != PIN_CONTAINER_MAP) {
-            script_analyzer_diagnostic(a, node, "Index requires an array or map");
+            script_analyzer_diagnostic(a, node, "Index requires an array, map or string");
             result.type = script_analyzer_bad_type();
         }
-        result.type = script_catalog_element_type(a->catalog, result.type);
+        result.type = text ? (script_type){ .storage = PIN_I32 }
+                           : script_catalog_element_type(a->catalog, result.type);
         script_analyzer_require(
             a,
             script_analyzer_field(node, "index"),
@@ -1605,7 +1622,12 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         result.effects = script_analyzer_expr_effects(a, result.left) |
                          script_analyzer_expr_effects(a, result.right);
-        result.writable = a->out->expressions[result.left].writable;
+        /* An element of a view is read through its pointer. */
+        if (collection_type.container == PIN_CONTAINER_VIEW) {
+            result.effects |= SCRIPT_EFFECT_READ;
+        }
+        result.writable = collection_type.container == PIN_CONTAINER_VIEW ||
+                          a->out->expressions[result.left].writable;
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "array_expression")) {
@@ -1646,10 +1668,13 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             script_analyzer_diagnostic(a, node, "Empty arrays need an explicit element type");
             element = script_analyzer_bad_type();
         }
-        result.type = element.collection || element.container != PIN_CONTAINER_SINGLE
+        result.type = element.collection ||
+                              element.container != PIN_CONTAINER_SINGLE ||
+                              (element.flags & SCRIPT_TYPE_OPTIONAL)
                         ? script_analyzer_collection_type(a, PIN_CONTAINER_ARRAY, (script_type){ 0 }, element)
                         : element;
-        result.type.container = expected.container == PIN_CONTAINER_SINGLE
+        result.type.container = (expected.container == PIN_CONTAINER_SINGLE ||
+                                 expected.container == PIN_CONTAINER_VIEW)
                                   ? PIN_CONTAINER_ARRAY
                                   : expected.container;
         return script_analyzer_expr_add(a, result);

@@ -1,11 +1,15 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_package_prepare.h"
 #include "backend.h"
+#include "compiler_fixture.h"
+#include "core_strings_tests_source.h"
 #include "execution/function.h"
 #include "execution/module.h"
 #include "execution/status.h"
+#include "package_compiler_chibi.h"
 #include "package_core_source.h"
 #include "runtime/arrays_definition.h"
+#include "runtime/core_definition.h"
 #include "runtime/text_definition.h"
 #include "runtime/text_format.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -17,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Nine cases, two backends. Each preparation has two files and one import.
+/* Native boundaries on two backends. Each preparation has two files and one import.
  * Dense fixtures return at most 33 fields from 96 bytes. Each call has a fixed
  * 10000-instruction budget;
  * no filesystem, services, workers, frames or timing loops. The
@@ -25,11 +29,14 @@
  * wrapper copy. Expected values follow Odin's core:strings over bytes. */
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
 static authoring_packages *owners[3];
+static compiler_fixture authored;
 static native_capabilities *tables[2];
 static execution_module *retained;
 static behavior_function_context context;
 static behavior_function_activation activation;
 static arena storage, inputs_storage;
+/* Owns the collections a call returns until the next call. */
+static behavior_managed_heap heap;
 static pin_value output;
 static size_t slice_calls, slice_bytes, byte_reads;
 /* Count actual owned slice payloads through the existing native binding seam.
@@ -50,55 +57,37 @@ static const char *measured_byte_at(arena *memory, const pin_value *args, int co
 }
 static const node_host_call MEASURED_SLICE = { .value = measured_slice };
 static const node_host_call MEASURED_BYTE_AT = { .value = measured_byte_at };
-static const char APP[] =
-    "package app\nimport strings \"core:strings\"\n"
-    "Row :: struct { value: int; tag: string; }\n"
-    "pub Check :: () -> int {\n"
-    " numbers: int[] = [1, 2]; third: int = 3; numbers = "
-    "append(numbers, third);\n"
-    " words: string[] = [\"alpha\"]; words = append(words, \"beta\");\n"
-    " rows: Row[] = []; row: Row = {value: 7, tag: \"seven\"};\n"
-    " rows = append(rows, row); picked: Row = rows[0];\n"
-    " if length(numbers) != 3 || numbers[2] != 3 { return -1; }\n"
-    " if length(words) != 2 || words[1] != \"beta\" { return -2; }\n"
-    " if length(rows) != 1 || picked.value != 7 || picked.tag != "
-    "\"seven\" { return -3; }\n"
-    " if !strings.IsIdentifier(strings.BaseName(\"root/valid_name\")) { "
-    "return -4; }\n"
-    " return strings.ByteLength(strings.Slice(words[1], 1, 3));\n"
-    "}\n"
-    "View :: (parts: string[]) -> string {\n"
-    " return format_text(\"{}:{}\", length(parts), strings.Join(parts, "
-    "\"|\"));\n"
-    "}\n"
-    "pub Split :: (kind: int, s: string, sep: string, n: int) -> string {\n"
-    " if kind == 0 { return View(strings.Split(s, sep)); }\n"
-    " if kind == 1 { return View(strings.SplitN(s, sep, n)); }\n"
-    " if kind == 2 { return View(strings.SplitAfter(s, sep)); }\n"
-    " if kind == 3 { return View(strings.SplitAfterN(s, sep, n)); }\n"
-    " if kind == 4 { return View(strings.SplitLines(s)); }\n"
-    " if kind == 5 { return View(strings.SplitLinesN(s, n)); }\n"
-    " if kind == 6 { return View(strings.SplitLinesAfter(s)); }\n"
-    " if kind == 7 { return View(strings.SplitLinesAfterN(s, n)); }\n"
-    " if kind == 8 { return strings.Concatenate(strings.Split(s, sep)); }\n"
-    " return View(strings.Fields(s));\n"
-    "}\n"
-    "pub Partition :: (s: string, sep: string) -> string {\n"
-    " parts: strings.Parts = strings.Partition(s, sep);\n"
-    " return format_text(\"{}|{}|{}\", parts.head, parts.match, parts.tail);\n"
-    "}\n";
+static const char APP
+    [] = "package app\nimport strings \"core:strings\"\n"
+         "Row :: struct { value: int; tag: string; }\n"
+         "pub Check :: () -> int {\n"
+         " numbers: int[] = [1, 2]; third: int = 3; numbers = "
+         "append(numbers, third);\n"
+         " words: string[] = [\"alpha\"]; words = append(words, \"beta\");\n"
+         " rows: Row[] = []; row: Row = {value: 7, tag: \"seven\"};\n"
+         " rows = append(rows, row); picked: Row = rows[0];\n"
+         " if length(numbers) != 3 || numbers[2] != 3 { return -1; }\n"
+         " if length(words) != 2 || words[1] != \"beta\" { return -2; }\n"
+         " if length(rows) != 1 || picked.value != 7 || picked.tag != "
+         "\"seven\" { return -3; }\n"
+         " if !strings.IsIdentifier(strings.BaseName(\"root/valid_name\")) { "
+         "return -4; }\n"
+         " return strings.ByteLength(strings.Slice(words[1], 1, 3));\n"
+         "}\n";
 
 static void finish_call()
 {
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
     arena_free(&storage);
+    behavior_managed_heap_free(&heap);
     context = (behavior_function_context){ 0 };
     activation = (behavior_function_activation){ 0 };
     output = (pin_value){ 0 };
 }
 static void cleanup()
 {
+    compiler_fixture_free(&authored);
     finish_call();
     arena_free(&inputs_storage);
     execution_module_free(retained);
@@ -251,11 +240,13 @@ static bool invoke(
         behavior_function_activation_init(function, &activation);
     }
     output = (pin_value){ .type = type };
+    behavior_managed_heap_init(&heap);
     context = (behavior_function_context){
         .activation = behavior_function_resumable(function) ? &activation : NULL,
         .arguments = arguments,
         .argument_count = count,
         .results = &output,
+        .managed_heap = &heap,
         .budget = 10000,
     };
     behavior_function_bind_storage(&context, &storage);
@@ -292,62 +283,6 @@ static pin_value text(const char *value)
 static pin_value integer(int value)
 {
     return (pin_value){ .type = PIN_I32, .i = value };
-}
-/* One call of an exported function. `args` names each argument in order, s for
- * the next text and i for the next integer. Integer and bool results compare
- * `number`; text results compare `result`. */
-typedef struct
-{
-    const char *name, *args, *texts[3];
-    int integers[2];
-    pin_type type;
-    int number;
-    const char *result;
-} call_case;
-#define INT_SS(NAME, A, B, N) { NAME, "ss", { A, B }, { 0 }, PIN_I32, N, NULL }
-#define INT_SI(NAME, A, I, N) { NAME, "si", { A }, { I }, PIN_I32, N, NULL }
-#define BOOL_SS(NAME, A, B, V)                                                 \
-    { NAME, "ss", { A, B }, { 0 }, PIN_BOOL, V, NULL }
-#define BOOL_I(NAME, I, V) { NAME, "i", { NULL }, { I }, PIN_BOOL, V, NULL }
-#define TEXT_S(NAME, A, R) { NAME, "s", { A }, { 0 }, PIN_STR, 0, R }
-#define TEXT_SS(NAME, A, B, R) { NAME, "ss", { A, B }, { 0 }, PIN_STR, 0, R }
-#define TEXT_SI(NAME, A, I, R) { NAME, "si", { A }, { I }, PIN_STR, 0, R }
-#define TEXT_SII(NAME, A, I, J, R)                                             \
-    { NAME, "sii", { A }, { I, J }, PIN_STR, 0, R }
-#define TEXT_SSS(NAME, A, B, C, R)                                             \
-    { NAME, "sss", { A, B, C }, { 0 }, PIN_STR, 0, R }
-#define TEXT_SSI(NAME, A, B, I, R)                                             \
-    { NAME, "ssi", { A, B }, { I }, PIN_STR, 0, R }
-#define TEXT_SSSI(NAME, A, B, C, I, R)                                         \
-    { NAME, "sssi", { A, B, C }, { I }, PIN_STR, 0, R }
-/* The app's Split picks a splitter by kind and renders count:part|part. */
-#define SPLIT(KIND, S, SEP, N, R)                                              \
-    { "Split", "issi", { S, SEP }, { KIND, N }, PIN_STR, 0, R }
-#define CASES(ARRAY) ARRAY, (int)(sizeof ARRAY / sizeof ARRAY[0])
-static bool run_cases(const char *identity, const call_case *cases, int count, behavior_backend backend)
-{
-    const authoring_package *item = package(0, identity);
-    REQUIRE(item && item->valid && item->module);
-    for (int c = 0; c < count; c++) {
-        const call_case *call = &cases[c];
-        pin_value args[4];
-        int size = (int)strlen(call->args), texts = 0, integers = 0;
-        REQUIRE(size <= 4);
-        for (int i = 0; i < size; i++) {
-            args[i] = call->args[i] == 's' ? text(call->texts[texts++])
-                                           : integer(call->integers[integers++]);
-        }
-        REQUIRE(invoke(item->module, exported(item, call->name), args, size, call->type, backend));
-        bool same = call->type == PIN_STR
-                      ? !strcmp(pin_text(output).bytes, call->result)
-                  : call->type == PIN_BOOL ? output.b == (call->number != 0)
-                                           : output.i == call->number;
-        if (!same) {
-            fprintf(stderr, "core strings case %d: %s\n", c, call->name);
-        }
-        REQUIRE(same);
-    }
-    return true;
 }
 TEST_CASE(package_core_strings_bytes_bounds_and_owned_slices)
 {
@@ -452,259 +387,6 @@ TEST_CASE(package_core_strings_bytes_bounds_and_owned_slices)
             pin_text(formatted).length == sizeof joined &&
             !memcmp(pin_text(formatted).bytes, joined, sizeof joined)
         );
-        cleanup();
-    }
-    return true;
-}
-TEST_CASE(package_core_strings_comparison_identifiers_and_basename)
-{
-    for (int b = 0; b < 2; b++) {
-        REQUIRE(table(0) && prepare(0, -1, 0, backends[b]));
-        const char high[] = { (char)0xff, 0 }, low[] = { (char)0x80, 0 };
-        const char *left[] = { "", "abc", "ab", "b", high, low };
-        const char *right[] = { "", "abc", "abc", "a", low, high };
-        const int expected[] = { 0, 0, -1, 1, 1, -1 };
-        for (int i = 0; i < 6; i++) {
-            pin_value args[] = { text(left[i]), text(right[i]) };
-            REQUIRE(
-                core_call("Compare", args, 2, PIN_I32, backends[b]) &&
-                output.i == expected[i]
-            );
-        }
-        const char *names[] = { "", "a", "_A9", "9a", "a-b", high };
-        const bool identifiers[] = { false, true, true, false, false, false };
-        for (int i = 0; i < 6; i++) {
-            pin_value arg = text(names[i]);
-            REQUIRE(
-                core_call("IsIdentifier", &arg, 1, PIN_BOOL, backends[b]) &&
-                output.b == identifiers[i]
-            );
-        }
-        const char *paths[] = { "", "file", "/", "a/b/", "a/b", "a\\b" };
-        const char *base[] = { "", "file", "", "", "b", "a\\b" };
-        for (int i = 0; i < 6; i++) {
-            pin_value arg = text(paths[i]);
-            REQUIRE(core_call("BaseName", &arg, 1, PIN_STR, backends[b]));
-            REQUIRE(!strcmp(pin_text(output).bytes, base[i]));
-        }
-        cleanup();
-    }
-    return true;
-}
-static const call_case search_cases[] = {
-    INT_SS("Index", "chicken", "ken", 4),
-    INT_SS("Index", "chicken", "dmr", -1),
-    INT_SS("Index", "", "", 0),
-    INT_SS("Index", "abc", "", 0),
-    INT_SS("Index", "", "a", -1),
-    INT_SS("Index", "abc", "c", 2),
-    INT_SS("Index", "abc", "abc", 0),
-    INT_SS("Index", "abc", "abd", -1),
-    INT_SS("Index", "ab", "abc", -1),
-    INT_SS("Index", "aaab", "aab", 1),
-    INT_SS("Index", "abcxabc", "abc", 0),
-    INT_SS("Index", "the quick brown fox", "fox", 16),
-    INT_SS("LastIndex", "go gopher", "go", 3),
-    INT_SS("LastIndex", "go gopher", "rodent", -1),
-    INT_SS("LastIndex", "abc", "", 3),
-    INT_SS("LastIndex", "", "", 0),
-    INT_SS("LastIndex", "aaaa", "aa", 2),
-    INT_SS("LastIndex", "abcabc", "abc", 3),
-    INT_SS("LastIndex", "xabcxx", "abc", 1),
-    INT_SS("LastIndex", "abc", "abc", 0),
-    INT_SS("LastIndex", "abc", "b", 1),
-    INT_SI("IndexByte", "golang", 'l', 2),
-    INT_SI("IndexByte", "golang", 'z', -1),
-    INT_SI("IndexByte", "", 'a', -1),
-    INT_SI("IndexByte", "a\xff", 255, 1),
-    INT_SI("LastIndexByte", "hello", 'l', 3),
-    INT_SI("LastIndexByte", "hello", 'z', -1),
-    INT_SS("IndexAny", "golang", "xyzn", 4),
-    INT_SS("IndexAny", "golang", "", -1),
-    INT_SS("IndexAny", "", "a", -1),
-    INT_SS("LastIndexAny", "go gopher", "go", 4),
-    INT_SS("LastIndexAny", "go gopher", "", -1),
-    INT_SS("LastIndexAny", "go gopher", "xyz", -1),
-    INT_SS("Count", "cheese", "e", 3),
-    INT_SS("Count", "five", "", 5),
-    INT_SS("Count", "", "", 1),
-    INT_SS("Count", "aaaa", "aa", 2),
-    INT_SS("Count", "abcabc", "bc", 2),
-    INT_SS("Count", "abc", "d", 0),
-    BOOL_SS("Contains", "seafood", "foo", 1),
-    BOOL_SS("Contains", "seafood", "bar", 0),
-    BOOL_SS("Contains", "seafood", "", 1),
-    BOOL_SS("Contains", "", "", 1),
-    BOOL_SS("ContainsAny", "failure", "ui", 1),
-    BOOL_SS("ContainsAny", "foo", "", 0),
-    BOOL_SS("ContainsAny", "", "", 0),
-    BOOL_SS("HasPrefix", "testing", "test", 1),
-    BOOL_SS("HasPrefix", "testing", "", 1),
-    BOOL_SS("HasPrefix", "te", "test", 0),
-    BOOL_SS("HasPrefix", "testing", "est", 0),
-    BOOL_SS("HasSuffix", "todo.txt", ".txt", 1),
-    BOOL_SS("HasSuffix", "todo.doc", ".txt", 0),
-    BOOL_SS("HasSuffix", "", "", 1),
-    BOOL_SS("HasSuffix", "t", "txt", 0),
-};
-/* Case and spaces are ASCII: UTF-8 bytes neither fold nor trim. */
-static const call_case text_cases[] = {
-    BOOL_SS("EqualFold", "Go", "GO", 1),
-    BOOL_SS("EqualFold", "Test", "tEsT", 1),
-    BOOL_SS("EqualFold", "test", "tes", 0),
-    BOOL_SS("EqualFold", "", "", 1),
-    BOOL_SS("EqualFold", "@[", "`{", 0),
-    BOOL_SS("EqualFold", "\xc3\xa9", "\xc3\x89", 0),
-    TEXT_S("ToLower", "Hello, World!", "hello, world!"),
-    TEXT_S("ToLower", "@AZ[`az{", "@az[`az{"),
-    TEXT_S("ToLower", "", ""),
-    TEXT_S(
-        "ToLower",
-        "\xc3\x80"
-        "B",
-        "\xc3\x80"
-        "b"
-    ),
-    TEXT_S("ToUpper", "hello wOrld", "HELLO WORLD"),
-    TEXT_S("ToUpper", "z", "Z"),
-    TEXT_S("ToUpper", "@AZ[`az{", "@AZ[`AZ{"),
-    BOOL_I("IsAsciiSpace", '\t', 1),
-    BOOL_I("IsAsciiSpace", '\r', 1),
-    BOOL_I("IsAsciiSpace", ' ', 1),
-    BOOL_I("IsAsciiSpace", 8, 0),
-    BOOL_I("IsAsciiSpace", 14, 0),
-    BOOL_I("IsAsciiSpace", 0xa0, 0),
-    TEXT_SS("TrimLeft", "xxhixx", "x", "hixx"),
-    TEXT_SS("TrimRight", "xxhixx", "x", "xxhi"),
-    TEXT_SS("Trim", "xxhixx", "x", "hi"),
-    TEXT_SS("Trim", "abcba", "ab", "c"),
-    TEXT_SS("Trim", "xxxx", "x", ""),
-    TEXT_SS("Trim", "hi", "", "hi"),
-    TEXT_SS("Trim", "", "x", ""),
-    TEXT_S("TrimSpace", " \t\n hi there \r\v\f", "hi there"),
-    TEXT_S("TrimSpace", "   ", ""),
-    TEXT_S(
-        "TrimSpace",
-        "\xa0"
-        "a"
-        "\xa0",
-        "\xa0"
-        "a"
-        "\xa0"
-    ),
-    TEXT_S("TrimLeftSpace", "  a ", "a "),
-    TEXT_S("TrimRightSpace", "  a ", "  a"),
-    TEXT_SS("TrimPrefix", "testing", "test", "ing"),
-    TEXT_SS("TrimPrefix", "testing", "ing", "testing"),
-    TEXT_SS("TrimPrefix", "a", "", "a"),
-    TEXT_SS("TrimSuffix", "todo.txt", ".txt", "todo"),
-    TEXT_SS("TrimSuffix", "todo.txt", ".doc", "todo.txt"),
-    TEXT_SS("TrimSuffix", "x", "x", ""),
-    TEXT_SI("TruncateToByte", "a/b/c", '/', "a"),
-    TEXT_SI("TruncateToByte", "abc", '/', "abc"),
-    TEXT_SI("TruncateToByte", "/abc", '/', ""),
-    TEXT_SII("Cut", "some example text", 0, 4, "some"),
-    TEXT_SII("Cut", "some example text", 2, 2, "me"),
-    TEXT_SII("Cut", "some example text", 5, 7, "example"),
-    TEXT_SII("Cut", "some example text", 5, 0, "example text"),
-    TEXT_SII("Cut", "abc", 1, 99, "bc"),
-    TEXT_SII("Cut", "abc", 3, 1, "a"),
-    TEXT_SII("Cut", "abc", -1, 0, "abc"),
-    TEXT_SII("Cut", "", 0, 0, ""),
-    TEXT_SI("Repeat", "na", 3, "nanana"),
-    TEXT_SI("Repeat", "x", 5, "xxxxx"),
-    TEXT_SI("Repeat", "abc", 1, "abc"),
-    TEXT_SI("Repeat", "ab", 0, ""),
-    TEXT_SI("Repeat", "ab", -1, ""),
-    TEXT_SI("Repeat", "", 5, ""),
-};
-static const call_case replace_cases[] = {
-    TEXT_SSSI("Replace", "oink oink oink", "k", "ky", 2, "oinky oinky oink"),
-    TEXT_SSSI("Replace", "oink oink oink", "oink", "moo", -1, "moo moo moo"),
-    TEXT_SSSI("Replace", "aaaa", "aa", "b", -1, "bb"),
-    TEXT_SSSI("Replace", "abc", "", "-", -1, "-a-b-c-"),
-    TEXT_SSSI("Replace", "abc", "", "-", 2, "-a-bc"),
-    TEXT_SSSI("Replace", "abc", "x", "y", -1, "abc"),
-    TEXT_SSSI("Replace", "abc", "b", "b", -1, "abc"),
-    TEXT_SSSI("Replace", "abc", "b", "x", 0, "abc"),
-    TEXT_SSSI("Replace", "abc", "abc", "", -1, ""),
-    TEXT_SSSI("Replace", "50%", "%", "{}", -1, "50{}"),
-    TEXT_SSS("ReplaceAll", "a.b.c", ".", "::", "a::b::c"),
-    TEXT_SSI("Remove", "abcabc", "b", 1, "acabc"),
-    TEXT_SS("RemoveAll", "abcabc", "b", "acac"),
-};
-/* Kinds: 0 Split, 1 SplitN, 2 SplitAfter, 3 SplitAfterN, 4 SplitLines,
- * 5 SplitLinesN, 6 SplitLinesAfter, 7 SplitLinesAfterN, 8 Concatenate of
- * Split, 9 Fields. */
-static const call_case split_cases[] = {
-    SPLIT(0, "aaa.bbb.ccc", ".", 0, "3:aaa|bbb|ccc"),
-    SPLIT(0, "a,b,", ",", 0, "3:a|b|"),
-    SPLIT(0, "", ",", 0, "1:"),
-    SPLIT(0, "abc", "", 0, "3:a|b|c"),
-    SPLIT(0, "", "", 0, "0:"),
-    SPLIT(0, "abc", "x", 0, "1:abc"),
-    SPLIT(0, "a--b--c", "--", 0, "3:a|b|c"),
-    SPLIT(0, "aaa", "aa", 0, "2:|a"),
-    SPLIT(1, "aaa.bbb.ccc.ddd", ".", 2, "2:aaa|bbb.ccc.ddd"),
-    SPLIT(1, "a.b", ".", 0, "0:"),
-    SPLIT(1, "a.b.c", ".", -1, "3:a|b|c"),
-    SPLIT(1, "a.b", ".", 10, "2:a|b"),
-    SPLIT(1, "abc", "", 2, "2:a|bc"),
-    SPLIT(1, "abc", "", 0, "0:"),
-    SPLIT(2, "a.b.c", ".", 0, "3:a.|b.|c"),
-    SPLIT(2, "a.", ".", 0, "2:a.|"),
-    SPLIT(2, "abc", "", 0, "3:a|b|c"),
-    SPLIT(3, "a.b.c", ".", 2, "2:a.|b.c"),
-    SPLIT(4, "a\r\nb\nc\r", "", 0, "3:a|b|c"),
-    SPLIT(4, "a\n", "", 0, "2:a|"),
-    SPLIT(4, "", "", 0, "1:"),
-    SPLIT(5, "a\nb\nc", "", 2, "2:a|b\nc"),
-    SPLIT(6, "a\r\nb", "", 0, "2:a\r\n|b"),
-    SPLIT(7, "a\nb\nc", "", 2, "2:a\n|b\nc"),
-    SPLIT(8, "a,b,c", ",", 0, "abc"),
-    SPLIT(8, "", ",", 0, ""),
-    SPLIT(9, "  foo bar  baz   ", "", 0, "3:foo|bar|baz"),
-    SPLIT(9, "", "", 0, "0:"),
-    SPLIT(9, " \t\n", "", 0, "0:"),
-    SPLIT(9, "a\vb\fc", "", 0, "3:a|b|c"),
-    SPLIT(
-        9,
-        "x\xa0"
-        "y",
-        "",
-        0,
-        "1:x\xa0"
-        "y"
-    ),
-    TEXT_SS("Partition", "testing this out", " ", "testing| |this out"),
-    TEXT_SS("Partition", "abc", "x", "abc||"),
-    TEXT_SS("Partition", "abc", "", "||abc"),
-    TEXT_SS("Partition", "a=b=c", "=", "a|=|b=c"),
-};
-TEST_CASE(package_core_strings_search_matches_odin)
-{
-    for (int b = 0; b < 2; b++) {
-        REQUIRE(table(0) && prepare(0, -1, 0, backends[b]));
-        REQUIRE(run_cases("core:strings", CASES(search_cases), backends[b]));
-        cleanup();
-    }
-    return true;
-}
-TEST_CASE(package_core_strings_case_trim_cut_and_repeat_match_odin)
-{
-    for (int b = 0; b < 2; b++) {
-        REQUIRE(table(0) && prepare(0, -1, 0, backends[b]));
-        REQUIRE(run_cases("core:strings", CASES(text_cases), backends[b]));
-        cleanup();
-    }
-    return true;
-}
-TEST_CASE(package_core_strings_split_join_and_replace_match_odin)
-{
-    for (int b = 0; b < 2; b++) {
-        REQUIRE(table(0) && prepare(0, -1, 0, backends[b]));
-        REQUIRE(run_cases("core:strings", CASES(replace_cases), backends[b]));
-        REQUIRE(run_cases("project:app", CASES(split_cases), backends[b]));
         cleanup();
     }
     return true;
@@ -935,17 +617,35 @@ TEST_CASE(package_core_strings_binary_overlap_collision_and_limits)
     }
     return true;
 }
+TEST_CASE(package_core_authored_strings)
+{
+    source_package_input sources[] = { CORE_STRINGS_TEST_SOURCE_INPUTS };
+    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
+    REQUIRE(
+        compiler_fixture_prepare_packs(&authored, sources, (int)(sizeof sources / sizeof *sources), core, 1)
+    );
+    bool native_passed = compiler_fixture_tests_budget(&authored, 10000);
+    /* Stage one chooses its root package from the first source path. */
+    source_package_input core_source = sources[0];
+    sources[0] = sources[1];
+    sources[1] = core_source;
+    bool stage_one_passed = package_compiler_authored_tests(
+        &authored,
+        sources,
+        (int)(sizeof sources / sizeof *sources),
+        10000
+    );
+    REQUIRE(native_passed && stage_one_passed);
+    return true;
+}
 void test_language_package_core()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_core_strings_bytes_bounds_and_owned_slices);
-    RUN_TEST_CASE(package_core_strings_comparison_identifiers_and_basename);
-    RUN_TEST_CASE(package_core_strings_search_matches_odin);
-    RUN_TEST_CASE(package_core_strings_case_trim_cut_and_repeat_match_odin);
-    RUN_TEST_CASE(package_core_strings_split_join_and_replace_match_odin);
     RUN_TEST_CASE(package_core_pure_exports_and_generic_native_arrays);
     RUN_TEST_CASE(package_core_inputs_modules_and_binding_generations);
     RUN_TEST_CASE(package_core_strings_dense_copy_budget);
     RUN_TEST_CASE(package_core_strings_binary_overlap_collision_and_limits);
+    RUN_TEST_CASE(package_core_authored_strings);
     pu_clear_setup();
 }

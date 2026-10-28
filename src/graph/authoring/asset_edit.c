@@ -124,7 +124,7 @@ int behavior_asset_retype_variable(behavior_asset *asset, uint64_t id, pin_type 
 int behavior_asset_set_variable_container(behavior_asset *asset, uint64_t id, pin_container container)
 {
     if (!asset || !behavior_asset_mutable(asset) ||
-        container < PIN_CONTAINER_SINGLE || container > PIN_CONTAINER_MAP) {
+        container < PIN_CONTAINER_SINGLE || container > PIN_CONTAINER_VIEW) {
         return -1;
     }
     behavior_variable *v = behavior_asset_find_variable_by_id(asset, id);
@@ -494,16 +494,12 @@ static int behavior_asset_add_call_pin(graph *caller, node *call, int output, co
     if (pin.type_name) {
         pin.type_name = graph_own_str(caller, pin.type_name, strlen(pin.type_name));
     }
-    if (pin.container >= PIN_CONTAINER_ARRAY && pin.default_value.ptr) {
-        pin.default_value.ptr = pin_array_clone_to_graph(
-            caller,
-            (const pin_array *)pin.default_value.ptr
-        );
-    } else if (pin.type == PIN_STR || pin.type == PIN_NAME) {
-        pin_value input = pin.default_value;
-        if (pin_value_copy_to_graph(caller, &pin.default_value, &input)) {
-            return -1;
-        }
+    pin_value input = pin.default_value;
+    if (((pin.container >= PIN_CONTAINER_ARRAY && input.ptr) ||
+         (pin.container == PIN_CONTAINER_SINGLE &&
+          (pin.type == PIN_STR || pin.type == PIN_NAME))) &&
+        pin_value_copy_to_graph(caller, &pin.default_value, &input)) {
+        return -1;
     }
     pin.default_value.type_name = pin.type_name;
     return graph_add_pin(caller, call, output, &pin) < 0 ? -1 : 0;

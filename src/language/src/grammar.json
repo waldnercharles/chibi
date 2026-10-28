@@ -2835,6 +2835,10 @@
                 },
                 {
                   "type": "STRING",
+                  "value": "view"
+                },
+                {
+                  "type": "STRING",
                   "value": "service"
                 },
                 {
@@ -4348,8 +4352,17 @@
             "type": "FIELD",
             "name": "index",
             "content": {
-              "type": "SYMBOL",
-              "name": "_expression"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_expression"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "range_expression"
+                }
+              ]
             }
           },
           {
@@ -4430,6 +4443,31 @@
         }
       }
     },
+    "range_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "start",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "..<"
+        },
+        {
+          "type": "FIELD",
+          "name": "end",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        }
+      ]
+    },
     "_call_target": {
       "type": "CHOICE",
       "members": [
@@ -4485,6 +4523,10 @@
                     },
                     {
                       "type": "SYMBOL",
+                      "name": "range_expression"
+                    },
+                    {
+                      "type": "SYMBOL",
                       "name": "_expression"
                     }
                   ]
@@ -4508,6 +4550,10 @@
                           {
                             "type": "SYMBOL",
                             "name": "typed_argument"
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "range_expression"
                           },
                           {
                             "type": "SYMBOL",
@@ -6067,6 +6113,15 @@
           },
           "named": true,
           "value": "identifier"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "view"
+          },
+          "named": true,
+          "value": "identifier"
         }
       ]
     },
@@ -6707,6 +6762,9 @@
   ],
   "conflicts": [
     [
+      "_name"
+    ],
+    [
       "_common_declaration",
       "_statement"
     ],
@@ -6739,6 +6797,10 @@
     [
       "_single_type",
       "_expression"
+    ],
+    [
+      "_single_type",
+      "_name"
     ],
     [
       "argument_list",

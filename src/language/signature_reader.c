@@ -159,33 +159,53 @@ static const script_signature_generic *generic(reader *r, TSNode node)
 }
 static script_type collection(reader *r, pin_container container, script_type key, script_type value)
 {
-    script_catalog_type definition = script_constructor_collection(
-        r->storage,
-        container,
-        key,
-        value,
-        r->facts.pointer_size
+    script_constructor_facts facts = constructors(r);
+    return publish(
+        r,
+        script_constructor_collection_plan(
+            r->storage,
+            &facts,
+            container,
+            key,
+            value,
+            r->facts.pointer_size
+        )
     );
-    (void)named(r);
-    if (!script_catalog_type_by_id(&r->catalog, definition.id)) {
-        apush(r->types, definition);
-        apush(r->own, definition);
-    }
-    return definition.type;
 }
 /* Applies `?` and each `[]` in order; an array of collections names
  * its element collection. */
 static script_type traits(reader *r, TSNode node, script_type out)
 {
+    bool view = false;
     for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
         const char *token = text(r, ts_node_child(node, i));
-        if (!strcmp(token, "?")) {
+        if (!strcmp(token, "view")) {
+            view = true;
+        } else if (!strcmp(token, "?")) {
             out.flags |= SCRIPT_TYPE_OPTIONAL;
         } else if (!strcmp(token, "[") || !strcmp(token, "[]")) {
-            if (out.collection || out.container != PIN_CONTAINER_SINGLE) {
+            if (out.flags & SCRIPT_TYPE_OPTIONAL) {
+                (void)named(r);
+                const script_catalog_type
+                    *element = script_catalog_type_by_id(&r->catalog, out.nominal);
+                if ((out.storage != PIN_POINTER || out.container != PIN_CONTAINER_SINGLE) &&
+                    (!element || !element->component)) {
+                    out.flags |= SCRIPT_TYPE_BOXED_OPTIONAL;
+                }
+            }
+            if (out.collection || out.container != PIN_CONTAINER_SINGLE ||
+                (out.flags & SCRIPT_TYPE_OPTIONAL)) {
                 out = collection(r, PIN_CONTAINER_ARRAY, (script_type){ 0 }, out);
             }
             out.container = PIN_CONTAINER_ARRAY;
+        }
+    }
+    if (view) {
+        if (out.container != PIN_CONTAINER_ARRAY) {
+            diagnostic(r, node, "view requires an array type");
+            out.flags |= SCRIPT_TYPE_ERROR;
+        } else {
+            out.container = PIN_CONTAINER_VIEW;
         }
     }
     (void)named(r);

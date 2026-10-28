@@ -4,6 +4,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/type.h"
 #include "types/union.h"
@@ -23,9 +24,11 @@ static av_value *shape(av_doc *doc, const pin_value *value)
 {
     if (value->type < PIN_BOOL || value->type > PIN_QUERY ||
         value->container < PIN_CONTAINER_SINGLE || value->container > PIN_CONTAINER_MAP ||
-        (value->record && ((value->schema ? !pin_value_record_current(value)
-                                          : !pin_record_valid(value->record)) ||
-                           value->type != PIN_STRUCT))) {
+        (value->record &&
+         ((value->schema ? !pin_value_record_current(value)
+                         : !pin_record_valid(value->record) ||
+                               !pin_record_fields_current(value->record)) ||
+          value->type != PIN_STRUCT))) {
         return NULL;
     }
     static const char *containers[] = { "value", "array", "set", "map" };
@@ -35,7 +38,7 @@ static av_value *shape(av_doc *doc, const pin_value *value)
     if (value->type_name) {
         av_obj_add_str(doc, out, "name", value->type_name);
     }
-    if (value->record) {
+    if (value->record && !value->record->native) {
         av_obj_add_uint(doc, out, "record_id", value->record->id);
         av_obj_add_uint(doc, out, "record_layout", value->record->layout);
     }
@@ -112,7 +115,8 @@ static bool record_header(const pin_value *value, const pin_record *validated)
             value->container == PIN_CONTAINER_SET) &&
            (value->schema
                 ? pin_value_record_current(value)
-                : value->record == validated || pin_record_valid(value->record)) &&
+                : (value->record == validated || pin_record_valid(value->record)) &&
+                      pin_record_fields_current(value->record)) &&
            pin_value_type(value);
 }
 /* NULL means invalid input. A valid document null is a distinct av_value. Build
@@ -128,6 +132,9 @@ static av_value *project(
 )
 {
     if (depth >= DOCUMENT_MAX_DEPTH || ++writer->values > DOCUMENT_MAX_VALUES) {
+        return NULL;
+    }
+    if (v->container == PIN_CONTAINER_VIEW) {
         return NULL;
     }
     if (v->container == PIN_CONTAINER_MAP) {
@@ -238,6 +245,16 @@ static av_value *project(
                 const type_desc *type = v->record || v->schema
                                           ? pin_value_type(v)
                                           : type_catalog_find(type_name);
+                const type_desc *layout = type;
+                type_resolver resolver = v->schema ? pin_schema_resolver(v->schema)
+                                                   : (type_resolver){ 0 };
+                for (int depth = 0; type && type->alias_of && depth < TYPE_MAX_NESTING;
+                     depth++) {
+                    type = type_alias_type(type, resolver);
+                }
+                if (layout && (!type || type->alias_of || type->size != layout->size)) {
+                    return NULL;
+                }
                 if (type) {
                     value = av_obj(doc);
                     for (int i = 0; i < type->field_count; i++) {

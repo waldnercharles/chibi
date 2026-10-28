@@ -201,17 +201,55 @@ execution_activation *program_activation_new(
     pin_value *args = arena_alloc(&a->storage, (size_t)(declared + 1) * sizeof *args);
     for (int i = 0; i < declared; i++) {
         const pin_value *value = i < count ? &arguments[i] : &defaults[i];
-        if (!program_same_type(defaults[i], *value) ||
-            pin_value_snapshot_to_arena(&a->payload, &args[i], value)) {
+        if (!program_same_type(defaults[i], *value)) {
             discard(a);
             return NULL;
         }
+        args[i] = *value;
+    }
+    for (int i = 0; i < declared; i++) {
+        bool value_argument = i >= acount(function->argument_kinds) ||
+                              function->argument_kinds[i] == BEHAVIOR_VALUE;
+        pin_value owned = args[i];
+        if (value_argument &&
+            (program_validate_values(p, &args[i], 1) ||
+             pin_value_collection_copy(&p->owner_program->managed->storage, &owned, &args[i]))) {
+            discard(a);
+            return NULL;
+        }
+        if (pin_value_snapshot_to_arena(&a->payload, &args[i], &owned)) {
+            if (value_argument) {
+                pin_value_collection_release(&owned);
+            }
+            discard(a);
+            return NULL;
+        }
+        if (value_argument) {
+            behavior_function_collection_retain(&a->context, &args[i]);
+        }
     }
     pin_value *results = arena_alloc(&a->storage, (size_t)(result_count + 1) * sizeof *results);
+    if (program_validate_values(p, result_defaults, result_count)) {
+        discard(a);
+        return NULL;
+    }
     for (int i = 0; i < result_count; i++) {
-        int status = pin_value_snapshot_to_arena(&a->payload, &results[i], &result_defaults[i]);
-        assert(!status);
-        (void)status;
+        pin_value owned;
+        if (pin_value_collection_copy(&p->owner_program->managed->storage, &owned, &result_defaults[i])) {
+            for (int j = 0; j < i; j++) {
+                pin_value_collection_release(&results[j]);
+            }
+            discard(a);
+            return NULL;
+        }
+        if (pin_value_snapshot_to_arena(&a->payload, &results[i], &owned)) {
+            pin_value_collection_release(&owned);
+            for (int j = 0; j < i; j++) {
+                pin_value_collection_release(&results[j]);
+            }
+            discard(a);
+            return NULL;
+        }
     }
     behavior_function_prepare_results(function, results, &a->storage);
     bool resumable = behavior_function_resumable(function);
@@ -227,6 +265,7 @@ execution_activation *program_activation_new(
         .commands = a->context.commands,
         .command_arguments = a->context.command_arguments,
         .command_results = a->context.command_results,
+        .collection_owners = a->context.collection_owners,
         .variables = instance->values,
         .states = instance->node_states,
         .variable_storage = instance->layouts,
@@ -239,6 +278,7 @@ execution_activation *program_activation_new(
 
         .arguments = args,
         .argument_count = declared,
+        .arguments_stabilized = true,
         .results = results,
         .now = now,
         .delta_seconds = delta,
@@ -252,6 +292,9 @@ execution_activation *program_activation_new(
 
         .inspection_user = a
     };
+    for (int i = 0; i < result_count; i++) {
+        behavior_function_collection_retain(&a->context, &results[i]);
+    }
     if (instance->query_row.type == PIN_QUERY) {
         pin_value *row = arena_alloc(&a->payload, sizeof *row);
         *row = instance->query_row;
@@ -287,14 +330,28 @@ void program_continuation_finish(execution_activation *a)
         owner->status = a->status;
         owner->finished = true;
     } else if (a->context.returned && !ctx->exit_requested) {
-        for (int i = 0; i < acount(a->function->result_defaults); i++) {
-            int status = pin_value_snapshot_to_arena(
-                &owner->payload,
-                &ctx->results[i],
-                &a->context.results[i]
-            );
-            assert(!status);
-            (void)status;
+        int count = acount(a->function->result_defaults);
+        pin_value *results = arena_alloc(&owner->payload, (size_t)(count + 1) * sizeof *results);
+        for (int i = 0; i < count; i++) {
+            if (pin_value_snapshot_to_arena(
+                    &owner->payload,
+                    &results[i],
+                    &a->context.results[i]
+                )) {
+                owner->status = FLOW_ERR_ARGUMENT;
+                owner->finished = true;
+                return;
+            }
+        }
+        for (int i = 0; i < count; i++) {
+            const pin_value *result = &results[i];
+            if (ctx->results[i].ptr != result->ptr ||
+                ctx->results[i].container != result->container ||
+                ctx->results[i].type != result->type) {
+                behavior_function_collection_drop(ctx, &ctx->results[i]);
+            }
+            behavior_function_collection_transfer(&a->context, ctx, result);
+            ctx->results[i] = results[i];
         }
         ctx->returned_outcome = a->context.returned_outcome;
         ctx->exit_requested = a->context.exit_requested;

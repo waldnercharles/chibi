@@ -120,8 +120,8 @@ static size_t prepared_string_code(unsigned char *bytes, size_t length, const ch
     }
     return 0;
 }
-/* Find a payload-free owned native header, not its module requirement or a
- * component instruction. The schema marker includes its zero field count. */
+/* Find a payload-free native header, not its module requirement or a
+ * component instruction. The schema marker includes its field count. */
 static bool prepared_native_header_layout(unsigned char *bytes, size_t length, size_t *target)
 {
     size_t name = prepared_string_code(bytes, length, "PersistCounter");
@@ -146,7 +146,8 @@ static bool prepared_native_header_layout(unsigned char *bytes, size_t length, s
         execution_wire_u64(&wire, &layout);
         execution_wire_bool(&wire, &present);
         execution_wire_int(&wire, &fields);
-        if (!wire.error && !authored && !present && !fields &&
+        if (!wire.error && !authored && !present &&
+            fields == prepared_counter_type.field_count &&
             layout == type_layout_hash(&prepared_counter_type)) {
             *target = layout_offset;
             return true;

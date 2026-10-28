@@ -1768,11 +1768,21 @@ TEST_CASE(private_value_helpers_preserve_nul_and_validate_c_boundaries)
     const char *native = unchanged;
     REQUIRE(build_values_cstring(&values, item, &native));
     REQUIRE(native == unchanged);
+    /* A slice's copy lasts only for the host call, so a graph's millions of
+     * path arguments never fill the values that outlive calls. */
     pin_string slice = { .bytes = "path-tail", .length = 4 };
     pin_value path = { .type = PIN_STR, .text = &slice };
+    size_t kept, capacity;
+    arena_usage(&values.memory, &kept, &capacity);
     REQUIRE(!build_values_cstring(&values, path, &native));
     REQUIRE(!strcmp(native, "path"));
-    arena_free(&values.memory);
+    size_t after;
+    arena_usage(&values.memory, &after, &capacity);
+    REQUIRE(after == kept);
+    build_values_begin_call(&values);
+    REQUIRE(!build_values_cstring(&values, path, &native));
+    REQUIRE(!strcmp(native, "path"));
+    build_values_free(&values);
     return true;
 }
 

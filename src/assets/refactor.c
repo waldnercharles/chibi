@@ -38,7 +38,8 @@ static pin_value renamed_value(pin_type type, const char *bytes, pin_string *tex
     if (type == PIN_NAME) {
         return (pin_value){ .type = PIN_NAME, .str = bytes };
     }
-    *text = (pin_string){ bytes, bytes ? (uint32_t)strlen(bytes) : 0 };
+    *text = (pin_string){ .bytes = bytes,
+                          .length = bytes ? (uint32_t)strlen(bytes) : 0 };
     return (pin_value){ .type = PIN_STR, .text = text };
 }
 

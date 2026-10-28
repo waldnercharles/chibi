@@ -1,3 +1,10 @@
+> Current sequence decision (2026-10-22): ordinary arrays/maps/builders are
+> independent values with copy-on-write; explicit pointers share mutable access.
+> This supersedes the earlier shared-array draft below. See
+> [the revised sequence plan](docs/value-sequences.md). Mutable views require an
+> explicit array pointer and follow its current pointee at fixed indices. The
+> earlier draft source is preserved and unpublished.
+
 # Chibi toolchain consolidation and self-hosting
 
 ## Coordinated named struct results, 2026-10-22
@@ -287,6 +294,14 @@ unknown values before native effects. Existing boolean APIs return failure and
 existing diagnostic APIs fail the invocation. New APIs accepting external data
 must expose recoverable errors. Shared slices follow the descriptor cutover.
 Track language friction and discuss each package's semantics before porting it.
+
+The owner revised the collection decision on 2026-10-22: ordinary arrays, maps
+and builders are independent values with copy-on-write storage. Explicit
+pointers share mutable access. Range slicing copies into a new array, and
+`clone()` allocates independent outer storage. `p.view(range)` requires an array
+pointer and follows its current pointee at fixed indices, including after
+reassignment. [Value sequence plan](docs/value-sequences.md) tracks implementation
+and the managed-pointer dependency. This remains unpublished draft work.
 
 ### Bootstrap terms
 
@@ -737,6 +752,20 @@ The final installed build/link and checked-game acceptance above remains a
 separate gate; the native runtime itself is still an explicit prebuilt input.
 
 ### M6. Replace the internal build graph
+
+Linux native route: `GRAPH_BUILD=1` now selects the existing graph for the full
+products and tooling/language drivers. Linux link inventories follow the pinned
+archive; full compile/link, generated-header, corpus/resource and discovery
+checks apply on Linux as on macOS. The Linux default remains CMake pending the
+explicit `ci-linux-graph` label or manual Linux Graph validation gate. The
+proof adds one Ubuntu job only when requested, with two build workers and a
+45-minute ceiling: full Release/Debug builds, a small CMake reference, parity
+and the existing four native groups. Ordinary PR/push CI gains no duplicate
+suites; the later default cutover must replace the native build lane rather
+than retain a second full lane. Hosted wall time remains to be established.
+The first-host bootstrap/reference, standalone test
+consumers, public SDK, web and Studio remain explicit CMake responsibilities;
+this slice is not total CMake/Ninja removal.
 
 Compiler-tools packaging slice, 2026-10-22: `tools/toolchain/SDK.chibi`
 installs graph-built private hosts and their complete compiler/core/bootstrap,

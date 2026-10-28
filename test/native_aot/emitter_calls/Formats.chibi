@@ -36,12 +36,12 @@ ChangedFormat :: (item: native.Instruction, message: string) {
 FormatsKeepRuntimeValuesAndContext :: () {
     text := Emitted(FormatModule(Formats(), [0, 1, 2], false));
     assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
-    assert(strings.Contains(text, "%values4 = alloca [3 x { i32, i32, i64, ptr }]\n  %text4 = alloca { ptr, i32 }\n"));
+    assert(strings.Contains(text, "%values4 = alloca [3 x { i32, i32, i64, ptr }]\n  %text4 = alloca { ptr, i32, ptr }\n"));
     assert(strings.Contains(text, "%f4_1.word = sext i32 %f4_1 to i64\n  %f4_1.value = insertvalue { i32, i32, i64, ptr } { i32 1, i32 0, i64 0, ptr null }, i64 %f4_1.word, 2\n"));
     assert(strings.Contains(text, "%f4_2.sized = insertvalue { i32, i32, i64, ptr } { i32 12, i32 0, i64 0, ptr null }, i32 %f4_2.length, 1\n"));
     assert(strings.Contains(text, "%f4_2.value = insertvalue { i32, i32, i64, ptr } %f4_2.sized, ptr %f4_2.bytes, 3\n"));
     assert(strings.Contains(text, "%f4_2.at = getelementptr inbounds [3 x { i32, i32, i64, ptr }], ptr %values4, i64 0, i64 2\n"));
-    assert(strings.Contains(text, "%format4.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, i32 0\n  %format4 = load ptr, ptr %format4.at\n  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n  %v4 = load { ptr, i32 }, ptr %text4\n"));
+    assert(strings.Contains(text, "%format4.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, i32 0\n  %format4 = load ptr, ptr %format4.at\n  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n  %v4 = load { ptr, i32, ptr }, ptr %text4\n"));
 }
 @test
 FormatLibraryExportsPassContext :: () {

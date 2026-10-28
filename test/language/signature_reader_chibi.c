@@ -261,7 +261,7 @@ static bool use(const pin_value *row, const pin_array *ids, const script_use *ex
 static bool plan(int b, const pin_value *value, const script_constructor_plan *expected)
 {
     const pin_value *v;
-    REQUIRE(tagged(b, value, CONSTRUCTORS, "Plan", "Constructed", 13, &v));
+    REQUIRE(tagged(b, value, CONSTRUCTORS, "Plan", "Constructed", 16, &v));
     REQUIRE(
         value_type(b, &v[0], expected->type) && v[1].type == PIN_BOOL &&
         v[1].b == expected->publish && v[2].type == PIN_U64 &&
@@ -516,7 +516,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
+        REQUIRE(pin_text(*value).bytes && arena_contains(owner, value->text));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);

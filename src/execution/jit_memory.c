@@ -504,21 +504,11 @@ bool behavior_jit_memory(
     }
     if (i->op == BF_COPY_ARRAY) {
         slot(m, i->left, SLJIT_R1, 0);
-        sljit_emit_op1(
-            c,
-            SLJIT_MOV_P,
-            SLJIT_R0,
-            0,
-            SLJIT_MEM1(m->context),
-            offsetof(behavior_function_context, value_storage)
-        );
-        sljit_emit_icall(
-            c,
-            SLJIT_CALL,
-            SLJIT_ARGS2(P, P, P),
-            SLJIT_MEM1(m->context),
-            offsetof(behavior_function_context, copy_array)
-        );
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+        sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(P, P, P), SLJIT_IMM, (sljit_sw)behavior_function_copy_array);
+        struct sljit_jump *ok = sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+        behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_HOST_DATA);
+        bind(c, ok);
         sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_R0, 0);
         return true;
     }

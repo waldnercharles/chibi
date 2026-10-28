@@ -46,6 +46,7 @@ typedef struct
     const node_host_call *call;
     const node_access *access;
     int first, result_first, result_count;
+    bool owned_arguments; /* Explicit VALUE_COPY argument bank. */
     const uint64_t *outcomes;
     int outcome_count;
     uint64_t capability_id, capability_abi;
@@ -77,6 +78,9 @@ typedef struct
     const behavior_function *function;
     int first, count, result_first, result_count;
     bool task;
+    /* The callee takes over copies, released after result adoption, including
+     * resumed calls; otherwise the caller lends its values for the call. */
+    bool owned_arguments;
 } behavior_function_invocation;
 enum
 {
@@ -148,6 +152,9 @@ struct behavior_function
      * binds the execution world. */
     bool binds_world;
     behavior_argument_sharing argument_sharing;
+    /* No result reaches what the function's arguments or state reach, as
+     * execution_prepare_argument_sharing proves with its verdict. */
+    bool fresh_results;
     /* Arguments a task started on this definition depends on, one bit per
      * argument (the last bit stands for the rest); derived like sharing. */
     uint64_t task_dependencies;

@@ -106,7 +106,10 @@ TEST_CASE(graph_model_owns_nested_values_and_artifact_lifetimes)
                                 .bytes = owned->nested.label,
                                 .length = (uint32_t)strlen(owned->nested.label) } } };
     pin_array source = { .element_type = PIN_STR, .count = 1, .capacity = 1, .items = items };
-    pin_array *array = pin_array_clone_to_graph(asset->graph, &source);
+    pin_value copy,
+        header = { .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = &source };
+    REQUIRE(!pin_value_copy_to_graph(asset->graph, &copy, &header));
+    const pin_array *array = copy.ptr;
     REQUIRE(array && array != &source && array->items != items);
     items[0].text = &(const pin_string){ .bytes = "changed",
                                          .length = (uint32_t)strlen("changed") };

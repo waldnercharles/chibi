@@ -2254,7 +2254,8 @@ TEST_CASE(native_save_rejects_invalid_text_without_mutating_store)
     boundary_save = save_new();
     REQUIRE(boundary_save && save_set(boundary_save, "key", "kept"));
     uint64_t revision = save_revision(boundary_save);
-    const pin_string key = { "key", 3 }, value = { "replacement", 11 };
+    const pin_string key = { .bytes = "key", .length = 3 },
+                     value = { "replacement", 11 };
     const char nul_key[] = "key\0other", nul_value[] = "replace\0other";
     const pin_string invalid[] = { { nul_key, sizeof nul_key - 1 },
                                    { nul_value, sizeof nul_value - 1 } };
@@ -2272,7 +2273,7 @@ TEST_CASE(native_save_rejects_invalid_text_without_mutating_store)
     REQUIRE(save_count(boundary_save) == 1 && save_revision(boundary_save) == revision);
     REQUIRE(!strcmp(save_get(boundary_save, "key"), "kept"));
     const char fallback[] = { 'A', 0, (char)0xff, 'B', 0 };
-    const pin_string missing = { "missing", 7 },
+    const pin_string missing = { .bytes = "missing", .length = 7 },
                      bytes = { fallback, sizeof fallback - 1 };
     pin_value arguments[] = { { .type = PIN_STR, .text = &missing },
                               { .type = PIN_STR, .text = &bytes } };

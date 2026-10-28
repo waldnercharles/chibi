@@ -86,7 +86,7 @@ Sources :: (folder: string) -> string[] {
 pub InventoryDirectories :: () -> string[] {
     return ["tools/compiler/package_compiler", "tools/compiler/scalar_facts", "tools/compiler/asset_compiler",
             "tools/compiler/asset_source", "tools/compiler/asset_packaging", "packages/core", "packages/game",
-            "tools/graph/asset_compiler"];
+            "tools/graph/asset_compiler", "tools/compiler/cost_explanations"];
 }
 
 pub Inventory :: (root: string) -> string {
@@ -229,6 +229,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     for (path in Sources(Join([root, "/packages/game"]))) {
         paths.append(Join(["/sdk/game/", path]));
     }
+    paths.append("cost_explanations/Explain.chibi");
     sources := Read(root, paths);
     for (i in 0..<length(bootstrap_sources)) {
         if (bootstrap_sources[i] != sources[i]) {

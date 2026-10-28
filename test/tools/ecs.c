@@ -339,7 +339,7 @@ TEST_CASE(ecs_native_text_rejects_nul_without_publishing)
     uint64_t version = ecs_component_version(world, entity, record_desc.id);
     uint64_t nested_version = ecs_component_version(world, entity, managed_desc.id);
     ecs_string_usage strings = ecs_world_string_usage(world);
-    const pin_string bad_text = { "save\0backup", 11 };
+    const pin_string bad_text = { .bytes = "save\0backup", .length = 11 };
     pin_value bad = { .type = PIN_STR, .text = &bad_text };
     REQUIRE(ecs_component_write_field(world, entity, record_desc.id, 1, bad) == ECS_ERR_ARGUMENT);
     REQUIRE(
@@ -426,7 +426,7 @@ TEST_CASE(ecs_descriptor_fields_retain_every_byte)
     REQUIRE(ecs_world_record_add(world, entity, desc.id, NULL, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     char bytes[] = { 'A', 0, 'B', 0 };
-    pin_string text = { bytes, 3 };
+    pin_string text = { .bytes = bytes, .length = 3 };
     REQUIRE(
         ecs_component_write_field(world, entity, desc.id, 0, (pin_value){ .type = PIN_STR, .text = &text }) ==
         ECS_OK

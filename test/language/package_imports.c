@@ -664,10 +664,7 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
         owned->fields[1].has_default
     );
     REQUIRE(owned->fields[0].default_value.type == PIN_STR);
-    REQUIRE(arena_contains(
-        &metadata_storage,
-        pin_text(owned->fields[0].default_value).bytes
-    ));
+    REQUIRE(arena_contains(&metadata_storage, owned->fields[0].default_value.text));
     REQUIRE(!strcmp(pin_text(owned->fields[0].default_value).bytes, "owned label"));
     const pin_array *words = owned->fields[1].default_value.ptr;
     REQUIRE(words && arena_contains(&metadata_storage, words) && words->count == 2);
@@ -676,8 +673,8 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
         words->items[1].type == PIN_STR
     );
     REQUIRE(
-        arena_contains(&metadata_storage, pin_text(words->items[0]).bytes) &&
-        arena_contains(&metadata_storage, pin_text(words->items[1]).bytes)
+        arena_contains(&metadata_storage, words->items[0].text) &&
+        arena_contains(&metadata_storage, words->items[1].text)
     );
     REQUIRE(
         !strcmp(pin_text(words->items[0]).bytes, "first") &&

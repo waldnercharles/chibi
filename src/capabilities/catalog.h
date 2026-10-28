@@ -227,7 +227,8 @@ typedef struct
     unsigned effects;
     script_operation operation;
     uint64_t receiver;
-    bool pure, variadic, variadic_optional, numeric_aggregate, event_sender;
+    bool pure, variadic, variadic_optional, numeric_aggregate, event_sender,
+        language_values, owned_result;
 } script_catalog_capability;
 typedef struct
 {

@@ -173,9 +173,10 @@ Suggestion: record fields of every value type, as Odin's structs.
 
 ## Ordinary writes make calls copy their arguments
 
-Runtime. Stage zero passes a function's arguments without copying them only
-when its analysis proves the function leaves the caller's storage alone. Two
-ordinary writes defeat that proof:
+Historical runtime issue. Before the managed-pointer and copy-on-write work,
+stage zero passed arguments without copying only when its analysis proved the
+function left the caller's storage alone. Two ordinary writes defeated that
+proof:
 - Raw pointers have the `uint64` slot type, so the analysis takes any
   `uint64` value for a pointer. Once a function stores a `uint64` parameter
   into a field of a local record, the next write to that record looks like a
@@ -197,9 +198,10 @@ The managed-pointer increment hit the same issue on 2026-10-22: its new
 helpers caused 17 unexpected copying functions, and a process sample during
 self-compilation showed repeated record-array/string snapshots. Fresh
 `append`/`extend` results and local bindings for reassigned parameters restore
-the existing sharing check without exemptions. Union construction now derives
-aliasing from its explicit payload headers; copied ordinary arrays stay
-independent, while pointer-bearing payloads retain their targets.
+the existing sharing check without exemptions. The current collection model
+keeps ordinary arrays and maps independent through copy-on-write. Union
+construction copies each payload as a value; explicit pointers and views retain
+their shared targets. Copying a collection descriptor need not copy its backing.
 Failure-observation callbacks also disable argument sharing at runtime, even
 when that static check passes. Keep the compiler fixture's diagnostic observer
 opt-in when measuring or validating normal compiler execution.
@@ -321,6 +323,11 @@ does, then those sources replace their codes.
 
 ## Strings have no indexing or slicing syntax
 
+Historical gap. PR #633 merged length-carrying strings. The value-sequence
+branch adds checked byte indexing, copied half-open ranges and explicit retained
+views; see [value sequences](value-sequences.md) for implementation status.
+The measurements below describe the earlier representation.
+
 Language. Byte access goes through `strings.ByteAt`, `strings.ByteLength` and
 `strings.Slice`; every byte read in `core:strings` is `ByteAt(s, i)` and every
 slice `Slice(s, start, count)` (#503). Strings carry no length, so each
@@ -421,6 +428,11 @@ Its examples of needs covered above are listed with those entries.
 
 ### Strings are NUL-terminated and carry no length
 
+Historical gap, resolved by merged PR #633 for representation and byte access.
+The value-sequence branch adds retained immutable backing, copied ranges and
+explicit views; combined builds and runtime coverage are recorded separately in
+[value sequences](value-sequences.md). The measurements below predate #633.
+
 Runtime. In `core:strings`, every `ByteAt` runs `strlen`, so each byte loop is
 quadratic, and every `Slice` copies, so Odin's `s = s[i+n:]` inside `Count`,
 `_split` and `replace` copies the rest of the string on each match. A string
@@ -449,7 +461,10 @@ Decision (2026-10-21): strings are immutable, carry their byte length and may
 hold arbitrary bytes, including NUL. UTF-8 validation and decoding are explicit
 operations; validity is not a global string invariant. Storage, lifetime and
 boundary migration are tracked in [package foundations](package-foundations.md).
-Implementation is pending.
+The representation cutover is merged; retained backing and the explicit
+copy/view surface are implemented in the unpublished value-sequence candidate.
+Its source-build evidence and remaining validation are recorded in
+[value sequences](value-sequences.md).
 
 ### Stage one does not check pub
 

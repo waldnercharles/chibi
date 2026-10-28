@@ -18,10 +18,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 # The configured CMake build the build-graph checks compare the graph with:
-# on macOS `make build` uses the graph, so `make graph-reference` configures
-# one beside it.
+# on Linux and macOS `make build` uses the graph, so `make graph-reference`
+# configures one beside it. Explicit CMake callers can name their own tree.
 GRAPH_REFERENCE = str(ROOT / os.environ.get('CHIBI_GRAPH_REFERENCE',
-                                            'build-cmake' if sys.platform == 'darwin' else 'build'))
+                                            'build-cmake' if sys.platform in ('linux', 'darwin') else 'build'))
 PROCESS_GROUP = 'CHIBI_RUNNER_PROCESS_GROUP'
 # Process tables can take seconds to enumerate on a loaded host. Bound a stuck
 # inspection separately from the caller's test timeout.
@@ -474,6 +474,8 @@ TOOLS = {
     'language-scalarize': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--scalarize'],
     'language-migration34': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--migration34'],
     'language-migration34-generic-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--migration34-generic-repro'],
+    'language-native-char-results': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--native-char-results'],
     'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],
     'language-wasm': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--wasm'],
@@ -596,7 +598,7 @@ GROUPS = {
                   'material-simulation', 'material-ecs', 'material-render'],
     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-query-migration', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
-                 'language-headless', 'language-format', 'language-package-tests', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
+                 'language-headless', 'language-format', 'language-package-tests', 'language-package-core', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',

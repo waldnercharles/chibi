@@ -62,15 +62,27 @@ const char *build_values_cstring(build_values *values, pin_value value, const ch
         return "C string contains embedded NUL";
     }
     if (text.bytes[text.length]) {
-        const pin_string *copy = build_values_text(values, text.bytes, text.length);
+        char *copy = arena_alloc_bounded(&values->scratch, (size_t)text.length + 1, BUILD_STORAGE_LIMIT);
         if (!copy) {
+            values->error = "build value storage limit exceeded";
             return values->error;
         }
-        *out = copy->bytes;
+        memcpy(copy, text.bytes, text.length);
+        copy[text.length] = 0;
+        *out = copy;
         return NULL;
     }
     *out = text.bytes;
     return NULL;
+}
+void build_values_begin_call(build_values *values)
+{
+    arena_reset(&values->scratch);
+}
+void build_values_free(build_values *values)
+{
+    arena_free(&values->memory);
+    arena_free(&values->scratch);
 }
 bool build_values_strings(const pin_value *value)
 {

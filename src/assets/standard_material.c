@@ -104,8 +104,8 @@ static node *texture(graph *g, const standard_texture *source, shader_image_colo
         n,
         SHADER_IMAGE_INPUT_IMAGE,
         (pin_value){ .type = PIN_STR,
-                     .text = &(pin_string){ source->image,
-                                            (uint32_t)strlen(source->image) } });
+                     .text = &(pin_string){ .bytes = source->image,
+                                            .length = (uint32_t)strlen(source->image) } });
     set(g, n, SHADER_IMAGE_INPUT_COLOR_SPACE, (pin_value){ .type = PIN_I32, .i = space });
     set(g,
         n,

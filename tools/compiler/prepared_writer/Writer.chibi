@@ -17,7 +17,7 @@ import strings "core:strings"
 // far more than a field.
 
 Magic: u64 : 0x4348494249505245;
-Version: int : 25;
+Version: int : 26;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),
@@ -171,6 +171,7 @@ pub Data :: struct {
     size: int;
 }
 pub Host :: struct {
+    owned_arguments: bool;
     capability: int;
     abi: int;
     first: int;
@@ -190,6 +191,7 @@ pub Command :: struct {
     result_count: int;
 }
 pub Call :: struct {
+    owned_arguments: bool;
     function: int;
     first: int;
     count: int;
@@ -525,12 +527,13 @@ LocalBytes :: (v: Local, wide: u64[], pool: u8[], starts: int[], sizes: int[]) -
 }
 HostBytes :: (v: Host, wide: u64[]) -> u8[] {
     bytes := Words([wide[v.capability], wide[v.abi], Zig(v.first), Zig(v.result_first), Zig(v.result_count),
-                    Zig(v.outcome_count)]);
+                    Flag(v.owned_arguments), Zig(v.outcome_count)]);
     return extend(bytes, Words(slice(wide, v.outcome_first, v.outcome_count)));
 }
 CallBytes :: (v: Call, target: Reference, wide: u64[]) -> u8[] {
     bytes := ReferenceBytes(target, wide);
-    return extend(bytes, Words([Zig(v.first), Zig(v.count), Zig(v.result_first), Zig(v.result_count), Flag(v.task)]));
+    return extend(bytes, Words([Zig(v.first), Zig(v.count), Zig(v.result_first), Zig(v.result_count), Flag(v.task),
+                                Flag(v.owned_arguments)]));
 }
 FunctionHead :: (v: Function) -> u8[] {
     return Words([Zig(v.argument_count), Zig(v.result_count), Zig(v.variable_count), u64(v.root_steps),

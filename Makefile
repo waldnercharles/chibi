@@ -356,11 +356,12 @@ test-bootstrap:
 BOOTSTRAP_ARTIFACT ?= tools/compiler/bootstrap
 BOOTSTRAP_SEED = $(RELEASE_BUILD_DIR)/bootstrap.seed
 bootstrap-artifact:
-	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
+	@$(MAKE) stage-zero-build GRAPH_BUILD= BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_TARGET='test_language chibi-compiler-host' LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF"
 	@rm -rf "$(BOOTSTRAP_SEED)" && mkdir -p "$(BOOTSTRAP_SEED)"
 	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
+	@$(MAKE) stage-zero-build GRAPH_BUILD= BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_TARGET='test_language chibi-compiler-host' LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=ON"
 
 bootstrap-recover:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host

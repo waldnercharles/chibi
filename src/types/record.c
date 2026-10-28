@@ -10,36 +10,56 @@
 
 _Static_assert(sizeof(pin_record) % _Alignof(type_field) == 0, "record fields must be aligned");
 
-static size_t field_size(const type_field *field)
+static size_t field_size_at(const type_field *field, int depth)
 {
+    if (depth >= TYPE_MAX_NESTING || (field->container != PIN_CONTAINER_SINGLE &&
+                                      field->container != PIN_CONTAINER_ARRAY)) {
+        return 0;
+    }
     pin_type type = field->type;
+    if (field->container == PIN_CONTAINER_ARRAY) {
+        type_field element = *field;
+        element.container = PIN_CONTAINER_SINGLE;
+        return field_size_at(&element, depth) ? sizeof(pin_array *) : 0;
+    }
     if ((type >= PIN_BOOL && type <= PIN_F64) || type == PIN_STR ||
         type == PIN_NAME || type == PIN_ENUM || type == PIN_HANDLE ||
         type == PIN_POINTER || type == PIN_QUERY) {
         return behavior_scalar_size(type);
     }
-    const type_desc *nested = type == PIN_STRUCT ? type_catalog_find(field->type_name)
-                                                 : NULL;
-    if (!type_is_plain(nested)) {
+    const type_desc *nested = type == PIN_STRUCT
+                                ? type_field_type(field, (type_resolver){ 0 })
+                                : NULL;
+    if (!nested || !nested->name || !field->type_name ||
+        strcmp(nested->name, field->type_name) || !nested->size ||
+        nested->field_count <= 0 || !nested->fields ||
+        (!field->layout && !type_is_plain(nested))) {
         return 0;
     }
     for (int i = 0; i < nested->field_count; i++) {
-        if (!field_size(&nested->fields[i])) {
+        if (!field_size_at(&nested->fields[i], depth + 1)) {
             return 0;
         }
     }
     return nested->size;
 }
-static size_t field_align(const type_field *field)
+static size_t field_size(const type_field *field)
 {
-    if (!field_size(field)) {
+    return field_size_at(field, 0);
+}
+static size_t field_align_at(const type_field *field, int depth)
+{
+    if (depth >= TYPE_MAX_NESTING || !field_size_at(field, depth)) {
         return 0;
     }
+    if (field->container == PIN_CONTAINER_ARRAY) {
+        return _Alignof(pin_array *);
+    }
     if (field->type == PIN_STRUCT) {
-        const type_desc *type = type_catalog_find(field->type_name);
+        const type_desc *type = type_field_type(field, (type_resolver){ 0 });
         size_t alignment = 1;
         for (int i = 0; type && i < type->field_count; i++) {
-            size_t step = field_align(&type->fields[i]);
+            size_t step = field_align_at(&type->fields[i], depth + 1);
             if (step > alignment) {
                 alignment = step;
             }
@@ -54,6 +74,10 @@ static size_t field_align(const type_field *field)
         default: return 0;
     }
 }
+static size_t field_align(const type_field *field)
+{
+    return field_align_at(field, 0);
+}
 static bool add(size_t *total, size_t bytes)
 {
     if (bytes > SIZE_MAX - *total) {
@@ -67,6 +91,36 @@ static bool align(size_t *size, size_t alignment)
     size_t remainder = *size % alignment;
     return !remainder || add(size, alignment - remainder);
 }
+static bool layout_work(size_t *used, size_t amount)
+{
+    if (*used > PIN_RECORD_MAX_LAYOUT_WORK ||
+        amount > PIN_RECORD_MAX_LAYOUT_WORK - *used) {
+        return false;
+    }
+    *used += amount;
+    return true;
+}
+static bool layout_bytes(size_t *used, size_t amount)
+{
+    if (*used > PIN_RECORD_MAX_LAYOUT_BYTES ||
+        amount > PIN_RECORD_MAX_LAYOUT_BYTES - *used) {
+        return false;
+    }
+    *used += amount;
+    return true;
+}
+static bool layout_text(size_t *bytes, const char *text)
+{
+    if (!text) {
+        return true;
+    }
+    if (*bytes >= PIN_RECORD_MAX_LAYOUT_BYTES) {
+        return false;
+    }
+    size_t left = PIN_RECORD_MAX_LAYOUT_BYTES - *bytes;
+    size_t length = strnlen(text, left);
+    return length < left && layout_bytes(bytes, length + 1);
+}
 static char *copy_name(char **at, const char *source)
 {
     char *name = *at;
@@ -77,7 +131,14 @@ static char *copy_name(char **at, const char *source)
 }
 static bool native_field(const type_field *field)
 {
-    if (field->range_contract && !type_field_range_valid(field)) {
+    if (field->container == PIN_CONTAINER_ARRAY) {
+        return field->size == sizeof(pin_array *) && !field->range_contract &&
+               !field->text_descriptor &&
+               ((field->type >= PIN_BOOL && field->type <= PIN_ENUM) ||
+                field->type == PIN_POINTER || field->type == PIN_QUERY);
+    }
+    if (field->container != PIN_CONTAINER_SINGLE ||
+        (field->range_contract && !type_field_range_valid(field))) {
         return false;
     }
     if (field->type == PIN_STRUCT) {
@@ -94,16 +155,17 @@ static bool native_field(const type_field *field)
     }
     return false;
 }
-static bool native_size(const type_desc *type, type_resolver resolver, int depth, size_t *bytes)
+static bool native_size(const type_desc *type, type_resolver resolver, int depth, size_t *bytes, size_t *work)
 {
     if (!type || !type->name || !*type->name || !type->size ||
         type->field_count < 0 || type->field_count > 65536 ||
         (type->field_count && !type->fields) || depth >= TYPE_MAX_NESTING ||
-        !align(bytes, _Alignof(pin_record)) || !add(bytes, sizeof(pin_record)) ||
+        !layout_work(work, 1 + (size_t)type->field_count) ||
+        !align(bytes, _Alignof(pin_record)) ||
+        !layout_bytes(bytes, sizeof(pin_record)) ||
         (size_t)type->field_count > SIZE_MAX / sizeof(type_field) ||
-        !add(bytes, (size_t)type->field_count * sizeof(type_field)) ||
-        !add(bytes, strlen(type->name) + 1) ||
-        (type->alias_of && !add(bytes, strlen(type->alias_of) + 1))) {
+        !layout_bytes(bytes, (size_t)type->field_count * sizeof(type_field)) ||
+        !layout_text(bytes, type->name) || !layout_text(bytes, type->alias_of)) {
         return false;
     }
     for (int i = 0; i < type->field_count; i++) {
@@ -117,7 +179,7 @@ static bool native_size(const type_desc *type, type_resolver resolver, int depth
                                 field->unit,
                                 field->description };
         for (size_t n = 0; n < sizeof names / sizeof *names; n++) {
-            if (names[n] && !add(bytes, strlen(names[n]) + 1)) {
+            if (!layout_text(bytes, names[n])) {
                 return false;
             }
         }
@@ -125,7 +187,7 @@ static bool native_size(const type_desc *type, type_resolver resolver, int depth
     if (type->alias_of) {
         const type_desc *alias = type_alias_type(type, resolver);
         if (!alias || alias->size != type->size ||
-            !native_size(alias, resolver, depth + 1, bytes)) {
+            !native_size(alias, resolver, depth + 1, bytes, work)) {
             return false;
         }
     }
@@ -135,8 +197,10 @@ static bool native_size(const type_desc *type, type_resolver resolver, int depth
             continue;
         }
         const type_desc *nested = type_field_type(field, resolver);
-        if (!nested || nested->size != field->size ||
-            !native_size(nested, resolver, depth + 1, bytes)) {
+        if (!nested || !field->type_name || !nested->name ||
+            strcmp(nested->name, field->type_name) ||
+            (field->container == PIN_CONTAINER_SINGLE && nested->size != field->size) ||
+            !native_size(nested, resolver, depth + 1, bytes, work)) {
             return false;
         }
     }
@@ -150,7 +214,9 @@ static pin_record *native_initialize(char *memory, size_t *used, const type_desc
     type_field *fields = (type_field *)(record + 1);
     *used += sizeof *record + (size_t)type->field_count * sizeof *fields;
     char *text = memory + *used;
-    *record = (pin_record){ .type = *type, .native = true, .frozen = true };
+    *record = (pin_record){ .type = *type,
+                            .native = !type->carrier || type->carrier->native,
+                            .frozen = true };
     record->type.carrier = record;
     record->type.fields = fields;
     record->type.name = copy_name(&text, type->name);
@@ -192,7 +258,7 @@ static pin_record *native_initialize(char *memory, size_t *used, const type_desc
     for (const unsigned char *at = (const unsigned char *)type->name; *at; at++) {
         id = (id ^ *at) * UINT64_C(1099511628211);
     }
-    record->id = id ? id : 1;
+    record->id = type->carrier ? type->carrier->id : id ? id : 1;
     return record;
 }
 const pin_record *pin_record_from_type(arena *storage, const type_desc *type)
@@ -207,8 +273,8 @@ const pin_record *pin_record_from_type_resolved(arena *storage, const type_desc 
     if (type && type->carrier && type->carrier->native) {
         return pin_record_snapshot(storage, type->carrier);
     }
-    size_t bytes = 0;
-    if (!native_size(type, resolver, 0, &bytes)) {
+    size_t bytes = 0, work = 0;
+    if (!native_size(type, resolver, 0, &bytes, &work)) {
         return NULL;
     }
     size_t used = 0;
@@ -228,7 +294,7 @@ static bool native_child(const pin_record *owner, const type_desc *type)
            type->carrier == (const pin_record *)type &&
            type->carrier->bytes <= owner->bytes - (size_t)(at - start);
 }
-static bool native_valid(const pin_record *record, int depth)
+static bool native_valid_at(const pin_record *record, int depth, size_t *work)
 {
     if (!record || !record->frozen || !record->id || !record->layout ||
         record->bytes < sizeof *record || record->type.carrier != record ||
@@ -237,30 +303,41 @@ static bool native_valid(const pin_record *record, int depth)
         (size_t)record->type.field_count >
             (record->bytes - sizeof *record) / sizeof(type_field) ||
         record->type.fields != (const type_field *)(record + 1) ||
-        depth >= TYPE_MAX_NESTING || !native_text(record, record->type.alias_of)) {
+        depth >= TYPE_MAX_NESTING || !native_text(record, record->type.alias_of) ||
+        (!record->type.alias_of && record->type.alias) ||
+        record->bytes > PIN_RECORD_MAX_LAYOUT_BYTES ||
+        !layout_work(work, 1 + (size_t)record->type.field_count)) {
         return false;
     }
     if (record->type.alias_of &&
         (!native_child(record, record->type.alias) ||
          record->type.alias->size != record->type.size ||
-         !native_valid(record->type.alias->carrier, depth + 1))) {
+         !native_valid_at(record->type.alias->carrier, depth + 1, work))) {
         return false;
     }
     for (int i = 0; i < record->type.field_count; i++) {
         const type_field *f = &record->type.fields[i];
         if (!f->name || !native_text(record, f->name) || !native_field(f) ||
             !native_text(record, f->type_name) || !native_text(record, f->unit) ||
-            !native_text(record, f->description) || f->offset > record->type.size ||
+            !native_text(record, f->description) ||
+            (f->type != PIN_STRUCT && f->layout) || f->offset > record->type.size ||
             f->size > record->type.size - f->offset) {
             return false;
         }
         if (f->type == PIN_STRUCT &&
-            (!native_child(record, f->layout) || f->layout->size != f->size ||
-             !native_valid(f->layout->carrier, depth + 1))) {
+            (!native_child(record, f->layout) || !f->type_name ||
+             !native_valid_at(f->layout->carrier, depth + 1, work) ||
+             strcmp(f->layout->name, f->type_name) ||
+             (f->container == PIN_CONTAINER_SINGLE && f->layout->size != f->size))) {
             return false;
         }
     }
     return record->layout == type_layout_hash(&record->type);
+}
+static bool native_valid(const pin_record *record, int depth)
+{
+    size_t work = 0;
+    return native_valid_at(record, depth, &work);
 }
 static bool native_same(const type_desc *a, const type_desc *b, int depth)
 {
@@ -269,6 +346,13 @@ static bool native_same(const type_desc *a, const type_desc *b, int depth)
         a->size != b->size || a->field_count != b->field_count ||
         strcmp(a->name, b->name) || !!a->alias_of != !!b->alias_of ||
         type_layout_hash(a) != type_layout_hash(b)) {
+        return false;
+    }
+    const pin_record *x = a->carrier, *y = b->carrier;
+    bool authored_x = x && !x->native, authored_y = y && !y->native;
+    /* Child layout hashes describe storage; authored nominal identity remains
+     * distinct even when names and physical fields happen to match. */
+    if ((authored_x || authored_y) && (!authored_x || !authored_y || x->id != y->id)) {
         return false;
     }
     if (a->alias_of && (strcmp(a->alias_of, b->alias_of) ||
@@ -326,10 +410,16 @@ type_resolver pin_record_resolver(const pin_record *record)
 {
     return (type_resolver){ .find = resolve_owned_type, .user = (void *)record };
 }
+static bool native_preflight(const type_desc *type)
+{
+    size_t bytes = 0, work = 0;
+    return native_size(type, (type_resolver){ 0 }, 0, &bytes, &work);
+}
 bool pin_record_native_current(const pin_record *record)
 {
+    const type_desc *current = record ? type_catalog_find(record->type.name) : NULL;
     return record && record->native && native_valid(record, 0) &&
-           native_same(&record->type, type_catalog_find(record->type.name), 0);
+           native_preflight(current) && native_same(&record->type, current, 0);
 }
 bool pin_record_fields_current(const pin_record *record)
 {
@@ -341,12 +431,18 @@ bool pin_record_fields_current(const pin_record *record)
     }
     for (int i = 0; i < record->type.field_count; i++) {
         const type_field *field = &record->type.fields[i];
-        if (field->type == PIN_STRUCT &&
-            !native_same(
-                type_field_type(field, (type_resolver){ 0 }),
-                type_catalog_find(field->type_name),
-                0
-            )) {
+        if (field->type != PIN_STRUCT) {
+            continue;
+        }
+        const type_desc *child = type_field_type(field, (type_resolver){ 0 });
+        if (child && child->carrier && !child->carrier->native) {
+            if (!pin_record_fields_current(child->carrier)) {
+                return false;
+            }
+            continue;
+        }
+        const type_desc *current = type_catalog_find(field->type_name);
+        if (!native_preflight(current) || !native_same(child, current, 0)) {
             return false;
         }
     }
@@ -376,6 +472,15 @@ bool pin_value_layout_same(const pin_value *a, const pin_value *b)
     return pin_record_native_current(x ? x : y);
 }
 
+static bool compositional(const type_field *fields, int count)
+{
+    for (int i = 0; i < count; i++) {
+        if (fields[i].container != PIN_CONTAINER_SINGLE || fields[i].layout) {
+            return true;
+        }
+    }
+    return false;
+}
 static bool shape(
     const char *name,
     uint64_t id,
@@ -389,27 +494,45 @@ static bool shape(
         (size_t)count > (SIZE_MAX - sizeof(pin_record)) / sizeof(type_field)) {
         return false;
     }
-    size_t bytes = sizeof(pin_record) + (size_t)count * sizeof(type_field);
-    size_t size = 0, alignment = 1;
-    if (!add(&bytes, strlen(name) + 1)) {
+    size_t bytes = 0, work = 0;
+    if (!layout_work(&work, 1 + (size_t)count) ||
+        !layout_bytes(&bytes, sizeof(pin_record) + (size_t)count * sizeof(type_field)) ||
+        !layout_text(&bytes, name)) {
         return false;
     }
     for (int i = 0; i < count; i++) {
         const type_field *field = &fields[i];
-        size_t width = field_size(field), step = field_align(field);
-        if (!field->name || !*field->name || !width ||
-            !add(&bytes, strlen(field->name) + 1) || !align(&size, step) ||
-            !add(&size, width)) {
-            return false;
-        }
-        if ((field->type_name && !add(&bytes, strlen(field->type_name) + 1)) ||
-            (field->unit && !add(&bytes, strlen(field->unit) + 1))) {
+        if (!field->name || !*field->name || !layout_text(&bytes, field->name) ||
+            !layout_text(&bytes, field->type_name) ||
+            !layout_text(&bytes, field->unit)) {
             return false;
         }
         for (int j = 0; j < i; j++) {
-            if (!strcmp(field->name, fields[j].name)) {
+            if (!layout_work(&work, 1) || !strcmp(field->name, fields[j].name)) {
                 return false;
             }
+        }
+    }
+    size_t closed_bytes = bytes;
+    for (int i = 0; i < count; i++) {
+        if (fields[i].type == PIN_STRUCT &&
+            !native_size(
+                type_field_type(&fields[i], (type_resolver){ 0 }),
+                (type_resolver){ 0 },
+                1,
+                &closed_bytes,
+                &work
+            )) {
+            return false;
+        }
+    }
+    /* The bounded preflight dominates every recursive size/alignment/hash
+     * traversal. Legacy implicit native children close only on snapshot. */
+    size_t size = 0, alignment = 1;
+    for (int i = 0; i < count; i++) {
+        size_t width = field_size(&fields[i]), step = field_align(&fields[i]);
+        if (!width || !align(&size, step) || !add(&size, width)) {
+            return false;
         }
         if (step > alignment) {
             alignment = step;
@@ -418,9 +541,14 @@ static bool shape(
     if (!align(&size, alignment)) {
         return false;
     }
-    *out_bytes = bytes;
+    *out_bytes = compositional(fields, count) ? closed_bytes : bytes;
     *out_size = size;
     return true;
+}
+size_t pin_record_create_bytes(const char *name, uint64_t id, const type_field *fields, int count)
+{
+    size_t bytes, size;
+    return shape(name, id, fields, count, &bytes, &size) ? bytes : 0;
 }
 static const pin_record *initialize(
     void *memory,
@@ -455,13 +583,29 @@ static const pin_record *initialize(
         const char *unit = fields[i].unit ? copy_name(&text, fields[i].unit) : NULL;
         owned[i] = (type_field){ .name = name,
                                  .type = fields[i].type,
-                                 .text_descriptor = fields[i].type == PIN_STR,
+                                 .text_descriptor = fields[i].type == PIN_STR &&
+                                                    fields[i].container == PIN_CONTAINER_SINGLE,
                                  .offset = offset,
                                  .size = field_size(&fields[i]),
                                  .type_name = type_name,
-                                 .unit = unit };
+                                 .unit = unit,
+                                 .container = fields[i].container };
         offset += owned[i].size;
     }
+    size_t used = (size_t)(text - (char *)memory);
+    record->frozen = compositional(fields, count);
+    for (int i = 0; record->frozen && i < count; i++) {
+        if (fields[i].type == PIN_STRUCT) {
+            owned[i].layout = &native_initialize(
+                                   memory,
+                                   &used,
+                                   type_field_type(&fields[i], (type_resolver){ 0 }),
+                                   (type_resolver){ 0 }
+            )
+                                   ->type;
+        }
+    }
+    record->type.carrier = record;
     record->layout = type_layout_hash(&record->type);
     return record;
 }
@@ -536,6 +680,7 @@ static const pin_record *copy_record(arena *storage, const pin_record *record)
     char *to = (char *)copy;
     type_field *fields = (type_field *)(copy + 1);
     copy->type.fields = fields;
+    copy->type.carrier = copy;
     copy->type.name = moved(record->type.name, from, to);
     for (int i = 0; i < record->type.field_count; i++) {
         const type_field *field = &record->type.fields[i];
@@ -561,8 +706,8 @@ size_t pin_record_snapshot_bytes(const pin_record *record)
     if (!record->frozen) {
         for (int i = 0; i < record->type.field_count; i++) {
             if (record->type.fields[i].type == PIN_STRUCT) {
-                size_t bytes = 0;
-                return native_size(&record->type, (type_resolver){ 0 }, 0, &bytes)
+                size_t bytes = 0, work = 0;
+                return native_size(&record->type, (type_resolver){ 0 }, 0, &bytes, &work)
                          ? bytes
                          : 0;
             }
@@ -616,7 +761,8 @@ bool pin_record_valid(const pin_record *record)
         return native_valid(record, 0);
     }
     if (!record || !record->id || !record->type.name || !*record->type.name ||
-        !record->type.fields || record->type.field_count <= 0 || record->type.alias_of) {
+        !record->type.fields || record->type.field_count <= 0 ||
+        record->type.alias_of || record->bytes > PIN_RECORD_MAX_LAYOUT_BYTES) {
         return false;
     }
     size_t size = 0, alignment = 1;
@@ -629,6 +775,19 @@ bool pin_record_valid(const pin_record *record)
     const type_field *fields = (const type_field *)(record + 1);
     if (record->type.fields != fields) {
         return false;
+    }
+    size_t closed_bytes = record->bytes, work = 1 + (size_t)record->type.field_count;
+    for (int i = 0; i < record->type.field_count; i++) {
+        if (fields[i].type == PIN_STRUCT &&
+            !native_size(
+                type_field_type(&fields[i], (type_resolver){ 0 }),
+                (type_resolver){ 0 },
+                1,
+                &closed_bytes,
+                &work
+            )) {
+            return false;
+        }
     }
     const char *text = (const char *)(fields + record->type.field_count);
     if (record->type.name != text) {
@@ -682,7 +841,9 @@ bool pin_record_current(const pin_record *record)
     }
     for (int i = 0; i < record->type.field_count; i++) {
         const type_field *field = &record->type.fields[i];
-        if (field->type == PIN_STRUCT && field_size(field) != field->size) {
+        if (field->type == PIN_STRUCT &&
+            (!native_preflight(type_field_type(field, (type_resolver){ 0 })) ||
+             field_size(field) != field->size)) {
             return false;
         }
     }
@@ -709,7 +870,7 @@ bool pin_record_same(const pin_record *a, const pin_record *b)
     }
     return a->id == b->id && a->layout == b->layout &&
            !strcmp(a->type.name, b->type.name) &&
-           (!(a->frozen && b->frozen) || native_same(&a->type, &b->type, 0));
+           (!(a->frozen || b->frozen) || native_same(&a->type, &b->type, 0));
 }
 const type_desc *pin_value_type(const pin_value *value)
 {

@@ -176,7 +176,7 @@ TEST_CASE(record_semantic_default_rejections)
         "bool { return true; }",
         "Row :: struct { value: int = Later; } Later :: Earlier; Earlier :: "
         "Later;",
-        "Row :: struct { value: string[]; }",
+        "Row :: struct { value: string[] = []; }",
         "Row :: struct { value: bool = true or [false][0]; }"
     };
     static const char *const messages[] = {
@@ -187,7 +187,7 @@ TEST_CASE(record_semantic_default_rejections)
         "integer constant divides by zero",
         "Record default",
         "Cyclic value dependency",
-        "Record fields require",
+        "Aggregate record fields require explicit initialization",
         "Record default"
     };
     _Static_assert(sizeof bodies / sizeof *bodies == 9, "fixed rejection inputs");

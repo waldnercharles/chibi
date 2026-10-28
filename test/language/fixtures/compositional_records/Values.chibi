@@ -1,0 +1,243 @@
+package compositional_records
+
+// The containing declaration comes first to exercise forward field types.
+Snapshot :: struct {
+    counter: Counter;
+    numbers: Numbers;
+}
+
+Rows :: struct {
+    entries: Numbers[];
+}
+
+Numbers :: struct {
+    values: int[];
+}
+
+Counter :: struct {
+    value: int;
+}
+
+Link :: struct {
+    target: ^Counter;
+}
+
+LinkedRecord :: struct {
+    link: Link;
+}
+
+Targets :: struct {
+    values: ^Counter[];
+}
+
+Chain :: struct {
+    value: int;
+    next: ^Chain?;
+}
+
+@test
+NestedRecordCopiesKeepIndependentValues :: () {
+    original: Snapshot = {counter: {value: 7}, numbers: {values: [11, 13]}};
+    copy := original;
+    copy.counter.value = 19;
+    assert(original.counter.value == 7, "nested scalar mutation must preserve the original record");
+    assert(copy.counter.value == 19, "nested scalar mutation must update the copied record");
+}
+
+@test
+ArrayFieldCopiesKeepIndependentElements :: () {
+    original: Numbers = {values: [11, 13]};
+    copy := original;
+    copy.values[0] = 17;
+    assert(original.values[0] == 11, "array field mutation must preserve the original elements");
+    assert(original.values[1] == 13);
+    assert(copy.values[0] == 17, "array field mutation must update the copied elements");
+    assert(copy.values[1] == 13);
+    copy.values.append(19);
+    assert(length(original.values) == 2 && length(copy.values) == 3, "appending to a copied array field must preserve the original length");
+    assert(copy.values[2] == 19);
+}
+
+@test
+ReplacingArrayFieldKeepsOriginalStorageAlive :: () {
+    original: Numbers = {values: [11, 13]};
+    copy := original;
+    copy.values = [17, 19];
+    copy.values[1] = 23;
+    assert(original.values[0] == 11, "replacing a copied array field must preserve the original");
+    assert(original.values[1] == 13);
+    assert(copy.values[0] == 17);
+    assert(copy.values[1] == 23, "the replacement array must remain mutable");
+}
+
+@test
+NestedArrayMutationUpdatesOnlyTheCopiedRecord :: () {
+    original: Snapshot = {counter: {value: 7}, numbers: {values: [11, 13]}};
+    copy := original;
+    copy.numbers.values[1] = 29;
+    assert(original.numbers.values[0] == 11);
+    assert(original.numbers.values[1] == 13, "nested array mutation must preserve the original record");
+    assert(copy.numbers.values[0] == 11);
+    assert(copy.numbers.values[1] == 29, "nested array mutation must write back through each containing field");
+    assert(copy.counter.value == 7, "nested mutation must preserve unrelated fields");
+}
+
+@test
+RecordArrayElementsKeepIndependentNestedArrays :: () {
+    original: Rows = {entries: [{values: [11, 13]}]};
+    copy := original;
+    copy.entries[0].values[1] = 47;
+    assert(original.entries[0].values[0] == 11);
+    assert(original.entries[0].values[1] == 13, "a copied record array must preserve nested element values");
+    assert(copy.entries[0].values[0] == 11);
+    assert(copy.entries[0].values[1] == 47, "nested mutation must update the selected record array element");
+}
+
+@test
+PointerFieldCopiesShareTheirTarget :: () {
+    counter: Counter = {value: 7};
+    original: Link = {target: &counter};
+    copy := original;
+    assert(copy.target == original.target, "copying a pointer field must preserve target identity");
+    copy.target.value = 31;
+    assert(counter.value == 31);
+    assert(original.target.value == 31, "both pointer fields must observe target mutation");
+}
+
+@test
+ReplacingPointerFieldChangesOnlyTheCopiedRecord :: () {
+    first: Counter = {value: 7};
+    second: Counter = {value: 11};
+    original: Link = {target: &first};
+    copy := original;
+    copy.target = &second;
+    copy.target.value = 37;
+    assert(original.target != copy.target, "replacing a pointer field must change only that record");
+    assert(first.value == 7);
+    assert(original.target.value == 7);
+    assert(second.value == 37);
+    assert(copy.target.value == 37);
+}
+
+@test
+PointerArrayCopiesShareTargetsAndKeepIndependentElements :: () {
+    first: Counter = {value: 7};
+    second: Counter = {value: 11};
+    replacement: Counter = {value: 13};
+    original: Targets = {values: [&first, &second]};
+    copy := original;
+    copy.values[0].value = 53;
+    assert(first.value == 53);
+    assert(original.values[0].value == 53, "pointer array copies must share their pointer targets");
+    copy.values[1] = &replacement;
+    copy.values[1].value = 59;
+    assert(second.value == 11);
+    assert(original.values[1].value == 11, "replacing a pointer array element must preserve the original element");
+    assert(replacement.value == 59);
+}
+
+@test
+RecursivePointersKeepFiniteRecordLayouts :: () {
+    first: Chain = {value: 7, next: nil};
+    second: Chain = {value: 11, next: nil};
+    head := &first;
+    tail := &second;
+    head.next = tail;
+    tail.next = head;
+    next := head.next;
+    if next != nil {
+        assert(next == tail, "a recursive pointer field must preserve target identity");
+        previous := next.next;
+        if previous != nil {
+            assert(previous == head, "pointer links may form cycles");
+            assert(previous.value == 7);
+        } else {
+            assert(false, "the second recursive link is missing");
+        }
+    } else {
+        assert(false, "the first recursive link is missing");
+    }
+}
+
+@test
+PointerToAggregateUpdatesItsNestedFields :: () {
+    original: Snapshot = {counter: {value: 7}, numbers: {values: [11, 13]}};
+    copy := original;
+    target := &original;
+    target^.counter.value = 41;
+    target^.numbers.values[0] = 43;
+    assert(original.counter.value == 41, "a pointer to a record must update its inline child");
+    assert(original.numbers.values[0] == 43, "a pointer to a record must update its nested array");
+    assert(copy.counter.value == 7);
+    assert(copy.numbers.values[0] == 11, "the earlier value copy must remain independent");
+}
+
+@test
+PointerToInlineFieldKeepsItsCell :: () {
+    original: Snapshot = {counter: {value: 7}, numbers: {values: [11, 13]}};
+    target := &original.counter.value;
+    target^ = 47;
+    assert(original.counter.value == 47);
+    copy := original;
+    copy.counter.value = 53;
+    assert(target^ == 47, "copying the containing record must not rebind the original field pointer");
+    original.counter = {value: 59};
+    assert(target^ == 59, "a field pointer follows its cell after replacing the inline child");
+    counter: Counter = {value: 7};
+    link: Link = {target: &counter};
+    indirect := &link.target.value;
+    indirect^ = 73;
+    assert(counter.value == 73, "an intermediate pointer field must be read before projecting its pointee");
+    wrapped: LinkedRecord = {link: link};
+    mixed := &wrapped.link.target.value;
+    mixed^ = 79;
+    assert(counter.value == 79, "an address may cross both inline and pointer fields");
+    different: Counter = {value: 107};
+    link.target = &different;
+    indirect^ = 83;
+    assert(counter.value == 83 && different.value == 107, "rebinding a pointer field must not retarget an existing pointee address");
+    assert(mixed^ == 83);
+}
+
+ChangedCopy :: (value: Snapshot) -> Snapshot {
+    value.counter.value = 61;
+    value.numbers.values[0] = 67;
+    return value;
+}
+
+ReadTotal :: (value: Snapshot) -> int {
+    return value.counter.value + value.numbers.values[0] + value.numbers.values[1];
+}
+
+ChangeTarget :: (value: ^Snapshot) {
+    value^.numbers.values[1] = 71;
+}
+
+@test
+CallsCopyValuesAndPreserveExplicitTargets :: () {
+    original: Snapshot = {counter: {value: 7}, numbers: {values: [11, 13]}};
+    changed := ChangedCopy(original);
+    assert(original.counter.value == 7 && original.numbers.values[0] == 11);
+    assert(changed.counter.value == 61 && changed.numbers.values[0] == 67);
+    assert(ReadTotal(original) == 31, "a borrowed read must preserve its owner's collections after return");
+    ChangeTarget(&original);
+    assert(original.numbers.values[1] == 71, "a pointer parameter must update the shared target");
+    assert(changed.numbers.values[1] == 13);
+}
+
+// The stage-one sample runner calls this entry to exercise the same assertions.
+pub Main :: () -> int {
+    NestedRecordCopiesKeepIndependentValues();
+    ArrayFieldCopiesKeepIndependentElements();
+    ReplacingArrayFieldKeepsOriginalStorageAlive();
+    NestedArrayMutationUpdatesOnlyTheCopiedRecord();
+    RecordArrayElementsKeepIndependentNestedArrays();
+    PointerFieldCopiesShareTheirTarget();
+    ReplacingPointerFieldChangesOnlyTheCopiedRecord();
+    PointerArrayCopiesShareTargetsAndKeepIndependentElements();
+    RecursivePointersKeepFiniteRecordLayouts();
+    PointerToAggregateUpdatesItsNestedFields();
+    PointerToInlineFieldKeepsItsCell();
+    CallsCopyValuesAndPreserveExplicitTargets();
+    return 0;
+}

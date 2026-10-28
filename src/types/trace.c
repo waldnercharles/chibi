@@ -22,6 +22,12 @@ static void struct_fields(const type_desc *type, const void *data, arena_marker 
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         const unsigned char *member = (const unsigned char *)data + field->offset;
+        if (field->container == PIN_CONTAINER_ARRAY) {
+            const void *value;
+            memcpy(&value, member, sizeof value);
+            mark(user, value);
+            continue;
+        }
         if (field->type == PIN_STRUCT) {
             struct_fields(type_field_type(field, (type_resolver){ 0 }), member, mark, user, depth + 1);
         }
@@ -156,10 +162,20 @@ static bool boundary_layout_valid(const type_desc *type, int depth, type_resolve
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
-        if (field->offset > type->size || field->size > type->size - field->offset) {
+        if ((field->container != PIN_CONTAINER_SINGLE &&
+             field->container != PIN_CONTAINER_ARRAY) ||
+            field->offset > type->size || field->size > type->size - field->offset) {
             return false;
         }
-        if (field->type == PIN_STRUCT) {
+        if (field->container == PIN_CONTAINER_ARRAY) {
+            if (field->size != sizeof(pin_array *)) {
+                return false;
+            }
+            if (field->type == PIN_STRUCT &&
+                !boundary_layout_valid(type_field_type(field, resolver), depth + 1, resolver)) {
+                return false;
+            }
+        } else if (field->type == PIN_STRUCT) {
             const type_desc *nested = type_field_type(field, resolver);
             if (!nested || nested->size != field->size ||
                 !boundary_layout_valid(nested, depth + 1, resolver)) {
@@ -186,6 +202,9 @@ static bool boundary_layout_pointer_free(const type_desc *type, int depth, type_
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         if (field->offset > type->size || field->size > type->size - field->offset) {
+            return false;
+        }
+        if (field->container != PIN_CONTAINER_SINGLE) {
             return false;
         }
         if (field->type == PIN_STRUCT) {
@@ -327,16 +346,21 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
         }
         for (int i = 0; i < type->field_count; i++) {
             const type_field *field = &type->fields[i];
-            if (field->type != PIN_STRUCT && field->type != PIN_UNION &&
+            if (field->container == PIN_CONTAINER_SINGLE &&
+                field->type != PIN_STRUCT && field->type != PIN_UNION &&
                 field->type != PIN_POINTER && field->type != PIN_QUERY) {
                 continue;
             }
             const char *member = (const char *)value->ptr + field->offset;
             pin_value item = { .type = field->type,
+                               .container = field->container,
                                .type_name = field->type_name,
                                .schema = field->type == PIN_STRUCT ? value->schema
                                                                    : NULL };
-            if (field->type == PIN_STRUCT) {
+            if (field->container == PIN_CONTAINER_ARRAY) {
+                memcpy(&item.ptr, member, sizeof item.ptr);
+                item.record = field->layout ? field->layout->carrier : NULL;
+            } else if (field->type == PIN_STRUCT) {
                 const type_desc *nested = type_field_type(field, resolver);
                 item.ptr = (void *)member;
                 item.record = nested ? nested->carrier : NULL;

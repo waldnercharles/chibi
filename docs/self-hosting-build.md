@@ -165,6 +165,14 @@ The C API borrows it through `chibi_build_options.compiler`; reuse it sequential
 and reload it after compiler source edits. Release it with
 `chibi_build_compiler_free`.
 
+When changing the prepared format, the checked bootstrap cannot yet run on the
+new runtime. Configure a temporary source-compiler build with
+`-DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF` to build the driver that regenerates
+the matching bootstrap. This omits the generated asset-compiler component; it
+does not substitute a resource or relax artifact validation. After regeneration,
+configure with the option restored to `ON`, its default, and build the real asset
+compiler before SDK or product validation.
+
 Build-program compilation invokes `CompileClosureWithEffects`, or
 `CompileWithEffects` for rejection diagnostics. Their first twelve arguments
 match the existing `Compile`/`CompileClosure` bootstrap contract; argument thirteen

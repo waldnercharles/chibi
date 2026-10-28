@@ -1091,6 +1091,7 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
     script_analyzer_union_declarations(a, body);
     script_analyzer_value_declarations(a, body);
     script_analyzer_record_fields(a, body);
+    script_analyzer_record_layouts(a, body);
 }
 int script_analyzer_scope_at(const analyzer *a, TSNode body)
 {

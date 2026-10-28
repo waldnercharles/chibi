@@ -2,6 +2,7 @@
 
 #include "support/arena.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/copy_internal.h"
 #include "types/record.h"
@@ -77,7 +78,8 @@ const type_field *pin_type_field_path(const type_desc *type, const char *path)
         if (!end) {
             return field;
         }
-        if (field->type != PIN_STRUCT || !field->type_name) {
+        if (field->container != PIN_CONTAINER_SINGLE ||
+            field->type != PIN_STRUCT || !field->type_name) {
             return NULL;
         }
         type = type_field_type(field, (type_resolver){ 0 });
@@ -257,6 +259,9 @@ static void validate_ranges(const type_desc *type, void *data, int depth, type_r
     assert(depth < TYPE_MAX_NESTING);
     for (int i = 0; i < type->field_count; i++) {
         const type_field *f = &type->fields[i];
+        if (f->container != PIN_CONTAINER_SINGLE) {
+            continue;
+        }
         if (f->type == PIN_STRUCT) {
             const type_desc *nested = type_field_type(f, resolver);
             if (nested && nested->size == f->size) {
@@ -291,6 +296,9 @@ static void free_field_text(const type_desc *type, void *data, int depth, type_r
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         void *member = (char *)data + field->offset;
+        if (field->container != PIN_CONTAINER_SINGLE) {
+            continue;
+        }
         if (field->type == PIN_STR) {
             if (field->text_descriptor) {
                 pin_text_destroy(*(const pin_string **)member);
@@ -354,7 +362,8 @@ const char *pin_write_struct_resolved(
             source->fields[i].offset > source->size ||
             source->fields[i].size > source->size - source->fields[i].offset ||
             strcmp(target->fields[i].name, source->fields[i].name) ||
-            target->fields[i].type != source->fields[i].type) {
+            target->fields[i].type != source->fields[i].type ||
+            target->fields[i].container != source->fields[i].container) {
             error = "Field record layout differs";
             break;
         }
@@ -408,8 +417,23 @@ const char *pin_write_field_resolved(arena *storage, void *base, const type_fiel
     if (resolver.find && storage && storage->collectable) {
         return "Custom type resolution requires ordinary storage";
     }
-    if (v.type != f->type || v.container != PIN_CONTAINER_SINGLE) {
+    if (v.type != f->type || v.container != f->container) {
         return "Field value type differs";
+    }
+    if (f->container == PIN_CONTAINER_ARRAY) {
+        pin_value expected = { .type = f->type,
+                               .container = f->container,
+                               .type_name = f->type_name,
+                               .record = f->layout ? f->layout->carrier : NULL };
+        if (!pin_value_layout_same(&expected, &v)) {
+            return "Field array element type differs";
+        }
+        pin_value copy;
+        if (!storage || pin_value_collection_copy(storage, &copy, &v)) {
+            return "Field array copy failed";
+        }
+        memcpy((char *)base + f->offset, &copy.ptr, sizeof copy.ptr);
+        return NULL;
     }
     v = pin_clamp_field(f, v);
     unsigned char *dst = (unsigned char *)base + f->offset;
@@ -491,7 +515,15 @@ const char *pin_write_field(arena *storage, void *base, const type_field *field,
 const char *pin_read_field(arena *storage, const void *base, const type_field *f, pin_value *out)
 {
     const unsigned char *src = (const unsigned char *)base + f->offset;
-    pin_value value = { .type = f->type, .type_name = f->type_name };
+    pin_value value = { .type = f->type,
+                        .type_name = f->type_name,
+                        .container = f->container };
+    if (f->container == PIN_CONTAINER_ARRAY) {
+        memcpy(&value.ptr, src, sizeof value.ptr);
+        value.record = f->layout ? f->layout->carrier : NULL;
+        *out = value;
+        return NULL;
+    }
     pin_value *destination = out;
     out = &value;
     switch (f->type) {
@@ -595,6 +627,9 @@ static uint64_t layout_hash(
         hash = hash_bytes(hash, &field->offset, sizeof field->offset);
         hash = hash_bytes(hash, &field->size, sizeof field->size);
         hash = hash_bytes(hash, &field->type, sizeof field->type);
+        if (field->container != PIN_CONTAINER_SINGLE) {
+            hash = hash_bytes(hash, &field->container, sizeof field->container);
+        }
         if (field->text_descriptor) {
             hash = hash_bytes(hash, &field->text_descriptor, sizeof field->text_descriptor);
         }
@@ -647,8 +682,9 @@ static bool plain(const type_desc *type, int depth)
     for (int i = 0; i < type->field_count; i++) {
         const type_field *f = &type->fields[i];
         if (f->offset > type->size || f->size > type->size - f->offset ||
-            f->type == PIN_FLOW || f->type == PIN_STR || f->type == PIN_NAME ||
-            f->type == PIN_UNION || f->type == PIN_POINTER || f->type == PIN_QUERY) {
+            f->container != PIN_CONTAINER_SINGLE || f->type == PIN_FLOW ||
+            f->type == PIN_STR || f->type == PIN_NAME || f->type == PIN_UNION ||
+            f->type == PIN_POINTER || f->type == PIN_QUERY) {
             return false;
         }
         if (f->type == PIN_STRUCT) {
@@ -674,7 +710,8 @@ bool type_holds_references(const type_desc *type)
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
-        if (field->type == PIN_UNION || field->type == PIN_POINTER ||
+        if (field->container != PIN_CONTAINER_SINGLE ||
+            field->type == PIN_UNION || field->type == PIN_POINTER ||
             (field->type == PIN_STRUCT &&
              type_holds_references(type_field_type(field, (type_resolver){ 0 })))) {
             return true;

@@ -22,7 +22,8 @@ typedef struct
     double min, max;     /* Numeric range; unbounded when equal. */
     bool range_contract; /* Clamp on owning writes; false means slider hint. */
     double range_default; /* NaN replacement, clamped too; zero when unspecified. */
-    const struct type_desc *layout; /* Frozen nested struct layout, when owned. */
+    const struct type_desc *layout; /* Frozen nested struct or array element layout. */
+    pin_container container; /* SINGLE inline value, ARRAY stores a pin_array pointer. */
 } type_field;
 
 typedef struct type_desc
@@ -75,9 +76,8 @@ uint64_t type_layout_hash(const type_desc *type);
 uint64_t type_layout_hash_explicit(const type_desc *type, const type_desc *const *types, int count);
 /* Every field is inline and contains no managed string or container. */
 bool type_is_plain(const type_desc *type);
-/* Whether a record reaches other values: through a union or pointer field,
- * its own or a nested record's. Its other fields hold only scalars and text.
- * A layout that does not resolve may reach anything. */
+/* Whether a record reaches collections, unions or pointers through its own
+ * fields or nested records. An unresolved layout may reach anything. */
 bool type_holds_references(const type_desc *type);
 bool type_value_is_finite(const type_desc *type, const void *value);
 /* The field's type as the language spells it: a scalar's language name,

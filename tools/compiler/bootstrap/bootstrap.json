@@ -1,21 +1,21 @@
 {
   "format": 1,
-  "version": 7,
+  "version": 8,
   "minimum": 6,
-  "revision": "f2a71eae9611009c8a9a237b87f867739c7a5f82",
+  "revision": "19ad570dd12acb13de066c31a9c791b018c60aa7-dirty",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 20780474,
-    "sha256": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
+    "bytes": 21009142,
+    "sha256": "bd0b71ff4029137227f0daac7dbda76969fd48da19ecf6166dd7584046681add"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 148667,
-      "sha256": "fe133148cdaa310e7c466d78e6c1ce481b4550a6c9fc5a53e9772fb710d312e1"
+      "bytes": 156774,
+      "sha256": "97a7d1266e46c3a62d4be68727f02eaad28c4c2c0c77f12a12343db726db40c9"
     },
     {
       "path": "package_compiler/Body.chibi",
@@ -24,8 +24,8 @@
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 309690,
-      "sha256": "68d5a8af7b542f3a89d0ba4d4cb76405afbce19d3201a7211d002fe0cb67b6dc"
+      "bytes": 310085,
+      "sha256": "43bbb9ada60c3e52cddb7328e55b342cf724deb952204ee4a9f62e029b5dcd49"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -39,8 +39,8 @@
     },
     {
       "path": "package_compiler/Pointers.chibi",
-      "bytes": 52353,
-      "sha256": "a60181b885210b47741be52754d7d06ed7203ff47f4008dba6f80a696659f665"
+      "bytes": 56205,
+      "sha256": "8728225aa3114190c991fdbab47f2ef07a008a7e09333ef99fbd2e4d3dd082ec"
     },
     {
       "path": "package_compiler/Tasks.chibi",
@@ -89,8 +89,8 @@
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 115064,
-      "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
+      "bytes": 115088,
+      "sha256": "5ab701f815e9831444a8d50debb40fffb14414a72986fc0eeac932310d1363d3"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -139,8 +139,8 @@
     },
     {
       "path": "prepared_writer/Writer.chibi",
-      "bytes": 40444,
-      "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081"
+      "bytes": 40582,
+      "sha256": "9b01b9591fa712149059516c4c6b5bc7569c18575ee227130b0a81a40e47ea39"
     },
     {
       "path": "scalar_facts/Facts.chibi",
@@ -172,7 +172,7 @@
       "argument_failure": 7,
       "assert_failure": 3
     },
-    750639905608983243,
+    6829064003630320227,
     [
       "CONSTANT",
       "VARIABLE",

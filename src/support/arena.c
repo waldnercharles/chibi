@@ -709,6 +709,7 @@ size_t arena_storage_bytes(const arena *a)
     }
     return bytes + a->retained_bytes + a->external +
            a->resource_capacity * sizeof *a->resources +
+           a->copy_capacity * sizeof *a->copies +
            a->cleanup_count * sizeof(arena_cleanup);
 }
 void *arena_alloc_bounded(arena *a, size_t size, size_t budget)

@@ -171,7 +171,8 @@ TEST_CASE(collectable_arena_packs_small_values_into_slabs)
     return true;
 }
 /* An arena remembers each source's latest copy until a reset, free or
- * collection, however many sources it holds. */
+ * collection, however many sources it holds, and counts the table toward its
+ * storage. */
 TEST_CASE(arena_remembers_copies_until_reset_or_collection)
 {
     enum
@@ -210,6 +211,16 @@ TEST_CASE(arena_remembers_copies_until_reset_or_collection)
     arena_collect_end(&collection);
     REQUIRE(!arena_copy_find(&collectable, &sources[0]));
     arena_free(&collectable);
+    /* The table of copies counts toward the arena's storage. */
+    arena counted = { 0 };
+    void *copy = arena_alloc(&counted, 8);
+    size_t bytes = arena_storage_bytes(&counted);
+    arena_copy_remember(&counted, &sources[0], copy);
+    REQUIRE(
+        arena_storage_bytes(&counted) ==
+        bytes + counted.copy_capacity * sizeof *counted.copies
+    );
+    arena_free(&counted);
     return true;
 }
 

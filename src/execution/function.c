@@ -832,11 +832,18 @@ bool behavior_function_collection_holds(const behavior_function_context *context
     pin_value_collection_visit_owners(value, collection_find, &find);
     return find.held;
 }
-void behavior_function_collection_clear(behavior_function_context *context)
+void behavior_function_collection_empty(behavior_function_context *context)
 {
     for (int i = 0; i < acount(context->collection_owners); i++) {
         pin_value_collection_release(&context->collection_owners[i]);
     }
+    if (context->collection_owners) {
+        asetlen(context->collection_owners, 0);
+    }
+}
+void behavior_function_collection_clear(behavior_function_context *context)
+{
+    behavior_function_collection_empty(context);
     afree(context->collection_owners);
 }
 void behavior_function_collection_trace(

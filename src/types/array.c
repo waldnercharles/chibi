@@ -1621,9 +1621,17 @@ static int graph_array(graph_copy *graph, pin_value *out, const pin_value *sourc
         }
         return 0;
     }
+    pin_value row = { .type = PIN_STRUCT,
+                      .type_name = copy->type_name,
+                      .record = copy->record };
     for (int i = 0; i < array->count; i++) {
         pin_value item = pin_array_get(array, i), retained;
         carry_native_row(copy, &item);
+        /* Each row must carry the array's layout, not only the first. */
+        if (copy->record && (item.type != PIN_STRUCT || item.container != PIN_CONTAINER_SINGLE ||
+                             !pin_value_layout_same(&row, &item))) {
+            return -1;
+        }
         if (copy->stride) {
             if (pin_array_set(copy, i, &item)) {
                 return -1;

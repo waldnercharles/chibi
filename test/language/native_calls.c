@@ -611,8 +611,10 @@ TEST_CASE(native_calls_reject_mismatched_exports)
      * address, not an int. */
     const execution_native_export lent[] = { exported("Bump", INT_INT, 1, reward) };
     const execution_native_export pointed[] = { exported("Read", INT_INT, 1, reward) };
+    /* A library of export ABI 2 expects a context without a failure slot. */
     const execution_native_manifest manifests[] = {
         { EXECUTION_NATIVE_ABI + 1, 4, EXPORTS },
+        { 2, 4, EXPORTS },
         { EXECUTION_NATIVE_ABI, 2, typed },
         { EXECUTION_NATIVE_ABI, 1, result },
         { EXECUTION_NATIVE_ABI, 1, arity },
@@ -624,7 +626,8 @@ TEST_CASE(native_calls_reject_mismatched_exports)
         { EXECUTION_NATIVE_ABI, 1, pointed },
     };
     static const char *const reasons[] = {
-        "native library ABI 3 differs from 2",
+        "native library ABI 4 differs from 3",
+        "native library ABI 2 differs from 3",
         "native export Positive has no pure function of its signature in the "
         "library",
         "native export Reward has no pure function of its signature in the "
@@ -783,7 +786,7 @@ TEST_CASE(native_calls_bind_through_the_registry)
         calls = 0;
         REQUIRE(registered(missing, 2, "native export Absent has no source module", rejected));
         REQUIRE(registered(failing, 1, "native export Reward is exported twice", rejected));
-        REQUIRE(registered(other, 1, "native library ABI 3 differs from 2", rejected));
+        REQUIRE(registered(other, 1, "native library ABI 4 differs from 3", rejected));
         REQUIRE(!calls && same_states(vm, rejected));
         clear();
     }

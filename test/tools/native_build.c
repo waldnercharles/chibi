@@ -355,6 +355,10 @@ TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back)
     REQUIRE(build(launcher, "-O0", tools) == 1);
     snprintf(expected, sizeof expected, "%s/Main.chibi:a native program cannot call the runtime", game);
     REQUIRE(strstr(errors, expected));
+    /* So does an assert, which reports its failure through it. */
+    write_at(game, "Main.chibi", "package scalar\nMain :: () -> int {\n    assert(true);\n    return 1;\n}\n");
+    REQUIRE(build(launcher, "-O0", tools) == 1);
+    REQUIRE(strstr(errors, expected));
     char *after = tool_read(receipt);
     bool kept = after && !strcmp(before, after);
     free(after);

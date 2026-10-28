@@ -290,7 +290,7 @@ branching on `a < b`.
 `most_operands` and `too_many_operands` nest 64 calls deep, past the
 stage-zero test fixture's call depth limit, so that selector skips them;
 `Run.ps1` runs them on the recovered compiler. With Ubuntu LLVM 18.1.3 the
-other 52 accepted sources build, run and agree at O0 and O2.
+other 53 accepted sources build, run and agree at O0 and O2.
 
 Generated width modules stay out of the corpus, which `Run.ps1` bounds. For
 each integer type, one module declares every operator on that type and

@@ -20,12 +20,19 @@ _Static_assert(offsetof(execution_native_value, bits) == 8, "value bits");
 _Static_assert(offsetof(execution_native_value, bytes) == 16, "value bytes");
 _Static_assert(sizeof(execution_native_value) == 24, "value size");
 _Static_assert(offsetof(execution_native_context, format_text) == 0, "context format_text");
-_Static_assert(sizeof(execution_native_context) == sizeof(void (*)()), "context size");
+_Static_assert(offsetof(execution_native_context, failure) == sizeof(void *), "context failure");
+_Static_assert(sizeof(execution_native_context) == 2 * sizeof(void *), "context size");
+/* And FailureType() these. */
+_Static_assert(offsetof(execution_native_failure, function) == 0, "failure function");
+_Static_assert(offsetof(execution_native_failure, start) == 8, "failure start");
+_Static_assert(offsetof(execution_native_failure, end) == 12, "failure end");
+_Static_assert(sizeof(execution_native_failure) == 16, "failure size");
 
 typedef struct
 {
     const behavior_function *function;
     const execution_native_export *native;
+    const execution_module *library;
 } native_binding;
 /* Bindings sorted by function address. */
 struct execution_natives
@@ -161,7 +168,7 @@ bool execution_natives_bind(
     }
     for (int i = 0; i < manifest->count; i++) {
         int at = binding_at(natives, functions[i]);
-        native_binding binding = { functions[i], &manifest->exports[i] };
+        native_binding binding = { functions[i], &manifest->exports[i], library };
         apush(natives->bindings, binding);
         memmove(
             &natives->bindings[at + 1],
@@ -222,8 +229,8 @@ static pin_value runtime_value(const execution_native_value *value, pin_string *
     assert(type != PIN_FLOW);
     return from_word(type, value->bits);
 }
-/* Until native code reports failures, one ends the program with its message,
- * as an index out of range does. */
+/* Native code reports only failed asserts so far, so a failure to format
+ * ends the program with its message, as an index out of range does. */
 static void format_text(
     execution_native_context *context,
     const execution_native_value *values,
@@ -248,20 +255,38 @@ static void format_text(
 }
 void execution_native_frame_init(execution_native_frame *frame, execution_native_runtime runtime)
 {
-    *frame = (execution_native_frame){ .context = { format_text }, .runtime = runtime };
+    *frame = (execution_native_frame){ .context = { .format_text = format_text },
+                                       .runtime = runtime };
 }
 void execution_native_frame_free(execution_native_frame *frame)
 {
     arena_free(&frame->heap);
 }
-void execution_native_call(
+/* The VM's assert whose call `failure` names in `library`. Native code names
+ * only asserts of the functions it was compiled from. */
+static execution_native_assert assert_at(const execution_module *library, const execution_native_failure *failure)
+{
+    const behavior_function *function = library_function(library, failure->function);
+    assert(function);
+    for (int pc = 0; pc < acount(function->instructions); pc++) {
+        const behavior_function_source *source = behavior_function_instruction_source(function, pc);
+        if (function->instructions[pc].op == BF_ASSERT && source &&
+            source->start == failure->start && source->end == failure->end) {
+            return (execution_native_assert){ function, pc };
+        }
+    }
+    fprintf(stderr, "native failure names no assert of its function\n");
+    abort();
+}
+bool execution_native_call(
     const execution_natives *natives,
     const execution_native_export *native,
     const behavior_function *function,
     const pin_value *arguments,
     int count,
     pin_value *results,
-    int result_count
+    int result_count,
+    execution_native_assert *failed
 )
 {
     int parameters, declared_results;
@@ -276,8 +301,14 @@ void execution_native_call(
     execution_native_frame frame;
     execution_native_frame_init(&frame, natives->runtime);
     native->entry(&frame.context, in, out);
+    const execution_native_failure *failure = frame.context.failure;
     execution_native_frame_free(&frame);
+    if (failure) {
+        *failed = assert_at(natives->bindings[binding_at(natives, function)].library, failure);
+        return false;
+    }
     for (int r = 0; r < result_count && r < declared_results; r++) {
         results[r] = from_word(defaults[r].type, out[r]);
     }
+    return true;
 }

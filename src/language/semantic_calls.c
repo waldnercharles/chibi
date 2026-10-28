@@ -1284,6 +1284,51 @@ static bool requires_pointer_value(const script_catalog *catalog, script_type ty
     }
     return false;
 }
+#define HOLDS_VIEW_DEPTH 64
+/* Whether a value can hold a view: itself, or an element, key, field or union
+ * payload. A pointer stops the walk, since comparing one compares identity
+ * and reads nothing. Each type is walked once per path. */
+static bool holds_view(const script_catalog *catalog, script_type type, uint64_t *parents, int depth)
+{
+    if (type.container == PIN_CONTAINER_VIEW) {
+        return true;
+    }
+    if (type.container != PIN_CONTAINER_SINGLE) {
+        return (type.container == PIN_CONTAINER_MAP &&
+                holds_view(catalog, script_catalog_key_type(catalog, type), parents, depth)) ||
+               holds_view(catalog, script_catalog_element_type(catalog, type), parents, depth);
+    }
+    if (type.storage != PIN_STRUCT && type.storage != PIN_UNION) {
+        return false;
+    }
+    const script_catalog_type *record = script_catalog_type_by_id(catalog, type.nominal);
+    if (!record || depth == HOLDS_VIEW_DEPTH) {
+        return false;
+    }
+    for (int i = 0; i < depth; i++) {
+        if (parents[i] == record->id) {
+            return false;
+        }
+    }
+    parents[depth++] = record->id;
+    for (int i = 0; i < record->field_count; i++) {
+        if (holds_view(catalog, record->fields[i].type, parents, depth)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < record->variant_count; i++) {
+        const script_catalog_variant *v = &record->variants[i];
+        if (!v->tagged && holds_view(catalog, v->type, parents, depth)) {
+            return true;
+        }
+        for (int j = 0; j < v->field_count; j++) {
+            if (holds_view(catalog, v->fields[j].type, parents, depth)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 static int sequence_expression(
     analyzer *a,
     TSNode node,
@@ -1425,12 +1470,13 @@ static int event_receiver(analyzer *a, TSNode target, const script_catalog_capab
     script_analyzer_require(a, object, type, script_analyzer_expr_type(a, receiver));
     return receiver;
 }
-/* An argument's own effects; a view argument is also read through its
- * pointer. */
+/* An argument's own effects; an argument that can hold a view is also read
+ * through that view's pointer. */
 static unsigned argument_effects(const analyzer *a, int expression)
 {
     unsigned effects = script_analyzer_expr_effects(a, expression);
-    if (script_analyzer_expr_type(a, expression).container == PIN_CONTAINER_VIEW) {
+    uint64_t parents[HOLDS_VIEW_DEPTH];
+    if (holds_view(a->catalog, script_analyzer_expr_type(a, expression), parents, 0)) {
         effects |= SCRIPT_EFFECT_READ;
     }
     return effects;
@@ -1757,7 +1803,8 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         result.effects &= ~(unsigned)SCRIPT_EFFECT_INVOCATION_READ;
     }
     /* A language-value native reads only its arguments: owned ones are the
-     * caller's values, and a view argument adds its own read below. */
+     * caller's values, and an argument that holds a view adds its own read
+     * below. */
     if (capability && capability->language_values) {
         result.effects &= ~(unsigned)SCRIPT_EFFECT_READ;
     }

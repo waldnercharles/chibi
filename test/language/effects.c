@@ -142,9 +142,11 @@ TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots)
     return true;
 }
 
-/* An array native reads only its arguments, so a view is read whether it is
- * the receiver or an argument, and an owned array keeps the call pure. */
-TEST_CASE(effects_view_receivers_read_like_view_arguments)
+/* An array native reads only its arguments. An argument that holds a view,
+ * directly or in a union payload, is read whether it is the receiver or an
+ * argument. Owned values, and pointers, which compare by identity, keep the
+ * call pure. */
+TEST_CASE(effects_array_receivers_match_arguments)
 {
     cleanup();
     char error[256];
@@ -159,22 +161,40 @@ TEST_CASE(effects_view_receivers_read_like_view_arguments)
     REQUIRE(arrays);
     REQUIRE(parse_with(
         "Effects :: library { "
+        "Box :: union { Window(v: view int[]) | Empty } "
+        "Outer :: union { Held(b: Box) | Gone } "
+        "At :: union { Target(p: ^(int[])) | Nowhere } "
         "ViewMethod :: (v: view int[]) -> bool { return v.contains(1); } "
         "ViewCall :: (v: view int[]) -> bool { return contains(v, 1); } "
         "ViewFind :: (v: view int[]) -> int? { return v.find(1); } "
+        "BoxMethod :: (xs: Box[], b: Box) -> bool { return xs.contains(b); } "
+        "BoxCall :: (xs: Box[], b: Box) -> bool { return contains(xs, b); } "
+        "OuterFind :: (xs: Outer[], o: Outer) -> int? { return find(xs, o); } "
         "ViewSlice :: (v: view int[]) -> int[]? { return v.slice(0..<1); } "
+        "ViewChange :: (v: view int[]) { v.reverse(); } "
         "OwnedMethod :: (v: int[]) -> bool { return v.contains(1); } "
         "OwnedCall :: (v: int[]) -> bool { return contains(v, 1); } "
         "OwnedFind :: (v: int[]) -> int? { return v.find(1); } "
-        "OwnedSlice :: (v: int[]) -> int[]? { return v.slice(0..<1); } }",
+        "AtMethod :: (xs: At[], a: At) -> bool { return xs.contains(a); } "
+        "AtCall :: (xs: At[], a: At) -> bool { return contains(xs, a); } "
+        "OwnedSlice :: (v: int[]) -> int[]? { return v.slice(0..<1); } "
+        "LocalChange :: () -> int { v: int[] = [1]; v.append(2); return "
+        "length(v); } }",
         native_capabilities_catalog(arrays)
     ));
-    const char *views[] = { "ViewMethod", "ViewCall", "ViewFind", "ViewSlice" };
-    const char *owned[] = { "OwnedMethod", "OwnedCall", "OwnedFind", "OwnedSlice" };
-    for (int i = 0; i < 4; i++) {
-        REQUIRE(function(views[i]) && (function(views[i])->effects & SCRIPT_EFFECT_READ));
-        REQUIRE(function(owned[i]) && function(owned[i])->pure);
-        REQUIRE(!function(owned[i])->effects);
+    const char *reads[] = { "ViewMethod", "ViewCall",  "ViewFind",  "BoxMethod",
+                            "BoxCall",    "OuterFind", "ViewSlice", "ViewChange" };
+    for (size_t i = 0; i < sizeof reads / sizeof *reads; i++) {
+        REQUIRE(function(reads[i]) && (function(reads[i])->effects & SCRIPT_EFFECT_READ));
+    }
+    REQUIRE(function("ViewChange")->effects & SCRIPT_EFFECT_WRITE);
+    const char *pure[] = { "OwnedMethod", "OwnedCall", "OwnedFind",
+                           "AtMethod",    "AtCall",    "OwnedSlice",
+                           "LocalChange" };
+    for (size_t i = 0; i < sizeof pure / sizeof *pure; i++) {
+        REQUIRE(
+            function(pure[i]) && function(pure[i])->pure && !function(pure[i])->effects
+        );
     }
     return true;
 }
@@ -428,7 +448,7 @@ void test_language_effects()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(effects_infer_recursive_and_transitive_callables);
     RUN_TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots);
-    RUN_TEST_CASE(effects_view_receivers_read_like_view_arguments);
+    RUN_TEST_CASE(effects_array_receivers_match_arguments);
     RUN_TEST_CASE(effects_query_checks_inferred_helpers_and_retained_reads);
     RUN_TEST_CASE(effects_component_await_is_synchronous_but_host_await_is_not);
     RUN_TEST_CASE(effects_imports_publish_transitive_effects_before_query_analysis);

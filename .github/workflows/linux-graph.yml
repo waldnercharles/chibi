@@ -1,8 +1,9 @@
 name: Linux Graph validation (opt-in)
-run-name: "Linux Graph · ${{ inputs.sanitizers == true && 'ASan + UBSan' || 'fast Debug O1' }} · ${{ github.event_name }}"
+run-name: "Linux Graph · ${{ (inputs.sanitizers == true || github.event.label.name == 'ci-linux-graph-sanitizers') && 'ASan + UBSan' || 'fast Debug O1' }} · ${{ github.event_name }}"
 
-# One-time full proof before the Linux default cutover, not a permanently
-# duplicated native matrix. A label requests this head, not every later push.
+# Explicit full parity/SDK proof, not a permanently duplicated native matrix.
+# ci-linux-graph selects fast Debug; ci-linux-graph-sanitizers selects ASan+UBSan.
+# A label requests this head, not every later push.
 # workflow_dispatch becomes available after this workflow reaches main.
 on:
   pull_request:
@@ -23,7 +24,7 @@ jobs:
     name: Graph build, tests and SDK relocation (Linux)
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.label.name == 'ci-linux-graph' &&
+      ((github.event.label.name == 'ci-linux-graph' || github.event.label.name == 'ci-linux-graph-sanitizers') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     concurrency:
       group: linux-graph-${{ github.event.pull_request.number || github.ref }}
@@ -32,7 +33,7 @@ jobs:
     timeout-minutes: 45
     env:
       EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      CHIBI_CI_SANITIZERS: ${{ inputs.sanitizers == true && 'ON' || 'OFF' }}
+      CHIBI_CI_SANITIZERS: ${{ (inputs.sanitizers == true || github.event.label.name == 'ci-linux-graph-sanitizers') && 'ON' || 'OFF' }}
       CC: clang-18
       CXX: clang++-18
       # The ephemeral read-only repository token downloads checksum-pinned archives.

@@ -57,13 +57,11 @@ jobs:
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
       - name: Select full sanitizer profile
         run: python3 .github/native-profile.py
-      - name: Build Release generation and macOS planning hosts
+      - name: Build Release generation and planning hosts
         shell: bash
         run: |
           make build-release BUILD_TARGET='chibi-build-host chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
-          if [ "$RUNNER_OS" = macOS ]; then
-            echo "BUILD_HOST=$PWD/build-release/sdk/chibi-build-host" >> "$GITHUB_ENV"
-          fi
+          echo "BUILD_HOST=$PWD/build-release/sdk/chibi-build-host" >> "$GITHUB_ENV"
       - name: Build the sanitized drivers once
         env:
           VERBOSE: '1'

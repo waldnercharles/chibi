@@ -273,6 +273,42 @@ TEST_CASE(publication_late_failure_preserves_running_generations)
     }
     return true;
 }
+/* One entity on two backends. A publication that changes a kept state's type
+ * is refused with a restart hint and keeps the running program and its value;
+ * the same publication as a restart applies and resets it. */
+TEST_CASE(publication_changed_state_type_needs_restart)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(setup(backends[b]));
+        execution_module_free(modules[4]);
+        REQUIRE(
+            compile(4, "Alpha :: behavior { count: int = 0; on Pulse :: () { count += 1; } }", backends[b])
+        );
+        ecs_entity entity = ecs_world_create_entity(world);
+        REQUIRE(source_attach(registry, entity, "Alpha", false, 0, 0) == FLOW_OK);
+        execution_program *alpha = source_program(registry, "Alpha");
+        source_publication change = { .name = "Alpha",
+                                      .previous_name = "Alpha",
+                                      .module = modules[4] };
+        char error[192];
+        REQUIRE(source_publish(registry, &change, 1, NULL, error, sizeof error) != FLOW_OK);
+        REQUIRE(strstr(error, "Source Alpha cannot keep its state; restart it"));
+        REQUIRE(
+            source_program(registry, "Alpha") == alpha &&
+            count_is(alpha, entity, count_ids[0], 1)
+        );
+        change.restart = true;
+        REQUIRE(source_publish(registry, &change, 1, NULL, error, sizeof error) == FLOW_OK);
+        const pin_value *count = execution_instance_state(
+            execution_program_instance(alpha, ecs_entity_to_u64(entity)),
+            count_ids[0]
+        );
+        REQUIRE(count && count->type != PIN_F64);
+    }
+    return true;
+}
 TEST_CASE(publication_name_swap_preserves_state_and_removal_cancels)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -551,6 +587,7 @@ void test_language_publication()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(publication_late_failure_preserves_running_generations);
+    RUN_TEST_CASE(publication_changed_state_type_needs_restart);
     RUN_TEST_CASE(publication_name_swap_preserves_state_and_removal_cancels);
     RUN_TEST_CASE(publication_preserves_detached_root_and_imported_shared_state);
     RUN_TEST_CASE(publication_profile_counts_actual_execution_and_retains_origins);

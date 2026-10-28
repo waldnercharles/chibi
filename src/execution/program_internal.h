@@ -6,6 +6,7 @@
 #include "execution/intrinsics.h"
 #include "execution/module_internal.h"
 #include "execution/request.h"
+#include "types/pointer.h"
 typedef struct
 {
     pin_value value;
@@ -219,6 +220,13 @@ struct execution_program
 };
 
 bool program_same_type(pin_value a, pin_value b);
+/* Visited managed cells, open-addressed. Free slots when done. */
+typedef struct
+{
+    const pin_pointer **slots;
+    size_t capacity, count;
+} program_pointer_set;
+bool program_pointer_first_visit(program_pointer_set *, const pin_pointer *);
 bool program_world_views_allowed(const behavior_function_context *);
 bool program_view_disjoint(
     const behavior_function *,

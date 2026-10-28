@@ -35,8 +35,10 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/copy.h"
 #include "types/map.h"
 #include "types/pointer.h"
+#include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
 
@@ -2914,8 +2916,10 @@ TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_res
                     execution_memory_usage steady = execution_program_memory_usage(program);
                     /* Payloads grow by 32 bytes per native call. Live bytes can
                      * grow with them; capacity must stay within one live wave
-                     * plus 4KiB, rather than retaining every smaller dead slot. */
-                    REQUIRE(steady.payload_bytes >= warm.payload_bytes);
+                     * plus 4KiB, rather than retaining every smaller dead slot.
+                     * Either sample may fall anywhere between collections, so
+                     * only the retained text bounds them from below. */
+                    REQUIRE(steady.payload_bytes >= MEMORY_TEXT_MIN);
                     REQUIRE(steady.payload_bytes <= warm.payload_bytes * 3 + MEMORY_PLATEAU_SLACK);
                     REQUIRE(steady.payload_capacity <= steady.payload_bytes * 2 + MEMORY_PLATEAU_SLACK);
                 }
@@ -11845,6 +11849,171 @@ TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers)
     REQUIRE(!execution_instance_state(foreign, id)->ptr && cell->value.i == 17);
     return true;
 }
+static int managed_heap_count()
+{
+    int count = 0;
+    for (const behavior_managed_heap *heap = program->managed; heap;
+         heap = heap->previous) {
+        count++;
+    }
+    return count;
+}
+/* One entity on bytecode. The program keeps one heap handle across reloads,
+ * and each commit frees the candidate's heap once it holds no cell, without
+ * waiting for a collection. */
+TEST_CASE(program_replacement_releases_empty_retired_heaps)
+{
+    const char
+        *source = "Keeper :: behavior { saved: ^f64?; seen: f64 = 0; "
+                  "on Impulse :: (amount: f64, enabled: bool) { "
+                  "if enabled { x := amount; saved = &x; } "
+                  "if !enabled { if saved != nil { seen = saved^; } } } }";
+    prepare();
+    REQUIRE(compile(source, BEHAVIOR_BYTECODE));
+    uint64_t entity = ecs_entity_to_u64(ecs_world_create_entity(world));
+    execution_instance *instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    pin_value args[] = { { .type = PIN_F64, .d = 5 }, { .type = PIN_BOOL, .b = true } };
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    behavior_managed_heap *heap = execution_program_managed_heap(program);
+    for (int reload = 0; reload < 8; reload++) {
+        REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+        REQUIRE(execution_program_managed_heap(program) == heap && managed_heap_count() == 1);
+    }
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    args[1].b = false;
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(instance, "seen", 5));
+    REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+    REQUIRE(execution_program_managed_heap(program) == heap && managed_heap_count() == 1);
+    return true;
+}
+static bool replace_library(const char *source)
+{
+    execution_module_free(prior_module);
+    prior_module = module;
+    module = NULL;
+    script_analysis_free(analysis);
+    analysis = NULL;
+    script_syntax_free(syntax);
+    syntax = NULL;
+    return compile_module(source, BEHAVIOR_BYTECODE);
+}
+/* One library owner on bytecode. A reload that keeps Actor's layout preserves
+ * a pointer to an Actor. One that adds a field is refused while kept state
+ * reaches an old Actor: at preparation, or at commit when the running program
+ * stores one in a kept cell after preparation. The program keeps its state
+ * and module, and a restart applies the change. */
+TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts)
+{
+    const char
+        *same = "Store :: library { Actor :: struct { hp: f64; } "
+                "saved: ^Actor?; slot: ^(^Actor?)?; kept: ^int?; }",
+        *added = "Store :: library { Actor :: struct { hp: f64; armor: f64; } "
+                 "saved: ^Actor?; slot: ^(^Actor?)?; kept: ^int?; }";
+    prepare();
+    REQUIRE(compile(same, BEHAVIOR_BYTECODE));
+    uint64_t entity = ecs_entity_to_u64(ecs_world_create_entity(world));
+    uint64_t saved = state_id("saved"), slot = state_id("slot"),
+             kept = state_id("kept");
+    execution_instance *instance = execution_program_attach(program, entity);
+    REQUIRE(instance && saved && slot && kept);
+    const pin_record *actor = NULL;
+    for (int i = 0; i < module->plan.type_count; i++) {
+        if (module->plan.types[i].record &&
+            !strcmp(module->plan.types[i].name, "Store.Actor")) {
+            actor = module->plan.types[i].record;
+        }
+    }
+    REQUIRE(actor && actor->type.size == sizeof(double));
+    arena *heap = &program->managed->storage;
+    double hp = 5;
+    pin_value data = { .type = PIN_STRUCT,
+                       .type_name = actor->type.name,
+                       .record = actor,
+                       .ptr = &hp };
+    REQUIRE(!pin_value_snapshot_to_arena(heap, &data, &data));
+    /* Pointer headers are copied from each state's initial nil. */
+    pin_value absent, outer, number;
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &absent, execution_instance_state(instance, saved))
+    );
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &outer, execution_instance_state(instance, slot))
+    );
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &number, execution_instance_state(instance, kept))
+    );
+    pin_value target = absent;
+    target.ptr = managed_cell(heap, data);
+    pin_pointer *inner = managed_cell(heap, absent);
+    outer.ptr = inner;
+    number.ptr = managed_cell(heap, (pin_value){ .type = PIN_I32, .i = 7 });
+    REQUIRE(execution_instance_set_state(instance, saved, target) == FLOW_OK);
+    REQUIRE(execution_instance_set_state(instance, slot, outer) == FLOW_OK);
+    REQUIRE(execution_instance_set_state(instance, kept, number) == FLOW_OK);
+    REQUIRE(replace_library(same));
+    REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance && execution_instance_state(instance, saved)->ptr == target.ptr);
+    REQUIRE(replace_library(added));
+    REQUIRE(execution_program_replace(program, module, false) == FLOW_ERR_COMPILE);
+    REQUIRE(execution_program_module(program) == prior_module);
+    REQUIRE(execution_instance_state(instance, saved)->ptr == target.ptr);
+    REQUIRE(execution_instance_set_state(instance, saved, absent) == FLOW_OK);
+    other_program = execution_program_prepare_replace(program, module, false);
+    REQUIRE(other_program);
+    inner->value = target;
+    REQUIRE(execution_program_commit_replace(program, other_program) == FLOW_ERR_STATE);
+    other_program = NULL;
+    REQUIRE(execution_program_module(program) == prior_module);
+    REQUIRE(execution_instance_state(instance, slot)->ptr == inner);
+    REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance && !execution_instance_state(instance, slot)->ptr);
+    REQUIRE(!execution_instance_state(instance, kept)->ptr);
+    return true;
+}
+/* One entity on two backends. Items of an array behind a pointer, and of an
+ * addressed local, are read and written through the cell: the copies counted
+ * stay near one array, not one per access. A copy taken through the pointer
+ * keeps its items when the cell changes in place, and an index that empties
+ * the cell still reads the array as it was before the index ran. */
+TEST_CASE(program_managed_array_items_copy_alone)
+{
+    const char *source =
+        "Keeper :: behavior { total: f64 = 0; copied: f64 = 0; first: f64 = 0; "
+        "Clear :: (target: ^(f64[])) -> int { target^ = []; return 0; } "
+        "on Impulse :: (amount: f64, enabled: bool) { "
+        "xs: f64[] = []; for i in 0..<256 { xs.append(amount); } "
+        "ys := xs; p := &ys; sum: f64 = 0; "
+        "for i in 0..<256 { p^[i] = amount + 1; sum += p^[i] + ys[i]; } "
+        "zs := p^; p^[0] = 9; copied = zs[0] + ys[0]; total = sum; "
+        "ws: f64[] = [7]; q := &ws; first = q^[Clear(q)]; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 }, { .type = PIN_BOOL } };
+        pin_copy_scope copies = { 0 };
+        pin_copy_scope_begin(&copies);
+        int status = execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1u << 20);
+        pin_copy_scope_end(&copies);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(number_state(instance, "total", 1024) && number_state(instance, "copied", 11));
+        REQUIRE(number_state(instance, "first", 7));
+        uint64_t moved = copies.counts.value_buffer_bytes +
+                         copies.counts.value_header_moves * sizeof(pin_value);
+        REQUIRE(!copies.counts.overflow && moved < 64 * 256 * sizeof(pin_value));
+    }
+    return true;
+}
 void test_language_migration34()
 {
     pu_setup(NULL, cleanup);
@@ -11871,6 +12040,9 @@ void test_language_program()
     RUN_TEST_CASE(program_suspended_union_reads_keep_pointer_targets);
     RUN_TEST_CASE(program_paused_reducing_systems_keep_pointer_targets);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
+    RUN_TEST_CASE(program_replacement_releases_empty_retired_heaps);
+    RUN_TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts);
+    RUN_TEST_CASE(program_managed_array_items_copy_alone);
     RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
     RUN_TEST_CASE(program_reduction_query_rows_count_filtered_candidates);

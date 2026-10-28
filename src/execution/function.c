@@ -791,6 +791,35 @@ void behavior_managed_heap_free(behavior_managed_heap *heap)
     }
     *heap = (behavior_managed_heap){ 0 };
 }
+void behavior_managed_heap_adopt(behavior_managed_heap *heap, behavior_managed_heap *other)
+{
+    assert(heap->owner == heap && other->owner == other);
+    behavior_managed_heap *tail = heap;
+    while (tail->previous) {
+        tail = tail->previous;
+    }
+    tail->previous = other;
+    /* Every heap names the head directly, so releasing one never strands an
+     * owner link. */
+    for (; other; other = other->previous) {
+        other->owner = heap;
+    }
+}
+void behavior_managed_heap_release_empty(behavior_managed_heap *heap)
+{
+    assert(heap->owner == heap);
+    for (behavior_managed_heap **link = &heap->previous; *link;) {
+        behavior_managed_heap *scope = *link;
+        if (scope->storage.allocations || acount(scope->roots)) {
+            link = &scope->previous;
+            continue;
+        }
+        *link = scope->previous;
+        scope->previous = NULL;
+        behavior_managed_heap_free(scope);
+        free(scope);
+    }
+}
 static behavior_managed_heap *managed_owner(behavior_managed_heap *heap)
 {
     while (heap->owner && heap->owner != heap) {

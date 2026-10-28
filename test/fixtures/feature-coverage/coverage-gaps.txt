@@ -9,6 +9,11 @@
 # Bytes are exercised by the package-core language fixture. Their uncategorized pure
 # declarations are excluded by feature_function, so no function gaps apply here.
 
+# host:clock.Sample belongs to an explicitly registered SDK host package and
+# requires a host-owned grant. It is absent from the default game catalog, so
+# feature_function has no entry to list. language-host-packages and its compiler
+# route exercise the private kernel, grants and imported wrappers on both VMs.
+
 # Material simulation: fluids, destruction worlds, heat and combustion need a
 # material field and solver scene.
 component MaterialFluidWorld

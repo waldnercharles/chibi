@@ -330,6 +330,21 @@ int script_analyzer_find_capability(analyzer *a, TSNode node, const char *name, 
                  : -1;
     }
     const script_catalog *visible = a->native ? a->native : a->catalog;
+    /* Host package kernels keep their canonical identity in the catalog. Only
+     * their owning source package sees the private, exact member spelling.
+     * Callers reach the authored public wrapper through ordinary imports. */
+    if (a->native && a->out->identity && !strncmp(a->out->identity, "host:", 5)) {
+        size_t length = strlen(a->out->identity);
+        for (int i = 0; i < visible->capability_count; i++) {
+            const script_catalog_capability *capability = &visible->capabilities[i];
+            if (capability->kind == kind &&
+                !strncmp(capability->name, a->out->identity, length) &&
+                capability->name[length] == '.' &&
+                !strcmp(capability->name + length + 1, name)) {
+                return capability_index(a, capability->id);
+            }
+        }
+    }
     int found = script_catalog_find_capability(visible, name, kind);
     return found >= 0 ? capability_index(a, visible->capabilities[found].id) : found;
 }

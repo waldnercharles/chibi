@@ -11,7 +11,8 @@ pub Result :: union {
 }
 
 Finite :: (value: number) -> bool {
-    return value <= 3.4028234663852886e38 && value >= -3.4028234663852886e38;
+    // Spell the exact f32 maximum: a rounded decimal can be above the limit.
+    return value <= 3.40282346638528859811704183484516925440e38 && value >= -3.40282346638528859811704183484516925440e38;
 }
 FiniteValues :: (values: number[]) -> bool {
     for (value in values) {

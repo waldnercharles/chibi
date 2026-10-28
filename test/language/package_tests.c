@@ -620,7 +620,8 @@ TEST_CASE(package_tests_overlap_with_private_storage_and_exclusive_barriers)
 
 /* Keep assertions in the authored packages. This adapter only supplies the
  * real source files, core collection and native sqrt boundary to both VMs.
- * Source paths follow this file so a relocated worktree is tested as-is. */
+ * Both build systems supply the absolute source root, independent of the
+ * compiler and test-runner working directories. */
 static_assert(sizeof(float) == 4);
 static_assert(sizeof(CF_V2) == 8 && alignof(CF_V2) == alignof(float));
 static_assert(sizeof(CF_V3) == 12 && alignof(CF_V3) == alignof(float));
@@ -645,14 +646,9 @@ TEST_CASE(package_tests_builtin_math_contracts)
     char *texts[PARTS] = { 0 };
     char paths[PARTS][128];
     source_package_input files[PARTS + 1];
-    static const char suffix[] = "test/language/package_tests.c";
-    const char *source = __FILE__;
-    REQUIRE(strlen(source) >= sizeof suffix - 1);
-    size_t prefix = strlen(source) - (sizeof suffix - 1);
-    REQUIRE(!strcmp(source + prefix, suffix));
     for (int i = 0; i < PARTS; i++) {
         char path[4096];
-        int length = snprintf(path, sizeof path, "%.*stools/compiler/%s", (int)prefix, source, parts[i]);
+        int length = snprintf(path, sizeof path, "%s/tools/compiler/%s", CHIBI_SOURCE_ROOT, parts[i]);
         REQUIRE(length > 0 && length < (int)sizeof path);
         texts[i] = file_read_text(path);
         if (!texts[i]) {

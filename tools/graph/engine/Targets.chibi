@@ -3556,7 +3556,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
     }
     if (target == "test_language" &&
         (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c" ||
-         file == "test/language/integer_semantics.c")) {
+         file == "test/language/integer_semantics.c" || file == "test/language/package_tests.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     return [];

@@ -1,1 +1,0 @@
-BUILD_HOST=/nonexistent make bootstrap-artifact JOBS=2 BOOTSTRAP_ARTIFACT=.chibi/m2-attempt/artifact

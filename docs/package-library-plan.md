@@ -57,8 +57,8 @@ approve a coherent subset and defer the rest.
 
 ## Decisions and ownership
 
-The [toolchain plan](../PLAN.md#language-and-package-ownership) owns the existing
-`core:`, `game:` and `vendor:` boundaries. ECS stays a language contract.
+`core:` owns portable packages, `game:` owns engine-facing packages, and
+`vendor:` owns third-party bindings. ECS stays a language contract.
 The foundations proposal considers how Odin's `base:` responsibilities fit
 those boundaries; creating a public `base:` is a separate decision.
 

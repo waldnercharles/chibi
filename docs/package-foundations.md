@@ -36,8 +36,8 @@ stored lengths. Slice still copies its selected bytes; shared backing remains a 
 | --- | --- |
 | Value layout, string length/storage/lifetime, checked scalar conversion, allocation failure and intrinsics | Language/runtime, with private implementation modules |
 | Binary operations, codecs, builders and portable text algorithms | `core:bytes`, `core:utf8`, `core:strings` |
-| ECS declarations, entity identity and queries | Existing language contracts; explicit world inspection may use future `core:ecs` as recorded in PLAN.md |
-| Rendering, input, audio, physics, assets and UI | Existing `game:*` collection direction in PLAN.md; each public package still needs its contract |
+| ECS declarations, entity identity and queries | Existing language contracts; explicit world inspection may use future `core:ecs` |
+| Rendering, input, audio, physics, assets and UI | `game:*`; each public package still needs its contract |
 | Third-party declarations, target linkage, ABI adapters | `vendor:*`, introduced for concrete consumers |
 
 Recommend no public `base:*` in the first wave. Document builtins in the language reference and keep runtime

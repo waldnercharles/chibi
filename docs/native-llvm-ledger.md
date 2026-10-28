@@ -43,8 +43,8 @@ Each feature has one of these states:
 The milestones are the LLVM delivery plan's. This table records where each one
 stands, [work packages](#work-packages) break the open work into pieces with
 prerequisites and exit tests, and the rows under [Features](#features) record
-each language feature. [How this meets PLAN.md](#how-this-meets-planmd) ties
-the last milestones to the toolchain plan's acceptance and deletion rules.
+each language feature. [Toolchain acceptance](#toolchain-acceptance) gives
+the last milestones' acceptance and deletion requirements.
 
 | Milestone | State | What landed | Still open |
 | --- | --- | --- | --- |
@@ -93,10 +93,10 @@ which have one writer at a time, so they run in order in the LLVM lane.
 | W20 | Workloads and measurements | none | none | proposed lane, or the LLVM lane | yes | defined kernels (game math, compiler passes) with compile time, peak memory, size and run time recorded per milestone | in progress: four kernels and `native-workload-benchmark`, recorded under [Baseline and measurements](#baseline-and-measurements); a string kernel can follow W3; compiler-pass kernels wait for arrays (W7) | none | decided: correctness first, no promised speedups |
 | W21 | Compiler-source census | none | `CollectScalar` rejections | proposed lane | yes | a selector runs the producer over each compiler function and records the first unsupported feature of each; the ledger records its counts, which fall as packages land | yes: `make native-census` writes the [census](native-compiler-census.md); counts are under [Census](#census) | none | decided |
 | W22 | Native stage one and stage two | W1 to W14 as the census requires | the bootstrap generation | LLVM lane with the generation coordinator | no | a native stage one builds stage two and a checking rebuild with identical or normalized bytes, and the corpus gives the same results as the VM stages | no | none | decided: no C-frontend delegation |
-| W23 | Recovery and installed proof without `cmake`, `clang` or `gcc` | W18, W22 | CI recovery job | LLVM lane | no | a CI job with those executables unavailable goes from a clean checkout through stage one and stage two and links a checked game | no | none | decided: PLAN.md's objective |
+| W23 | Recovery and installed proof without `cmake`, `clang` or `gcc` | W18, W22 | CI recovery job | LLVM lane | no | a CI job with those executables unavailable goes from a clean checkout through stage one and stage two and links a checked game | no | none | decided: clean installed recovery |
 | W24 | Game scenarios | none | game fixtures | proposed lane | yes | deterministic scenarios for each feature the inventory finds in games | no | none | decided |
 | W25 | Native game execution | W16, W14, W7 | W16's bridge | LLVM lane | no | representative scenes run with native functions and give the VM's traces; tasks stay in the VM (D10) | no | none | decided: D10, native functions never suspend |
-| W26 | Default adoption and removal | all of the above | stable command defaults | owner decision | no | PLAN.md's deletion gate for each removed path | no | none | open: the owner decides the switch |
+| W26 | Default adoption and removal | all of the above | stable command defaults | owner decision | no | the toolchain inventory's deletion requirements for each removed path | no | none | open: the owner decides the switch |
 | W27 | Remove the producer's size limits | none | the limits in `Facts.chibi` | LLVM lane | no | each census function rejected by a limit passes the producer or stops at another package's feature, and modules past the old limits agree at O0 and O2 | yes (#754) | none | decided: removed, as Rust and Odin have none; the validator keeps structural checks |
 
 Lanes:
@@ -184,13 +184,12 @@ and update this table.
 | Array, union and nested-record fields in records | none | excluded | none | none | none |
 | NUL bytes in source and multiline strings | none | excluded | none | none | corpus `nul` rejects; a `\u0000` escape is an ordinary byte of a native string |
 
-## How this meets PLAN.md
+## Toolchain acceptance
 
-[PLAN.md](../PLAN.md) owns the toolchain milestones. Its M5 self-hosts the
-compiler on the VMs; this ledger's M7 makes that compiler native. Its
-acceptance rules bind the last three milestones here:
+The compiler must self-host on the VMs before M7 makes it native. The last
+three milestones have these acceptance requirements:
 
-- **M6** delivers PLAN.md's stable commands natively: `chibi build`, `run`,
+- **M6** delivers the stable commands natively: `chibi build`, `run`,
   `test` and `export` keep their meanings, with an explicit native mode and
   override until M8 (W17). Exit: W17's process tests and W18's link with no
   `cc`.
@@ -203,7 +202,7 @@ acceptance rules bind the last three milestones here:
 - **M8** meets the definition of complete for games: the installed SDK builds
   and exports a game natively, and remaining native code is a narrow binding
   with ownership tests at its boundary (W25). Switching defaults and removing
-  an old path follow PLAN.md's M10 deletion gate (W26): name the replacement,
+  an old path require the deletion checks (W26): name the replacement,
   enumerate every repository, SDK, CI, release and application caller, run
   the equivalence checks in [the toolchain inventory](toolchain-inventory.md),
   and keep the documented recovery path for the agreed migration period.

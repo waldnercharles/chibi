@@ -297,8 +297,4 @@ is its separate collision specimen.
 
 Build with `make build`. Select affected-contract checks using `make agent-list` and
 `make agent-test AGENT_SELECTOR=--<selector>`; see the
-[testing instructions](testing.md). Historical benchmark commands in the
-validation report do not establish a pass on the current candidate.
-
-See [validation results](material-engine-validation.md) for measured parity,
-runtime evidence and the performance tradeoff of the reusable evaluator.
+[testing instructions](testing.md).

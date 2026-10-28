@@ -34,7 +34,7 @@ ASSET_GENERATOR_HOSTS ?=
 ASSET_GENERATOR_HOSTS_PATH = $(if $(strip $(ASSET_GENERATOR_HOSTS)),$(abspath $(ASSET_GENERATOR_HOSTS)),)
 BUILD_PROGRAM ?= tools/toolchain/Build.chibi
 BUILD_TIMEOUT_MS ?= 1800000
-# On macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
+# On macOS `make build` compiles with the Chibi build graph, by
 # profile name: sanitizer, or debug and release for build-debug and
 # build-release. CMake builds only the first build host, in a tree beside the
 # build directory, which the build-graph checks also compare against

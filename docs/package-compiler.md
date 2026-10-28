@@ -463,7 +463,7 @@ fast paths otherwise cover.
 ## Hosts
 
 Stage one runs natively on macOS arm64 and on the 32-bit Wasm host. Linux
-x86_64 and Windows x64 wait for a host to run on (PLAN.md M5).
+x86_64 and Windows x64 host execution remains unverified here.
 
 - **32-bit Wasm:** the compiler prepared for Wasm compiles every package and
   behavior sample, and their closures run there. Stage one writes the

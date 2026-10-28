@@ -1,2 +1,0 @@
-Arena scaling unavailable: 10000 enemies plus one target exceed the ECS capacity of 10000 entities.
-Arena scaling unavailable: 20000 enemies plus one target exceed the ECS capacity of 10000 entities.

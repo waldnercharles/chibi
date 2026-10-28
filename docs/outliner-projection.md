@@ -77,67 +77,7 @@ a general runtime host-event counter and excludes execution intrinsics. The
 fixture validates the actual lowered callback contracts and twelve static
 source sites separately.
 
-## Observed selected copies
-
-The real policy shape includes helper calls, nested traversal and conditionals,
-so the counted-record builder is correctly not selected. No recognizer change
-or native precomputation was introduced to force that optimization.
-
-For the full four-row request, bytecode and actual compiled execution agree:
-
-| Selected attribution | Native | C-Wasm |
-| --- | ---: | ---: |
-| Record bytes | 1,848 | 1,188 |
-| Row-payload copy equivalents | 33 | 33 |
-| Text bytes | 3,122 | 3,122 |
-| Nominal-name bytes | 104 | 104 |
-| Value-buffer bytes | 0 | 0 |
-| Header moves | 172 | 172 |
-| Output-arena used bytes after call | 33,889 | 23,609 |
-| Output-arena capacity after call | 40,982 | 28,582 |
-| Backing-block allocation delta | 8 | 8 |
-
-Record layouts are 56 and 36 bytes respectively. Copy scopes include actual
-constructor, helper argument/return and result-retention work; setup is outside
-the scope and no hypothetical helper costs are subtracted. These counters cover
-selected C operations, not all memory traffic. Output-arena totals exclude
-transient child arenas. The block delta spans the invocation and is a separate
-coarse allocator measure. Four actors do not establish large-scene performance,
-linear scaling or a timing speedup.
-
-## Validation and remaining integration
-
-The initial standalone pair passed at `6de906a8`: two cases and 10,786
-assertions per target, in 0.245 seconds native and 0.291 seconds C-Wasm. The
-unchanged specimen then passed inside the complete durable gates at
-`f818851614ae4bc2721bb1ddba098ddfb32849e6`:
-
-| Complete command | Cases | Assertions | Outer seconds |
-| --- | ---: | ---: | ---: |
-| Native language, 34 members | 425 | 145,190 | 20.956 |
-| Serial Wasm, 22 members | 267 | 140,923 | 4.131 |
-| Compiler-enabled native-tools | 117 | 35,617 | 22.918 |
-
-The total is 809 case executions and 321,730 assertions. All 10,347 pre/post
-identities remained unchanged. Both language groups include the new selector
-exactly once, and the existing same-child tooling assertion now guards that
-membership alongside row-array coverage. The tooling duration
-above is the final outer supervisor, not an internal fixture's nested timing.
-Only this scope/evidence documentation follows the tested code checkpoint;
-published-tree correspondence and ordinary server/review gates remain required.
-
-The first native checkpoint `4e50ac79` failed both cases during preparation,
-before any authored invocation: its extra accounting oracle incorrectly
-compared descriptor object addresses after finalization had copied descriptors
-into module-owned storage. The fixture-only correction compares every callback,
-flag and nullable service string, with intrinsic ID/ABI validation and the same
-five allowed source kinds/static counts. The failed log and artifacts remain
-preserved; no production contract or workload was weakened.
-
-Native validation uses ASan/UBSan. Leak detection remains untested; this
-test-only change adds no production ownership path. It does not change any
-other PR's explicit hold. Raw logs, checkpoint identities and selected
-measurements are summarized in [the evidence index](evidence/outliner-projection/results.json).
+## Remaining integration
 
 Next production work still needs a reviewed mechanical text API and a coherent
 owned/current-generation scene read boundary covering prototypes, attachments,

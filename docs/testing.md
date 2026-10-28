@@ -2155,8 +2155,7 @@ other failures. A nonzero command exit alone is not the intended red proof.
 
 The original baseline wired the extracted C oracle and authored draft into the
 language driver, retaining the zero-ID guard and recursive evaluator until both
-red witnesses executed. The merged repair and later full semantic regression pass
-are recorded in PLAN.md. The production analyzer remains unchanged.
+red witnesses executed. The production analyzer remains unchanged.
 Configuration/build timing is separate. All three routes stay standalone and
 outside the aggregate.
 Prior measurements and source review do not validate a new integrated binary or
@@ -2220,8 +2219,8 @@ artifact bound. The instruction budgets and child deadlines are unchanged.
 
 ## Game equivalence
 
-`python3 tools/test_policy.py tool game-equivalence` is the gate for PLAN.md
-M5 step 4. It rebuilds the stories in `test/stories` with a reference and a
+`python3 tools/test_policy.py tool game-equivalence` rebuilds the stories in
+`test/stories` with a reference and a
 candidate compiler, and compares what the two artifacts of each story declare
 and how they play. It is a standalone selector, not part of any group, and
 takes about 6 s.
@@ -2633,8 +2632,7 @@ player.
 `build-process`, `build-toolchain`, M0's `chibi-cli` and `chibi-cli-installed` remain focused routes. The complete
 `make test-tools` group builds a runtime-only tooling driver and does not build
 the private host or public launcher. Route registration does not add either
-fixture to that aggregate. Current platform results belong in `PLAN.md`;
-Windows does not build or select the private host.
+fixture to that aggregate. Windows does not build or select the private host.
 
 ## Batch validation (CUT62)
 
@@ -3284,8 +3282,7 @@ separate; failures were not suppressed. These are measured full commands, not
 sums of old timings. That documentation follow-up preserved tested product,
 test, policy and fixture bytes and performed no new runtime.
 `wasm-format` remains a pre-existing standalone gap; this does not claim every
-selector is covered. See the linked proof and
-[machine-readable historical evidence and current status](module-composition-validation.json).
+selector is covered.
 No full-L07, application-scale, benchmark, or scheduling claim follows;
 those checks were not run.
 The explicit platform merge hold remains; no GitHub approval or resolved-thread
@@ -3311,14 +3308,8 @@ invocations with the existing tiny instruction/context budgets and 512 KiB trial
 storage cap. Neither route adds frames, GPU/browser/network workers or
 environment-controlled repetitions.
 
-Before this correctness/benchmark split, the six cases passed with 69,013 native
-assertions and 69,000 Wasm assertions.
-The integrated complete language/Wasm groups, native-tools and installed
-compiler-free prepared consumer also passed. Exact source, build/SDK boundaries,
-raw timing samples, log hashes and limitations are in
-[the validation record](evidence/runtime-attribution/validation.md). Counters
-cover selected copy and backend operations; they are not a global allocation
-census or a whole-application performance/retention claim.
+Counters cover selected copy and backend operations; they are not a global
+allocation census or a whole-application performance/retention claim.
 
 ### Private owner retention
 

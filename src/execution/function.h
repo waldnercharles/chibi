@@ -458,14 +458,17 @@ void behavior_function_collection_transfer(
 );
 /* Whether the context owns a collection the value holds. */
 bool behavior_function_collection_holds(const behavior_function_context *, const pin_value *);
+/* Releases the collections the context owns; empty keeps the list's capacity. */
+void behavior_function_collection_empty(behavior_function_context *);
 void behavior_function_collection_clear(behavior_function_context *);
 void behavior_function_collection_trace(const behavior_function_context *, arena_marker, void *);
 const char *behavior_function_host_action(behavior_function_context *, int target, uint64_t node_id);
 void behavior_function_prepare_host(const behavior_function *function, behavior_function_context *ctx);
 void behavior_function_release_host(behavior_function_context *ctx);
 /* End a completed invocation, retaining fixed host allocations. Clears the
- * entire context except data/owned_data and empty query/command banks; callers
- * must bind fresh invocation metadata and call prepare_host before running. */
+ * entire context except data/owned_data, empty query/command banks and the empty
+ * collection owner list; callers must bind fresh invocation metadata and call
+ * prepare_host before running. */
 void behavior_function_reset_host(behavior_function_context *ctx);
 size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx);
 size_t behavior_function_watch_size(const behavior_function *function);

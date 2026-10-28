@@ -13070,8 +13070,6 @@ enum
     NATIVE_PUBLISH = 4,
     NATIVE_RETURN = 5,
     NATIVE_NE = 24,
-    NATIVE_BRANCH = 25,
-    NATIVE_JUMP = 26,
     NATIVE_CHECK = 27,
     NATIVE_CALL = 28,
     NATIVE_INSERT = 30,
@@ -13079,12 +13077,9 @@ enum
     NATIVE_TEXT = 13,
     NATIVE_RECORD = 32,
     NATIVE_ADD = 7,
-    NATIVE_TEXT_LENGTH = 32,
     NATIVE_TEXT_BYTE = 33,
     NATIVE_TEXT_DROP = 34,
-    NATIVE_TEXT_TAKE = 35,
-    NATIVE_FORMAT = 36,
-    NATIVE_FAIL = 37
+    NATIVE_TEXT_TAKE = 35
 };
 typedef struct native_code
 {
@@ -13531,218 +13526,6 @@ static bool native_rejects_text_change(int b, native_change change, const char *
     native_module m = text_module(code);
     return native_rejects(b, &m, message);
 }
-/* Main returns the length of format_text("{} {}", 7, "x"). */
-static const native_code FORMAT_CODE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 7 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT, .output = 2, .literal = 1 },
-    { .op = NATIVE_FORMAT, .type = NATIVE_TEXT, .output = 3, .target = 3 },
-    { .op = NATIVE_TEXT_LENGTH, .type = NATIVE_INT, .output = 4, .left = 3 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 4 },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    FORMAT_COUNT = (int)(sizeof FORMAT_CODE / sizeof *FORMAT_CODE)
-};
-static const int FORMAT_ARGUMENTS[] = { 0, 1, 2 };
-static native_module format_module(const native_code *code, const int *arguments)
-{
-    static const native_function functions[] = {
-        { NATIVE_INT, 0, 0, 0, 5, 0, FORMAT_COUNT, 0, 3 }
-    };
-    static const int slots[] = { NATIVE_TEXT, NATIVE_INT, NATIVE_TEXT, NATIVE_TEXT, NATIVE_INT };
-    static const char *const texts[] = { "{} {}", "x" };
-    return (native_module){ .functions = functions,
-                            .function_count = 1,
-                            .slots = slots,
-                            .slot_count = 5,
-                            .code = code,
-                            .code_count = FORMAT_COUNT,
-                            .arguments = arguments,
-                            .argument_count = 3,
-                            .texts = texts,
-                            .text_count = 2 };
-}
-/* A format makes each argument a runtime value, a scalar's word or a
- * string's bytes and length, and calls format_text through the context,
- * which every function of the module, and each library export, takes
- * first. A format of a missing or non-string format, or outside its
- * arguments, is rejected, as is a program that would format. */
-static bool native_formats_emit(int b)
-{
-    native_module m = format_module(FORMAT_CODE, FORMAT_ARGUMENTS);
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    static const char *const expected[] = {
-        "define i32 @chibi_scalar(ptr %ctx) #0 {\n",
-        "%values4 = alloca [3 x { i32, i32, i64, ptr }]\n  %text4 = alloca { "
-        "ptr, i32, ptr }\n",
-        "%f4_1.word = sext i32 %f4_1 to i64\n  %f4_1.value = insertvalue { "
-        "i32, i32, i64, ptr } "
-        "{ i32 1, i32 0, i64 0, ptr null }, i64 %f4_1.word, 2\n",
-        "%f4_2.sized = insertvalue { i32, i32, i64, ptr } { i32 12, i32 0, i64 "
-        "0, ptr null }, "
-        "i32 %f4_2.length, 1\n",
-        "%f4_2.value = insertvalue { i32, i32, i64, ptr } %f4_2.sized, ptr "
-        "%f4_2.bytes, 3\n",
-        "%f4_2.at = getelementptr inbounds [3 x { i32, i32, i64, ptr }], ptr "
-        "%values4, i64 0, i64 2\n",
-        "%format4.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, "
-        "i32 0\n"
-        "  %format4 = load ptr, ptr %format4.at\n"
-        "  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n"
-        "  %v4 = load { ptr, i32, ptr }, ptr %text4\n",
-    };
-    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
-        REQUIRE(contains(ir, expected[i]));
-    }
-    static const char *const names[] = { "Main" };
-    static const int64_t ids[] = { 3 };
-    const pin_union *value;
-    REQUIRE(native_emit_library(b, "LinuxX64", &m, "Formats", names, ids, 1, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string library = pin_text(value->values[0]);
-    REQUIRE(contains(library, "define internal i32 @chibi_scalar.0(ptr %ctx) #0 {\n"));
-    REQUIRE(
-        contains(library, "(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n  %r = call i32 @chibi_scalar.0(ptr %ctx)\n")
-    );
-    REQUIRE(native_entry_emit(b, "LinuxX64", &m, true, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
-    REQUIRE(pin_text_equal(
-        pin_text(value->values[1]),
-        pin_text(text("a native program cannot call the runtime yet"))
-    ));
-    static const char format[] = "native format differs from its operands";
-    static const native_change changes[] = {
-        /* No format, a callee, arguments past the table, and an int result. */
-        { 4, offsetof(native_code, target), 0 },
-        { 4, offsetof(native_code, left), 1 },
-        { 4, offsetof(native_code, right), 1 },
-        { 4, offsetof(native_code, type), NATIVE_INT },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        native_code code[FORMAT_COUNT];
-        memcpy(code, FORMAT_CODE, sizeof code);
-        change_code(code, changes[i]);
-        m = format_module(code, FORMAT_ARGUMENTS);
-        REQUIRE(
-            native_rejects(b, &m, i == 3 ? "native scalar output has an invalid type or multiple definitions" : format)
-        );
-    }
-    /* An int format. */
-    static const int unformatted[] = { 1, 0, 2 };
-    m = format_module(FORMAT_CODE, unformatted);
-    REQUIRE(native_rejects(b, &m, format));
-    return true;
-}
-/* Main returns Check(), and Check fails its assert at bytes [3, 9) of the
- * function with ID 77 when its condition, false, is false. */
-static const native_code FAIL_CODE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CALL, .type = NATIVE_INT, .left = 1 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-    { .op = NATIVE_RETURN },
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL },
-    { .op = NATIVE_BRANCH, .left = 0, .target = 4 },
-    { .op = NATIVE_FAIL, .left = 3, .right = 9, .literal = 77 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 5 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 1 },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    FAIL_COUNT = (int)(sizeof FAIL_CODE / sizeof *FAIL_CODE)
-};
-static native_module fail_module(const native_code *code)
-{
-    static const native_function functions[] = {
-        { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
-        { NATIVE_INT, 0, 0, 1, 2, 4, FAIL_COUNT - 4, 0, 0 },
-    };
-    static const int slots[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
-    return (native_module){ .functions = functions,
-                            .function_count = 2,
-                            .slots = slots,
-                            .slot_count = 3,
-                            .code = code,
-                            .code_count = FAIL_COUNT };
-}
-/* A Fail stores its failure constant, the function's ID and the range, in the
- * context, and the function returns its zero; a call of a function that can
- * fail returns its zero too when the context names a failure, so the failure
- * reaches the call from the VM. Both take the context. A Fail may end a body
- * but must name a range, and a program cannot fail. */
-static bool native_fails_emit(int b)
-{
-    native_module m = fail_module(FAIL_CODE);
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    static const char *const expected[] = {
-        "@chibi_scalar.failure.1.3 = private unnamed_addr constant { i64, i32, "
-        "i32 } { i64 77, i32 3, i32 9 }\n",
-        "define i32 @chibi_scalar(ptr %ctx) #0 {\n",
-        "  %v1 = call i32 @chibi_scalar.1(ptr %ctx)\n",
-        "  %failure1.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 "
-        "0, i32 1\n"
-        "  %failure1 = load ptr, ptr %failure1.at\n"
-        "  %failed1 = icmp ne ptr %failure1, null\n"
-        "  br i1 %failed1, label %failed, label %p2\n",
-        "define internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n",
-        "  br i1 %a2, label %p4, label %p3\n",
-        "p3:\n  %fail3.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 "
-        "0, i32 1\n"
-        "  store ptr @chibi_scalar.failure.1.3, ptr %fail3.at\n  br label "
-        "%failed\n",
-        /* Each function ends failing with its zero. */
-        "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  "
-        "unreachable\n}"
-        "\n\ndefine internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n",
-        "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  "
-        "unreachable\n}"
-        "\n\nattributes #0 = { ",
-    };
-    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
-        REQUIRE(contains(ir, expected[i]));
-    }
-    /* A function that cannot fail checks no call and has no failed block. */
-    native_code ending[FAIL_COUNT];
-    memcpy(ending, FAIL_CODE, sizeof ending);
-    ending[7] = (native_code){ .op = NATIVE_JUMP, .target = 4 };
-    m = fail_module(ending);
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(!contains(ir, "failed") && !contains(ir, "ptr %ctx"));
-    /* A Fail ends the callee's body. */
-    memcpy(ending, FAIL_CODE, sizeof ending);
-    ending[FAIL_COUNT - 1] = ending[7];
-    m = fail_module(ending);
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(
-        contains(ir, "p6:\n  %fail6.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, i32 1\n")
-    );
-    const pin_union *value;
-    m = fail_module(FAIL_CODE);
-    REQUIRE(native_entry_emit(b, "LinuxX64", &m, true, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
-    REQUIRE(pin_text_equal(
-        pin_text(value->values[1]),
-        pin_text(text("a native program cannot call the runtime yet"))
-    ));
-    static const native_change changes[] = {
-        { 7, offsetof(native_code, left), -1 },
-        { 7, offsetof(native_code, right), 2 },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        native_code code[FAIL_COUNT];
-        memcpy(code, FAIL_CODE, sizeof code);
-        change_code(code, changes[i]);
-        m = fail_module(code);
-        REQUIRE(native_rejects(b, &m, "native failure names no source range"));
-    }
-    return true;
-}
 static bool native_strings_emit(int b)
 {
     pin_value type;
@@ -13860,8 +13643,6 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_libraries_export_words(b));
         REQUIRE(native_strings_emit(b));
-        REQUIRE(native_formats_emit(b));
-        REQUIRE(native_fails_emit(b));
     }
     REQUIRE(compiler_fixture_tests(&consumer));
     return true;

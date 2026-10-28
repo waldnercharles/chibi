@@ -12,12 +12,6 @@ static const native_parameter_definition FLOAT_OUTPUTS[] = {
     NATIVE_MATH_F32_OUTPUTS(NATIVE_PORT)
 };
 static const native_parameter_definition RANDOM_REAL_INPUTS[] = {};
-static const native_parameter_definition SPRING_INPUTS[] = {
-    NATIVE_MATH_SPRING_INPUTS(NATIVE_PORT)
-};
-static const native_parameter_definition SPRING_OUTPUTS[] = {
-    NATIVE_MATH_SPRING_OUTPUTS(NATIVE_PORT)
-};
 #define BINARY(KEY, NAME, SOURCE, FN, INPUTS, KEYWORDS, DESCRIPTION)                   \
     static const native_parameter_definition KEY##_inputs[] = { INPUTS(NATIVE_PORT) }; \
     static const native_parameter_definition F32_##KEY##_inputs[] = {                  \
@@ -56,17 +50,9 @@ static const native_capability_definition DEFINITIONS[] = {
     NATIVE_MATH_UNARIES(UNARY) NATIVE_MATH_BINARIES(BINARY) NATIVE_MATH_VALUES(VALUE)
     /* rand has no f64 form: no argument could choose it. */
     DEFINITION(RandomReal, NATIVE_MATH_RandomReal_NAME, NATIVE_MATH_RandomReal_SOURCE, RANDOM_REAL_INPUTS, FLOAT_OUTPUTS, true)
-        DEFINITION(
-            Advance_Damped_Spring,
-            NATIVE_MATH_Advance_Damped_Spring_NAME,
-            NATIVE_MATH_Advance_Damped_Spring_SOURCE,
-            SPRING_INPUTS,
-            SPRING_OUTPUTS,
-            false
-        )
 #define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                         \
     DEFINITION(F32_##KEY, NAME " Float", SOURCE, F32_##KEY##_inputs, FLOAT_OUTPUTS, RANDOM)
-            NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
+        NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
 #undef FLOAT_VALUE
 };
 #undef UNARY
@@ -86,10 +72,9 @@ static const native_capability_definition DEFINITIONS[] = {
 static const native_definition_binding BINDINGS[] = {
     NATIVE_MATH_UNARIES(UNARY) NATIVE_MATH_BINARIES(BINARY) NATIVE_MATH_VALUES(VALUE)
         BINDING(RandomReal, NATIVE_MATH_RandomReal_NAME, true)
-            BINDING(Advance_Damped_Spring, NATIVE_MATH_Advance_Damped_Spring_NAME, false)
 #define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                         \
     BINDING(F32_##KEY, NAME " Float", RANDOM)
-                NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
+            NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
 #undef FLOAT_VALUE
 };
 #undef UNARY

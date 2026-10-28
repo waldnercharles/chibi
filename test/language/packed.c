@@ -687,14 +687,13 @@ TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
                 narrow
                     ? "Packed :: library { Math :: (value:number) -> number { "
                       "return "
-                      "sqrt(value)+sin(value)+pow(value,2)+mix(value,value,"
-                      "0.5); } }"
+                      "sqrt(value)+sin(value)+pow(value,2); } }"
                     : "Packed :: library { Math :: () -> f64 { return "
                       "sqrt(f64(2)); } }",
                 backends[b]
             );
             REQUIRE(function);
-            REQUIRE(kernel_calls(narrow ? PIN_F32 : PIN_F64) == (narrow ? 4 : 1));
+            REQUIRE(kernel_calls(narrow ? PIN_F32 : PIN_F64) == (narrow ? 3 : 1));
             pin_value value = { .type = PIN_F32, .f = 2 },
                       result = { .type = narrow ? PIN_F32 : PIN_F64 };
             context = (behavior_function_context){ .arguments = narrow ? &value : NULL,
@@ -709,7 +708,6 @@ TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
             if (narrow) {
                 float expected = sqrtf(2) + cos_sin_compute(2).s;
                 expected += powf(2, 2);
-                expected += 2;
                 REQUIRE(result.type == PIN_F32 && result.f == expected);
             } else {
                 REQUIRE(result.type == PIN_F64 && result.d == sqrt(2));

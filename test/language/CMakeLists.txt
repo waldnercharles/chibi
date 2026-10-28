@@ -263,7 +263,7 @@ target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UND
 set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_publication.c outliner_projection.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c query_values.c query_migration.c program.c capture.c maps.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c query_values.c query_migration.c incremental.c operations.c modules.c native_calls.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 # Package tests consume the owning SDK implementation; extraction stays private.
-target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_tests.c package_graph_chibi.c docs_markdown.c)
+target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_math.c package_tests.c package_graph_chibi.c docs_markdown.c)
 target_link_libraries(test_language PRIVATE Chibi::tasks)
 if(TARGET Chibi::task_pool_runtime)
     target_link_libraries(test_language PRIVATE Chibi::task_pool_runtime Chibi::conversion_capabilities)
@@ -339,6 +339,28 @@ set_source_files_properties(scalar_lowering_chibi.c
 target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c)
 set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+set_source_files_properties(package_math.c PROPERTIES
+    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
+if(CHIBI_INSTALLED_SDK)
+    set(core_math_source_root "${Chibi_CORE_SOURCE_DIR}/math")
+else()
+    set(core_math_source_root "${CHIBI_LANGUAGE_TEST_ROOT}/packages/core/math")
+endif()
+set(core_math_fixture_root "${core_math_source_root}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # Only the six shipped math sources enter this fixture filesystem.
+    # Installed consumers embed their installed bytes, not this checkout's.
+    set(core_math_fixture_root "/chibi-fixtures/core/math")
+    foreach(source Math.chibi Spring.chibi MathTests.chibi SpringTests.chibi
+                   ease/Ease.chibi ease/EaseTests.chibi)
+        set(math_source "${core_math_source_root}/${source}")
+        set_property(TARGET test_language APPEND PROPERTY LINK_DEPENDS "${math_source}")
+        target_link_options(test_language PRIVATE
+            "SHELL:--embed-file \"${math_source}@${core_math_fixture_root}/${source}\"")
+    endforeach()
+endif()
+set_property(SOURCE package_math.c package_compiler_chibi.c APPEND PROPERTY
+    COMPILE_DEFINITIONS "CHIBI_CORE_MATH_ROOT=\"${core_math_fixture_root}\"")
 target_sources(test_language PRIVATE numeric.c)
 set_source_files_properties(numeric.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

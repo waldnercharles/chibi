@@ -1,0 +1,123 @@
+package math
+
+// The spring is a value. Changing a target does not reset either field.
+pub Spring :: struct {
+    position: number;
+    velocity: number;
+}
+
+// sin(x)/x without division by a tiny phase near critical damping or dt=0.
+SpringSinc :: (phase: f64) -> f64 {
+    if phase > -0.0001 && phase < 0.0001 {
+        square := phase * phase;
+        return 1 - square / 6 + square * square / 120;
+    }
+    return sin_precise(phase) / phase;
+}
+
+SpringSincLoss :: (phase: f64) -> f64 {
+    if phase > -0.001 && phase < 0.001 {
+        square := phase * phase;
+        return square * (0.16666666666666666667 - square / 120 + square * square / 5040);
+    }
+    return 1 - SpringSinc(phase);
+}
+
+// (1-exp(-x))/x. The series preserves tiny overdamped time steps.
+SpringDecayRatio :: (value: f64) -> f64 {
+    if value < 0.0001 {
+        return 1 - value / 2 + value * value / 6 - value * value * value / 24;
+    }
+    return (1 - exp(-value)) / value;
+}
+
+SpringDecayRatioLoss :: (value: f64) -> f64 {
+    if value < 0.001 {
+        return value * (0.5 - value / 6 + value * value / 24 - value * value * value / 120);
+    }
+    return 1 - SpringDecayRatio(value);
+}
+
+// 1-(1+x)*exp(-x), kept accurate even when a tiny movement of a distant
+// target is large enough to affect a number. Computing 1-A loses it then.
+SpringCriticalChange :: (value: f64) -> f64 {
+    if value < 0.001 {
+        return value * value * (0.5 - value / 3 + value * value / 8 -
+                                value * value * value / 30 + value * value * value * value / 144);
+    }
+    return DecayFraction(value) - value * exp(-value);
+}
+
+SpringResult :: (spring: Spring, target: number, position_factor: f64,
+                 position_change: f64, position_velocity: f64, velocity_position: f64,
+                 velocity_factor: f64) -> Spring {
+    offset := f64(spring.position) - f64(target);
+    next_position := f64(spring.position) - position_change * offset;
+    if position_change >= 0.5 {
+        next_position = f64(target) + position_factor * offset;
+    }
+    position := number(next_position + position_velocity * f64(spring.velocity));
+    velocity := number(velocity_position * offset + velocity_factor * f64(spring.velocity));
+    assert(IsFinite(position) && IsFinite(velocity), "AdvanceSpring produced nonfinite output");
+    return {position: position, velocity: velocity};
+}
+
+// Analytic solution of x'' + 2*zeta*omega*x' + omega^2*(x-target) = 0.
+// Frequency is cycles/second, damping is its dimensionless ratio, elapsed is seconds.
+// As in the retired native operation, frequency is at least .01 and damping
+// and elapsed are nonnegative. The target is constant during this interval.
+// Equations are derived independently from Ryan Juckett, Damped Springs:
+// https://www.ryanjuckett.com/damped-springs/ . No settling snap is applied.
+pub AdvanceSpring :: (spring: Spring, target: number, frequency: number,
+                      damping: number, elapsed: number) -> Spring {
+    assert(IsFinite(spring.position) && IsFinite(spring.velocity) && IsFinite(target) &&
+           IsFinite(frequency) && IsFinite(damping) && IsFinite(elapsed),
+           "AdvanceSpring needs finite inputs");
+    if elapsed <= 0 || (spring.position == target && spring.velocity == 0) {
+        return spring;
+    }
+    hz := f64(frequency);
+    if hz < 0.01 {
+        hz = 0.01;
+    }
+    ratio := f64(damping);
+    if ratio < 0 {
+        ratio = 0;
+    }
+    dt := f64(elapsed);
+    omega := hz * 6.283185307179586476925286766559;
+    square := omega * omega;
+    decay_rate := ratio * omega;
+    if ratio < 1 {
+        phase := omega * sqrt((1 - ratio) * (1 + ratio)) * dt;
+        decay := exp(-decay_rate * dt);
+        off_diagonal := decay * dt * SpringSinc(phase);
+        diagonal := decay * cos_precise(phase);
+        half_sine := sin_precise(phase / 2);
+        change := SpringCriticalChange(decay_rate * dt) +
+                  decay * (2 * half_sine * half_sine + decay_rate * dt * SpringSincLoss(phase));
+        return SpringResult(spring, target, diagonal + decay_rate * off_diagonal,
+                            change, off_diagonal, -square * off_diagonal,
+                            diagonal - decay_rate * off_diagonal);
+    }
+    if ratio == 1 {
+        decay := exp(-omega * dt);
+        off_diagonal := decay * dt;
+        return SpringResult(spring, target, decay + omega * off_diagonal,
+                            SpringCriticalChange(omega * dt), off_diagonal, -square * off_diagonal,
+                            decay - omega * off_diagonal);
+    }
+    // Rationalizing the slow root avoids cancellation at large damping.
+    sum := ratio + sqrt((ratio - 1) * (ratio + 1));
+    slow := -omega / sum;
+    fast := -omega * sum;
+    gap := slow - fast;
+    slow_decay := exp(slow * dt);
+    fast_decay := exp(fast * dt);
+    off_diagonal := slow_decay * dt * SpringDecayRatio(gap * dt);
+    change := SpringCriticalChange(-slow * dt) +
+              (-slow * dt) * slow_decay * SpringDecayRatioLoss(gap * dt);
+    return SpringResult(spring, target, slow_decay - slow * off_diagonal,
+                        change, off_diagonal, -square * off_diagonal,
+                        fast_decay + slow * off_diagonal);
+}

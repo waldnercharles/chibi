@@ -2251,6 +2251,28 @@ static void command_arguments(lower *l, int first, const script_expression *e, c
         );
     }
 }
+/* Validate native char outputs before any result or action can expose them. */
+static void check_native_results(
+    lower *l,
+    const script_expression *e,
+    const script_catalog_capability *cap,
+    int first
+)
+{
+    for (int i = 0; i < cap->result_count; i++) {
+        script_type type = i < e->result_count ? e->results[i] : cap->results[i].type;
+        if (!e->result_count && cap->result_count == 1 &&
+            !(e->type.flags & SCRIPT_TYPE_RESULTS)) {
+            type = e->type;
+        }
+        if (!script_type_char(type) ||
+            (type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_OPTIONAL |
+                           SCRIPT_TYPE_BOXED_OPTIONAL))) {
+            continue;
+        }
+        char_check(l, host_result(l, first + i, type, e->range), type.storage, e->range);
+    }
+}
 static void complete_results(
     lower *l,
     const script_expression *e,
@@ -3751,6 +3773,7 @@ static int call(lower *l, const script_expression *e)
         e->range
     );
     int result_first = behavior_function_builder_host_results(l->builder, host_index);
+    check_native_results(l, e, cap, result_first);
     complete_results(l, e, cap, result_first, false);
     if (e->type.flags & SCRIPT_TYPE_RESULTS) {
         return result_first; /* A result tuple indexes the host bank, never a VM slot. */

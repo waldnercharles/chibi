@@ -35,7 +35,7 @@ in the table take precedence over broader rows.
 The GPL host-tool files are:
 
 - `src/host/build_catalog.c`
-- `src/host/build_host.c`, `src/host/build_host.h`, `src/host/build_host_internal.h`
+- `src/host/build_host.c`, `src/host/build_host.h`, `src/host/build_host_internal.h`, `src/host/build_timing.h`
 - `src/host/build_io.c`, `src/host/build_io.h`
 - `src/host/build_main.c`
 - `src/host/build_values.c`, `src/host/build_values.h`

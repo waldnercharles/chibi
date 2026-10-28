@@ -148,6 +148,57 @@ The folder contains package files, rather than game behaviors or libraries.
 Tests import local packages with `project:NAME` and SDK packages with `core:NAME`.
 See [Testing](testing.md) for a complete example.
 
+## Build native programs
+
+```sh
+chibi build --native --llvm /usr/lib/llvm-18/bin /path/to/program
+```
+
+`build --native` compiles a folder holding one `.chibi` source to a native
+program with LLVM, without a C compiler. Its first function is the program's
+entry and returns the exit status:
+
+```chibi
+package program
+
+Main :: () -> int {
+    return Twice(21)
+}
+
+Twice :: (value: int) -> int {
+    return value * 2
+}
+```
+
+`--llvm` names the folder of LLVM's `opt`, `llc` and `ld.lld`. Without it the
+command reads `CHIBI_LLVM_BIN`. `-O2`, the default, optimizes; `-O0` does not.
+`-g` adds DWARF line tables, as rustc's `-C debuginfo=line-tables-only` does,
+so a debugger's backtrace or a profiler places the program's code at its
+source lines at either level. A build with `-g` gets its own folder.
+`--target` picks the program's system by its LLVM triple:
+`x86_64-unknown-linux-gnu`, the default, `aarch64-apple-darwin` or
+`x86_64-pc-windows-msvc`. LLVM's own linker links each one on Linux, with no
+SDK of the other system. The macOS program links against a stub of
+`libSystem`, as Zig's do, and is signed ad hoc. The Windows program,
+`program.exe`, imports only `ExitProcess` from `kernel32.dll` through an
+import library the build writes, as rustc's `raw-dylib` does. Each target gets
+its own folder. Line tables are Linux x86-64 only, so `-g` with
+another target fails.
+The program and its receipt go to `build/native/O2-HASH` or `O0-HASH`, named
+by a hash of the source, the SDK and the tools, and the command prints the
+program's path. An unchanged build reuses its folder once its receipt still
+names the tools and the program's bytes and the program is executable;
+otherwise the command fails and asks you to remove the folder. A changed build
+never replaces an earlier program. A source that native code cannot compile yet
+fails with the position of its first unsupported form, and nothing falls back
+to the player's compiled game. Native code supports numbers, `bool`, records
+and unions of them, control flow and calls between the source's own functions
+so far. The engine repository's `docs/native-llvm-ledger.md` tracks the rest.
+
+An interrupted build leaves its `.work` or `.partial` folder beside the
+output. The next build refuses to start until you remove it, so it never
+overwrites a build that is still running.
+
 ## Export a game
 
 Use an installed SDK to assemble a release:
@@ -159,6 +210,13 @@ chibi export /path/to/game --output /path/to/release
 The output contains the player, compiled game and resources. It also contains
 engine shaders, licenses and identity files. Add `--archive` to create a `.tar.gz`
 archive beside the output.
+
+Add `--native` to compile each library source (`Name :: library { ... }`)
+with LLVM into `natives/<Name>.so`, so the player runs calls to its pure
+functions natively. Pass `--llvm DIR`, the folder of `opt`, `llc` and `ld.lld`,
+or set `CHIBI_LLVM_BIN`. A library the native compiler does not support yet stays
+in the VM, and the export says why; a failed native build fails the export.
+This works for Linux x86-64 folder exports only so far.
 
 **Export replaces an earlier export, including files you added to it.** The
 exporter uses its `.chibi-export` marker to identify its output. It refuses
@@ -310,7 +368,8 @@ Each command accepts `--help`.
 
 ## Platform limits
 
-Linux and macOS support all commands.
+Linux and macOS support all commands, except `build --native`, which runs on
+Linux only. It builds programs for Linux x86-64, macOS arm64 and Windows x64.
 
 TODO: Windows support for reading package sources in `test` and `doc`.
 

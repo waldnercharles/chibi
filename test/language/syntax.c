@@ -2,19 +2,20 @@
 
 #include "authoring/source_format.h"
 #include "syntax_corpus.h"
+#include "test/parallel.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static script_syntax *original, *edited, *fresh;
-static char *original_tree, *edited_tree, *fresh_tree;
-static FILE *manifest_file;
-static char *corpus_text;
-static const char *corpus_manifest;
-static bool corpus_format;
-static char *formatted_text, *reformatted_text;
+static _Thread_local script_syntax *original, *edited, *fresh;
+static _Thread_local char *original_tree, *edited_tree, *fresh_tree;
+static _Thread_local FILE *manifest_file;
+static _Thread_local char *corpus_text;
+static _Thread_local const char *corpus_manifest;
+static _Thread_local bool corpus_format;
+static _Thread_local char *formatted_text, *reformatted_text;
 
 enum
 {
@@ -71,7 +72,7 @@ static void parse(const char *text)
     original = script_parse(text);
     for (int i = 0; i < original->diagnostic_count && i < 8; i++) {
         fprintf(
-            stderr,
+            pu_errors(),
             "syntax %d:%d: %s\n",
             original->diagnostics[i].range.line,
             original->diagnostics[i].range.column,
@@ -742,7 +743,7 @@ TEST_CASE(language_invalid_source_has_positioned_diagnostics)
         original = script_parse(syntax_corpus_cases[i].text);
         if (!original->diagnostic_count) {
             fprintf(
-                stderr,
+                pu_errors(),
                 "Unexpected valid syntax: %s\n",
                 syntax_corpus_cases[i].text
             );
@@ -872,7 +873,7 @@ TEST_CASE(language_retained_corpus)
         size_t bytes = 0;
         corpus_text = read_corpus_source(path, &bytes);
         if (!corpus_text) {
-            fprintf(stderr, "Cannot read bounded corpus source: %s\n", path);
+            fprintf(pu_errors(), "Cannot read bounded corpus source: %s\n", path);
         }
         REQUIRE(corpus_text != NULL);
         total += bytes;
@@ -880,10 +881,10 @@ TEST_CASE(language_retained_corpus)
         original = script_parse(corpus_text);
         if (original->diagnostic_count) {
             failures++;
-            fprintf(stderr, "Corpus syntax errors: %s\n", path);
+            fprintf(pu_errors(), "Corpus syntax errors: %s\n", path);
             for (int i = 0; i < original->diagnostic_count && i < 8; i++) {
                 fprintf(
-                    stderr,
+                    pu_errors(),
                     "  %d:%d %s\n",
                     original->diagnostics[i].range.line,
                     original->diagnostics[i].range.column,
@@ -923,7 +924,7 @@ TEST_CASE(language_retained_corpus)
                 if (!valid) {
                     failures++;
                     fprintf(
-                        stderr,
+                        pu_errors(),
                         "Corpus formatting failed (mode %d): %s: %s\n",
                         mode,
                         path,
@@ -958,6 +959,7 @@ TEST_CASE(language_retained_corpus)
 
 void test_language_syntax()
 {
+    test_parallel_begin();
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(language_managed_pointer_syntax_preserves_xor);
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
@@ -984,6 +986,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_incremental_snapshot_matches_fresh);
     RUN_TEST_CASE(language_incremental_errors_match_fresh);
     pu_clear_setup();
+    test_parallel_end();
 }
 
 void test_language_corpus(const char *manifest)

@@ -76,11 +76,14 @@ jobs:
             exit 0
           fi
           # Only this PR's own runs of its required workflows: a push or
-          # dispatch on another branch can share the commit.
+          # dispatch on another branch can share the commit. A pull_request
+          # run awaiting approval, as after the seed pin's bot push, never
+          # ran; the dispatched run beside it is the one to re-run.
           for workflow in ci.yml compiler-recovery.yml; do
             latest=$(gh run list --workflow "$workflow" --commit "$HEAD_SHA" --limit 100 \
               --json databaseId,event,headBranch,status,conclusion \
-              --jq 'map(select((.event == "pull_request" or .event == "workflow_dispatch") and .headBranch == env.HEAD_REF))
+              --jq 'map(select((.event == "pull_request" or .event == "workflow_dispatch") and .headBranch == env.HEAD_REF
+                               and .conclusion != "action_required"))
                     | max_by(.databaseId) // empty | "\(.databaseId) \(.status) \(.conclusion)"')
             read -r run status conclusion <<< "$latest"
             if [ -z "$run" ]; then

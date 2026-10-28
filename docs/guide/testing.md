@@ -35,6 +35,27 @@ PASS scoring.DoublesPoints
 the working directory. Each package source starts with `package NAME`.
 Keep tests beside the package functions they check.
 
+## Parallel execution
+
+No CI setup is needed: independent tests run on a bounded thread pool by default.
+The compiler infers which test closures have no external effects, including
+called and imported functions. Those tests have private invocation storage.
+Tests with random, host, state or other external effects run alone, between
+completed parallel spans. Results and failures are printed in source order,
+not completion order. The instruction limit remains per test.
+
+The pool uses the runtime default: up to eight hardware threads (performance
+cores on supported macOS hosts). For serial debugging, or when CI already
+parallelizes multiple Chibi processes, set a smaller worker budget:
+
+```sh
+CHIBI_TEST_WORKERS=1 chibi test packages
+```
+
+`CHIBI_TEST_WORKERS` accepts 1–32, capped to available hardware. Leave it unset
+for the automatic default. It controls authored `@test` functions, not the
+repository’s C/pico_unit cases or its `CHIBI_TEST_JOBS` selector processes.
+
 ## Read a failure
 
 `assert(condition, message)` fails when the condition is false. The failure
@@ -52,7 +73,7 @@ fails or a package is invalid.
 
 ## Test limits
 
-Each test runs alone, without a game. Packages can use core, text, array,
+Each test has its own execution state, without a game. Packages can use core, text, array,
 vector, math and value operations. Functions that need a running game, such
 as audio or entity functions, cannot compile for `chibi test`.
 

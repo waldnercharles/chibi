@@ -1,13 +1,13 @@
 package native_abi_checks
 
 @test
-LinuxTargetIsExplicit :: () {
-    assert(TargetChecks() == 0, "exact destination triple and pointer width");
+TargetsAreExplicit :: () {
+    assert(TargetChecks() == 0, "exact destination triples and pointer widths");
 }
 
 @test
 OtherTargetsAreRejected :: () {
-    assert(RejectedTargetChecks() == 0, "unsupported targets must not inherit the initial ABI");
+    assert(RejectedTargetChecks() == 0, "unsupported targets must not inherit an admitted ABI");
 }
 
 @test

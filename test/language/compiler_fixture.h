@@ -63,6 +63,12 @@ bool compiler_fixture_prepare_backends(
 );
 void test_language_compiler_fixture();
 void compiler_fixture_free(compiler_fixture *);
+/* Discover and run every authored @test in each prepared owner on that owner's
+ * backend, with private invocation storage, automatic pure-test scheduling and
+ * ordered diagnostics. CHIBI_TEST_WORKERS bounds its pool independently of C
+ * case workers. Without a pool capability it runs serially. Returns false for
+ * no tests or any failure; call only outside a parallel C case scope. */
+bool compiler_fixture_tests(const compiler_fixture *);
 const authoring_package *compiler_fixture_package(
     const compiler_fixture *,
     int backend,
@@ -96,6 +102,22 @@ bool compiler_fixture_call(
     int budget,
     arena *detached,
     pin_value *out
+);
+/* A port's storage as Compile takes it: the inferred generic type (0), each
+ * argument's own type (-2), or a type the compiler cannot pass (-1). */
+int compiler_fixture_port_storage(script_type);
+/* The data functions `catalog` links, which take no flow, outcomes or
+ * suspension, as Compile and CollectScalar take them: out[0] holds a Native
+ * row of `identity` for each, out[1] its Port rows and out[2] its ID and ABI.
+ * `effects` receives each one's effect mask. Allocates in `input`. */
+bool compiler_fixture_natives(
+    const compiler_fixture *,
+    int backend,
+    const char *identity,
+    const script_catalog *catalog,
+    arena *input,
+    pin_value out[3],
+    pin_value *effects
 );
 bool compiler_fixture_nodes(TSNode root, compiler_fixture_node *, int capacity, int depth_cap, int *count);
 /* Node schema is always taken from project:syntax_diagnostics. Field names,

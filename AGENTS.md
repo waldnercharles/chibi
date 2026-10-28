@@ -15,7 +15,7 @@
 - Before publishing, follow [reviewed validation](docs/testing.md#batch-validation-cut62): independently review affected contracts and interactions, run the selected checks and applicable builds on the exact clean candidate, and land that tested combination atomically. Mixed scope does not require a full suite by itself. Local evidence is sufficient when CI is disabled unless actual server rules require CI. Preserve current-tree evidence, explicit holds, approvals and branch protections.
 - Select tests from the affected behavior and required coverage. Use `make test-list` for the current groups and focused selectors; renderer and Studio checks need their documented hardware and environment. Keep configuration/build timing separate, and report unexecuted coverage accurately. See [test iteration](docs/testing.md). Required server checks and review/hold rules remain in force.
 - Preserve every explicit PR/ticket hold and denied-action approval requirement when choosing batch members. Approval of the batch policy does not clear those holds. Do not bring held code into an integration PR through merges, cherry-picks or dependencies. The integration owner must verify each member is reviewed and eligible under the existing approval rules, and recheck before landing; helper confirmation never supplies or replaces that approval.
-- Write tests and benchmark workloads in C with pico_unit. `tools/test_policy.py` dispatches groups and owns process cleanup; assertions belong in the C tests.
+- Prefer authored Chibi `@test` regressions whenever they can express the same behavior and oracle; inferred purity supplies automatic test parallelism. Keep C/pico_unit for native internals, ABI, ownership and failure boundaries Chibi cannot express. `tools/test_policy.py` dispatches groups and owns process cleanup.
 - Prefer `make build` when building.
 - Keep code small: remove dead code/abstractions; use small functions, narrow APIs, few parameters, guards, and no `else` after `return` or `break`.
 - Fail fast: `assert` invalid state; use `xmalloc`/`xrealloc`; fix pointer bugs at the source; avoid defensive `NULL` checks that mask defects.
@@ -25,7 +25,7 @@
 - Includes: `"project.h"` for project code; `<system.h>` otherwise.
 - Keep ownership/lifetimes explicit; mark file-private symbols `static`.
 - Prefer direct calls and `switch` statements to function pointers.
-- Write benchmarks, unit tests, and integration tests in C using pico_unit; use another third-party library when additional functionality is needed.
+- Keep native-boundary tests and benchmark harnesses in C using pico_unit; use another third-party library when additional functionality is needed.
 - Write C, never C++. The only exceptions are pass-through shims to C++ APIs: `src/ui/rml.cpp` (RmlUi), Studio's `src/editor/text/zep_bridge.cpp` (Zep) and `test/draw_backend.cpp` (Cute's C++-linkage draw diagnostics). They only convert types and forward calls, so all logic stays in C.
 - Follow existing names and clang-format; keep short names local; name constants and invariants with `#define`, `enum`, or `static const`.
 
@@ -39,7 +39,7 @@
 ## Before every commit
 
 1. Review the whole diff as a reviewer would: correctness, ownership and lifetimes, failure paths, the style rules above, and dead code left behind. In Claude Code run `/code-review`; otherwise review it yourself. Fix what you find before committing.
-2. Add or update a pico_unit case for every behavior change, in the dispatcher that owns the area (`test/tools` or `test/language`). A fix needs a case that failed before it.
+2. Add or update an authored `@test` for every expressible behavior change, or a pico_unit case for a native boundary, through the dispatcher that owns the area (`test/tools` or `test/language`). A fix needs a case that failed before it.
    A new component, native function or event is also used in a `test/fixtures/feature-coverage` scene, or listed in its `coverage-gaps.txt` with a reason (see [feature coverage](docs/testing.md#feature-coverage)).
 3. Build and run the checks CI runs: `make test-native`, `make test-materials`, `make test-projects` and `make test-language-all` (each builds the drivers with `make test-build`) and `make test-tools`. Say which ran and identify unexecuted coverage.
 4. Format. The pre-commit hook (`.githooks/pre-commit`, installed by configure) runs clang-format 22 on staged C sources; `make check-format` checks everything. Format hand-edited assets with `chibi_ctl --format`.

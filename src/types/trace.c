@@ -69,14 +69,12 @@ static void trace_array(const void *data, const void *, arena_marker mark, void 
     mark(user, array->items);
     mark(user, array->data);
     mark(user, array->buckets);
-    pin_value shape = { .type = array->element_type,
-                        .type_name = array->type_name,
-                        .record = array->record,
-                        .schema = array->schema };
+    /* Only authored records hold pointers, and their layouts travel with the
+     * array; native layouts may leave the catalog while a payload holds them. */
     bool managed = !array->stride || array->element_type == PIN_POINTER ||
                    array->element_type == PIN_QUERY ||
-                   (array->element_type == PIN_STRUCT &&
-                    !type_is_plain(pin_value_type(&shape)));
+                   (array->element_type == PIN_STRUCT && array->record &&
+                    !type_is_plain(&array->record->type));
     for (int i = 0; managed && i < array->count; i++) {
         pin_value item = pin_array_get(array, i);
         pin_value_trace(&item, mark, user);

@@ -1,0 +1,112 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Main builds {3, 4.5} from zero, passes it through the internal identity
+// Same, and returns its int field. These are emitter semantics, not native ABI.
+RecordCode :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 32, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 1, 0, 0, 0, 3),
+            Code(native.Insert, 32, 2, 0, 1, 0, 0),
+            Code(native.Constant, 10, 3, 0, 0, 0, 1083179008),
+            Code(native.Insert, 32, 4, 2, 3, 0, 1),
+            Code(native.Call, 32, 5, 1, 0, 1, 0),
+            Code(native.Extract, 6, 6, 5, 32, 0, 0),
+            Code(native.Publish, 6, 0, 6, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0),
+            Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Argument, 32, 0, 0, 0, 0, 0),
+            Code(native.Publish, 32, 0, 0, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+RecordModule :: (code: native.Instruction[], records: native.Record[], fields: int[]) -> native.Result {
+    empty: int[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(),
+                       [Function(6, 0, 0, 7, 0, 10, 0, 1), Function(32, 1, 7, 1, 10, 4, 1, 0)],
+                       [32], [32, 6, 32, 10, 32, 32, 6, 32], empty, code, [4],
+                       records, fields, texts, source, texts, empty, empty, false, 1);
+}
+RecordWrite: string : "native field write differs from its record";
+RecordRead: string : "native field read differs from its record";
+RecordLayout: string : "native records differ from their field table";
+ChangedRecord :: (index: int, item: native.Instruction, message: string) {
+    code := RecordCode();
+    code[index] = item;
+    Rejects(RecordModule(code, [{first: 0, count: 2}], [6, 10]), message);
+}
+@test
+RecordsKeepFieldsAndInternalValueCalls :: () {
+    text := Emitted(RecordModule(RecordCode(), [{first: 0, count: 2}], [6, 10]));
+    assert(strings.Contains(text, "%record0 = type { i32, float }\n"));
+    assert(strings.Contains(text, "store %record0 zeroinitializer, ptr %s0"));
+    assert(strings.Contains(text, "%v3 = insertvalue %record0 %a3, i32 %b3, 0"));
+    assert(strings.Contains(text, "%v5 = insertvalue %record0 %a5, float %b5, 1"));
+    assert(strings.Contains(text, "%v6 = call %record0 @chibi_scalar.1(%record0 %c6_0)"));
+    assert(strings.Contains(text, "%v7 = extractvalue %record0 %a7, 0"));
+    assert(strings.Contains(text, "define internal %record0 @chibi_scalar.1(%record0 %arg0) #0 {"));
+    assert(strings.Contains(text, "ret %record0 %return"));
+}
+@test
+RecordWriteMustMatchFieldType :: () {
+    ChangedRecord(3, Code(native.Insert, 32, 2, 0, 1, 0, 1), RecordWrite);
+}
+@test
+RecordWritePastFieldsIsRejected :: () {
+    ChangedRecord(3, Code(native.Insert, 32, 2, 0, 1, 0, 2), RecordWrite);
+}
+@test
+RecordWriteNeedsRecordSlot :: () {
+    ChangedRecord(3, Code(native.Insert, 32, 2, 1, 1, 0, 0), RecordWrite);
+}
+@test
+RecordReadMustMatchFieldType :: () {
+    ChangedRecord(7, Code(native.Extract, 6, 6, 5, 32, 0, 1), RecordRead);
+}
+@test
+RecordReadNeedsRecordType :: () {
+    ChangedRecord(7, Code(native.Extract, 6, 6, 5, 6, 0, 0), RecordRead);
+}
+@test
+RecordReadNeedsRecordSlot :: () {
+    ChangedRecord(7, Code(native.Extract, 6, 6, 1, 32, 0, 0), RecordRead);
+}
+@test
+RecordConstantMustBeZero :: () {
+    ChangedRecord(1, Code(native.Constant, 32, 0, 0, 0, 0, 1), "native constant is outside its type");
+}
+@test
+UndeclaredRecordOutputIsRejected :: () {
+    ChangedRecord(1, Code(native.Constant, 33, 0, 0, 0, 0, 0), Output);
+}
+@test
+ExportedRecordSignatureIsRejected :: () {
+    // Same exported alone: the entry would take and return a record.
+    code := RecordCode();
+    empty: int[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    result := native.Emit(abi.LinuxX64(), [Function(32, 1, 0, 1, 0, 4, 0, 0)],
+                          [32], [32], empty, [code[10], code[11], code[12], code[13]], empty,
+                          [{first: 0, count: 2}], [6, 10], texts, source, texts, empty, empty, false, 1);
+    Rejects(result, "unsupported native scalar signature or table size");
+}
+@test
+RecordFieldsCannotOverrunTable :: () {
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 3}], [6, 10]), RecordLayout);
+}
+@test
+NestedRecordFieldsAreRejected :: () {
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2}], [6, 32]), RecordLayout);
+}
+@test
+WrappedRecordFieldCountsAreRejected :: () {
+    // The sum wraps to the field table's length, but none of these ranges fits.
+    Rejects(RecordModule(RecordCode(), [{first: 0, count: 2147483647},
+                                        {first: 2147483647, count: 2147483647},
+                                        {first: -2, count: 4}], [6, 10]), RecordLayout);
+}

@@ -31,6 +31,7 @@ static char compiler[GRAPH_PATH], cxx_compiler[GRAPH_PATH], compiler_id[64],
     third_party[GRAPH_PATH];
 static bool warnings;
 static char debug_optimization[2];
+static bool debug_frame_pointers;
 static const char *const support_sources[] = { "arena", "file_io", "text_edit", "xalloc", "rcss_map" };
 #define SUPPORT_COUNT (int)(sizeof support_sources / sizeof *support_sources)
 
@@ -131,11 +132,24 @@ static void read_profile()
     compiler_value(file, "CMAKE_C_COMPILER_ID", compiler_id, sizeof compiler_id);
     cache_value(cache, "CMAKE_BUILD_TYPE", build_type, sizeof build_type);
     debug_optimization[0] = 0;
+    debug_frame_pointers = false;
     cache_value(cache, "CMAKE_C_FLAGS_DEBUG", value, sizeof value);
-    if (!strcmp(build_type, "Debug") &&
-        (!strcmp(value, "-g -O0") || !strcmp(value, "-g -O1"))) {
-        debug_optimization[0] = value[strlen(value) - 1];
-        debug_optimization[1] = 0;
+    if (!strcmp(build_type, "Debug")) {
+        const char *frames = " -fno-omit-frame-pointer";
+        size_t length = strlen(value), suffix = strlen(frames);
+        bool explicit_frames = length >= suffix &&
+                               !strcmp(value + length - suffix, frames);
+        if (explicit_frames) {
+            value[length - suffix] = 0;
+        }
+        if (!strcmp(value, "-g") || !strcmp(value, "-g -O0") ||
+            !strcmp(value, "-g -O1")) {
+            debug_frame_pointers = explicit_frames;
+            if (value[2]) {
+                debug_optimization[0] = value[5];
+                debug_optimization[1] = 0;
+            }
+        }
     }
     cache_value(cache, "CMAKE_OSX_SYSROOT", sysroot, sizeof sysroot);
     cache_value(cache, "CMAKE_OSX_ARCHITECTURES", architecture, sizeof architecture);
@@ -173,13 +187,8 @@ static void libclang(char include[GRAPH_PATH], char library[GRAPH_PATH])
     free(cache);
 }
 
-/* Runs the graph's Libraries entry over root into build_dir with the options
- * after it; the number of sources it compiled, 0 when it only wrote commands,
- * or -1 when it failed. */
-/* Runs the graph's Libraries entry over root into build_dir with the options
- * in options and then extra; the number of sources it compiled, 0 when it
- * only wrote commands, or -1 when it failed. */
-static int run_graph(
+/* Runs the production Libraries entry and preserves its exact CLI status. */
+static int graph_status(
     const char *root,
     const char *build_dir,
     const char *const *options,
@@ -213,7 +222,17 @@ static int run_graph(
     }
     argv[count] = NULL;
     /* A run compiles up to 27 sources with the profile's sanitizers. */
-    int status = tool_run_within(argv, root, log_path, GRAPH_RUN_SECONDS);
+    return tool_run_within(argv, root, log_path, GRAPH_RUN_SECONDS);
+}
+/* The number of sources compiled, 0 for commands-only, or -1 on failure. */
+static int run_graph(
+    const char *root,
+    const char *build_dir,
+    const char *const *options,
+    const char *const *extra
+)
+{
+    int status = graph_status(root, build_dir, options, extra);
     char *text = tool_read(log_path);
     if (status) {
         fprintf(stderr, "graph failed: %s\n", text ? text : "");
@@ -224,6 +243,178 @@ static int run_graph(
     int compiled = at ? atoi(at + strlen("compiled ")) : 0;
     free(text);
     return compiled;
+}
+
+/* Only explicit rejection cases share an invocation. They return before any
+ * discovery, child process or output write. Native values live until the host
+ * exits, with its original storage/instruction/time limits, so command-writing
+ * and build/rebuild cases still run independently. */
+#define GRAPH_BATCH_CASES 14
+typedef struct
+{
+    const char *build_dir;
+    const char *const *options, *const *extra;
+    int status;
+    const char *diagnostic;
+} graph_case;
+
+static int run_graph_batch(const graph_case *cases, int count)
+{
+    assert(count > 0 && count <= GRAPH_BATCH_CASES);
+    char path[GRAPH_PATH], source[GRAPH_PATH];
+    join(path, CHIBI_SOURCE_ROOT, "tools/toolchain/Graph.chibi");
+    char *graph_source = tool_read(path);
+    assert(graph_source);
+    join(source, suite, "GraphVerification.chibi");
+    FILE *file = fopen(source, "wb");
+    assert(file);
+    assert(fputs(graph_source, file) >= 0);
+    free(graph_source);
+    /* Length-prefixed argv preserves empty values, missing final values and
+     * repetitions exactly; no shell splitting, escaping or sentinel options. */
+    assert(
+        fprintf(
+            file,
+            "\nVerifyGraph :: () -> int {\n"
+            "    input := build.arguments(); at := 0; index := 0;\n"
+            "    while (at < length(input)) {\n"
+            "        if (at + 2 > length(input)) { return 3; }\n"
+            "        count := Count(input[at]); expected := Count(input[at + "
+            "1]);\n"
+            "        at = at + 2;\n"
+            "        if (count < 1 || at + count > length(input) || index >= "
+            "%d) { return 3; }\n"
+            "        arguments: string[] = [];\n"
+            "        for (i in 0..<count) { arguments.append(input[at + i]); "
+            "}\n"
+            "        build.report(format_text(\"graph-case {0} begin\", "
+            "index));\n"
+            "        status := LibrariesWithArguments(arguments);\n"
+            "        build.report(format_text(\"graph-case {0} returned {1}\", "
+            "index, status));\n"
+            "        if (status != expected) { return 1; }\n"
+            "        at = at + count; index = index + 1;\n"
+            "    }\n"
+            "    if (index == 0) { return 3; }\n"
+            "    return 0;\n"
+            "}\n",
+            GRAPH_BATCH_CASES
+        ) >= 0
+    );
+    assert(!fclose(file));
+    const char *argv[256] = { host_path,
+                              "--root",
+                              CHIBI_SOURCE_ROOT,
+                              "--source",
+                              source,
+                              "--core",
+                              "packages/core",
+                              "--collection",
+                              "graph=tools/graph",
+                              "--entry",
+                              "VerifyGraph",
+                              "--timeout-ms",
+                              "50000",
+                              "--" };
+    char lengths[GRAPH_BATCH_CASES][16], statuses[GRAPH_BATCH_CASES][16];
+    int argc = 14;
+    for (int i = 0; i < count; i++) {
+        assert(argc + 6 < 256);
+        assert(cases[i].status == 0 || cases[i].status == 2);
+        int start = argc;
+        argv[argc++] = lengths[i];
+        snprintf(statuses[i], sizeof statuses[i], "%d", cases[i].status);
+        argv[argc++] = statuses[i];
+        argv[argc++] = "--build";
+        argv[argc++] = cases[i].build_dir;
+        argv[argc++] = "--jobs";
+        argv[argc++] = "8";
+        for (int j = 0; cases[i].options[j]; j++) {
+            assert(argc < 255);
+            argv[argc++] = cases[i].options[j];
+        }
+        for (int j = 0; cases[i].extra[j]; j++) {
+            assert(argc < 255);
+            argv[argc++] = cases[i].extra[j];
+        }
+        snprintf(lengths[i], sizeof lengths[i], "%d", argc - start - 2);
+    }
+    argv[argc] = NULL;
+    return tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
+}
+
+/* Every case owns its diagnostic interval. A previous rejection cannot make a
+ * later case pass, and a missing/reordered case cannot match this transcript. */
+static bool graph_batch_transcript_matches(const graph_case *cases, int count, const char *log)
+{
+    const char *at = log;
+    bool matches = true;
+    for (int i = 0; i < count && matches; i++) {
+        char expected[512];
+        snprintf(
+            expected,
+            sizeof expected,
+            "graph-case %d begin\n%s%sgraph-case %d returned %d\n",
+            i,
+            cases[i].diagnostic ? cases[i].diagnostic : "",
+            cases[i].diagnostic ? "\n" : "",
+            i,
+            cases[i].status
+        );
+        size_t length = strlen(expected);
+        matches = !strncmp(at, expected, length);
+        if (matches) {
+            at += length;
+        }
+    }
+    return matches && !*at;
+}
+static bool graph_batch_matches(const graph_case *cases, int count)
+{
+    char *log = tool_read(log_path);
+    if (!log) {
+        return false;
+    }
+    bool matches = graph_batch_transcript_matches(cases, count, log);
+    if (!matches) {
+        fprintf(stderr, "unexpected graph batch transcript: %s\n", log);
+    }
+    free(log);
+    return matches;
+}
+
+TEST_CASE(graph_batch_transcripts_are_case_local)
+{
+    const graph_case cases[] = { { .status = 2, .diagnostic = "first" },
+                                 { .status = 2, .diagnostic = "second" } };
+    const char
+        *complete = "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
+                    "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n";
+    REQUIRE(graph_batch_transcript_matches(cases, 2, complete));
+    REQUIRE(!graph_batch_transcript_matches(cases, 1, complete));
+    REQUIRE(!graph_batch_transcript_matches(cases, 2, ""));
+    REQUIRE(
+        !graph_batch_transcript_matches(cases, 2, "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n")
+    );
+    REQUIRE(!graph_batch_transcript_matches(
+        cases,
+        2,
+        "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
+        "graph-case 1 begin\nfirst\ngraph-case 1 returned 2\n"
+    ));
+    REQUIRE(!graph_batch_transcript_matches(
+        cases,
+        2,
+        "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n"
+        "graph-case 0 begin\nfirst\ngraph-case 0 returned 2\n"
+    ));
+    REQUIRE(!graph_batch_transcript_matches(
+        cases,
+        2,
+        "graph-case 0 begin\nfirst\ngraph-case 0 returned 0\n"
+        "graph-case 1 begin\nsecond\ngraph-case 1 returned 2\n"
+    ));
+    return true;
 }
 /* A run with every profile value given, so nothing is discovered, and no
  * launcher. */
@@ -256,6 +447,8 @@ static int graph(const char *root, const char *build_dir, bool warn, const char 
         "",
         "--third-party",
         third_party,
+        !strcmp(build_type, "Debug") ? "--debug-frame-pointers" : NULL,
+        debug_frame_pointers ? "on" : "off",
         debug_optimization[0] ? "--debug-optimization" : NULL,
         debug_optimization,
         NULL,
@@ -270,17 +463,19 @@ static int discovered_graph(const char *root, const char *build_dir, const char 
     const char *profile = sanitizers[0]                  ? "sanitizer"
                         : !strcmp(build_type, "Release") ? "release"
                                                          : "debug";
-    const char *const options[] = { "--profile",
-                                    profile,
-                                    "--debug-compilation-dir",
-                                    debug_dir,
-                                    "--warnings",
-                                    warnings ? "on" : "off",
-                                    debug_optimization[0]
-                                        ? "--debug-optimization"
-                                        : NULL,
-                                    debug_optimization,
-                                    NULL };
+    const char *const options[] = {
+        "--profile",
+        profile,
+        "--debug-compilation-dir",
+        debug_dir,
+        "--warnings",
+        warnings ? "on" : "off",
+        !strcmp(build_type, "Debug") ? "--debug-frame-pointers" : NULL,
+        debug_frame_pointers ? "on" : "off",
+        debug_optimization[0] ? "--debug-optimization" : NULL,
+        debug_optimization,
+        NULL
+    };
     /* Without CXX, the C++ compiler is the one beside CC, as CMake's. */
     char *saved = getenv("CC") ? strdup(getenv("CC")) : NULL;
     char *saved_cxx = getenv("CXX") ? strdup(getenv("CXX")) : NULL;
@@ -1172,10 +1367,11 @@ TEST_CASE(all_commands_list_every_target)
     return true;
 }
 
-/* Four fixed rejected invocations: an unknown target alone and beside a
- * known target, and a target missing its name at the end or before an option.
- * They write no build outputs and never reach toolchain discovery. */
-TEST_CASE(invalid_targets_fail_before_writing_commands)
+/* Six fixed rejected invocations: an unknown target alone and beside a
+ * known target, a target missing its name at the end or before an option, and
+ * asset generator hosts that are relative or missing. They write no build
+ * outputs and never reach toolchain discovery. */
+TEST_CASE(invalid_arguments_fail_before_writing_commands)
 {
     char build_dir[GRAPH_PATH];
     join(build_dir, suite, "invalid targets");
@@ -1190,7 +1386,12 @@ TEST_CASE(invalid_targets_fail_before_writing_commands)
           "graph: unknown target 'chibi-clt'" },
         { { "--commands-only", "on", "--target", NULL },
           "graph: --target requires a target name" },
-        { { "--target", "--commands-only", "on", NULL }, "graph: --target requires a target name" }
+        { { "--target", "--commands-only", "on", NULL },
+          "graph: --target requires a target name" },
+        { { "--commands-only", "on", "--asset-generator-hosts", "build-release/sdk", NULL },
+          "graph: --asset-generator-hosts requires an absolute directory" },
+        { { "--commands-only", "on", "--asset-generator-hosts", NULL },
+          "graph: --asset-generator-hosts requires an absolute directory" }
     };
     for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
         REQUIRE(graph(CHIBI_SOURCE_ROOT, build_dir, warnings, cases[i].arguments) == -1);
@@ -1204,7 +1405,7 @@ TEST_CASE(invalid_targets_fail_before_writing_commands)
 
 /* No compiler runs: explicit profiles expose every language's argv, including
  * test assertions, before the opt-in experiment is allowed to build. */
-TEST_CASE(debug_optimization_preserves_instrumentation)
+static bool debug_optimization_instrumentation(bool instrumented, int frame_mode)
 {
     const char *const options[] = { "--profile",
                                     "explicit",
@@ -1217,16 +1418,27 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
                                     "--build-type",
                                     "Debug",
                                     "--sanitizers",
-                                    "address,undefined",
+                                    instrumented ? "address,undefined" : "",
                                     "--archiver",
                                     "/unused/ar",
                                     "--ranlib",
                                     "/unused/ranlib",
+                                    frame_mode >= 0 ? "--debug-frame-pointers" : NULL,
+                                    frame_mode ? "on" : "off",
                                     NULL };
     const char *const levels[] = { "", "0", "1" };
     for (int level = 0; level < 3; level++) {
         char build_dir[GRAPH_PATH], path[GRAPH_PATH];
-        join(build_dir, suite, level == 0 ? "default debug" : levels[level]);
+        char name[64];
+        snprintf(
+            name,
+            sizeof name,
+            "%s debug %s frames %d",
+            instrumented ? "sanitized" : "plain",
+            level ? levels[level] : "default",
+            frame_mode
+        );
+        join(build_dir, suite, name);
         const char *const extra[] = { "--commands-only",
                                       "on",
                                       "--target",
@@ -1260,7 +1472,11 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
                 const char *arg = yyjson_get_str(value);
                 REQUIRE(arg);
                 debug |= !strcmp(arg, "-g");
-                sanitizer |= !strcmp(arg, "-fsanitize=address,undefined");
+                if (!strncmp(arg, "-fsanitize=", 11)) {
+                    REQUIRE(instrumented && !strcmp(arg, "-fsanitize=address,undefined"));
+                    sanitizer = true;
+                }
+                REQUIRE(strcmp(arg, "-fomit-frame-pointer"));
                 frames |= !strcmp(arg, "-fno-omit-frame-pointer");
                 assertions |= !strcmp(arg, "-UNDEBUG");
                 REQUIRE(strncmp(arg, "-DNDEBUG", 8));
@@ -1269,7 +1485,9 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
                     REQUIRE(level && !strcmp(arg + 2, levels[level]));
                 }
             }
-            REQUIRE(debug && sanitizer && frames);
+            REQUIRE(debug);
+            REQUIRE(sanitizer == (instrumented != 0));
+            REQUIRE(frames == (instrumented || frame_mode == 1));
             REQUIRE(optimizations == (level != 0));
             const char *output = yyjson_get_str(yyjson_obj_get(entry, "output"));
             saw_engine |= strstr(output, "/objects/chibi_engine/") != NULL;
@@ -1302,6 +1520,15 @@ TEST_CASE(debug_optimization_preserves_instrumentation)
     return true;
 }
 
+TEST_CASE(debug_optimization_preserves_instrumentation)
+{
+    for (int frames = -1; frames <= 1; frames++) {
+        REQUIRE(debug_optimization_instrumentation(false, frames));
+        REQUIRE(debug_optimization_instrumentation(true, frames));
+    }
+    return true;
+}
+
 TEST_CASE(debug_optimization_rejects_invalid_profiles)
 {
     const char *const options[] = { "--profile", "explicit", NULL };
@@ -1312,19 +1539,75 @@ TEST_CASE(debug_optimization_rejects_invalid_profiles)
         { "--build-type", "Debug", "--debug-optimization", NULL },
         { "--build-type", "Debug", "--debug-optimization", "--commands-only", "on", NULL },
         { "--build-type", "Release", "--debug-optimization", "1", NULL },
-        { "--build-type", "RelWithDebInfo", "--debug-optimization", "0", NULL }
+        { "--build-type", "RelWithDebInfo", "--debug-optimization", "0", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", "bad", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", "on", "--debug-frame-pointers", "bad", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", "", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", NULL },
+        { "--build-type", "Debug", "--debug-frame-pointers", "--commands-only", "on", NULL },
+        { "--build-type", "Release", "--debug-frame-pointers", "on", NULL },
+        { "--build-type", "RelWithDebInfo", "--debug-frame-pointers", "off", NULL }
     };
-    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
-        char build_dir[GRAPH_PATH];
-        join(build_dir, suite, "invalid optimization");
-        REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, options, cases[i]) == -1);
+    const int count = (int)(sizeof cases / sizeof *cases);
+    char build_dirs[sizeof cases / sizeof *cases][GRAPH_PATH];
+    for (int first = 0; first < count; first += GRAPH_BATCH_CASES) {
+        graph_case batch[GRAPH_BATCH_CASES];
+        int size = count - first < GRAPH_BATCH_CASES ? count - first : GRAPH_BATCH_CASES;
+        for (int j = 0; j < size; j++) {
+            int i = first + j;
+            char name[64];
+            snprintf(name, sizeof name, "invalid optimization %d", i);
+            join(build_dirs[i], suite, name);
+            const char *expected = !strcmp(cases[i][2], "--debug-optimization") ? "graph: --debug-optimization requires 0 or 1 and build type Debug"
+                                                                                : "graph: --debug-frame-pointers requires on or off and build type Debug";
+            batch[j] = (graph_case){ build_dirs[i], options, cases[i], 2, expected };
+        }
+        REQUIRE(!run_graph_batch(batch, size));
+        REQUIRE(graph_batch_matches(batch, size));
+        for (int j = 0; j < size; j++) {
+            REQUIRE(access(batch[j].build_dir, F_OK));
+        }
+    }
+    /* Keep real Libraries CLI argv-end rejection and exit-status coverage for
+     * both options, not just the test-only batched invocation's success. */
+    const int cli_cases[] = { 3, 10 };
+    for (int j = 0; j < 2; j++) {
+        int i = cli_cases[j];
+        REQUIRE(graph_status(CHIBI_SOURCE_ROOT, build_dirs[i], options, cases[i]) == 2);
         char *log = tool_read(log_path);
-        bool diagnostic = log &&
-                          strstr(log, "--debug-optimization requires 0 or 1 and build type Debug");
+        const char *expected = j == 0
+                                 ? "graph: --debug-optimization requires 0 or "
+                                   "1 and build type Debug\n"
+                                 : "graph: --debug-frame-pointers requires on "
+                                   "or off and build type Debug\n";
+        bool diagnostic = log && !strcmp(log, expected);
         free(log);
         REQUIRE(diagnostic);
-        REQUIRE(access(build_dir, F_OK));
+        REQUIRE(access(build_dirs[i], F_OK));
     }
+    return true;
+}
+
+/* An unexpected result must stop the batch: a later rejection must not hide
+ * the first mismatch. The ordinary rejection matrix tests continuation after
+ * each expected status 2, with distinct paths and exact per-case diagnostics. */
+TEST_CASE(graph_batch_stops_on_unexpected_result)
+{
+    const char *const options[] = { "--profile", "explicit", NULL };
+    const char *const optimization[] = { "--build-type", "Debug", "--debug-optimization", NULL };
+    const char *const frames[] = { "--build-type", "Debug", "--debug-frame-pointers", NULL };
+    const char *diagnostic = "graph: --debug-optimization requires 0 or 1 and "
+                             "build type Debug";
+    char rejected[GRAPH_PATH], never[GRAPH_PATH];
+    join(rejected, suite, "batch unexpected result");
+    join(never, suite, "batch never reached");
+    graph_case cases[] = { { rejected, options, optimization, 0, diagnostic },
+                           { never, options, frames, 2, NULL } };
+    REQUIRE(run_graph_batch(cases, 2) == 1);
+    cases[0].status = 2;
+    REQUIRE(graph_batch_matches(cases, 1));
+    REQUIRE(access(rejected, F_OK));
+    REQUIRE(access(never, F_OK));
     return true;
 }
 
@@ -1528,6 +1811,8 @@ void test_build_graph_debug_optimization(const char *host, const char *cmake_bui
     RUN_TEST_CASE(explicit_commands_match_cmake);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
+    RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
+    RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
     tool_remove_tree(suite);
 }
 
@@ -1538,9 +1823,11 @@ void test_build_graph_programs(const char *host, const char *cmake_build)
     set_up(host, cmake_build);
     RUN_TEST_CASE(named_programs_build_what_they_run);
     RUN_TEST_CASE(all_commands_list_every_target);
-    RUN_TEST_CASE(invalid_targets_fail_before_writing_commands);
+    RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);
+    RUN_TEST_CASE(graph_batch_stops_on_unexpected_result);
+    RUN_TEST_CASE(graph_batch_transcripts_are_case_local);
     RUN_TEST_CASE(authored_dependency_files_list_prerequisites);
     tool_remove_tree(suite);
 }
@@ -1595,8 +1882,47 @@ static bool registration(const char *file, const char *needle)
     REQUIRE(found);
     return true;
 }
+/* An export in another target does not make its headers visible here. These
+ * guards intentionally stay within one function's selected target block. */
+static bool graph_target_registration(const char *section, const char *target, const char *needle)
+{
+    char filename[GRAPH_PATH], declaration[128], selection[128];
+    snprintf(filename, sizeof filename, "%s/tools/graph/engine/Targets.chibi", CHIBI_SOURCE_ROOT);
+    snprintf(declaration, sizeof declaration, "pub %s ::", section);
+    snprintf(selection, sizeof selection, "if (target == \"%s\") {", target);
+    char *text = tool_read(filename);
+    REQUIRE(text);
+    const char *function = strstr(text, declaration);
+    const char *next = function ? strstr(function + 1, "\npub ") : NULL;
+    const char *block = function ? strstr(function, selection) : NULL;
+    const char *end = block ? strstr(block, "\n    }") : NULL;
+    const char *match = block ? strstr(block, needle) : NULL;
+    bool found = block && (!next || block < next) && end && match && match < end;
+    free(text);
+    REQUIRE(found);
+    return true;
+}
+static bool graph_function_registration(const char *name, const char *needle)
+{
+    char filename[GRAPH_PATH], declaration[128];
+    snprintf(filename, sizeof filename, "%s/tools/graph/engine/Targets.chibi", CHIBI_SOURCE_ROOT);
+    snprintf(declaration, sizeof declaration, "\n%s ::", name);
+    char *text = tool_read(filename);
+    REQUIRE(text);
+    const char *function = strstr(text, declaration);
+    const char *end = function ? strstr(function, "\n}") : NULL;
+    const char *match = function ? strstr(function, needle) : NULL;
+    bool found = end && match && match < end;
+    free(text);
+    REQUIRE(found);
+    return true;
+}
 TEST_CASE(language_delivery_registrations_match)
 {
+    REQUIRE(
+        registration("test/language/CMakeLists.txt", "set_source_files_properties(effects.c generic.c PROPERTIES INCLUDE_DIRECTORIES \"${CHIBI_LANGUAGE_TEST_ROOT}/src\")")
+    );
+    REQUIRE(graph_function_registration("LanguageTestsOverSource", "\"test/language/effects.c\""));
     const char *calls[] = { "test_language_execution_scope",
                             "test_language_asset_packaging_chibi",
                             "test_language_shader_source_chibi" };
@@ -1609,6 +1935,58 @@ TEST_CASE(language_delivery_registrations_match)
         snprintf(source, sizeof source, "test/language/%s", sources[i]);
         REQUIRE(registration("tools/graph/engine/Targets.chibi", source));
     }
+    const char *emitter_substitutions[] = {
+        "CHIBI_EMITTER_TEST_SOURCES=test-sources:EMITTER_TEST_SOURCE:llvm_"
+        "native_calls:test/native_aot/emitter_calls",
+        "CHIBI_EMITTER_TEST_INPUTS=test-inputs:EMITTER_TEST_SOURCE:llvm_native_"
+        "calls:test/native_aot/emitter_calls"
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(
+            graph_target_registration("Substitutions", "chibi_language_testing", emitter_substitutions[i])
+        );
+    }
+    REQUIRE(
+        registration("test/language/package_compiler_chibi_source.h.in", "@CHIBI_EMITTER_TEST_SOURCES@")
+    );
+    REQUIRE(
+        registration("test/language/package_compiler_chibi_source.h.in", "@CHIBI_EMITTER_TEST_INPUTS@")
+    );
+    REQUIRE(
+        registration("test/language/package_compiler_chibi.cmake", "list(FILTER test_sources INCLUDE REGEX \"\\\\.chibi$\")")
+    );
+    REQUIRE(registration("test/language/main.c", "test_language_parallel"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "test/parallel.c"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "parallel.c)"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "test/parallel.h"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "CHIBI_TEST_ENKITS=1"));
+    REQUIRE(registration("test/language/CMakeLists.txt", "Chibi::task_scheduler"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/parallel.c"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/language/parallel.c"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "test/parallel.h=test/parallel.h"));
+    REQUIRE(registration("tools/graph/engine/Targets.chibi", "CHIBI_TEST_ENKITS=1"));
+    const char *owners[] = { "conversion_capabilities",
+                             "tasks",
+                             "task_pool_runtime",
+                             "types",
+                             "types" };
+    const char *headers[] = { "runtime/conversions.h",
+                              "runtime/tasks.h",
+                              "runtime/task_pool.h",
+                              "types/text.h",
+                              "types/value_format.h" };
+    for (int i = 0; i < 5; i++) {
+        char include[128], target[128], header[128];
+        snprintf(include, sizeof include, "\"public/%s\"", owners[i]);
+        snprintf(target, sizeof target, "chibi_%s", owners[i]);
+        snprintf(header, sizeof header, "\"%s\"", headers[i]);
+        REQUIRE(graph_target_registration("Includes", "test_language", include));
+        REQUIRE(graph_target_registration("PublicHeaders", target, header));
+    }
+    REQUIRE(graph_target_registration("Defines", "test_language", "\"CHIBI_PACKAGE_TEST_POOL=1\""));
+    REQUIRE(
+        registration("test/language/CMakeLists.txt", "Chibi::task_pool_runtime Chibi::conversion_capabilities")
+    );
     REQUIRE(registration("test/language/CMakeLists.txt", "execution_scope.c"));
     REQUIRE(registration("test/language/CMakeLists.txt", "include(asset_packaging_chibi.cmake)"));
     REQUIRE(registration("test/language/CMakeLists.txt", "include(shader_source_chibi.cmake)"));

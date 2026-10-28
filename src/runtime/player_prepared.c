@@ -378,6 +378,8 @@ player *player_prepared_read(
                                     .log = host->log },
                          .declared = declared,
                          .linker = host->linker ? &linker : NULL,
+                         .natives = host->natives,
+                         .native_count = host->native_count,
                          .backend = backend };
     player *player = NULL;
     package_module *modules = NULL;

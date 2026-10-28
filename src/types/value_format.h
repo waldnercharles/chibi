@@ -3,8 +3,9 @@
 
 #include "types/value.h"
 
-/* Formats *v into a bounded, NUL-terminated static ring buffer (truncated,
- * never overflowed). The returned pointer is valid until the next few calls. */
+/* Formats *v into a bounded, NUL-terminated thread-local ring (truncated,
+ * never overflowed). The pointer survives seven more calls on this thread;
+ * other threads do not overwrite it. It cannot outlive the producing thread. */
 const char *pin_value_to_string(const pin_value *v);
 
 #endif

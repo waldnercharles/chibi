@@ -104,13 +104,15 @@ list(APPEND CHIBI_SDK_TARGETS chibi_platform chibi_ui_host chibi_renderer)
 # builds its browser player only on request, outside the SDK package.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
     add_executable(chibi-player "${CHIBI_SDK_ROOT}/src/host/player_main.c"
-        "${CHIBI_SDK_ROOT}/src/host/player_url.c")
+        "${CHIBI_SDK_ROOT}/src/host/player_url.c" "${CHIBI_SDK_ROOT}/src/host/native_libraries.c"
+        "${CHIBI_SDK_ROOT}/src/host/stack_overflow.c")
     set(player_private "${CMAKE_CURRENT_BINARY_DIR}/private/player")
-    configure_file("${CHIBI_SDK_ROOT}/src/host/player_url.h" "${player_private}/host/player_url.h" COPYONLY)
-    configure_file("${CHIBI_SDK_ROOT}/src/host/player_clock.h" "${player_private}/host/player_clock.h" COPYONLY)
+    foreach(header player_url.h player_clock.h native_libraries.h stack_overflow.h)
+        configure_file("${CHIBI_SDK_ROOT}/src/host/${header}" "${player_private}/host/${header}" COPYONLY)
+    endforeach()
     target_include_directories(chibi-player PRIVATE "${player_private}")
     target_link_libraries(chibi-player PRIVATE Chibi::render Chibi::player
-        Chibi::native_prepared Chibi::host_native_default)
+        Chibi::native_prepared Chibi::host_native_default ${CMAKE_DL_LIBS})
     set_target_properties(chibi-player PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 if(CHIBI_WEB_PLAYER)

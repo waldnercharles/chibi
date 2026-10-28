@@ -116,7 +116,11 @@ instrumentation cost while retaining assertions, but it needs matching
 unsanitized dependencies and must not be described as the matched O0/O1 result.
 Do not use Release/NDEBUG as that control.
 
-## Manual hosted first pass
+## Manual hosted first pass (historical O0/O1)
+
+The first pass below describes the original O0/O1 runner. The current manual
+workflow measures [O1/O2 with sanitizers on and off](optimization-instrumentation-experiment.md);
+use that protocol for new measurements. Historical results remain unchanged.
 
 `Debug optimization experiment (manual, not full CI)` is a separate Linux-only
 `workflow_dispatch` workflow. It requires an exact reviewed SHA containing the
@@ -154,3 +158,46 @@ buffering, parallel progress output can interrupt compiler commands longer than
 build. The verifier still requires exact argv (apart from dependency-output
 flags); it does not reconstruct or normalize corrupted command lines. This option
 is specific to the manual Make experiment, not a change to Ninja or normal CI.
+
+### Linux CI candidate after the bounded pair
+
+Run [40435330707](https://github.com/waldnercharles/chibi/actions/runs/40435330707)
+measured exact `15bc4b78c4121d54c5c078bb9939f7d59b4dcbec`, with compiler cache
+disabled, one ordered pair and four unchanged selectors. All 35 cases per arm
+passed, and both arms passed strict actual-argv verification. Seconds:
+
+| Phase | O0 | O1 |
+| --- | ---: | ---: |
+| Build | 272.289 | 412.088 |
+| Scalar | 179.846 | 87.273 |
+| Behaviors-rest | 176.011 | 85.531 |
+| Asset compiler host | 195.373 | 79.341 |
+| Bootstrap | 113.875 | 37.400 |
+| Build plus tests | 937.394 | 701.632 |
+
+Configuration (6.328 / 3.028 seconds) is excluded. The O1 total was 25.15%
+lower in this single pair; this is not a general speedup claim. Compilation was
+slower. The result motivates a Linux CI candidate, not a developer-default or
+macOS policy change and not a replacement for full CI.
+
+Only the Linux native CI job overrides `SANITIZER_CMAKE_FLAGS`: Debug retains
+`-g`, ASan/UBSan, frame pointers, assertions, warnings and compiler caching,
+with `-O1` for C and C++. Initial builds and later test-build invocations inherit
+the same profile. The separate Release products are unchanged. Normal developer
+Make defaults and macOS remain unchanged; an explicit command-line
+`SANITIZER_CMAKE_FLAGS` (including `-g -O0` for both languages) still wins.
+No selectors or deadlines are removed or extended.
+
+The existing `build-graph-debug-optimization` CI gate now compares the actual
+O1-configured CMake compile commands with Graph-emitted commands, and exercises
+Graph's default, explicit O0, explicit O1 and rejected profiles. It retains its
+Release planning helper and Debug sanitized test driver/reference. Linux's normal
+build route remains CMake; this does not switch Linux to Graph or change its
+outer planning host. Exact-candidate full CI remains required before landing.
+
+A future macOS experiment should use a separately reviewed, manual-only
+matched pair on one fixed macOS runner/toolchain/SDK, identical pinned archives,
+cache off and fresh build trees. Keep configuration separate, strict actual-argv
+checks (including Objective-C), the same selectors and one bounded aggregate
+budget. Mac policy remains unchanged until that measurement and its independent
+review. No macOS dispatch or automatic repeat is authorized by this proposal.

@@ -6,6 +6,19 @@ if(CHIBI_ENABLE_SANITIZERS)
     set(asset_generator_timeout 600000)
     list(APPEND asset_compiler_timeout_arguments --compiler-timeout-ms=600000)
 endif()
+# Another build's sdk directory whose hosts generate the resource instead of
+# this build's, such as a Release build's for a sanitized one: the resource is
+# the same whichever build's hosts generate it.
+set(CHIBI_ASSET_GENERATOR_HOSTS "" CACHE PATH
+    "Directory with the chibi-build-host and chibi-compiler-host that generate the asset compiler")
+set(asset_build_host $<TARGET_FILE:chibi-build-host>)
+set(asset_compiler_host $<TARGET_FILE:chibi-compiler-host>)
+set(asset_hosts chibi-build-host chibi-compiler-host)
+if(CHIBI_ASSET_GENERATOR_HOSTS)
+    set(asset_build_host "${CHIBI_ASSET_GENERATOR_HOSTS}/chibi-build-host${CMAKE_EXECUTABLE_SUFFIX}")
+    set(asset_compiler_host "${CHIBI_ASSET_GENERATOR_HOSTS}/chibi-compiler-host${CMAKE_EXECUTABLE_SUFFIX}")
+    set(asset_hosts "${asset_build_host}" "${asset_compiler_host}")
+endif()
 file(GLOB_RECURSE asset_sources CONFIGURE_DEPENDS
     "${CHIBI_SDK_ROOT}/tools/compiler/*.chibi"
     "${CHIBI_SDK_ROOT}/packages/core/*.chibi"
@@ -16,15 +29,15 @@ add_custom_command(
         "${asset_output}/asset_compiler.chibip" "${asset_output}/manifest.json"
         "${asset_output}/sources.sha256" "${asset_output}/inventory.txt"
         "${asset_output}/inventory-directories.txt" "${asset_output}/target.json"
-    COMMAND $<TARGET_FILE:chibi-build-host>
+    COMMAND "${asset_build_host}"
         --compiler tools/compiler --compiler-core packages/core --root "${CHIBI_SDK_ROOT}"
         --source tools/toolchain/AssetCompiler.chibi --core packages/core
         --collection asset_generator=tools/graph/asset_compiler --entry Build --timeout-ms ${asset_generator_timeout} --
-        $<TARGET_FILE:chibi-compiler-host> "${asset_output}" ${asset_compiler_timeout_arguments}
+        "${asset_compiler_host}" "${asset_output}" ${asset_compiler_timeout_arguments}
     COMMAND "${CMAKE_COMMAND}" -DROOT=${CHIBI_SDK_ROOT} -DRESOURCE=${asset_output}
         -P "${CHIBI_SDK_ROOT}/cmake/verify_source_snapshot.cmake"
     WORKING_DIRECTORY "${CHIBI_SDK_ROOT}"
-    DEPENDS chibi-build-host chibi-compiler-host ${asset_sources}
+    DEPENDS ${asset_hosts} ${asset_sources}
         "${CHIBI_SDK_ROOT}/tools/compiler/bootstrap/compiler.chibip"
         "${CHIBI_SDK_ROOT}/tools/compiler/bootstrap/bootstrap.json"
         "${CHIBI_SDK_ROOT}/tools/compiler/asset_compiler/CompilerSources.txt"

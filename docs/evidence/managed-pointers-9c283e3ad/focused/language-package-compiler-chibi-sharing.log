@@ -1,7 +1,0 @@
-$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-package-compiler-chibi-sharing
-revision 9c283e3ad6fbbcff36471eb8b311eb1953a0a0ea 0 modified
-Running: package_compiler_shares_its_arguments (OK) (121.079760 secs)
-===============================================================
-Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 139
-Test command wall time: 122.936s; includes in-test fixture setup; external configuration/build excluded.
-exit 0

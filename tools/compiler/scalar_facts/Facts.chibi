@@ -1,13 +1,15 @@
 package scalar_facts
 
-// Internal opt-in owned result for one source document holding a bounded set
-// of ordinary pure functions over numbers, bool, and records and unions of
-// them, which may recurse. A function's body is locals, assignments, if
-// statements, switches over integers or a union's variants, while loops, loops
-// over int ranges, breaks, continues and returns. Values and conditions are
-// literals, variables, arithmetic, shifts, conversions, comparisons, logic,
-// record literals, field reads, union variants, their tests and payloads, and
-// direct calls of functions of the set, whose operands are such expressions.
+// Internal opt-in owned result for one source document holding a set of
+// ordinary pure functions over numbers, bool, strings, and records and
+// unions of numbers and bool, which may recurse. A function's body is
+// locals, assignments, if statements, switches over integers or a union's
+// variants, while loops, loops over int ranges, breaks, continues and
+// returns. Values and conditions are literals, variables, arithmetic,
+// shifts, conversions, comparisons, logic, record literals, field reads,
+// union variants, their tests and payloads, a string's byte count, bytes and
+// slices, and direct calls of functions of the set, whose operands are such
+// expressions.
 // This is not a general IR, and no compiler-private identity crosses this
 // boundary.
 //
@@ -18,7 +20,8 @@ package scalar_facts
 // a rejection, and it must never be emitted.
 //
 // An accepted module's row 1 is its Document: `name` is the shared source
-// snapshot's document key. Then each record and union the source declares
+// snapshot's document key, and `text` is empty for a package and the library's
+// name for a native library source. Then each record and union the source declares
 // follows in declaration order:
 // - a record is a Record row, its `name`, `count` fields and declaration
 //   range, then `count` Member rows: `name`, scalar `type`, ordinal `value`
@@ -28,13 +31,26 @@ package scalar_facts
 //   `value`, `count` payload fields and range, then `count` Member rows:
 //   `name`, scalar `type`, name range and `value`, the payload's ordinal
 //   among all the union's payloads in declaration order.
+// Then, for each function with several named results in declaration order,
+// a record of them: a Record row named for the function with `.results`, its
+// declaration's range, then a Member row for each result as for a field.
 // The d-th of them is type RecordType + d, which a function's result, a
 // parameter, a variable and an operand may have. Then each function follows
-// in declaration order; the first is the module's entry and takes no
-// parameters and returns int:
+// in declaration order; a package's first is the module's entry and takes no
+// parameters and returns int, and a library has no entry:
 // - a Function row: its `name`, result `type`, `count` parameters and
-//   declaration range;
+//   declaration range, and in a library its stable symbol ID as `literal`,
+//   the ID the runtime binds it by;
 // - `count` Parameter rows: `name`, `type`, ordinal `value`, name range;
+// - a Local row for each named result, with its name's range, whose operand
+//   is its zero: a Literal, or a Zero for a record. A function with one
+//   named result returns its value, and one with several the record of
+//   them. A return of one named result's value returns it. A return of
+//   several values is an Assign row for each, with the value's range, in
+//   order, then a Return of the record of them all with the range of the
+//   values' closing parenthesis. A bare return returns the results' values,
+//   and a body that does not end in a terminating statement does so at its
+//   closing brace;
 // - its body's statement rows in source order, each with its statement's
 //   range. The body ends in a terminating statement: a return, an if
 //   statement with an else whose two branches end in terminating statements,
@@ -91,10 +107,12 @@ package scalar_facts
 //
 // Operand rows are in evaluation order, each after the operands it consumes:
 // a Literal's `literal` is its value, or 0 and 1 for false and true, and a
-// word's is its bits, as a float's and a double's are their IEEE encodings;
+// word's is its bits, as a float's and a double's are their IEEE encodings; a
+// string Literal's `text` is its decoded bytes and its `literal` 0;
 // a Read's `value` is its variable's ordinal; a Compare's `value` is its
 // operator and it consumes the two most recent unconsumed operands, numbers
-// of one type, or two bools for == and !=, left first, to give a bool; an
+// of one type, or two bools or two strings for == and !=, left first, to
+// give a bool, two strings being equal when their bytes are; an
 // Arithmetic's `value` is its operator and it consumes the two most recent
 // unconsumed operands, both of its number `type`, left first, to give one of
 // that type; a Unary's `value` is its operator and it consumes the most
@@ -122,7 +140,15 @@ package scalar_facts
 // give the payload, of its `type`. Payloads are read only where their variant
 // is held; the backend cannot check this, and another variant's payload reads
 // its zero. `v is .V` is the Tag of `v`, a Literal of V's ordinal with the
-// pattern's range, then an Equal Compare, or NotEqual for `is not`. A record
+// pattern's range, then an Equal Compare, or NotEqual for `is not`. A Text
+// row reads a string's bytes as the runtime's text natives do, and its
+// `value` is its operator: TextLength consumes the most recent unconsumed
+// operand, a string, to give its byte count; TextByte consumes the two most
+// recent, a string then an index, to give the byte there, 0 to 255, or -1
+// outside the string; TextSlice consumes the three most recent, a string,
+// then a start and a count, to give the string of those bytes, its start
+// clamped to the string and its count to the bytes after the start. The
+// indexes, starts, counts and byte counts are ints. A record
 // literal is a Zero row with the literal's range, then each
 // field's value in source order and its Update, with the field's range. An
 // assignment to a field, `v.f = x`, is an Assign of `v` whose operands read
@@ -187,9 +213,10 @@ pub VariantRow: int : 31;
 pub MakeRow: int : 32;
 pub TagRow: int : 33;
 pub PayloadRow: int : 34;
+pub TextRow: int : 35;
 
-// The scalar types: int and bool, then the other integer types, then the
-// floating ones. The facts carry no compiler storage ordinal.
+// The value types: int and bool, then the other integer types, then the
+// floating ones, then string. The facts carry no compiler storage ordinal.
 pub IntType: int : 1;
 pub BoolType: int : 2;
 pub Int8Type: int : 3;
@@ -201,6 +228,8 @@ pub Int64Type: int : 8;
 pub WordType: int : 9;
 pub FloatType: int : 10;
 pub DoubleType: int : 11;
+// An immutable string of bytes. No record field or union payload is one.
+pub StringType: int : 12;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;
 
@@ -240,6 +269,11 @@ pub Not: int : 3;
 pub LogicalAnd: int : 1;
 pub LogicalOr: int : 2;
 
+// Text operators: the runtime's text_byte_length, text_byte_at and text_slice.
+pub TextLength: int : 1;
+pub TextByte: int : 2;
+pub TextSlice: int : 3;
+
 // A For row's range flags.
 pub RangeExclusive: int : 1;
 pub RangeReverse: int : 2;
@@ -278,8 +312,12 @@ pub Floating :: (type: int) -> bool {
     return type == FloatType || type == DoubleType;
 }
 // Whether `literal` is a value of `type`: 0 or 1 for bool, its range for an
-// integer type, any bits for a word or double, and 32 bits for a float.
+// integer type, any bits for a word or double, 32 bits for a float and 0 for
+// a string, whose value is its text.
 pub Fits :: (literal: i64, type: int) -> bool {
+    if (type == StringType) {
+        return literal == 0;
+    }
     if (type == FloatType) {
         return literal >= 0 && literal < i64(1) << u32(32);
     }
@@ -296,20 +334,3 @@ pub Fits :: (literal: i64, type: int) -> bool {
     half := i64(1) << u32(bits - 1);
     return literal >= 0 - half && literal < half;
 }
-
-// Bounds both sides check before reading counts: source bytes, records and
-// unions per module together, fields per record, variants per union and
-// payloads per union, all its variants' together, functions per module,
-// parameters, locals and statement rows per function, a switch arm's Case row
-// counting as a statement, and operands per function, counted over all its
-// statements together.
-pub MaxSource: int : 16384;
-pub MaxRecords: int : 16;
-pub MaxMembers: int : 16;
-pub MaxVariants: int : 16;
-pub MaxPayloads: int : 15;
-pub MaxFunctions: int : 32;
-pub MaxParameters: int : 8;
-pub MaxLocals: int : 16;
-pub MaxStatements: int : 32;
-pub MaxOperands: int : 64;

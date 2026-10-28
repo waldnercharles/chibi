@@ -591,15 +591,16 @@ static bool clone_graph(char clone[SDK_PATH], const char *name)
     char path[SDK_PATH];
     join(clone, suite, name);
     REQUIRE(!mkdir(clone, 0700));
-    static const char *directories[] = { "sdk", "share", "share/chibi" };
+    static const char *directories[] = { "sdk", "share", "share/chibi", "share/chibi/tools" };
     for (size_t i = 0; i < sizeof directories / sizeof *directories; i++) {
         join(path, clone, directories[i]);
         REQUIRE(!mkdir(path, 0700));
     }
     static const char *inputs[] = {
-        "sdk/chibi-build-host",    "sdk/chibi-build-host.chibi-record",
-        "sdk/chibi-compiler-host", "sdk/chibi-compiler-host.chibi-record",
-        "share/chibi/compiler",    "share/chibi/core",
+        "sdk/chibi-build-host",         "sdk/chibi-build-host.chibi-record",
+        "sdk/chibi-compiler-host",      "sdk/chibi-compiler-host.chibi-record",
+        "share/chibi/compiler",         "share/chibi/core",
+        "share/chibi/tools/native_aot",
     };
     for (size_t i = 0; i < sizeof inputs / sizeof *inputs; i++) {
         char source[SDK_PATH];
@@ -791,6 +792,9 @@ TEST_CASE(compiler_tools_package_and_run_after_relocation)
     }
     REQUIRE(copied(original, "share/chibi/compiler", build_path, "share/chibi/compiler"));
     REQUIRE(copied(original, "share/chibi/core", build_path, "share/chibi/core"));
+    REQUIRE(
+        copied(original, "share/chibi/tools/native_aot", build_path, "share/chibi/tools/native_aot")
+    );
     REQUIRE(copied(original, "share/chibi/graph", CHIBI_SOURCE_ROOT, "tools/graph"));
     static const char *programs[] = { "Build.chibi", "Graph.chibi", "SDK.chibi", "StageOne.chibi" };
     for (size_t i = 0; i < sizeof programs / sizeof *programs; i++) {

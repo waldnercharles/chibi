@@ -365,14 +365,18 @@ player *player_new(const player_spec *spec, char *error, size_t size)
     /* No dispatch until all registrations exist. A later scene/schema failure
      * destroys the unpublished-to-host player as one owned unit. */
     source_commit(stage);
+    source_registry *sources = world_sources(p->world);
+    if (source_bind_natives(sources, spec->natives, spec->native_count, error, size) != 0) {
+        goto reject;
+    }
     for (int i = 0; i < spec->scene_count; i++) {
-        if (!behaviors_registered(world_sources(p->world), spec->scenes[i].scene)) {
+        if (!behaviors_registered(sources, spec->scenes[i].scene)) {
             fail(error, size, "Prepared scene references an unregistered source module");
             goto reject;
         }
     }
     for (int i = 0; i < spec->prototype_count; i++) {
-        if (!behaviors_registered(world_sources(p->world), spec->prototypes[i].scene)) {
+        if (!behaviors_registered(sources, spec->prototypes[i].scene)) {
             fail(error, size, "Prepared prototype references an unregistered source module");
             goto reject;
         }

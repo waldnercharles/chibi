@@ -1,0 +1,41 @@
+package workload
+
+// Game math: place 8,000 boxes with a xorshift generator and count the
+// overlapping pairs with a brute-force broad phase.
+Main :: () -> int {
+    count := 0;
+    for (a in 0..<8000) {
+        first := Place(a);
+        for (b in a + 1..<8000) {
+            if (Overlaps(first, Place(b))) {
+                count = count + 1;
+            }
+        }
+    }
+    return count % 251;
+}
+
+Box :: struct {
+    x: int;
+    y: int;
+    w: int;
+    h: int;
+}
+
+Place :: (index: int) -> Box {
+    seed := Mix(index + 1);
+    box: Box = {x: seed % 4096, y: (seed / 4096) % 4096, w: 8 + seed % 61, h: 8 + (seed / 61) % 53};
+    return box;
+}
+
+Mix :: (value: int) -> int {
+    x := value * 1664525 + 1013904223;
+    x = x ^ (x >> 13);
+    x = x * 1103515245 + 12345;
+    x = x ^ (x >> 16);
+    return x & 1073741823;
+}
+
+Overlaps :: (a: Box, b: Box) -> bool {
+    return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}

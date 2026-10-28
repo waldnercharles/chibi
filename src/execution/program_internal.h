@@ -166,6 +166,9 @@ struct execution_program
     char *name;
     ecs_world *world;
     service_binding *services;
+    /* Borrowed native entries its synchronous calls run; NULL runs them all
+     * in the VM. */
+    const struct execution_natives *natives;
     service_binding *pending_services;
     arena service_names;
     behavior_managed_heap *managed;

@@ -218,6 +218,7 @@ execution_activation *program_activation_new(
     if (resumable && !a->activation.values) {
         behavior_function_activation_init(function, &a->activation);
     }
+    a->activation.natives = p->natives;
     a->context = (behavior_function_context){
         .activation = resumable ? &a->activation : NULL,
         .data = a->context.data,

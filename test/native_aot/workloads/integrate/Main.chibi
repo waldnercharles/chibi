@@ -1,0 +1,41 @@
+package workload
+
+// Game math: integrate 64 bodies under gravity for 200,000 fixed steps,
+// bouncing off the floor and walls, and checksum their final positions.
+Main :: () -> int {
+    sum := 0;
+    for (seed in 0..<64) {
+        sum = sum + Simulate(seed);
+    }
+    return sum % 251;
+}
+
+Body :: struct {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+}
+
+Simulate :: (seed: int) -> int {
+    body: Body = {x: number(seed % 17), y: number(10 + seed % 23), vx: number(seed % 5) - 2, vy: 0};
+    for (step in 0..<200000) {
+        body = Step(body, 0.001);
+    }
+    return int(body.x * 100) + int(body.y * 100);
+}
+
+Step :: (body: Body, dt: number) -> Body {
+    next := body;
+    next.vy = body.vy - 9.8 * dt;
+    next.x = body.x + body.vx * dt;
+    next.y = body.y + next.vy * dt;
+    if (next.y < 0) {
+        next.y = 0 - next.y;
+        next.vy = 0 - next.vy * 0.9;
+    }
+    if (next.x < 0 || next.x > 16) {
+        next.vx = 0 - next.vx;
+    }
+    return next;
+}

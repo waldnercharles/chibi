@@ -11729,14 +11729,9 @@ static int managed_heap_count()
     }
     return count;
 }
-static void force_collection()
-{
-    arena_alloc(&program->managed->storage, 4096);
-    program_collect_payloads(program, NULL);
-}
-/* One entity on bytecode. Reloads keep only the heaps that still hold a
- * preserved cell: each commit retires the previous heap, and the collection
- * after it frees the retired ones that became empty. */
+/* One entity on bytecode. The program keeps one heap handle across reloads,
+ * and each commit frees the candidate's heap once it holds no cell, without
+ * waiting for a collection. */
 TEST_CASE(program_replacement_releases_empty_retired_heaps)
 {
     const char
@@ -11751,10 +11746,10 @@ TEST_CASE(program_replacement_releases_empty_retired_heaps)
     REQUIRE(instance);
     pin_value args[] = { { .type = PIN_F64, .d = 5 }, { .type = PIN_BOOL, .b = true } };
     REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    behavior_managed_heap *heap = execution_program_managed_heap(program);
     for (int reload = 0; reload < 8; reload++) {
         REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
-        force_collection();
-        REQUIRE(managed_heap_count() == 2);
+        REQUIRE(execution_program_managed_heap(program) == heap && managed_heap_count() == 1);
     }
     instance = execution_program_attach(program, entity);
     REQUIRE(instance);
@@ -11762,28 +11757,39 @@ TEST_CASE(program_replacement_releases_empty_retired_heaps)
     REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
     REQUIRE(number_state(instance, "seen", 5));
     REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
-    force_collection();
-    REQUIRE(managed_heap_count() == 1);
+    REQUIRE(execution_program_managed_heap(program) == heap && managed_heap_count() == 1);
     return true;
 }
-/* One library owner on bytecode. A reload that keeps Actor's layout preserves
- * a pointer to an Actor; one that adds a field restarts that state from nil,
- * while a pointer to an int survives both. */
-TEST_CASE(program_replacement_restarts_state_reaching_changed_pointee_layouts)
+static bool replace_library(const char *source)
 {
-    const char *sources[] = { "Store :: library { Actor :: struct { hp: f64; } "
-                              "saved: ^Actor?; kept: ^int?; }",
-                              "Store :: library { Actor :: struct { hp: f64; } "
-                              "saved: ^Actor?; kept: ^int?; }",
-                              "Store :: library { Actor :: struct { hp: f64; "
-                              "armor: f64; } saved: ^Actor?; "
-                              "kept: ^int?; }" };
+    execution_module_free(prior_module);
+    prior_module = module;
+    module = NULL;
+    script_analysis_free(analysis);
+    analysis = NULL;
+    script_syntax_free(syntax);
+    syntax = NULL;
+    return compile_module(source, BEHAVIOR_BYTECODE);
+}
+/* One library owner on bytecode. A reload that keeps Actor's layout preserves
+ * a pointer to an Actor. One that adds a field is refused while kept state
+ * reaches an old Actor: at preparation, or at commit when the running program
+ * stores one in a kept cell after preparation. The program keeps its state
+ * and module, and a restart applies the change. */
+TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts)
+{
+    const char
+        *same = "Store :: library { Actor :: struct { hp: f64; } "
+                "saved: ^Actor?; slot: ^(^Actor?)?; kept: ^int?; }",
+        *added = "Store :: library { Actor :: struct { hp: f64; armor: f64; } "
+                 "saved: ^Actor?; slot: ^(^Actor?)?; kept: ^int?; }";
     prepare();
-    REQUIRE(compile(sources[0], BEHAVIOR_BYTECODE));
+    REQUIRE(compile(same, BEHAVIOR_BYTECODE));
     uint64_t entity = ecs_entity_to_u64(ecs_world_create_entity(world));
-    uint64_t saved = state_id("saved"), kept = state_id("kept");
+    uint64_t saved = state_id("saved"), slot = state_id("slot"),
+             kept = state_id("kept");
     execution_instance *instance = execution_program_attach(program, entity);
-    REQUIRE(instance && saved && kept);
+    REQUIRE(instance && saved && slot && kept);
     const pin_record *actor = NULL;
     for (int i = 0; i < module->plan.type_count; i++) {
         if (module->plan.types[i].record &&
@@ -11799,37 +11805,45 @@ TEST_CASE(program_replacement_restarts_state_reaching_changed_pointee_layouts)
                        .record = actor,
                        .ptr = &hp };
     REQUIRE(!pin_value_snapshot_to_arena(heap, &data, &data));
-    pin_pointer *target = managed_cell(heap, data);
-    pin_pointer *number = managed_cell(heap, (pin_value){ .type = PIN_I32, .i = 7 });
-    pin_value pointers[2];
+    /* Pointer headers are copied from each state's initial nil. */
+    pin_value absent, outer, number;
     REQUIRE(
-        !pin_value_snapshot_to_arena(&parser_storage, &pointers[0], execution_instance_state(instance, saved))
+        !pin_value_snapshot_to_arena(&parser_storage, &absent, execution_instance_state(instance, saved))
     );
     REQUIRE(
-        !pin_value_snapshot_to_arena(&parser_storage, &pointers[1], execution_instance_state(instance, kept))
+        !pin_value_snapshot_to_arena(&parser_storage, &outer, execution_instance_state(instance, slot))
     );
-    pointers[0].ptr = target;
-    pointers[1].ptr = number;
-    REQUIRE(execution_instance_set_state(instance, saved, pointers[0]) == FLOW_OK);
-    REQUIRE(execution_instance_set_state(instance, kept, pointers[1]) == FLOW_OK);
-    for (int pass = 1; pass < 3; pass++) {
-        execution_module_free(prior_module);
-        prior_module = module;
-        module = NULL;
-        script_analysis_free(analysis);
-        analysis = NULL;
-        script_syntax_free(syntax);
-        syntax = NULL;
-        REQUIRE(compile_module(sources[pass], BEHAVIOR_BYTECODE));
-        REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
-        instance = execution_program_attach(program, entity);
-        REQUIRE(instance);
-        REQUIRE(execution_instance_state(instance, saved)->ptr == (pass == 1 ? target : NULL));
-        REQUIRE(
-            execution_instance_state(instance, kept)->ptr == number &&
-            number->value.i == 7
-        );
-    }
+    REQUIRE(
+        !pin_value_snapshot_to_arena(&parser_storage, &number, execution_instance_state(instance, kept))
+    );
+    pin_value target = absent;
+    target.ptr = managed_cell(heap, data);
+    pin_pointer *inner = managed_cell(heap, absent);
+    outer.ptr = inner;
+    number.ptr = managed_cell(heap, (pin_value){ .type = PIN_I32, .i = 7 });
+    REQUIRE(execution_instance_set_state(instance, saved, target) == FLOW_OK);
+    REQUIRE(execution_instance_set_state(instance, slot, outer) == FLOW_OK);
+    REQUIRE(execution_instance_set_state(instance, kept, number) == FLOW_OK);
+    REQUIRE(replace_library(same));
+    REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance && execution_instance_state(instance, saved)->ptr == target.ptr);
+    REQUIRE(replace_library(added));
+    REQUIRE(execution_program_replace(program, module, false) == FLOW_ERR_COMPILE);
+    REQUIRE(execution_program_module(program) == prior_module);
+    REQUIRE(execution_instance_state(instance, saved)->ptr == target.ptr);
+    REQUIRE(execution_instance_set_state(instance, saved, absent) == FLOW_OK);
+    other_program = execution_program_prepare_replace(program, module, false);
+    REQUIRE(other_program);
+    inner->value = target;
+    REQUIRE(execution_program_commit_replace(program, other_program) == FLOW_ERR_STATE);
+    other_program = NULL;
+    REQUIRE(execution_program_module(program) == prior_module);
+    REQUIRE(execution_instance_state(instance, slot)->ptr == inner);
+    REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance && !execution_instance_state(instance, slot)->ptr);
+    REQUIRE(!execution_instance_state(instance, kept)->ptr);
     return true;
 }
 /* One entity on two backends. Items of an array behind a pointer, and of an
@@ -11898,7 +11912,7 @@ void test_language_program()
     RUN_TEST_CASE(program_paused_reducing_systems_keep_pointer_targets);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
     RUN_TEST_CASE(program_replacement_releases_empty_retired_heaps);
-    RUN_TEST_CASE(program_replacement_restarts_state_reaching_changed_pointee_layouts);
+    RUN_TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts);
     RUN_TEST_CASE(program_managed_array_items_copy_alone);
     RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);

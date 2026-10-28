@@ -726,9 +726,12 @@ Counter :: behavior {
 Use components for entity-visible state. Use invocation locals for temporary
 work. All matches of one system share its retained state.
 
-Live replacement preserves matching retained values. New or incompatible
-bindings use their defaults. Replacement cancels old continuations and tasks.
-An explicit restart resets the owner's retained state.
+Live replacement preserves matching retained values, and new bindings use
+their defaults. A replacement that cannot keep a retained value, because its
+type changed or a record it points at changed layout, is refused: the running
+program keeps its code and values. Replacement cancels old continuations and
+tasks. An explicit restart applies any change and resets the owner's retained
+state.
 
 ## Components and systems
 

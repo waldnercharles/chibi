@@ -126,16 +126,19 @@ system. Reference: [Nim ORC source at the inspected revision](https://github.com
 
 ## Hot reload and cell storage
 
-- **Pointee layouts.** A replacement preserves state only when every authored
-  record the state reaches through a pointer has the layout the new module
-  declares. Otherwise that state restarts from its initial value, as state
-  whose own type changed does. Adding a field to `Actor` therefore resets
-  `saved: ^Actor?` to `nil`, while `kept: ^number?` survives
-  (`program_replacement_restarts_state_reaching_changed_pointee_layouts`).
-- **Retired heaps.** A commit adopts the previous heap into the family, and
-  every heap names the family's current head as its owner. The collection
-  after a commit frees each adopted heap that holds no cell and no root, so a
-  family keeps only the heaps whose cells are still reachable
+- **Kept state.** A replacement keeps each state whose id the old module also
+  declares. When it cannot keep one as it is, because the state's own type
+  changed or because it reaches through a pointer an authored record whose
+  layout the new module changes, the replacement is refused: the running
+  program keeps its module and state, and a restart applies the change. Kept
+  cells are shared with the running program until commit, so commit checks
+  them again and fails the same way. Adding a field to `Actor` therefore
+  refuses a reload while `saved: ^Actor?` points at an `Actor`
+  (`program_replacement_rejects_state_reaching_changed_pointee_layouts`).
+- **Retired heaps.** The program keeps one heap handle across replacements. A
+  commit adopts the candidate's heap into that family, and every heap names
+  the family's head as its owner. The commit, and each later collection,
+  frees each adopted heap that holds no cell and no root
   (`program_replacement_releases_empty_retired_heaps`).
 - **Items of a managed array.** A cell owns its payload alone, so element and
   field writes through a pointer (`p^[i] = v`, `p.field = v`) change it in
@@ -150,6 +153,9 @@ system. Reference: [Nim ORC source at the inspected revision](https://github.com
   in-place writes, but each item read copies the array.
 - Appending to an address-taken array local (`xs.append(v)` after `&xs`)
   reads and replaces the whole cell.
+- A replacement never migrates kept state: a changed state type or pointee
+  layout is refused rather than converted. Rows that a system's query manages
+  still restart when the query's shape changes.
 
 ## Verification ledger
 

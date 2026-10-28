@@ -59,6 +59,26 @@ static void program_rejection(
             : "component/query/binding"
     );
 }
+/* Whether only kept state refused a replacement: one that restarts the
+ * program instead would succeed. */
+static bool restart_applies(
+    const execution_program *program,
+    execution_module *module,
+    const service_binding *defaults,
+    const service_binding *overrides
+)
+{
+    execution_program *restarted = execution_program_prepare_replace_services(
+        program,
+        module,
+        true,
+        defaults,
+        overrides
+    );
+    bool applies = restarted;
+    execution_program_free(restarted);
+    return applies;
+}
 struct source_staging
 {
     source_registry *registry;
@@ -224,6 +244,19 @@ source_staging *source_stage(
                             services
                         )
                       : execution_program_new(entries[i].module, r->world, bindings);
+        if (!staged[i] && targets[i] >= 0 && !entries[i].restart &&
+            restart_applies(r->records[targets[i]].program, entries[i].module, r->services, services)) {
+            if (size) {
+                snprintf(
+                    error,
+                    size,
+                    "Source %.128s cannot keep its state; restart it to apply "
+                    "the change",
+                    entries[i].name
+                );
+            }
+            goto done;
+        }
         if (!staged[i]) {
             program_rejection(r, &entries[i], bindings, targets[i] >= 0, error, size);
             goto done;
@@ -268,13 +301,17 @@ void source_commit(source_staging *stage)
     int *changes = stage->changes, *targets = stage->targets;
     execution_program **staged = stage->programs;
     source_record *final = stage->final;
-    /* Every rejecting operation has completed. Publication performs no dispatch. */
+    /* Every rejecting operation has completed: the registry runs nothing while
+     * staged, so kept values still match their replacement. Publication
+     * performs no dispatch. */
     for (int i = 0; i < count; i++) {
         if (!entries[i].module || targets[i] < 0) {
             continue;
         }
         execution_program *program = r->records[targets[i]].program;
-        execution_program_commit_replace(program, staged[i]);
+        int status = execution_program_commit_replace(program, staged[i]);
+        assert(!status);
+        (void)status;
         staged[i] = NULL;
         for (int j = 0; entries[i].restart && j < acount(r->attachments); j++) {
             if (r->attachments[j].program == program) {

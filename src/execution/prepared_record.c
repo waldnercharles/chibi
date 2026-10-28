@@ -287,16 +287,21 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
     v->name = v->record->type.name;
 }
 /* The first of the `count` name-ordered types whose name is not before
- * `name`, found in log2(count) comparisons, each charged `bytes`. */
-static int name_position(prepared_context *c, const char *name, size_t bytes, int count)
+ * `name`, found in log2(count) comparisons, each charged `bytes`; `found`
+ * says whether its name is `name`. Names are unique, so once one equals
+ * `name`, every later comparison moves the low end up to it. */
+static int name_position(prepared_context *c, const char *name, size_t bytes, int count, bool *found)
 {
     int low = 0, high = count;
+    *found = false;
     while (low < high && work(c, bytes)) {
         int middle = low + (high - low) / 2;
-        if (strcmp(c->plan->types[c->records[middle].by_name].name, name) < 0) {
+        int order = strcmp(c->plan->types[c->records[middle].by_name].name, name);
+        if (order < 0) {
             low = middle + 1;
         } else {
             high = middle;
+            *found = !order;
         }
     }
     return low;
@@ -363,13 +368,13 @@ void prepared_types(prepared_context *c)
          * found by two searches rather than a comparison with each. Making
          * room for this type moves the indexes after both positions, which
          * is charged too: a table listed in reverse order moves count^2. */
-        int at = name_position(c, v->name, c->records[i].name_bytes, i);
+        bool found;
+        int at = name_position(c, v->name, c->records[i].name_bytes, i, &found);
         int id_at = id_position(c, v->id, i);
         if (!work(c, (size_t)(i - at + i - id_at) * sizeof c->records->by_name)) {
             break;
         }
-        if ((at < i && !strcmp(p->types[c->records[at].by_name].name, v->name)) ||
-            (id_at < i && p->types[c->records[id_at].by_id].id == v->id)) {
+        if (found || (id_at < i && p->types[c->records[id_at].by_id].id == v->id)) {
             w->error = "duplicate prepared type requirement";
             break;
         }
@@ -387,11 +392,11 @@ void prepared_types(prepared_context *c)
 static int requirement(prepared_context *c, const pin_value *v)
 {
     size_t bytes = name_bytes(c, v->type_name);
-    int at = name_position(c, v->type_name, bytes + 1, c->plan->type_count);
-    if (at < c->plan->type_count && !c->wire.error) {
+    bool found;
+    int at = name_position(c, v->type_name, bytes + 1, c->plan->type_count, &found);
+    if (found && !c->wire.error) {
         int index = c->records[at].by_name;
-        const execution_type_requirement *type = &c->plan->types[index];
-        if (type->storage == v->type && !strcmp(type->name, v->type_name)) {
+        if (c->plan->types[index].storage == v->type) {
             return index;
         }
     }

@@ -36,6 +36,9 @@ static behavior_function_context context;
 static behavior_function_activation activation;
 static behavior_run_scope runs;
 static arena storage, escaped;
+/* Owns the collections runs return. A snapshot shares them rather than
+ * copying, so the heap lives as long as the escaped snapshots. */
+static behavior_managed_heap heap;
 static pin_value result, saved;
 static unsigned char *image, *input;
 static size_t image_size;
@@ -86,6 +89,7 @@ static void cleanup()
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     arena_free(&escaped);
+    behavior_managed_heap_free(&heap);
     free(image);
     free(input);
     free(writer.records);
@@ -174,12 +178,16 @@ static bool run(behavior_backend backend, const pin_value *args, int count)
             record = shape;
         }
     }
+    if (!heap.owner) {
+        behavior_managed_heap_init(&heap);
+    }
     result = function->result_defaults[0];
     behavior_function_prepare_results(function, &result, &storage);
     context = (behavior_function_context){ .activation = &activation,
                                            .arguments = args,
                                            .argument_count = count,
                                            .results = &result,
+                                           .managed_heap = &heap,
                                            .budget = 10000 };
     behavior_function_bind_storage(&context, &storage);
     REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -273,6 +281,7 @@ TEST_CASE(record_prepared_scalar_owners)
         REQUIRE(pin_record_valid(saved.record));
         REQUIRE(!strcmp(pin_text(member(&saved, 1)).bytes, "prepared-owner"));
         arena_free(&escaped);
+        behavior_managed_heap_free(&heap);
         saved = (pin_value){ 0 };
     }
     return true;
@@ -297,11 +306,17 @@ TEST_CASE(record_prepared_array_owners)
         for (int i = 0; i < 4; i++) {
             args[0].i = counts[i];
             REQUIRE(run(backends[b], args, 2));
-            REQUIRE(result.record && arena_contains(&storage, result.record));
+            /* A returned array is a managed value, so the call's heap owns
+             * its header. */
+            REQUIRE(
+                result.record && (arena_contains(&storage, result.record) ||
+                                  arena_contains(&heap.storage, result.record))
+            );
             REQUIRE(result.container == PIN_CONTAINER_ARRAY);
             const pin_array *a = result.ptr;
             if (counts[i] < 0) {
-                REQUIRE(!a);
+                /* Arrays are values: an absent one reads as empty. */
+                REQUIRE(!a || !a->count);
                 REQUIRE(!pin_value_snapshot_to_arena(&escaped, &null_copy, &result));
                 continue;
             }
@@ -316,9 +331,11 @@ TEST_CASE(record_prepared_array_owners)
         finish_call();
         execution_module_free(module);
         module = NULL;
-        REQUIRE(null_copy.record && !null_copy.ptr && pin_record_valid(null_copy.record));
+        REQUIRE(null_copy.record && pin_record_valid(null_copy.record));
+        REQUIRE(!null_copy.ptr || !((pin_array *)null_copy.ptr)->count);
         REQUIRE(pin_record_valid(saved.record) && ((pin_array *)saved.ptr)->count == 3);
         arena_free(&escaped);
+        behavior_managed_heap_free(&heap);
         saved = (pin_value){ 0 };
     }
     return true;
@@ -668,7 +685,7 @@ TEST_CASE(record_prepared_proof_keeps_each_header_check)
         } else if (mode == 1) {
             later->type = PIN_I32;
         } else if (mode == 2) {
-            later->container = (pin_container)(PIN_CONTAINER_MAP + 1);
+            later->container = (pin_container)(PIN_CONTAINER_VIEW + 1);
         } else {
             later->type_name = "Rows.Other";
         }

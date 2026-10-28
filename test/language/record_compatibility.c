@@ -3,6 +3,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
 #include "types/text.h"
 
 #include <stddef.h>
@@ -67,15 +68,25 @@ static pin_value item(pin_type type, int number)
     value.ptr = row;
     return value;
 }
+/* Legacy kernels never give a value an authored record; a native element
+ * may carry its catalog type's native record. */
+static bool native_or_none(const pin_record *record)
+{
+    return !record ||
+           (record->native && !strcmp(record->type.name, native_type.name));
+}
 static bool check_item(const pin_value *value, pin_type type, int number)
 {
     REQUIRE(value->type == type && value->container == PIN_CONTAINER_SINGLE);
-    REQUIRE(!value->record);
+    REQUIRE(native_or_none(value->record));
     if (type == PIN_I32) {
         REQUIRE(value->i == number);
         return true;
     }
+    /* Text is immutable and shared: a result holds a reference to its
+     * owner, which outlives the source arena. */
     const char *text = type == PIN_STR ? pin_text(*value).bytes : NULL;
+    REQUIRE(type != PIN_STR || !number || pin_text(*value).owner);
     if (type == PIN_STRUCT) {
         REQUIRE(value->type_name && !strcmp(value->type_name, native_type.name));
         REQUIRE(arena_contains(&results, value->type_name));
@@ -95,7 +106,7 @@ static bool check_item(const pin_value *value, pin_type type, int number)
     char expected[24];
     snprintf(expected, sizeof expected, "native-%d", number);
     REQUIRE(text && !strcmp(text, expected));
-    REQUIRE(arena_contains(&results, text));
+    REQUIRE(type == PIN_STR || arena_contains(&results, text));
     return true;
 }
 TEST_CASE(record_legacy_array_callbacks)
@@ -182,13 +193,11 @@ TEST_CASE(record_legacy_array_callbacks)
                 REQUIRE(base.count == 3 && base.items == items && tail.count == 1);
             }
         }
-        /* The result must already own all text before a test-side copy. */
-        if (kinds[kind] != PIN_I32) {
+        /* A native row's text is a mutable buffer the source owns, so the
+         * result must already hold its own copy. */
+        if (kinds[kind] == PIN_STRUCT) {
             for (int i = 0; i < 4; i++) {
-                char *text = kinds[kind] == PIN_STR
-                               ? (char *)pin_text(items[i]).bytes
-                               : (char *)((native_row *)items[i].ptr)->text;
-                text[0] = 'X';
+                ((char *)((native_row *)items[i].ptr)->text)[0] = 'X';
             }
         }
         arena_free(&source);
@@ -196,12 +205,12 @@ TEST_CASE(record_legacy_array_callbacks)
             for (int operation = 0; operation < 8; operation++) {
                 const pin_value *value = &out[wrapper][operation];
                 REQUIRE(value->type == kinds[kind] && value->container == PIN_CONTAINER_ARRAY);
-                REQUIRE(!value->record);
+                REQUIRE(native_or_none(value->record));
                 const pin_array *array = value->ptr;
                 REQUIRE(array && arena_contains(&results, array));
                 REQUIRE(!array->count || arena_contains(&results, pin_array_data(array, 0)));
                 REQUIRE(array->count == counts[operation] && array->element_type == kinds[kind]);
-                REQUIRE(!array->record);
+                REQUIRE(native_or_none(array->record));
                 if (kinds[kind] == PIN_STRUCT) {
                     REQUIRE(!strcmp(value->type_name, native_type.name));
                     REQUIRE(!strcmp(array->type_name, native_type.name));

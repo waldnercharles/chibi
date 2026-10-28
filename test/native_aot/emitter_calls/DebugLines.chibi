@@ -1,0 +1,116 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Match the C oracle byte for byte, including an unterminated final line.
+AllInstructionsLocated :: (text: string) -> bool {
+    at: int = 0;
+    size := strings.ByteLength(text);
+    while at < size {
+        rest := strings.Slice(text, at, size - at);
+        count := strings.Index(rest, "\n");
+        if count < 0 {
+            count = size - at;
+        }
+        line := strings.Slice(rest, 0, count);
+        if count > 2 && strings.HasPrefix(line, "  ") && !strings.Contains(line, ", !dbg !") {
+            return false;
+        }
+        at += count + 1;
+    }
+    return true;
+}
+CallLines :: () -> int[] {
+    return [2, 3, 3, 3, 3, 3, 3, 6, 7, 7, 7];
+}
+CallColumns :: () -> int[] {
+    return [1, 17, 20, 26, 12, 5, 5, 1, 5, 5, 5];
+}
+DebugCallModule :: (target: abi.Target, names: string[], lines: int[], columns: int[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "Main.chibi", directory: "/game \"x\""};
+    return native.Emit(target,
+                       [Function(6, 0, 0, 4, 0, 7, 0, 3), Function(6, 3, 4, 1, 7, 4, 3, 0)],
+                       [6, 1, 6], [6, 1, 6, 6, 6], empty, Calls(), [0, 1, 2], records,
+                       empty, texts, source, names, lines, columns, false, 1);
+}
+LineTableMismatch: string : "native line table differs from its module";
+LinuxLineTablesOnly: string : "native line tables are Linux x86-64 only";
+@test
+NoSourceFileOmitsDebugMetadata :: () {
+    text := Emitted(CallModule(Calls(), [0, 1, 2]));
+    assert(!strings.Contains(text, "!dbg"));
+    assert(!strings.Contains(text, "!llvm"));
+}
+// Each function is a named subprogram. Every instruction belongs to its code
+// row; entry and trap instructions belong to the function's first row.
+@test
+SourceLinesDescribeFunctionsAndEveryInstruction :: () {
+    text := Emitted(DebugCallModule(abi.LinuxX64(), ["Main", "Pick"], CallLines(), CallColumns()));
+    assert(strings.Contains(text, "define i32 @chibi_scalar() #0 !dbg !6 {\nentry:\n  %budget0 = alloca i32, !dbg !8\n"));
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) #0 !dbg !7 {\nentry:\n  %budget0 = alloca i32, !dbg !15\n"));
+    assert(strings.Contains(text, "%v4 = call i32 @chibi_scalar.1(i32 %c4_0, i1 %c4_1, i32 %c4_2), !dbg !12\n"));
+    assert(strings.Contains(text, "trap:\n  call void @llvm.trap(), !dbg !8\n  unreachable, !dbg !8\n"));
+    assert(strings.Contains(text, "trap:\n  call void @llvm.trap(), !dbg !15\n"));
+    assert(strings.Contains(text, "!llvm.dbg.cu = !{!0}\n!llvm.module.flags = !{!2, !3}\n"));
+    assert(strings.Contains(text, "!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: \"chibi\", isOptimized: false, runtimeVersion: 0, emissionKind: LineTablesOnly)\n"));
+    assert(strings.Contains(text, "!1 = !DIFile(filename: \"Main.chibi\", directory: \"/game \\22x\\22\")\n"));
+    assert(strings.Contains(text, "!2 = !{i32 7, !\"Dwarf Version\", i32 4}\n!3 = !{i32 2, !\"Debug Info Version\", i32 3}\n"));
+    assert(strings.Contains(text, "!4 = !DISubroutineType(types: !5)\n!5 = !{}\n"));
+    assert(strings.Contains(text, "!6 = distinct !DISubprogram(name: \"Main\", linkageName: \"chibi_scalar\", scope: !1, file: !1, line: 2, type: !4, scopeLine: 2, spFlags: DISPFlagDefinition, unit: !0)\n"));
+    assert(strings.Contains(text, "!7 = distinct !DISubprogram(name: \"Pick\", linkageName: \"chibi_scalar.1\", scope: !1, file: !1, line: 6, type: !4, scopeLine: 6, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition, unit: !0)\n"));
+    assert(strings.Contains(text, "!12 = !DILocation(line: 3, column: 12, scope: !6)\n"));
+    assert(strings.Contains(text, "!18 = !DILocation(line: 7, column: 5, scope: !7)\n"));
+    assert(AllInstructionsLocated(text));
+    assert(!strings.Contains(text, "!19 ="));
+    assert(AllInstructionsLocated("\n  \n label\n  ret i32 0, !dbg !8"));
+    assert(!AllInstructionsLocated("  ret i32 0, !dbg !8\n  ret i32 0"));
+}
+@test
+MacOSLineTablesAreRejected :: () {
+    Rejects(DebugCallModule(abi.MacOSArm64(), ["Main", "Pick"], CallLines(), CallColumns()), LinuxLineTablesOnly);
+}
+@test
+WindowsLineTablesAreRejected :: () {
+    Rejects(DebugCallModule(abi.WindowsX64(), ["Main", "Pick"], CallLines(), CallColumns()), LinuxLineTablesOnly);
+}
+@test
+UnnamedFunctionHasNoLineTable :: () {
+    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", ""], CallLines(), CallColumns()), LineTableMismatch);
+}
+@test
+NegativeSourceLineIsRejected :: () {
+    before := [2, 3, 3, 3, 3, 3, 3, 6, -1, 7, 7];
+    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", "Pick"], before, CallColumns()), LineTableMismatch);
+}
+@test
+NegativeSourceColumnIsRejected :: () {
+    // Preserve the original malformed column vector, not just its negative row.
+    before := [2, 3, 3, 3, 3, 3, 3, 6, -1, 7, 7];
+    Rejects(DebugCallModule(abi.LinuxX64(), ["Main", "Pick"], CallLines(), before), LineTableMismatch);
+}
+@test
+TextComparisonHelperHasArtificialLocation :: () {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, 13, 0, 0, 0, 0, 0),
+             Code(native.Constant, 13, 1, 0, 0, 0, 1),
+             Code(native.Ne, 13, 2, 0, 1, 0, 0),
+             Code(native.Publish, 1, 0, 2, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    empty: int[] = [];
+    records: native.Record[] = [];
+    source: native.Source = {file: "Main.chibi", directory: "/game"};
+    positions := [1, 2, 2, 2, 2, 2];
+    text := Emitted(native.Emit(abi.LinuxX64(), [Function(1, 0, 0, 3, 0, 6, 0, 0)],
+                                empty, [13, 13, 1], empty, code, empty, records, empty,
+                                ["a\"\\\né", ""], source, ["Main"], positions, positions, false, 1));
+    assert(strings.Contains(text, "define internal i1 @chibi_scalar.text_equal({ ptr, i32 } %a, { ptr, i32 } %b) #0 !dbg !7 {\n"));
+    assert(strings.Contains(text, "  %index = phi i32 [ 0, %entry ], [ %next, %byte ], !dbg !14\n"));
+    assert(strings.Contains(text, "!7 = distinct !DISubprogram(name: \"chibi_scalar.text_equal\", scope: !1, file: !1, line: 0, type: !4, scopeLine: 0, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition, unit: !0)\n"));
+    assert(strings.Contains(text, "!13 = !DILocation(line: 2, column: 2, scope: !6)\n!14 = !DILocation(line: 0, scope: !7)\n"));
+    assert(AllInstructionsLocated(text));
+}

@@ -15,8 +15,10 @@
 #include <string.h>
 #include <unistd.h>
 
-static const pin_string stale_text = { "stale", sizeof("stale") - 1 };
-static const pin_string changed_text = { "changed", sizeof("changed") - 1 };
+static const pin_string stale_text = { .bytes = "stale",
+                                       .length = sizeof("stale") - 1 };
+static const pin_string changed_text = { .bytes = "changed",
+                                         .length = sizeof("changed") - 1 };
 
 /* Seven fixed cases. VM/SLJIT preparation and publication, no authored execution.
  * The repro selector runs only the VM half of the real publication case. */
@@ -223,14 +225,24 @@ TEST_CASE(record_equal_catalog_snapshots_merge_and_own_their_shape)
     REQUIRE(parse_record());
     REQUIRE(copied.types[0].name != analysis->types[0].name);
     REQUIRE(copied.types[0].fields != analysis->types[0].fields);
+    pin_value copied_default = copied.types[0].fields[0].default_value;
+    pin_value original_default = analysis->types[0].fields[0].default_value;
+    const pin_string expected = { .bytes = "saved", .length = 5 };
     REQUIRE(
-        pin_text(copied.types[0].fields[0].default_value).bytes !=
-        pin_text(analysis->types[0].fields[0].default_value).bytes
+        copied_default.type == PIN_STR && copied_default.text &&
+        copied_default.text->owner && copied_default.text != original_default.text
     );
+    REQUIRE(arena_contains(&catalog_storage, copied_default.text));
+    REQUIRE(pin_text_equal(pin_text(copied_default), expected));
     plan = script_lower(analysis, &copied, &bindings);
     REQUIRE(plan->valid && plan->type_count == 1);
     uint64_t id = plan->types[0].id, layout = plan->types[0].layout;
     size_t size = plan->types[0].size;
+    script_analysis_free(analysis);
+    analysis = NULL;
+    script_syntax_free(syntax);
+    syntax = NULL;
+    REQUIRE(pin_text_equal(pin_text(copied_default), expected));
     clear_analysis();
     write_types();
     REQUIRE(!writer.wire.error);

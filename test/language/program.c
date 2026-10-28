@@ -4912,7 +4912,9 @@ TEST_CASE(program_completed_bound_parent_leaves_only_dependent_children_bound)
 }
 /* Authored tasks depend on the components their pointer arguments root at
  * when the task may dereference them, on any path and through synchronous
- * callees. Holding, comparing or handing a pointer to another task does not. */
+ * callees, including scoped parameters such as Poison's, which reach the
+ * lent target through references. Holding, comparing or handing a pointer to
+ * another task does not. */
 TEST_CASE(program_task_infers_component_dependencies)
 {
     static const char *const starts[] = {

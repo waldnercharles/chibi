@@ -351,6 +351,16 @@ static ecs_component_cell *pointer_target(pin_value value)
     }
     return pointer->component;
 }
+/* The cell an argument roots at: a managed pointer's, or for a scoped
+ * parameter, the target of the pointer the caller lends. */
+static ecs_component_cell *argument_target(const behavior_function *callee, int k, pin_value value)
+{
+    if (behavior_function_kind(callee, BEHAVIOR_BANK_ARGUMENT, k) == BEHAVIOR_REFERENCE &&
+        !execution_reference_managed_pointer(value, &value)) {
+        return NULL;
+    }
+    return pointer_target(value);
+}
 /* A task depends on each component its pointer arguments root at when the
  * callee may dereference that argument. */
 static int start_task(behavior_function_context *ctx, int index)
@@ -365,7 +375,8 @@ static int start_task(behavior_function_context *ctx, int index)
     ecs_component_cell **targets = xmalloc(((size_t)call->count + 1) * sizeof *targets);
     int count = 0;
     for (int k = 0; k < call->count; k++) {
-        ecs_component_cell *cell = pointer_target(ctx->data->values[call->first + k]);
+        ecs_component_cell *
+            cell = argument_target(call->function, k, ctx->data->values[call->first + k]);
         if (cell &&
             (call->function->task_dependencies & execution_task_argument_bit(k))) {
             targets[count++] = cell;

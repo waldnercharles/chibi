@@ -3195,14 +3195,21 @@ static void depend_host(depend_flow *s, const behavior_function_host_call *host)
     }
     switch (execution_intrinsic_kind(host->capability_id)) {
         case EXECUTION_INTRINSIC_POINTER_WRITE:
+        case EXECUTION_INTRINSIC_REFERENCE_WRITE:
+        case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
             depend_join(s, &s->memory, inputs);
             depend_access(s, depend_get(s, &s->cells, host->first));
             break;
+        /* A scoped parameter reaches its lent target through references. */
         case EXECUTION_INTRINSIC_POINTER_READ:
         case EXECUTION_INTRINSIC_POINTER_FIELD:
         case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+        case EXECUTION_INTRINSIC_REFERENCE_READ:
+        case EXECUTION_INTRINSIC_REFERENCE_FIELD:
             depend_access(s, depend_get(s, &s->cells, host->first));
             break;
+        /* Comparing values keeps neither. */
+        case EXECUTION_INTRINSIC_VALUE_EQUAL: inputs = 0; break;
         default: depend_join(s, &s->memory, inputs); break;
     }
     for (int k = 0; k < host->result_count; k++) {

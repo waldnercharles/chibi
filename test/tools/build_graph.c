@@ -1741,6 +1741,87 @@ static int same_tree(const char *ours, const char *theirs)
     return count;
 }
 
+TEST_CASE(sdk_version_authority_is_shared_and_invalidates_configuration)
+{
+    char source[GRAPH_PATH], sdk[GRAPH_PATH], build_dir[GRAPH_PATH],
+        version[GRAPH_PATH], decoy[GRAPH_PATH], configured[GRAPH_PATH],
+        original[GRAPH_PATH], reader[GRAPH_PATH], project[GRAPH_PATH],
+        probe[GRAPH_PATH];
+    join(source, suite, "sdk version source");
+    join(sdk, source, "sdk");
+    join(build_dir, suite, "sdk version build");
+    assert(!mkdir(source, 0700));
+    assert(!mkdir(sdk, 0700));
+    join(version, sdk, "VERSION");
+    tool_write(version, " \t9.8.7 \r\n");
+    join(decoy, sdk, "CMakeLists.txt");
+    tool_write(decoy, "set(CHIBI_SDK_VERSION 0.0.1)\n");
+    join(original, CHIBI_SOURCE_ROOT, "sdk/version.cmake");
+    join(reader, sdk, "version.cmake");
+    const char *copy[] = { "cp", original, reader, NULL };
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    join(project, source, "CMakeLists.txt");
+    tool_write(
+        project,
+        "cmake_minimum_required(VERSION 3.25)\n"
+        "project(SDKVersionFixture NONE)\n"
+        "include(\"${CMAKE_CURRENT_SOURCE_DIR}/sdk/version.cmake\")\n"
+        "file(WRITE \"${CMAKE_CURRENT_BINARY_DIR}/configured-version\" "
+        "\"${CHIBI_SDK_VERSION}\\n\")\n"
+    );
+    const char *configure[] = { "cmake",   "-S", source,  "-B",
+                                build_dir, "-G", "Ninja", NULL };
+    REQUIRE(tool_run(configure, source, log_path) == 0);
+    join(configured, build_dir, "configured-version");
+    char *actual = tool_read(configured);
+    REQUIRE(actual && !strcmp(actual, "9.8.7\n"));
+    free(actual);
+
+    tool_write(version, "\n 9.8.8\t\n");
+    const char *rebuild[] = { "cmake", "--build", build_dir, NULL };
+    REQUIRE(tool_run(rebuild, source, log_path) == 0);
+    actual = tool_read(configured);
+    REQUIRE(actual && !strcmp(actual, "9.8.8\n"));
+    free(actual);
+    assert(!unlink(decoy));
+    join(probe, suite, "SDKVersion.chibi");
+    tool_write(
+        probe,
+        "package version\nimport engine \"graph:engine\"\n"
+        "Build :: () -> int {\n"
+        "    arguments := build.arguments(); root := arguments[0];\n"
+        "    if (engine.SDKVersion(root) != \"9.8.8\") { return 1; }\n"
+        "    path := build.join([root, \"/sdk/VERSION\"], \"\");\n"
+        "    if (!build.write_file(path, \"\\t 7.6.5 \\r\\n\")) { return 2; }\n"
+        "    if (engine.SDKVersion(root) != \"7.6.5\") { return 3; }\n"
+        "    return 0;\n}\n"
+    );
+    const char *argv[] = { host_path,
+                           "--root",
+                           CHIBI_SOURCE_ROOT,
+                           "--source",
+                           probe,
+                           "--core",
+                           "packages/core",
+                           "--collection",
+                           "graph=tools/graph",
+                           "--entry",
+                           "Build",
+                           "--timeout-ms",
+                           "50000",
+                           "--",
+                           source,
+                           NULL };
+    int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
+    if (status) {
+        char *log = tool_read(log_path);
+        fprintf(stderr, "SDK version probe: %s\n", log ? log : "");
+        free(log);
+    }
+    REQUIRE(!status);
+    return true;
+}
+
 /* The launcher's share/chibi and chibi_ctl's resources equal what CMake
  * configures: the build identity, the core and documentation sources and the
  * shaders. They are written before any compile, so a compiler that always
@@ -1865,6 +1946,7 @@ void test_build_graph_programs(const char *host, const char *cmake_build)
 void test_build_graph_resources(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
+    RUN_TEST_CASE(sdk_version_authority_is_shared_and_invalidates_configuration);
     RUN_TEST_CASE(resources_install_as_cmake);
     RUN_TEST_CASE(language_corpus_lists_as_cmake);
     tool_remove_tree(suite);

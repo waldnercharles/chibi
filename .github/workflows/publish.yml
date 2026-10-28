@@ -2,6 +2,11 @@ name: Publish web packages
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish this exact main commit as a durable engine snapshot
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -22,25 +27,29 @@ on:
       - 'docs/distribution-licensing.md'
       - '.github/workflows/publish.yml'
       - '.github/install-ubuntu-dependencies.py'
+      - '.github/engine-release.py'
+      - '.github/test-engine-release.py'
 
 permissions:
-  contents: write
-
-concurrency:
-  group: publish-web-packages
-  cancel-in-progress: true
+  contents: read
 
 env:
   EMSDK_VERSION: 6.0.10
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
-  ENGINE_TAG: engine-${{ github.sha }}
 
 jobs:
-  publish:
+  packages:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      engine: ${{ steps.candidate.outputs.engine }}
+      artifact: ${{ steps.candidate.outputs.artifact }}
+      complete: ${{ steps.release.outputs.complete }}
+    concurrency:
+      group: engine-packages-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: true
     defaults:
       run:
         working-directory: engine
@@ -52,29 +61,15 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: engine
+      - name: Select the exact main commit
+        id: candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "engine=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "artifact=engine-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
       - name: Check immutable release
         id: release
-        run: |
-          gh api 'repos/{owner}/{repo}/releases?per_page=100' > "$RUNNER_TEMP/engine-releases.json"
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          releases = json.loads((Path(os.environ['RUNNER_TEMP']) / 'engine-releases.json').read_text())
-          release = next((r for r in releases
-                          if r['tag_name'] == os.environ['ENGINE_TAG']), None)
-          required = {'chibi-export-linux-x64.tar.gz', 'chibi-web-sdk.tar.gz',
-                      'chibi-sdk-linux-x64.tar.gz',
-                      'build.json', 'SHA256SUMS'}
-          complete = False
-          if release and not release['draft']:
-              assets = {a['name'] for a in release['assets'] if a['size'] > 0}
-              if not required.issubset(assets):
-                  raise SystemExit('Published engine release is incomplete; refusing to overwrite it')
-              complete = True
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              print(f'complete={str(complete).lower()}', file=output)
-          PY
+        run: python3 .github/engine-release.py inspect --engine "${{ steps.candidate.outputs.engine }}" --repository "$GH_REPO"
       - name: Validate SDK release pins
         if: steps.release.outputs.complete != 'true'
         run: sh tools/check_publish_pins.sh
@@ -128,21 +123,69 @@ jobs:
           cd "$RELEASE_DIR"
           sha256sum chibi-export-linux-x64.tar.gz chibi-sdk-linux-x64.tar.gz chibi-web-sdk.tar.gz build.json > SHA256SUMS
           sha256sum --check SHA256SUMS
+      - name: Verify the complete package handoff
+        if: steps.release.outputs.complete != 'true'
+        run: python3 .github/engine-release.py validate --engine "${{ steps.candidate.outputs.engine }}" --emsdk "$EMSDK_VERSION" --directory "$RUNNER_TEMP/engine-release"
+      - uses: actions/upload-artifact@v4
+        if: steps.release.outputs.complete != 'true'
+        with:
+          name: ${{ steps.candidate.outputs.artifact }}
+          path: ${{ runner.temp }}/engine-release
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    needs: packages
+    # Keep push publication during the Studio handoff. Remove that clause only
+    # after explicit Studio selection and matching game exports are verified.
+    if: >-
+      github.ref == 'refs/heads/main' && needs.packages.outputs.complete != 'true' &&
+      (github.event_name == 'push' || inputs.publish == true)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: engine-release-${{ needs.packages.outputs.engine }}
+      cancel-in-progress: false
+    env:
+      ENGINE: ${{ needs.packages.outputs.engine }}
+      ENGINE_TAG: engine-${{ needs.packages.outputs.engine }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.packages.outputs.engine }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.packages.outputs.artifact }}
+          path: ${{ runner.temp }}/engine-release
+      - name: Verify the selected package identity and all five files
+        run: |
+          test "$(git rev-parse HEAD)" = "$ENGINE"
+          python3 .github/engine-release.py validate --engine "$ENGINE" --emsdk "$EMSDK_VERSION" --directory "$RUNNER_TEMP/engine-release"
+      - name: Recheck immutable release before publication
+        id: release
+        run: python3 .github/engine-release.py inspect --engine "$ENGINE" --repository "$GH_REPO"
       - name: Publish complete release
         if: steps.release.outputs.complete != 'true'
+        env:
+          TAG_EXISTS: ${{ steps.release.outputs.tag_exists }}
+          RELEASE_EXISTS: ${{ steps.release.outputs.release_exists }}
         run: |
-          # An interrupted draft can be resumed; published releases never change.
-          if ! tag_sha=$(gh api "repos/{owner}/{repo}/git/ref/tags/$ENGINE_TAG" --jq .object.sha 2>/dev/null); then
+          # Only a verified absent tag/release may be created. API errors fail
+          # closed; an interrupted draft can resume, published bytes never change.
+          if [ "$TAG_EXISTS" = false ]; then
             gh api --method POST 'repos/{owner}/{repo}/git/refs' \
-              -f ref="refs/tags/$ENGINE_TAG" -f sha="$GITHUB_SHA" >/dev/null
-            tag_sha=$GITHUB_SHA
+              -f ref="refs/tags/$ENGINE_TAG" -f sha="$ENGINE" >/dev/null
           fi
-          test "$tag_sha" = "$GITHUB_SHA"
-          if ! gh release view "$ENGINE_TAG" >/dev/null 2>&1; then
-            gh release create "$ENGINE_TAG" --target "$GITHUB_SHA" --draft --prerelease \
-              --title "Web packages $GITHUB_SHA" \
+          if [ "$RELEASE_EXISTS" = false ]; then
+            gh release create "$ENGINE_TAG" --target "$ENGINE" --draft --prerelease \
+              --title "Web packages $ENGINE" \
               --notes "Serial browser SDK and Linux export tools. Emscripten $EMSDK_VERSION. Verify SHA256SUMS before extraction."
           fi
           test "$(gh release view "$ENGINE_TAG" --json isDraft --jq .isDraft)" = true
           gh release upload "$ENGINE_TAG" "$RUNNER_TEMP/engine-release/"* --clobber
+          python3 .github/engine-release.py verify-draft --engine "$ENGINE" --repository "$GH_REPO" --emsdk "$EMSDK_VERSION" --directory "$RUNNER_TEMP/engine-release"
           gh release edit "$ENGINE_TAG" --draft=false --prerelease --latest=false

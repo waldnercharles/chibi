@@ -63,6 +63,7 @@ jobs:
           python3 .github/test-native-ccache.py
           python3 .github/test-native-profile.py
           python3 .github/test-verify-native-profile.py
+          python3 .github/test-engine-release.py
       - name: Install build dependencies
         run: |
           python3 .github/install-ubuntu-dependencies.py ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \

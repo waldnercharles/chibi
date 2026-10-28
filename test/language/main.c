@@ -1,6 +1,7 @@
 #define PICO_UNIT_IMPLEMENTATION
 #include "bounded_compiler_chibi.h"
 #include "compiler_fixture.h"
+#include "compositional_records.h"
 #include "effect_analysis_chibi.h"
 #include "package_compiler_chibi.h"
 #include "prepared_writer_chibi.h"
@@ -175,6 +176,8 @@ int main(int argc, char **argv)
     bool outliner_projection = argc == 2 && !strcmp(argv[1], "--outliner-projection");
     bool row_array = argc == 2 && !strcmp(argv[1], "--row-array");
     bool record_runtime = argc == 2 && !strcmp(argv[1], "--record-runtime");
+    bool compositional_records = argc == 2 &&
+                                 !strcmp(argv[1], "--compositional-records");
     bool record_semantic = argc == 2 && !strcmp(argv[1], "--record-semantic");
     bool record_compatibility = argc == 2 &&
                                 !strcmp(argv[1], "--record-compatibility");
@@ -341,14 +344,14 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !compiler_artifact && !record_producer &&
-         !execution && !execution_scope && !semantic && !inferred_arrays &&
-         !inferred_array_repro && !root_state && !benchmark && !activation_benchmark &&
-         !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
-         !record_publication && !record_publication_repro && !record_values &&
-         !record_document && !record_state && !record_services &&
-         !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !outliner_projection && !row_array && !record_runtime &&
+        (!format && !prepared && !compiler_artifact && !record_producer && !execution &&
+         !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
+         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
+         !borrow_benchmark && !incremental_benchmark && !record_publication &&
+         !record_publication_repro && !record_values && !record_document &&
+         !record_state && !record_services && !record_compatibility &&
+         !record_semantic && !record_prepared_runtime && !outliner_projection &&
+         !row_array && !record_runtime && !compositional_records &&
          !runtime_attribution && !runtime_attribution_benchmark &&
          !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
          !wasm && !migration34 && !migration34_generic_repro &&
@@ -392,7 +395,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
             "--execution | "
-            "--execution-scope | --semantic "
+            "--execution-scope | --semantic | --compositional-records "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --native-char-results | "
             "--query-program | --query-values | "
@@ -500,6 +503,8 @@ int main(int argc, char **argv)
         test_language_record_prepared_runtime();
     } else if (record_runtime) {
         test_language_record_runtime();
+    } else if (compositional_records) {
+        test_language_compositional_records();
     } else if (record_semantic) {
         test_language_record_semantic();
     } else if (record_state) {

@@ -1,6 +1,7 @@
 #include "authoring/source_catalog.h"
 #include "execution/definition.h"
 #include "language/semantic.h"
+#include "runtime/arrays_definition.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -12,6 +13,7 @@
 static script_syntax *syntax;
 static script_analysis *analysis;
 static source_catalog *imports;
+static native_capabilities *arrays;
 static char root[128];
 static behavior_function *bodies;
 static int body_count;
@@ -71,17 +73,23 @@ static void cleanup()
     syntax = NULL;
     source_catalog_free(imports);
     imports = NULL;
+    native_capabilities_free(arrays);
+    arrays = NULL;
     if (*root) {
         rmdir(root);
         *root = 0;
     }
 }
+static bool parse_with(const char *source, const script_catalog *with)
+{
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, with);
+    return !syntax->diagnostic_count && analysis->valid;
+}
 static bool parse(const char *source)
 {
     cleanup();
-    syntax = script_parse(source);
-    analysis = script_analyze(syntax, &catalog);
-    return !syntax->diagnostic_count && analysis->valid;
+    return parse_with(source, &catalog);
 }
 static const script_function *function(const char *name)
 {
@@ -134,6 +142,42 @@ TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots)
     return true;
 }
 
+/* An array native reads only its arguments, so a view is read whether it is
+ * the receiver or an argument, and an owned array keeps the call pure. */
+TEST_CASE(effects_view_receivers_read_like_view_arguments)
+{
+    cleanup();
+    char error[256];
+    arrays = native_capabilities_from_definition_packs(
+        NULL,
+        0,
+        &NATIVE_ARRAY_DEFINITION_PACK,
+        1,
+        error,
+        sizeof error
+    );
+    REQUIRE(arrays);
+    REQUIRE(parse_with(
+        "Effects :: library { "
+        "ViewMethod :: (v: view int[]) -> bool { return v.contains(1); } "
+        "ViewCall :: (v: view int[]) -> bool { return contains(v, 1); } "
+        "ViewFind :: (v: view int[]) -> int? { return v.find(1); } "
+        "ViewSlice :: (v: view int[]) -> int[]? { return v.slice(0..<1); } "
+        "OwnedMethod :: (v: int[]) -> bool { return v.contains(1); } "
+        "OwnedCall :: (v: int[]) -> bool { return contains(v, 1); } "
+        "OwnedFind :: (v: int[]) -> int? { return v.find(1); } "
+        "OwnedSlice :: (v: int[]) -> int[]? { return v.slice(0..<1); } }",
+        native_capabilities_catalog(arrays)
+    ));
+    const char *views[] = { "ViewMethod", "ViewCall", "ViewFind", "ViewSlice" };
+    const char *owned[] = { "OwnedMethod", "OwnedCall", "OwnedFind", "OwnedSlice" };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(function(views[i]) && (function(views[i])->effects & SCRIPT_EFFECT_READ));
+        REQUIRE(function(owned[i]) && function(owned[i])->pure);
+        REQUIRE(!function(owned[i])->effects);
+    }
+    return true;
+}
 TEST_CASE(effects_query_checks_inferred_helpers_and_retained_reads)
 {
     REQUIRE(parse(
@@ -384,6 +428,7 @@ void test_language_effects()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(effects_infer_recursive_and_transitive_callables);
     RUN_TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots);
+    RUN_TEST_CASE(effects_view_receivers_read_like_view_arguments);
     RUN_TEST_CASE(effects_query_checks_inferred_helpers_and_retained_reads);
     RUN_TEST_CASE(effects_component_await_is_synchronous_but_host_await_is_not);
     RUN_TEST_CASE(effects_imports_publish_transitive_effects_before_query_analysis);

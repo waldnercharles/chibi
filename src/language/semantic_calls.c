@@ -1425,6 +1425,16 @@ static int event_receiver(analyzer *a, TSNode target, const script_catalog_capab
     script_analyzer_require(a, object, type, script_analyzer_expr_type(a, receiver));
     return receiver;
 }
+/* An argument's own effects; a view argument is also read through its
+ * pointer. */
+static unsigned argument_effects(const analyzer *a, int expression)
+{
+    unsigned effects = script_analyzer_expr_effects(a, expression);
+    if (script_analyzer_expr_type(a, expression).container == PIN_CONTAINER_VIEW) {
+        effects |= SCRIPT_EFFECT_READ;
+    }
+    return effects;
+}
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
     bool emitting = script_analyzer_is(node, "emit_expression");
@@ -1768,6 +1778,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         );
         seen[0] = true;
         ordinal = 1;
+        result.effects |= argument_effects(a, receiver);
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
         TSNode argument = ts_node_named_child(arguments, i);
@@ -1965,12 +1976,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                     : 0,
                                 script_analyzer_range(a, argument) })
         );
-        result.effects |= script_analyzer_expr_effects(a, expression_index);
-        /* A view argument is read through its pointer. */
-        if (script_analyzer_expr_type(a, expression_index).container ==
-            PIN_CONTAINER_VIEW) {
-            result.effects |= SCRIPT_EFFECT_READ;
-        }
+        result.effects |= argument_effects(a, expression_index);
         function = function_index >= 0 ? &a->out->functions[function_index] : NULL;
     }
     for (int i = 0; i < parameter_count; i++) {

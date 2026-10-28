@@ -1,6 +1,0 @@
-configure-native: running (log: .chibi/logs/1791262570259583000-51235-configure-native.log)
-configure-native: ok (1.2s; log: .chibi/logs/1791262570259583000-51235-configure-native.log)
-build: running (log: .chibi/logs/1791262571564542000-51265-build.log)
-build: ok (2.5s; log: .chibi/logs/1791262571564542000-51265-build.log)
-Build retirement capture skipped: Command '['ninja', '-C', '/Users/cwaldner/.codex/worktrees/a948/c-blueprints/build-web', '-t', 'targets', 'all']' returned non-zero exit status 1.
-Build retirement capture skipped: Command '['ninja', '-C', '/Users/cwaldner/.codex/worktrees/a948/c-blueprints/build-web-threads', '-t', 'targets', 'all']' returned non-zero exit status 1.

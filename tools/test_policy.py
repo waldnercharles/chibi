@@ -18,10 +18,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 # The configured CMake build the build-graph checks compare the graph with:
-# on macOS `make build` uses the graph, so `make graph-reference` configures
-# one beside it.
+# on Linux and macOS `make build` uses the graph, so `make graph-reference`
+# configures one beside it. Explicit CMake callers can name their own tree.
 GRAPH_REFERENCE = str(ROOT / os.environ.get('CHIBI_GRAPH_REFERENCE',
-                                            'build-cmake' if sys.platform == 'darwin' else 'build'))
+                                            'build-cmake' if sys.platform in ('linux', 'darwin') else 'build'))
 PROCESS_GROUP = 'CHIBI_RUNNER_PROCESS_GROUP'
 # Process tables can take seconds to enumerate on a loaded host. Bound a stuck
 # inspection separately from the caller's test timeout.

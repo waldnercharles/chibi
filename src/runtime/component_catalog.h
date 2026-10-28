@@ -229,26 +229,12 @@ extern int EncounterMember_has(const ecs_world *, ecs_entity);
 extern int EncounterMember_add(ecs_world *, ecs_entity, uint64_t);
 extern int EncounterMember_remove(ecs_world *, ecs_entity, uint64_t);
 
-extern const ecs_component_desc COMPONENT_Rhythm;
-extern Rhythm *Rhythm_get(ecs_world *, ecs_entity);
-extern const Rhythm *Rhythm_get_const(const ecs_world *, ecs_entity);
-extern int Rhythm_has(const ecs_world *, ecs_entity);
-extern int Rhythm_add(ecs_world *, ecs_entity, uint64_t);
-extern int Rhythm_remove(ecs_world *, ecs_entity, uint64_t);
-
 extern const ecs_component_desc COMPONENT_VisualTransform;
 extern VisualTransform *VisualTransform_get(ecs_world *, ecs_entity);
 extern const VisualTransform *VisualTransform_get_const(const ecs_world *, ecs_entity);
 extern int VisualTransform_has(const ecs_world *, ecs_entity);
 extern int VisualTransform_add(ecs_world *, ecs_entity, uint64_t);
 extern int VisualTransform_remove(ecs_world *, ecs_entity, uint64_t);
-
-extern const ecs_component_desc COMPONENT_VisualMotion;
-extern VisualMotion *VisualMotion_get(ecs_world *, ecs_entity);
-extern const VisualMotion *VisualMotion_get_const(const ecs_world *, ecs_entity);
-extern int VisualMotion_has(const ecs_world *, ecs_entity);
-extern int VisualMotion_add(ecs_world *, ecs_entity, uint64_t);
-extern int VisualMotion_remove(ecs_world *, ecs_entity, uint64_t);
 
 extern const ecs_component_desc COMPONENT_MeshAsset;
 extern MeshAsset *MeshAsset_get(ecs_world *, ecs_entity);

@@ -6,7 +6,6 @@
 #include "render/shader_program.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/rhythm.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -28,7 +27,7 @@ typedef struct
     CF_Mesh mesh;
     int primitive, capacity, count, program;
     CF_M4x4 frame;
-    CF_V4 dimensions, clock, rhythm;
+    CF_V4 dimensions, clock;
     float parameters[32][4];
     bool additive, active;
 } particle_field;
@@ -257,9 +256,6 @@ static bool prepare_field(
                             (float)style->seed,
                             style->additive ? 1 : 0 };
     field->additive = style->additive;
-    beat beat = { 0 };
-    rhythm_sample(world, style->time, &beat);
-    field->rhythm = (CF_V4){ (float)beat.phase, (float)beat.pulse, 0, 0 };
     shader_error diagnostic = { 0 };
     if (!render_shader_material_parameters_scoped_cached(
             asset,
@@ -343,7 +339,6 @@ void render_scene3d_particles_draw(const scene3d_particles *particles, const ren
         cf_draw3d_set_uniform("particle_dimensions", (void *)&field->dimensions, CF_UNIFORM_TYPE_FLOAT4, 1);
         cf_draw3d_set_uniform("particle_clock", (void *)&field->clock, CF_UNIFORM_TYPE_FLOAT4, 1);
         cf_draw3d_set_uniform("particle_parameters", (void *)field->parameters, CF_UNIFORM_TYPE_FLOAT4, 32);
-        cf_draw3d_set_uniform("particle_rhythm", (void *)&field->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
         cf_draw3d_push();
         cf_draw3d_transform(field->frame);
         cf_draw3d_mesh(field->mesh);

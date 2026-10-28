@@ -17,7 +17,6 @@
 #include "runtime/particles_definition.h"
 #include "runtime/physics3d_definition.h"
 #include "runtime/physics_definition.h"
-#include "runtime/rhythm_definition.h"
 #include "runtime/save_definition.h"
 #include "runtime/selection_definition.h"
 #include "runtime/sets_definition.h"
@@ -28,7 +27,6 @@
 #include "runtime/url_definition.h"
 #include "runtime/vectors_definition.h"
 #include "runtime/visibility_definition.h"
-#include "runtime/visual_motion_definition.h"
 #include "support/array.h"
 
 #include <stdio.h>
@@ -55,7 +53,6 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, ENTITY_DEFINITION_PACK);
     apush(selected, TILEMAP_DEFINITION_PACK);
     apush(selected, AUDIO_DEFINITION_PACK);
-    apush(selected, RHYTHM_DEFINITION_PACK);
     apush(selected, FIELD_DEFINITION_PACK);
     apush(selected, NATIVE_ARRAY_DEFINITION_PACK);
     apush(selected, NATIVE_STATE_DEFINITION_PACK);
@@ -76,7 +73,6 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, PHYSICS_DEFINITION_PACK);
     apush(selected, PHYSICS3D_DEFINITION_PACK);
     apush(selected, MATERIAL_DEFINITION_PACK);
-    apush(selected, VISUAL_REACTION_DEFINITION_PACK);
     apush(selected, VISIBILITY_DEFINITION_PACK);
     apush(selected, INPUT_DEFINITION_PACK);
     for (int i = 0; i < definition_count; i++) {

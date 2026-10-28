@@ -15,9 +15,10 @@ enum
     WORLD_AUDIO = 1 << 4,
     WORLD_UI = 1 << 5,
     WORLD_INPUT = 1 << 6,
-    WORLD_VISUAL_MOTION = 1 << 7,
     WORLD_PHYSICS3D = 1 << 8,
-    WORLD_MODULES_ALL = (1 << 9) - 1,
+    WORLD_MODULES_ALL = WORLD_PHYSICS | WORLD_MATERIALS | WORLD_PARTICLES |
+                        WORLD_VISIBILITY | WORLD_AUDIO | WORLD_UI |
+                        WORLD_INPUT | WORLD_PHYSICS3D,
 };
 typedef struct
 {

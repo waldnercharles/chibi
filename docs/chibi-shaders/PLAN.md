@@ -55,9 +55,9 @@ an attribute (P2).
   material's defaults, and an entity's Shader component overrides them by
   name, as it does today. Parameter types come from the defaults (S2b).
 - Per-sample inputs are context, not parameters. `sample()` returns the current
-  `Sample` (position, object position, UV, normal, view direction and time),
-  as `scene_rhythm()` returns scene context to libraries today. Helpers can
-  call it too. The shader pass rejects it where gameplay code reaches it.
+  `Sample` (position, object position, UV, normal, view direction and time).
+  Helpers can call it too. The shader pass rejects it where gameplay code
+  reaches it.
 - Surface fields keep their current defaults, so a material returns only what
   it changes. Alpha Mode and Alpha Cutoff become Surface fields that must be
   constant, because lowering folds them into Opacity.

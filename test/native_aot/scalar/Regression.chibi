@@ -61,7 +61,7 @@ pub Check :: (rows: facts.Row[]) -> int {
             }
             return 0;
         case .Emitted(text):
-            if (!accepted || length(bytes) == 0 || !strings.Contains(text, "define i32 @chibi_scalar()") ||
+            if (!accepted || length(bytes) == 0 || !strings.Contains(text, Entry(rows)) ||
                 !Calls(rows, text)) {
                 return -4;
             }
@@ -78,6 +78,16 @@ pub Check :: (rows: facts.Row[]) -> int {
     }
 }
 
+// The entry's definition: a module that calls the runtime, to format text or
+// to fail an assert, takes the context first.
+Entry :: (rows: facts.Row[]) -> string {
+    for (row in rows) {
+        if ((row.kind == facts.TextRow && row.value == facts.TextFormat) || row.kind == facts.AssertRow) {
+            return "define i32 @chibi_scalar(ptr %ctx)";
+        }
+    }
+    return "define i32 @chibi_scalar()";
+}
 // Every recorded call is an emitted LLVM call of its callee, and every other
 // function is defined internally, so the module keeps the source's calls.
 Calls :: (rows: facts.Row[], text: string) -> bool {

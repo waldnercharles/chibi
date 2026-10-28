@@ -559,6 +559,42 @@ static void copy_failure(behavior_function_context *root, const behavior_functio
     }
 }
 
+/* Fails `context`'s call as the VM's assert `failed` fails a frame of its
+ * function: in a context bound to that function's instance, which observes
+ * the failure, then hands it to the root. */
+static int native_failure(
+    struct behavior_function_calls *calls,
+    behavior_function_context *root,
+    behavior_function_context *context,
+    execution_native_assert failed
+)
+{
+    const behavior_function_instruction *i = &failed.function
+                                                  ->instructions[failed.pc];
+    behavior_function_context frame = *context;
+    frame.parent = context;
+    if (frame.bind_instance) {
+        frame.bind_instance(failed.function, &frame);
+    }
+    frame.source_function = failed.function;
+    frame.failure = (behavior_function_failure)i->target;
+    frame.error_message = i->message;
+    frame.node_id = i->node_id;
+    frame.error_frame = i->frame;
+    frame.error_source = i->source;
+    frame.error_stack = i->stack;
+    frame.error_pin = i->pin;
+    frame.error_steps = context->activation->steps;
+    if (frame.failure_observer) {
+        frame.failure_observer(failed.function, &frame, FLOW_ERR_INVALID_GRAPH);
+    }
+    if (frame.commit_instance) {
+        frame.commit_instance(&frame);
+    }
+    copy_failure(root, &frame);
+    return settle_calls(calls, FLOW_ERR_INVALID_GRAPH);
+}
+
 int behavior_function_run_calls(
     const behavior_function *function,
     behavior_function_context *root,
@@ -608,18 +644,23 @@ int behavior_function_run_calls(
             const execution_native_export *native = native_call(root, active, context, call);
             if (native) {
                 pin_value *values = context->data->values;
-                execution_native_call(
+                execution_native_assert failed;
+                bool returned = execution_native_call(
                     root->activation->natives,
                     native,
                     call->function,
                     &values[call->first],
                     call->count,
                     &values[call->result_first],
-                    call->result_count
+                    call->result_count,
+                    &failed
                 );
+                behavior_run_record(EXECUTION_RUN_NATIVE);
+                if (!returned) {
+                    return native_failure(calls, root, context, failed);
+                }
                 /* A frame's callee without outcomes returns none. */
                 context->returned_outcome = 0;
-                behavior_run_record(EXECUTION_RUN_NATIVE);
                 continue;
             }
             invocation_frame *frame = frame_new(calls, active, context);

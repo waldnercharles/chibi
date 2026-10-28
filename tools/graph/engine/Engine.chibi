@@ -281,31 +281,21 @@ Expand :: (source_root: string, build_dir: string, profile: Profile, define: str
 
 // Writes each header a target configures into its private root, as CMake's
 // configure_file does, when its text changed: a `.in` template with each
-// `@NAME@` of Substitutions replaced, or a plain copy. Placeholders are found
-// in the template, which is small; build values are never freed, and
-// searching the text as byte lists fill it copied it for every absent one.
-// False when an input is missing or an output cannot be written.
+// `@NAME@` of Substitutions replaced, or a plain copy. False when an input is
+// missing or an output cannot be written.
 Configure :: (source_root: string, build_dir: string, profile: Profile, target: string) -> bool {
     for (configure in Configures(target)) {
         input := Resolve(source_root, build_dir, "", build.after(configure, "="));
         if (!build.file_exists(input)) {
             return false;
         }
-        template := build.read_file(input);
-        text := template;
+        text := build.read_file(input);
         if (strings.HasSuffix(input, ".in")) {
-            for (substitution in Substitutions(target)) {
-                placeholder := Join(["@", build.before(substitution, "="), "@"]);
-                if (build.before(template, placeholder) != template) {
-                    value := build.after(substitution, "=");
-                    replacement := Substitute(source_root, build_dir, profile, value);
-                    kind := build.before(value, ":");
-                    if ((kind == "test-sources" || kind == "test-inputs") && replacement == "") {
-                        return false;
-                    }
-                    text = build.replace(text, placeholder, replacement);
-                }
+            parts := Substituted(source_root, build_dir, profile, target, text);
+            if (length(parts) == 0) {
+                return false;
             }
+            text = build.join(parts, "");
         }
         output := Join([HeaderRoot(build_dir, target, "private"), "/", build.before(configure, "=")]);
         if (build.file_exists(output) && build.read_file(output) == text) {
@@ -593,6 +583,65 @@ Substitute :: (source_root: string, build_dir: string, profile: Profile, value: 
     text := build.replace(build.read_file(path), "\\", "\\\\");
     text = build.replace(text, "\"", "\\\"");
     return build.replace(text, "\n", "\\n\"\n\"");
+}
+
+// The parts of a template with each `@NAME@` of a target's Substitutions
+// replaced, none when a test package is empty. The template is small, so it
+// is scanned in the VM, and the caller joins the parts once: build values are
+// never freed, and replacing one placeholder at a time copied the growing
+// text, embedded sources and all, for each of them.
+Substituted :: (source_root: string, build_dir: string, profile: Profile, target: string, template: string) -> string[] {
+    placeholders: string[] = [];
+    values: string[] = [];
+    for (substitution in Substitutions(target)) {
+        placeholders.append(Join(["@", build.before(substitution, "="), "@"]));
+        values.append(build.after(substitution, "="));
+    }
+    replacements: string[] = [];
+    replaced: bool[] = [];
+    for (value in values) {
+        replacements.append("");
+        replaced.append(false);
+    }
+    parts: string[] = [];
+    rest := template;
+    while (true) {
+        at := strings.IndexByte(rest, 64);
+        if (at < 0) {
+            break;
+        }
+        following := strings.Slice(rest, at + 1, strings.ByteLength(rest) - at - 1);
+        close := strings.IndexByte(following, 64);
+        if (close < 0) {
+            break;
+        }
+        placeholder := strings.Slice(rest, at, close + 2);
+        index := -1;
+        for (i in 0..<length(placeholders)) {
+            if (index < 0 && placeholders[i] == placeholder) {
+                index = i;
+            }
+        }
+        if (index < 0) {
+            parts.append(strings.Slice(rest, 0, at + 1));
+            rest = following;
+            continue;
+        }
+        if (!replaced[index]) {
+            replacement := Substitute(source_root, build_dir, profile, values[index]);
+            kind := build.before(values[index], ":");
+            if ((kind == "test-sources" || kind == "test-inputs") && replacement == "") {
+                return [];
+            }
+            replacements[index] = replacement;
+            replaced[index] = true;
+        }
+        parts.append(strings.Slice(rest, 0, at));
+        parts.append(replacements[index]);
+        rest = strings.Slice(following, close + 1, strings.ByteLength(following) - close - 1);
+    }
+    parts.append(rest);
+    return parts;
 }
 
 // Builds the existing host tools first, then runs the authored asset generator

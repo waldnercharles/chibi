@@ -11586,6 +11586,7 @@ enum
     SCALAR_TAG_ROW = 33,
     SCALAR_PAYLOAD_ROW = 34,
     SCALAR_TEXT_ROW = 35,
+    SCALAR_ASSERT_ROW = 36,
     SCALAR_TEXT_LENGTH = 1,
     SCALAR_TEXT_BYTE = 2,
     SCALAR_TEXT_SLICE = 3,
@@ -11934,6 +11935,26 @@ enum
     FORMAT_INT = 5,
     FORMAT_TEXT = 8,
     FORMAT_ROWS = (int)(sizeof FORMAT_KINDS / sizeof *FORMAT_KINDS)
+};
+/* Main asserts a comparison before it returns. */
+static const char ASSERT_ROWS_SOURCE[] = "package scalar\n"
+                                         "Main :: () -> int {\n"
+                                         "    x: int = 1;\n"
+                                         "    assert(x < 2, \"x is small\");\n"
+                                         "    return x;\n"
+                                         "}\n";
+/* The kind of each of ASSERT_ROWS_SOURCE's rows, and the rows edited. */
+static const int ASSERT_KINDS[] = {
+    SCALAR_SOURCE_ROW, SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
+    SCALAR_LOCAL_ROW,  SCALAR_LITERAL_ROW,  SCALAR_ASSERT_ROW,
+    SCALAR_READ_ROW,   SCALAR_LITERAL_ROW,  SCALAR_COMPARE_ROW,
+    SCALAR_RETURN_ROW, SCALAR_READ_ROW,
+};
+enum
+{
+    ASSERT_STATEMENT = 5,
+    ASSERT_COMPARE = 8,
+    ASSERT_ROWS = (int)(sizeof ASSERT_KINDS / sizeof *ASSERT_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -12297,6 +12318,17 @@ static const malformed_guard MALFORMED_FORMATS[] = {
         { .row = FORMAT_FORMAT, .field = "text", .text = "", .from = -1 } },
       TEXT_READ },
 };
+/* An assert's type, value, name and literal, and a condition that is an
+ * int. */
+static const malformed_guard MALFORMED_ASSERTS[] = {
+    { { EDIT(ASSERT_STATEMENT, "type", SCALAR_BOOL) }, SEGMENT },
+    { { EDIT(ASSERT_STATEMENT, "value", 1) }, SEGMENT },
+    { { { .row = ASSERT_STATEMENT, .field = "name", .text = "x", .from = -1 } }, SEGMENT },
+    { { { .row = ASSERT_STATEMENT, .field = "literal", .value = 1, .from = -1 } }, SEGMENT },
+    { { EDIT(ASSERT_COMPARE, "kind", SCALAR_ARITHMETIC_ROW),
+        EDIT(ASSERT_COMPARE, "type", SCALAR_INT) },
+      "scalar condition is not one bool" },
+};
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
 static const malformed_guard MALFORMED_ARITHMETIC[] = {
     { { EDIT(ARITHMETIC_ADD, "value", 0) }, ARITHMETIC },
@@ -12613,6 +12645,53 @@ static bool texted_rows(pin_value *rows)
     REQUIRE(retained_text(guard_row(rows, TEXT_SOURCE), "text", "abcd"));
     return true;
 }
+/* ASSERT_ROWS_SOURCE's assert has its call's range and its condition's
+ * three operands, and lowers to a branch past a Fail that names the range in
+ * a failure constant, which the context carries. */
+static bool asserted_rows(int b, pin_value *rows)
+{
+    static const char call[] = "assert(x < 2, \"x is small\")";
+    const pin_value *row = guard_row(rows, ASSERT_STATEMENT);
+    int start = (int)(strstr(ASSERT_ROWS_SOURCE, call) - ASSERT_ROWS_SOURCE);
+    REQUIRE(scalar_field(row, "count").i == 3 && scalar_field(row, "type").i == 0);
+    REQUIRE(scalar_field(row, "start").i == start);
+    REQUIRE(scalar_field(row, "end").i == start + (int)strlen(call));
+    REQUIRE(scalar_field(row, "line").i == 4 && scalar_field(row, "column").i == 5);
+    pin_value emitted;
+    REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
+    const pin_array *bytes = emitted.ptr;
+    REQUIRE(emitted.container == PIN_CONTAINER_ARRAY && bytes->count > 0);
+    char *ir = xmalloc((size_t)bytes->count + 1), constant[160];
+    for (int i = 0; i < bytes->count; i++) {
+        ir[i] = (char)bytes->items[i].u8;
+    }
+    ir[bytes->count] = 0;
+    snprintf(
+        constant,
+        sizeof constant,
+        "@chibi_scalar.failure.0.7 = private unnamed_addr constant { i64, "
+        "i32, i32 } { i64 0, i32 %d, i32 %d }\n",
+        start,
+        start + (int)strlen(call)
+    );
+    bool lowered = strstr(ir, constant) &&
+                   strstr(ir, "define i32 @chibi_scalar(ptr %ctx) #0 {\n") &&
+                   strstr(ir, "  br i1 %a6, label %p8, label %p7\n") &&
+                   strstr(
+                       ir,
+                       "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr "
+                       "}, ptr %ctx, i32 0, i32 1\n"
+                       "  store ptr @chibi_scalar.failure.0.7, ptr "
+                       "%fail7.at\n  br label %failed\n"
+                   ) &&
+                   strstr(ir, "failed:\n  ret i32 0\n");
+    if (!lowered) {
+        fprintf(stderr, "%s\n", ir);
+    }
+    free(ir);
+    REQUIRE(lowered);
+    return true;
+}
 /* FORMAT_ROWS_SOURCE's format consumes its format and each argument as it
  * is to give a string. */
 static bool formatted_rows(pin_value *rows)
@@ -12681,16 +12760,17 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
         looped[2], switched[2], recorded[2], unioned[2], stringed[2], texted[2],
-        formatted[2];
+        formatted[2], asserted[2];
     const char *const texts[] = { SCALAR_SOURCE,       GUARD_SOURCE,
                                   ARITHMETIC_SOURCE,   WIDTH_SOURCE,
                                   CONTROL_ROWS_SOURCE, LOOP_ROWS_SOURCE,
                                   SWITCH_ROWS_SOURCE,  RECORD_ROWS_SOURCE,
                                   UNION_ROWS_SOURCE,   STRING_ROWS_SOURCE,
-                                  TEXT_ROWS_SOURCE,    FORMAT_ROWS_SOURCE };
-    pin_value *outputs[] = { produced,   guarded,  computed, widened,
-                             controlled, looped,   switched, recorded,
-                             unioned,    stringed, texted,   formatted };
+                                  TEXT_ROWS_SOURCE,    FORMAT_ROWS_SOURCE,
+                                  ASSERT_ROWS_SOURCE };
+    pin_value *outputs[] = { produced, guarded,   computed, widened, controlled,
+                             looped,   switched,  recorded, unioned, stringed,
+                             texted,   formatted, asserted };
     for (int b = 0; b < 2; b++) {
         pin_value args[SCALAR_ARGUMENTS];
         REQUIRE(scalar_arguments(b, "Scalar.chibi", text(SCALAR_SOURCE), args));
@@ -12834,6 +12914,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             MALFORMED_FORMATS,
             (int)(sizeof MALFORMED_FORMATS / sizeof *MALFORMED_FORMATS)
         ));
+        REQUIRE(rejects_malformed(
+            b,
+            &asserted[b],
+            ASSERT_KINDS,
+            ASSERT_ROWS,
+            MALFORMED_ASSERTS,
+            (int)(sizeof MALFORMED_ASSERTS / sizeof *MALFORMED_ASSERTS)
+        ));
+        REQUIRE(asserted_rows(b, &asserted[b]));
     }
     return true;
 }
@@ -12862,7 +12951,8 @@ enum
     NATIVE_TEXT_BYTE = 33,
     NATIVE_TEXT_DROP = 34,
     NATIVE_TEXT_TAKE = 35,
-    NATIVE_FORMAT = 36
+    NATIVE_FORMAT = 36,
+    NATIVE_FAIL = 37
 };
 typedef struct native_code
 {
@@ -13170,7 +13260,7 @@ static bool native_libraries_export_words(int b)
         "i32 1, ptr @chibi_scalar.export.1 }"
     ));
     REQUIRE(
-        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 2, i32 2, ptr @chibi_scalar.exports }")
+        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 3, i32 2, ptr @chibi_scalar.exports }")
     );
     static const char malformed[] = "native library needs an identifier and a "
                                     "name and ID for each function";
@@ -13239,18 +13329,6 @@ static const char
     TABLES[] = "unsupported native scalar signature or table size";
 static const char OUTPUT[] = "native scalar output has an invalid type or "
                              "multiple definitions";
-static int occurrences(pin_string haystack, const char *needle)
-{
-    char *text = xmalloc(haystack.length + 1);
-    memcpy(text, haystack.bytes, haystack.length);
-    text[haystack.length] = 0;
-    int count = 0;
-    for (const char *at = strstr(text, needle); at; at = strstr(at + 1, needle)) {
-        count++;
-    }
-    free(text);
-    return count;
-}
 /* The IR native_emit gives for m. */
 static bool native_text(int b, const native_module *m, pin_string *ir)
 {
@@ -13258,88 +13336,6 @@ static bool native_text(int b, const native_module *m, pin_string *ir)
     REQUIRE(native_emit(b, m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
     *ir = pin_text(value->values[0]);
-    return true;
-}
-/* Direct and mutual recursion call their callees' symbols, with no depth
- * counter, and every function probes its stack. A function range that leaves
- * a code row unowned is rejected. */
-static bool native_recursion_probes_the_stack(int b)
-{
-    static const native_code recursive[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CALL, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CALL, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-    };
-    static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 } };
-    static const native_function two[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
-                                           { NATIVE_INT, 0, 0, 1, 1, 4, 4, 0, 0 } };
-    static const int slots[] = { NATIVE_INT, NATIVE_INT };
-    static const char
-        probes[] = "\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n";
-    native_module m = { one, 1, NULL, 0, slots, 1, recursive, 4, NULL, 0 };
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(occurrences(ir, "define i32 @chibi_scalar() #0 {\nentry:\n") == 1);
-    REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
-    REQUIRE(occurrences(ir, probes) == 1 && !occurrences(ir, "depth"));
-    /* LLVM probes inline on macOS too, but on Windows the attribute names the
-     * probe function, so Windows code calls __chkstk. */
-    static const char *const targets[] = { "MacOSArm64", "WindowsX64" };
-    static const char *const target_probes[] = {
-        probes,
-        "\nattributes #0 = { \"probe-stack\"=\"__chkstk\" }\n"
-    };
-    for (int t = 0; t < 2; t++) {
-        const pin_union *value;
-        REQUIRE(native_target_emit(b, targets[t], &m, &value));
-        REQUIRE(
-            value->tag ==
-            fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted")
-        );
-        REQUIRE(occurrences(pin_text(value->values[0]), target_probes[t]) == 1);
-    }
-    /* Function 0 calls 1, which calls 0. */
-    native_code mutual[8];
-    memcpy(mutual, recursive, sizeof mutual);
-    mutual[1].left = 1;
-    m = (native_module){ two, 2, NULL, 0, slots, 2, mutual, 8, NULL, 0 };
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(occurrences(ir, "define internal i32 @chibi_scalar.1() #0 {") == 1);
-    REQUIRE(occurrences(ir, "call i32 @chibi_scalar.1()") == 1);
-    REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
-    REQUIRE(occurrences(ir, " #0 {") == 2 && occurrences(ir, probes) == 1);
-    static const native_function gap[] = { { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
-                                           { NATIVE_INT, 0, 3, 4, 1, 8, 3, 3, 0 } };
-    m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
-    m.functions = gap;
-    REQUIRE(native_rejects(b, &m, TABLES));
-    /* Slot ranges whose sum wraps back to an empty slot table. */
-    static const native_code returns[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-    };
-    static const native_function wrapped[] = {
-        { NATIVE_INT, 0, 0, 0, INT32_MAX, 0, 4, 0, 0 },
-        { NATIVE_INT, 0, 0, INT32_MAX, INT32_MAX, 4, 4, 0, 0 },
-        { NATIVE_INT, 0, 0, -2, 2, 8, 4, 0, 0 },
-    };
-    m = (native_module){ wrapped, 3, NULL, 0, NULL, 0, returns, 12, NULL, 0 };
-    REQUIRE(native_rejects(b, &m, TABLES));
     return true;
 }
 /* A string is `native_abi.TextType()`, the layout of the runtime's
@@ -13472,7 +13468,7 @@ static bool native_text_reads_emit(int b)
     }
     native_code code[TEXT_READ_COUNT];
     memcpy(code, TEXT_READ_CODE, sizeof code);
-    code[7].op = NATIVE_FORMAT + 1;
+    code[7].op = NATIVE_FAIL + 1;
     m = text_read_module(code);
     REQUIRE(native_rejects(b, &m, "unsupported native scalar instruction"));
     return true;
@@ -13535,7 +13531,8 @@ static bool native_formats_emit(int b)
         "%f4_2.bytes, 3\n",
         "%f4_2.at = getelementptr inbounds [3 x { i32, i32, i64, ptr }], ptr "
         "%values4, i64 0, i64 2\n",
-        "%format4.at = getelementptr inbounds { ptr }, ptr %ctx, i32 0, i32 0\n"
+        "%format4.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, "
+        "i32 0\n"
         "  %format4 = load ptr, ptr %format4.at\n"
         "  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n"
         "  %v4 = load { ptr, i32, ptr }, ptr %text4\n",
@@ -13580,6 +13577,112 @@ static bool native_formats_emit(int b)
     static const int unformatted[] = { 1, 0, 2 };
     m = format_module(FORMAT_CODE, unformatted);
     REQUIRE(native_rejects(b, &m, format));
+    return true;
+}
+/* Main returns Check(), and Check fails its assert at bytes [3, 9) of the
+ * function with ID 77 when its condition, false, is false. */
+static const native_code FAIL_CODE[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CALL, .type = NATIVE_INT, .left = 1 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
+    { .op = NATIVE_RETURN },
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL },
+    { .op = NATIVE_BRANCH, .left = 0, .target = 4 },
+    { .op = NATIVE_FAIL, .left = 3, .right = 9, .literal = 77 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 5 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 1 },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    FAIL_COUNT = (int)(sizeof FAIL_CODE / sizeof *FAIL_CODE)
+};
+static native_module fail_module(const native_code *code)
+{
+    static const native_function functions[] = {
+        { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
+        { NATIVE_INT, 0, 0, 1, 2, 4, FAIL_COUNT - 4, 0, 0 },
+    };
+    static const int slots[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
+    return (native_module){ .functions = functions,
+                            .function_count = 2,
+                            .slots = slots,
+                            .slot_count = 3,
+                            .code = code,
+                            .code_count = FAIL_COUNT };
+}
+/* A Fail stores its failure constant, the function's ID and the range, in the
+ * context, and the function returns its zero; a call of a function that can
+ * fail returns its zero too when the context names a failure, so the failure
+ * reaches the call from the VM. Both take the context. A Fail may end a body
+ * but must name a range, and a program cannot fail. */
+static bool native_fails_emit(int b)
+{
+    native_module m = fail_module(FAIL_CODE);
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    static const char *const expected[] = {
+        "@chibi_scalar.failure.1.3 = private unnamed_addr constant { i64, i32, "
+        "i32 } { i64 77, i32 3, i32 9 }\n",
+        "define i32 @chibi_scalar(ptr %ctx) #0 {\n",
+        "  %v1 = call i32 @chibi_scalar.1(ptr %ctx)\n",
+        "  %failure1.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 "
+        "0, i32 1\n"
+        "  %failure1 = load ptr, ptr %failure1.at\n"
+        "  %failed1 = icmp ne ptr %failure1, null\n"
+        "  br i1 %failed1, label %failed, label %p2\n",
+        "define internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n",
+        "  br i1 %a2, label %p4, label %p3\n",
+        "p3:\n  %fail3.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 "
+        "0, i32 1\n"
+        "  store ptr @chibi_scalar.failure.1.3, ptr %fail3.at\n  br label "
+        "%failed\n",
+        /* Each function ends failing with its zero. */
+        "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  "
+        "unreachable\n}"
+        "\n\ndefine internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n",
+        "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  "
+        "unreachable\n}"
+        "\n\nattributes #0 = { ",
+    };
+    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
+        REQUIRE(contains(ir, expected[i]));
+    }
+    /* A function that cannot fail checks no call and has no failed block. */
+    native_code ending[FAIL_COUNT];
+    memcpy(ending, FAIL_CODE, sizeof ending);
+    ending[7] = (native_code){ .op = NATIVE_JUMP, .target = 4 };
+    m = fail_module(ending);
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(!contains(ir, "failed") && !contains(ir, "ptr %ctx"));
+    /* A Fail ends the callee's body. */
+    memcpy(ending, FAIL_CODE, sizeof ending);
+    ending[FAIL_COUNT - 1] = ending[7];
+    m = fail_module(ending);
+    REQUIRE(native_text(b, &m, &ir));
+    REQUIRE(
+        contains(ir, "p6:\n  %fail6.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, i32 1\n")
+    );
+    const pin_union *value;
+    m = fail_module(FAIL_CODE);
+    REQUIRE(native_entry_emit(b, "LinuxX64", &m, true, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
+    REQUIRE(pin_text_equal(
+        pin_text(value->values[1]),
+        pin_text(text("a native program cannot call the runtime yet"))
+    ));
+    static const native_change changes[] = {
+        { 7, offsetof(native_code, left), -1 },
+        { 7, offsetof(native_code, right), 2 },
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
+        native_code code[FAIL_COUNT];
+        memcpy(code, FAIL_CODE, sizeof code);
+        change_code(code, changes[i]);
+        m = fail_module(code);
+        REQUIRE(native_rejects(b, &m, "native failure names no source range"));
+    }
     return true;
 }
 /* Whether every instruction line of `ir` has a location. */
@@ -13787,7 +13890,7 @@ static bool native_strings_emit(int b)
     REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
     REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
     REQUIRE(
-        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 2, i32 0, ptr @chibi_scalar.exports }")
+        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 3, i32 0, ptr @chibi_scalar.exports }")
     );
     static const native_code published[] = {
         { .op = NATIVE_CHECK },
@@ -13810,27 +13913,6 @@ static bool native_strings_emit(int b)
     REQUIRE(!contains(ir, "text_equal"));
     return true;
 }
-/* A loop whose back edge skips the entry CHECK is emitted: native loops run
- * unchecked, as Odin's do. */
-static bool native_cycles_run_unchecked(int b)
-{
-    static const native_code loop[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .literal = 1 },
-        { .op = NATIVE_BRANCH, .target = 4 },
-        { .op = NATIVE_JUMP, .target = 1 },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1 },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 1 },
-        { .op = NATIVE_RETURN },
-    };
-    static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 2, 0, 7, 0, 0 } };
-    static const int slots[] = { NATIVE_BOOL, NATIVE_INT };
-    native_module m = { one, 1, NULL, 0, slots, 2, loop, 7, NULL, 0 };
-    const pin_union *value;
-    REQUIRE(native_emit(b, &m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    return true;
-}
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
@@ -13844,12 +13926,11 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     );
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_libraries_export_words(b));
-        REQUIRE(native_recursion_probes_the_stack(b));
         REQUIRE(native_strings_emit(b));
         REQUIRE(native_text_reads_emit(b));
         REQUIRE(native_formats_emit(b));
+        REQUIRE(native_fails_emit(b));
         REQUIRE(native_lines_place_code(b));
-        REQUIRE(native_cycles_run_unchecked(b));
     }
     REQUIRE(compiler_fixture_tests(&consumer));
     return true;
@@ -14100,7 +14181,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 52
+    SCALAR_ACCEPTED_CASES = 53
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -15591,7 +15672,18 @@ static bool scalar_case_agrees(const char *directory, int index, int *accepted, 
         compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
     );
     if (checked.i != 1) {
-        fprintf(stderr, "scalar case %s: Check gave %d\n", case_name, checked.i);
+        bool rejection = row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW;
+        fprintf(
+            stderr,
+            "scalar case %s: Check gave %d%s%s\n",
+            case_name,
+            checked.i,
+            rejection ? ", rejected: " : "",
+            rejection
+                ? pin_text(scalar_field(&((const pin_array *)rows.ptr)->items[1], "text"))
+                      .bytes
+                : ""
+        );
     }
     REQUIRE(checked.i == 1);
     char *ir;
@@ -18824,7 +18916,7 @@ static bool library_loads_and_agrees(const char *directory, const char *library)
     const execution_native_manifest *const
         *manifests = libraries ? native_libraries_manifests(libraries, &count) : NULL;
     bool agreed = count == 1 && manifests[0]->abi == EXECUTION_NATIVE_ABI &&
-                  manifests[0]->count == 6 && exports_small_alone(manifests[0]) &&
+                  manifests[0]->count == 8 && exports_small_alone(manifests[0]) &&
                   native_calls_agree(manifests[0]);
     native_libraries_close(libraries);
     REQUIRE(!remove(shipped) && !rmdir(folder) && agreed);

@@ -1256,9 +1256,9 @@ ScalarPlan :: union {
 }
 // The plan of `statement`'s operands: a return's value, widened to the result
 // as the return step widens it; a local's initial value; an assignment's
-// value; an if statement's or a while loop's condition; a switch's integer
-// value or a union variable's Tag; a range loop's bounds; or none for a break or a continue. EmitBody has rejected any other
-// mismatch. ScalarFunction converts the value itself, so a statement adds no
+// value; an if statement's, a while loop's or an assert's condition; a
+// switch's integer value or a union variable's Tag; a range loop's bounds; or
+// none for a break or a continue. EmitBody has rejected any other mismatch. ScalarFunction converts the value itself, so a statement adds no
 // frame under the nesting its operands may take.
 ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], statement: int) -> ScalarPlan {
@@ -1328,9 +1328,13 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         }
         return ScalarPlan.Converted(value, storage, storage);
     }
+    condition := ScalarAsserted(forest, text, callables, names, callable, statement);
+    if (condition >= 0) {
+        return ScalarPlan.Converted(condition, BoolStorage, BoolStorage);
+    }
     if (!Is(forest, statement, "local_declaration")) {
         return ScalarPlan.Failed(Diagnose(forest, statement, 0,
-                                          "scalar proof supports only locals, assignments, if statements, switches, loops and returns"));
+                                          "scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns"));
     }
     storage := ScalarDeclared(forest, text, callables, params, callable, names, types, members, constants, statement);
     if (storage == StructStorage) {
@@ -1347,6 +1351,29 @@ ScalarPlanned :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
         return ScalarPlan.Converted(value, InferredNumberStorage(forest, text, value), storage);
     }
     return ScalarPlan.Converted(value, storage, storage);
+}
+// The condition of `statement` when it is an assert, as the call step finds
+// one: a call of `assert` that names no function of the package, its
+// condition the first argument or the one named Condition. Otherwise -1.
+ScalarAsserted :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                   callable: Callable, statement: int) -> int {
+    call := FirstMember(forest, statement);
+    if (!Is(forest, statement, "expression_statement") || !Is(forest, call, "call_expression")) {
+        return -1;
+    }
+    function := Field(forest, call, "function");
+    if (!Is(forest, function, "identifier") || !NameMatches("assert", Text(forest, text, function)) ||
+        CalledFunction(forest, text, callables, [], names, callable.package, call) >= 0) {
+        return -1;
+    }
+    arguments := Members(forest, Field(forest, call, "arguments"));
+    for (argument in arguments) {
+        if (Is(forest, argument, "named_argument") &&
+            NameMatches("Condition", Text(forest, text, Field(forest, argument, "name")))) {
+            return Field(forest, argument, "value");
+        }
+    }
+    return arguments[0];
 }
 // A function's rows: its signature, then its body's statement rows in source
 // order, each followed by its operand rows. Operands count against one bound
@@ -1606,6 +1633,9 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                 work.append(alternative);
             }
             work.extend(ScalarBlock(forest, Field(forest, statement, "consequence"), mark));
+        } else if (Is(forest, statement, "expression_statement")) {
+            // As the assert step checks it, with its call's range.
+            row = ScalarAt(forest, FirstMember(forest, statement), facts.AssertRow, 0, 0, count, "");
         } else if (Is(forest, statement, "assignment")) {
             // The variable itself, or the one whose field is assigned.
             binding := ScalarVariable(names, Text(forest, text, RootOf(forest, Field(forest, statement, "target"))));

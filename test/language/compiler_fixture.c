@@ -26,6 +26,8 @@
 #include <string.h>
 
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+/* The complete authored test stays within the native compiler call ceiling. */
+#define FIXTURE_TEST_BUDGET 20000000u
 /* Differentials compare values, not packing: results box every packed array
  * in place, in the result's own storage, through unions and record fields. */
 static void box(arena *storage, const pin_value *value, int depth);
@@ -313,7 +315,7 @@ bool compiler_fixture_tests(const compiler_fixture *fixture)
 #ifdef CHIBI_PACKAGE_TEST_POOL
         task_pool_begin(pool, count > 1);
 #endif
-        package_tests_run(tests, count, backends[b], PACKAGE_TEST_BUDGET, tasks, results);
+        package_tests_run(tests, count, backends[b], FIXTURE_TEST_BUDGET, tasks, results);
 #ifdef CHIBI_PACKAGE_TEST_POOL
         task_pool_end(pool);
 #endif
@@ -758,6 +760,34 @@ TEST_CASE(compiler_fixture_rejects_missing_and_failed_authored_tests)
     REQUIRE(fixture_test_report(fixture, false, expected));
     return true;
 }
+/* A finite loop above the compiler-call ceiling must fail, and the next
+ * authored test must still run. The public chibi test budget is separate. */
+TEST_CASE(compiler_fixture_bounds_each_authored_test)
+{
+    const char source[] = "package fixture\n"
+                          "@test Exhausts :: () { for i in 0..<20000000 {} }\n"
+                          "@test After :: () {}\n";
+    source_package_input file = { "fixture/Tests.chibi", source, sizeof source - 1 };
+    compiler_fixture *fixture = &prepared_fixtures[0];
+    REQUIRE(compiler_fixture_prepare(fixture, &file, 1));
+    char expected[1024];
+    snprintf(
+        expected,
+        sizeof expected,
+        "FAIL fixture.Exhausts (BYTECODE)\n  "
+        "/compiler/fixture/Tests.chibi:2:46: "
+        "instruction budget exhausted\n"
+        "PASS fixture.After (BYTECODE)\nBYTECODE: 2 tests, 1 failed\n"
+        "FAIL fixture.Exhausts (%s)\n  /compiler/fixture/Tests.chibi:2:46: "
+        "instruction budget exhausted\n"
+        "PASS fixture.After (%s)\n%s: 2 tests, 1 failed\n",
+        behavior_backend_name(backends[1]),
+        behavior_backend_name(backends[1]),
+        behavior_backend_name(backends[1])
+    );
+    REQUIRE(fixture_test_report(fixture, false, expected));
+    return true;
+}
 TEST_CASE(compiler_fixture_rejects_invalid_authored_worker_settings)
 {
     const char *setting = getenv("CHIBI_TEST_WORKERS");
@@ -782,6 +812,7 @@ void test_language_compiler_fixture()
     RUN_TEST_CASE(compiler_fixture_default_keeps_both_backends);
     RUN_TEST_CASE(compiler_fixture_runs_authored_tests_on_selected_backends);
     RUN_TEST_CASE(compiler_fixture_rejects_missing_and_failed_authored_tests);
+    RUN_TEST_CASE(compiler_fixture_bounds_each_authored_test);
     RUN_TEST_CASE(compiler_fixture_rejects_invalid_authored_worker_settings);
     pu_clear_setup();
 }

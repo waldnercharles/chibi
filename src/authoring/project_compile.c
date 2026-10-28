@@ -11,10 +11,8 @@
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/native_default.h"
-#include "runtime/arrays_definition.h"
 #include "runtime/component_catalog.h"
 #include "runtime/task_pool.h"
-#include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/asset_format.h"
 #include "support/asset_text.h"
@@ -1267,18 +1265,10 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
                                     ? host_native_standalone_catalog_new(NULL, 0, error, sizeof error)
                                     : NULL;
     /* The private parser belongs to the generator, never to validated examples. */
-    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
-                                             NATIVE_ARRAY_DEFINITION_PACK,
-                                             COMPILER_SYNTAX_DEFINITION_PACK };
-    native_capabilities *render_native = native ? native_capabilities_from_definition_packs(
-                                                      NULL,
-                                                      0,
-                                                      packs,
-                                                      3,
-                                                      error,
-                                                      sizeof error
-                                                  )
-                                                : NULL;
+    const native_definition_pack parser[] = { COMPILER_SYNTAX_DEFINITION_PACK };
+    native_capabilities *render_native = native
+                                           ? host_native_standalone_catalog_new(parser, 1, error, sizeof error)
+                                           : NULL;
     authoring_packages *packages = NULL;
     if (render_native) {
         source_package_collection collections[] = { { "core", core } };

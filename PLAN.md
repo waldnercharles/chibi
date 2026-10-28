@@ -738,6 +738,20 @@ separate gate; the native runtime itself is still an explicit prebuilt input.
 
 ### M6. Replace the internal build graph
 
+Linux native route: `GRAPH_BUILD=1` now selects the existing graph for the full
+products and tooling/language drivers. Linux link inventories follow the pinned
+archive; full compile/link, generated-header, corpus/resource and discovery
+checks apply on Linux as on macOS. The Linux default remains CMake pending the
+explicit `ci-linux-graph` label or manual Linux Graph validation gate. The
+proof adds one Ubuntu job only when requested, with two build workers and a
+45-minute ceiling: full Release/Debug builds, a small CMake reference, parity
+and the existing four native groups. Ordinary PR/push CI gains no duplicate
+suites; the later default cutover must replace the native build lane rather
+than retain a second full lane. Hosted wall time remains to be established.
+The first-host bootstrap/reference, standalone test
+consumers, public SDK, web and Studio remain explicit CMake responsibilities;
+this slice is not total CMake/Ninja removal.
+
 Compiler-tools packaging slice, 2026-10-22: `tools/toolchain/SDK.chibi`
 installs graph-built private hosts and their complete compiler/core/bootstrap,
 authored build programs, graph packages and matching dependency notices into a

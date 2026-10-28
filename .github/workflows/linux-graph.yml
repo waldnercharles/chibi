@@ -1,0 +1,125 @@
+name: Linux Graph validation (opt-in)
+run-name: "Linux Graph · ${{ inputs.sanitizers == true && 'ASan + UBSan' || 'fast Debug O1' }} · ${{ github.event_name }}"
+
+# One-time full proof before the Linux default cutover, not a permanently
+# duplicated native matrix. A label requests this head, not every later push.
+# workflow_dispatch becomes available after this workflow reaches main.
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      sanitizers:
+        description: 'Run Graph validation with ASan + UBSan'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Graph build, tests and SDK relocation (Linux)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'ci-linux-graph' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    concurrency:
+      group: linux-graph-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CHIBI_CI_SANITIZERS: ${{ inputs.sanitizers == true && 'ON' || 'OFF' }}
+      CC: clang-18
+      CXX: clang++-18
+      # The ephemeral read-only repository token downloads checksum-pinned archives.
+      GH_TOKEN: ${{ github.token }}
+      XDG_RUNTIME_DIR: /tmp/chibi-runtime
+      SDL_AUDIODRIVER: dummy
+      LIBCLANG_ROOT: /usr/lib/llvm-18
+      NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+      JOBS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Select CI native profile
+        run: python3 .github/native-profile.py
+      - name: Verify clean source candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+      - name: Install graph build dependencies
+        run: |
+          python3 .github/install-ubuntu-dependencies.py --no-install-recommends \
+            clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 ccache python3-venv \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv "$RUNNER_TEMP/graph-sdk-build-tools"
+          "$RUNNER_TEMP/graph-sdk-build-tools/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo "$RUNNER_TEMP/graph-sdk-build-tools/bin" >> "$GITHUB_PATH"
+          install -d -m 700 "$XDG_RUNTIME_DIR"
+      - name: Build Release graph products and private hosts
+        run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl chibi-build-host chibi-compiler-host'
+      - name: Record Release graph tool identities
+        run: |
+          sha256sum \
+            build-release/sdk/chibi-build-host \
+            build-release/sdk/chibi-build-host.chibi-record \
+            build-release/sdk/chibi-compiler-host \
+            build-release/sdk/chibi-compiler-host.chibi-record \
+            > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+          cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+      - name: Build graph products and test drivers (selected Debug profile)
+        run: make build GRAPH_BUILD=1 BUILD_DIR=build-sdk-tests BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language chibi-compiler-host' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
+      - name: Verify executed graph profile, assertions and links
+        run: python3 .github/verify-native-profile.py --build build-sdk-tests --output "$RUNNER_TEMP/graph-sdk-native-profile.json"
+      - name: Verify Release graph tools survived the harness build unchanged
+        run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
+      - name: Build matching CMake command and generated-output reference
+        run: make graph-reference BUILD_DIR=build-sdk-tests CMAKE_REFERENCE_DIR=build-sdk-tests-cmake
+      - name: Verify graph commands, discovery, incremental builds and resources
+        env:
+          CHIBI_TOOLS_BUILD_DIR: build-sdk-tests/test/tools
+          CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
+          CHIBI_GRAPH_REFERENCE: build-sdk-tests-cmake
+        shell: bash
+        run: |
+          set -e
+          for route in build-graph build-graph-programs build-graph-debug-optimization build-graph-support build-graph-reflect build-graph-archive build-graph-generated build-graph-resources; do
+            python3 tools/test_policy.py tool "$route"
+          done
+      - name: Verify graph SDK packaging and relocation
+        run: |
+          CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
+          CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+          CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
+            python3 tools/test_policy.py tool build-sdk
+      - name: Native, material, project and language selectors on graph outputs
+        env:
+          UBSAN_OPTIONS: halt_on_error=1
+          CHIBI_TOOLS_BUILD_DIR: build-sdk-tests/test/tools
+          CHIBI_LANGUAGE_BUILD_DIR: build-sdk-tests/test/language
+          CHIBI_BUILD_HOST: build-sdk-tests/sdk/chibi-build-host
+          CHIBI_COMPILER_HOST: build-sdk-tests/sdk/chibi-compiler-host
+        shell: bash
+        run: |
+          set -e
+          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" "$CHIBI_BUILD_HOST" "$CHIBI_COMPILER_HOST" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile build-release/sdk/chibi-player; do test -x "$driver"; done
+          # Groups retain their existing coverage and admission policy; they
+          # remain sequential because fixtures and build outputs are shared.
+          python3 tools/test_policy.py group native
+          python3 tools/test_policy.py group materials
+          CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi \
+          CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin \
+            python3 tools/test_policy.py group projects
+          CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group language
+      - name: Verify sources remain unchanged
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"

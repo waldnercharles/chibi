@@ -20,6 +20,7 @@
 #include "runtime/native_capabilities.h"
 #include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
+#include "runtime/text_format.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/file_io.h"
@@ -10545,6 +10546,7 @@ enum
     SCALAR_TEXT_LENGTH = 1,
     SCALAR_TEXT_BYTE = 2,
     SCALAR_TEXT_SLICE = 3,
+    SCALAR_TEXT_FORMAT = 4,
     SCALAR_RANGE_EXCLUSIVE = 1,
     SCALAR_INT = 1,
     SCALAR_BOOL = 2,
@@ -10867,6 +10869,28 @@ enum
     TEXT_INDEX = 12,
     TEXT_BYTE = 13,
     TEXT_ROWS = (int)(sizeof TEXT_KINDS / sizeof *TEXT_KINDS)
+};
+/* Main formats an i64, a bool and a string and returns the byte count of
+ * what it gives. */
+static const char FORMAT_ROWS_SOURCE[] = "package scalar\n"
+                                         "Main :: () -> int {\n"
+                                         "    s := format_text(\"{}{}{}\", "
+                                         "i64(7), true, \"x\");\n"
+                                         "    return text_byte_length(s);\n"
+                                         "}\n";
+/* The kind of each of FORMAT_ROWS_SOURCE's rows, and the rows edited. */
+static const int FORMAT_KINDS[] = {
+    SCALAR_SOURCE_ROW,  SCALAR_DOCUMENT_ROW, SCALAR_FUNCTION_ROW,
+    SCALAR_LOCAL_ROW,   SCALAR_LITERAL_ROW,  SCALAR_LITERAL_ROW,
+    SCALAR_LITERAL_ROW, SCALAR_LITERAL_ROW,  SCALAR_TEXT_ROW,
+    SCALAR_RETURN_ROW,  SCALAR_READ_ROW,     SCALAR_TEXT_ROW,
+};
+enum
+{
+    FORMAT_FORMAT = 4,
+    FORMAT_INT = 5,
+    FORMAT_TEXT = 8,
+    FORMAT_ROWS = (int)(sizeof FORMAT_KINDS / sizeof *FORMAT_KINDS)
 };
 /* One field of one row set to `value`, to `text` when it is set, or to the
  * same field of row `from` when it is set. */
@@ -11206,7 +11230,7 @@ static const char TEXT_READ[] = "scalar text read differs from its operands";
  * operand of another type. */
 static const malformed_guard MALFORMED_TEXTS[] = {
     { { EDIT(TEXT_SLICE, "value", 0) }, TEXT_READ },
-    { { EDIT(TEXT_SLICE, "value", 4) }, TEXT_READ },
+    { { EDIT(TEXT_SLICE, "value", 5) }, TEXT_READ },
     { { EDIT(TEXT_SLICE, "count", 2) }, TEXT_READ },
     { { EDIT(TEXT_SLICE, "type", SCALAR_INT) }, TEXT_READ },
     { { EDIT(TEXT_LENGTH, "type", SCALAR_STRING) }, TEXT_READ },
@@ -11218,6 +11242,16 @@ static const malformed_guard MALFORMED_TEXTS[] = {
     { { EDIT(TEXT_INDEX, "type", SCALAR_INT64) }, TEXT_READ },
     { { EDIT(TEXT_SOURCE, "type", SCALAR_INT),
         { .row = TEXT_SOURCE, .field = "text", .text = "", .from = -1 } },
+      TEXT_READ },
+};
+/* A format of more operands than the stack holds, of none, an int result
+ * and an int format. */
+static const malformed_guard MALFORMED_FORMATS[] = {
+    { { EDIT(FORMAT_TEXT, "count", 5) }, TEXT_READ },
+    { { EDIT(FORMAT_TEXT, "count", 0) }, TEXT_READ },
+    { { EDIT(FORMAT_TEXT, "type", SCALAR_INT) }, TEXT_READ },
+    { { EDIT(FORMAT_FORMAT, "type", SCALAR_INT),
+        { .row = FORMAT_FORMAT, .field = "text", .text = "", .from = -1 } },
       TEXT_READ },
 };
 /* Arithmetic's operator, arity and result, and arithmetic on a bool. */
@@ -11536,6 +11570,17 @@ static bool texted_rows(pin_value *rows)
     REQUIRE(retained_text(guard_row(rows, TEXT_SOURCE), "text", "abcd"));
     return true;
 }
+/* FORMAT_ROWS_SOURCE's format consumes its format and each argument as it
+ * is to give a string. */
+static bool formatted_rows(pin_value *rows)
+{
+    pin_value *row = guard_row(rows, FORMAT_TEXT);
+    REQUIRE(scalar_field(row, "value").i == SCALAR_TEXT_FORMAT);
+    REQUIRE(scalar_field(row, "count").i == 4 && scalar_field(row, "type").i == SCALAR_STRING);
+    REQUIRE(scalar_field(guard_row(rows, FORMAT_INT), "type").i == SCALAR_INT64);
+    REQUIRE(retained_text(guard_row(rows, FORMAT_FORMAT), "text", "{}{}{}"));
+    return true;
+}
 /* UNION_ROWS_SOURCE's union, its variants and their payloads numbered across
  * it, the union type of Make's result, Main's local and the rows that read or
  * make one, the Tag and variant ordinals its `is` and arms test, its last
@@ -11592,16 +11637,17 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
 {
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
-        looped[2], switched[2], recorded[2], unioned[2], stringed[2], texted[2];
+        looped[2], switched[2], recorded[2], unioned[2], stringed[2], texted[2],
+        formatted[2];
     const char *const texts[] = { SCALAR_SOURCE,       GUARD_SOURCE,
                                   ARITHMETIC_SOURCE,   WIDTH_SOURCE,
                                   CONTROL_ROWS_SOURCE, LOOP_ROWS_SOURCE,
                                   SWITCH_ROWS_SOURCE,  RECORD_ROWS_SOURCE,
                                   UNION_ROWS_SOURCE,   STRING_ROWS_SOURCE,
-                                  TEXT_ROWS_SOURCE };
+                                  TEXT_ROWS_SOURCE,    FORMAT_ROWS_SOURCE };
     pin_value *outputs[] = { produced,   guarded,  computed, widened,
                              controlled, looped,   switched, recorded,
-                             unioned,    stringed, texted };
+                             unioned,    stringed, texted,   formatted };
     for (int b = 0; b < 2; b++) {
         pin_value args[SCALAR_ARGUMENTS];
         REQUIRE(scalar_arguments(b, "Scalar.chibi", text(SCALAR_SOURCE), args));
@@ -11736,6 +11782,15 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
             MALFORMED_TEXTS,
             (int)(sizeof MALFORMED_TEXTS / sizeof *MALFORMED_TEXTS)
         ));
+        REQUIRE(formatted_rows(&formatted[b]));
+        REQUIRE(rejects_malformed(
+            b,
+            &formatted[b],
+            FORMAT_KINDS,
+            FORMAT_ROWS,
+            MALFORMED_FORMATS,
+            (int)(sizeof MALFORMED_FORMATS / sizeof *MALFORMED_FORMATS)
+        ));
     }
     return true;
 }
@@ -11763,7 +11818,8 @@ enum
     NATIVE_TEXT_LENGTH = 32,
     NATIVE_TEXT_BYTE = 33,
     NATIVE_TEXT_DROP = 34,
-    NATIVE_TEXT_TAKE = 35
+    NATIVE_TEXT_TAKE = 35,
+    NATIVE_FORMAT = 36
 };
 typedef struct native_code
 {
@@ -11934,9 +11990,15 @@ static bool native_result(int b, const char *function, pin_value *args, int coun
     *out = result.ptr;
     return true;
 }
-/* Emits m for native_abi's target `function` as a module of internal
- * functions under budget 1. */
-static bool native_target_emit(int b, const char *function, const native_module *m, const pin_union **out)
+/* Emits m for native_abi's target `function` under budget 1, its first
+ * function the entry, or `main` for a program. */
+static bool native_entry_emit(
+    int b,
+    const char *function,
+    const native_module *m,
+    bool main,
+    const pin_union **out
+)
 {
     pin_value args[16];
     REQUIRE(native_tables(b, function, m, args));
@@ -11947,9 +12009,14 @@ static bool native_target_emit(int b, const char *function, const native_module 
     args[11] = strings(m->names, m->file ? m->function_count : 0);
     args[12] = native_ints(m->lines, placed);
     args[13] = native_ints(m->columns, placed);
-    args[14] = (pin_value){ .type = PIN_BOOL, .b = false };
+    args[14] = (pin_value){ .type = PIN_BOOL, .b = main };
     args[15] = (pin_value){ .type = PIN_I32, .i = 1 };
     return native_result(b, "Emit", args, 16, out);
+}
+/* Emits m for native_abi's target `function` with its entry chibi_scalar. */
+static bool native_target_emit(int b, const char *function, const native_module *m, const pin_union **out)
+{
+    return native_entry_emit(b, function, m, false, out);
 }
 /* Emits m for native_abi's target `function` as the library `name` under
  * budget 1, its functions named and identified by `names` and `ids`, `count`
@@ -12044,7 +12111,9 @@ static bool native_libraries_export_words(int b)
     pin_string text = pin_text(value->values[0]);
     REQUIRE(!contains(text, "define i32"));
     REQUIRE(contains(text, "define internal i32 @chibi_scalar.0() #0 {"));
-    REQUIRE(contains(text, "define internal void @chibi_scalar.export.1(ptr %in, ptr %out) #0 {"));
+    REQUIRE(
+        contains(text, "define internal void @chibi_scalar.export.1(ptr %ctx, ptr %in, ptr %out) #0 {")
+    );
     REQUIRE(
         contains(text, "@chibi_scalar.export.types.1 = private unnamed_addr constant [4 x i8] [i8 1, i8 2, i8 1, i8 1]")
     );
@@ -12058,7 +12127,7 @@ static bool native_libraries_export_words(int b)
         "i32 1, ptr @chibi_scalar.export.1 }"
     ));
     REQUIRE(
-        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 1, i32 2, ptr @chibi_scalar.exports }")
+        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 2, i32 2, ptr @chibi_scalar.exports }")
     );
     static const char malformed[] = "native library needs an identifier and a "
                                     "name and ID for each function";
@@ -12359,9 +12428,114 @@ static bool native_text_reads_emit(int b)
     }
     native_code code[TEXT_READ_COUNT];
     memcpy(code, TEXT_READ_CODE, sizeof code);
-    code[7].op = NATIVE_TEXT_TAKE + 1;
+    code[7].op = NATIVE_FORMAT + 1;
     m = text_read_module(code);
     REQUIRE(native_rejects(b, &m, "unsupported native scalar instruction"));
+    return true;
+}
+/* Main returns the length of format_text("{} {}", 7, "x"). */
+static const native_code FORMAT_CODE[] = {
+    { .op = NATIVE_CHECK },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 7 },
+    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT, .output = 2, .literal = 1 },
+    { .op = NATIVE_FORMAT, .type = NATIVE_TEXT, .output = 3, .target = 3 },
+    { .op = NATIVE_TEXT_LENGTH, .type = NATIVE_INT, .output = 4, .left = 3 },
+    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 4 },
+    { .op = NATIVE_RETURN },
+};
+enum
+{
+    FORMAT_COUNT = (int)(sizeof FORMAT_CODE / sizeof *FORMAT_CODE)
+};
+static const int FORMAT_ARGUMENTS[] = { 0, 1, 2 };
+static native_module format_module(const native_code *code, const int *arguments)
+{
+    static const native_function functions[] = {
+        { NATIVE_INT, 0, 0, 0, 5, 0, FORMAT_COUNT, 0, 3 }
+    };
+    static const int slots[] = { NATIVE_TEXT, NATIVE_INT, NATIVE_TEXT, NATIVE_TEXT, NATIVE_INT };
+    static const char *const texts[] = { "{} {}", "x" };
+    return (native_module){ .functions = functions,
+                            .function_count = 1,
+                            .slots = slots,
+                            .slot_count = 5,
+                            .code = code,
+                            .code_count = FORMAT_COUNT,
+                            .arguments = arguments,
+                            .argument_count = 3,
+                            .texts = texts,
+                            .text_count = 2 };
+}
+/* A format makes each argument a runtime value, a scalar's word or a
+ * string's bytes and length, and calls format_text through the context,
+ * which every function of the module, and each library export, takes
+ * first. A format of a missing or non-string format, or outside its
+ * arguments, is rejected, as is a program that would format. */
+static bool native_formats_emit(int b)
+{
+    native_module m = format_module(FORMAT_CODE, FORMAT_ARGUMENTS);
+    pin_string ir;
+    REQUIRE(native_text(b, &m, &ir));
+    static const char *const expected[] = {
+        "define i32 @chibi_scalar(ptr %ctx) #0 {\n",
+        "%values4 = alloca [3 x { i32, i32, i64, ptr }]\n  %text4 = alloca { "
+        "ptr, i32 }\n",
+        "%f4_1.word = sext i32 %f4_1 to i64\n  %f4_1.value = insertvalue { "
+        "i32, i32, i64, ptr } "
+        "{ i32 1, i32 0, i64 0, ptr null }, i64 %f4_1.word, 2\n",
+        "%f4_2.sized = insertvalue { i32, i32, i64, ptr } { i32 12, i32 0, i64 "
+        "0, ptr null }, "
+        "i32 %f4_2.length, 1\n",
+        "%f4_2.value = insertvalue { i32, i32, i64, ptr } %f4_2.sized, ptr "
+        "%f4_2.bytes, 3\n",
+        "%f4_2.at = getelementptr inbounds [3 x { i32, i32, i64, ptr }], ptr "
+        "%values4, i64 0, i64 2\n",
+        "%format4.at = getelementptr inbounds { ptr }, ptr %ctx, i32 0, i32 0\n"
+        "  %format4 = load ptr, ptr %format4.at\n"
+        "  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n"
+        "  %v4 = load { ptr, i32 }, ptr %text4\n",
+    };
+    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
+        REQUIRE(contains(ir, expected[i]));
+    }
+    static const char *const names[] = { "Main" };
+    static const int64_t ids[] = { 3 };
+    const pin_union *value;
+    REQUIRE(native_emit_library(b, "LinuxX64", &m, "Formats", names, ids, 1, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
+    pin_string library = pin_text(value->values[0]);
+    REQUIRE(contains(library, "define internal i32 @chibi_scalar.0(ptr %ctx) #0 {\n"));
+    REQUIRE(
+        contains(library, "(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n  %r = call i32 @chibi_scalar.0(ptr %ctx)\n")
+    );
+    REQUIRE(native_entry_emit(b, "LinuxX64", &m, true, &value));
+    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
+    REQUIRE(pin_text_equal(
+        pin_text(value->values[1]),
+        pin_text(text("a native program cannot call the runtime yet"))
+    ));
+    static const char format[] = "native format differs from its operands";
+    static const native_change changes[] = {
+        /* No format, a callee, arguments past the table, and an int result. */
+        { 4, offsetof(native_code, target), 0 },
+        { 4, offsetof(native_code, left), 1 },
+        { 4, offsetof(native_code, right), 1 },
+        { 4, offsetof(native_code, type), NATIVE_INT },
+    };
+    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
+        native_code code[FORMAT_COUNT];
+        memcpy(code, FORMAT_CODE, sizeof code);
+        change_code(code, changes[i]);
+        m = format_module(code, FORMAT_ARGUMENTS);
+        REQUIRE(
+            native_rejects(b, &m, i == 3 ? "native scalar output has an invalid type or multiple definitions" : format)
+        );
+    }
+    /* An int format. */
+    static const int unformatted[] = { 1, 0, 2 };
+    m = format_module(FORMAT_CODE, unformatted);
+    REQUIRE(native_rejects(b, &m, format));
     return true;
 }
 /* Whether every instruction line of `ir` has a location. */
@@ -12562,7 +12736,7 @@ static bool native_strings_emit(int b)
     REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
     REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
     REQUIRE(
-        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 1, i32 0, ptr @chibi_scalar.exports }")
+        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 2, i32 0, ptr @chibi_scalar.exports }")
     );
     static const native_code published[] = {
         { .op = NATIVE_CHECK },
@@ -12622,6 +12796,7 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
         REQUIRE(native_recursion_probes_the_stack(b));
         REQUIRE(native_strings_emit(b));
         REQUIRE(native_text_reads_emit(b));
+        REQUIRE(native_formats_emit(b));
         REQUIRE(native_lines_place_code(b));
         REQUIRE(native_cycles_run_unchecked(b));
     }
@@ -12638,8 +12813,8 @@ static bool scalar_results_match(const int64_t values[4], int64_t expected)
 }
 /* Forms the scalar subset cannot express, each with its message and the
  * source its diagnostic covers: a switch on a union call, an `is` that
- * binds, string and record payloads, a text native given a named argument
- * and a call of another native. */
+ * binds, string and record payloads, a text native given a named argument,
+ * a record formatted and a call of another native. */
 static const struct
 {
     const char *source, *message, *excerpt;
@@ -12675,6 +12850,16 @@ static const struct
       "scalar proof requires number and bool results where a function has "
       "several",
       "p: Point" },
+    { "package scalar\nPoint :: struct { x: int; }\n"
+      "Main :: () -> int { p: Point = {x: 1}; return "
+      "text_byte_length(format_text(\"{}\", p)); }\n",
+      "scalar proof formats only numbers, bools and strings",
+      "p" },
+    /* The call step types format_text's arguments first, as the VM's. */
+    { "package scalar\nMain :: () -> int { return "
+      "text_byte_length(format_text(\"{}\", 7)); }\n",
+      "a number needs an integer type here",
+      "7" },
     /* No native but a text read is known. */
     { "package scalar\nMain :: () -> int { if (text_equal(\"a\", \"b\")) { "
       "return 1; } return 0; }\n",
@@ -13646,12 +13831,14 @@ static bool keeps_guards(const char *name, const char *ir)
     return true;
 }
 /* A call a case checks, its entry or a probe, and what it gave on the
- * bytecode and compiled VMs and natively at O0 and O2. */
+ * bytecode and compiled VMs and natively at O0 and O2. An entry of a module
+ * that calls the runtime takes a context. */
 typedef struct scalar_call
 {
     scalar_probe probe;
     char json[128], symbol[64];
     int64_t values[4];
+    bool context;
 } scalar_call;
 enum
 {
@@ -13700,6 +13887,7 @@ static bool vm_values(
     return true;
 }
 typedef int32_t (*scalar_entry)();
+typedef int32_t (*scalar_runtime_entry)(execution_native_context *);
 typedef int64_t (*scalar_adapter)(const int64_t *);
 enum
 {
@@ -13709,7 +13897,7 @@ enum
  * test_language_package_compiler_chibi_native_call) that must finish within
  * `seconds`, and stores each value in its call's `column`. A call of a
  * probe_ symbol is a probe adapter, with or without arguments; any other,
- * such as the entry, takes none and returns an int32. */
+ * such as the entry, takes none, or only a context, and returns an int32. */
 static chibi_process_capture_result library_calls(
     const char *directory,
     const char *library,
@@ -13730,7 +13918,15 @@ static chibi_process_capture_result library_calls(
     argv[2] = library;
     for (int i = 0; i < count; i++) {
         bool adapter = !strncmp(calls[i].symbol, "probe_", strlen("probe_"));
-        int n = snprintf(specs[i], CALL_SPEC, "%s%s", calls[i].symbol, adapter ? ":" : "");
+        assert(!adapter || !calls[i].context);
+        int n = snprintf(
+            specs[i],
+            CALL_SPEC,
+            "%s%s%s",
+            calls[i].context ? "+" : "",
+            calls[i].symbol,
+            adapter ? ":" : ""
+        );
         for (int a = 0; adapter && a < calls[i].probe.count; a++) {
             n += snprintf(
                 specs[i] + n,
@@ -13758,8 +13954,10 @@ static chibi_process_capture_result library_calls(
     return result;
 }
 /* The child of library_calls: opens `library`, then calls each spec in order,
- * `symbol` for the entry or `symbol:a,b` for an adapter, `symbol:` for one of
- * no arguments, and prints each value on its own line as it returns. */
+ * `symbol` for the entry, `+symbol` for one that takes a context, or
+ * `symbol:a,b` for an adapter, `symbol:` for one of no arguments, and prints
+ * each value on its own line as it returns. A context's heap is freed after
+ * its call, as the VM frees it. */
 static int library_child(const char *library, int count, char **specs)
 {
     stack_overflow_init();
@@ -13771,10 +13969,12 @@ static int library_child(const char *library, int count, char **specs)
     for (int i = 0; i < count; i++) {
         char symbol[CALL_SPEC];
         int64_t arguments[MAX_PROBE_ARGUMENTS];
-        const char *at = specs[i] + strcspn(specs[i], ":");
-        size_t length = (size_t)(at - specs[i]);
+        bool context = specs[i][0] == '+';
+        const char *spec = specs[i] + context;
+        const char *at = spec + strcspn(spec, ":");
+        size_t length = (size_t)(at - spec);
         assert(length < sizeof symbol);
-        memcpy(symbol, specs[i], length);
+        memcpy(symbol, spec, length);
         symbol[length] = 0;
         bool adapter = *at;
         int n = 0;
@@ -13787,8 +13987,19 @@ static int library_child(const char *library, int count, char **specs)
             fprintf(stderr, "native scalar symbol %s: %s\n", symbol, dlerror());
             return 1;
         }
-        int64_t value = adapter ? ((scalar_adapter)function)(arguments)
-                                : ((scalar_entry)function)();
+        int64_t value;
+        if (context) {
+            execution_native_frame frame;
+            execution_native_frame_init(
+                &frame,
+                (execution_native_runtime){ NATIVE_FORMAT_TEXT_HOST.value }
+            );
+            value = ((scalar_runtime_entry)function)(&frame.context);
+            execution_native_frame_free(&frame);
+        } else {
+            value = adapter ? ((scalar_adapter)function)(arguments)
+                            : ((scalar_entry)function)();
+        }
         printf("%" PRId64 "\n", value);
         fflush(stdout);
     }
@@ -13991,6 +14202,11 @@ static bool call_adapters(const pin_value *rows, const scalar_call *calls, int c
     }
     return true;
 }
+/* Whether module `ir` calls the runtime: its entry takes a context. */
+static bool calls_runtime(const char *ir)
+{
+    return strstr(ir, "@chibi_scalar(ptr %ctx)");
+}
 /* Each call's value natively: `ir` with an adapter for each probed function,
  * built at O0 and at O2. */
 static bool native_values(
@@ -14002,6 +14218,10 @@ static bool native_values(
     int count
 )
 {
+    /* No adapter passes a context, so a module that calls the runtime is
+     * checked through its entry alone. */
+    calls[0].context = calls_runtime(ir);
+    REQUIRE(!calls[0].context || count == 1);
     char *adapter;
     REQUIRE(call_adapters(rows, calls, count, &adapter));
     for (int level = 0; level < 2; level++) {
@@ -14229,7 +14449,8 @@ static bool bundled(
     int count
 )
 {
-    if (!bundle_root()) {
+    /* A bundle's runner has no runtime to give a context. */
+    if (!bundle_root() || calls[0].context) {
         return true;
     }
     char *adapter;
@@ -15030,6 +15251,148 @@ enum
 {
     TEXT_NATIVES_ENTRY = -386181014
 };
+/* Allocating text through core:strings functions copied as they are, and
+ * format_text of each scalar type, widths, precision, hex, explicit indexes,
+ * escaped braces, an embedded NUL and no arguments. Each string's bytes are
+ * mixed into Main's result, which wraps. The core:strings functions they
+ * search with are TEXT_NATIVES'. */
+static const char *const TEXT_FORMATS[] = {
+    "package scalar\n"
+    "Main :: () -> int {\n"
+    "    t: int = 0;\n"
+    "    t = Mix(t, Sum(ToLower(\"Hello, World!\")));\n"
+    "    t = Mix(t, Sum(ToLower(\"already\")));\n"
+    "    t = Mix(t, Sum(ToUpper(\"chibi 2D/3D \xc3\xa9"
+    "\")));\n"
+    "    t = Mix(t, Sum(Repeat(\"ab\", 5)));\n"
+    "    t = Mix(t, Sum(Repeat(\"x\", 0)));\n"
+    "    t = Mix(t, Sum(Replace(\"a-b-c-d\", \"-\", \"+\", 2)));\n"
+    "    t = Mix(t, Sum(Replace(\"aaa\", \"\", \"|\", -1)));\n"
+    "    t = Mix(t, Sum(ReplaceAll(\"banana\", \"an\", \"AN\")));\n"
+    "    n: number = 2.5;\n"
+    "    d: f64 = -0.125;\n"
+    "    k: i64 = -9000000000;\n"
+    "    u: u8 = 255;\n"
+    "    flag := k < 0;\n"
+    "    t = Mix(t, Sum(format_text(\"{} {} {} {} {}\", n, d, k, u, flag)));\n"
+    "    t = Mix(t, Sum(format_text(\"[{:6.2}] [{:4}] {{}} {:x}\", n, \"ab\", "
+    "int(255))));\n"
+    "    t = Mix(t, Sum(format_text(\"{1}{0}{}\", \"a\", \"b\\u0000c\")));\n"
+    "    t = Mix(t, Sum(format_text(\"no arguments\")));\n"
+    "    return t;\n"
+    "}\n"
+    "Mix :: (t: int, value: int) -> int { return t * 31 + value; }\n"
+    "Sum :: (s: string) -> int {\n"
+    "    total := ByteLength(s);\n"
+    "    i: int = 0;\n"
+    "    while (i < ByteLength(s)) {\n"
+    "        total = total * 7 + ByteAt(s, i);\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    return total;\n"
+    "}\n"
+    "ByteLength :: (value: string) -> int {\n"
+    "    return text_byte_length(value);\n"
+    "}\n"
+    "ByteAt :: (value: string, index: int) -> int {\n"
+    "    return text_byte_at(value, index);\n"
+    "}\n"
+    "Slice :: (value: string, start: int, count: int) -> string {\n"
+    "    return text_slice(value, start, count);\n"
+    "}\n",
+    "ToLower :: (s: string) -> string {\n"
+    "    size := ByteLength(s);\n"
+    "    result: string = \"\";\n"
+    "    start: int = 0;\n"
+    "    i: int = 0;\n"
+    "    while (i < size) {\n"
+    "        c := ByteAt(s, i);\n"
+    "        if (c >= 65 && c <= 90) {\n"
+    "            letter := Slice(\"abcdefghijklmnopqrstuvwxyz\", c - 65, 1);\n"
+    "            result = format_text(\"{}{}{}\", result, Slice(s, start, i - "
+    "start), letter);\n"
+    "            start = i + 1;\n"
+    "        }\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    if (start == 0) {\n"
+    "        return s;\n"
+    "    }\n"
+    "    return format_text(\"{}{}\", result, Slice(s, start, size - start));\n"
+    "}\n"
+    "ToUpper :: (s: string) -> string {\n"
+    "    size := ByteLength(s);\n"
+    "    result: string = \"\";\n"
+    "    start: int = 0;\n"
+    "    i: int = 0;\n"
+    "    while (i < size) {\n"
+    "        c := ByteAt(s, i);\n"
+    "        if (c >= 97 && c <= 122) {\n"
+    "            letter := Slice(\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", c - 97, 1);\n"
+    "            result = format_text(\"{}{}{}\", result, Slice(s, start, i - "
+    "start), letter);\n"
+    "            start = i + 1;\n"
+    "        }\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    if (start == 0) {\n"
+    "        return s;\n"
+    "    }\n"
+    "    return format_text(\"{}{}\", result, Slice(s, start, size - start));\n"
+    "}\n"
+    "Repeat :: (s: string, count: int) -> string {\n"
+    "    if (count < 1) {\n"
+    "        return \"\";\n"
+    "    }\n"
+    "    total: i64 = i64(ByteLength(s)) * i64(count);\n"
+    "    result: string = s;\n"
+    "    while (i64(ByteLength(result)) < total) {\n"
+    "        rest: i64 = total - i64(ByteLength(result));\n"
+    "        result = format_text(\"{}{}\", result, Slice(result, 0, "
+    "int(rest)));\n"
+    "    }\n"
+    "    return result;\n"
+    "}\n"
+    "Replace :: (s: string, old: string, new: string, n: int) -> string {\n"
+    "    if (old == new || n == 0) {\n"
+    "        return s;\n"
+    "    }\n"
+    "    matches := Count(s, old);\n"
+    "    if (matches == 0) {\n"
+    "        return s;\n"
+    "    }\n"
+    "    if (n > 0 && n < matches) {\n"
+    "        matches = n;\n"
+    "    }\n"
+    "    size := ByteLength(s);\n"
+    "    width := ByteLength(old);\n"
+    "    result: string = \"\";\n"
+    "    start: int = 0;\n"
+    "    i: int = 0;\n"
+    "    while (i < matches) {\n"
+    "        j := start;\n"
+    "        if (width == 0) {\n"
+    "            if (i > 0) {\n"
+    "                j += 1;\n"
+    "            }\n"
+    "        } else {\n"
+    "            j += Index(Slice(s, start, size - start), old);\n"
+    "        }\n"
+    "        result = format_text(\"{}{}{}\", result, Slice(s, start, j - "
+    "start), new);\n"
+    "        start = j + width;\n"
+    "        i += 1;\n"
+    "    }\n"
+    "    return format_text(\"{}{}\", result, Slice(s, start, size - start));\n"
+    "}\n"
+    "ReplaceAll :: (s: string, old: string, new: string) -> string {\n"
+    "    return Replace(s, old, new, -1);\n"
+    "}\n",
+};
+enum
+{
+    TEXT_FORMATS_ENTRY = 1366853637
+};
 /* Why module `name`'s rows on VM b have no IR: the producer's rejection or
  * the consumer's validation error. */
 static void report_rejection(int b, const char *name, pin_value *rows)
@@ -15088,6 +15451,30 @@ static bool module_gives(const char *directory, int b, const char *name, const c
     arena_free(&detached);
     return true;
 }
+/* TEXT_FORMATS, with TEXT_NATIVES' functions but its Main, gives its value
+ * on both VMs and natively at O0 and O2, each native call formatting in a
+ * context whose heap is freed after it. */
+static bool text_formats_agree(const char *directory)
+{
+    size_t length = 0;
+    for (size_t i = 0; i < sizeof TEXT_FORMATS / sizeof *TEXT_FORMATS; i++) {
+        length += strlen(TEXT_FORMATS[i]);
+    }
+    for (size_t i = 1; i < sizeof TEXT_NATIVES / sizeof *TEXT_NATIVES; i++) {
+        length += strlen(TEXT_NATIVES[i]);
+    }
+    char *source = xmalloc(length + 1);
+    source[0] = 0;
+    for (size_t i = 0; i < sizeof TEXT_FORMATS / sizeof *TEXT_FORMATS; i++) {
+        strcat(source, TEXT_FORMATS[i]);
+    }
+    for (size_t i = 1; i < sizeof TEXT_NATIVES / sizeof *TEXT_NATIVES; i++) {
+        strcat(source, TEXT_NATIVES[i]);
+    }
+    bool gives = module_gives(directory, 0, "text_formats", source, TEXT_FORMATS_ENTRY);
+    free(source);
+    return gives;
+}
 /* Each folded source and the text natives' source is accepted, and its Main
  * gives its value on both VMs and natively at O0 and O2. */
 static bool folded_sources_agree(const char *directory)
@@ -15113,7 +15500,7 @@ static bool folded_sources_agree(const char *directory)
     bool gives = native_cancelled ||
                  module_gives(directory, FOLDED_SOURCE_COUNT % 2, "text_natives", source, TEXT_NATIVES_ENTRY);
     free(source);
-    return gives;
+    return gives && (native_cancelled || text_formats_agree(directory));
 }
 /* A constant that folds outside its type is still a located error. */
 static bool folded_overflow_rejected()
@@ -17350,7 +17737,7 @@ static bool exports_small_alone(const execution_native_manifest *manifest)
     }
     REQUIRE(small && small->parameter_count == 0);
     uint64_t result = 0;
-    small->entry(NULL, &result);
+    small->entry(NULL, NULL, &result);
     REQUIRE(result == 19);
     return true;
 }
@@ -17386,7 +17773,7 @@ static bool library_loads_and_agrees(const char *directory, const char *library)
     const execution_native_manifest *const
         *manifests = libraries ? native_libraries_manifests(libraries, &count) : NULL;
     bool agreed = count == 1 && manifests[0]->abi == EXECUTION_NATIVE_ABI &&
-                  manifests[0]->count == 5 && exports_small_alone(manifests[0]) &&
+                  manifests[0]->count == 6 && exports_small_alone(manifests[0]) &&
                   native_calls_agree(manifests[0]);
     native_libraries_close(libraries);
     REQUIRE(!remove(shipped) && !rmdir(folder) && agreed);

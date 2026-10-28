@@ -569,6 +569,7 @@ int behavior_function_run_calls(
             if (native) {
                 pin_value *values = context->data->values;
                 execution_native_call(
+                    root->activation->natives,
                     native,
                     call->function,
                     &values[call->first],

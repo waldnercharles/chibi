@@ -1,1 +1,0 @@
-{"driver": "/workspace/.cloud-tools/root/usr/share/vulkan/icd.d/lvp_icd.json", "device_nodes": [], "devices": [{"type": 4, "name": "llvmpipe (LLVM 19.1.7, 256 bits)"}], "hardware_available": false, "acceleration": "software", "backend": "Vulkan", "instance_result": 0, "status": "enumerated", "scope": "discovery_only_not_render_validation"}

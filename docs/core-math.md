@@ -219,7 +219,11 @@ easing and spring transitions. The C package-math selector supplies exact
 nonfinite values and signed zeros, checks rejection and conversion boundaries,
 reads the package sources and checks retirement of the old catalog entries.
 The separate benchmark compares imported scalar calls with inline arithmetic
-and spring record-update forms; its measurements are not a timing gate.
+and spring record-update forms; its measurements are not a timing gate. The
+[current native checkpoint](evidence/core-math-20261028-integration/NATIVE-MATH.md)
+records zero wrapped allocations in the Lerp loops and nonzero allocations in
+both spring loops. Those counters cover the benchmark bodies and their runtime
+work.
 
 ```sh
 CHIBI_LANGUAGE_BUILD_DIR=<build> python3 tools/test_policy.py tool language-package-math

@@ -255,7 +255,8 @@ static void format_text(
 }
 void execution_native_frame_init(execution_native_frame *frame, execution_native_runtime runtime)
 {
-    *frame = (execution_native_frame){ .context = { format_text }, .runtime = runtime };
+    *frame = (execution_native_frame){ .context = { .format_text = format_text },
+                                       .runtime = runtime };
 }
 void execution_native_frame_free(execution_native_frame *frame)
 {

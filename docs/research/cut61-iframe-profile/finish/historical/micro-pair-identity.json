@@ -1,9 +1,0 @@
-{
-  "source_commit": "cac4acb9d78cb3f8dd0b669a7b0e3f80a4141216",
-  "after_sha256": "509c1f46af9d3f72cfbc20e35f8ddb15269eee03050c6612894795816e48edb8",
-  "before_kit_sha256": "7574738a27a091e6bc47905db7c908eb45671841179708dec09f956f15e7792a",
-  "binaries": {
-    "before": "e9ed32c4d4607f40c96a33b172eb7ffeaa1c4b32c5bf14827ccef2fc0a381366",
-    "after": "be36f1d1ead36adf6f87f1ad6bf983482f87ea550ee121e6d62df7b91f9ebb01"
-  }
-}

@@ -173,15 +173,13 @@ static script_type collection(reader *r, pin_container container, script_type ke
     }
     return definition.type;
 }
-/* Applies `ref`, `?` and each `[]` in order; an array of collections names
+/* Applies `?` and each `[]` in order; an array of collections names
  * its element collection. */
 static script_type traits(reader *r, TSNode node, script_type out)
 {
     for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
         const char *token = text(r, ts_node_child(node, i));
-        if (!strcmp(token, "ref")) {
-            out.flags |= SCRIPT_TYPE_REFERENCE;
-        } else if (!strcmp(token, "?")) {
+        if (!strcmp(token, "?")) {
             out.flags |= SCRIPT_TYPE_OPTIONAL;
         } else if (!strcmp(token, "[") || !strcmp(token, "[]")) {
             if (out.collection || out.container != PIN_CONTAINER_SINGLE) {
@@ -382,6 +380,19 @@ static const char *unit(reader *r, TSNode node)
     }
     return out;
 }
+/* What a measured `^T u` stores: units measure the pointee. */
+static script_type measured_storage(const reader *r, script_type out)
+{
+    if (out.storage != PIN_POINTER || out.container != PIN_CONTAINER_SINGLE) {
+        return out;
+    }
+    for (int i = 0; i < acount(r->types); i++) {
+        if (r->types[i].id == out.nominal) {
+            return r->types[i].element_type;
+        }
+    }
+    return script_catalog_pointee_type(&r->catalog, out);
+}
 static script_type signature(reader *r, TSNode node, const char **unit_text)
 {
     if (is(node, "unit")) {
@@ -391,7 +402,7 @@ static script_type signature(reader *r, TSNode node, const char **unit_text)
     if (is(node, "measured_type")) {
         script_type out = type(r, field(node, "base"));
         *unit_text = unit(r, field(node, "unit"));
-        if (!script_type_numeric(out)) {
+        if (!script_type_numeric(measured_storage(r, out))) {
             diagnostic(r, node, "A measured signature requires a numeric storage type");
         }
         return out;

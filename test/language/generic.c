@@ -275,16 +275,16 @@ TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors)
     REQUIRE(nested);
     return true;
 }
-TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref)
+TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_is_a_pointer)
 {
     const char
         *source = "Borrowed :: behavior { copied:retain int=0; changed:retain "
                   "int=0; "
                   "Identity::(value:$T)->T{return value} "
-                  "Increment::(value:ref $T){value+=1} "
-                  "Borrow::(item:ref int){copy:=Identity(item); "
-                  "Increment(value: ref item); copied=copy;} "
-                  "on Run :: () { value:int=4; Borrow(item: ref value); "
+                  "Increment::(value:^$T){value^+=1} "
+                  "Borrow::(item:^int){copy:=Identity(item^); "
+                  "Increment(value: item); copied=copy;} "
+                  "on Run :: () { value:int=4; Borrow(item: &value); "
                   "changed=value; } "
                   "}";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -815,10 +815,10 @@ TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifi
         *source = "Composed :: library { "
                   "Box::struct($T:Type){value:T} "
                   "seed:retain Box(int)[][]=[]; "
-                  "Bump::(value:ref Box(int)){value.value+=1} "
+                  "Bump::(value:^Box(int)){value.value+=1} "
                   "Run::()->int { values:Box(int)[]=[{value:4}]; "
                   "item:Box(int)={value:5}; "
-                  "Bump(ref item); maybe:Box(int)?=item; "
+                  "Bump(&item); maybe:Box(int)?=item; "
                   "nested:Box(int)[][]=[values]; "
                   "return item.value+values[0].value+nested[0][0].value; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -1042,7 +1042,7 @@ TEST_SUITE(language_generic_suite)
     RUN_TEST_CASE(compile_time_calls_follow_runtime_semantics);
     RUN_TEST_CASE(generic_explicit_casts_and_typed_locals_infer_the_same_type);
     RUN_TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors);
-    RUN_TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref);
+    RUN_TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_is_a_pointer);
     RUN_TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensions);
     RUN_TEST_CASE(generic_compile_time_assert_fails_compilation);
     RUN_TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded);

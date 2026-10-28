@@ -1,2 +1,0 @@
-FAIL: test cleanup unavailable: no usable proc children reader or ps ([Errno 1] Operation not permitted: 'ps'); no test started
-Test command wall time: 0.069s; includes in-test fixture setup; external configuration/build excluded.

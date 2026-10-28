@@ -324,10 +324,6 @@
           "named": true
         },
         {
-          "type": "reference_argument",
-          "named": true
-        },
-        {
           "type": "string",
           "named": true
         },
@@ -2940,7 +2936,7 @@
         "required": false,
         "types": [
           {
-            "type": "ref",
+            "type": "&",
             "named": false
           }
         ]
@@ -4443,10 +4439,6 @@
             "named": true
           },
           {
-            "type": "reference_argument",
-            "named": true
-          },
-          {
             "type": "string",
             "named": true
           },
@@ -5835,110 +5827,6 @@
     }
   },
   {
-    "type": "reference_argument",
-    "named": true,
-    "fields": {
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "address_expression",
-            "named": true
-          },
-          {
-            "type": "array_expression",
-            "named": true
-          },
-          {
-            "type": "as_expression",
-            "named": true
-          },
-          {
-            "type": "await_expression",
-            "named": true
-          },
-          {
-            "type": "binary_expression",
-            "named": true
-          },
-          {
-            "type": "boolean",
-            "named": true
-          },
-          {
-            "type": "builtin_reference",
-            "named": true
-          },
-          {
-            "type": "call_expression",
-            "named": true
-          },
-          {
-            "type": "character",
-            "named": true
-          },
-          {
-            "type": "dereference_expression",
-            "named": true
-          },
-          {
-            "type": "emit_expression",
-            "named": true
-          },
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "index_expression",
-            "named": true
-          },
-          {
-            "type": "is_expression",
-            "named": true
-          },
-          {
-            "type": "map_expression",
-            "named": true
-          },
-          {
-            "type": "member_expression",
-            "named": true
-          },
-          {
-            "type": "nil",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "parenthesized_expression",
-            "named": true
-          },
-          {
-            "type": "query_expression",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
-          },
-          {
-            "type": "struct_expression",
-            "named": true
-          },
-          {
-            "type": "unary_expression",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "relationship_declaration",
     "named": true,
     "fields": {
@@ -6879,10 +6767,6 @@
             "named": false
           },
           {
-            "type": "ref",
-            "named": false
-          },
-          {
             "type": "self",
             "named": false
           },
@@ -7185,10 +7069,6 @@
           },
           {
             "type": "query_expression",
-            "named": true
-          },
-          {
-            "type": "reference_argument",
             "named": true
           },
           {
@@ -7947,10 +7827,6 @@
   },
   {
     "type": "reduce",
-    "named": false
-  },
-  {
-    "type": "ref",
     "named": false
   },
   {

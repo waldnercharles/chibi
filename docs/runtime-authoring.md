@@ -55,7 +55,7 @@ form first. Version 31 removes the step globals `dt`, `delta` and
 `delta_time()`: a read in an `on Tick` handler or a system becomes a listed
 `dt`, and the migration refuses one anywhere else, where the step must be
 passed in.
-Version 37 gives systems an implicit, read-only body-local `dt` and flattens
+Version 38 gives systems an implicit, read-only body-local `dt` and flattens
 their query headers. It migrates live component bindings to `^T`, merges
 `join` entries into the binding list, and replaces `without` and query `where`
 clauses with `if` entries. Behavior handlers still list their payload fields.
@@ -175,7 +175,7 @@ function result, has no dimensional proof. Measured initializers propagate their
 through locals, constants and state; every possible `fallback` value is checked.
 Function parameters and results can declare erased units, for example
 `Distance :: (speed: u/s, elapsed: s) -> u`. Calls, defaults, returns and writes
-through `ref` parameters check these contracts, including across libraries.
+through pointer parameters check these contracts, including across libraries.
 Unannotated signatures remain dimensionally unknown. The engine's own fields carry
 units too: a `Movement.speed` is in `u/s` and a collider's `radius` is in `u`.
 Proven mismatches and malformed referenced unit metadata are compile errors;

@@ -9,6 +9,7 @@
 #include "project_migrate32.h"
 #include "project_migrate34.h"
 #include "project_migrate36.h"
+#include "project_migrate37.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -43,6 +44,7 @@ const TSLanguage *tree_sitter_chibi_project29();
 const TSLanguage *tree_sitter_chibi_project30();
 const TSLanguage *tree_sitter_chibi_project31();
 const TSLanguage *tree_sitter_chibi_project36();
+const TSLanguage *tree_sitter_chibi_project37();
 
 void *tree_sitter_chibi_external_scanner_create();
 void tree_sitter_chibi_external_scanner_destroy(void *);
@@ -73,7 +75,7 @@ void tree_sitter_chibi_project24_external_scanner_deserialize(void *scanner, con
 
 script_syntax *chibi_migrate_parse(const char *text, int version)
 {
-    if (version >= 37) {
+    if (version >= CHIBI_PROJECT_VERSION) {
         return script_parse(text);
     }
     script_syntax *syntax = xcalloc(1, sizeof *syntax);
@@ -89,10 +91,11 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         : version == 28 ? tree_sitter_chibi_project28()
         : version == 29 ? tree_sitter_chibi_project29()
         : version == 30 ? tree_sitter_chibi_project30()
-        /* Version 32 kept version 31's grammar, and versions 34 to 36
-         * kept version 33's. */
+        /* Version 32 kept version 31's grammar, and versions 34 to 36 kept
+         * version 33's. */
         : version <= 32 ? tree_sitter_chibi_project31()
-                        : tree_sitter_chibi_project36()
+        : version <= 36 ? tree_sitter_chibi_project36()
+                        : tree_sitter_chibi_project37()
     );
     assert(compatible);
     (void)compatible;
@@ -153,22 +156,6 @@ static script_syntax *parse27(const char *text)
 static script_syntax *parse28(const char *text)
 {
     return chibi_migrate_parse(text, 28);
-}
-static script_syntax *parse29(const char *text)
-{
-    return chibi_migrate_parse(text, 29);
-}
-static script_syntax *parse30(const char *text)
-{
-    return chibi_migrate_parse(text, 30);
-}
-static script_syntax *parse31(const char *text)
-{
-    return chibi_migrate_parse(text, 31);
-}
-static script_syntax *parse32(const char *text)
-{
-    return chibi_migrate_parse(text, 32);
 }
 /* Whether text parses with the grammar of project `version`, from 23 on. */
 static bool valid_at(const char *text, int version)
@@ -5110,14 +5097,7 @@ static int accept_migrated(
 )
 {
     const char *text = result ? result : source;
-    script_syntax *check = version == 27 ? parse27(text)
-                         : version == 28 ? parse28(text)
-                         : version == 29 ? parse29(text)
-                         : version == 30 ? parse30(text)
-                         : version == 31 ? parse31(text)
-                         : version == 32 ? parse32(text)
-                         : version < 37  ? chibi_migrate_parse(text, version)
-                                         : script_parse(text);
+    script_syntax *check = chibi_migrate_parse(text, version);
     if (check->diagnostic_count) {
         const script_diagnostic *diagnostic = &check->diagnostics[0];
         snprintf(
@@ -6044,6 +6024,30 @@ int chibi_migrate_array_calls(const char *source, char **migrated, char *error, 
     return result
              ? accept_migrated(source, result, "Array call", 32, migrated, error, size)
              : 0;
+}
+int chibi_migrate_pointers(const char *source, char **migrated, char *error, size_t size)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    if (chibi_migrate36_pointers(source, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Pointer", 37, migrated, error, size)
+             : 0;
+}
+static char **migrate_pointers(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate_pointers(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    return migrated;
 }
 static char **migrate_array_calls(char **sources, char **paths, int count, char *error, size_t size)
 {
@@ -6996,9 +7000,14 @@ int chibi_project_migrate_content(
                 status = migrated ? 0 : -1;
                 break;
             case 36:
+                error[0] = '\0';
+                migrated = migrate_pointers(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 37:
                 migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
                 for (int i = 0; i < count && !status; i++) {
-                    status = chibi_migrate36_queries(sources[i], &migrated[i], error, error_size);
+                    status = chibi_migrate37_queries(sources[i], &migrated[i], error, error_size);
                     if (status) {
                         char *message = xstrdup(error);
                         snprintf(error, error_size, "%s: %s", paths[i], message);

@@ -194,31 +194,36 @@ Example :: library {
 }
 ```
 
-Parameters normally receive value copies. A `ref` parameter writes to the
-caller's mutable value. Mark that argument with `ref` at the call site too.
+Parameters normally receive value copies. A `^T` parameter receives a pointer
+to the caller's value, so the callee can change it. Pass `&value` at the call
+site.
 
 ```chibi
-// chibi-mit-example: reference-parameter
+// chibi-mit-example: pointer-parameter
 // SPDX-FileCopyrightText: 2026 Charles Waldner
 // SPDX-License-Identifier: MIT
 Example :: library {
-    AddScore :: (score: ref int, points: int) {
-        score += points
+    AddScore :: (score: ^int, points: int) {
+        score^ += points
     }
 
     Run :: () -> int {
         score := 10
-        AddScore(ref score, 5)
+        AddScore(&score, 5)
         return score // 15
     }
 }
 ```
 
-The argument must be a writable value of the parameter's exact type. Missing
-`ref`, or using it with a value parameter, is a compile error. Forwarding a
-reference to another function also requires `ref`. Native compilation also
-accepts named arguments such as `AddScore(score: ref score, points: 5)`;
-the Chibi-written compiler currently requires positional calls.
+When the callee only reads and writes through the pointer, reads its target's
+fields, or passes it on to another such parameter, the compiler lends the
+caller's location for the call instead of keeping it alive. Such a parameter
+also accepts a component or state field, `AddScore(&self.Score.value, 5)`, and
+an existing pointer, which lends its target. Any other use, such as storing or
+returning the pointer, makes it an ordinary managed pointer.
+
+`&value` must name a writable value of the parameter's exact type. A parameter
+that only passes its pointer on writes the name alone: `AddScore(score, 5)`.
 
 Copy avoidance and ownership transfers are compiler details. Calling a function
 does not require a `move` keyword or invalidate an ordinary value.
@@ -263,19 +268,18 @@ another external resource.
 is an array of pointers, and `^(T[])` points to an array. A postfix caret must
 touch its operand: `pointer^`. Binary xor has spaces: `a ^ b`.
 
-`F(ref pointer^)` passes the target to an existing `ref` parameter. Taking an
-address currently requires a writable local, value parameter or field of a flat
-authored record. Ordinary native record locals and authored records with inline
-record fields still reject address-taking. Query bindings such as
-`health: ^Health` provide managed references to reflected components, including
-native components with nested records. The reference retains its identity and
-exact schema; removing the component or destroying its entity or world
-permanently invalidates its target. A later add creates a separate target.
-Invalid-target reads and writes stop the activation with a runtime diagnostic.
-Authored code does not yet have a catch or checked recovery operation.
-Fields reached through an existing
-managed pointer can be projected without retaining an ECS row address.
-Array/map elements and existing `ref` parameters do not yet support address-taking.
+Taking a managed address currently requires a writable local, value parameter
+or field of a flat authored record. Managed payloads containing inline nested
+records or native reflected records are rejected until their layouts can be
+retained safely. Query bindings such as `health: ^Health` provide managed
+references to reflected components, including native components with nested
+records. The reference retains its identity and exact schema; removing the
+component or destroying its entity or world permanently invalidates its
+target. A later add creates a separate target. Invalid-target reads and writes
+stop the activation with a runtime diagnostic. Authored code does not yet have
+a catch or checked recovery operation. Fields reached through an existing
+managed pointer can be projected without retaining an ECS row address. Array
+and map elements do not yet support address-taking.
 Managed pointers cannot cross ordinary native-service or persistence boundaries.
 
 ## Conditions and loops
@@ -410,14 +414,15 @@ Example :: library {
 }
 ```
 
-Reference iteration changes the items of a mutable owned array.
-The loop cannot access the source array directly or suspend.
+`for &value in scores` changes the items of a mutable owned array: `value`
+names each item itself. The loop cannot take a key, access the source array
+directly or suspend.
 
 ```chibi
 Example :: library {
     Run :: () {
         scores: int[] = [10, 20, 30]
-        for value: ref in scores {
+        for &value in scores {
             value += 10
         }
     }

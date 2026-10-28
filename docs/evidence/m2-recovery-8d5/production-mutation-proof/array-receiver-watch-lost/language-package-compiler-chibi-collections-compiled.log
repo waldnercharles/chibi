@@ -1,8 +1,0 @@
-AppendLocal debug order: receiver -1, invocation 23, item 28
-(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-2/chibi-m2-driver-8d5/test/language/package_compiler_chibi.c (3551): receiver >= 0 && receiver < invocation && invocation < item)
-package compiler array update debug order: differs
-(FAILED: /Users/cwaldner/Documents/Codex/2026-10-24/task-2/chibi-m2-driver-8d5/test/language/package_compiler_chibi.c (3954): ran)
-Running: package_compiler_builds_runnable_collection_packages_compiled 
-===============================================================
-Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 1902
-Test command wall time: 4.491s; includes in-test fixture setup; external configuration/build excluded.

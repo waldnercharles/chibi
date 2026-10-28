@@ -828,15 +828,7 @@ static bool field_argument(
                          ? capability->parameters[parameter].type
                          : a->out->symbols[function->parameters[parameter]].type;
     if (type.flags & SCRIPT_TYPE_REFERENCE) {
-        TSNode value = script_analyzer_call_argument(argument);
-        bool explicit_ref = script_analyzer_is(value, "reference_argument");
-        script_analyzer_diagnostic(
-            a,
-            value,
-            explicit_ref
-                ? "Reference argument requires a writable value"
-                : "Reference parameter requires an explicit ref argument"
-        );
+        script_analyzer_diagnostic(a, argument, "Pointer parameter members cannot be named");
         seen[parameter] = true;
         return true;
     }
@@ -981,9 +973,6 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
                     if (ts_node_is_null(value)) {
                         value = script_analyzer_field(argument, "source");
                     }
-                    if (script_analyzer_is(value, "reference_argument")) {
-                        value = script_analyzer_field(value, "value");
-                    }
                     (*values)[i] = script_analyzer_expression(
                         a,
                         value,
@@ -1040,11 +1029,37 @@ static void require_reference_type(analyzer *a, TSNode node, script_type expecte
         script_analyzer_require(a, node, expected, actual);
         return;
     }
-    script_analyzer_diagnostic(a, node, "Reference argument requires the exact parameter type");
+    script_analyzer_diagnostic(a, node, "Pointer argument requires the exact parameter type");
 }
 
-/* The local a reference argument names, or -1. A task can outlive the
- * declaring frame, so the local moves to a box the task keeps. */
+/* The location a scoped pointer parameter aliases: `&place`, a scoped
+ * parameter passed on, or the target of a managed pointer. */
+int script_analyzer_scoped_argument(analyzer *a, TSNode value, script_type type)
+{
+    if (script_analyzer_is(value, "address_expression")) {
+        return script_analyzer_expression(a, script_analyzer_field(value, "operand"), type);
+    }
+    int index = script_analyzer_expression(a, value, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+    const script_expression *e = &a->out->expressions[index];
+    TSNode inner = value;
+    while (script_analyzer_is(inner, "parenthesized_expression")) {
+        inner = script_analyzer_field(inner, "expression");
+    }
+    /* `p^` of a scoped `p` reads its target, which a pointer argument then
+     * dereferences; only `p` itself passes the location on. */
+    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+        (a->out->symbols[e->symbol].type.flags & SCRIPT_TYPE_REFERENCE) &&
+        !script_analyzer_is(inner, "dereference_expression")) {
+        return index;
+    }
+    if (e->type.storage == PIN_POINTER && e->type.container == PIN_CONTAINER_SINGLE) {
+        return script_analyzer_dereference(a, value, index);
+    }
+    if (!(e->type.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, value, "Pointer parameter requires &value or a pointer");
+    }
+    return index;
+}
 /* The local or reference parameter a reference argument reaches. */
 static int local_root(const analyzer *a, int expression)
 {
@@ -1637,24 +1652,16 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             }
         }
         bool requires_ref = (type.flags & SCRIPT_TYPE_REFERENCE) != 0;
-        bool explicit_ref = script_analyzer_is(value, "reference_argument");
-        if (explicit_ref != requires_ref) {
-            script_analyzer_diagnostic(
-                a,
-                value,
-                requires_ref
-                    ? "Reference parameter requires an explicit ref argument"
-                    : "ref argument requires a reference parameter"
-            );
-        }
-        if (explicit_ref) {
-            value = script_analyzer_field(value, "value");
-        }
         TSNode annotation = script_analyzer_field(argument, "type");
         if (!ts_node_is_null(annotation)) {
             script_type annotated = script_analyzer_type_node(a, annotation);
             if (requires_ref) {
-                require_reference_type(a, annotation, type, annotated);
+                /* `name: ^T = &value` spells the pointer the caller passes. */
+                script_type pointee = script_catalog_pointee_type(a->catalog, annotated);
+                if (pointee.flags & SCRIPT_TYPE_ERROR) {
+                    script_analyzer_diagnostic(a, annotation, "Pointer parameter requires a ^T annotation");
+                }
+                require_reference_type(a, annotation, type, pointee);
             } else {
                 script_analyzer_require(a, annotation, type, annotated);
                 type = annotated;
@@ -1674,12 +1681,13 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         int expression_index = !reference && resolved_arguments &&
                                        resolved_arguments[i] >= 0
                                  ? resolved_arguments[i]
-                             : reference
-                                 ? script_analyzer_reference_argument(
-                                       a,
-                                       value,
-                                       &capability->parameters[parameter]
-                                   )
+                             : reference ? script_analyzer_reference_argument(
+                                               a,
+                                               value,
+                                               &capability->parameters[parameter]
+                                           )
+                             : requires_ref
+                                 ? script_analyzer_scoped_argument(a, value, type)
                                  : script_analyzer_expression(a, value, type);
         /* Overload resolution read the argument without a type; a literal
          * takes the chosen parameter's, so an f64 one keeps every digit. */
@@ -1733,7 +1741,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             }
             if ((type.flags & SCRIPT_TYPE_REFERENCE) &&
                 !a->out->expressions[expression_index].writable) {
-                script_analyzer_diagnostic(a, value, "Reference argument requires a writable value");
+                script_analyzer_diagnostic(a, value, "Pointer argument requires a writable location");
             }
         } else if (capability && !capability->variadic) {
             script_analyzer_diagnostic(a, argument, "Too many arguments");

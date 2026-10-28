@@ -1,4 +1,4 @@
-version 37
+version 38
 name "Graph routing corpus"
 content "content"
 start_scene "scenes/Start.kdl"

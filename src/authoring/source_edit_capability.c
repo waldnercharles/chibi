@@ -735,7 +735,7 @@ bool source_edit_capability(
                 producer_call < 0) {
                 producer_call = acount(call) + (count ? 2 : 0) +
                                 (positional ? 0 : (int)strlen(argument) + 2) +
-                                ((parameter->type.flags & SCRIPT_TYPE_REFERENCE) ? 4 : 0);
+                                ((parameter->type.flags & SCRIPT_TYPE_REFERENCE) ? 1 : 0);
             }
             append(
                 &call,
@@ -743,7 +743,7 @@ bool source_edit_capability(
                 count++ ? ", " : "",
                 argument,
                 positional ? "" : ": ",
-                (parameter->type.flags & SCRIPT_TYPE_REFERENCE) ? "ref " : "",
+                (parameter->type.flags & SCRIPT_TYPE_REFERENCE) ? "&" : "",
                 value
             );
             free(argument);

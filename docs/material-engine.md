@@ -55,6 +55,33 @@ takes the striking entity as `Source`; its `Material` emission color and
 `Igniter` heat describe the impact. `MaterialTerrain` names a field,
 typed parameter object, seed, bounds, cell size, connectivity and collision filters.
 
+## Solver-independent ownership and validation
+
+Fog and liquid improvements must remain reusable across MPM, FLIP and other
+sparse GPU solver choices. These are infrastructure constraints, not claims that
+those solvers or a GPU compute backend are implemented.
+
+- Activate simulation-space cells and their required stencil halos separately
+  from rendering coverage and terrain residency.
+- Keep cell/particle identity and spatial order explicit, with flat channels for
+  neighbor queries and transfers. Retain CPU worker scratch under explicit
+  ownership; GPU buffers need separate device ownership and synchronization.
+- Declare phase inputs, outputs and joins, including write and reduction
+  ownership. Keep solver-specific equations and optical rendering separate.
+- Measure indexing, clearing, packing, reductions and kernel work. A GPU path
+  also needs dispatch, transfer, synchronization and complete-frame costs; a
+  faster isolated kernel does not establish a faster solver.
+- Extract shared interfaces only when a concrete second use establishes their
+  contract. A CPU cell hash or screen-space rendering bins are not themselves
+  a GPU sparse-grid allocator.
+
+Current changes must preserve native/scalar/worker semantics and replay parity.
+A future GPU solver needs documented numeric tolerances, mass/momentum checks,
+divergence or constitutive checks, finite-value and boundary tests, and fixed-step
+trajectories. CPU hash equality alone does not validate different GPU reduction
+orders. FLIP delta transfer and MPM affine/deformation/stress state remain
+separate solver work rather than implied shared infrastructure.
+
 ## Procedural fields
 
 Field documents live in `content/fields` with domain `field`. They have one

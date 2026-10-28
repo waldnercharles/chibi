@@ -617,8 +617,7 @@ static int query_parameter(analyzer *a, TSNode parameter)
         script_analyzer_diagnostic(a, parameter, "Query binding requires a reflected component type or pointer to one");
     }
     if (type.container != PIN_CONTAINER_SINGLE ||
-        component_type.container != PIN_CONTAINER_SINGLE ||
-        (type.flags & SCRIPT_TYPE_REFERENCE)) {
+        component_type.container != PIN_CONTAINER_SINGLE) {
         script_analyzer_diagnostic(a, parameter, "Query binding requires a single component type");
     }
     int traversal = SCRIPT_SOURCE_SELF, variable = 0;

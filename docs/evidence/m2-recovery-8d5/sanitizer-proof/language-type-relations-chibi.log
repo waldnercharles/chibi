@@ -1,8 +1,0 @@
-Running: type_relations_scalar_tables_match_native_oracle (OK) (0.240350 secs)
-Running: type_relations_catalog_tables_match_native_oracle (OK) (0.006966 secs)
-Running: type_relations_canonical_tables_match_native_oracle (OK) (0.001234 secs)
-Running: type_relations_approved_floating_matrix (OK) (0.000266 secs)
-Running: type_relations_canonical_results_outlive_all_producers (OK) (0.003601 secs)
-===============================================================
-Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 15569
-Test command wall time: 0.525s; includes in-test fixture setup; external configuration/build excluded.

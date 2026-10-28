@@ -137,13 +137,15 @@ DeclarePointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: 
     }
     return types;
 }
-AddressedNames :: (forest: snapshot.SnapshotNode[], text: string, root: int) -> string[] {
+// The names whose addresses `root` takes as managed pointers; a `&x` in
+// `lent` lends x to a scoped parameter instead.
+AddressedNames :: (forest: snapshot.SnapshotNode[], text: string, root: int, lent: int[]) -> string[] {
     found: string[] = [];
     pending: int[] = [root];
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
-        if (Is(forest, at, "address_expression")) {
+        if (Is(forest, at, "address_expression") && !lent.contains(at)) {
             operand := RootOf(forest, Field(forest, at, "operand"));
             if (Is(forest, operand, "identifier")) {
                 found.append(Text(forest, text, operand));
@@ -364,8 +366,8 @@ ManagedAssignStep :: (types: TypeDecl[], binding: Name, value: Value, ops: Ops, 
     return PointerPrefix(code, slots, PointerWriteStep(types, Typed(at.slot + 1, PointerStorage, 0, pointer),
                                                        value, 1, ops, target, SlotsPast(at, 2), node));
 }
-// A reference marker over a dereference borrows that managed location through
-// the existing ref ABI. The managed descriptor stays rooted during the call.
+// A managed pointer lent to a scoped parameter borrows its location through
+// the reference ABI. The managed descriptor stays rooted during the call.
 PointerReferenceStep :: (pointer: Value, ops: Ops, target: Target, at: Bases,
                          node: snapshot.SnapshotNode) -> Step {
     code := CellWrite(PointerStorage, pointer.slot, at.cell, ops, target, at.slot, node);
@@ -428,6 +430,15 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     node := forest[item.node];
     operand := Unparenthesized(forest, Field(forest, item.node, "operand"));
     if (node.kind == "dereference_expression") {
+        // A `p^` of a scoped `p` that ScopedTargets keeps reads p's target,
+        // as the name alone does.
+        scoped: int = -1;
+        if (Is(forest, operand, "identifier")) {
+            scoped = Lookup(names, Text(forest, text, operand));
+        }
+        if (item.phase == 0 && scoped >= 0 && names[scoped].place == ReferencePlace) {
+            return Step.Emitted([], [], [], [], [], [], [], [], [Visit(operand)], 0, NoValue(), NoValue(), []);
+        }
         if (item.phase == 0) {
             return Step.Emitted([], [], [], [], [], [], [], [],
                                 [Visit(operand), Resume(item.node, PointerReadPhase, 0, 0)], 0,
@@ -734,8 +745,9 @@ PointerAssignmentStart :: (forest: snapshot.SnapshotNode[], text: string, docume
 
 PointerRefFieldPhase: int : 40;
 // Proofs affect reads only. The name retains its declared nullable type for
-// assignments, &name and exact ref matching. A side effect that could change
-// that name ends the proof; managed aliases make every write relevant.
+// assignments, &name and exact scoped argument matching. A side effect that
+// could change that name ends the proof; managed aliases make every write
+// relevant.
 PointerProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int, start: int, finish: int,
                         name: string, aliases: bool) -> bool {
     pending: int[] = [root];
@@ -824,7 +836,7 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
         return false;
     }
     body := Field(forest, function, "body");
-    aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body), binding.name);
+    aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body, []), binding.name);
     walked_child := node;
     parent := forest[node].parent;
     while (parent >= 0 && parent != function) {
@@ -925,6 +937,20 @@ PointerParameterStep :: (types: TypeDecl[], members: TypeMember[], param: Param,
                         [Resume(item.node, PointerParameterPhase, item.a, 1)], 0,
                         Typed(at.slot, param.storage, param.container, param.record), NoValue(), []);
 }
+// Whether `node` is a kept `p^` of a scoped `p` that a dereference reads
+// through or a return returns, which stage zero evaluates as `p` alone,
+// without a point of its own.
+ElidedTarget :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
+    if (!Is(forest, node, "dereference_expression") || CallArgument(forest, node)) {
+        return false;
+    }
+    operand := Unparenthesized(forest, Field(forest, node, "operand"));
+    if (!Is(forest, operand, "identifier")) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, operand));
+    return found >= 0 && names[found].place == ReferencePlace;
+}
 PointerStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
                 members: TypeMember[], names: Name[], params: Param[], first: int, values: Value[], top: int,
                 item: Work, ops: Ops, target: Target, at: Bases) -> Step {
@@ -951,12 +977,15 @@ PointerStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
     if (item.phase == PointerBridgePhase) {
         pointer := values[top - 1];
         element := PointerElement(types, pointer);
+        if (element.storage == 0) {
+            return Fail(forest, item.node, document, "Pointer parameter requires &value or a pointer");
+        }
         if (pointer.record >= 0 && types[pointer.record].key != 0) {
             return Fail(forest, item.node, document, "Nullable pointer requires a presence guard before dereference");
         }
         if (!SameType(item.storage, item.container, item.record,
                       Typed(-1, element.storage, element.container, element.record))) {
-            return Fail(forest, item.node, document, "reference argument differs from the parameter's type");
+            return Fail(forest, item.node, document, "pointer argument differs from the parameter's type");
         }
         return PointerReferenceStep(pointer, ops, target, at, node);
     }

@@ -74,6 +74,7 @@ query_evaluator *program_query_evaluator_take(
             *slot = e->next;
             p->query_cache_bytes -= e->bytes;
             e->next = NULL;
+            e->activation.natives = p->natives;
             return e;
         }
         slot = &e->next;
@@ -85,6 +86,8 @@ query_evaluator *program_query_evaluator_take(
     if (behavior_function_resumable(f)) {
         behavior_function_activation_init(f, &e->activation);
     }
+    /* Predicates and evaluators call the program's bound natives. */
+    e->activation.natives = p ? p->natives : NULL;
     return e;
 }
 void program_query_evaluator_keep(execution_program *p, query_evaluator *e)
@@ -1823,7 +1826,6 @@ static int query_matches(execution_instance *instance, int index)
             behavior_function_context *context = &e->context;
             /* Even a non-suspending predicate can reuse its VM scratch. */
             context->activation = &e->activation;
-            e->activation.natives = p->natives;
             context->query_variables = instance->query_variables;
             context->module = p->module;
             context->results = &result;

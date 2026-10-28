@@ -1186,6 +1186,20 @@ static script_type managed_type(lower *l, script_type pointee)
     assert(!"Managed pointee type was not published");
     return (script_type){ .flags = SCRIPT_TYPE_ERROR };
 }
+/* Whether evaluating an expression can change no value: it reads names and
+ * constants through operators and conversions only. */
+static bool inert(lower *l, int index)
+{
+    const script_expression *e = &l->a->expressions[index];
+    switch (e->kind) {
+        case SCRIPT_EXPR_CONSTANT:
+        case SCRIPT_EXPR_SYMBOL: return true;
+        case SCRIPT_EXPR_UNARY:
+        case SCRIPT_EXPR_CAST: return inert(l, e->left);
+        case SCRIPT_EXPR_BINARY: return inert(l, e->left) && inert(l, e->right);
+        default: return false;
+    }
+}
 /* Whether e names an addressed local, which lives in a managed cell. */
 static bool managed_symbol(lower *l, const script_expression *e)
 {
@@ -4609,9 +4623,12 @@ static int expression_value(lower *l, int index)
             const script_expression *left = &l->a->expressions[e->left];
             script_type collection = left->type;
             /* An item of an array in a managed cell reads through the cell,
-             * which copies the item alone rather than the whole array. */
+             * which copies the item alone rather than the whole array. The
+             * cell is read after the index, so an index that could change it
+             * reads a copy taken first, as any other array does. */
             if (collection.container == PIN_CONTAINER_ARRAY &&
-                (left->kind == SCRIPT_EXPR_DEREFERENCE || managed_symbol(l, left))) {
+                (left->kind == SCRIPT_EXPR_DEREFERENCE || managed_symbol(l, left)) &&
+                inert(l, e->right)) {
                 return reference_read(l, reference_expression(l, e, false), e->type, e->range);
             }
             int array = expression(l, e->left);

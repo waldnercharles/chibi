@@ -11835,16 +11835,19 @@ TEST_CASE(program_replacement_restarts_state_reaching_changed_pointee_layouts)
 /* One entity on two backends. Items of an array behind a pointer, and of an
  * addressed local, are read and written through the cell: the copies counted
  * stay near one array, not one per access. A copy taken through the pointer
- * keeps its items when the cell changes in place. */
+ * keeps its items when the cell changes in place, and an index that empties
+ * the cell still reads the array as it was before the index ran. */
 TEST_CASE(program_managed_array_items_copy_alone)
 {
     const char *source =
-        "Keeper :: behavior { total: f64 = 0; copied: f64 = 0; "
+        "Keeper :: behavior { total: f64 = 0; copied: f64 = 0; first: f64 = 0; "
+        "Clear :: (target: ^(f64[])) -> int { target^ = []; return 0; } "
         "on Impulse :: (amount: f64, enabled: bool) { "
         "xs: f64[] = []; for i in 0..<256 { xs.append(amount); } "
         "ys := xs; p := &ys; sum: f64 = 0; "
         "for i in 0..<256 { p^[i] = amount + 1; sum += p^[i] + ys[i]; } "
-        "zs := p^; p^[0] = 9; copied = zs[0] + ys[0]; total = sum; } }";
+        "zs := p^; p^[0] = 9; copied = zs[0] + ys[0]; total = sum; "
+        "ws: f64[] = [7]; q := &ws; first = q^[Clear(q)]; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -11861,6 +11864,7 @@ TEST_CASE(program_managed_array_items_copy_alone)
         pin_copy_scope_end(&copies);
         REQUIRE(status == FLOW_OK);
         REQUIRE(number_state(instance, "total", 1024) && number_state(instance, "copied", 11));
+        REQUIRE(number_state(instance, "first", 7));
         uint64_t moved = copies.counts.value_buffer_bytes +
                          copies.counts.value_header_moves * sizeof(pin_value);
         REQUIRE(!copies.counts.overflow && moved < 64 * 256 * sizeof(pin_value));

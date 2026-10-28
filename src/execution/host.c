@@ -79,7 +79,8 @@ size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx
 #define VECTOR(values)                                                         \
     ((values) ? sizeof(dyna_hdr) + (size_t)acap(values) * sizeof *(values) : 0)
     bytes += VECTOR(ctx->queries) + VECTOR(ctx->commands) +
-             VECTOR(ctx->command_arguments) + VECTOR(ctx->command_results);
+             VECTOR(ctx->command_arguments) + VECTOR(ctx->command_results) +
+             VECTOR(ctx->collection_owners);
 #undef VECTOR
     for (int i = 0; i < acount(ctx->queries); i++) {
         bytes += (size_t)ctx->queries[i].snapshot.capacity * sizeof(pin_value);
@@ -204,7 +205,7 @@ void behavior_function_release_host(behavior_function_context *ctx)
 }
 void behavior_function_reset_host(behavior_function_context *ctx)
 {
-    behavior_function_collection_clear(ctx);
+    behavior_function_collection_empty(ctx);
     for (int i = 0; i < acount(ctx->queries); i++) {
         free(ctx->queries[i].snapshot.items);
     }
@@ -231,7 +232,8 @@ void behavior_function_reset_host(behavior_function_context *ctx)
                                         .queries = ctx->queries,
                                         .commands = ctx->commands,
                                         .command_arguments = ctx->command_arguments,
-                                        .command_results = ctx->command_results };
+                                        .command_results = ctx->command_results,
+                                        .collection_owners = ctx->collection_owners };
 }
 
 void behavior_function_rebind_host(

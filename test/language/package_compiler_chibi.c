@@ -12991,11 +12991,12 @@ static bool native_recursion_probes_the_stack(int b)
     return true;
 }
 /* A string is `native_abi.TextType()`, the layout of the runtime's
- * pin_string: its bytes, then its length. */
+ * pin_string: its bytes, its length, then its owner. */
 _Static_assert(
     offsetof(pin_string, bytes) == 0 && offsetof(pin_string, length) == 8 &&
-        sizeof(pin_string) == 16 && sizeof(((pin_string *)0)->length) == 4,
-    "pin_string is { ptr, i32 }"
+        offsetof(pin_string, owner) == 16 && sizeof(pin_string) == 24 &&
+        sizeof(((pin_string *)0)->length) == 4,
+    "pin_string is { ptr, i32, ptr }"
 );
 /* Main returns whether its two texts differ: each constant is a private
  * global of its bytes and a NUL, named by its index in the text table, and
@@ -13083,17 +13084,17 @@ static bool native_text_reads_emit(int b)
     pin_string ir;
     REQUIRE(native_text(b, &m, &ir));
     static const char *const expected[] = {
-        "%length6 = extractvalue { ptr, i32 } %a6, 1\n",
+        "%length6 = extractvalue { ptr, i32, ptr } %a6, 1\n",
         "%inside7 = icmp ult i32 %b7, %length7\n  br i1 %inside7, label "
         "%read7, label %byte7\n",
         "%at7 = getelementptr inbounds i8, ptr %bytes7, i64 %offset7\n",
         "byte7:\n  %v7 = phi i32 [ %wide7, %read7 ], [ -1, %p7 ]\n",
         "%over5 = icmp ugt i32 %low5, %length5\n  %n5 = select i1 %over5, "
         "i32 %length5, i32 %low5\n",
-        "%v5 = insertvalue { ptr, i32 } %a5, i32 %n5, 1\n",
+        "%v5 = insertvalue { ptr, i32, ptr } %a5, i32 %n5, 1\n",
         "%start3 = getelementptr inbounds i8, ptr %bytes3, i64 %offset3\n",
         "%rest3 = sub i32 %length3, %n3\n",
-        "%v3 = insertvalue { ptr, i32 } %moved3, i32 %rest3, 1\n",
+        "%v3 = insertvalue { ptr, i32, ptr } %moved3, i32 %rest3, 1\n",
     };
     for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
         REQUIRE(contains(ir, expected[i]));
@@ -13185,7 +13186,7 @@ static bool native_formats_emit(int b)
         "%format4.at = getelementptr inbounds { ptr }, ptr %ctx, i32 0, i32 0\n"
         "  %format4 = load ptr, ptr %format4.at\n"
         "  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n"
-        "  %v4 = load { ptr, i32 }, ptr %text4\n",
+        "  %v4 = load { ptr, i32, ptr }, ptr %text4\n",
     };
     for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
         REQUIRE(contains(ir, expected[i]));
@@ -13338,8 +13339,9 @@ static bool native_lines_place_code(int b)
     strings_module.columns = text_lines;
     REQUIRE(native_text(b, &strings_module, &ir));
     static const char *const helper[] = {
-        "define internal i1 @chibi_scalar.text_equal({ ptr, i32 } %a, { ptr, "
-        "i32 } %b) #0 !dbg !7 {\n",
+        "define internal i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a, { "
+        "ptr, "
+        "i32, ptr } %b) #0 !dbg !7 {\n",
         "  %index = phi i32 [ 0, %entry ], [ %next, %byte ], !dbg !14\n",
         "!7 = distinct !DISubprogram(name: \"chibi_scalar.text_equal\", scope: "
         "!1, file: !1, line: 0, "
@@ -13361,7 +13363,7 @@ static bool native_strings_emit(int b)
     REQUIRE(
         compiler_fixture_call(&consumer, b, "project:native_abi", "TextType", NULL, 0, COMPILE_BUDGET, &input, &type)
     );
-    REQUIRE(pin_text_equal(pin_text(type), (pin_string){ "{ ptr, i32 }", 12 }));
+    REQUIRE(pin_text_equal(pin_text(type), (pin_string){ "{ ptr, i32, ptr }", 17 }));
     native_module m = text_module(TEXT_CODE);
     pin_string ir;
     REQUIRE(native_text(b, &m, &ir));
@@ -13371,12 +13373,18 @@ static bool native_strings_emit(int b)
         "c\"a\\22\\5C\\0A\\C3\\A9\\00\"\n"
     ));
     REQUIRE(contains(ir, "@chibi_scalar.text.1 = private unnamed_addr constant [1 x i8] c\"\\00\"\n"));
-    REQUIRE(contains(ir, "store { ptr, i32 } { ptr @chibi_scalar.text.0, i32 6 }, ptr %s0"));
-    REQUIRE(contains(ir, "store { ptr, i32 } { ptr @chibi_scalar.text.1, i32 0 }, ptr %s1"));
-    REQUIRE(contains(ir, "call i1 @chibi_scalar.text_equal({ ptr, i32 } %a3, { ptr, i32 } %b3)"));
+    REQUIRE(
+        contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.0, i32 6, ptr null }, ptr %s0")
+    );
+    REQUIRE(
+        contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.1, i32 0, ptr null }, ptr %s1")
+    );
+    REQUIRE(
+        contains(ir, "call i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a3, { ptr, i32, ptr } %b3)")
+    );
     REQUIRE(contains(ir, "xor i1 %e3, true"));
     REQUIRE(
-        contains(ir, "define internal i1 @chibi_scalar.text_equal({ ptr, i32 } %a, { ptr, i32 } %b) #0 {")
+        contains(ir, "define internal i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a, { ptr, i32, ptr } %b) #0 {")
     );
     static const char outside[] = "native constant is outside its type",
                       operands[] = "native scalar operand type mismatch";
@@ -13423,7 +13431,7 @@ static bool native_strings_emit(int b)
     REQUIRE(native_emit_library(b, "LinuxX64", &alone, "Texts", name, id, 1, &library));
     REQUIRE(library->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
     pin_string kept = pin_text(library->values[0]);
-    REQUIRE(contains(kept, "define internal { ptr, i32 } @chibi_scalar.0() #0 {"));
+    REQUIRE(contains(kept, "define internal { ptr, i32, ptr } @chibi_scalar.0() #0 {"));
     REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
     REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
     REQUIRE(

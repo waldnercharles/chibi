@@ -1,0 +1,314 @@
+package core_strings
+
+import strings "core:strings"
+
+@test
+ReplaceLimitsMatches :: () {
+    assert(strings.Replace("oink oink oink", "k", "ky", 2) == "oinky oinky oink");
+    return;
+}
+
+@test
+ReplaceNegativeLimitReplacesAll :: () {
+    assert(strings.Replace("oink oink oink", "oink", "moo", -1) == "moo moo moo");
+    return;
+}
+
+@test
+ReplaceUsesNonOverlappingMatches :: () {
+    assert(strings.Replace("aaaa", "aa", "b", -1) == "bb");
+    return;
+}
+
+@test
+ReplaceEmptyNeedleVisitsEveryByteBoundary :: () {
+    assert(strings.Replace("abc", "", "-", -1) == "-a-b-c-");
+    return;
+}
+
+@test
+ReplaceEmptyNeedleHonorsLimit :: () {
+    assert(strings.Replace("abc", "", "-", 2) == "-a-bc");
+    return;
+}
+
+@test
+ReplaceMissingNeedlePreservesValue :: () {
+    assert(strings.Replace("abc", "x", "y", -1) == "abc");
+    return;
+}
+
+@test
+ReplaceIdenticalValuePreservesValue :: () {
+    assert(strings.Replace("abc", "b", "b", -1) == "abc");
+    return;
+}
+
+@test
+ReplaceZeroLimitPreservesValue :: () {
+    assert(strings.Replace("abc", "b", "x", 0) == "abc");
+    return;
+}
+
+@test
+ReplaceWholeMatchCanDeleteValue :: () {
+    assert(strings.Replace("abc", "abc", "", -1) == "");
+    return;
+}
+
+@test
+ReplaceKeepsFormatMarkersLiteral :: () {
+    assert(strings.Replace("50%", "%", "{}", -1) == "50{}");
+    return;
+}
+
+@test
+ReplaceAllChangesEveryMatch :: () {
+    assert(strings.ReplaceAll("a.b.c", ".", "::") == "a::b::c");
+    return;
+}
+
+@test
+ReplaceRemoveHonorsLimit :: () {
+    assert(strings.Remove("abcabc", "b", 1) == "acabc");
+    return;
+}
+
+@test
+ReplaceRemoveAllDeletesEveryMatch :: () {
+    assert(strings.RemoveAll("abcabc", "b") == "acac");
+    return;
+}
+
+@test
+SplitSeparatesDotFields :: () {
+    AssertParts(strings.Split("aaa.bbb.ccc", "."), ["aaa", "bbb", "ccc"], "3:aaa|bbb|ccc");
+    return;
+}
+
+@test
+SplitKeepsTrailingEmpty :: () {
+    AssertParts(strings.Split("a,b,", ","), ["a", "b", ""], "3:a|b|");
+    return;
+}
+
+@test
+SplitEmptyInputWithNonemptySeparatorHasOnePart :: () {
+    AssertParts(strings.Split("", ","), [""], "1:");
+    return;
+}
+
+@test
+SplitEmptySeparatorSplitsBytes :: () {
+    AssertParts(strings.Split("abc", ""), ["a", "b", "c"], "3:a|b|c");
+    return;
+}
+
+@test
+SplitEmptyInputEmptySeparatorHasNoParts :: () {
+    AssertParts(strings.Split("", ""), [], "0:");
+    return;
+}
+
+@test
+SplitMissingSeparatorKeepsWholeValue :: () {
+    AssertParts(strings.Split("abc", "x"), ["abc"], "1:abc");
+    return;
+}
+
+@test
+SplitHandlesMultiByteSeparator :: () {
+    AssertParts(strings.Split("a--b--c", "--"), ["a", "b", "c"], "3:a|b|c");
+    return;
+}
+
+@test
+SplitUsesNonOverlappingMatches :: () {
+    AssertParts(strings.Split("aaa", "aa"), ["", "a"], "2:|a");
+    return;
+}
+
+@test
+SplitNRetainsUnsplitRemainder :: () {
+    AssertParts(strings.SplitN("aaa.bbb.ccc.ddd", ".", 2), ["aaa", "bbb.ccc.ddd"], "2:aaa|bbb.ccc.ddd");
+    return;
+}
+
+@test
+SplitNZeroLimitHasNoParts :: () {
+    AssertParts(strings.SplitN("a.b", ".", 0), [], "0:");
+    return;
+}
+
+@test
+SplitNNegativeLimitSplitsAll :: () {
+    AssertParts(strings.SplitN("a.b.c", ".", -1), ["a", "b", "c"], "3:a|b|c");
+    return;
+}
+
+@test
+SplitNHighLimitStopsAtEnd :: () {
+    AssertParts(strings.SplitN("a.b", ".", 10), ["a", "b"], "2:a|b");
+    return;
+}
+
+@test
+SplitNEmptySeparatorRetainsRemainder :: () {
+    AssertParts(strings.SplitN("abc", "", 2), ["a", "bc"], "2:a|bc");
+    return;
+}
+
+@test
+SplitNEmptySeparatorZeroLimitHasNoParts :: () {
+    AssertParts(strings.SplitN("abc", "", 0), [], "0:");
+    return;
+}
+
+@test
+SplitAfterKeepsEverySeparator :: () {
+    AssertParts(strings.SplitAfter("a.b.c", "."), ["a.", "b.", "c"], "3:a.|b.|c");
+    return;
+}
+
+@test
+SplitAfterKeepsTrailingEmpty :: () {
+    AssertParts(strings.SplitAfter("a.", "."), ["a.", ""], "2:a.|");
+    return;
+}
+
+@test
+SplitAfterEmptySeparatorSplitsBytes :: () {
+    AssertParts(strings.SplitAfter("abc", ""), ["a", "b", "c"], "3:a|b|c");
+    return;
+}
+
+@test
+SplitAfterNRetainsRemainderWithSeparators :: () {
+    AssertParts(strings.SplitAfterN("a.b.c", ".", 2), ["a.", "b.c"], "2:a.|b.c");
+    return;
+}
+
+@test
+SplitLinesAcceptsMixedLineEndings :: () {
+    AssertParts(strings.SplitLines("a\r\nb\nc\r"), ["a", "b", "c"], "3:a|b|c");
+    return;
+}
+
+@test
+SplitLinesKeepsTrailingEmptyLine :: () {
+    AssertParts(strings.SplitLines("a\n"), ["a", ""], "2:a|");
+    return;
+}
+
+@test
+SplitLinesEmptyInputHasOneLine :: () {
+    AssertParts(strings.SplitLines(""), [""], "1:");
+    return;
+}
+
+@test
+SplitLinesNRetainsLineBreaksInRemainder :: () {
+    AssertParts(strings.SplitLinesN("a\nb\nc", 2), ["a", "b\nc"], "2:a|b\nc");
+    return;
+}
+
+@test
+SplitLinesAfterKeepsCarriageReturnAndLineFeed :: () {
+    AssertParts(strings.SplitLinesAfter("a\r\nb"), ["a\r\n", "b"], "2:a\r\n|b");
+    return;
+}
+
+@test
+SplitLinesAfterNRetainsLineBreaksInRemainder :: () {
+    AssertParts(strings.SplitLinesAfterN("a\nb\nc", 2), ["a\n", "b\nc"], "2:a\n|b\nc");
+    return;
+}
+
+@test
+SplitConcatenateRemovesSeparators :: () {
+    assert(strings.Concatenate(strings.Split("a,b,c", ",")) == "abc");
+    return;
+}
+
+@test
+SplitConcatenateEmptyInputIsEmpty :: () {
+    assert(strings.Concatenate(strings.Split("", ",")) == "");
+    return;
+}
+
+@test
+SplitFieldsTrimsAndSeparatesAsciiSpaces :: () {
+    AssertParts(strings.Fields("  foo bar  baz   "), ["foo", "bar", "baz"], "3:foo|bar|baz");
+    return;
+}
+
+@test
+SplitFieldsEmptyInputHasNoFields :: () {
+    AssertParts(strings.Fields(""), [], "0:");
+    return;
+}
+
+@test
+SplitFieldsWhitespaceOnlyHasNoFields :: () {
+    AssertParts(strings.Fields(" \t\n"), [], "0:");
+    return;
+}
+
+@test
+SplitFieldsAcceptsVerticalTabAndFormFeed :: () {
+    value := format_text("a{}b{}c", RawByte(11), RawByte(12));
+    AssertBytes(value, [97, 11, 98, 12, 99]);
+    AssertParts(strings.Fields(value), ["a", "b", "c"], "3:a|b|c");
+    return;
+}
+
+@test
+SplitFieldsKeepsNonAsciiByteInsideField :: () {
+    byte := RawByte(160);
+    value := format_text("x{}y", byte);
+    view := format_text("1:x{}y", byte);
+    AssertBytes(value, [120, 160, 121]);
+    AssertBytes(view, [49, 58, 120, 160, 121]);
+    AssertParts(strings.Fields(value), [value], view);
+    return;
+}
+
+@test
+PartitionUsesFirstMatch :: () {
+    parts := strings.Partition("testing this out", " ");
+    assert(parts.head == "testing");
+    assert(parts.match == " ");
+    assert(parts.tail == "this out");
+    assert(format_text("{}|{}|{}", parts.head, parts.match, parts.tail) == "testing| |this out");
+    return;
+}
+
+@test
+PartitionMissingMatchKeepsWholeValue :: () {
+    parts := strings.Partition("abc", "x");
+    assert(parts.head == "abc");
+    assert(parts.match == "");
+    assert(parts.tail == "");
+    assert(format_text("{}|{}|{}", parts.head, parts.match, parts.tail) == "abc||");
+    return;
+}
+
+@test
+PartitionEmptyMatchKeepsWholeTail :: () {
+    parts := strings.Partition("abc", "");
+    assert(parts.head == "");
+    assert(parts.match == "");
+    assert(parts.tail == "abc");
+    assert(format_text("{}|{}|{}", parts.head, parts.match, parts.tail) == "||abc");
+    return;
+}
+
+@test
+PartitionKeepsLaterMatchesInTail :: () {
+    parts := strings.Partition("a=b=c", "=");
+    assert(parts.head == "a");
+    assert(parts.match == "=");
+    assert(parts.tail == "b=c");
+    assert(format_text("{}|{}|{}", parts.head, parts.match, parts.tail) == "a|=|b=c");
+    return;
+}

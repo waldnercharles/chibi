@@ -8,7 +8,7 @@ typedef struct task_system task_system;
 /* Instructions chibi test lets one test run before it fails. */
 #define PACKAGE_TEST_BUDGET 100000000u
 
-/* One `@test` function of a prepared project package. Views are borrowed from
+/* One `@test` function of a prepared package. Views are borrowed from
  * the packages they were found in. */
 typedef struct
 {
@@ -34,6 +34,9 @@ typedef struct
 /* The tests of the valid project: packages, ordered by file and position;
  * collection packages such as core: contribute none. An array to afree(). */
 package_test *package_tests_find(const authoring_packages *);
+/* Explicit collection tests, ordered by file and position. collection is a
+ * collection name such as "core", without a colon. An array to afree(). */
+package_test *package_tests_find_collection(const authoring_packages *, const char *collection);
 /* Runs one test, prepared for backend, for at most budget instructions and
  * describes where a failed one stopped: at the innermost call, such as the
  * expect that failed. */

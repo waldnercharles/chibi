@@ -12,6 +12,18 @@ $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $output = $args[0]
 $fixtureRoot = $output
 $evidence = [ordered]@{ batch_members = @(); cases = @() }
+$digestPath = [IO.Path]::Combine($output, 'digest[☃].bin')
+[IO.File]::WriteAllBytes($digestPath, [byte[]]@())
+Write-Host ("digest-empty=" + (Digest $digestPath))
+[IO.File]::WriteAllBytes($digestPath, [byte[]]@(0, 127, 255))
+Write-Host ("digest-binary=" + (Digest $digestPath))
+[IO.File]::WriteAllText($digestPath, 'changed', $utf8)
+Write-Host ("digest-changed=" + (Digest $digestPath))
+[IO.File]::Delete($digestPath)
+try { $null = Digest $digestPath; Write-Host 'digest-missing accepted' }
+catch { Write-Host 'digest-missing rejected' }
+try { $null = Digest $output; Write-Host 'digest-directory accepted' }
+catch { Write-Host 'digest-directory rejected' }
 $source = Join-Path $output 'transport.json'
 $text = ' [ [ {"text":"☃\\n\\\"[]","value":18446744073709551615} ], [true,1e-30], [] ] '
 [IO.File]::WriteAllText($source, $text, $utf8)
@@ -81,7 +93,7 @@ $script:failClassifications = $true
 function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
                      [string]$request, [string]$backend, [string]$raw = '',
                      [switch]$Compile, [switch]$Batch) {
-    $path = Join-Path $output ($name + '.stdout')
+    $path = [IO.Path]::Combine($output, $name + '.stdout')
     if ($name.EndsWith('-produce-batch')) {
         $values = (Read-Node $request).AsArray()
         $results = [System.Text.Json.Nodes.JsonArray]::new()
@@ -133,8 +145,14 @@ New-Item -ItemType Directory -Path $output | Out-Null
 $script:published = @()
 $script:failClassifications = $false
 $evidence = [ordered]@{ batch_members = @(); cases = @() }
+Trace-Transport 'partial-start'
 . (Join-Path $fixtureRoot 'loop.ps1')
+Trace-Transport 'partial-done'
 Write-Host ("partial-crossings=" + $evidence.cases.Count)
 Write-Host ("partial-raw=" + $published.Count)
 Write-Host ("partial-last=" + $published[-1])
 Write-Host ("partial-size=" + (Read-Node (Join-Path $output "batch-$batchSize.json")).AsArray().Count)
+$expected = @(0..64 | ForEach-Object {
+    "$_-bytecode-bytecode-raw"; "$_-bytecode-sljit-raw"; "$_-sljit-bytecode-raw"; "$_-sljit-sljit-raw"
+})
+Write-Host ("partial-order=" + (($published -join ',') -ceq ($expected -join ',')))

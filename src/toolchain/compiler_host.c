@@ -623,6 +623,7 @@ static bool invoke(
         behavior_function_activation_init(function, &activation);
     }
     behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     context = (behavior_function_context){ .managed_heap = &managed,
                                            .activation = resumable ? &activation : NULL,
                                            .arguments = arguments,

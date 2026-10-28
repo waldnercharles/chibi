@@ -7,4 +7,4 @@
 // checkout. Rewrite it with make bootstrap-artifact when minimum rises or the
 // host's target changes; see docs/self-hosting-build.md.
 version 7
-minimum 2
+minimum 6

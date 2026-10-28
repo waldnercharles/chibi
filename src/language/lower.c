@@ -3,6 +3,7 @@
 #include "ecs/execution.h"
 #include "execution/delay.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/map_intrinsics.h"
 #include "execution/operation.h"
 #include "execution/scalar.h"
@@ -33,6 +34,12 @@ typedef struct
 } lower_loop;
 typedef struct
 {
+    int expression, bank;
+    script_type type;
+    script_range range;
+} expression_temporary;
+typedef struct
+{
     const script_analysis *a;
     const script_catalog *catalog;
     const script_lower_bindings *bindings;
@@ -46,6 +53,7 @@ typedef struct
     int *locals, *variables, *parameters, *results, *labels, *addresses;
     int *goto_pc, *goto_symbol;
     lower_loop *loops;
+    expression_temporary *temporaries;
     bool failed, initializing, async_emitted;
     int initializer_depth;
     int query_evaluating;
@@ -58,7 +66,13 @@ typedef struct
     int cached_argument, cached_value;
     bool pattern_cached;
     int pattern_expression, pattern_value;
+    /* An element read whose reader is done with it before its array can
+     * change, so the read borrows the element instead of copying it. */
+    bool borrowing;
+    int borrowed_expression;
     script_occurrences *occurrences; /* Made by the first debugger point. */
+    bool *written; /* Per symbol, made by the first symbol_written. */
+    bool *lent;    /* Per symbol, made by the first lent declaration. */
 } lower;
 static void schema_clear(lower *l)
 {
@@ -430,6 +444,8 @@ static const script_symbol *action_symbol(lower *l, const script_expression *exp
     return NULL;
 }
 static int retain_bank(lower *, int, script_type, script_range);
+static int copy_value(lower *, int, script_type, script_range);
+static void drop_value(lower *, int, script_type, script_range);
 static int reference(lower *, int);
 static int reference_expression(lower *, const script_expression *, bool written);
 static int reference_read(lower *, int descriptor, script_type, script_range);
@@ -437,9 +453,25 @@ static int local_address(lower *, int);
 static int managed_address(lower *, const script_expression *);
 
 static void statement(lower *, int);
+static void forget_expression(lower *, int);
+static void forget_temporaries(lower *);
+static void remember_conversion(lower *, int, script_type, script_range);
+static void forget_conversions(lower *, int);
+static bool command_tuple(lower *, const script_expression *);
+static int command_result(lower *, int, script_type, script_range);
 static void assign(lower *, const script_statement *);
 static void assign_value(lower *, const script_statement *, int);
 static void store_symbol(lower *, int, int, script_range);
+/* How a store treats its value: it copies it, takes over a temporary, or
+ * reads a place in place and owns nothing. */
+typedef enum
+{
+    STORE_COPY,
+    STORE_MOVE,
+    STORE_LEND
+} store_mode;
+static void store_value(lower *, int, int, store_mode, script_range);
+static bool symbol_written(lower *, int);
 static int query_context(lower *, script_range);
 static int query_not(lower *, int, script_range);
 static int union_wrap(lower *, int, script_type, script_type, uint64_t, script_range);
@@ -990,6 +1022,9 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_REFERENCE_WRITE:
                     case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
                     case EXECUTION_INTRINSIC_LOCAL_RELEASE:
+                    case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
+                    case EXECUTION_INTRINSIC_REFERENCE_UNION:
+                    case EXECUTION_INTRINSIC_MAP_DELETE_PLACE:
                         kind = BEHAVIOR_REFERENCE;
                         break;
                     case EXECUTION_INTRINSIC_QUERY_MAKE:
@@ -1056,6 +1091,7 @@ static int linked_host(
             (void)set;
         }
         if (intrinsic == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
+            intrinsic == EXECUTION_INTRINSIC_REFERENCE_UNION ||
             intrinsic == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
             intrinsic == EXECUTION_INTRINSIC_REFERENCE_FIELD ||
             intrinsic == EXECUTION_INTRINSIC_REFERENCE_KEY) {
@@ -1081,7 +1117,8 @@ static int linked_host(
     }
     return index;
 }
-static int primitive(
+/* A host call that reports `failure` when it fails. */
+static int failing_primitive(
     lower *l,
     const node_host_call *call,
     const node_access *access,
@@ -1089,6 +1126,7 @@ static int primitive(
     const int *slots,
     int count,
     script_type result,
+    behavior_function_failure failure,
     script_range range
 )
 {
@@ -1102,13 +1140,7 @@ static int primitive(
             host_argument(l, first + i, slots[i], type, range);
         }
     }
-    emit(
-        l,
-        (behavior_function_instruction){ .op = BF_HOST_CALL,
-                                         .left = BEHAVIOR_FUNCTION_HOST_DATA,
-                                         .target = host },
-        range
-    );
+    emit(l, (behavior_function_instruction){ .op = BF_HOST_CALL, .left = failure, .target = host }, range);
     int value = take_result(l, behavior_function_builder_host_results(l->builder, host), result, range);
     for (int i = 0; i < count; i++) {
         if (slots[i] >= 0) {
@@ -1122,6 +1154,19 @@ static int primitive(
         }
     }
     return value;
+}
+static int primitive(
+    lower *l,
+    const node_host_call *call,
+    const node_access *access,
+    const pin_value *headers,
+    const int *slots,
+    int count,
+    script_type result,
+    script_range range
+)
+{
+    return failing_primitive(l, call, access, headers, slots, count, result, BEHAVIOR_FUNCTION_HOST_DATA, range);
 }
 static int union_wrap(lower *l, int value, script_type from, script_type to, uint64_t tag, script_range range)
 {
@@ -1138,7 +1183,9 @@ static int union_wrap(lower *l, int value, script_type from, script_type to, uin
     }
     pin_value headers[] = { { .type = PIN_U64, .u64 = tag }, initial(l, from) };
     int slots[] = { -1, value };
-    return primitive(l, &EXECUTION_union_make_call, &EXECUTION_value_access, headers, slots, 2, to, range);
+    int result = primitive(l, &EXECUTION_union_make_call, &EXECUTION_value_access, headers, slots, 2, to, range);
+    remember_conversion(l, result, to, range);
+    return result;
 }
 static int union_get(lower *l, int value, uint64_t tag, int field, bool whole, script_type result, script_range range)
 {
@@ -1179,6 +1226,12 @@ static int union_construct(lower *l, const script_expression *e)
             e->results[argument->parameter],
             argument->range
         );
+        slots[argument->parameter + 1] = copy_value(
+            l,
+            slots[argument->parameter + 1],
+            e->results[argument->parameter],
+            argument->range
+        );
     }
     int value = primitive(
         l,
@@ -1190,6 +1243,9 @@ static int union_construct(lower *l, const script_expression *e)
         e->type,
         e->range
     );
+    for (int i = 1; i < acount(slots); i++) {
+        drop_value(l, slots[i], e->results[i - 1], e->range);
+    }
     afree(headers);
     afree(slots);
     return value;
@@ -1371,20 +1427,6 @@ static script_type managed_type(lower *l, script_type pointee)
     }
     assert(!"Managed pointee type was not published");
     return (script_type){ .flags = SCRIPT_TYPE_ERROR };
-}
-/* Whether evaluating an expression can change no value: it reads names and
- * constants through operators and conversions only. */
-static bool inert(lower *l, int index)
-{
-    const script_expression *e = &l->a->expressions[index];
-    switch (e->kind) {
-        case SCRIPT_EXPR_CONSTANT:
-        case SCRIPT_EXPR_SYMBOL: return true;
-        case SCRIPT_EXPR_UNARY:
-        case SCRIPT_EXPR_CAST: return inert(l, e->left);
-        case SCRIPT_EXPR_BINARY: return inert(l, e->left) && inert(l, e->right);
-        default: return false;
-    }
 }
 /* Whether e names an addressed local, which lives in a managed cell. */
 static bool managed_symbol(lower *l, const script_expression *e)
@@ -1692,6 +1734,177 @@ static int retain_value(lower *l, int slot, script_type type, script_range range
 {
     return take_result(l, retain_bank(l, slot, type, range), type, range);
 }
+static bool copied_value(script_type type)
+{
+    return !(type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) &&
+           (type.container != PIN_CONTAINER_SINGLE || type.storage == PIN_STRUCT ||
+            type.storage == PIN_UNION || (type.flags & SCRIPT_TYPE_BOXED_OPTIONAL));
+}
+static int copy_value(lower *l, int value, script_type type, script_range range)
+{
+    if (!copied_value(type)) {
+        return value;
+    }
+    pin_value header = initial(l, type);
+    return primitive(
+        l,
+        &EXECUTION_value_copy_call,
+        &EXECUTION_sequence_read_access,
+        &header,
+        &value,
+        1,
+        type,
+        range
+    );
+}
+static void drop_value(lower *l, int value, script_type type, script_range range)
+{
+    if (value < 0 || !copied_value(type)) {
+        return;
+    }
+    pin_value header = initial(l, type);
+    primitive(
+        l,
+        &EXECUTION_value_drop_call,
+        &EXECUTION_assignment_access,
+        &header,
+        &value,
+        1,
+        (script_type){ .storage = PIN_BOOL },
+        range
+    );
+}
+/* Whether evaluating expression `index` may change an array read before it. */
+static bool may_change(const lower *l, int index)
+{
+    return l->a->expressions[index].effects &
+           (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST |
+            SCRIPT_EFFECT_STRUCTURAL | SCRIPT_EFFECT_SUSPEND);
+}
+static bool index_needs_snapshot(const lower *l, const script_expression *e)
+{
+    return e->kind == SCRIPT_EXPR_INDEX && may_change(l, e->right);
+}
+static bool owns_expression_value(const lower *l, const script_expression *e)
+{
+    switch (e->kind) {
+        case SCRIPT_EXPR_CALL:
+        case SCRIPT_EXPR_ARRAY:
+        case SCRIPT_EXPR_MAP:
+        case SCRIPT_EXPR_STRUCT:
+        case SCRIPT_EXPR_UNION:
+        case SCRIPT_EXPR_MAP_REMOVE: return true;
+        case SCRIPT_EXPR_INDEX: return index_needs_snapshot(l, e);
+        case SCRIPT_EXPR_SEQUENCE: return e->member != SCRIPT_SEQUENCE_LENGTH;
+        default: return false;
+    }
+}
+static void remember_expression(lower *l, int index, int value)
+{
+    const script_expression *e = &l->a->expressions[index];
+    bool tuple = (e->type.flags & SCRIPT_TYPE_RESULTS) != 0;
+    if (!owns_expression_value(l, e) || (!tuple && !copied_value(e->type))) {
+        return;
+    }
+    if (tuple) {
+        bool managed = false;
+        for (int i = 0; i < e->result_count; i++) {
+            managed |= copied_value(e->results[i]);
+        }
+        if (!managed) {
+            return;
+        }
+    }
+    int bank = -1;
+    for (int i = 0; i < acount(l->temporaries); i++) {
+        if (l->temporaries[i].expression == index) {
+            bank = l->temporaries[i].bank;
+            break;
+        }
+    }
+    int count = tuple ? e->result_count : 1;
+    if (bank < 0) {
+        pin_value *headers = NULL;
+        for (int i = 0; i < count; i++) {
+            apush(headers, initial(l, tuple ? e->results[i] : e->type));
+        }
+        bank = behavior_function_builder_values(l->builder, headers, count);
+        afree(headers);
+        apush(l->temporaries, ((expression_temporary){ .expression = index, .bank = bank }));
+    }
+    for (int i = 0; i < count; i++) {
+        script_type type = tuple ? e->results[i] : e->type;
+        int payload = tuple ? command_tuple(l, e)
+                                ? command_result(l, value + i, type, e->range)
+                                : host_result(l, value + i, type, e->range)
+                            : value;
+        host_argument(l, bank + i, payload, type, e->range);
+    }
+}
+static void forget_temporary(lower *l, expression_temporary temporary)
+{
+    if (temporary.expression < 0) {
+        drop_value(
+            l,
+            host_result(l, temporary.bank, temporary.type, temporary.range),
+            temporary.type,
+            temporary.range
+        );
+        clear_value(l, temporary.bank, temporary.type, temporary.range);
+        return;
+    }
+    const script_expression *e = &l->a->expressions[temporary.expression];
+    bool tuple = (e->type.flags & SCRIPT_TYPE_RESULTS) != 0;
+    int count = tuple ? e->result_count : 1;
+    for (int i = 0; i < count; i++) {
+        script_type type = tuple ? e->results[i] : e->type;
+        drop_value(l, host_result(l, temporary.bank + i, type, e->range), type, e->range);
+        clear_value(l, temporary.bank + i, type, e->range);
+    }
+}
+static void remember_conversion(lower *l, int value, script_type type, script_range range)
+{
+    pin_value header = initial(l, type);
+    int bank = behavior_function_builder_values(l->builder, &header, 1);
+    apush(
+        l->temporaries,
+        ((expression_temporary){ .expression = -1, .bank = bank, .type = type, .range = range })
+    );
+    host_argument(l, bank, value, type, range);
+}
+static void forget_conversions(lower *l, int first)
+{
+    for (int i = first; i < acount(l->temporaries); i++) {
+        if (l->temporaries[i].expression < 0) {
+            forget_temporary(l, l->temporaries[i]);
+        }
+    }
+}
+static void forget_expression(lower *l, int index)
+{
+    if (index < 0) {
+        return;
+    }
+    for (int i = 0; i < acount(l->temporaries); i++) {
+        if (l->temporaries[i].expression == index) {
+            forget_temporary(l, l->temporaries[i]);
+        }
+    }
+    const script_expression *e = &l->a->expressions[index];
+    forget_expression(l, e->left);
+    if (e->kind != SCRIPT_EXPR_CALL && e->kind != SCRIPT_EXPR_ARRAY_MUTATE) {
+        forget_expression(l, e->right);
+    }
+    for (int i = 0; i < e->argument_count; i++) {
+        forget_expression(l, e->arguments[i].value);
+    }
+}
+static void forget_temporaries(lower *l)
+{
+    for (int i = 0; i < acount(l->temporaries); i++) {
+        forget_temporary(l, l->temporaries[i]);
+    }
+}
 /* Publish the already retained header, including the owned nominal layout.
  * Reading each field through shared IR works in VM, native, Wasm and C without
  * embedding a producer address or depending on an inspection context. */
@@ -1809,6 +2022,7 @@ static int constructor_from(lower *l, const script_expression *e, int base)
         }
         int slot = expression(l, a->value);
         slot = convert(l, slot, l->a->expressions[a->value].type, expected, a->range);
+        slot = copy_value(l, slot, expected, a->range);
         debug_input(l, e, a->parameter, slot, expected);
         host_argument(l, first + cursor++, slot, expected, a->range);
     }
@@ -1825,6 +2039,19 @@ static int constructor_from(lower *l, const script_expression *e, int base)
         e->type,
         e->range
     );
+    cursor = 1;
+    for (int i = 0; i < e->argument_count; i++) {
+        const script_argument *argument = &e->arguments[i];
+        if (e->kind == SCRIPT_EXPR_STRUCT) {
+            cursor++;
+        }
+        script_type expected = script_catalog_element_type(l->catalog, e->type);
+        if (e->kind == SCRIPT_EXPR_STRUCT && type && argument->parameter >= 0 &&
+            argument->parameter < type->field_count) {
+            expected = type->fields[argument->parameter].type;
+        }
+        drop_value(l, host_result(l, first + cursor++, expected, e->range), expected, e->range);
+    }
     for (int i = 0; i < acount(values); i++) {
         clear_value(
             l,
@@ -1856,25 +2083,35 @@ static bool literal_array(lower *l, const script_expression *e)
     }
     return true;
 }
-/* An array of literals is one data constant instead of one instruction and host
- * argument per element. Stores copy it, like catalog default arrays. */
+/* Keep literal bytes in one constant, then create a fresh array object on
+ * each evaluation. Ordinary retention shares that runtime object. */
 static int array_constant(lower *l, const script_expression *e)
 {
     pin_value value = initial(l, e->type);
     pin_array *items = pin_array_snapshot_allocate(&l->module->storage, e->type.storage, NULL, e->argument_count);
     for (int i = 0; i < e->argument_count; i++) {
         const pin_value *item = &l->a->expressions[e->arguments[i].value].constant;
-        int result = pin_value_snapshot_to_arena(&l->module->storage, &items->items[i], item);
+        int result = pin_value_capture_to_arena(&l->module->storage, &items->items[i], item);
         assert(result == 0);
         (void)result;
     }
     value.ptr = items;
-    return value_op(
+    int literal = value_op(
         l,
         (behavior_function_instruction){ .op = BF_ARRAY,
                                          .type = BF_POINTER_TYPE,
                                          .target = BF_CONSTANT,
                                          .value = value },
+        e->range
+    );
+    return primitive(
+        l,
+        &EXECUTION_sequence_clone_call,
+        &EXECUTION_sequence_read_access,
+        &value,
+        &literal,
+        1,
+        e->type,
         e->range
     );
 }
@@ -1899,6 +2136,7 @@ static int map_constructor(lower *l, const script_expression *e)
         script_type target = i % 2 ? value_type : key;
         int value = expression(l, expression_index);
         value = convert(l, value, l->a->expressions[expression_index].type, target, e->range);
+        value = copy_value(l, value, target, e->range);
         apush(headers, initial(l, target));
         apush(slots, value);
     }
@@ -1912,6 +2150,9 @@ static int map_constructor(lower *l, const script_expression *e)
         e->type,
         e->range
     );
+    for (int i = 0; i < e->argument_count; i++) {
+        drop_value(l, slots[i + 3], i % 2 ? value_type : key, e->range);
+    }
     afree(headers);
     afree(slots);
     return value;
@@ -1938,6 +2179,106 @@ static const script_function *input_signature(const script_analysis *a, const sc
     return f->kind == SCRIPT_FUNCTION_MACRO_ENTRY && f->parent >= 0 && !f->parameter_count
              ? &a->functions[f->parent]
              : f;
+}
+static int storage_root(const script_analysis *, int);
+static bool reference_argument(const lower *, const script_expression *, int);
+/* Whether expression `index` changes local `symbol` in place. A call's
+ * `right` is the function it calls, not an operand. */
+static bool changes_local(const lower *l, int index, int symbol)
+{
+    if (index < 0) {
+        return false;
+    }
+    const script_expression *e = &l->a->expressions[index];
+    if ((e->kind == SCRIPT_EXPR_ARRAY_MUTATE && storage_root(l->a, e->left) == symbol) ||
+        changes_local(l, e->left, symbol) ||
+        (e->kind != SCRIPT_EXPR_CALL && changes_local(l, e->right, symbol))) {
+        return true;
+    }
+    for (int i = 0; i < e->argument_count; i++) {
+        if ((reference_argument(l, e, i) &&
+             storage_root(l->a, e->arguments[i].value) == symbol) ||
+            changes_local(l, e->arguments[i].value, symbol)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether a call lends argument `at` to its callee without a copy: nothing can
+ * change the value before the call returns. The callee copies a parameter it
+ * writes. A temporary lives until the statement ends, and a caller's own
+ * local only changes through the caller, unless a pointer, a task, a later
+ * argument or another argument's reference reaches it. State, components,
+ * references and values behind a pointer stay copied. */
+static bool lends_argument(const lower *l, const script_expression *call, int at)
+{
+    int index = call->arguments[at].value;
+    while (index >= 0) {
+        const script_expression *e = &l->a->expressions[index];
+        if (owns_expression_value(l, e)) {
+            return true;
+        }
+        if (e->type.storage == PIN_POINTER) {
+            return false;
+        }
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX) {
+            index = e->left;
+            continue;
+        }
+        if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
+            return false;
+        }
+        const script_symbol *s = &l->a->symbols[e->symbol];
+        if ((s->kind != SCRIPT_LOCAL && s->kind != SCRIPT_PARAMETER &&
+             s->kind != SCRIPT_RESULT) ||
+            (s->type.flags & SCRIPT_TYPE_REFERENCE) || s->addressed ||
+            s->boxed || l->variables[e->symbol] >= 0 ||
+            (l->captured && l->captured[e->symbol] >= 0)) {
+            return false;
+        }
+        /* A later argument may change it before the call, and the callee
+         * may write through a reference any other argument passes. */
+        for (int i = 0; i < call->argument_count; i++) {
+            if ((i > at && changes_local(l, call->arguments[i].value, e->symbol)) ||
+                (i != at && reference_argument(l, call, i) &&
+                 storage_root(l->a, call->arguments[i].value) == e->symbol)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+/* Argument `at` of a call, as the value its bank slot takes. A task owns a
+ * copy of each argument. A call borrows what it can, and its caller keeps
+ * each copy it makes until the call returns. */
+static int value_argument(lower *l, const script_expression *call, int at, script_type expected)
+{
+    const script_argument *a = &call->arguments[at];
+    int value = expression(l, a->value);
+    value = convert(l, value, l->a->expressions[a->value].type, expected, a->range);
+    if (call->task) {
+        value = copy_value(l, value, expected, a->range);
+        forget_expression(l, a->value);
+        return value;
+    }
+    if (!lends_argument(l, call, at) && copied_value(expected)) {
+        value = copy_value(l, value, expected, a->range);
+        remember_conversion(l, value, expected, a->range);
+    }
+    return value;
+}
+/* Drops what a call's arguments held once a borrowing call returns:
+ * temporaries from `temporaries` on and each argument's own. */
+static void forget_arguments(lower *l, const script_expression *call, int temporaries)
+{
+    if (call->task) {
+        return;
+    }
+    forget_conversions(l, temporaries);
+    for (int i = 0; i < call->argument_count; i++) {
+        forget_expression(l, call->arguments[i].value);
+    }
 }
 static int authored_call(lower *l, const script_expression *e)
 {
@@ -1986,7 +2327,11 @@ static int authored_call(lower *l, const script_expression *e)
     }
     afree(args);
     afree(results);
+    if (e->task) {
+        behavior_function_builder_call_owned_arguments(l->builder, invocation);
+    }
     int first = behavior_function_builder_call_first(l->builder, invocation);
+    int temporaries = acount(l->temporaries);
     for (int i = 0; i < e->argument_count; i++) {
         const script_argument *a = &e->arguments[i];
         if (a->parameter < 0 || a->parameter >= inputs->parameter_count) {
@@ -2000,13 +2345,13 @@ static int authored_call(lower *l, const script_expression *e)
             debug_input(l, e, a->parameter, value, expected);
             host_argument(l, first + a->parameter, value, (script_type){ .storage = BF_POINTER_TYPE }, a->range);
         } else {
-            value = expression(l, a->value);
-            value = convert(l, value, l->a->expressions[a->value].type, expected, a->range);
+            value = value_argument(l, e, i, expected);
             debug_input(l, e, a->parameter, value, expected);
             host_argument(l, first + a->parameter, value, expected, a->range);
         }
     }
     emit(l, (behavior_function_instruction){ .op = BF_INVOKE, .left = invocation }, e->range);
+    forget_arguments(l, e, temporaries);
     for (int i = 0; i < inputs->parameter_count; i++) {
         clear_value(l, first + i, l->a->symbols[inputs->parameters[i]].type, e->range);
     }
@@ -2071,7 +2416,11 @@ static int external_call(
                              results,
                              result_count
                          );
+    if (e->task) {
+        behavior_function_builder_call_owned_arguments(l->builder, invocation);
+    }
     int first = behavior_function_builder_call_first(l->builder, invocation);
+    int temporaries = acount(l->temporaries);
     for (int i = 0; i < argument_count; i++) {
         set_kind(
             l,
@@ -2107,13 +2456,13 @@ static int external_call(
                 arg->range
             );
         } else {
-            int value = expression(l, arg->value);
-            value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
+            int value = value_argument(l, e, i, expected);
             debug_input(l, e, arg->parameter, value, expected);
             host_argument(l, first + arg->parameter, value, expected, arg->range);
         }
     }
     emit(l, (behavior_function_instruction){ .op = BF_INVOKE, .left = invocation }, e->range);
+    forget_arguments(l, e, temporaries);
     for (int i = 0; i < cap->parameter_count; i++) {
         clear_value(l, first + i, cap->parameters[i].type, e->range);
     }
@@ -2238,7 +2587,8 @@ static void command_arguments(lower *l, int first, const script_expression *e, c
         }
         int value = expression(l, arg->value);
         value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
-        value = retain_value(l, value, expected, arg->range);
+        value = copy_value(l, value, expected, arg->range);
+        forget_expression(l, arg->value);
         debug_input(l, e, arg->parameter, value, expected);
         emit(
             l,
@@ -3012,7 +3362,8 @@ static int flow_value(lower *l, const script_expression *e, int index)
     return value;
 }
 static int array_count(lower *, int, script_range);
-static int array_item(lower *, int, int, script_type, script_range);
+static int sequence_count(lower *, int, script_type, script_range);
+static int sequence_item(lower *, int, int, script_type, script_type, bool, script_range);
 static int flow_control(lower *l, const script_expression *e, bool request, uint64_t action)
 {
     if (!action && !request) {
@@ -3160,6 +3511,7 @@ static int flow_loop(lower *l, const script_expression *e, const script_catalog_
             return -1;
         }
         int array = retain_value(l, flow_value(l, e, input), collection, e->range);
+        array = copy_value(l, array, collection, e->range);
         array_local = save_slot(l, array, BF_POINTER_TYPE, e->range);
         end_local = save_slot(l, array_count(l, array, e->range), PIN_I32, e->range);
         current_local = save_slot(
@@ -3205,7 +3557,14 @@ static int flow_loop(lower *l, const script_expression *e, const script_catalog_
         script_type element = ordinal < e->result_count ? e->results[ordinal]
                                                         : cap->results[ordinal].type;
         int array = local_slot(l, array_local, BF_POINTER_TYPE, e->range);
-        flow_result(l, e, cap, first, ordinal, array_item(l, array, current, element, e->range));
+        flow_result(
+            l,
+            e,
+            cap,
+            first,
+            ordinal,
+            sequence_item(l, array, current, l->a->expressions[input].type, element, false, e->range)
+        );
     }
     flow_outcome(l, e, cap, cap->flow.outcomes[0], first);
     int stopped = -1;
@@ -3744,7 +4103,14 @@ static int call(lower *l, const script_expression *e)
     }
     afree(args);
     afree(results);
+    /* A native that only reads its arguments during the call borrows them
+     * as an authored call does; any other takes over copies. */
+    bool lent = host.call->borrows;
+    if (!lent) {
+        behavior_function_builder_host_owned_arguments(l->builder, host_index);
+    }
     int first = behavior_function_builder_host_first(l->builder, host_index);
+    int temporaries = acount(l->temporaries);
     for (int i = 0; i < e->argument_count; i++) {
         const script_argument *arg = &e->arguments[i];
         if (cap->variadic_optional && arg->parameter >= argument_count(l, e, cap)) {
@@ -3758,8 +4124,15 @@ static int call(lower *l, const script_expression *e)
         if (expected.storage == PIN_FLOW || (expected.flags & SCRIPT_TYPE_UNTYPED)) {
             expected = wildcard_type(l, e, cap, arg->value);
         }
-        int value = expression(l, arg->value);
-        value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
+        int value;
+        if (lent) {
+            value = value_argument(l, e, i, expected);
+        } else {
+            value = expression(l, arg->value);
+            value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
+            value = copy_value(l, value, expected, arg->range);
+            forget_expression(l, arg->value);
+        }
         debug_input(l, e, arg->parameter, value, expected);
         host_argument(l, first + arg->parameter, value, expected, arg->range);
     }
@@ -3772,9 +4145,23 @@ static int call(lower *l, const script_expression *e)
                                                                 : e->capability },
         e->range
     );
+    if (lent) {
+        forget_arguments(l, e, temporaries);
+    }
     int result_first = behavior_function_builder_host_results(l->builder, host_index);
     check_native_results(l, e, cap, result_first);
     complete_results(l, e, cap, result_first, false);
+    for (int i = 0; i < e->argument_count; i++) {
+        const script_argument *arg = &e->arguments[i];
+        if (arg->parameter < 0 || arg->parameter >= argument_count(l, e, cap)) {
+            continue;
+        }
+        script_type type = call_parameter(cap, arg->parameter)->type;
+        if (type.storage == PIN_FLOW || (type.flags & SCRIPT_TYPE_UNTYPED)) {
+            type = wildcard_type(l, e, cap, arg->value);
+        }
+        clear_value(l, first + arg->parameter, type, e->range);
+    }
     if (e->type.flags & SCRIPT_TYPE_RESULTS) {
         return result_first; /* A result tuple indexes the host bank, never a VM slot. */
     }
@@ -4307,184 +4694,88 @@ static int array_count(lower *l, int array, script_range range)
         range
     );
 }
-static int array_item(lower *l, int array, int index, script_type type, script_range range)
+static int sequence_count(lower *l, int array, script_type sequence, script_range range)
 {
-    int zero = constant(l, (pin_value){ .type = PIN_I32 }, range);
-    int lower_bound = value_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_GE, .type = PIN_I32, .left = index, .right = zero },
-        range
-    );
-    emit(
-        l,
-        (behavior_function_instruction){ .op = BF_ASSERT,
-                                         .left = lower_bound,
-                                         .target = BEHAVIOR_FUNCTION_ARGUMENT },
-        range
-    );
-    int count = array_count(l, array, range);
-    int upper_bound = value_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_LT, .type = PIN_I32, .left = index, .right = count },
-        range
-    );
-    emit(
-        l,
-        (behavior_function_instruction){ .op = BF_ASSERT,
-                                         .left = upper_bound,
-                                         .target = BEHAVIOR_FUNCTION_ARGUMENT },
-        range
-    );
-    int items = kind_op(
-        l,
-        (behavior_function_instruction){ .op = BF_LOAD,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = array,
-                                         .offset = offsetof(pin_array, items) },
-        range,
-        BEHAVIOR_ADDRESS
-    );
-    int data = kind_op(
-        l,
-        (behavior_function_instruction){ .op = BF_LOAD,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = array,
-                                         .offset = offsetof(pin_array, data) },
-        range,
-        BEHAVIOR_ADDRESS
-    );
-    int stride = value_op(
-        l,
-        (behavior_function_instruction){ .op = BF_LOAD,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = array,
-                                         .offset = offsetof(pin_array, stride) },
-        range
-    );
-    int none = constant(l, (pin_value){ .type = BF_POINTER_TYPE }, range);
-    int packed = value_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_NE, .type = BF_POINTER_TYPE, .left = stride, .right = none },
-        range
-    );
-    int boxed_width = constant(l, (pin_value){ .type = BF_POINTER_TYPE, .u64 = sizeof(pin_value) }, range);
-    int width = value_op(
-        l,
-        (behavior_function_instruction){ .op = BF_SELECT,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = packed,
-                                         .right = stride,
-                                         .target = boxed_width },
-        range
-    );
-    int base = kind_op(
-        l,
-        (behavior_function_instruction){ .op = BF_SELECT,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = packed,
-                                         .right = data,
-                                         .target = items },
-        range,
-        BEHAVIOR_ADDRESS
-    );
-    int ordinal = convert(
-        l,
-        index,
-        (script_type){ .storage = PIN_I32 },
-        (script_type){ .storage = BF_POINTER_TYPE },
-        range
-    );
-    int bytes = value_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_MUL, .type = BF_POINTER_TYPE, .left = ordinal, .right = width },
-        range
-    );
-    int item = kind_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_ADD, .type = BF_POINTER_TYPE, .left = base, .right = bytes },
-        range,
-        BEHAVIOR_ADDRESS
-    );
-    if (type.storage == PIN_STRUCT && type.container == PIN_CONTAINER_SINGLE) {
-        /* A packed record is inline. The boxed representation stores a
-         * pointer; never load that pointer from a packed record speculatively. */
-        int direct = emit(
-            l,
-            (behavior_function_instruction){ .op = BF_BRANCH, .left = packed, .target = -1 },
-            range
-        );
-        int pointer = typed_op(
-            l,
-            (behavior_function_instruction){ .op = BF_LOAD,
-                                             .type = BF_POINTER_TYPE,
-                                             .left = item,
-                                             .offset = offsetof(pin_value, d) },
-            range,
-            type
-        );
-        int result = save_slot(l, pointer, BF_POINTER_TYPE, range);
-        int end = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, range);
-        behavior_function_builder_patch_target(l->builder, direct, l->pc);
-        emit(
-            l,
-            (
-                behavior_function_instruction
-            ){ .op = BF_SAVE, .type = BF_POINTER_TYPE, .left = item, .target = result },
-            range
-        );
-        behavior_function_builder_patch_target(l->builder, end, l->pc);
-        return typed_op(
-            l,
-            (behavior_function_instruction){ .op = BF_LOCAL,
-                                             .type = BF_POINTER_TYPE,
-                                             .left = result },
-            range,
-            type
-        );
+    if (sequence.container != PIN_CONTAINER_VIEW) {
+        return array_count(l, array, range);
     }
-    int boxed_offset = constant(
+    pin_value header = initial(l, sequence);
+    return primitive(
         l,
-        (pin_value){ .type = BF_POINTER_TYPE, .u64 = offsetof(pin_value, d) },
+        &EXECUTION_sequence_length_call,
+        &EXECUTION_sequence_read_access,
+        &header,
+        &array,
+        1,
+        (script_type){ .storage = PIN_I32 },
         range
     );
-    int offset = value_op(
+}
+/* A value the reader is done with at once: no aggregate, text or name
+ * outlives the load. */
+static bool scalar_value(script_type type)
+{
+    return !copied_value(type) && type.storage != PIN_STR &&
+           type.storage != PIN_NAME && !(type.flags & SCRIPT_TYPE_RESULTS);
+}
+/* Evaluates `index`, a place a reader is done with before its array can
+ * change when `borrow` is set, so its element reads need not copy. */
+static int borrowed_place(lower *l, int index, bool borrow)
+{
+    const script_expression *e = &l->a->expressions[index];
+    l->borrowing = borrow &&
+                   (e->kind == SCRIPT_EXPR_INDEX || e->kind == SCRIPT_EXPR_MEMBER);
+    l->borrowed_expression = index;
+    int value = expression(l, index);
+    l->borrowing = false;
+    return value;
+}
+static int sequence_item(
+    lower *l,
+    int array,
+    int index,
+    script_type sequence,
+    script_type item,
+    bool borrowed,
+    script_range range
+)
+{
+    pin_value headers[] = { initial(l, sequence), { .type = PIN_I32 } };
+    int slots[] = { array, index };
+    /* The runtime validates both boxed element headers and packed layouts
+     * before exposing a payload as the statically expected element type. An
+     * index outside the sequence is an argument failure. */
+    return failing_primitive(
         l,
-        (behavior_function_instruction){ .op = BF_SELECT,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = packed,
-                                         .right = none,
-                                         .target = boxed_offset },
+        borrowed ? &EXECUTION_sequence_borrow_call : &EXECUTION_sequence_get_call,
+        &EXECUTION_sequence_read_access,
+        headers,
+        slots,
+        2,
+        item,
+        BEHAVIOR_FUNCTION_ARGUMENT,
         range
-    );
-    item = kind_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_ADD, .type = BF_POINTER_TYPE, .left = item, .right = offset },
-        range,
-        BEHAVIOR_ADDRESS
-    );
-    return typed_op(
-        l,
-        (
-            behavior_function_instruction
-        ){ .op = BF_LOAD, .type = slot_type(type), .left = item, .offset = 0 },
-        range,
-        type
     );
 }
 static int reference_expression(lower *l, const script_expression *e, bool written)
 {
+    if (e->kind == SCRIPT_EXPR_UNWRAP) {
+        pin_value headers[] = { { .type = BF_POINTER_TYPE },
+                                { .type = PIN_U64, .u64 = e->tag },
+                                { .type = PIN_I32, .i = (int)e->offset },
+                                initial(l, e->type) };
+        int slots[] = { reference(l, e->left), -1, -1, -1 };
+        return primitive(
+            l,
+            &EXECUTION_reference_union_call,
+            &EXECUTION_value_access,
+            headers,
+            slots,
+            4,
+            (script_type){ .storage = BF_POINTER_TYPE },
+            e->range
+        );
+    }
     if (e->kind == SCRIPT_EXPR_DEREFERENCE) {
         const script_catalog_type
             *component = script_catalog_type_by_id(l->catalog, e->type.nominal);
@@ -4900,6 +5191,118 @@ static int expression_value(lower *l, int index)
         debug_point(l, SCRIPT_RECORD_SYMBOL, e->symbol, e->range);
     }
     switch (e->kind) {
+        case SCRIPT_EXPR_SEQUENCE: {
+            pin_value headers[] = { initial(l, l->a->expressions[e->left].type),
+                                    { .type = PIN_I32 },
+                                    { .type = PIN_I32 },
+                                    { .type = PIN_U64, .u64 = e->tag } };
+            int slots[] = { expression(l, e->left), -1, -1, -1 };
+            bool clone = e->member == SCRIPT_SEQUENCE_CLONE;
+            bool length = e->member == SCRIPT_SEQUENCE_LENGTH;
+            script_type source = l->a->expressions[e->left].type;
+            bool snapshot = !clone && !length &&
+                            source.container != PIN_CONTAINER_SINGLE &&
+                            ((l->a->expressions[e->right].effects |
+                              l->a->expressions[e->arguments[0].value].effects) &
+                             (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST |
+                              SCRIPT_EFFECT_STRUCTURAL | SCRIPT_EFFECT_SUSPEND));
+            if (snapshot) {
+                slots[0] = copy_value(l, slots[0], source, e->range);
+            }
+            if (!clone && !length) {
+                slots[1] = int_slot(l, e->right, e->range);
+                slots[2] = int_slot(l, e->arguments[0].value, e->range);
+            }
+            int value = primitive(
+                l,
+                length  ? &EXECUTION_sequence_length_call
+                : clone ? &EXECUTION_sequence_clone_call
+                : e->member == SCRIPT_SEQUENCE_VIEW ? &EXECUTION_sequence_view_call
+                                                    : &EXECUTION_sequence_slice_call,
+                &EXECUTION_sequence_read_access,
+                headers,
+                slots,
+                clone || length ? 1 : 4,
+                e->type,
+                e->range
+            );
+            if (snapshot) {
+                drop_value(l, slots[0], source, e->range);
+            }
+            return value;
+        }
+        case SCRIPT_EXPR_ARRAY_MUTATE: {
+            pin_value *headers = NULL;
+            int *slots = NULL;
+            apush(headers, ((pin_value){ .type = BF_POINTER_TYPE }));
+            apush(headers, ((pin_value){ .type = PIN_I32, .i = (int)e->member }));
+            /* A named array is watched where it is evaluated, before the
+             * arguments, which can invoke another body; its reference keeps
+             * the name's points. */
+            const script_expression *array = &l->a->expressions[e->left];
+            if (array->kind == SCRIPT_EXPR_SYMBOL) {
+                int value = symbol_value(l, array);
+                value_root(l, BEHAVIOR_BANK_SLOT, value, array->type);
+                debug_watch(l, e->left, value, array->type, true, 0);
+                debug_input(l, e, 0, value, array->type);
+            }
+            apush(slots, reference(l, e->left));
+            apush(slots, -1);
+            for (int i = 1; i < e->argument_count; i++) {
+                apush(headers, ((pin_value){ 0 }));
+                apush(slots, -1);
+            }
+            for (int i = 0; i < e->argument_count; i++) {
+                const script_argument *argument = &e->arguments[i];
+                if (argument->parameter <= 0) {
+                    continue;
+                }
+                int at = argument->parameter + 1;
+                if (at >= acount(slots)) {
+                    error(l, e->range, "Array mutation argument is outside its signature");
+                    continue;
+                }
+                headers[at] = initial(l, l->a->expressions[argument->value].type);
+                slots[at] = expression(l, argument->value);
+                debug_input(
+                    l,
+                    e,
+                    argument->parameter,
+                    slots[at],
+                    l->a->expressions[argument->value].type
+                );
+                slots[at] = copy_value(
+                    l,
+                    slots[at],
+                    l->a->expressions[argument->value].type,
+                    argument->range
+                );
+            }
+            int value = primitive(
+                l,
+                &EXECUTION_array_mutate_place_call,
+                &EXECUTION_assignment_access,
+                headers,
+                slots,
+                acount(headers),
+                e->type,
+                e->range
+            );
+            for (int i = 0; i < e->argument_count; i++) {
+                const script_argument *argument = &e->arguments[i];
+                if (argument->parameter > 0 && argument->parameter + 1 < acount(slots)) {
+                    drop_value(
+                        l,
+                        slots[argument->parameter + 1],
+                        l->a->expressions[argument->value].type,
+                        e->range
+                    );
+                }
+            }
+            afree(headers);
+            afree(slots);
+            return value;
+        }
         case SCRIPT_EXPR_UNION: return union_construct(l, e);
         case SCRIPT_EXPR_IS:
         case SCRIPT_EXPR_AS: return union_pattern(l, e);
@@ -4914,18 +5317,14 @@ static int expression_value(lower *l, int index)
                 e->range
             );
         case SCRIPT_EXPR_INDEX: {
-            const script_expression *left = &l->a->expressions[e->left];
-            script_type collection = left->type;
-            /* An item of an array in a managed cell reads through the cell,
-             * which copies the item alone rather than the whole array. The
-             * cell is read after the index, so an index that could change it
-             * reads a copy taken first, as any other array does. */
-            if (collection.container == PIN_CONTAINER_ARRAY &&
-                (left->kind == SCRIPT_EXPR_DEREFERENCE || managed_symbol(l, left)) &&
-                inert(l, e->right)) {
-                return reference_read(l, reference_expression(l, e, false), e->type, e->range);
-            }
+            bool borrowed = l->borrowing && l->borrowed_expression == index;
+            l->borrowing = false;
             int array = expression(l, e->left);
+            script_type collection = l->a->expressions[e->left].type;
+            bool snapshot = index_needs_snapshot(l, e);
+            if (snapshot) {
+                array = copy_value(l, array, collection, e->range);
+            }
             if (collection.container == PIN_CONTAINER_MAP) {
                 /* An absent key reads the value type's zero when it has one. */
                 script_type key = script_catalog_key_type(l->catalog, collection);
@@ -4944,7 +5343,7 @@ static int expression_value(lower *l, int index)
                         e->range
                     );
                 }
-                return primitive(
+                int result = primitive(
                     l,
                     &EXECUTION_map_get_call,
                     &EXECUTION_value_access,
@@ -4954,8 +5353,26 @@ static int expression_value(lower *l, int index)
                     e->type,
                     e->range
                 );
+                if (snapshot) {
+                    result = copy_value(l, result, e->type, e->range);
+                    drop_value(l, array, collection, e->range);
+                }
+                return result;
             }
-            return array_item(l, array, int_slot(l, e->right, e->range), e->type, e->range);
+            int result = sequence_item(
+                l,
+                array,
+                int_slot(l, e->right, e->range),
+                collection,
+                e->type,
+                borrowed && !snapshot && collection.container != PIN_CONTAINER_SINGLE,
+                e->range
+            );
+            if (snapshot) {
+                result = copy_value(l, result, e->type, e->range);
+                drop_value(l, array, collection, e->range);
+            }
+            return result;
         }
         case SCRIPT_EXPR_FALLBACK: return expression(l, e->left);
         case SCRIPT_EXPR_NIL:
@@ -5101,7 +5518,12 @@ static int expression_value(lower *l, int index)
                     );
                 }
             }
-            int left = expression(l, e->left), right = expression(l, e->right);
+            /* Text compared at once is done with before its array can change,
+             * unless the right operand runs first and changes it. */
+            bool texts = (e->op == SCRIPT_OP_EQ || e->op == SCRIPT_OP_NE) &&
+                         behavior_scalar_string(l->a->expressions[e->left].type.storage);
+            int left = borrowed_place(l, e->left, texts && !may_change(l, e->right));
+            int right = borrowed_place(l, e->right, texts);
             script_type operand = e->type.storage != PIN_BOOL
                                     ? e->type
                                     : l->a->expressions[e->left].type;
@@ -5371,7 +5793,9 @@ static int expression_value(lower *l, int index)
                     );
                 }
             }
-            int left = expression(l, e->left);
+            bool borrowed = l->borrowing && l->borrowed_expression == index;
+            l->borrowing = false;
+            int left = borrowed_place(l, e->left, borrowed || scalar_value(e->type));
             if (receiver->type.flags & SCRIPT_TYPE_RESULTS) {
                 int value = command_tuple(l, receiver)
                               ? command_result(l, left + (int)e->offset, e->type, e->range)
@@ -5416,6 +5840,7 @@ static int expression(lower *l, int index)
     int value = expression_value(l, index);
     if (index >= 0 && index < l->a->expression_count && value >= 0) {
         const script_expression *e = &l->a->expressions[index];
+        remember_expression(l, index, value);
         if ((e->type.flags & SCRIPT_TYPE_RESULTS) && e->kind == SCRIPT_EXPR_CALL) {
             const script_expression *signature = tuple_signature(l, index);
             if (signature) {
@@ -5472,7 +5897,6 @@ static void store_tuple(lower *l, int symbol, int value, int source, script_rang
         int field = command_bank ? command_result(l, value + i, source_type, range)
                                  : host_result(l, value + i, source_type, range);
         field = convert(l, field, source_type, type, range);
-        field = retain_value(l, field, type, range);
         if (captured) {
             int descriptor = value_op(
                 l,
@@ -5484,7 +5908,10 @@ static void store_tuple(lower *l, int symbol, int value, int source, script_rang
             );
             reference_write(l, descriptor, field, type, range);
         } else {
+            field = copy_value(l, field, type, range);
+            int previous = host_result(l, l->locals[symbol] + i, type, range);
             host_argument(l, l->locals[symbol] + i, field, type, range);
+            drop_value(l, previous, type, range);
         }
         if (consumed) {
             clear_value(l, value + i, source_type, range);
@@ -5542,7 +5969,12 @@ static void release_tuple(lower *l, int symbol, script_range range)
 }
 /* Each declaration of a local that a task keeps starts a new one; the task
  * keeps the old one in its box. */
+static void declare_value(lower *, int, int, store_mode, script_range);
 static void declare_symbol(lower *l, int symbol, int value, script_range range)
+{
+    declare_value(l, symbol, value, STORE_COPY, range);
+}
+static void declare_value(lower *l, int symbol, int value, store_mode mode, script_range range)
 {
     const script_symbol *s = &l->a->symbols[symbol];
     if (s->addressed && l->parameters[symbol] < 0) {
@@ -5589,7 +6021,74 @@ static void declare_symbol(lower *l, int symbol, int value, script_range range)
         );
         release(l, descriptor, range);
     }
-    store_symbol(l, symbol, value, range);
+    store_value(l, symbol, value, mode, range);
+}
+/* Whether a local or parameter lives in this frame's own banks, out of
+ * reach of pointers, tasks and state. */
+static bool symbol_private(const lower *l, int symbol)
+{
+    const script_symbol *s = &l->a->symbols[symbol];
+    return (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_PARAMETER) &&
+           !(s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) &&
+           s->type.storage != PIN_POINTER && !s->addressed && !s->boxed &&
+           l->variables[symbol] < 0 && !(l->captured && l->captured[symbol] >= 0);
+}
+/* Whether a private local or parameter keeps one value for its whole life:
+ * nothing reassigns it or changes it in place. */
+static bool symbol_fixed(lower *l, int symbol)
+{
+    return symbol_private(l, symbol) && !symbol_written(l, symbol);
+}
+/* How a declaration stores its initializer, which took no conversion when
+ * `same`. A fresh temporary moves into the local. A local nothing writes reads
+ * a place in place when the local or parameter under that place keeps one
+ * value too: that value then outlives every read of the local. */
+/* Whether declaration `s` can read its initializer in place: a fixed local
+ * initialized from a place under a fixed local or parameter, which nothing
+ * changes while the local lives. A view is not such a place: its owner can
+ * still change the array under it. */
+static bool lends_declaration(lower *l, const script_statement *s)
+{
+    if (s->expression < 0 || !copied_value(l->a->symbols[s->symbol].type) ||
+        l->a->symbols[s->symbol].kind != SCRIPT_LOCAL || !symbol_fixed(l, s->symbol)) {
+        return false;
+    }
+    const script_expression *e = &l->a->expressions[s->expression];
+    while (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX) {
+        if (e->type.storage == PIN_POINTER ||
+            e->type.container == PIN_CONTAINER_VIEW || e->left < 0) {
+            return false;
+        }
+        e = &l->a->expressions[e->left];
+    }
+    return e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+           e->type.container != PIN_CONTAINER_VIEW && symbol_fixed(l, e->symbol);
+}
+static store_mode declaration_mode(lower *l, const script_statement *s, bool same)
+{
+    const script_symbol *symbol = &l->a->symbols[s->symbol];
+    if (!same || s->expression < 0 || !copied_value(symbol->type) ||
+        symbol->kind != SCRIPT_LOCAL || !symbol_private(l, s->symbol)) {
+        return STORE_COPY;
+    }
+    if (owns_expression_value(l, &l->a->expressions[s->expression])) {
+        for (int i = 0; i < acount(l->temporaries); i++) {
+            if (l->temporaries[i].expression == s->expression) {
+                l->temporaries[i] = l->temporaries[acount(l->temporaries) - 1];
+                asetlen(l->temporaries, acount(l->temporaries) - 1);
+                return STORE_MOVE;
+            }
+        }
+        return STORE_COPY;
+    }
+    if (!lends_declaration(l, s)) {
+        return STORE_COPY;
+    }
+    if (!l->lent) {
+        l->lent = xcalloc((size_t)l->a->symbol_count + 1, sizeof *l->lent);
+    }
+    l->lent[s->symbol] = true;
+    return STORE_LEND;
 }
 /* Writable locals occupy stable data banks, which are also runtime roots.
  * Drop those roots on scope exit, after moving any escaped references into
@@ -5629,12 +6128,17 @@ static void leave_scope(lower *l, int scope, script_range range)
             }
             release_tuple(l, symbol, range);
             for (int i = 0; i < signature->result_count; i++) {
+                script_type type = signature->results[i];
+                drop_value(l, host_result(l, l->locals[symbol] + i, type, range), type, range);
                 clear_value(l, l->locals[symbol] + i, signature->results[i], range);
             }
         } else if (l->addresses[symbol] >= 0 && contains_handles(s->type)) {
             int bank = l->addresses[symbol];
             if (s->boxed || s->type.storage == PIN_POINTER) {
                 release(l, bank_reference(l, bank, s->type, range), range);
+            } else if (!l->lent || !l->lent[symbol]) {
+                /* A lent local shares its owner's value: the owner drops it. */
+                drop_value(l, host_result(l, bank, s->type, range), s->type, range);
             }
             clear_value(l, bank, s->type, range);
         }
@@ -5648,6 +6152,10 @@ static void leave_scopes(lower *l, int scope, int until, script_range range)
     }
 }
 static void store_symbol(lower *l, int symbol, int value, script_range range)
+{
+    store_value(l, symbol, value, STORE_COPY, range);
+}
+static void store_value(lower *l, int symbol, int value, store_mode mode, script_range range)
 {
     if (symbol < 0 || symbol >= l->a->symbol_count) {
         error(l, range, "Assignment has no resolved target symbol");
@@ -5694,9 +6202,21 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
                    (s->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) ||
                    s->type.container != PIN_CONTAINER_SINGLE ||
                    behavior_scalar_string(s->type.storage);
-    if (managed) {
+    if (managed && mode == STORE_COPY) {
+        value = copy_value(l, value, s->type, range);
         value = retain_value(l, value, s->type, range);
     }
+    int previous = copied_value(s->type) && mode != STORE_LEND &&
+                           (l->variables[symbol] >= 0 ||
+                            l->addresses[symbol] >= 0 || l->locals[symbol] >= 0)
+                     ? symbol_value(
+                           l,
+                           &(script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
+                                                 .symbol = symbol,
+                                                 .type = s->type,
+                                                 .range = range }
+                       )
+                     : -1;
     if (l->variables[symbol] >= 0 && managed) {
         pin_value header = initial(l, s->type);
         int host = linked_host(
@@ -5718,6 +6238,7 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
             range
         );
         clear_value(l, behavior_function_builder_host_first(l->builder, host), s->type, range);
+        drop_value(l, previous, s->type, range);
         return;
     }
     if (l->variables[symbol] >= 0) {
@@ -5733,6 +6254,7 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
     }
     if (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT)) {
         host_argument(l, local_address(l, symbol), value, s->type, range);
+        drop_value(l, previous, s->type, range);
         return;
     }
     if (l->locals[symbol] < 0) {
@@ -5750,6 +6272,7 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
                                          .target = l->locals[symbol] },
         range
     );
+    drop_value(l, previous, s->type, range);
 }
 static void assign_value(lower *l, const script_statement *s, int value)
 {
@@ -5832,18 +6355,16 @@ static bool direct_target(lower *l, const script_expression *e)
            (l->parameters[e->symbol] >= 0 && s->kind != SCRIPT_PARAMETER) ||
            (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT));
 }
-/* A writable local or result array or map kept in its own bank. Every store
- * into it snapshots, so the local exclusively owns its items and may grow in
- * place. */
-static bool owned_local(lower *l, int expression, pin_container container)
+/* A writable local or result array of the function's own, as stage one's
+ * cell locals are. */
+static bool local_array(lower *l, const script_expression *e)
 {
-    const script_expression *e = &l->a->expressions[expression];
     if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
         return false;
     }
     const script_symbol *s = &l->a->symbols[e->symbol];
     return s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT) &&
-           s->type.container == container && !s->boxed && !s->addressed &&
+           s->type.container == PIN_CONTAINER_ARRAY && !s->boxed && !s->addressed &&
            !(s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS |
                               SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL)) &&
            l->variables[e->symbol] < 0 && l->parameters[e->symbol] < 0 &&
@@ -5858,8 +6379,8 @@ static int argument_for(const script_expression *e, int parameter)
     }
     return -1;
 }
-/* `xs = capability(xs, value)` for an array pack capability, named by its
- * stable identity. The value must not write: the old path read `xs` first. */
+/* `xs = capability(xs, value)` for an array capability named by its stable
+ * identity. The value must not write: the copying form reads `xs` first. */
 static bool self_call(lower *l, const script_expression *e, int symbol, const char *capability)
 {
     if (e->kind != SCRIPT_EXPR_CALL || e->argument_count != 2 || e->right >= 0 ||
@@ -5872,21 +6393,21 @@ static bool self_call(lower *l, const script_expression *e, int symbol, const ch
            l->a->expressions[array].symbol == symbol &&
            !(l->a->expressions[value].effects & SCRIPT_EFFECT_WRITE);
 }
-/* `xs = append(xs, x)`, `xs = extend(xs, ys)` and `xs[i] = x` on an owned
- * local update its array in place, so building an array is linear rather
- * than quadratic. */
-static bool in_place_array(lower *l, const script_statement *s)
+/* `xs = append(xs, x)`, `xs = extend(xs, ys)` and `xs[i] = x` on a local
+ * update its array in place, copying only a payload another value shares, so
+ * building an array is linear rather than quadratic. */
+static bool in_place_local(lower *l, const script_statement *s)
 {
     if (s->op != SCRIPT_OP_NONE) {
         return false;
     }
     const script_expression *target = &l->a->expressions[s->expression],
                             *rhs = &l->a->expressions[s->second];
-    bool owned = owned_local(l, s->expression, PIN_CONTAINER_ARRAY);
+    bool owned = local_array(l, target);
     bool push = owned && self_call(l, rhs, target->symbol, "Append");
     bool extend = owned && self_call(l, rhs, target->symbol, "Extend");
     bool store = target->kind == SCRIPT_EXPR_INDEX &&
-                 owned_local(l, target->left, PIN_CONTAINER_ARRAY);
+                 local_array(l, &l->a->expressions[target->left]);
     if (!push && !extend && !store) {
         return false;
     }
@@ -5942,79 +6463,80 @@ static bool in_place_array(lower *l, const script_statement *s)
     }
     return true;
 }
-/* `m[k] = v` and `delete m[k]` on an owned local map update it in place, so
- * building a map is linear rather than quadratic. */
-static bool in_place_map(lower *l, const script_statement *s)
+/* Indexed writes retain a logical destination through index and RHS calls. */
+static bool in_place_array(lower *l, const script_statement *s)
 {
+    const script_expression *target = &l->a->expressions[s->expression];
+    if (target->kind != SCRIPT_EXPR_INDEX) {
+        return false;
+    }
+    script_type sequence = l->a->expressions[target->left].type;
+    if (sequence.container != PIN_CONTAINER_ARRAY &&
+        sequence.container != PIN_CONTAINER_VIEW) {
+        return false;
+    }
+    int destination = reference(l, target->left);
+    int index = int_slot(l, target->right, s->range);
+    /* Reading the element checks the index before the value is evaluated. */
+    int receiver = reference_read(l, destination, sequence, s->range);
+    int before = sequence_item(l, receiver, index, sequence, target->type, s->op == SCRIPT_OP_NONE, s->range);
+    int value = convert(
+        l,
+        expression(l, s->second),
+        l->a->expressions[s->second].type,
+        target->type,
+        s->range
+    );
     if (s->op != SCRIPT_OP_NONE) {
-        return false;
+        value = binary(l, s->op, before, value, target->type, target->type, s->range);
     }
-    const script_expression *target = &l->a->expressions[s->expression],
-                            *rhs = &l->a->expressions[s->second];
-    bool store = target->kind == SCRIPT_EXPR_INDEX &&
-                 owned_local(l, target->left, PIN_CONTAINER_MAP);
-    bool remove = rhs->kind == SCRIPT_EXPR_MAP_REMOVE &&
-                  owned_local(l, s->expression, PIN_CONTAINER_MAP) &&
-                  l->a->expressions[rhs->left].kind == SCRIPT_EXPR_SYMBOL &&
-                  l->a->expressions[rhs->left].symbol == target->symbol &&
-                  !(l->a->expressions[rhs->right].effects & SCRIPT_EFFECT_WRITE);
-    if (!store && !remove) {
-        return false;
-    }
-    int symbol = l->a->expressions[store ? target->left : s->expression].symbol;
-    script_type collection = l->a->symbols[symbol].type;
-    script_type key = script_catalog_key_type(l->catalog, collection);
-    script_type item = script_catalog_element_type(l->catalog, collection);
-    int key_expression = store ? target->right : rhs->right;
-    debug_point(l, SCRIPT_RECORD_EXPRESSION, s->expression, target->range);
-    if (remove) {
-        debug_point(l, SCRIPT_RECORD_EXPRESSION, s->second, rhs->range);
-    }
-    pin_value headers[3] = { { .type = BF_POINTER_TYPE },
-                             initial(l, key),
-                             initial(l, item) };
-    int slots[3];
-    slots[1] = convert(
-        l,
-        expression(l, key_expression),
-        l->a->expressions[key_expression].type,
-        key,
-        s->range
-    );
-    if (store) {
-        slots[2] = convert(
-            l,
-            expression(l, s->second),
-            l->a->expressions[s->second].type,
-            item,
-            s->range
-        );
-    }
-    debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, s->range);
-    slots[0] = value_op(
-        l,
-        (behavior_function_instruction){ .op = BF_HOST_SLOT,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = local_address(l, symbol) },
-        s->range
-    );
+    /* The value can shrink the same array through an alias, and the
+     * permissive set_array_elem method ignores a missing index, so the
+     * index is checked again where it is written. */
+    receiver = reference_read(l, destination, sequence, s->range);
+    sequence_item(l, receiver, index, sequence, target->type, true, s->range);
+    pin_value headers[] = { { .type = BF_POINTER_TYPE },
+                            { .type = PIN_I32, .i = 4 },
+                            { .type = PIN_I32 },
+                            initial(l, target->type) };
+    int slots[] = { destination, -1, index, value };
     primitive(
         l,
-        store ? &EXECUTION_map_store_call : &EXECUTION_map_delete_call,
+        &EXECUTION_array_mutate_place_call,
         &EXECUTION_assignment_access,
         headers,
         slots,
-        store ? 3 : 2,
+        4,
         (script_type){ .storage = PIN_BOOL },
         s->range
     );
-    /* The debugger watches the removal's result, as it watches an in-place
-     * array append's. */
-    if (remove) {
-        int result = expression_value(l, rhs->left);
-        value_root(l, BEHAVIOR_BANK_SLOT, result, rhs->type);
-        debug_watch(l, s->second, result, rhs->type, true, 0);
+    return true;
+}
+/* A deletion resolves the same logical map place after evaluating its key. */
+static bool in_place_map(lower *l, const script_statement *s)
+{
+    const script_expression *target = &l->a->expressions[s->expression];
+    const script_expression *rhs = &l->a->expressions[s->second];
+    if (s->op != SCRIPT_OP_NONE || rhs->kind != SCRIPT_EXPR_MAP_REMOVE ||
+        target->type.container != PIN_CONTAINER_MAP) {
+        return false;
     }
+    script_type key = script_catalog_key_type(l->catalog, target->type);
+    int destination = reference(l, s->expression);
+    int value = expression(l, rhs->right);
+    value = convert(l, value, l->a->expressions[rhs->right].type, key, s->range);
+    pin_value headers[] = { { .type = BF_POINTER_TYPE }, initial(l, key) };
+    int slots[] = { destination, value };
+    primitive(
+        l,
+        &EXECUTION_map_delete_place_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        2,
+        (script_type){ .storage = PIN_BOOL },
+        s->range
+    );
     return true;
 }
 static void assign(lower *l, const script_statement *s)
@@ -6061,7 +6583,7 @@ static void assign(lower *l, const script_statement *s)
         store_tuple(l, l->a->expressions[index].symbol, expression(l, s->second), s->second, s->range);
         return;
     }
-    if (in_place_array(l, s) || in_place_map(l, s)) {
+    if (in_place_local(l, s) || in_place_array(l, s) || in_place_map(l, s)) {
         return;
     }
     int saved_expression = l->target_expression,
@@ -6155,6 +6677,7 @@ static void return_results(lower *l, script_range range)
                                   .type = s->type,
                                   .range = range }
         );
+        value = copy_value(l, value, s->type, range);
         if (initial(l, s->type).record ||
             (!(s->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) && s->type.storage == PIN_STRUCT &&
              s->type.container == PIN_CONTAINER_SINGLE)) {
@@ -6192,6 +6715,7 @@ static void return_results(lower *l, script_range range)
             );
         }
     }
+    forget_temporaries(l);
     for (int i = acount(l->loops) - 1; i >= 0; i--) {
         if (l->loops[i].query_cursor) {
             int cursor = value_op(
@@ -6354,7 +6878,7 @@ static void query_foreach(lower *l, const script_statement *s)
     );
     query_iterator_host(l, &EXECUTION_query_end_call, iterator, row_type, NULL, s->range);
 }
-static void statement(lower *l, int index)
+static void statement_inner(lower *l, int index)
 {
     if (index < 0) {
         return;
@@ -6461,10 +6985,10 @@ static void statement(lower *l, int index)
             return;
         }
         case SCRIPT_STMT_DECLARE: {
-            int value = expression(l, s->expression);
-            value = convert(
+            int produced = borrowed_place(l, s->expression, lends_declaration(l, s));
+            int value = convert(
                 l,
-                value,
+                produced,
                 l->a->expressions[s->expression].type,
                 l->a->symbols[s->symbol].type,
                 s->range
@@ -6473,7 +6997,7 @@ static void statement(lower *l, int index)
                 release_tuple(l, s->symbol, s->range);
                 store_tuple(l, s->symbol, value, s->expression, s->range);
             } else {
-                declare_symbol(l, s->symbol, value, s->range);
+                declare_value(l, s->symbol, value, declaration_mode(l, s, value == produced), s->range);
             }
             return;
         }
@@ -6485,7 +7009,10 @@ static void statement(lower *l, int index)
             return;
         }
         case SCRIPT_STMT_IF: {
+            int first = acount(l->temporaries);
             int condition = condition_value(l, s->expression);
+            forget_expression(l, s->expression);
+            forget_conversions(l, first);
             int branch = emit(
                 l,
                 (behavior_function_instruction){ .op = BF_BRANCH,
@@ -6502,7 +7029,10 @@ static void statement(lower *l, int index)
         }
         case SCRIPT_STMT_WHILE: {
             int again = l->pc;
+            int first = acount(l->temporaries);
             int condition = condition_value(l, s->expression);
+            forget_expression(l, s->expression);
+            forget_conversions(l, first);
             int branch = emit(
                 l,
                 (behavior_function_instruction){ .op = BF_BRANCH,
@@ -6680,6 +7210,37 @@ static void statement(lower *l, int index)
             int array = streaming
                           ? expression(l, source->left)
                           : retain_value(l, expression(l, s->expression), collection, s->range);
+            int original = array;
+            /* A relationship streams its targets from the entity; it has no
+             * collection to copy. */
+            bool sequence = !streaming &&
+                            (collection.container == PIN_CONTAINER_ARRAY ||
+                             collection.container == PIN_CONTAINER_VIEW);
+            int fixed_count = -1;
+            if (sequence && borrowed) {
+                fixed_count = save_slot(
+                    l,
+                    sequence_count(l, original, collection, s->range),
+                    PIN_I32,
+                    s->range
+                );
+            } else if ((sequence && collection.container == PIN_CONTAINER_ARRAY) || map) {
+                array = copy_value(l, original, collection, s->range);
+            } else if (sequence) {
+                pin_value header = initial(l, collection);
+                collection.container = PIN_CONTAINER_ARRAY;
+                array = primitive(
+                    l,
+                    &EXECUTION_sequence_clone_call,
+                    &EXECUTION_sequence_read_access,
+                    &header,
+                    &original,
+                    1,
+                    collection,
+                    s->range
+                );
+            }
+            forget_expression(l, s->expression);
             if (text) {
                 array = string_cursor(
                     l,
@@ -6708,6 +7269,8 @@ static void statement(lower *l, int index)
             int text_bytes = -1;
             int saved_reference = -1;
             if (borrowed) {
+                /* The body cannot reach the source but through item, so a
+                 * reference to it resolves the same array on each access. */
                 int descriptor = reference(l, s->expression);
                 saved_reference = behavior_function_builder_local(
                     l->builder,
@@ -6753,7 +7316,9 @@ static void statement(lower *l, int index)
                     (behavior_function_instruction){
                         .op = BF_SUB,
                         .type = PIN_I32,
-                        .left = array_count(l, array, s->range),
+                        .left = fixed_count >= 0
+                                  ? local_slot(l, fixed_count, PIN_I32, s->range)
+                                  : sequence_count(l, array, collection, s->range),
                         .right = one },
                     s->range
                 );
@@ -6832,7 +7397,9 @@ static void statement(lower *l, int index)
                                            .offset = offsetof(pin_map, count) },
                                        s->range
                                    )
-                                 : array_count(l, array, s->range);
+                          : fixed_count >= 0
+                              ? local_slot(l, fixed_count, PIN_I32, s->range)
+                              : sequence_count(l, array, collection, s->range);
                 condition = value_op(
                     l,
                     (behavior_function_instruction){ .op = s->reverse ? BF_GE : BF_LT,
@@ -6852,6 +7419,10 @@ static void statement(lower *l, int index)
             int end = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, s->range);
             behavior_function_builder_patch_target(l->builder, branch, l->pc);
             script_type element = l->a->symbols[s->symbol].type;
+            /* The loop iterates its own copy of the array, so a fixed item
+             * reads its element in place. */
+            bool lent = sequence && !borrowed && copied_value(element) &&
+                        symbol_fixed(l, s->symbol);
             if (borrowed) {
                 pin_value headers[] = { { .type = BF_POINTER_TYPE },
                                         initial(l, element),
@@ -6894,14 +7465,16 @@ static void statement(lower *l, int index)
                     s->range
                 );
             } else {
-                declare_symbol(
+                declare_value(
                     l,
                     s->symbol,
                     streaming ? item
                     : text
                         ? string_cursor(l, &EXECUTION_string_item_call, array, index, element, s->range)
-                    : map ? map_item(l, array, index, false, collection, element, s->range)
-                          : array_item(l, array, index, element, s->range),
+                    : map
+                        ? map_item(l, array, index, false, collection, element, s->range)
+                        : sequence_item(l, array, index, collection, element, lent, s->range),
+                    lent ? STORE_LEND : STORE_COPY,
                     s->range
                 );
             }
@@ -6972,6 +7545,10 @@ static void statement(lower *l, int index)
             emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = again }, s->range);
             behavior_function_builder_patch_target(l->builder, end, l->pc);
             loop_finish(l, advance, l->pc);
+            leave_scope(l, s->scope, s->range);
+            if (!borrowed && !streaming && !text) {
+                drop_value(l, local_slot(l, saved_array, stored_type, s->range), collection, s->range);
+            }
             return;
         }
         case SCRIPT_STMT_BREAK:
@@ -6979,6 +7556,7 @@ static void statement(lower *l, int index)
             assert(acount(l->loops));
             lower_loop *loop = &l->loops[acount(l->loops) - 1];
             leave_scopes(l, s->scope, loop->scope, s->range);
+            forget_temporaries(l);
             int pc = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, s->range);
             if (s->kind == SCRIPT_STMT_BREAK) {
                 apush(loop->breaks, pc);
@@ -7019,6 +7597,7 @@ static void statement(lower *l, int index)
                 return;
             }
             leave_scopes(l, s->scope, l->a->symbols[s->symbol].scope, s->range);
+            forget_temporaries(l);
             apush(
                 l->goto_pc,
                 emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, s->range)
@@ -7029,6 +7608,26 @@ static void statement(lower *l, int index)
             error(l, s->range, "Statement requires an execution contract not yet linked");
             return;
     }
+}
+static void statement(lower *l, int index)
+{
+    if (index < 0) {
+        return;
+    }
+    int first = acount(l->temporaries);
+    statement_inner(l, index);
+    const script_statement *s = &l->a->statements[index];
+    if (s->kind != SCRIPT_STMT_RETURN && s->kind != SCRIPT_STMT_BREAK &&
+        s->kind != SCRIPT_STMT_CONTINUE && s->kind != SCRIPT_STMT_GOTO) {
+        forget_expression(l, s->expression);
+        forget_expression(l, s->second);
+        forget_expression(l, s->third);
+        forget_conversions(l, first);
+    }
+    /* Completed statements have emitted their cleanup. Retain only temporaries
+     * owned by enclosing expressions; later returns must not clean every
+     * already retired expression in earlier branches again. */
+    asetlen(l->temporaries, first);
 }
 static int *indices(int count)
 {
@@ -7110,6 +7709,13 @@ static void dependency_expressions(lower *l, int index, bool *visited, int **out
         case SCRIPT_EXPR_BINARY:
             dependency_expressions(l, e->left, visited, out);
             dependency_expressions(l, e->right, visited, out);
+            return;
+        case SCRIPT_EXPR_SEQUENCE:
+            dependency_expressions(l, e->left, visited, out);
+            dependency_expressions(l, e->right, visited, out);
+            for (int i = 0; i < e->argument_count; i++) {
+                dependency_expressions(l, e->arguments[i].value, visited, out);
+            }
             return;
         case SCRIPT_EXPR_CALL:
             if ((e->effects & (SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ)) &&
@@ -7281,6 +7887,14 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
                     symbol->source_relationship != 0 || symbol->source_variable != 0
                 );
             }
+        }
+        return;
+    }
+    if (e->kind == SCRIPT_EXPR_SEQUENCE) {
+        binding_fields(l, binding, e->left, visited);
+        binding_fields(l, binding, e->right, visited);
+        for (int i = 0; i < e->argument_count; i++) {
+            binding_fields(l, binding, e->arguments[i].value, visited);
         }
         return;
     }
@@ -7765,6 +8379,7 @@ static void emit_value_evaluator(
 {
     l->function = -1;
     l->builder = behavior_function_builder_new();
+    asetlen(l->temporaries, 0);
     l->pc = 0;
     l->payload_first = 0;
     l->payload_function = -1;
@@ -7788,6 +8403,7 @@ static void emit_value_evaluator(
         script_type source_type = l->a->expressions[expressions[i]].type;
         int value = expression(l, expressions[i]);
         value = convert(l, value, source_type, type, range);
+        value = copy_value(l, value, type, range);
         if (!(type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
             type.storage == PIN_STRUCT && type.container == PIN_CONTAINER_SINGLE) {
             return_record(l, value, type, i, range);
@@ -7824,6 +8440,7 @@ static void emit_value_evaluator(
                                              .offset = offsetof(pin_value, d) },
             range
         );
+        forget_expression(l, expressions[i]);
     }
     emit(l, (behavior_function_instruction){ .op = BF_RETURN }, range);
     emit(l, (behavior_function_instruction){ .op = BF_END }, range);
@@ -7884,6 +8501,9 @@ behavior_function_builder *script_lower_evaluator_reference(
     }
     emit_value_evaluator(&l, expressions, types, count, range);
     free(l.variables);
+    free(l.written);
+    free(l.lent);
+    afree(l.temporaries);
     script_occurrences_free(l.occurrences);
     if (l.failed) {
         snprintf(
@@ -7911,57 +8531,79 @@ static int storage_root(const script_analysis *a, int index)
     }
     return -1;
 }
-static bool parameter_needs_storage(const lower *l, int symbol)
+/* Whether argument `at` of `call` passes a reference to its place. */
+static bool reference_argument(const lower *l, const script_expression *call, int at)
 {
-    for (int i = 0; i < l->a->statement_count; i++) {
-        const script_statement *s = &l->a->statements[i];
-        if (s->kind == SCRIPT_STMT_ASSIGN && storage_root(l->a, s->expression) == symbol) {
-            return true;
-        }
+    if (call->kind != SCRIPT_EXPR_CALL || call->arguments[at].parameter < 0) {
+        return false;
     }
-    for (int i = 0; i < l->a->expression_count; i++) {
-        const script_expression *e = &l->a->expressions[i];
-        if (e->kind != SCRIPT_EXPR_CALL) {
-            continue;
-        }
-        int function_index = e->right >= 0 ? (e->entry >= 0 ? e->entry : e->right)
-                                           : -1;
-        const script_function *function = function_index >= 0
-                                            ? input_signature(l->a, &l->a->functions[function_index])
-                                            : NULL;
-        const script_catalog_capability
-            *cap = function
-                     ? NULL
-                     : script_catalog_capability_by_id(l->catalog, e->capability);
-        for (int j = 0; j < e->argument_count; j++) {
-            const script_argument *arg = &e->arguments[j];
-            int parameter = arg->parameter;
-            if (parameter < 0 || storage_root(l->a, arg->value) != symbol) {
-                continue;
-            }
-            script_type type = function && parameter < function->parameter_count
-                                 ? l->a->symbols[function->parameters[parameter]]
-                                       .type
-                             : cap && parameter < cap->parameter_count
-                                 ? cap->parameters[parameter].type
-                                 : (script_type){ 0 };
-            if (type.flags & SCRIPT_TYPE_REFERENCE) {
-                return true;
-            }
-        }
-    }
-    return false;
+    int index = call->right >= 0 ? (call->entry >= 0 ? call->entry : call->right)
+                                 : -1;
+    const script_function *function = index >= 0
+                                        ? input_signature(l->a, &l->a->functions[index])
+                                        : NULL;
+    const script_catalog_capability
+        *cap = function
+                 ? NULL
+                 : script_catalog_capability_by_id(l->catalog, call->capability);
+    int parameter = call->arguments[at].parameter;
+    script_type type = function && parameter < function->parameter_count
+                         ? l->a->symbols[function->parameters[parameter]].type
+                     : cap && parameter < cap->parameter_count
+                         ? cap->parameters[parameter].type
+                         : (script_type){ 0 };
+    return (type.flags & SCRIPT_TYPE_REFERENCE) != 0;
 }
-/* Argument headers belong to the caller. Only writable/exposed parameters need
- * private headers; read-only arguments retain their lowering proof shape.
- * References and captured descriptors intentionally keep their owner. */
+static void mark_root(const lower *l, int index)
+{
+    int root = storage_root(l->a, index);
+    if (root >= 0) {
+        l->written[root] = true;
+    }
+}
+/* Whether the analysis reassigns `symbol` or changes it in place: an
+ * assignment, a counter, a state store, an array change or a ref argument.
+ * A for-each item is bound to each element in turn, never changed. */
+static bool symbol_written(lower *l, int symbol)
+{
+    if (!l->written) {
+        l->written = xcalloc((size_t)l->a->symbol_count + 1, sizeof *l->written);
+        for (int i = 0; i < l->a->statement_count; i++) {
+            const script_statement *s = &l->a->statements[i];
+            if (s->kind == SCRIPT_STMT_ASSIGN || s->kind == SCRIPT_STMT_REDUCE) {
+                mark_root(l, s->expression);
+            }
+            if ((s->kind == SCRIPT_STMT_ASSIGN ||
+                 s->kind == SCRIPT_STMT_REDUCE || s->kind == SCRIPT_STMT_FOR) &&
+                s->symbol >= 0) {
+                l->written[s->symbol] = true;
+            }
+        }
+        for (int i = 0; i < l->a->expression_count; i++) {
+            const script_expression *e = &l->a->expressions[i];
+            if (e->kind == SCRIPT_EXPR_ARRAY_MUTATE) {
+                mark_root(l, e->left);
+            }
+            for (int j = 0; j < e->argument_count; j++) {
+                if (reference_argument(l, e, j)) {
+                    mark_root(l, e->arguments[j].value);
+                }
+            }
+        }
+    }
+    return l->written[symbol];
+}
+/* A call lends its arguments, so their headers belong to the caller. A
+ * parameter the body writes or exposes gets a private copy; read-only
+ * arguments keep their lowering proof shape. References and captured
+ * descriptors intentionally keep their owner. */
 static void isolate_parameters(lower *l, script_range range)
 {
     for (int i = 0; i < l->a->symbol_count; i++) {
         const script_symbol *symbol = &l->a->symbols[i];
         if (symbol->kind != SCRIPT_PARAMETER || l->parameters[i] < 0 ||
             l->captured[i] >= 0 || (symbol->type.flags & SCRIPT_TYPE_REFERENCE) ||
-            (!symbol->addressed && !parameter_needs_storage(l, i))) {
+            (!symbol->addressed && !symbol_written(l, i))) {
             continue;
         }
         script_expression input = { .kind = SCRIPT_EXPR_SYMBOL,
@@ -7970,9 +8612,11 @@ static void isolate_parameters(lower *l, script_range range)
                                     .range = range };
         int value = symbol_value(l, &input);
         l->parameters[i] = -1;
+        /* A managed cell copies its initializer. */
         if (symbol->addressed) {
             declare_symbol(l, i, value, range);
         } else {
+            value = copy_value(l, value, symbol->type, range);
             host_argument(l, local_address(l, i), value, symbol->type, range);
         }
     }
@@ -7987,6 +8631,7 @@ static void lower_function(lower *l, int index)
     const script_function *output = child_callable ? owner : f;
     l->function = index;
     l->builder = l->builders[index];
+    asetlen(l->temporaries, 0);
     behavior_function_builder_limits(l->builder, 0, f->depth_limit);
     l->pc = 0;
     l->async_emitted = false;
@@ -8044,7 +8689,7 @@ static void lower_function(lower *l, int index)
                         : l->a->symbols[i].type
                 );
                 pin_value owned;
-                if (pin_value_snapshot_to_arena(&l->module->storage, &owned, &type)) {
+                if (pin_value_capture_to_arena(&l->module->storage, &owned, &type)) {
                     error(l, f->range, "Cannot retain closure capture type");
                     owned = type;
                 }
@@ -8160,7 +8805,11 @@ static void lower_function(lower *l, int index)
                 f->range
             );
             store_symbol(l, symbol, value, f->range);
-        } else if ((type.storage == PIN_STRUCT || type.container != PIN_CONTAINER_SINGLE) && !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        } else if (
+            (type.storage == PIN_STRUCT || type.container != PIN_CONTAINER_SINGLE) &&
+            type.container != PIN_CONTAINER_VIEW && !(type.flags & SCRIPT_TYPE_OPTIONAL)
+        ) {
+            /* A view has no zero: the function's return gives it its window. */
             script_expression zero = { .kind = type.container == PIN_CONTAINER_MAP
                                                  ? SCRIPT_EXPR_MAP
                                              : type.container == PIN_CONTAINER_SINGLE
@@ -8257,6 +8906,7 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
     l->function = -1;
     pin_value result = initial(l, s->type);
     l->builder = behavior_function_builder_new();
+    asetlen(l->temporaries, 0);
     l->pc = 0;
     l->initializing = true;
     l->initializer_depth = 0;
@@ -8305,7 +8955,11 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
             error(l, s->declaration, message);
         } else {
             arena storage = { 0 };
-            behavior_function_context context = { .results = &result, .budget = 100000 };
+            behavior_managed_heap managed;
+            behavior_managed_heap_init(&managed);
+            behavior_function_context context = { .results = &result,
+                                                  .budget = 100000,
+                                                  .managed_heap = &managed };
             behavior_function_bind_storage(&context, &storage);
             if (!behavior_function_bind(f, &context, NULL, 0) ||
                 behavior_function_run(f, &context, false)) {
@@ -8313,7 +8967,7 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
                 result = initial(l, s->type);
             } else {
                 pin_value retained;
-                if (pin_value_snapshot_to_arena(&l->module->storage, &retained, &result)) {
+                if (pin_value_capture_to_arena(&l->module->storage, &retained, &result)) {
                     error(l, s->declaration, "Cannot retain evaluated state default");
                     result = initial(l, s->type);
                 } else {
@@ -8322,6 +8976,7 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
             }
             behavior_function_release_host(&context);
             arena_free(&storage);
+            behavior_managed_heap_free(&managed);
             behavior_function_free(f);
         }
     }
@@ -8679,7 +9334,7 @@ static execution_module_plan *lower_analysis(
             }
         }
         pin_value retained;
-        if (pin_value_snapshot_to_arena(&m->storage, &retained, &value)) {
+        if (pin_value_capture_to_arena(&m->storage, &retained, &value)) {
             error(&l, s->declaration, "State default cannot be retained by the module");
             retained = (pin_value){ .type = value.type };
         }
@@ -8765,7 +9420,7 @@ static execution_module_plan *lower_analysis(
             if ((value.type == PIN_STRUCT || value.container != PIN_CONTAINER_SINGLE) &&
                 !(initializer->results[j].flags & SCRIPT_TYPE_OPTIONAL)) {
                 failure = EXECUTION_construct_call.value(&m->storage, &value, 1, &retained);
-            } else if (pin_value_snapshot_to_arena(&m->storage, &retained, &value)) {
+            } else if (pin_value_capture_to_arena(&m->storage, &retained, &value)) {
                 failure = "Cannot retain action output default";
             }
             if (failure) {
@@ -8917,7 +9572,7 @@ static execution_module_plan *lower_analysis(
         out.component = component_type ? component_type->component_id : 0;
         out.layout = component_type ? component_type->layout : 0;
         pin_value target_type = initial(&l, target->type);
-        if (pin_value_snapshot_to_arena(&m->storage, &out.target_type, &target_type)) {
+        if (pin_value_capture_to_arena(&m->storage, &out.target_type, &target_type)) {
             error(&l, b->range, "Cannot retain binding target layout");
         }
         out.reads = xmalloc((size_t)(b->read_count + 1) * sizeof *out.reads);
@@ -8948,7 +9603,16 @@ static execution_module_plan *lower_analysis(
             char message[192];
             m->functions[i].body = behavior_function_builder_finish(l.builders[i], message, sizeof message);
             if (!m->functions[i].body) {
-                builder_error(&l, l.builders[i], a->functions[i].range, message);
+                char detail[256];
+                int symbol = a->functions[i].symbol;
+                snprintf(
+                    detail,
+                    sizeof detail,
+                    "%s (%s)",
+                    message,
+                    symbol >= 0 ? a->symbols[symbol].name : "initializer"
+                );
+                builder_error(&l, l.builders[i], a->functions[i].range, detail);
             }
         }
     }
@@ -9002,6 +9666,7 @@ static execution_module_plan *lower_analysis(
         }
         l.function = -1;
         l.builder = behavior_function_builder_new();
+        asetlen(l.temporaries, 0);
         l.pc = 0;
         l.locals = indices(a->symbol_count);
         l.addresses = indices(a->symbol_count);
@@ -9133,7 +9798,10 @@ static execution_module_plan *lower_analysis(
         package->constants = constants;
     }
     free(l.constant_values);
+    free(l.written);
+    free(l.lent);
     afree(l.loops);
+    afree(l.temporaries);
     script_occurrences_free(l.occurrences);
     m->diagnostic_count = acount(m->diagnostics);
     m->valid = !l.failed;

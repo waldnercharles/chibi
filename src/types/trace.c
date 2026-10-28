@@ -13,11 +13,17 @@
 static void struct_fields(const type_desc *type, const void *data, arena_marker mark, void *user, int depth)
 {
     assert(type && data && depth < 16);
+    if (type_alias_layout(type)) {
+        const type_desc *target = type_alias_type(type, (type_resolver){ 0 });
+        assert(target && target->size == type->size);
+        struct_fields(target, data, mark, user, depth + 1);
+        return;
+    }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         const unsigned char *member = (const unsigned char *)data + field->offset;
         if (field->type == PIN_STRUCT) {
-            struct_fields(type_catalog_find(field->type_name), member, mark, user, depth + 1);
+            struct_fields(type_field_type(field, (type_resolver){ 0 }), member, mark, user, depth + 1);
         }
         if (field->type == PIN_STR || field->type == PIN_NAME || field->type == PIN_UNION ||
             field->type == PIN_POINTER || field->type == PIN_QUERY) {
@@ -55,6 +61,15 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
         }
     }
 }
+bool pin_array_items_reach(const pin_array *array)
+{
+    /* Only authored records hold pointers, and their layouts travel with the
+     * array; native layouts may leave the catalog while a payload holds them. */
+    return !array->stride || array->element_type == PIN_POINTER ||
+           array->element_type == PIN_QUERY ||
+           (array->element_type == PIN_STRUCT && array->record &&
+            !type_is_plain(&array->record->type));
+}
 static void trace_struct(const void *data, const void *shape, arena_marker mark, void *user)
 {
     mark(user, shape);
@@ -63,19 +78,24 @@ static void trace_struct(const void *data, const void *shape, arena_marker mark,
 static void trace_array(const void *data, const void *, arena_marker mark, void *user)
 {
     const pin_array *array = data;
+    if (pin_array_trace_backing(array, mark, user)) {
+        return;
+    }
+    if (array->pointer) {
+        mark(user, array->pointer);
+        mark(user, array->record);
+        mark(user, array->schema);
+        mark(user, array->type_name);
+        return;
+    }
     mark(user, array->type_name);
     mark(user, array->record);
     mark(user, array->schema);
     mark(user, array->items);
     mark(user, array->data);
     mark(user, array->buckets);
-    /* Only authored records hold pointers, and their layouts travel with the
-     * array; native layouts may leave the catalog while a payload holds them. */
-    bool managed = !array->stride || array->element_type == PIN_POINTER ||
-                   array->element_type == PIN_QUERY ||
-                   (array->element_type == PIN_STRUCT && array->record &&
-                    !type_is_plain(&array->record->type));
-    for (int i = 0; managed && i < array->count; i++) {
+    bool reach = pin_array_items_reach(array);
+    for (int i = 0; reach && i < array->count; i++) {
         pin_value item = pin_array_get(array, i);
         pin_value_trace(&item, mark, user);
     }
@@ -129,8 +149,8 @@ static bool boundary_layout_valid(const type_desc *type, int depth, type_resolve
         (type->field_count && !type->fields) || depth >= 64) {
         return false;
     }
-    if (type->alias_of) {
-        const type_desc *nested = type_resolve(resolver, type->alias_of);
+    if (type_alias_layout(type)) {
+        const type_desc *nested = type_alias_type(type, resolver);
         return nested && nested->size == type->size &&
                boundary_layout_valid(nested, depth + 1, resolver);
     }
@@ -140,7 +160,7 @@ static bool boundary_layout_valid(const type_desc *type, int depth, type_resolve
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_resolve(resolver, field->type_name);
+            const type_desc *nested = type_field_type(field, resolver);
             if (!nested || nested->size != field->size ||
                 !boundary_layout_valid(nested, depth + 1, resolver)) {
                 return false;
@@ -163,18 +183,13 @@ static bool boundary_layout_pointer_free(const type_desc *type, int depth, type_
     if (!type || !type->size || type->field_count <= 0 || !type->fields || depth >= 64) {
         return false;
     }
-    if (type->alias_of) {
-        const type_desc *nested = type_resolve(resolver, type->alias_of);
-        return nested && nested->size == type->size &&
-               boundary_layout_pointer_free(nested, depth + 1, resolver);
-    }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         if (field->offset > type->size || field->size > type->size - field->offset) {
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_resolve(resolver, field->type_name);
+            const type_desc *nested = type_field_type(field, resolver);
             if (!nested || nested->size != field->size ||
                 !boundary_layout_pointer_free(nested, depth + 1, resolver)) {
                 return false;
@@ -226,6 +241,9 @@ static bool boundary_array_layout_same(const pin_array *array, const pin_value *
  * pointer. No native callback has run when this rejects a value. */
 static const char *managed_boundary_error(const pin_value *value, int depth)
 {
+    if (value->container == PIN_CONTAINER_VIEW) {
+        return value->ptr ? "Native calls cannot retain live array views" : NULL;
+    }
     if (value->type == PIN_POINTER || value->type == PIN_QUERY) {
         return value->type == PIN_QUERY
                  ? "Native calls cannot retain query arguments"
@@ -233,6 +251,10 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
     }
     if (depth >= 64) {
         return "Cannot retain language value";
+    }
+    if (value->record && value->record->native &&
+        !pin_record_native_current(value->record)) {
+        return "Native record layout is retired or incompatible";
     }
     if (value->container == PIN_CONTAINER_MAP) {
         const pin_map *map = value->ptr;
@@ -251,6 +273,10 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
         const pin_array *array = value->ptr;
         if (array && !pin_array_valid(array)) {
             return "Cannot retain language value";
+        }
+        if (array && array->record && array->record->native &&
+            !pin_record_native_current(array->record)) {
+            return "Native record layout is retired or incompatible";
         }
         bool pointer_free = boundary_array_pointer_free(array, depth);
         if (pointer_free && array->stride) {
@@ -296,8 +322,8 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
             return "Cannot retain language value";
         }
         /* Validation already proves this alias chain finite and size-matched. */
-        while (type->alias_of) {
-            type = type_resolve(resolver, type->alias_of);
+        while (type_alias_layout(type)) {
+            type = type_alias_type(type, resolver);
         }
         for (int i = 0; i < type->field_count; i++) {
             const type_field *field = &type->fields[i];
@@ -311,7 +337,9 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
                                .schema = field->type == PIN_STRUCT ? value->schema
                                                                    : NULL };
             if (field->type == PIN_STRUCT) {
+                const type_desc *nested = type_field_type(field, resolver);
                 item.ptr = (void *)member;
+                item.record = nested ? nested->carrier : NULL;
             } else {
                 memcpy(&item.ptr, member, sizeof item.ptr);
             }

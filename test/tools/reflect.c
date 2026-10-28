@@ -368,8 +368,8 @@ TEST_CASE(numeric_fields_reflect_their_unit_and_range)
     REQUIRE(reflectf(COMPONENT PRESENTED, "float damage") == 0);
     char *types = tool_read(output);
     bool presented = types && strstr(types, "\"speed\", PIN_F32,") &&
-                     strstr(types, "false, \"u/s\", 0, 2.5, true, 0 },") &&
-                     strstr(types, "false, NULL, 0, 0, false, 0 },");
+                     strstr(types, "false, \"u/s\", 0, 2.5, true, 0, NULL },") &&
+                     strstr(types, "false, NULL, 0, 0, false, 0, NULL },");
     free(types);
     REQUIRE(presented);
     snapshot(&output_before, output);
@@ -405,8 +405,8 @@ TEST_CASE(numeric_range_hints_and_defaults_are_distinct)
         ) == 0
     );
     char *types = tool_read(output);
-    bool distinct = types && strstr(types, "false, NULL, 0, 1, false, 0 },") &&
-                    strstr(types, "false, NULL, 0, 1, true, 0.5 },");
+    bool distinct = types && strstr(types, "false, NULL, 0, 1, false, 0, NULL },") &&
+                    strstr(types, "false, NULL, 0, 1, true, 0.5, NULL },");
     free(types);
     REQUIRE(distinct);
     return true;

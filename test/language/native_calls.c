@@ -809,8 +809,8 @@ TEST_CASE(native_calls_bind_through_the_registry)
 
 /* A context formats native values as the VM formats the pin_values they
  * stand for: each scalar type from its word, and text, with an embedded NUL,
- * from its bytes. What it gives lives in the frame's heap, which free
- * releases. */
+ * from its bytes. What it gives owns its bytes through the frame's heap,
+ * which free releases. */
 TEST_CASE(native_calls_format_text_like_the_vm)
 {
     static const char
@@ -862,8 +862,7 @@ TEST_CASE(native_calls_format_text_like_the_vm)
     execution_native_frame_init(&frame, RUNTIME);
     pin_string text;
     frame.context.format_text(&frame.context, values, COUNT, &text);
-    bool same = pin_text_equal(text, expected) &&
-                arena_contains(&frame.heap, text.bytes);
+    bool same = pin_text_equal(text, expected) && text.owner;
     execution_native_frame_free(&frame);
     arena_free(&storage);
     REQUIRE(same && expected.length > sizeof FORMAT);

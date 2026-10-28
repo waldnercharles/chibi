@@ -29,7 +29,7 @@ static char *generator_prefix;
 /* CompilerSources.txt lists the bootstrap compiler; the facade adds its own. */
 enum
 {
-    COMPILER_SOURCES = 25,
+    COMPILER_SOURCES = 27,
     SOURCES = COMPILER_SOURCES + 12
 };
 static char *source_texts[SOURCES];
@@ -83,6 +83,7 @@ static bool prepare_sources(const source_package_input *files, int count)
     char error[256];
     fixture.native = native_capabilities_from_definition_packs(NULL, 0, packs, 3, error, sizeof error);
     REQUIRE(fixture.native);
+    compiler_fixture_init_heap(&fixture);
     source_package_collection collection = { "core", "/sdk/core" };
     source_package_snapshot_options options = { .project_root = "/compiler",
                                                 .files = files,

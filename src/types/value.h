@@ -38,15 +38,19 @@ typedef enum
     PIN_CONTAINER_ARRAY,
     PIN_CONTAINER_SET,
     PIN_CONTAINER_MAP,
+    PIN_CONTAINER_VIEW,
 } pin_container;
 
 typedef struct pin_record pin_record;
 typedef struct pin_schema pin_schema;
 typedef struct arena arena;
+typedef struct pin_text_owner pin_text_owner;
 typedef struct pin_string
 {
     const char *bytes;
     uint32_t length;
+    /* NULL for borrowed bytes. Owned descriptors retain this immutable buffer. */
+    pin_text_owner *owner;
 } pin_string;
 
 typedef struct

@@ -29,7 +29,7 @@ enum
     ARTIFACT_CAP = 16 * 1024 * 1024,
     OUTPUT_CAP = 256 * 1024,
     ERROR_CAP = 4096,
-    BINARY_CAP = 32 * 1024
+    BINARY_CAP = 64 * 1024
 };
 /* Ordinary outputs keep the 16 MiB default; compiler bootstrap closures and
  * the CLI's file outputs pass the artifact bound. */

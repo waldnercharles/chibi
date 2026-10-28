@@ -1,6 +1,7 @@
 #include "support/arena.h"
 #include "types/array.h"
 #include "types/copy_internal.h"
+#include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
 
@@ -122,10 +123,22 @@ static pin_array *grow_owned_set(arena *storage, const pin_array *source)
     }
     int capacity = source->capacity ? source->capacity * 2 : 4;
     pin_array *copy = pin_array_snapshot_like(storage, source, capacity);
-    if (!copy || pin_array_snapshot_copy(storage, copy, 0, source, 0, source->count)) {
+    if (!copy) {
         return NULL;
     }
     copy->count = source->count;
+    for (int i = 0; i < source->count; i++) {
+        pin_value item = pin_array_get(source, i), retained = item;
+        if (!copy->stride && pin_value_collection_copy(storage, &retained, &item)) {
+            return NULL;
+        }
+        if (pin_array_set(copy, i, &retained)) {
+            if (!copy->stride) {
+                pin_value_collection_release(&retained);
+            }
+            return NULL;
+        }
+    }
     return copy;
 }
 
@@ -150,6 +163,9 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
         return -1;
     }
     pin_array *array = *set;
+    if (array && (!pin_array_valid(array) || array->pointer)) {
+        return -1;
+    }
     if (!array) {
         array = empty_owned_set(storage, item);
         if (!array) {
@@ -160,7 +176,11 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
     bool nominal = item->type == PIN_ENUM || item->type == PIN_HANDLE ||
                    item->type == PIN_STRUCT || item->type == PIN_POINTER ||
                    item->type == PIN_QUERY;
-    if (item->type != array->element_type || array->count == INT_MAX ||
+    pin_value shape = { .type = array->element_type,
+                        .type_name = array->type_name,
+                        .record = array->record };
+    if (item->type != array->element_type ||
+        !pin_value_layout_same(item, &shape) || array->count == INT_MAX ||
         (nominal &&
          strcmp(item->type_name ? item->type_name : "", array->type_name ? array->type_name : ""))) {
         return -1;
@@ -168,40 +188,78 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
     if (pin_array_find(array, item) >= 0) {
         return 0;
     }
-    if (array->count == array->capacity) {
-        array = grow_owned_set(storage, array);
+
+    /* Stage a VALUE before detachment: item may borrow an existing packed row.
+     * Scalars are their own copies. */
+    pin_value retained = *item;
+    if (pin_value_holds_storage(item) &&
+        pin_value_collection_copy(storage, &retained, item)) {
+        return -1;
+    }
+    if ((array->storage && array->storage != storage) ||
+        !arena_contains(storage, array)) {
+        array = pin_array_value_copy(storage, array);
         if (!array) {
+            pin_value_collection_release(&retained);
             return -1;
         }
         *set = array;
     }
-    int next_count = array->count + 1;
-    bool rebuild = array->buckets && next_count > (int)((array->bucket_mask + 1) / 2);
-    if (rebuild) {
-        array->buckets = NULL;
-        array->bucket_mask = 0;
+    if (storage->collectable) {
+        if (pin_array_make_unique(storage, array) ||
+            pin_array_reserve_owned(storage, array, array->count + 1)) {
+            pin_value_collection_release(&retained);
+            return -1;
+        }
+    } else if (array->count == array->capacity) {
+        array = grow_owned_set(storage, array);
+        if (!array) {
+            pin_value_collection_release(&retained);
+            return -1;
+        }
+        *set = array;
     }
-    int *index = array->buckets;
-    unsigned mask = array->bucket_mask;
-    array->count = next_count;
-    if (pin_array_snapshot_set(storage, array, next_count - 1, item)) {
-        array->count--;
+    if (array->stride && retained.type == PIN_STRUCT && !retained.ptr &&
+        pin_array_box_owned(storage, array)) {
+        pin_value_collection_release(&retained);
         return -1;
     }
-    array->buckets = index;
-    array->bucket_mask = mask;
+
+    /* Saved indexes belong to this unique payload, never the shared source. */
+    int next_count = array->count + 1;
+    int *index = array->buckets;
+    unsigned mask = array->bucket_mask;
+    bool rebuild = index && next_count > (int)((mask + 1) / 2);
+    array->count = next_count;
+    if (pin_array_set(array, next_count - 1, &retained)) {
+        array->count--;
+        pin_array_mutation_end(array);
+        pin_value_collection_release(&retained);
+        return -1;
+    }
+    if (array->stride) {
+        pin_copy_record(
+            retained.type == PIN_STRUCT ? PIN_COPY_RECORD : PIN_COPY_VALUE_BUFFER,
+            array->stride
+        );
+    }
+    if (!rebuild) {
+        array->buckets = index;
+        array->bucket_mask = mask;
+    }
     if (rebuild || (!array->buckets && array->count >= INDEX_MIN_COUNT)) {
         pin_array_index(storage, array);
-    } else if (array->buckets && matches_itself(item)) {
-        unsigned at = position(array, item);
+    } else if (array->buckets && matches_itself(&retained)) {
+        unsigned at = position(array, &retained);
         array->buckets[at] = array->count;
     }
+    pin_array_mutation_end(array);
     return 1;
 }
 
 void pin_array_index(arena *storage, pin_array *array)
 {
-    if (!array || array->buckets) {
+    if (!storage || !array || array->pointer || array->buckets) {
         return;
     }
     if (array->count < INDEX_MIN_COUNT || array->count > INT_MAX / 2) {
@@ -210,6 +268,12 @@ void pin_array_index(arena *storage, pin_array *array)
     for (int i = 0; i < array->count; i++) {
         pin_value value = pin_array_get(array, i);
         if (value.container != PIN_CONTAINER_SINGLE || !supported(value.type)) {
+            return;
+        }
+    }
+    if (array->backing) {
+        storage = array->storage;
+        if (pin_array_make_unique(storage, array)) {
             return;
         }
     }
@@ -234,6 +298,7 @@ void pin_array_index(arena *storage, pin_array *array)
             table[at] = i + 1;
         }
     }
+    pin_array_mutation_end(array);
 }
 int pin_set_unique(arena *storage, pin_value *out, const pin_value *items, int count)
 {

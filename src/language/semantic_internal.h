@@ -189,6 +189,7 @@ script_type script_analyzer_collection_type(analyzer *, pin_container, script_ty
 script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
 void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);
 int script_analyzer_expr_add(analyzer *a, script_expression expression);
+int script_analyzer_sequence(analyzer *, TSNode node, TSNode object, TSNode range, script_sequence_operation);
 script_type script_analyzer_expr_type(const analyzer *a, int expression);
 unsigned script_analyzer_expr_effects(const analyzer *a, int expression);
 int script_analyzer_initializer_find(const analyzer *a, int symbol);
@@ -218,6 +219,9 @@ const script_catalog_capability *script_analyzer_array_method(analyzer *, TSNode
 /* Whether an array function returns its array changed, so its method changes
  * the array in place, as `append` does and `slice` does not. */
 bool script_analyzer_array_changer(const script_catalog_capability *);
+/* Whether writing the place at an expression changes storage outside the
+ * function's own locals, parameters and results. */
+bool script_analyzer_writes_external(const script_analysis *, int);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
 script_type script_analyzer_char_operand(script_type operand, script_type other);
 bool script_analyzer_integers_match(script_type, script_type);

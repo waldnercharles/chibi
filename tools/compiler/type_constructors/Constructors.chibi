@@ -65,7 +65,49 @@ pub Plan :: union {
     Constructed(value: named.Value, publish: bool, id: u64, name: string,
                 definition: named.Value, size: int, internal: bool,
                 variants: Variant[], fields: Field[], ids: u64[], diagnostics: syntax.Diagnostic[],
-                element_type: named.Value, element_collection: u64)
+                element_type: named.Value, element_collection: u64,
+                collection_container: int, key_type: named.Value, key_collection: u64)
+}
+
+pub CollectionID :: (container: int, key: named.Value, key_collection: u64,
+                     element: named.Value, element_collection: u64) -> u64 {
+    return binding.ID("collection-type", format_text("{}:{}:{}", container, Tag(key, key_collection), Tag(element, element_collection)));
+}
+pub Collection :: (environment: Environment, container: int, key: named.Value, key_collection: u64,
+                   element: named.Value, element_collection: u64, pointer_size: int) -> Plan {
+    variants: Variant[] = [];
+    fields: Field[] = [];
+    ids: u64[] = [];
+    diagnostics: syntax.Diagnostic[] = [];
+    id := CollectionID(container, key, key_collection, element, element_collection);
+    switch element {
+        case .Typed(storage, old_container, flags, nominal, parameter):
+            outer_storage := storage;
+            outer_nominal := nominal;
+            outer_parameter := parameter;
+            outer_flags := flags & ~2;
+            if (container == 3) {
+                outer_storage = 18;
+                outer_nominal = 0;
+                outer_parameter = 0;
+                outer_flags = 0;
+            } else if ((flags & 2048) != 0) {
+                outer_storage = 18;
+                outer_nominal = 0;
+                outer_parameter = 0;
+                outer_flags = flags & 49;
+            }
+            value := named.Value.Typed(outer_storage, container, outer_flags, outer_nominal, outer_parameter);
+            if (FindDefinition(environment, id) >= 0) {
+                return Plan.Constructed(value, false, 0, "", named.Value.Typed(0, 0, 0, 0, 0),
+                                        0, false, variants, fields, ids, diagnostics,
+                                        named.Value.Typed(0, 0, 0, 0, 0), 0, 0, named.Value.Typed(0, 0, 0, 0, 0), 0);
+            }
+            return Plan.Constructed(value, true, id,
+                                    format_text("__collection_{}", id), value, pointer_size, true,
+                                    variants, fields, ids, diagnostics, element, element_collection,
+                                    container, key, key_collection);
+    }
 }
 
 Tag :: (value: named.Value, collection: u64) -> u64 {
@@ -199,10 +241,10 @@ FinishUnion :: (environment: Environment, selection: Selections, pointer_size: i
                 noIDs: u64[] = [];
                 return Plan.Constructed(value, false, 0, "",
                                         named.Value.Typed(0, 0, 0, 0, 0),
-                                        0, false, empty, fields, noIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
+                                        0, false, empty, fields, noIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0, 0, named.Value.Typed(0, 0, 0, 0, 0), 0);
             }
             return Plan.Constructed(value, true, id, format_text("union:{}", id), value,
-                                    pointer_size, true, rows, fields, ids, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
+                                    pointer_size, true, rows, fields, ids, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0, 0, named.Value.Typed(0, 0, 0, 0, 0), 0);
     }
 }
 pub Union :: (environment: Environment, members: int[], pointer_size: int) -> Plan {
@@ -233,7 +275,7 @@ pub Task :: (environment: Environment, result: int, function: u64) -> Plan {
             if (FindDefinition(environment, id) >= 0) {
                 return Plan.Constructed(value, false, 0, "",
                                         named.Value.Typed(0, 0, 0, 0, 0),
-                                        0, false, variants, fields, outputIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
+                                        0, false, variants, fields, outputIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0, 0, named.Value.Typed(0, 0, 0, 0, 0), 0);
             }
             if ((types[result].flags & 8) != 0) {
                 capability: int = -1;
@@ -272,7 +314,7 @@ pub Task :: (environment: Environment, result: int, function: u64) -> Plan {
                 }
             }
             return Plan.Constructed(value, true, id, format_text("task-result:{}", id), descriptor,
-                                    0, true, variants, fields, outputIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0);
+                                    0, true, variants, fields, outputIDs, diagnostics, named.Value.Typed(0, 0, 0, 0, 0), 0, 0, named.Value.Typed(0, 0, 0, 0, 0), 0);
     }
 }
 pub Await :: (environment: Environment, success: int, request: Request) -> Plan {
@@ -328,9 +370,9 @@ pub Pointer :: (environment: Environment, pointee: int, pointer_size: int) -> Pl
                 return Plan.Constructed(value, false, 0, "",
                                         named.Value.Typed(0, 0, 0, 0, 0),
                                         0, false, variants, fields, outputIDs, diagnostics,
-                                        named.Value.Typed(0, 0, 0, 0, 0), 0);
+                                        named.Value.Typed(0, 0, 0, 0, 0), 0, 0, named.Value.Typed(0, 0, 0, 0, 0), 0);
             }
             return Plan.Constructed(value, true, id, format_text("__pointer_{}", id), value,
-                                    pointer_size, true, variants, fields, outputIDs, diagnostics, element, collection);
+                                    pointer_size, true, variants, fields, outputIDs, diagnostics, element, collection, 0, named.Value.Typed(0, 0, 0, 0, 0), 0);
     }
 }

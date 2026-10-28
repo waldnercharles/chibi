@@ -3229,6 +3229,7 @@ static const char *container_json_name(pin_container container)
         case PIN_CONTAINER_ARRAY: return "array";
         case PIN_CONTAINER_SET: return "set";
         case PIN_CONTAINER_MAP: return "map";
+        case PIN_CONTAINER_VIEW: return "view";
     }
     return "invalid";
 }

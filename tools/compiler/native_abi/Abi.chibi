@@ -111,13 +111,16 @@ pub ScalarType :: (storage: int) -> string {
     return format_text("i{}", bits);
 }
 // The LLVM type of a string: the runtime's text descriptor, `pin_string` in
-// src/types/value.h, its bytes then its unsigned length, by value. Odin's
-// and Rust's strings are a pointer and a pointer-sized length; this one
-// matches the runtime's, so native code and the VMs share strings. Its zero,
-// a null pointer and length 0, is empty text, as a null descriptor is, and
-// nothing reads its bytes. A string is immutable, so a copy shares its bytes.
+// src/types/value.h, its bytes, its unsigned length and the owner of shared
+// runtime bytes, by value. Odin's and Rust's strings are a pointer and a
+// pointer-sized length; this one matches the runtime's, so native code and
+// the VMs share strings. Native code only borrows: its constants have no
+// owner, and what the runtime gives a call lives until the call returns. Its
+// zero, a null pointer and length 0, is empty text, as a null descriptor is,
+// and nothing reads its bytes. A string is immutable, so a copy shares its
+// bytes.
 pub TextType :: () -> string {
-    return "{ ptr, i32 }";
+    return "{ ptr, i32, ptr }";
 }
 // The version of the export manifest a library object holds, which the
 // runtime checks before binding it: EXECUTION_NATIVE_ABI in

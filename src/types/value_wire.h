@@ -58,9 +58,11 @@ void execution_wire_strings_finish(execution_wire *);
 void execution_wire_count(execution_wire *, int *, size_t minimum_fields);
 /* Counts one decoded value record, failing past the wire's record bound. */
 bool execution_wire_record(execution_wire *);
-/* Struct names/layouts must resolve in the supplied global type catalog. No
- * process pointer is encoded; HANDLE values must be zero. Collections preserve
- * ordered items. Maps encode full typed key/value headers and ordered pairs.
+/* Struct names/layouts must resolve in the supplied global type catalog.
+ * Native carriers retain nominal encoding only while their frozen layout matches
+ * the current catalog. No process pointer is encoded; HANDLE values must be zero.
+ * Collections preserve ordered items. Maps encode full typed key/value headers and ordered pairs.
+ * Views encode only absent typed headers; live views cannot be persisted.
  * Failed reads leave the destination value unchanged; partial decoded storage
  * belongs to the reader's arena and is discarded with its generation. */
 void execution_wire_value(execution_wire *, pin_value *);

@@ -222,7 +222,7 @@ static pin_value from_word(pin_type type, uint64_t bits)
 static pin_value runtime_value(const execution_native_value *value, pin_string *text)
 {
     if (value->type == EXECUTION_NATIVE_TEXT) {
-        *text = (pin_string){ value->bytes, value->length };
+        *text = (pin_string){ .bytes = value->bytes, .length = value->length };
         return (pin_value){ .type = PIN_STR, .text = text };
     }
     pin_type type = pin_of((int)value->type);

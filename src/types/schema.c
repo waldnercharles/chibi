@@ -355,6 +355,16 @@ static int snapshot_array(arena *storage, pin_value *value, const pin_array *sou
     return 0;
 }
 
+/* A header may carry a frozen native record of the type an array describes
+ * by its own schema or the catalog. The copy follows the array. */
+static bool header_describes(const pin_value *value, const pin_array *array)
+{
+    if (value->record && value->record->native && !array->record) {
+        return value->type_name && array->type_name &&
+               !strcmp(value->type_name, array->type_name);
+    }
+    return pin_record_same(value->record, array->record);
+}
 static int snapshot_owned(arena *storage, pin_value *out, const pin_value *source, int depth)
 {
     if (depth >= 64) {
@@ -365,9 +375,11 @@ static int snapshot_owned(arena *storage, pin_value *out, const pin_value *sourc
                                      value.container == PIN_CONTAINER_SET
                                ? value.ptr
                                : NULL;
-    if (array && (!pin_array_valid(array) ||
-                  !pin_record_same(value.record, array->record))) {
+    if (array && (!pin_array_valid(array) || !header_describes(&value, array))) {
         return -1;
+    }
+    if (array) {
+        value.record = array->record;
     }
     bool nested = array && !array->stride && array->count &&
                   pin_array_get(array, 0).container != PIN_CONTAINER_SINGLE;

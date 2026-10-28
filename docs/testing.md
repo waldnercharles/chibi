@@ -2425,7 +2425,7 @@ ABI check adds no source preparation, callback invocation or child process. Ther
 original source, ten JSON product, ten new direct and six new binary product
 calls. Backend entry counters can include nested calls; this total is not their
 sum. New echo calls permit <=10,000 instructions; the two loop calls permit 100.
-Binary input JSON is <=256 KiB, artifact <=32 KiB, stderr <=4 KiB and successful
+Binary input JSON is <=256 KiB, artifact <=64 KiB, stderr <=4 KiB and successful
 binary stdout empty. Each child retains its <=10-second timeout. There is no
 extra producer process, standalone probe, network, renderer or GPU work. The
 disposable directory and

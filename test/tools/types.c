@@ -234,6 +234,8 @@ type_catalog_pack type_catalog_pack_at(int index)
 }
 
 static arena snapshots;
+static arena cow_heap, cow_producer;
+static pin_value cow_heap_text;
 static pin_array *source;
 static av_doc *source_document;
 static bool pointer_project_catalog;
@@ -247,6 +249,9 @@ static void release_values()
     pin_array_free(source);
     source = NULL;
     arena_free(&snapshots);
+    arena_free(&cow_producer);
+    arena_free(&cow_heap);
+    pin_value_destroy(&cow_heap_text);
     av_doc_free(source_document);
     source_document = NULL;
 }
@@ -342,8 +347,7 @@ TEST_CASE(types_array_snapshot_owns_strings_and_names)
     REQUIRE(snapshot != NULL && snapshot->count == 1);
     REQUIRE(snapshot->items != source->items);
     REQUIRE(
-        pin_text(pin_array_get(snapshot, 0)).bytes !=
-        pin_text(pin_array_get(source, 0)).bytes
+        pin_text_equal(pin_text(pin_array_get(snapshot, 0)), pin_text(pin_array_get(source, 0)))
     );
     nominal_name[0] = 'X';
     pin_array_free(source);
@@ -373,7 +377,7 @@ TEST_CASE(types_collection_follows_values_across_arenas)
     arena *arenas[] = { &first, &second };
     arena_collection collection;
     arena_collect_begin(&collection, arenas, 2);
-    arena_collect_mark(&collection, &array->items[0]);
+    arena_collect_mark(&collection, &array->count);
     arena_collect_mark(&collection, NULL);
     arena_collect_end(&collection);
     size_t text_bytes, array_bytes, capacity;
@@ -1082,7 +1086,7 @@ TEST_CASE(types_document_rejects_invalid_values_without_publication)
     REQUIRE(pin_text(text).bytes[sizeof embedded] == 0);
     REQUIRE(pin_text(text).bytes != av_get_str(encoded_text));
     REQUIRE(arena_contains(&snapshots, text.text));
-    REQUIRE(arena_contains(&snapshots, pin_text(text).bytes));
+    REQUIRE(arena_contains(&snapshots, text.text));
     REQUIRE(
         pin_value_read_document(&snapshots, (pin_value){ .type = PIN_NAME }, encoded_text, &value, error, sizeof error) ==
         -1
@@ -1181,10 +1185,12 @@ TEST_CASE(types_document_array_collection_retains_split_payloads)
         arena_collect_begin(&collection, arenas, 1);
         pin_value_trace(&value, arena_collect_mark, &collection);
         arena_collect_end(&collection);
+        REQUIRE(arena_contains(&snapshots, array));
         REQUIRE(arena_contains(&snapshots, payload));
         pin_value item = pin_array_get(array, 0);
         if (strings) {
-            REQUIRE(arena_contains(&snapshots, pin_text(item).bytes));
+            REQUIRE(arena_contains(&snapshots, item.text));
+            REQUIRE(arena_contains(&snapshots, item.text));
             REQUIRE(!strcmp(pin_text(item).bytes, "owned"));
         } else {
             REQUIRE(item.i == 17);
@@ -1269,6 +1275,428 @@ TEST_CASE(types_nested_pointer_records_require_owned_layout_support)
     REQUIRE(flat && pin_record_valid(flat));
     return true;
 }
+
+/* All new ownership cases use teardown-owned arenas so a failed REQUIRE still
+ * releases descriptors and external buffers. */
+static pin_value cow_integers(int count, int first)
+{
+    pin_array shape = { .element_type = PIN_I32 };
+    pin_array *array = pin_array_snapshot_like(&cow_heap, &shape, count);
+    if (!array) {
+        return (pin_value){ 0 };
+    }
+    for (int i = 0; i < count; i++) {
+        pin_value item = { .type = PIN_I32, .i = first + i };
+        if (pin_array_set(array, i, &item)) {
+            return (pin_value){ 0 };
+        }
+    }
+    if (pin_array_manage(&cow_heap, array)) {
+        return (pin_value){ 0 };
+    }
+    return (pin_value){ .type = PIN_I32,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = array->type_name,
+                        .record = array->record,
+                        .ptr = array };
+}
+static bool cow_append_integer(pin_value *value, int integer)
+{
+    pin_array *array = value->ptr;
+    if (pin_array_make_unique(&cow_heap, array) ||
+        pin_array_reserve_owned(&cow_heap, array, array->count + 1)) {
+        return false;
+    }
+    int index = array->count++;
+    pin_value item = { .type = PIN_I32, .i = integer };
+    if (pin_array_set(array, index, &item)) {
+        return false;
+    }
+    pin_array_mutation_end(array);
+    return true;
+}
+static void cow_collect(const pin_value *roots, int count)
+{
+    arena *arenas[] = { &cow_heap };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 1);
+    for (int i = 0; i < count; i++) {
+        pin_value_trace(&roots[i], arena_collect_mark, &collection);
+    }
+    arena_collect_end(&collection);
+}
+
+TEST_CASE(types_array_value_copy_isolates_elements_and_length)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value original = cow_integers(3, 1), copy, borrowed;
+    REQUIRE(original.ptr);
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    REQUIRE(cow_append_integer(&copy, 4));
+    REQUIRE(((pin_array *)original.ptr)->count == 3);
+    REQUIRE(((pin_array *)copy.ptr)->count == 4);
+    pin_value ninety = { .type = PIN_I32, .i = 90 };
+    REQUIRE(!pin_array_snapshot_set(&cow_heap, copy.ptr, 0, &ninety));
+    REQUIRE(pin_array_get(original.ptr, 0).i == 1);
+    REQUIRE(pin_array_get(copy.ptr, 0).i == 90);
+    pin_value eighty = { .type = PIN_I32, .i = 80 };
+    REQUIRE(!pin_array_snapshot_set(&cow_heap, original.ptr, 1, &eighty));
+    REQUIRE(pin_array_get(original.ptr, 1).i == 80);
+    REQUIRE(pin_array_get(copy.ptr, 1).i == 2);
+    REQUIRE(!pin_value_snapshot_to_arena(&snapshots, &borrowed, &copy));
+    REQUIRE(cow_append_integer(&copy, 5));
+    REQUIRE(((pin_array *)borrowed.ptr)->count == 5);
+    REQUIRE(((pin_array *)original.ptr)->count == 3);
+    return true;
+}
+
+TEST_CASE(types_nested_array_value_copy_isolates_child_mutation)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value external = cow_integers(2, 10);
+    REQUIRE(external.ptr);
+    pin_array *rows = pin_array_snapshot_allocate(&cow_heap, PIN_STRUCT, "__collection_cow_rows", 1);
+    REQUIRE(rows);
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &rows->items[0], &external));
+    REQUIRE(!pin_array_manage(&cow_heap, rows));
+    pin_value original = { .type = PIN_STRUCT,
+                           .container = PIN_CONTAINER_ARRAY,
+                           .type_name = rows->type_name,
+                           .ptr = rows },
+              copy;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    REQUIRE(!pin_array_make_unique(&cow_heap, copy.ptr));
+    pin_value child = pin_array_get(copy.ptr, 0);
+    pin_value changed = { .type = PIN_I32, .i = 99 };
+    REQUIRE(!pin_array_snapshot_set(&cow_heap, child.ptr, 0, &changed));
+    REQUIRE(cow_append_integer(&child, 12));
+    pin_value before = pin_array_get(original.ptr, 0);
+    REQUIRE(pin_array_get(before.ptr, 0).i == 10);
+    REQUIRE(((pin_array *)before.ptr)->count == 2);
+    REQUIRE(pin_array_get(external.ptr, 0).i == 10);
+    REQUIRE(((pin_array *)external.ptr)->count == 2);
+    child = pin_array_get(copy.ptr, 0);
+    REQUIRE(pin_array_get(child.ptr, 0).i == 99);
+    REQUIRE(((pin_array *)child.ptr)->count == 3);
+    pin_value roots[] = { original, copy, external };
+    cow_collect(roots, 3);
+    REQUIRE(pin_array_get(pin_array_get(copy.ptr, 0).ptr, 2).i == 12);
+    REQUIRE(pin_array_get(pin_array_get(original.ptr, 0).ptr, 1).i == 11);
+    return true;
+}
+
+TEST_CASE(types_map_value_copy_preserves_order_and_isolates_updates)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value integer = { .type = PIN_I32 };
+    pin_map_entry entries[] = {
+        { { .type = PIN_I32, .i = 1 }, { .type = PIN_I32, .i = 10 } },
+        { { .type = PIN_I32, .i = 2 }, { .type = PIN_I32, .i = 20 } },
+    };
+    pin_map *map = pin_map_create(&cow_heap, integer, integer, entries, 2);
+    REQUIRE(map);
+    pin_value original = { .type = PIN_I32, .container = PIN_CONTAINER_MAP, .ptr = map },
+              copy, borrowed;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    pin_map *updated = copy.ptr;
+    pin_value first = entries[0].key, replacement = { .type = PIN_I32, .i = 77 };
+    REQUIRE(!pin_map_store_owned(&cow_heap, &updated, &first, &replacement));
+    copy.ptr = updated;
+    REQUIRE(map->entries[0].value.i == 10);
+    REQUIRE(updated->entries[0].key.i == 1 && updated->entries[0].value.i == 77);
+    REQUIRE(updated->entries[1].key.i == 2 && updated->entries[1].value.i == 20);
+    pin_value third = { .type = PIN_I32, .i = 3 };
+    REQUIRE(!pin_map_store_owned(&cow_heap, &updated, &third, &replacement));
+    copy.ptr = updated;
+    REQUIRE(map->count == 2 && updated->count == 3);
+    REQUIRE(updated->entries[2].key.i == 3);
+    REQUIRE(!pin_value_snapshot_to_arena(&snapshots, &borrowed, &copy));
+    REQUIRE(borrowed.ptr == copy.ptr);
+    REQUIRE(!pin_map_delete_owned(&cow_heap, map, &entries[1].key));
+    REQUIRE(map->count == 1 && updated->count == 3);
+    REQUIRE(pin_map_find(updated, &entries[1].key) == 1);
+    pin_value roots[] = { original, copy };
+    cow_collect(roots, 2);
+    REQUIRE(((pin_map *)copy.ptr)->entries[2].value.i == 77);
+    return true;
+}
+
+TEST_CASE(types_map_value_copy_isolates_nested_array_values)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value external = cow_integers(2, 4);
+    REQUIRE(external.ptr);
+    pin_value key = { .type = PIN_I32, .i = 1 }, integer = { .type = PIN_I32 };
+    pin_value arrays = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
+    pin_map_entry entry = { key, external };
+    pin_map *map = pin_map_create(&cow_heap, integer, arrays, &entry, 1);
+    REQUIRE(map);
+    pin_value original = { .type = PIN_I32, .container = PIN_CONTAINER_MAP, .ptr = map },
+              copy;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    pin_map *updated = copy.ptr;
+    REQUIRE(!pin_map_make_unique(&cow_heap, updated));
+    pin_value child = updated->entries[0].value;
+    pin_value replacement = { .type = PIN_I32, .i = 88 };
+    REQUIRE(!pin_array_snapshot_set(&cow_heap, child.ptr, 0, &replacement));
+    REQUIRE(cow_append_integer(&child, 6));
+    REQUIRE(pin_array_get(external.ptr, 0).i == 4);
+    REQUIRE(pin_array_get(map->entries[0].value.ptr, 0).i == 4);
+    REQUIRE(((pin_array *)map->entries[0].value.ptr)->count == 2);
+    REQUIRE(pin_array_get(updated->entries[0].value.ptr, 0).i == 88);
+    REQUIRE(((pin_array *)updated->entries[0].value.ptr)->count == 3);
+    return true;
+}
+
+TEST_CASE(types_nested_map_value_copy_isolates_child_updates)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value integer = { .type = PIN_I32 }, first = { .type = PIN_I32, .i = 1 };
+    pin_map_entry entry = { first, { .type = PIN_I32, .i = 10 } };
+    pin_map *inner = pin_map_create(&cow_heap, integer, integer, &entry, 1);
+    REQUIRE(inner);
+    pin_value inner_value = { .type = PIN_I32, .container = PIN_CONTAINER_MAP, .ptr = inner };
+    pin_value maps = { .type = PIN_I32, .container = PIN_CONTAINER_MAP };
+    entry.value = inner_value;
+    pin_map *outer = pin_map_create(&cow_heap, integer, maps, &entry, 1);
+    REQUIRE(outer);
+    pin_value original = { .type = PIN_I32, .container = PIN_CONTAINER_MAP, .ptr = outer },
+              copy;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    pin_map *copied = copy.ptr;
+    REQUIRE(!pin_map_make_unique(&cow_heap, copied));
+    pin_map *child = copied->entries[0].value.ptr;
+    pin_value replacement = { .type = PIN_I32, .i = 77 };
+    REQUIRE(!pin_map_store_owned(&cow_heap, &child, &first, &replacement));
+    pin_value second = { .type = PIN_I32, .i = 2 };
+    REQUIRE(!pin_map_store_owned(&cow_heap, &child, &second, &replacement));
+    copied->entries[0].value.ptr = child;
+    pin_map_mutation_end(copied);
+    REQUIRE(inner->count == 1 && inner->entries[0].value.i == 10);
+    pin_map *before = outer->entries[0].value.ptr;
+    REQUIRE(before->count == 1 && before->entries[0].value.i == 10);
+    REQUIRE(child->count == 2 && child->entries[0].value.i == 77);
+    REQUIRE(child->entries[1].key.i == 2);
+    pin_value roots[] = { original, copy, inner_value };
+    cow_collect(roots, 3);
+    child = ((pin_map *)copy.ptr)->entries[0].value.ptr;
+    REQUIRE(child->entries[1].value.i == 77);
+    return true;
+}
+
+TEST_CASE(types_array_value_copy_keeps_explicit_pointer_identity)
+{
+    arena_init_collectable(&cow_heap);
+    pin_pointer *target = arena_alloc(&cow_heap, sizeof *target);
+    *target = (pin_pointer){ .value = { .type = PIN_I32, .i = 7 }, .storage = &cow_heap };
+    pin_arena_trace_pointer(&cow_heap, target);
+    pin_array shape = { .element_type = PIN_POINTER, .type_name = "test.pointer.int" };
+    pin_array *array = pin_array_snapshot_like(&cow_heap, &shape, 1);
+    REQUIRE(array);
+    pin_value element = { .type = PIN_POINTER,
+                          .type_name = "test.pointer.int",
+                          .ptr = target };
+    REQUIRE(!pin_array_set(array, 0, &element));
+    REQUIRE(!pin_array_manage(&cow_heap, array));
+    pin_value original = { .type = PIN_POINTER,
+                           .container = PIN_CONTAINER_ARRAY,
+                           .type_name = array->type_name,
+                           .ptr = array },
+              copy;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    target->value.i = 42;
+    pin_value left = pin_array_get(original.ptr, 0),
+              right = pin_array_get(copy.ptr, 0);
+    REQUIRE(pin_value_equal(&left, &right));
+    REQUIRE(((pin_pointer *)left.ptr)->value.i == 42);
+    REQUIRE(((pin_pointer *)right.ptr)->value.i == 42);
+    pin_pointer *replacement = arena_alloc(&cow_heap, sizeof *replacement);
+    *replacement = (pin_pointer){ .value = { .type = PIN_I32, .i = 9 },
+                                  .storage = &cow_heap };
+    pin_arena_trace_pointer(&cow_heap, replacement);
+    element.ptr = replacement;
+    REQUIRE(!pin_array_snapshot_set(&cow_heap, copy.ptr, 0, &element));
+    REQUIRE(pin_array_get(original.ptr, 0).ptr == target);
+    REQUIRE(pin_array_get(copy.ptr, 0).ptr == replacement);
+    pin_value roots[] = { original, copy };
+    cow_collect(roots, 2);
+    REQUIRE(arena_contains(&cow_heap, target) && arena_contains(&cow_heap, replacement));
+    REQUIRE(((pin_pointer *)pin_array_get(original.ptr, 0).ptr)->value.i == 42);
+    return true;
+}
+
+TEST_CASE(types_copied_ranges_and_pointer_views_follow_distinct_contracts)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value initial = cow_integers(4, 10);
+    REQUIRE(initial.ptr);
+    pin_pointer *cell = arena_alloc(&cow_heap, sizeof *cell);
+    *cell = (pin_pointer){ .value = initial, .storage = &cow_heap };
+    pin_arena_trace_pointer(&cow_heap, cell);
+    pin_array *range = pin_array_window_copy(&cow_heap, initial.ptr, 1, 2);
+    pin_array *view = pin_array_pointer_view(&cow_heap, cell, 1, 2);
+    REQUIRE(range && view);
+    pin_value view_value = { .type = PIN_I32,
+                             .container = PIN_CONTAINER_VIEW,
+                             .type_name = view->type_name,
+                             .ptr = view },
+              copied_view;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copied_view, &view_value));
+    pin_value changed = { .type = PIN_I32, .i = 111 };
+    REQUIRE(!pin_array_snapshot_set(&cow_heap, view, 0, &changed));
+    REQUIRE(pin_array_get(cell->value.ptr, 1).i == 111);
+    REQUIRE(pin_array_get(range, 0).i == 11);
+    REQUIRE(cow_append_integer(&cell->value, 14));
+    REQUIRE(pin_array_get(view, 0).i == 111 && pin_array_get(view, 1).i == 12);
+    pin_value replacement = cow_integers(3, 20);
+    REQUIRE(replacement.ptr);
+    pin_value_collection_release(&cell->value);
+    cell->value = replacement;
+    REQUIRE(pin_array_get(view, 0).i == 21 && pin_array_get(view, 1).i == 22);
+    REQUIRE(pin_array_get(copied_view.ptr, 0).i == 21);
+    REQUIRE(!pin_array_make_unique(&cow_heap, cell->value.ptr));
+    ((pin_array *)cell->value.ptr)->count = 1;
+    pin_array_mutation_end(cell->value.ptr);
+    REQUIRE(!pin_array_view_valid(view) && !pin_array_view_valid(copied_view.ptr));
+    REQUIRE(pin_array_snapshot_set(&cow_heap, view, 0, &changed) != 0);
+    REQUIRE(cow_append_integer(&cell->value, 31));
+    REQUIRE(!pin_array_view_valid(view));
+    REQUIRE(cow_append_integer(&cell->value, 32));
+    REQUIRE(pin_array_view_valid(view) && pin_array_view_valid(copied_view.ptr));
+    REQUIRE(pin_array_get(view, 0).i == 31 && pin_array_get(view, 1).i == 32);
+    REQUIRE(pin_array_get(range, 0).i == 11 && pin_array_get(range, 1).i == 12);
+    REQUIRE(!pin_array_pointer_view(&cow_heap, cell, 2, 2));
+    pin_array *empty = pin_array_pointer_view(&cow_heap, cell, 3, 0);
+    REQUIRE(empty && pin_array_view_valid(empty));
+    ((pin_array *)cell->value.ptr)->count = 2;
+    pin_array_mutation_end(cell->value.ptr);
+    REQUIRE(!pin_array_view_valid(empty));
+    REQUIRE(cow_append_integer(&cell->value, 32));
+    REQUIRE(pin_array_view_valid(empty));
+    pin_value roots[] = {
+        view_value,
+        copied_view,
+        { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = range }
+    };
+    cow_collect(roots, 3);
+    REQUIRE(pin_array_get(view, 1).i == 32);
+    REQUIRE(pin_array_get(range, 1).i == 12);
+    return true;
+}
+
+TEST_CASE(types_string_views_outlive_source_and_clones_detach)
+{
+    const char expected[] = { 0, (char)0xff, 'b' };
+    char bytes[] = { 'a', 0, (char)0xff, 'b', 'c' };
+    pin_value original, slice, nested, clone, empty;
+    REQUIRE(!pin_value_text(&cow_producer, &original, bytes, sizeof bytes));
+    REQUIRE(!pin_value_text_slice(&snapshots, &slice, original, 1, 3));
+    REQUIRE(!pin_value_text_slice(&snapshots, &nested, slice, 1, 1));
+    REQUIRE(!pin_value_text_clone(&snapshots, &clone, slice));
+    REQUIRE(!pin_value_text_clone(NULL, &cow_heap_text, slice));
+    REQUIRE(!pin_value_text_slice(&snapshots, &empty, slice, 3, 0));
+    REQUIRE(pin_text(empty).length == 0);
+    REQUIRE(pin_text_equal(pin_text(slice), pin_text(clone)));
+    REQUIRE(pin_text(clone).bytes != pin_text(slice).bytes);
+    REQUIRE(pin_text(nested).bytes == pin_text(slice).bytes + 1);
+    pin_value unchanged = { .type = PIN_I32, .i = 99 };
+    REQUIRE(pin_value_text_slice(&snapshots, &unchanged, slice, SIZE_MAX, 1));
+    REQUIRE(unchanged.type == PIN_I32 && unchanged.i == 99);
+    bytes[2] = 'X';
+    arena_reset(&cow_producer);
+    arena_free(&cow_producer);
+    REQUIRE(pin_text(slice).length == sizeof expected);
+    REQUIRE(!memcmp(pin_text(slice).bytes, expected, sizeof expected));
+    REQUIRE(pin_text(nested).length == 1 && (unsigned char)pin_text(nested).bytes[0] == 0xff);
+    REQUIRE(!memcmp(pin_text(clone).bytes, expected, sizeof expected));
+    arena_free(&snapshots);
+    REQUIRE(pin_text(cow_heap_text).length == sizeof expected);
+    REQUIRE(!memcmp(pin_text(cow_heap_text).bytes, expected, sizeof expected));
+    return true;
+}
+
+TEST_CASE(types_set_value_copy_preserves_membership_through_growth)
+{
+    arena_init_collectable(&cow_heap);
+    pin_array *set = NULL;
+    for (int i = 0; i < 128; i++) {
+        pin_value item = { .type = PIN_I32, .i = i };
+        REQUIRE(pin_set_add_owned(&cow_heap, &set, &item) == 1);
+    }
+    pin_value original = { .type = PIN_I32, .container = PIN_CONTAINER_SET, .ptr = set },
+              copy;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    pin_array *updated = copy.ptr;
+    pin_value item = { .type = PIN_I32, .i = 128 };
+    REQUIRE(pin_set_add_owned(&cow_heap, &updated, &item) == 1);
+    copy.ptr = updated;
+    REQUIRE(set->count == 128 && updated->count == 129);
+    REQUIRE(pin_array_find(set, &item) == -1 && pin_array_find(updated, &item) == 128);
+    for (int i = 0; i < 128; i++) {
+        item.i = i;
+        REQUIRE(pin_array_find(set, &item) == i);
+        REQUIRE(pin_array_find(updated, &item) == i);
+    }
+    REQUIRE(pin_set_add_owned(&cow_heap, &updated, &item) == 0);
+    REQUIRE(updated->count == 129 && set->count == 128);
+    return true;
+}
+
+TEST_CASE(types_collection_owners_release_external_bytes_before_collection)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value original = cow_integers(8192, 0), copy;
+    REQUIRE(original.ptr);
+    REQUIRE(!pin_array_make_unique(&cow_heap, original.ptr));
+    size_t retained = cow_heap.retained_bytes;
+    REQUIRE(retained >= 8192 * sizeof(int32_t));
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    REQUIRE(cow_heap.retained_bytes == retained);
+    pin_value_collection_release(&original);
+    REQUIRE(cow_heap.retained_bytes == retained);
+    REQUIRE(pin_array_get(copy.ptr, 8191).i == 8191);
+    pin_value_collection_release(&copy);
+    REQUIRE(cow_heap.retained_bytes == 0);
+    pin_value_collection_release(&copy);
+    REQUIRE(cow_heap.retained_bytes == 0);
+    cow_collect(NULL, 0);
+    size_t used, capacity;
+    arena_usage(&cow_heap, &used, &capacity);
+    REQUIRE(used == 0);
+    return true;
+}
+
+TEST_CASE(types_copy_drop_append_keeps_allocation_work_linear)
+{
+    arena_init_collectable(&cow_heap);
+    pin_value value = cow_integers(0, 0);
+    REQUIRE(value.ptr);
+    REQUIRE(!pin_array_make_unique(&cow_heap, value.ptr));
+    size_t allocated = cow_heap.allocated;
+    enum
+    {
+        count = 2048
+    };
+    for (int i = 0; i < count; i++) {
+        pin_value argument;
+        REQUIRE(!pin_value_collection_copy(&cow_heap, &argument, &value));
+        pin_value_collection_release(&argument);
+        REQUIRE(cow_append_integer(&value, i));
+    }
+    REQUIRE(((pin_array *)value.ptr)->count == count);
+    REQUIRE(pin_array_get(value.ptr, 0).i == 0);
+    REQUIRE(pin_array_get(value.ptr, count - 1).i == count - 1);
+    /* Copies charge one shell each. Dropping the temporary before append
+     * permits geometric payload growth instead of copying every old prefix. */
+    REQUIRE(
+        cow_heap.allocated - allocated <
+        (size_t)count * (sizeof(pin_array) + 16 * sizeof(int32_t))
+    );
+    pin_value_collection_release(&value);
+    REQUIRE(cow_heap.retained_bytes == 0);
+    return true;
+}
+
 TEST_CASE(types_queries_preserve_identity_and_managed_edges)
 {
     arena_init_collectable(&snapshots);
@@ -1318,6 +1746,33 @@ TEST_CASE(types_queries_preserve_identity_and_managed_edges)
     REQUIRE(!pin_read_field(&snapshots, holder.ptr, &record->type.fields[0], &copy));
     REQUIRE(copy.ptr == query && pin_value_equal(&copy, &original));
     REQUIRE(pin_value_managed_boundary_error(&holder));
+    return true;
+}
+/* A query an array holds stays live while only the array's shared
+ * backing reaches it. */
+TEST_CASE(types_shared_backings_keep_their_queries)
+{
+    arena_init_collectable(&cow_heap);
+    pin_query *query = arena_alloc(&cow_heap, sizeof *query);
+    *query = (pin_query){ .kind = PIN_QUERY_DESCRIPTION, .storage = &cow_heap };
+    pin_value item = { .type = PIN_QUERY, .type_name = "Query.Damage", .ptr = query };
+    pin_array boxed = { .element_type = PIN_QUERY,
+                        .type_name = item.type_name,
+                        .items = &item,
+                        .count = 1,
+                        .capacity = 1 };
+    pin_array *packed = pin_array_snapshot_to_arena(&cow_heap, &boxed);
+    REQUIRE(packed && packed->stride == sizeof(void *));
+    REQUIRE(!pin_array_manage(&cow_heap, packed));
+    REQUIRE(!pin_array_make_unique(&cow_heap, packed) && packed->backing);
+    pin_value root = { .type = PIN_QUERY,
+                       .container = PIN_CONTAINER_ARRAY,
+                       .type_name = packed->type_name,
+                       .ptr = packed };
+    cow_collect(&root, 1);
+    REQUIRE(arena_contains(&cow_heap, query));
+    pin_value kept = pin_array_get(packed, 0);
+    REQUIRE(kept.ptr == query && ((pin_query *)kept.ptr)->kind == PIN_QUERY_DESCRIPTION);
     return true;
 }
 TEST_CASE(types_query_persistence_accepts_only_nil)
@@ -1677,7 +2132,8 @@ TEST_CASE(types_authored_wrappers_retain_native_children)
     source_document = av_doc_new();
     for (int i = 0; i < 3; i++) {
         REQUIRE(values[i].record && values[i].schema && pin_value_record_current(&values[i]));
-        REQUIRE(!pin_record_current(values[i].record));
+        /* The copy's record carries its native child's layout too. */
+        REQUIRE(values[i].record->frozen && pin_record_current(values[i].record));
         pin_value nested;
         REQUIRE(
             !pin_read_field(&copies, values[i].ptr, &values[i].record->type.fields[0], &nested)
@@ -1709,10 +2165,22 @@ TEST_CASE(types_authored_wrappers_retain_native_children)
 void test_tool_types()
 {
     pu_setup(NULL, release_values);
+    RUN_TEST_CASE(types_array_value_copy_isolates_elements_and_length);
+    RUN_TEST_CASE(types_nested_array_value_copy_isolates_child_mutation);
+    RUN_TEST_CASE(types_map_value_copy_preserves_order_and_isolates_updates);
+    RUN_TEST_CASE(types_map_value_copy_isolates_nested_array_values);
+    RUN_TEST_CASE(types_nested_map_value_copy_isolates_child_updates);
+    RUN_TEST_CASE(types_array_value_copy_keeps_explicit_pointer_identity);
+    RUN_TEST_CASE(types_copied_ranges_and_pointer_views_follow_distinct_contracts);
+    RUN_TEST_CASE(types_string_views_outlive_source_and_clones_detach);
+    RUN_TEST_CASE(types_set_value_copy_preserves_membership_through_growth);
+    RUN_TEST_CASE(types_collection_owners_release_external_bytes_before_collection);
+    RUN_TEST_CASE(types_copy_drop_append_keeps_allocation_work_linear);
     RUN_TEST_CASE(types_maps_reject_incompatible_carried_native_layouts);
     RUN_TEST_CASE(types_authored_wrappers_retain_native_children);
     RUN_TEST_CASE(types_owned_native_schemas_survive_catalog_and_source_retirement);
     RUN_TEST_CASE(types_queries_preserve_identity_and_managed_edges);
+    RUN_TEST_CASE(types_shared_backings_keep_their_queries);
     RUN_TEST_CASE(types_query_persistence_accepts_only_nil);
     RUN_TEST_CASE(types_nested_pointer_records_require_owned_layout_support);
     RUN_TEST_CASE(types_document_array_collection_retains_split_payloads);

@@ -1,56 +1,56 @@
 {
   "format": 1,
   "version": 7,
-  "minimum": 2,
-  "revision": "5c6eb9552a15f59544f7a9774bd19d7ccc273949",
+  "minimum": 6,
+  "revision": "f2a71eae9611009c8a9a237b87f867739c7a5f82",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 13940419,
-    "sha256": "f118baeb67ad23b7e2f1fda3be150474abe1fe4e8a00f0290bc5c3771df154e7"
+    "bytes": 20780474,
+    "sha256": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 144369,
-      "sha256": "523d0b178927046b367dc5abf597a440932ccc65787e00edd59b64209a61a42b"
+      "bytes": 148667,
+      "sha256": "fe133148cdaa310e7c466d78e6c1ce481b4550a6c9fc5a53e9772fb710d312e1"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 159466,
-      "sha256": "6eedc8a9467e8b446d2b684c4b59d619a2e192cb774aa82efd6250b771f74cbb"
+      "bytes": 178545,
+      "sha256": "c3a91864fdc32387495620075ec5e696161be62a983b09d878050d5159cf51d0"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 285088,
-      "sha256": "4576c738f2ee24dc3a79e9e350724eae3783d943ef3a7ec3b530e78945958df9"
+      "bytes": 309690,
+      "sha256": "68d5a8af7b542f3a89d0ba4d4cb76405afbce19d3201a7211d002fe0cb67b6dc"
     },
     {
       "path": "package_compiler/Maps.chibi",
-      "bytes": 26645,
-      "sha256": "fead91bbe435bf1a8e8085a6ebe9fab0cc9a948f53354ba62e2d88e1ec11711f"
+      "bytes": 29459,
+      "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00"
     },
     {
       "path": "package_compiler/References.chibi",
-      "bytes": 39286,
-      "sha256": "dee32f3d88d97e5a11aa3301c597b5df8615d5b0870ed79163711518c938c9ab"
+      "bytes": 40733,
+      "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852"
     },
     {
       "path": "package_compiler/Pointers.chibi",
-      "bytes": 52574,
-      "sha256": "2cf29edba103a7a9eae3b6f63c6a6f9399b6343e6842acb2932a95933de0c27c"
+      "bytes": 52353,
+      "sha256": "a60181b885210b47741be52754d7d06ed7203ff47f4008dba6f80a696659f665"
     },
     {
       "path": "package_compiler/Tasks.chibi",
-      "bytes": 11858,
-      "sha256": "e4ab1eb94988880bb9e66f0530882cfe90fb07a772e634068975a47d27e553bd"
+      "bytes": 11882,
+      "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970"
     },
     {
       "path": "package_compiler/TaskResults.chibi",
-      "bytes": 10439,
-      "sha256": "ad5c64f888333ba5704f75f202b154896dca078ca9a3dce9d93874b8cfa465b0"
+      "bytes": 10463,
+      "sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1"
     },
     {
       "path": "package_compiler/Tree.chibi",
@@ -63,24 +63,34 @@
       "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
     },
     {
+      "path": "package_compiler/Optional.chibi",
+      "bytes": 20634,
+      "sha256": "91c199e4ef66413df60ab11efd05ed2b984dbe049c0e6cbfeb7c018e0152ecf8"
+    },
+    {
+      "path": "package_compiler/Sequences.chibi",
+      "bytes": 61040,
+      "sha256": "e32665981a97d00ca0eda60bde73f81ffdcd7ba8f25ed2a3cf826eff89a53b53"
+    },
+    {
       "path": "package_compiler/Queries.chibi",
-      "bytes": 92832,
-      "sha256": "084e368c660e2a8d9d2f6135185f47ead3fdb793ba191c4a412f5c137b85c1ef"
+      "bytes": 93003,
+      "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28"
     },
     {
       "path": "package_compiler/QueryLoops.chibi",
-      "bytes": 12222,
-      "sha256": "05fff29d9134e075213810be4aa1b21688bbc0b6400151ed2e5890a69a06a546"
+      "bytes": 12308,
+      "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588"
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 56629,
-      "sha256": "a2bcc15b25d51d80776222310b5b80511ecd23c33d0d08c883f533c992a5337d"
+      "bytes": 56738,
+      "sha256": "82f35ecb2f9e6c11241ceb9950a1bbc367a182936cee40cd100c5b2af751f41d"
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 114655,
-      "sha256": "f99eaa89281fbfb13b0bca03217e5cd6cf25dfa0b324b2f67913d8d8afa4c609"
+      "bytes": 115064,
+      "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -129,8 +139,8 @@
     },
     {
       "path": "prepared_writer/Writer.chibi",
-      "bytes": 40308,
-      "sha256": "0a8a36d926618b6449bbd015413645916e52393c7bab2297f0fb7fe1822df0c5"
+      "bytes": 40444,
+      "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081"
     },
     {
       "path": "scalar_facts/Facts.chibi",
@@ -145,9 +155,9 @@
       "value_size": 48,
       "payload_offset": 8,
       "arguments_offset": 168,
-      "delta_seconds_offset": 320,
-      "results_offset": 184,
-      "error_status_offset": 472,
+      "delta_seconds_offset": 344,
+      "results_offset": 208,
+      "error_status_offset": 496,
       "type_offset": 0,
       "container_offset": 16,
       "name_offset": 24,
@@ -162,7 +172,7 @@
       "argument_failure": 7,
       "assert_failure": 3
     },
-    10711995348391902914,
+    750639905608983243,
     [
       "CONSTANT",
       "VARIABLE",
@@ -341,7 +351,7 @@
         "parameters": 1,
         "results": 1,
         "variadic": true,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "get",
@@ -349,7 +359,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "length",
@@ -357,7 +367,7 @@
         "parameters": 1,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "last_index",
@@ -365,7 +375,7 @@
         "parameters": 1,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "is_empty",
@@ -373,7 +383,7 @@
         "parameters": 1,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "is_not_empty",
@@ -381,7 +391,7 @@
         "parameters": 1,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "is_valid_index",
@@ -389,7 +399,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "contains",
@@ -397,7 +407,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "find",
@@ -405,7 +415,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "identical",
@@ -413,7 +423,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "append",
@@ -421,7 +431,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "add_unique",
@@ -429,7 +439,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "extend",
@@ -437,7 +447,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "set_array_elem",
@@ -445,7 +455,7 @@
         "parameters": 3,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "insert",
@@ -453,7 +463,7 @@
         "parameters": 3,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "remove_index",
@@ -461,7 +471,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "remove_item",
@@ -469,7 +479,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "clear",
@@ -477,7 +487,7 @@
         "parameters": 1,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "reverse",
@@ -485,7 +495,7 @@
         "parameters": 1,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "swap",
@@ -493,7 +503,7 @@
         "parameters": 3,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "resize",
@@ -501,7 +511,7 @@
         "parameters": 2,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "slice",
@@ -509,7 +519,7 @@
         "parameters": 3,
         "results": 1,
         "variadic": false,
-        "effects": 0
+        "effects": 1
       },
       {
         "name": "compiler_json_string",
@@ -1176,49 +1186,49 @@
       1683859838082548203,
       16323488948382029418,
       9113434692769582988,
-      14167156245305274212,
+      5467248588562738232,
       13611205187560399313,
-      13449025496981513964,
+      13680434747823500096,
       10031281214538873543,
-      6554897603666606767,
+      9030429985650009275,
       15392606041591830683,
-      4067796862701892359,
+      17387169772646433363,
       10131322737650309994,
-      6988088496320900289,
+      1063631936535020129,
       16727144441193224855,
-      10161969858693626145,
+      6605004713616652801,
       11519237158948198813,
-      10497653110738357554,
+      17906106193223333194,
       3978275859795887710,
-      11548099748676597923,
+      2864553297212340903,
       18085313995829699436,
-      14415035780413938864,
+      14978198957586829996,
       10923784612712179670,
-      7880211163723144446,
+      14875510901342301758,
       894073180469776815,
-      13724489741509985000,
+      16023555187956048836,
       8687968834157511617,
-      4721244266156470484,
+      16577023619922528936,
       10791124252785537111,
-      14432019643586639517,
+      773185895515206741,
       4384905729313988471,
-      11302079019438918407,
+      8010233377337498195,
       8746412179663267998,
-      9851197928620395350,
+      7399617057581346390,
       17840489223285925927,
-      16110184346374136321,
+      1067702335548618913,
       11088276214961122186,
-      15949719137508516374,
+      6743002519690195990,
       4051959292006589208,
-      10151732505731489664,
+      17046019287460786684,
       11477201415349259395,
-      967623793700182456,
+      18048060469725558740,
       13246221053306855936,
-      6577510696204325862,
+      2721077971776083750,
       14634955569547237247,
-      14456448460765080889,
+      10669239291351873401,
       9047479961286963383,
-      17530768130557930906,
+      7536676735324318578,
       2237180186179475025,
       7549062905279916309,
       9759211591336674878,

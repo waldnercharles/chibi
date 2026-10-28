@@ -17,7 +17,19 @@ typedef struct behavior_managed_heap
     pin_value **roots;
     struct behavior_managed_heap *owner; /* Canonical family after heap adoption. */
     struct behavior_managed_heap *previous; /* Heaps adopted by hot replacement. */
+    /* Nonzero when its one root call owns every value, so that call may
+     * collect it while it runs, after allocating at least this many bytes.
+     * Programs share a heap between activations and collect between frames
+     * instead. */
+    size_t call_collection_bytes;
+    /* Calls running on the heap. A nested one runs inside a native, whose C
+     * locals no collection traces, so only the outermost collects. */
+    int running_calls;
 } behavior_managed_heap;
+/* What a host that owns its heap's one root call allocates between
+ * collections at least: each costs a trace of every live value, so the
+ * heap also grows to twice what the last collection kept first. */
+#define BEHAVIOR_CALL_COLLECTION_BYTES ((size_t)64 * 1024 * 1024)
 void behavior_managed_heap_init(behavior_managed_heap *);
 void behavior_managed_heap_free(behavior_managed_heap *);
 /* Appends other's family to heap's and makes heap their canonical owner.
@@ -40,5 +52,13 @@ void behavior_managed_heap_collect(
     behavior_managed_heap *,
     const struct behavior_function *,
     const struct behavior_function_context *
+);
+/* Collects a heap with call_collection_bytes once it has allocated that much
+ * and as much as its last collection kept. root is the call's root context,
+ * every frame of which is suspended at a call or has not started. */
+void behavior_managed_heap_safepoint(
+    behavior_managed_heap *,
+    const struct behavior_function *,
+    const struct behavior_function_context *root
 );
 #endif

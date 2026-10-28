@@ -5,7 +5,48 @@
 #include "types/copy_internal.h"
 
 #include <assert.h>
+#include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
+
+struct pin_text_owner
+{
+    atomic_size_t references;
+    uint32_t length;
+    char bytes[];
+};
+
+static void release_owner(void *resource)
+{
+    pin_text_owner *owner = resource;
+    size_t before = atomic_fetch_sub_explicit(&owner->references, 1, memory_order_acq_rel);
+    assert(before);
+    if (before == 1) {
+        free(owner);
+    }
+}
+
+static const char *store_descriptor(arena *storage, pin_value *out, pin_string text)
+{
+    pin_string *descriptor = storage ? arena_alloc(storage, sizeof *descriptor)
+                                     : xmalloc(sizeof *descriptor);
+    if (!descriptor) {
+        release_owner(text.owner);
+        return "String allocation failed";
+    }
+    *descriptor = text;
+    if (storage) {
+        arena_set_cleanup(
+            storage,
+            descriptor,
+            release_owner,
+            text.owner,
+            sizeof *text.owner + (size_t)text.owner->length + 1
+        );
+    }
+    *out = (pin_value){ .type = PIN_STR, .text = descriptor };
+    return NULL;
+}
 
 pin_string pin_text(pin_value value)
 {
@@ -14,9 +55,9 @@ pin_string pin_text(pin_value value)
         const char *bytes = value.str ? value.str : "";
         size_t length = strlen(bytes);
         assert(length <= UINT32_MAX);
-        return (pin_string){ bytes, (uint32_t)length };
+        return (pin_string){ .bytes = bytes, .length = (uint32_t)length };
     }
-    return value.text ? *value.text : (pin_string){ "", 0 };
+    return value.text ? *value.text : (pin_string){ .bytes = "" };
 }
 bool pin_text_valid_utf8(pin_string text)
 {
@@ -63,23 +104,85 @@ bool pin_text_valid_utf8(pin_string text)
 const char *pin_value_text(arena *storage, pin_value *out, const char *bytes, size_t length)
 {
     if (!out || (!bytes && length) || length > UINT32_MAX ||
-        length > SIZE_MAX - sizeof(pin_string) - 1) {
+        length > SIZE_MAX - sizeof(pin_text_owner) - 1) {
         return "Invalid string length or data";
     }
-    size_t size = sizeof(pin_string) + length + 1;
-    pin_string *text = storage ? arena_alloc(storage, size) : xmalloc(size);
-    if (!text) {
-        return "String allocation failed";
+    if (!length) {
+        *out = (pin_value){ .type = PIN_STR };
+        return NULL;
     }
-    char *data = (char *)(text + 1);
-    if (length) {
-        memcpy(data, bytes, length);
-    }
-    data[length] = 0;
-    *text = (pin_string){ data, (uint32_t)length };
-    *out = (pin_value){ .type = PIN_STR, .text = text };
+    pin_text_owner *owner = xmalloc(sizeof *owner + length + 1);
+    atomic_init(&owner->references, 1);
+    owner->length = (uint32_t)length;
+    memcpy(owner->bytes, bytes, length);
+    owner->bytes[length] = 0;
     pin_copy_record(PIN_COPY_TEXT, length + 1);
-    return NULL;
+    return store_descriptor(
+        storage,
+        out,
+        (pin_string){ .bytes = owner->bytes, .length = (uint32_t)length, .owner = owner }
+    );
+}
+const char *pin_value_text_slice(arena *storage, pin_value *out, pin_value source, size_t start, size_t length)
+{
+    if (!out || source.container != PIN_CONTAINER_SINGLE ||
+        (source.type != PIN_STR && source.type != PIN_NAME)) {
+        return "Invalid string slice";
+    }
+    pin_string text = pin_text(source);
+    if (start > text.length || length > text.length - start) {
+        return "String slice is outside its bounds";
+    }
+    if (!length) {
+        *out = (pin_value){ .type = PIN_STR };
+        return NULL;
+    }
+    /* Descriptors are immutable and traced, so a whole copy into the arena
+     * that already holds one shares it. */
+    if (storage && source.type == PIN_STR && length == text.length &&
+        arena_contains(storage, source.text)) {
+        *out = (pin_value){ .type = PIN_STR, .text = source.text };
+        return NULL;
+    }
+    if (!text.owner) {
+        return pin_value_text(storage, out, text.bytes + start, length);
+    }
+    [[maybe_unused]] size_t before = atomic_fetch_add_explicit(&text.owner->references, 1, memory_order_relaxed);
+    assert(before && before < SIZE_MAX);
+    text.bytes += start;
+    text.length = (uint32_t)length;
+    return store_descriptor(storage, out, text);
+}
+const char *pin_value_text_share(arena *storage, pin_value *out, pin_value source)
+{
+    if (source.container != PIN_CONTAINER_SINGLE ||
+        (source.type != PIN_STR && source.type != PIN_NAME)) {
+        return "Invalid string value";
+    }
+    return pin_value_text_slice(storage, out, source, 0, pin_text(source).length);
+}
+const char *pin_value_text_clone(arena *storage, pin_value *out, pin_value source)
+{
+    if (source.container != PIN_CONTAINER_SINGLE ||
+        (source.type != PIN_STR && source.type != PIN_NAME)) {
+        return "Invalid string value";
+    }
+    pin_string text = pin_text(source);
+    return pin_value_text(storage, out, text.bytes, text.length);
+}
+size_t pin_text_footprint(size_t length)
+{
+    return sizeof(pin_string) + sizeof(pin_text_owner) + length + 1;
+}
+void pin_text_destroy(const pin_string *text)
+{
+    if (!text) {
+        return;
+    }
+    if (text->owner) {
+        release_owner(text->owner);
+    }
+    free((void *)text);
 }
 const char *pin_text_cstring(arena *storage, pin_value value, const char **out, size_t *nul_offset)
 {

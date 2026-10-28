@@ -60,7 +60,7 @@ static pin_query *query_new(
     memset(query->values, 0, (size_t)(count + 1) * sizeof *query->values);
     execution_module_retain((execution_module *)module);
     arena_set_trace(storage, query, query_trace, NULL);
-    arena_set_finalizer(storage, query, query_free);
+    arena_set_cleanup(storage, query, query_free, query, 0);
     return query;
 }
 static bool function_contains(const behavior_function *root, const behavior_function *f, int depth)
@@ -365,9 +365,15 @@ static uint64_t collection_element_tag(pin_value value, uint64_t nominal, unsign
     }
     return collection_identity("union-type", name);
 }
+/* Managed snapshots own a native layout as a native record. It still
+ * describes the native type its name declares, unlike an authored record. */
+static bool authored(const pin_record *record)
+{
+    return record && !record->native;
+}
 static bool native_collection_shape(const execution_module *module, pin_value value, uint64_t nominal, int depth)
 {
-    if (depth >= 64 || value.type != PIN_STRUCT || value.record ||
+    if (depth >= 64 || value.type != PIN_STRUCT || authored(value.record) ||
         (value.container != PIN_CONTAINER_ARRAY && value.container != PIN_CONTAINER_SET)) {
         return false;
     }
@@ -386,7 +392,7 @@ static bool native_collection_shape(const execution_module *module, pin_value va
     }
     const pin_array *array = value.ptr;
     if (!pin_array_valid(array) || array->element_type != value.type || !array->type_name ||
-        strcmp(array->type_name, value.type_name) || array->record) {
+        strcmp(array->type_name, value.type_name) || authored(array->record)) {
         return false;
     }
     for (int i = 0; i < array->count; i++) {
@@ -448,12 +454,13 @@ static bool known_native_collection_shape(
 static bool same_type_at(const execution_module *module, pin_value a, pin_value b, int depth)
 {
     if (depth >= 64 || a.type != b.type || a.container != b.container ||
-        !pin_record_same(a.record, b.record) ||
+        authored(a.record) != authored(b.record) ||
+        (authored(a.record) && !pin_record_same(a.record, b.record)) ||
         !((!a.type_name && !b.type_name) ||
           (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)))) {
         return false;
     }
-    if (a.type != PIN_STRUCT || a.record || !b.ptr) {
+    if (a.type != PIN_STRUCT || authored(a.record) || !b.ptr) {
         return true;
     }
     /* Synthetic names encode the nested semantic element identity. Check
@@ -465,7 +472,7 @@ static bool same_type_at(const execution_module *module, pin_value a, pin_value 
     if (b.container == PIN_CONTAINER_ARRAY || b.container == PIN_CONTAINER_SET) {
         const pin_array *array = b.ptr;
         if (!pin_array_valid(array) || array->element_type != b.type || !array->type_name ||
-            strcmp(array->type_name, b.type_name) || array->record) {
+            strcmp(array->type_name, b.type_name) || authored(array->record)) {
             return false;
         }
     }
@@ -619,7 +626,7 @@ static const char *begin_query(arena *storage, const pin_value *args, int count,
     }
     afree(identities);
     arena_set_trace(storage, cursor, cursor_trace, NULL);
-    arena_set_finalizer(storage, cursor, cursor_free);
+    arena_set_cleanup(storage, cursor, cursor_free, cursor, 0);
     *out = (pin_value){ .type = BF_POINTER_TYPE, .u64 = (uintptr_t)cursor };
     return NULL;
 }

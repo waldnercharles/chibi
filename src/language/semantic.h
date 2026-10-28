@@ -102,9 +102,18 @@ typedef enum
     SCRIPT_EXPR_UNWRAP,
     SCRIPT_EXPR_ADDRESS,
     SCRIPT_EXPR_DEREFERENCE,
+    SCRIPT_EXPR_SEQUENCE,
+    SCRIPT_EXPR_ARRAY_MUTATE,
     SCRIPT_EXPR_QUERY,
     SCRIPT_EXPR_QUERY_FIELD,
 } script_expression_kind;
+typedef enum
+{
+    SCRIPT_SEQUENCE_SLICE,
+    SCRIPT_SEQUENCE_VIEW,
+    SCRIPT_SEQUENCE_CLONE,
+    SCRIPT_SEQUENCE_LENGTH,
+} script_sequence_operation;
 typedef enum
 {
     SCRIPT_OP_NONE,

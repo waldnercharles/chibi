@@ -26,6 +26,21 @@ const type_desc *type_resolve(type_resolver resolver, const char *name)
                          : type_catalog_find(name);
 }
 
+const type_desc *type_field_type(const type_field *field, type_resolver resolver)
+{
+    return field->layout ? field->layout : type_resolve(resolver, field->type_name);
+}
+const type_desc *type_alias_type(const type_desc *type, type_resolver resolver)
+{
+    return !type || !type->alias_of ? type
+         : type->alias              ? type->alias
+                                    : type_resolve(resolver, type->alias_of);
+}
+bool type_alias_layout(const type_desc *type)
+{
+    return !type->field_count && (type->alias_of || type->alias);
+}
+
 enum
 {
     PIN_FIELD_PATH_MAX_DEPTH = 16,
@@ -33,6 +48,9 @@ enum
 
 static const type_field *type_field_segment(const type_desc *type, const char *name, size_t length)
 {
+    for (int depth = 0; type && type->alias_of && depth < TYPE_MAX_NESTING; depth++) {
+        type = type_alias_type(type, (type_resolver){ 0 });
+    }
     if (!type || !name || !length) {
         return NULL;
     }
@@ -62,7 +80,7 @@ const type_field *pin_type_field_path(const type_desc *type, const char *path)
         if (field->type != PIN_STRUCT || !field->type_name) {
             return NULL;
         }
-        type = type_catalog_find(field->type_name);
+        type = type_field_type(field, (type_resolver){ 0 });
         at = end + 1;
     }
     return NULL;
@@ -104,7 +122,7 @@ int pin_read_field_path(
             return -1;
         }
         current = value.ptr;
-        type = type_catalog_find(value.type_name);
+        type = pin_value_type(&value);
         at = end + 1;
     }
     return -1;
@@ -240,7 +258,7 @@ static void validate_ranges(const type_desc *type, void *data, int depth, type_r
     for (int i = 0; i < type->field_count; i++) {
         const type_field *f = &type->fields[i];
         if (f->type == PIN_STRUCT) {
-            const type_desc *nested = type_resolve(resolver, f->type_name);
+            const type_desc *nested = type_field_type(f, resolver);
             if (nested && nested->size == f->size) {
                 validate_ranges(nested, (char *)data + f->offset, depth + 1, resolver);
             }
@@ -274,9 +292,13 @@ static void free_field_text(const type_desc *type, void *data, int depth, type_r
         const type_field *field = &type->fields[i];
         void *member = (char *)data + field->offset;
         if (field->type == PIN_STR) {
-            free(*(void **)member);
+            if (field->text_descriptor) {
+                pin_text_destroy(*(const pin_string **)member);
+            } else {
+                free(*(void **)member);
+            }
         } else if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_resolve(resolver, field->type_name);
+            const type_desc *nested = type_field_type(field, resolver);
             if (nested) {
                 free_field_text(nested, member, depth + 1, resolver);
             }
@@ -314,8 +336,9 @@ const char *pin_write_struct_resolved(
         return "Field record layout differs";
     }
     if (!target->field_count) {
-        if (value.record || source->size != target->size || !value.type_name ||
-            !target->name || strcmp(value.type_name, target->name)) {
+        if ((value.record && !value.record->native) ||
+            source->size != target->size || !value.type_name || !target->name ||
+            strcmp(value.type_name, target->name)) {
             return "Field record layout differs";
         }
         memcpy(destination, value.ptr, target->size);
@@ -356,7 +379,9 @@ const char *pin_write_struct_resolved(
     }
     arena_free(&temporary);
     if (!error) {
-        if (!value.record && source == target) {
+        if ((!value.record && source == target) ||
+            (value.record && value.record->native && source->size == target->size &&
+             type_layout_hash(source) == type_layout_hash(target))) {
             /* Native reflection may omit fields. Keep their original bytes,
              * then publish the validated, owned fields over them. */
             memmove(destination, value.ptr, target->size);
@@ -405,7 +430,7 @@ const char *pin_write_field_resolved(arena *storage, void *base, const type_fiel
             pin_string text = pin_text(v);
             if (f->text_descriptor) {
                 pin_value copy;
-                const char *error = pin_value_text(storage, &copy, text.bytes, text.length);
+                const char *error = pin_value_text_share(storage, &copy, v);
                 if (error) {
                     return error;
                 }
@@ -442,7 +467,7 @@ const char *pin_write_field_resolved(arena *storage, void *base, const type_fiel
             break;
         case PIN_STRUCT:
             if (v.ptr) {
-                const type_desc *target = type_resolve(resolver, f->type_name);
+                const type_desc *target = type_field_type(f, resolver);
                 if (!target || target->size != f->size) {
                     return "Field record layout is unavailable";
                 }
@@ -507,7 +532,13 @@ const char *pin_read_field(arena *storage, const void *base, const type_field *f
             memcpy(&out->e, src, f->size < sizeof out->e ? f->size : sizeof out->e);
             break;
         }
-        case PIN_STRUCT: out->ptr = (void *)src; break;
+        case PIN_STRUCT:
+            out->ptr = (void *)src;
+            if (f->layout) {
+                out->record = f->layout->carrier;
+                out->type_name = f->layout->name;
+            }
+            break;
         case PIN_FLOW: break;
     }
     *destination = value;
@@ -579,7 +610,8 @@ static uint64_t layout_hash(
         }
         if (field->type == PIN_STRUCT && field->type_name) {
             uint64_t nested = layout_hash(
-                layout_type(field->type_name, types, count, explicit),
+                field->layout ? field->layout
+                              : layout_type(field->type_name, types, count, explicit),
                 depth + 1,
                 types,
                 count,
@@ -620,7 +652,7 @@ static bool plain(const type_desc *type, int depth)
             return false;
         }
         if (f->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(f->type_name);
+            const type_desc *nested = type_field_type(f, (type_resolver){ 0 });
             if (!plain(nested, depth + 1) || nested->size != f->size) {
                 return false;
             }
@@ -631,6 +663,24 @@ static bool plain(const type_desc *type, int depth)
 bool type_is_plain(const type_desc *type)
 {
     return plain(type, 0);
+}
+bool type_holds_references(const type_desc *type)
+{
+    if (!type) {
+        return true;
+    }
+    if (type_alias_layout(type)) {
+        return type_holds_references(type_alias_type(type, (type_resolver){ 0 }));
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type == PIN_UNION || field->type == PIN_POINTER ||
+            (field->type == PIN_STRUCT &&
+             type_holds_references(type_field_type(field, (type_resolver){ 0 })))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool value_finite(const type_desc *type, const unsigned char *value, int depth)
@@ -648,7 +698,7 @@ static bool value_finite(const type_desc *type, const unsigned char *value, int 
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
             if (!nested || !value_finite(nested, member, depth + 1)) {
                 return false;
             }

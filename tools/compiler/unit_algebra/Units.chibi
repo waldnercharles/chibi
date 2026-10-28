@@ -46,7 +46,7 @@ Find :: (terms: Term[], name: string) -> int {
 MultiplyTerm :: (value: Unit, term: Term) -> ProductResult {
     switch value {
         case .Value(kind, inputTerms):
-            terms := inputTerms;
+            terms := slice(inputTerms, 0, length(inputTerms));
             index := Find(terms, term.name);
             if (index < length(terms)) {
                 before := terms[index].power;

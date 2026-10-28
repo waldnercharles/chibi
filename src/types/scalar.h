@@ -97,8 +97,10 @@ static inline pin_value behavior_scalar_from_bits(pin_type type, uint64_t bits)
 
 static inline int behavior_text_equal(const pin_string *a, const pin_string *b)
 {
-    return a == b ||
-           pin_text_equal(a ? *a : (pin_string){ "", 0 }, b ? *b : (pin_string){ "", 0 });
+    return a == b || pin_text_equal(
+                         a ? *a : (pin_string){ .bytes = "", .length = 0 },
+                         b ? *b : (pin_string){ .bytes = "", .length = 0 }
+                     );
 }
 static inline int behavior_string_equal(const char *a, const char *b)
 {

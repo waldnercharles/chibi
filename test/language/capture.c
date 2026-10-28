@@ -13,6 +13,9 @@
 
 #define LARGE_TEXT_BYTES 8192
 #define CAPTURE_TEST_LIMIT ((size_t)128 * 1024)
+/* A box holding short text: one arena block and the table that charges the
+ * shared text backing it retains. */
+#define SMALL_STORAGE_BYTES 1024
 
 static execution_box box;
 static arena references, escaped;
@@ -37,7 +40,13 @@ static bool begin(pin_value value)
 {
     memset(large_text, 'L', LARGE_TEXT_BYTES);
     large_text[LARGE_TEXT_BYTES] = 0;
-    REQUIRE(!pin_value_snapshot_to_arena(&box.storage, &box.kept, &value));
+    /* A box commits a snapshot of a value that already carries its record,
+     * so the first box holds what its later writes would. */
+    arena staged = { 0 };
+    pin_value carried;
+    REQUIRE(!pin_value_snapshot_to_arena(&staged, &carried, &value));
+    REQUIRE(!pin_value_snapshot_to_arena(&box.storage, &box.kept, &carried));
+    arena_free(&staged);
     box.holders = 1;
     box.owner = &box.detached;
     box.value = &box.kept;
@@ -88,11 +97,8 @@ static bool write_value(pin_value reference, pin_value value, bool success)
         );
         REQUIRE(
             previous_storage.first == box.storage.first &&
-            previous_storage.current == box.storage.current
-        );
-        REQUIRE(
-            previous_storage.allocations == box.storage.allocations &&
-            previous_storage.unused == box.storage.unused
+            previous_storage.current == box.storage.current &&
+            previous_storage.slabs == box.storage.slabs
         );
         REQUIRE(
             previous_storage.allocated == box.storage.allocated &&
@@ -135,14 +141,17 @@ TEST_CASE(capture_whole_value_shrink_preserves_escaped_and_self_values)
         !strcmp(pin_text(box.kept).bytes, "small") &&
         !strcmp(box.kept.type_name, "CaptureText")
     );
-    REQUIRE(arena_storage_bytes(&box.storage) < 512);
+    REQUIRE(arena_storage_bytes(&box.storage) < SMALL_STORAGE_BYTES);
     REQUIRE(write_value(
         root_reference,
         (pin_value){ .type = PIN_STR,
                      .text = &(const pin_string){ .bytes = "", .length = sizeof("") - 1 } },
         true
     ));
-    REQUIRE(!strcmp(pin_text(box.kept).bytes, "") && arena_storage_bytes(&box.storage) < 512);
+    REQUIRE(
+        !strcmp(pin_text(box.kept).bytes, "") &&
+        arena_storage_bytes(&box.storage) < SMALL_STORAGE_BYTES
+    );
     size_t idle = arena_storage_bytes(&box.storage);
     for (int i = 0; i < 4; i++) {
         REQUIRE(

@@ -290,9 +290,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && arena_contains(storage, value->text));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
@@ -596,7 +594,7 @@ static bool compare_added(const pin_union *update, const script_catalog_type *d,
 {
     const pin_union *p;
     const pin_array *a;
-    REQUIRE(update->count == 1 && union_data(&update->values[0], 13, &p));
+    REQUIRE(update->count == 1 && union_data(&update->values[0], 16, &p));
     REQUIRE(
         p->values[1].type == PIN_BOOL && p->values[1].b && p->values[2].type == PIN_U64 &&
         p->values[2].u64 == d->id && p->values[3].type == PIN_STR &&

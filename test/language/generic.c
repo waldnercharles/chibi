@@ -28,6 +28,7 @@ static execution_program *program;
 static ecs_world *world;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap heap;
 static behavior_run_scope runs;
 static arena storage;
 static pin_value result;
@@ -54,6 +55,7 @@ static void cleanup()
     }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
     context = (behavior_function_context){ 0 };
     activation = (behavior_function_activation){ 0 };
     arena_free(&storage);
@@ -972,9 +974,12 @@ TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifi
         behavior_function_prepare_results(function, &result, &storage);
         behavior_function_activation_init(function, &activation);
         pin_value variables[] = { *saved };
+        /* Run's dynamic arrays live in the caller's managed heap. */
+        behavior_managed_heap_init(&heap);
         context = (behavior_function_context){ .activation = &activation,
                                                .variables = variables,
                                                .results = &result,
+                                               .managed_heap = &heap,
                                                .budget = 10000 };
         behavior_function_bind_storage(&context, &storage);
         REQUIRE(behavior_function_bind(function, &context, NULL, 0));

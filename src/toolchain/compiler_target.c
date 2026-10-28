@@ -238,7 +238,7 @@ static void add_defaults(
 )
 {
     uint64_t bits = 0;
-    pin_string text = { "", 0 };
+    pin_string text = { .bytes = "", .length = 0 };
     bool has_default = parameter && declared->has_default;
     bool supported = has_default && default_payload(catalog, declared, &bits, &text);
     yyjson_mut_obj_add_bool(doc, port, "has_default", has_default);

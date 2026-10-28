@@ -885,14 +885,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(SurfaceInfluence)
 }
 SurfaceInfluence;
 
-/* Shared simulation rhythm. Pulse width is measured in seconds. */
-typedef NODE_COMPONENT_TYPE_DENSE(Rhythm)
-{
-    float bpm NODE_UNIT("bpm");
-    float pulse_width;
-}
-Rhythm;
-
 /* Visual-only local rotations in radians; gameplay heading remains independent. */
 typedef NODE_COMPONENT_TYPE_DENSE(VisualTransform)
 {
@@ -902,21 +894,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(VisualTransform)
     float scale;
 }
 VisualTransform;
-
-/* Optional native visual integration. Rotation axes are pitch/yaw/roll in
-   radians; angular velocity is radians/second. Physics heading stays separate. */
-typedef NODE_COMPONENT_TYPE_DENSE(VisualMotion)
-{
-    CF_V3 rotation;
-    CF_V3 angular_velocity;
-    float speed;
-    float rest_elevation;
-    CF_V3 reaction_rotation;
-    float reaction_lift;
-    float reaction_age;
-    float reaction_duration;
-}
-VisualMotion;
 
 /* Opts a 3D visual into the planar material renderer; collision remains 2D. */
 typedef NODE_COMPONENT_TYPE_DENSE(MeshSurface2D)

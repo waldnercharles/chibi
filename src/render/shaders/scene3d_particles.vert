@@ -6,13 +6,10 @@ layout(set = 1, binding = 0) uniform uniform_block {
     mat4 particle_frame;
     vec4 particle_dimensions;
     vec4 particle_clock;
-    vec4 particle_rhythm;
     vec4 particle_parameters[32];
 };
 
 #define SG_SCENE_INFLUENCE 1
-float sg_scene_beat_phase() { return particle_rhythm.x; }
-float sg_scene_beat_pulse() { return particle_rhythm.y; }
 vec3 sg_scene_influence(vec3 position) { return vec3(0.0); }
 
 // SG_PARTICLE_PROGRAM is replaced by the prepared shader function.

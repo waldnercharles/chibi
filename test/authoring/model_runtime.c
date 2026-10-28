@@ -89,10 +89,10 @@ static bool model_roundtrip()
     REQUIRE(model_program_prepared_read(wire, wire_length, &program, &error));
     shader_node *nodes = program.shader.nodes;
     size_t budget = 65536;
-    wire[8] = 2;
+    wire[8] = 2; /* Retired model format embeds the old shader opcode numbering. */
     REQUIRE(!model_program_prepared_read_budget(wire, wire_length, &budget, &program, &error));
     REQUIRE(program.shader.nodes == nodes && budget == 65536 && error.message[0]);
-    wire[8] = 1;
+    wire[8] = (unsigned char)MODEL_PREPARED_VERSION;
     REQUIRE(!model_program_prepared_read_budget(wire, wire_length - 1, &budget, &program, &error));
     REQUIRE(program.shader.nodes == nodes && budget == 65536);
     copy = xrealloc(copy, copy_length + 1);
@@ -335,10 +335,10 @@ TEST_CASE(shader_persistence_owns_uniforms_ramps_and_resident_resource_keys)
     );
     shader_node *nodes = decoded.graph.nodes;
     budget = 65536;
-    wire[8] = 2;
+    wire[8] = 3; /* Retired shader format includes the removed beat operations. */
     REQUIRE(!shader_asset_prepared_read_budget(wire, wire_length, &budget, &decoded, &error));
     REQUIRE(decoded.graph.nodes == nodes && budget == 65536 && error.message[0]);
-    wire[8] = 1;
+    wire[8] = (unsigned char)SHADER_PREPARED_VERSION;
     REQUIRE(!shader_asset_prepared_read_budget(wire, wire_length - 1, &budget, &decoded, &error));
     REQUIRE(decoded.graph.nodes == nodes && budget == 65536);
     copy = xrealloc(copy, copy_length + 1);
@@ -410,6 +410,36 @@ static bool corrupt_mesh_group()
     }
     afree(writer.data);
     REQUIRE(encoded);
+    return true;
+}
+TEST_CASE(shader_prepared_preserves_time_math_and_rejects_retired_opcodes)
+{
+    shader_graph *g = &asset.graph;
+    int time = shader_graph_add(g, SHADER_TIME, 1);
+    int floor = shader_graph_add(g, SHADER_FLOOR, 1);
+    g->nodes[floor].input[0] = time;
+    g->output[0] = floor;
+    g->output_count = 1;
+    shader_error error = { 0 };
+    REQUIRE(shader_graph_prepared_write(g, &wire, &wire_length, &error));
+    size_t budget = 65536;
+    REQUIRE(shader_graph_prepared_read_budget(wire, wire_length, &budget, &distance, &error));
+    float parameters[SHADER_PARAMETER_MAX][4] = { 0 };
+    float values[SHADER_OUTPUT_MAX][4];
+    shader_sample_context sample = { .time = 2.75f };
+    REQUIRE(shader_graph_eval_outputs(&distance, &sample, parameters, values, &error));
+    REQUIRE(values[0][0] == 2);
+    sample.time = -0.25f;
+    REQUIRE(shader_graph_eval_outputs(&distance, &sample, parameters, values, &error));
+    REQUIRE(values[0][0] == -1);
+    shader_node *nodes = distance.nodes;
+    budget = 65536;
+    wire[8] = 3; /* Old numeric opcodes must never decode as their new neighbors. */
+    REQUIRE(!shader_graph_prepared_read_budget(wire, wire_length, &budget, &distance, &error));
+    REQUIRE(distance.nodes == nodes && budget == 65536);
+    REQUIRE(strstr(error.message, "Unknown prepared shader format"));
+    REQUIRE(shader_graph_eval_outputs(&distance, &sample, parameters, values, &error));
+    REQUIRE(values[0][0] == -1);
     return true;
 }
 TEST_CASE(mesh_persistence_transfers_detached_generations)
@@ -546,6 +576,7 @@ void test_model_runtime()
     RUN_TEST_CASE(model_runtime_owns_structural_profile_and_path_points);
     RUN_TEST_CASE(model_resource_changes_require_geometry_preparation);
     RUN_TEST_CASE(shader_persistence_owns_uniforms_ramps_and_resident_resource_keys);
+    RUN_TEST_CASE(shader_prepared_preserves_time_math_and_rejects_retired_opcodes);
     RUN_TEST_CASE(mesh_persistence_transfers_detached_generations);
     pu_clear_setup();
 }

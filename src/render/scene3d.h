@@ -99,7 +99,6 @@ bool render_scene3d_draw(
 /* Scene inputs a lone preview surface would otherwise read as zero. */
 typedef struct
 {
-    float beat_phase, beat_pulse;
     float influence[3]; /* Linear color at the origin, fading out at the preview radius. */
 } render_scene3d_activity;
 /* Stores an owned preparation diagnostic supplied by the host. */

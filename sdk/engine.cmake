@@ -28,7 +28,7 @@ target_link_libraries(chibi_engine PUBLIC chibi_behavior_runtime chibi_entity_ru
     chibi_native_types chibi_scheduling chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime
     chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime chibi_url_runtime chibi_ui_runtime chibi_save_runtime chibi_input_runtime
     PRIVATE chibi_task_pool_runtime chibi_spatial_runtime
-    chibi_visual_motion_runtime chibi_execution chibi_support)
+    chibi_execution chibi_support)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(chibi_engine PRIVATE -ffp-contract=off)
 endif()

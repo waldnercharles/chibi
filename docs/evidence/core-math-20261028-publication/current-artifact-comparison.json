@@ -1,0 +1,16 @@
+{
+  "target_equal": true,
+  "version_equal": true,
+  "minimum_equal": true,
+  "entry_equal": true,
+  "source_paths_equal": true,
+  "source_hash_differences": [
+    "package_compiler/Compile.chibi"
+  ],
+  "manifest_bytes": 25958,
+  "source_count": 25,
+  "target_sha256": "4bd371739533ba7ffb42ae3218c6a974daf1d0da8735b8d62943a735a3a065f8",
+  "format_equal": true,
+  "project_equal": true,
+  "core_equal": true
+}

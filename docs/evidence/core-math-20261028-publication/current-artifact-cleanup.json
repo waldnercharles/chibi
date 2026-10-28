@@ -1,0 +1,20 @@
+{
+  "removed": [
+    ".chibi/reach/graph-ci-investigation/current-artifact-proof/seed",
+    ".chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs",
+    ".chibi/reach/graph-ci-investigation/current-artifact-proof/recovered.chibip"
+  ],
+  "preserved": [
+    "receipt.json",
+    "comparison.json",
+    "generated-bootstrap.json",
+    "independent-review.json",
+    "seed.log",
+    "write-artifact.log",
+    "recover-artifact.log",
+    "probe-current-matching.log",
+    "probe/00.tsv"
+  ],
+  "authoritative_inputs_and_checked_artifact_unchanged": true,
+  "tracked_tree_clean": true
+}

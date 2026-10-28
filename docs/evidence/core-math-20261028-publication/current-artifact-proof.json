@@ -1,0 +1,423 @@
+{
+  "head": "8f5685e021fca09b9a0edd827b10261e2b0ff1ca",
+  "tree": "12fcb93f6b4682fd413baac0e53e4549ac30b74c",
+  "revision": "8f5685e021fca09b9a0edd827b10261e2b0ff1ca",
+  "purpose": "local exact-source artifact diagnostic only; no publication or checked artifact change",
+  "source_inventory_sha256": {
+    "packages/core/strings/Strings.chibi": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df",
+    "tools/compiler/analysis_state/State.chibi": "1cc36c6f000447854466a968b24bc09b02f5269d5c34b1e6ee7321eeb86fb4b0",
+    "tools/compiler/asset_compiler/Cache.chibi": "f01b5320631523b746c0f19b3940602d9643bc135ae185e3b7663988ab1a8419",
+    "tools/compiler/asset_compiler/Compile.chibi": "6acfc0d10a633dca4f7cd0a3470d8d3c80d49657fba74dcbc2d47814b6b87221",
+    "tools/compiler/asset_compiler/CompilerSources.txt": "37dbc0a7662ed22aeeb99831561709d8830f60fc293ecc0c92c0152eba157daf",
+    "tools/compiler/asset_packaging/Packaging.chibi": "117134a150f6fe567539c273f32a6cdf58fbab71fbb6c71e55639fd24a463db8",
+    "tools/compiler/asset_source/Computed.chibi": "e9bef92c999715be54b43e3e02ae62429e0ad1b0fc24c6aee7e7b672c0694359",
+    "tools/compiler/asset_source/Metadata.chibi": "c2c0f9509cd3a7e6c0c776adefdbb93f198b7cc805eb95807fd11c20c95f44e9",
+    "tools/compiler/asset_source/Parameters.chibi": "55d59d5209da33aecb6c03179b060a24a446a096338e74404764627e097f2a51",
+    "tools/compiler/asset_source/Reconcile.chibi": "8127ee31e9c381de51be965358c5d3c34c2ad8d3520ff550bf949977bbf64131",
+    "tools/compiler/asset_source/Validate.chibi": "ed111c7f2e5bfa34f98f7f3d62e3546f26f28591bb3e0ffc585a1157e738c1cf",
+    "tools/compiler/asset_source/Write.chibi": "614c05e7b6c67e62b6680fc9a8fe79ca4ce49b341b09fd6c49202a44688e2e66",
+    "tools/compiler/bootstrap.kdl": "9a46ef5c746f8f95f04fbec9f9f41ae2a5c593f564d1037a65119b8519e53b30",
+    "tools/compiler/bootstrap/bootstrap.json": "9a428c2f14f2f1639807900113e887bf27906e9036e3581bfbc05744303b56b4",
+    "tools/compiler/bootstrap/compiler.chibip": "f118baeb67ad23b7e2f1fda3be150474abe1fe4e8a00f0290bc5c3771df154e7",
+    "tools/compiler/bounded_compiler/Compile.chibi": "5d1cfb2a47fae26f1d06f2ef679ff45c48744ba2657da8da51168c5c09df6f24",
+    "tools/compiler/bounded_compiler/Expression.chibi": "65e2c9f9fd1b232877227744ab11d41f8b99b1af5f767d457aa73609340e476a",
+    "tools/compiler/bounded_compiler/Prepare.chibi": "607c92b8c15e1e1a68d9b6b206b93b30da483de068f2263ddb092c583cf03bc6",
+    "tools/compiler/callable_headers/Headers.chibi": "c95f893d052d362287cf0517b1c4320d38d5f5af398e44041bf92ff8eee5251c",
+    "tools/compiler/compiler_facts/Facts.chibi": "fba05d29b81a4771336945910ea54384ffe999f43ab49c5ebbf1ec40cf66ca7b",
+    "tools/compiler/compiler_syntax/Syntax.chibi": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4",
+    "tools/compiler/constant_admissibility/Proof.chibi": "ba3a1fa01af65fd1573f8ae92cb1c65f9925df468c441ba72ea10d7083391c27",
+    "tools/compiler/constant_folding/Fold.chibi": "b3c8735009eb86711c5ea147866a1fbd8188913fe2a7a9510222459669252f87",
+    "tools/compiler/constant_ir/IR.chibi": "8d8cdcc75af71c3090fb89a25beb5ee7a9133cd347c53c1439cdad910967e0a3",
+    "tools/compiler/constant_scalar/Scalar.chibi": "23c1788ba00dfc46965206aa353481f490ff44ab6467265577adfa3efdb5dabf",
+    "tools/compiler/effect_analysis/Effects.chibi": "38a17dfaa1697a48c2891b01e46652da784662ea243cf7fe099b42af24138ac6",
+    "tools/compiler/lexical_binding/Binding.chibi": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1",
+    "tools/compiler/llvm_native/Emit.chibi": "d7ed43a36cc97dcd9269037b5df4ea4f33aa108f58139c4a0808f68cc9d962e2",
+    "tools/compiler/llvm_native/README.md": "a7343b388cf172a57ce2e501c0b132f4278086af29e418d229ce6395f76f4294",
+    "tools/compiler/named_binding/Binding.chibi": "a2de1e358d7319333486b6e819f4e9a90a250a44727b62553aa37d51ed33aa79",
+    "tools/compiler/native_abi/Abi.chibi": "346cc6eecbd63e22891c39a10f3a213ff3b42d4bf0d06d3fae9114194f3dbb29",
+    "tools/compiler/nominal_binding/Nominal.chibi": "dc256b6da8d6f59dd7a2a55fb1e251b9220b97ec9b8b534825a05841d048c53b",
+    "tools/compiler/package_compiler/Behavior.chibi": "a2bcc15b25d51d80776222310b5b80511ecd23c33d0d08c883f533c992a5337d",
+    "tools/compiler/package_compiler/Body.chibi": "6eedc8a9467e8b446d2b684c4b59d619a2e192cb774aa82efd6250b771f74cbb",
+    "tools/compiler/package_compiler/Compile.chibi": "a4d88081bf6c58308c70bd4d318240921a12423c529ae9c540d4e7b7bd64f175",
+    "tools/compiler/package_compiler/Maps.chibi": "fead91bbe435bf1a8e8085a6ebe9fab0cc9a948f53354ba62e2d88e1ec11711f",
+    "tools/compiler/package_compiler/Number.chibi": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2",
+    "tools/compiler/package_compiler/Pointers.chibi": "2cf29edba103a7a9eae3b6f63c6a6f9399b6343e6842acb2932a95933de0c27c",
+    "tools/compiler/package_compiler/Queries.chibi": "084e368c660e2a8d9d2f6135185f47ead3fdb793ba191c4a412f5c137b85c1ef",
+    "tools/compiler/package_compiler/QueryLoops.chibi": "05fff29d9134e075213810be4aa1b21688bbc0b6400151ed2e5890a69a06a546",
+    "tools/compiler/package_compiler/References.chibi": "dee32f3d88d97e5a11aa3301c597b5df8615d5b0870ed79163711518c938c9ab",
+    "tools/compiler/package_compiler/Scalar.chibi": "f99eaa89281fbfb13b0bca03217e5cd6cf25dfa0b324b2f67913d8d8afa4c609",
+    "tools/compiler/package_compiler/Steps.chibi": "4576c738f2ee24dc3a79e9e350724eae3783d943ef3a7ec3b530e78945958df9",
+    "tools/compiler/package_compiler/TaskResults.chibi": "ad5c64f888333ba5704f75f202b154896dca078ca9a3dce9d93874b8cfa465b0",
+    "tools/compiler/package_compiler/Tasks.chibi": "e4ab1eb94988880bb9e66f0530882cfe90fb07a772e634068975a47d27e553bd",
+    "tools/compiler/package_compiler/Tree.chibi": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a",
+    "tools/compiler/package_graph/Graph.chibi": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da",
+    "tools/compiler/package_paths/Paths.chibi": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30",
+    "tools/compiler/package_routes/Routes.chibi": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228",
+    "tools/compiler/package_syntax/Extract.chibi": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146",
+    "tools/compiler/prepared_writer/Writer.chibi": "0a8a36d926618b6449bbd015413645916e52393c7bab2297f0fb7fe1822df0c5",
+    "tools/compiler/record_members/Members.chibi": "675cd9ae9856d25c17a9af41669322f5fb5a44a8f0d35409ec89c831a6800be0",
+    "tools/compiler/runtime.json": "62fa31e1e4d859986ee85413eb8585ad69952d6c92e661a7760519b159aee4f1",
+    "tools/compiler/scalar_facts/Facts.chibi": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50",
+    "tools/compiler/scalar_llvm/Emit.chibi": "4b71ac701c6d7ca146c203fa3be0e8ee4a62e55048f916ff2e2f06c3327bbf53",
+    "tools/compiler/scalar_lowering/Lower.chibi": "26c40711b4a16a1259589415624a151adbb5a8e905ee2d6ca0976f17e7724ad3",
+    "tools/compiler/shader_source/Lower.chibi": "6c475f4fe5d2430988121aac46466b7827a7d49912c1e7b12830bed76a2256b5",
+    "tools/compiler/shader_source/SourceMap.chibi": "831f59c174783ff951099cbda9318556b36282354708e8fb847f0df3d44fd50f",
+    "tools/compiler/signature_reader/Reader.chibi": "77dc8c9af8933471b61863e9e112a6d46910ba2500bc1a1348ee44c6d7778743",
+    "tools/compiler/source_snapshot/Snapshot.chibi": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622",
+    "tools/compiler/source_tokenizer/Tokenizer.chibi": "12ea5d9334b0d3d195b63e8ff57ef3bee243912556ce3d86da020c4561b9affd",
+    "tools/compiler/syntax_diagnostics/Diagnostics.chibi": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1",
+    "tools/compiler/type_constructors/Constructors.chibi": "7bf2ba82767b92124f8ec1366b4147b573e0de7b70a2e0baa773b5bec89abb8a",
+    "tools/compiler/type_relations/Relations.chibi": "ed78d4f9bce8b0974b837f3e116b65e2299dd274e20529d5949ccad0b01b55fa",
+    "tools/compiler/union_members/Members.chibi": "66b6b80fe5f5f6e3ce93106a223a10a9ba204af2ec92cf30e8d764c34a241f54",
+    "tools/compiler/unit_algebra/Units.chibi": "c7a2fe27b695585596ccc3446d6c6a7abe526f311937f7bf211dd23eea1f382f",
+    "tools/compiler/unit_analysis/Analysis.chibi": "f6496514e22f5ffa0da645a8e34a5f842f8293434c4a7b0f6d4c34744d3ad134"
+  },
+  "compiler_host_sha256": "fa649c51c6f98eff20dba147e9f95df445c83f281e5ccb4891bb0e50f85b334c",
+  "graph_host_sha256": "a50dfaebcf7298e73eac260a09d0575f2a3851bfaf2f5cba61bc157599ef02f6",
+  "test_language_sha256": "b978f3ac85001bd103cda463eaad5a54783f3879a83795d3670c0e54a6a3321d",
+  "commands": [
+    {
+      "name": "seed",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-bootstrap"
+      ],
+      "environment_overrides": {
+        "CHIBI_BOOTSTRAP_SEED": "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/seed",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/language"
+      },
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "wall_seconds": 46.50892345793545,
+      "log": ".chibi/reach/graph-ci-investigation/current-artifact-proof/seed.log",
+      "log_sha256": "42bb4f895f2d309f0bcc20dd053d60348db13fd3d372d81a1e2bc1358c4e98aa"
+    },
+    {
+      "name": "write-artifact",
+      "command": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/language/sdk/chibi-compiler-host",
+        "--bootstrap",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs/compiler/bootstrap",
+        "--compiler",
+        "tools/compiler",
+        "--core",
+        "packages/core",
+        "--seed",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/seed",
+        "--revision",
+        "8f5685e021fca09b9a0edd827b10261e2b0ff1ca"
+      ],
+      "environment_overrides": {},
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "wall_seconds": 12.055403250036761,
+      "log": ".chibi/reach/graph-ci-investigation/current-artifact-proof/write-artifact.log",
+      "log_sha256": "6a6de6555659709a8556174357afbf535317156d63111a2af2f56eeb91eafe98"
+    },
+    {
+      "name": "recover-artifact",
+      "command": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/language/sdk/chibi-compiler-host",
+        "--bootstrap",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs/compiler/bootstrap",
+        "--compiler",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs/compiler",
+        "--core",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs/core",
+        "--recover",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/recovered.chibip"
+      ],
+      "environment_overrides": {},
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "wall_seconds": 12.500600542174652,
+      "log": ".chibi/reach/graph-ci-investigation/current-artifact-proof/recover-artifact.log",
+      "log_sha256": "e6e99ebf38cda5db4a42c98109865b04ee2e5049b3e4ae66f9e412d1f35ef9d1"
+    },
+    {
+      "name": "probe-current-matching",
+      "command": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/build/sdk/chibi-build-host",
+        "--root",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi",
+        "--source",
+        "tools/toolchain/Graph.chibi",
+        "--core",
+        "packages/core",
+        "--collection",
+        "graph=tools/graph",
+        "--entry",
+        "Libraries",
+        "--timeout-ms",
+        "50000",
+        "--compiler",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs/compiler",
+        "--compiler-core",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs/core",
+        "--",
+        "--build",
+        "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/probe/invalid-output",
+        "--jobs",
+        "8",
+        "--profile",
+        "explicit",
+        "--build-type",
+        "Debug",
+        "--debug-optimization",
+        "2"
+      ],
+      "environment_overrides": {
+        "CHIBI_BUILD_TIMINGS": "/Users/cwaldner/Personal/chibi/.worktrees/collection-reachability/chibi/.chibi/reach/graph-ci-investigation/current-artifact-proof/probe"
+      },
+      "exit_code": 2,
+      "expected_exit_code": 2,
+      "wall_seconds": 2.1632284589577466,
+      "log": ".chibi/reach/graph-ci-investigation/current-artifact-proof/probe-current-matching.log",
+      "log_sha256": "dee57cd7fe36aee2ce077ea0941e07f7f23e4d9388a8990e7fa01e6d9f50cf02"
+    }
+  ],
+  "seed": {
+    "compiler.chibip": {
+      "bytes": 13960686,
+      "sha256": "a9d7b571108772ea56c8ed9aecd3e9246aa027974a89149eda297f14ce57489e"
+    },
+    "compile.json": {
+      "bytes": 1212339,
+      "sha256": "0d6ea26dc1b209d0171d865f5c5516f92ef94671fe07e06c44a26a92fded9c40"
+    }
+  },
+  "generated_artifact": {
+    "directory": ".chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs/compiler/bootstrap",
+    "closure_bytes": 13960686,
+    "closure_sha256": "a9d7b571108772ea56c8ed9aecd3e9246aa027974a89149eda297f14ce57489e",
+    "manifest_sha256": "add000fe7b63b6f346af88d1e776a436f95df737cca4a9e8ddf66ab59cfc56d2",
+    "recorded_revision": "8f5685e021fca09b9a0edd827b10261e2b0ff1ca",
+    "version": 7,
+    "minimum": 2,
+    "recorded_sources": [
+      {
+        "path": "package_compiler/Compile.chibi",
+        "bytes": 146105,
+        "sha256": "a4d88081bf6c58308c70bd4d318240921a12423c529ae9c540d4e7b7bd64f175"
+      },
+      {
+        "path": "package_compiler/Body.chibi",
+        "bytes": 159466,
+        "sha256": "6eedc8a9467e8b446d2b684c4b59d619a2e192cb774aa82efd6250b771f74cbb"
+      },
+      {
+        "path": "package_compiler/Steps.chibi",
+        "bytes": 285088,
+        "sha256": "4576c738f2ee24dc3a79e9e350724eae3783d943ef3a7ec3b530e78945958df9"
+      },
+      {
+        "path": "package_compiler/Maps.chibi",
+        "bytes": 26645,
+        "sha256": "fead91bbe435bf1a8e8085a6ebe9fab0cc9a948f53354ba62e2d88e1ec11711f"
+      },
+      {
+        "path": "package_compiler/References.chibi",
+        "bytes": 39286,
+        "sha256": "dee32f3d88d97e5a11aa3301c597b5df8615d5b0870ed79163711518c938c9ab"
+      },
+      {
+        "path": "package_compiler/Pointers.chibi",
+        "bytes": 52574,
+        "sha256": "2cf29edba103a7a9eae3b6f63c6a6f9399b6343e6842acb2932a95933de0c27c"
+      },
+      {
+        "path": "package_compiler/Tasks.chibi",
+        "bytes": 11858,
+        "sha256": "e4ab1eb94988880bb9e66f0530882cfe90fb07a772e634068975a47d27e553bd"
+      },
+      {
+        "path": "package_compiler/TaskResults.chibi",
+        "bytes": 10439,
+        "sha256": "ad5c64f888333ba5704f75f202b154896dca078ca9a3dce9d93874b8cfa465b0"
+      },
+      {
+        "path": "package_compiler/Tree.chibi",
+        "bytes": 2578,
+        "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+      },
+      {
+        "path": "package_compiler/Number.chibi",
+        "bytes": 29513,
+        "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
+      },
+      {
+        "path": "package_compiler/Queries.chibi",
+        "bytes": 92832,
+        "sha256": "084e368c660e2a8d9d2f6135185f47ead3fdb793ba191c4a412f5c137b85c1ef"
+      },
+      {
+        "path": "package_compiler/QueryLoops.chibi",
+        "bytes": 12222,
+        "sha256": "05fff29d9134e075213810be4aa1b21688bbc0b6400151ed2e5890a69a06a546"
+      },
+      {
+        "path": "package_compiler/Behavior.chibi",
+        "bytes": 56629,
+        "sha256": "a2bcc15b25d51d80776222310b5b80511ecd23c33d0d08c883f533c992a5337d"
+      },
+      {
+        "path": "package_compiler/Scalar.chibi",
+        "bytes": 114655,
+        "sha256": "f99eaa89281fbfb13b0bca03217e5cd6cf25dfa0b324b2f67913d8d8afa4c609"
+      },
+      {
+        "path": "syntax_diagnostics/Diagnostics.chibi",
+        "bytes": 2282,
+        "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+      },
+      {
+        "path": "/sdk/core/strings/Strings.chibi",
+        "bytes": 16404,
+        "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
+      },
+      {
+        "path": "source_snapshot/Snapshot.chibi",
+        "bytes": 15871,
+        "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
+      },
+      {
+        "path": "compiler_syntax/Syntax.chibi",
+        "bytes": 1529,
+        "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+      },
+      {
+        "path": "package_routes/Routes.chibi",
+        "bytes": 7736,
+        "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+      },
+      {
+        "path": "package_syntax/Extract.chibi",
+        "bytes": 4276,
+        "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+      },
+      {
+        "path": "package_graph/Graph.chibi",
+        "bytes": 13271,
+        "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+      },
+      {
+        "path": "package_paths/Paths.chibi",
+        "bytes": 2274,
+        "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+      },
+      {
+        "path": "lexical_binding/Binding.chibi",
+        "bytes": 8673,
+        "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1"
+      },
+      {
+        "path": "prepared_writer/Writer.chibi",
+        "bytes": 40308,
+        "sha256": "0a8a36d926618b6449bbd015413645916e52393c7bab2297f0fb7fe1822df0c5"
+      },
+      {
+        "path": "scalar_facts/Facts.chibi",
+        "bytes": 16982,
+        "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50"
+      }
+    ],
+    "target_sha256_canonical": "4bd371739533ba7ffb42ae3218c6a974daf1d0da8735b8d62943a735a3a065f8",
+    "target_equals_checked_artifact": true
+  },
+  "recovered_sha256": "a9d7b571108772ea56c8ed9aecd3e9246aa027974a89149eda297f14ce57489e",
+  "probe_events": [
+    {
+      "category": "graph-host",
+      "seconds": 0.0,
+      "status": "0",
+      "error": "0"
+    },
+    {
+      "category": "startup",
+      "seconds": 0.0005159999709576368,
+      "status": "0",
+      "error": "0"
+    },
+    {
+      "category": "compiler-load",
+      "seconds": 0.4222599999047816,
+      "status": "0",
+      "error": "0"
+    },
+    {
+      "category": "prepare",
+      "seconds": 1.676600999897346,
+      "status": "0",
+      "error": "0"
+    },
+    {
+      "category": "execute",
+      "seconds": 0.0001580000389367342,
+      "status": "2",
+      "error": "0"
+    },
+    {
+      "category": "invocation",
+      "seconds": 2.113478999817744,
+      "status": "2",
+      "error": "0"
+    }
+  ],
+  "tracked_status_after": "",
+  "all_original_inputs_unchanged": true,
+  "comparison": {
+    "target_equal": true,
+    "version_equal": true,
+    "minimum_equal": true,
+    "entry_equal": true,
+    "source_paths_equal": true,
+    "source_hash_differences": [
+      "package_compiler/Compile.chibi"
+    ],
+    "manifest_bytes": 25958,
+    "source_count": 25,
+    "target_sha256": "4bd371739533ba7ffb42ae3218c6a974daf1d0da8735b8d62943a735a3a065f8",
+    "format_equal": true,
+    "project_equal": true,
+    "core_equal": true
+  },
+  "independent_review": {
+    "review": "independent read-only source and provenance review; no new runtime tests executed by reviewer",
+    "head": "8f5685e021fca09b9a0edd827b10261e2b0ff1ca",
+    "tree": "12fcb93f6b4682fd413baac0e53e4549ac30b74c",
+    "recorded_sources_checked": 25,
+    "seed_original_clone_texts_equal": true,
+    "recorded_package_siblings_complete": true,
+    "target_equals_seed_and_checked_artifact": true,
+    "format_entry_version_minimum_unchanged": true,
+    "seed_generated_recovered_bytes_equal": true,
+    "all_original_inputs_unchanged": true,
+    "binary_and_log_hashes_match": true,
+    "compiler_load_current_matching_seconds": 0.42226,
+    "compiler_load_baseline_matching_seconds": 0.425852,
+    "finding": "Observed startup penalty is two-pass compiler recovery for source/artifact mismatch; no additional reachability or Generate startup cost found",
+    "publication_approval": false
+  },
+  "cleanup": {
+    "removed": [
+      ".chibi/reach/graph-ci-investigation/current-artifact-proof/seed",
+      ".chibi/reach/graph-ci-investigation/current-artifact-proof/current-inputs",
+      ".chibi/reach/graph-ci-investigation/current-artifact-proof/recovered.chibip"
+    ],
+    "preserved": [
+      "receipt.json",
+      "comparison.json",
+      "generated-bootstrap.json",
+      "independent-review.json",
+      "seed.log",
+      "write-artifact.log",
+      "recover-artifact.log",
+      "probe-current-matching.log",
+      "probe/00.tsv"
+    ],
+    "authoritative_inputs_and_checked_artifact_unchanged": true,
+    "tracked_tree_clean": true
+  }
+}

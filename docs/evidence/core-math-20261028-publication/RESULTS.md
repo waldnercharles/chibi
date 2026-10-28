@@ -207,6 +207,53 @@ the earlier compiler, SDK, sanitizer or broader group evidence. No server succes
 is claimed for the updated drafts. Main advanced while CI ran; integration onto
 the eventual accepted costs head still needs its own review and affected checks.
 
+## Matching current artifact diagnosis
+
+A later controlled check used the same clean prerequisite source at `8f5685e`
+and the unmodified production artifact writer in task-owned scratch. The Release
+seed selector passed 1 case and 30,097 assertions in 46.509 s. The normal writer
+passed in 12.055 s, and recovery of its matching output passed in 12.501 s. The
+seed, generated artifact and recovered compiler are byte-identical to the
+13,960,686-byte `a9d7b571` compiler observed in the three-platform server run.
+
+| Compiler inputs | Compiler load | Graph preparation | Total |
+| --- | ---: | ---: | ---: |
+| Baseline source, matching checked artifact | 0.426 s | 1.920 s | 2.370 s |
+| Current source, older checked artifact | 24.190 s | 1.711 s | 26.034 s |
+| Current source, matching scratch artifact | 0.422 s | 1.677 s | 2.163 s |
+
+All three probes used the same Graph host binary, the same invalid-option case
+and the unchanged 50-second deadline; all returned the expected status 2. The
+current matching artifact removes the measured compiler-load penalty. Source
+review confirms that `Generate` is not invoked during this startup path;
+matching recorded sources let `compiler_bootstrap_load` return the validated
+closure without either recovery pass. No additional reachability or generator
+startup cost was found in this controlled path.
+
+The [production-writer receipt](current-artifact-proof.json) identifies the
+clean source/tree, complete original input inventory, executables, captured seed,
+generated and recovered bytes, exact commands, logs and phase timings. The
+[comparison](current-artifact-comparison.json) verifies that the full target,
+format/entry, version 7, minimum 2 and 25 recorded source paths are unchanged;
+only the recorded contents of `package_compiler/Compile.chibi` differ. The
+[independent provenance review](current-artifact-review.json) checked every
+captured source against the original and copied files, complete sibling
+membership, target equality and byte-for-byte reproduction.
+
+The minimal remedy is to generate and independently review both checked
+bootstrap outputs from the actual eligible integrated clean source after the
+existing holds permit it, then rerun the original server gates. The measured
+issue does not require a reachability or generator code change, a deadline
+increase or a language-version bump. The final shared compiler/ABI audit still
+owns any versions or runtime pins required by other integrated changes.
+
+This local artifact is diagnostic evidence only. It does not clear #694, math
+SDK publication or the costs merge reservation, and it does not substitute for
+the full Graph selector or current server checks. The checked artifact and all
+authoritative source hashes remain unchanged. Temporary compiler/core copies,
+seed bytes and recovered compiler bytes were [removed](current-artifact-cleanup.json);
+receipts, the generated text manifest and logs remain in task scratch.
+
 ## Remaining boundaries
 
 The math draft still carries its explicit SDK publication hold. The general

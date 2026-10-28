@@ -1,0 +1,4 @@
+Running: package_compiler_compiles_itself (OK) (45.856685 secs)
+===============================================================
+Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 30097
+Test command wall time: 46.361s; includes in-test fixture setup; external configuration/build excluded.

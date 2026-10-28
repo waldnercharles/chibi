@@ -11,6 +11,14 @@ typedef struct
     behavior_function_source origin; /* May point into a linked library. */
     char message[192];
 } authoring_performance_diagnostic;
+typedef struct
+{
+    uint64_t function;
+    const char *entry;
+    /* First finalized origin of this body, with its source document path. */
+    behavior_function_source origin;
+    execution_cost_summary summary;
+} authoring_function_costs;
 
 /* One owned source generation. Preparation never replaces a live registration.
  * Invalid edits retain syntax, resolved facts and diagnostics for authoring. */
@@ -24,6 +32,12 @@ typedef struct
     int diagnostic_count;
     authoring_performance_diagnostic *performance;
     int performance_count;
+    /* One row per finalized executable body. All pointers borrow this source
+     * generation, including evidence in imported modules. A complete traversal
+     * may still report possible costs at native boundaries. These static facts
+     * are neither measured traffic nor an allocation-free guarantee. */
+    authoring_function_costs *costs;
+    int cost_count;
     bool valid;
     int references; /* Immutable generations may be shared by source collections. */
 } authoring_source;

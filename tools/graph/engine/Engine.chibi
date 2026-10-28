@@ -1116,6 +1116,23 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             return -1;
         }
     }
+    // Install resources before generators, which may compile prerequisite
+    // hosts. CMake writes these files during configuration. Write the
+    // identity first, since the resource lists copy it.
+    installs := false;
+    for (target in targets) {
+        installs = installs || length(Resources(target)) > 0;
+    }
+    if (installs && !WriteIdentity(source_root, build_dir, profile)) {
+        build.report("graph: writing the build identity failed");
+        return -1;
+    }
+    for (target in targets) {
+        if (!Install(source_root, build_dir, profile.third_party, target)) {
+            build.report(Join(["graph: installing ", target, "'s resources failed"]));
+            return -1;
+        }
+    }
     generated := 0;
     if (Reflects(targets)) {
         generated = Reflect(tools, profile, source_root, build_dir);
@@ -1142,22 +1159,6 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             !c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public"), []) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"), kept)) {
             build.report(Join(["graph: staging ", target, "'s headers failed"]));
-            return -1;
-        }
-    }
-    // Resources are written before any compile, as CMake writes them when it
-    // configures; the identity first, since they copy it.
-    installs := false;
-    for (target in targets) {
-        installs = installs || length(Resources(target)) > 0;
-    }
-    if (installs && !WriteIdentity(source_root, build_dir, profile)) {
-        build.report("graph: writing the build identity failed");
-        return -1;
-    }
-    for (target in targets) {
-        if (!Install(source_root, build_dir, profile.third_party, target)) {
-            build.report(Join(["graph: installing ", target, "'s resources failed"]));
             return -1;
         }
     }

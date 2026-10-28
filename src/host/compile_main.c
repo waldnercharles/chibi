@@ -65,7 +65,8 @@ static int usage(const char *program)
         stderr,
         "Usage: %s --project-root PATH (--output FILE [--modules FILE | "
         "--resources-only] | "
-        "--check | --test | --format [--check] | --docs | --stage-one-input "
+        "--check [--explain-costs [--json]] | --test | --format [--check] | "
+        "--docs | --stage-one-input "
         "FILE) [--scene PATH]\n",
         program
     );
@@ -283,6 +284,7 @@ int main(int argc, char **argv)
     const char *project = NULL, *scene = NULL, *output = NULL, *target = NULL,
                *modules = NULL;
     bool check = false, tests = false, formats = false, site = false, resources = false;
+    bool explain = false, json = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
             usage(argv[0]);
@@ -290,6 +292,14 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--check") && !check) {
             check = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--explain-costs") && !explain) {
+            explain = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--json") && !json) {
+            json = true;
             continue;
         }
         if (!strcmp(argv[i], "--test") && !tests) {
@@ -338,7 +348,8 @@ int main(int argc, char **argv)
     if (!project || !*project || modes != 1 || (output && !*output) ||
         (target && !*target) || ((tests || formats || site || target) && scene) ||
         (modules && (!output || !*modules || scene)) ||
-        (resources && (!output || modules || scene))) {
+        (resources && (!output || modules || scene)) ||
+        (explain && (!check || formats)) || (json && !explain)) {
         return usage(argv[0]);
     }
     if (resources) {
@@ -358,6 +369,9 @@ int main(int argc, char **argv)
     }
     if (formats) {
         return format(project, check);
+    }
+    if (explain) {
+        return authoring_project_explain_costs(project, scene, json);
     }
     return authoring_project_compile(project, scene, output);
 }

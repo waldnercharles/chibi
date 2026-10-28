@@ -1596,7 +1596,11 @@ static int run_group(const char *group)
         saved[i] = value ? xstrdup(value) : NULL;
         assert(!setenv(names[i], directory, 1));
     }
-    const char *args[] = { "python3", policy_path, "group", group, NULL };
+    /* This case records group membership; parallel scheduler behavior has
+     * separate fixtures. Use the real serial CLI route so recorder capacity
+     * does not depend on host admission or one supervisor per selector. */
+    const char *args[] = { "python3", policy_path, "--jobs", "1",
+                           "group",   group,       NULL };
     int status = tool_run(args, tool_root(), logpath);
     for (int i = 0; i < 2; i++) {
         if (saved[i]) {

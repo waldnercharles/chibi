@@ -3,9 +3,11 @@ package llvm_native
 import abi "project:native_abi"
 import strings "core:strings"
 
-// A runtime-free scalar backend. This is not the
-// prepared/pin_value ABI: arguments and results are native LLVM values.
-// Slots and locals are private stack storage, never observable pointers.
+// A scalar backend. This is not the prepared/pin_value ABI: arguments and
+// results are native LLVM values. Slots and locals are private stack storage,
+// never observable pointers. A module that calls the runtime, through Format,
+// takes its context, native_abi.ContextType(), as every function's hidden
+// first parameter, as Odin's procedures take theirs.
 pub Instruction :: struct {
     op: int;
     type: int;
@@ -106,6 +108,11 @@ pub TextDrop: int : 34;
 // slot's int, clamped to the string. Both slices are views of the string's
 // bytes.
 pub TextTake: int : 35;
+// output = format_text(arguments...), a string the runtime makes: the
+// argument slots are this function's arguments[right, right + target), a
+// string format then numbers, bools and strings, as a call's are. The string
+// lives until the call from the VM returns.
+pub Format: int : 36;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -123,7 +130,7 @@ Unary :: (op: int) -> bool {
     return op == Neg || op == BitNot;
 }
 ReadsLeft :: (op: int) -> bool {
-    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || op >= Convert;
+    return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake);
 }
 Integer :: (type: int) -> bool {
     return abi.IntegerBits(type) > 0;
@@ -152,7 +159,11 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op >= TextByte;
+    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || (op >= TextByte && op <= TextTake);
+}
+// Whether an instruction reads argument slots: a call's or a format's.
+ReadsArguments :: (op: int) -> bool {
+    return op == Call || op == Format;
 }
 // Whether `type` is a scalar, a string or one of the module's records.
 Valued :: (records: Record[], type: int) -> bool {
@@ -308,6 +319,22 @@ Layout :: (functions: Function[], parameters: int[], slots: int[], locals: int[]
            at.first_local == length(locals) && at.first_code == length(code) &&
            at.first_argument == length(arguments);
 }
+// A format reads a string format, then numbers, bools and strings, from its
+// argument slots, to give a string.
+FormatValid :: (slots: int[], arguments: int[], item: Instruction) -> bool {
+    if (item.type != abi.TextStorage || item.left != 0 || item.target < 1 || item.right < 0 ||
+        item.right > length(arguments) - item.target ||
+        !Typed(slots, arguments[item.right], abi.TextStorage)) {
+        return false;
+    }
+    for (index in 1..<item.target) {
+        slot := arguments[item.right + index];
+        if (!Index(slot, length(slots)) || abi.ValueTag(slots[slot]) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
 // A call names another function of the module, with its result type and one
 // argument slot of each parameter's type.
 CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments: int[], item: Instruction) -> bool {
@@ -366,7 +393,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > TextTake) {
+        if (item.op < Constant || item.op > Format) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -423,8 +450,11 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native field read differs from its record");
             }
         }
-        if (item.op >= TextLength && !TextValid(slots, item)) {
+        if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
             return Result.Rejected(base + pc, "native text read differs from its operands");
+        }
+        if (item.op == Format && !FormatValid(slots, arguments, item)) {
+            return Result.Rejected(base + pc, "native format differs from its operands");
         }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
@@ -449,7 +479,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (ReadsRight(item.op) && !Dominates(code, definitions[item.right], pc)) {
             return Result.Rejected(base + pc, "native scalar right operand is not defined on every path");
         }
-        if (item.op == Call) {
+        if (ReadsArguments(item.op)) {
             for (index in 0..<item.target) {
                 if (!Dominates(code, definitions[arguments[item.right + index]], pc)) {
                     return Result.Rejected(base + pc, "native call argument is not defined on every path");
@@ -731,7 +761,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
-    } else if (item.op >= TextLength) {
+    } else if (item.op >= TextLength && item.op <= TextTake) {
         out = format_text("{}{}", out, TextRead(item, pc));
     } else if (item.type == abi.TextStorage) {
         // Strings are equal when their bytes are; != negates that.
@@ -829,41 +859,44 @@ Symbol :: (function: int, mode: int) -> string {
     }
     return format_text("chibi_scalar.{}", function);
 }
-// Arguments load in call order, so evaluation order stays visible at O0.
+// Arguments load in call order, so evaluation order stays visible at O0. A
+// module that calls the runtime passes its context first.
 CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
-                    mode: int) -> string {
+                    mode: int, runtime: bool) -> string {
     callee := functions[item.left];
     out := format_text("p{}:\n", pc);
-    list := "";
+    listed: string[] = [];
+    if (runtime) {
+        listed.append("ptr %ctx");
+    }
     for (index in 0..<item.target) {
         type := parameters[callee.first_parameter + index];
         out = format_text("{}{}", out, Load(format_text("c{}_{}", pc, index), type, "s", arguments[item.right + index]));
-        if (index > 0) {
-            list = format_text("{}, ", list);
-        }
-        list = format_text("{}{} %c{}_{}", list, TypeName(type), pc, index);
+        listed.append(format_text("{} %c{}_{}", TypeName(type), pc, index));
     }
+    list := strings.Join(listed, ", ");
     out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, TypeName(item.type), Symbol(item.left, mode), list);
     out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int) -> string {
+                 mode: int, step_budget: int, runtime: bool) -> string {
     shape := functions[function];
     result := shape.result;
     linkage := "";
     if (function != 0 || mode == NoEntry) {
         linkage = "internal ";
     }
-    out := format_text("define {}{} @{}(", linkage, TypeName(result), Symbol(function, mode));
-    for (index in 0..<shape.parameters) {
-        if (index > 0) {
-            out = format_text("{}, ", out);
-        }
-        out = format_text("{}{} %arg{}", out, TypeName(parameters[shape.first_parameter + index]), index);
+    listed: string[] = [];
+    if (runtime) {
+        listed.append("ptr %ctx");
     }
-    out = format_text("{}) #0 {\nentry:\n", out);
+    for (index in 0..<shape.parameters) {
+        listed.append(format_text("{} %arg{}", TypeName(parameters[shape.first_parameter + index]), index));
+    }
+    out := format_text("define {}{} @{}({}) #0 {\nentry:\n", linkage, TypeName(result), Symbol(function, mode),
+                       strings.Join(listed, ", "));
     out = format_text("{}  %budget0 = alloca i32\n  store i32 {}, ptr %budget0\n", out, step_budget);
     for (index in 0..<shape.slots) {
         out = format_text("{}  %s{} = alloca {}\n", out, index, TypeName(slots[shape.first_slot + index]));
@@ -875,17 +908,73 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     }
     out = format_text("{}  %result0 = alloca {}\n", out, TypeName(result));
     out = format_text("{}{}", out, Store(Zero(result), result, "result", 0));
+    // A format's values and result live in the entry block, so a loop
+    // reuses them.
+    for (pc in 0..<shape.code) {
+        item := code[shape.first_code + pc];
+        if (item.op == Format) {
+            out = format_text("{}  %values{} = alloca [{} x {}]\n  %text{} = alloca {}\n", out, pc, item.target,
+                              abi.ValueType(), pc, abi.TextType());
+        }
+    }
     out = format_text("{}  br label %p0\n", out);
     own := Part(arguments, shape.first_argument, shape.arguments);
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
         if (item.op == Call) {
-            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, mode));
+            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, mode, runtime));
+        } else if (item.op == Format) {
+            out = format_text("{}{}", out, FormatInstruction(Part(slots, shape.first_slot, shape.slots), own, item, pc));
         } else {
             out = format_text("{}{}", out, EmitInstruction(item, pc, result, records, fields, texts));
         }
     }
     return format_text("{}trap:\n  call void @llvm.trap()\n  unreachable\n}\n", out);
+}
+
+// Each argument becomes a runtime value in the format's array, in order, and
+// the context's format_text writes the string it makes.
+FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int) -> string {
+    value := abi.ValueType();
+    text := abi.TextType();
+    out := format_text("p{}:\n", pc);
+    for (index in 0..<item.target) {
+        slot := arguments[item.right + index];
+        type := slots[slot];
+        name := format_text("f{}_{}", pc, index);
+        out = format_text("{}{}", out, Load(name, type, "s", slot));
+        empty := format_text("{ i32 {}, i32 0, i64 0, ptr null }", abi.ValueTag(type));
+        if (type == abi.TextStorage) {
+            out = format_text("{}  %{}.bytes = extractvalue {} %{}, 0\n  %{}.length = extractvalue {} %{}, 1\n", out,
+                              name, text, name, name, text, name);
+            out = format_text("{}  %{}.sized = insertvalue {} {}, i32 %{}.length, 1\n", out, name, value, empty, name);
+            out = format_text("{}  %{}.value = insertvalue {} %{}.sized, ptr %{}.bytes, 3\n", out, name, value, name,
+                              name);
+        } else {
+            out = format_text("{}{}", out, ToWord(format_text("{}.word", name), format_text("%{}", name), type));
+            out = format_text("{}  %{}.value = insertvalue {} {}, i64 %{}.word, 2\n", out, name, value, empty, name);
+        }
+        out = format_text("{}  %{}.at = getelementptr inbounds [{} x {}], ptr %values{}, i64 0, i64 {}\n", out, name,
+                          item.target, value, pc, index);
+        out = format_text("{}  store {} %{}.value, ptr %{}.at\n", out, value, name, name);
+    }
+    out = format_text("{}  %format{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 0\n", out, pc,
+                      abi.ContextType());
+    out = format_text("{}  %format{} = load ptr, ptr %format{}.at\n", out, pc, pc);
+    out = format_text("{}  call void %format{}(ptr %ctx, ptr %values{}, i32 {}, ptr %text{})\n", out, pc, pc,
+                      item.target, pc);
+    out = format_text("{}  %v{} = load {}, ptr %text{}\n", out, pc, text, pc);
+    out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
+// Whether `code` calls the runtime.
+Runtime :: (code: Instruction[]) -> bool {
+    for (item in code) {
+        if (item.op == Format) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // The symbol of text `index` of the module's table.
@@ -984,6 +1073,11 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
                 continue;
         }
     }
+    // A program's main has no context to pass.
+    runtime := Runtime(code);
+    if (runtime && mode == MainEntry) {
+        return Result.Rejected(-1, "a native program cannot call the runtime yet");
+    }
     // No host-derived data layout: the explicit LLVM target selects it. No
     // raw pointer or foreign ABI is admitted yet, and records stay internal.
     out := format_text("target triple = \"{}\"\n\n", target.triple);
@@ -1007,7 +1101,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
     compares := Compares(code);
     for (function in 0..<length(functions)) {
         text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                             texts, mode, step_budget);
+                             texts, mode, step_budget, runtime);
         if (debug) {
             text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                 functions[function].first_code));
@@ -1209,23 +1303,26 @@ ToWord :: (name: string, value: string, type: int) -> string {
     }
     return format_text("  %{} = {} {} {} to i64\n", name, extend, abi.ScalarType(type), value);
 }
-// Function `function`'s export entry, which reads its arguments from words
-// and writes its result as one.
-ExportEntry :: (functions: Function[], function: int, parameters: int[]) -> string {
+// Function `function`'s export entry, which takes the call's context, reads
+// its arguments from words and writes its result as one. It passes the
+// context on when the module calls the runtime.
+ExportEntry :: (functions: Function[], function: int, parameters: int[], runtime: bool) -> string {
     shape := functions[function];
-    out := format_text("define internal void @chibi_scalar.export.{}(ptr %in, ptr %out) #0 {\nentry:\n", function);
-    list := "";
+    out := format_text("define internal void @chibi_scalar.export.{}(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n",
+                       function);
+    listed: string[] = [];
+    if (runtime) {
+        listed.append("ptr %ctx");
+    }
     for (index in 0..<shape.parameters) {
         type := parameters[shape.first_parameter + index];
         out = format_text("{}  %w{}.at = getelementptr inbounds i64, ptr %in, i64 {}\n", out, index, index);
         out = format_text("{}  %w{} = load i64, ptr %w{}.at\n", out, index, index);
         out = format_text("{}{}", out, FromWord(format_text("a{}", index), format_text("%w{}", index), type));
-        if (index > 0) {
-            list = format_text("{}, ", list);
-        }
-        list = format_text("{}{} %a{}", list, TypeName(type), index);
+        listed.append(format_text("{} %a{}", TypeName(type), index));
     }
-    out = format_text("{}  %r = call {} @{}({})\n", out, TypeName(shape.result), Symbol(function, NoEntry), list);
+    out = format_text("{}  %r = call {} @{}({})\n", out, TypeName(shape.result), Symbol(function, NoEntry),
+                      strings.Join(listed, ", "));
     out = format_text("{}{}", out, ToWord("word", "%r", shape.result));
     return format_text("{}  store i64 %word, ptr %out\n  ret void\n}\n", out);
 }
@@ -1261,6 +1358,7 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
         case .Emitted(text):
             out = text;
     }
+    runtime := Runtime(code);
     out = format_text("{}\n%chibi.export = type { ptr, i64, ptr, i32, i32, ptr }\n", out);
     out = format_text("{}%chibi.manifest = type { i32, i32, ptr }\n", out);
     exports: string[] = [];
@@ -1277,7 +1375,7 @@ pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[
         }
         out = format_text("{}@chibi_scalar.export.types.{} = private unnamed_addr constant [{} x i8] [{}]\n", out,
                           function, length(types), strings.Join(listed, ", "));
-        out = format_text("{}\n{}", out, ExportEntry(functions, function, parameters));
+        out = format_text("{}\n{}", out, ExportEntry(functions, function, parameters, runtime));
         exports.append(format_text("%chibi.export { ptr @chibi_scalar.export.name.{}, i64 {}, ptr @chibi_scalar.export.types.{}, i32 {}, i32 1, ptr @chibi_scalar.export.{} }",
                                    function, ids[function], function, functions[function].parameters, function));
     }

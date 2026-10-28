@@ -1,9 +1,0 @@
-{
-  "source_commit": "dfacf12ea8c8e8732b5e16948f4590a8b224e530",
-  "native_reference_commit": "dba9625c7c87e6cfe9817c2d39e1ab61c8d923d3",
-  "rmlui_pin": "ba95ffe8bfb6370efb2cdcca927eaad4710c5413",
-  "patch_sha256": "24ebea9eee11284531ed28d565152b173c6717de2447c3157197998963679d36",
-  "original_context_body_preserved": true,
-  "native_lifecycle_and_selectors_unchanged": true,
-  "native_execution_performed": false
-}

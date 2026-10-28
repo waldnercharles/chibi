@@ -497,7 +497,7 @@ static const struct
       "pointer := &value\n"
       "copy := pointer^^\n"
       "xor := value ^ +value\n"
-      "F(ref pointer^)\n"
+      "F(pointer)\n"
       "}\n" },
     { "half-open range", "package p\nRange :: () { for i in 0..<9 {} }\n" },
     { "numbers",

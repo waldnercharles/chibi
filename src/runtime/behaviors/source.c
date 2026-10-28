@@ -108,6 +108,7 @@ static const execution_module *defining_module(const source_registry *r, uint64_
 }
 int source_bind_natives(
     source_registry *r,
+    execution_native_runtime runtime,
     const execution_native_manifest *const *manifests,
     int count,
     char *error,
@@ -118,7 +119,7 @@ int source_bind_natives(
     if (!count) {
         return 0;
     }
-    execution_natives *natives = execution_natives_new();
+    execution_natives *natives = execution_natives_new(runtime);
     for (int i = 0; i < count; i++) {
         const execution_native_manifest *manifest = manifests[i];
         /* Another ABI's exports need not have this layout; binding says so. */

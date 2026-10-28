@@ -2345,6 +2345,11 @@ static void share_instruction(share_flow *s, int pc)
             share_define(s, out, false, SHARE_NONE, SHARE_UNKNOWN);
             break;
         case BF_ARGUMENT:
+            /* A scoped reference argument is the caller's location, which it
+             * lends for writing: the caller lends no other argument that
+             * shares it, so writes through it reach no lent argument. */
+            share_define(s, out, f->argument_kinds[i->left] != BEHAVIOR_REFERENCE, SHARE_UNKNOWN, SHARE_UNKNOWN);
+            break;
         case BF_VARIABLE:
         case BF_ARRAY:
         case BF_TYPE_NAME:

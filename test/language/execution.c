@@ -1,3 +1,4 @@
+#include "authoring/source_package_prepare.h"
 #include "backend.h"
 #include "compiler_fixture.h"
 #include "execution/definition.h"
@@ -7,6 +8,7 @@
 #include "execution/jit_internal.h"
 #include "execution/log.h"
 #include "execution/managed.h"
+#include "execution/module.h"
 #include "execution/module_effects.h"
 #include "execution/preparation_budget.h"
 #include "execution/prepared_internal.h"
@@ -4317,6 +4319,10 @@ TEST_CASE(execution_calls_lend_arguments_and_callees_copy_writes)
         "Observe :: (xs: int[], ignored: int) -> int { return xs[0]; }\n"
         "pub ReferencedLater :: () -> int { a: int[] = [1]; "
         "n := Observe(a, Grow(&a)); return n * 10 + a[0]; }\n"
+        "Peek :: (p: ^(int[]), xs: int[]) -> int { p^[0] = 5; return xs[0]; "
+        "}\n"
+        "pub ReferencedEarlier :: () -> int { a: int[] = [1]; "
+        "n := Peek(&a, a); return n * 10 + a[0]; }\n"
         "pub LocalAfterWrite :: () -> int { rows: Row[] = [{key: \"a\", depth: "
         "1}]; "
         "row := rows[0]; rows[0].depth = 7; nested: int[][] = [[1]]; inner := "
@@ -4357,6 +4363,7 @@ TEST_CASE(execution_calls_lend_arguments_and_callees_copy_writes)
         { "Pointed", 12 },
         { "PointedElement", 12 },
         { "ReferencedLater", 15 },
+        { "ReferencedEarlier", 15 },
     };
     return sequence_results(source, cases, sizeof cases / sizeof *cases);
 }
@@ -4386,6 +4393,14 @@ TEST_CASE(execution_lent_records_copy_nothing)
                  "rows: Row[] = [row, row]; total: int = 0; i: int = 0; "
                  "while (i < count) { total += Find(rows, 2) + Sum(rows) - 2; "
                  "i += 1; } return total; }\n"
+                 "pub Count :: (total: ^int, rows: Row[]) { total^ += "
+                 "length(rows); "
+                 "}\n"
+                 "pub Scoped :: (count: int) -> int { "
+                 "row: Row = {key: \"k\", label: \"label\", depth: 1}; "
+                 "rows: Row[] = [row, row]; total: int = 0; i: int = 0; "
+                 "while (i < count) { Count(&total, rows); i += 1; } "
+                 "return total / 2; }\n"
                  "pub Natives :: (count: int) -> int { "
                  "row: Row = {key: \"k\", label: \"label\", depth: 1}; "
                  "rows: Row[] = [row, row]; total: int = 0; i: int = 0; "
@@ -4404,11 +4419,11 @@ TEST_CASE(execution_lent_records_copy_nothing)
     source_package_input input = { "sequences/Main.chibi", source, strlen(source) };
     REQUIRE(compiler_fixture_prepare(&sequences, &input, 1));
     /* A lent argument or local, an indexed local, a for-each item, a field
-     * read through an index and an argument to a native that only reads it
-     * copy no record. */
-    const char *functions[] = { "Calls", "Scans", "Natives" };
-    const int scales[] = { 4, 1, 1 };
-    for (int f = 0; f < 3; f++) {
+     * read through an index, an argument to a native that only reads it and
+     * an argument beside a scoped pointer the callee writes copy no record. */
+    const char *functions[] = { "Calls", "Scans", "Natives", "Scoped" };
+    const int scales[] = { 4, 1, 1, 1 };
+    for (int f = 0; f < 4; f++) {
         for (int backend = 0; backend < 2; backend++) {
             uint64_t records[2];
             const int counts[] = { 1, 50 };
@@ -4435,6 +4450,22 @@ TEST_CASE(execution_lent_records_copy_nothing)
             }
             REQUIRE(records[1] == records[0]);
         }
+    }
+    /* Writing through a scoped pointer leaves the other arguments lent: the
+     * caller lends none that shares the pointer's location. */
+    for (int backend = 0; backend < 2; backend++) {
+        const authoring_package *package = compiler_fixture_package(&sequences, backend, "project:sequences");
+        uint64_t count = compiler_fixture_export(&sequences, backend, "project:sequences", "Count");
+        REQUIRE(package && package->module && count);
+        const behavior_function *body = NULL;
+        for (int i = 0; i < execution_module_function_count(package->module); i++) {
+            execution_module_function_info
+                info = execution_module_function_at(package->module, i);
+            if (info.id == count) {
+                body = info.body;
+            }
+        }
+        REQUIRE(body && body->argument_sharing == BEHAVIOR_SHARING_SAFE);
     }
     /* Appending copies only the item it adds, a third of what a literal of
      * three items copies, and never the lent array. */

@@ -2007,9 +2007,9 @@ static bool changes_local(const lower *l, int index, int symbol)
 /* Whether a call lends argument `at` to its callee without a copy: nothing can
  * change the value before the call returns. The callee copies a parameter it
  * writes. A temporary lives until the statement ends, and a caller's own
- * local only changes through the caller, unless a pointer, a task or a later
- * argument reaches it. State, components, references and values behind a
- * pointer stay copied. */
+ * local only changes through the caller, unless a pointer, a task, a later
+ * argument or another argument's reference reaches it. State, components,
+ * references and values behind a pointer stay copied. */
 static bool lends_argument(const lower *l, const script_expression *call, int at)
 {
     int index = call->arguments[at].value;
@@ -2036,8 +2036,12 @@ static bool lends_argument(const lower *l, const script_expression *call, int at
             (l->captured && l->captured[e->symbol] >= 0)) {
             return false;
         }
-        for (int i = at + 1; i < call->argument_count; i++) {
-            if (changes_local(l, call->arguments[i].value, e->symbol)) {
+        /* A later argument may change it before the call, and the callee
+         * may write through a reference any other argument passes. */
+        for (int i = 0; i < call->argument_count; i++) {
+            if ((i > at && changes_local(l, call->arguments[i].value, e->symbol)) ||
+                (i != at && reference_argument(l, call, i) &&
+                 storage_root(l->a, call->arguments[i].value) == e->symbol)) {
                 return false;
             }
         }

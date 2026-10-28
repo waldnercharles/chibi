@@ -1627,6 +1627,7 @@ static const sample samples[] = {
                 "length(xs); }\n"
                 "Grow :: (xs: ^(int[])) -> int { xs^[0] = 5; return 0; }\n"
                 "Observe :: (xs: int[], ignored: int) -> int { return xs[0]; }\n"
+                "Peek :: (p: ^(int[]), xs: int[]) -> int { p^[0] = 5; return xs[0]; }\n"
                 "Writes :: () -> int {\n"
                 "    xs: int[] = [1];\n    note: Note = {text: \"a\", count: 1};\n"
                 "    n := Change(note, xs);\n"
@@ -1640,11 +1641,15 @@ static const sample samples[] = {
                 "Same([4, 5])); }\n"
                 "Referenced :: () -> int {\n"
                 "    a: int[] = [1];\n    n := Observe(a, Grow(&a));\n"
+                "    return n * 10 + a[0];\n}\n"
+                "ReferencedEarlier :: () -> int {\n"
+                "    a: int[] = [1];\n    n := Peek(&a, a);\n"
                 "    return n * 10 + a[0];\n}",
       .calls = { { .function = "Writes", .arguments = "[]", .expected = "[2911]" },
                  { .function = "Returns", .arguments = "[]", .expected = "[123]" },
                  { .function = "Temporaries", .arguments = "[]", .expected = "[32]" },
-                 { .function = "Referenced", .arguments = "[]", .expected = "[15]" } } },
+                 { .function = "Referenced", .arguments = "[]", .expected = "[15]" },
+                 { .function = "ReferencedEarlier", .arguments = "[]", .expected = "[15]" } } },
     { .name = "moved values",
       .group = IMPORT_SAMPLES,
       .moves = true,

@@ -5287,8 +5287,9 @@ CallCode :: (arguments: Value[], first: int, host: int, storage: int, slot: int,
     return extend(code, CellRead(storage, first + index, ops, target, slot + index, node));
 }
 // Whether a call lends `argument` without a copy: a caller's local or
-// parameter whose address no later argument takes. The caller is suspended
-// until the call returns, and a written parameter copies itself. State,
+// parameter whose address no later argument takes and no other argument
+// passes, as the callee may write through it. The caller is suspended until
+// the call returns, and a written parameter copies itself. State,
 // components, references, pointers and the places behind them stay copied.
 LentArgument :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], argument: int) -> bool {
     root := Unparenthesized(forest, argument);
@@ -5308,6 +5309,14 @@ LentArgument :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], a
             return false;
         }
         later = NextMember(forest, later);
+    }
+    earlier := FirstMember(forest, forest[argument].parent);
+    while (earlier >= 0 && earlier != argument) {
+        if (Is(forest, earlier, "address_expression") &&
+            RootName(forest, text, Field(forest, earlier, "operand")) == name) {
+            return false;
+        }
+        earlier = NextMember(forest, earlier);
     }
     return true;
 }

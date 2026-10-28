@@ -1891,8 +1891,10 @@ TEST_CASE(borrow_field_reads_read_elements_in_place)
     return true;
 }
 
-/* A callee that writes through a reference argument, and every caller of it,
- * keeps copying: its value argument stays the caller's original. */
+/* A callee that writes through a scoped pointer, and its caller, share their
+ * arguments: the caller copies a value argument that the pointer's location
+ * shares, so that argument stays the caller's original, and the caller's
+ * input stays unchanged. */
 TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
 {
     REQUIRE(authored(
@@ -1903,8 +1905,8 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
         "= \"z\";"
         "if values[0] == \"a\" { return 1; } return 0; } }"
     ));
-    REQUIRE(authored_function(1)->argument_sharing == BEHAVIOR_SHARING_COPY);
-    REQUIRE(authored_function(0)->argument_sharing == BEHAVIOR_SHARING_COPY);
+    REQUIRE(authored_function(1)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    REQUIRE(authored_function(0)->argument_sharing == BEHAVIOR_SHARING_SAFE);
     const char *texts[] = { "a" };
     pin_value items[1], output = { .type = PIN_I32 };
     pin_array array;

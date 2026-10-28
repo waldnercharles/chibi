@@ -192,7 +192,7 @@ function Split-Batch($result, [string]$prefix, [int]$count) {
                 throw 'Scalar batch member differs from its original byte range'
             }
             $name = "$prefix-$index"
-            $path = Join-Path $output ($name + '.stdout')
+            $path = [IO.Path]::Combine($output, $name + '.stdout')
             [IO.File]::WriteAllBytes($path, $member)
             $evidence.batch_members += [ordered]@{ name = $name; batch = $result.Name; index = $index;
                 batch_sha256 = $batchHash; offset = $offset; bytes = $length; sha256 = (Digest $path) }
@@ -357,11 +357,11 @@ try {
             $request.Add((String-Node ($sources[$index].GetValue[string]())))
             $request.Add((Copy-Node $manifest['target'][0]))
             foreach ($fact in 2..5) { $request.Add((Copy-Node $manifest['target'][$fact])) }
-            $inputPath = Join-Path $output ("case-$index.json")
+            $inputPath = [IO.Path]::Combine($output, "case-$index.json")
             Write-Node $inputPath $request
             $inputs += $inputPath
         }
-        $batchInput = Join-Path $output ("batch-$first.json")
+        $batchInput = [IO.Path]::Combine($output, "batch-$first.json")
         Write-Batch $batchInput $inputs
         $produced = @{}
         $checked = @{}
@@ -399,7 +399,7 @@ try {
                     $check = $checked["$producerBackend-$consumerBackend"][$item]
                     $classification = Scalar-Result $check
                     if ($classification -notin 0, 1) { throw "Authored source/consumer check failed at $name (batch item $item): $classification" }
-                    $rawPath = Join-Path $output ($name + '.ll')
+                    $rawPath = [IO.Path]::Combine($output, $name + '.ll')
                     $raw = Invoke-Host "$name-raw" $regression $emitEntry $producer.Stdout $consumerBackend $rawPath
                     $row = [ordered]@{ index = $index; producer = $producerBackend; consumer = $consumerBackend;
                         input_sha256 = (Digest $inputPath); envelope_sha256 = $envelopeHash; accepted = ($classification -eq 1);

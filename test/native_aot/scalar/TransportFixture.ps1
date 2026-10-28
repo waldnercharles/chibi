@@ -11,7 +11,7 @@ Trace-Transport 'fixture-enter'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $output = $args[0]
 $fixtureRoot = $output
-$digestPath = Join-Path $output 'digest[bytes].bin'
+$digestPath = [IO.Path]::Combine($output, 'digest[☃].bin')
 [IO.File]::WriteAllBytes($digestPath, [byte[]]@())
 Write-Host ('digest-empty=' + (Digest $digestPath))
 [IO.File]::WriteAllBytes($digestPath, [byte[]]@(0,1,128,255,10,13))
@@ -21,9 +21,15 @@ $stream = [IO.File]::Open($digestPath, [IO.FileMode]::Open, [IO.FileAccess]::Wri
 try { $stream.Write($changedBytes, 0, $changedBytes.Length) }
 finally { $stream.Dispose() }
 Write-Host ('digest-overwrite=' + (Digest $digestPath))
-Remove-Item -LiteralPath $digestPath
+[IO.File]::WriteAllBytes($digestPath, [byte[]]@(0,127,255))
+Write-Host ('digest-three-byte=' + (Digest $digestPath))
+[IO.File]::WriteAllText($digestPath, 'changed', $utf8)
+Write-Host ('digest-changed=' + (Digest $digestPath))
+[IO.File]::Delete($digestPath)
 try { $null = Digest $digestPath; Write-Host 'digest-missing accepted' }
 catch { Write-Host 'digest-missing rejected' }
+try { $null = Digest $output; Write-Host 'digest-directory accepted' }
+catch { Write-Host 'digest-directory rejected' }
 $evidence = [ordered]@{ batch_members = @(); cases = @() }
 $source = Join-Path $output 'transport.json'
 $text = ' [ [ {"text":"☃\\n\\\"[]","value":18446744073709551615} ], [true,1e-30], [] ] '
@@ -94,7 +100,7 @@ $script:failClassifications = $true
 function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
                      [string]$request, [string]$backend, [string]$raw = '',
                      [switch]$Compile, [switch]$Batch) {
-    $path = Join-Path $output ($name + '.stdout')
+    $path = [IO.Path]::Combine($output, $name + '.stdout')
     if ($name.EndsWith('-produce-batch')) {
         if ($entry -cne '0xebbc43e46769862a') { throw 'Unexpected CollectScalar entry' }
         $values = (Read-Node $request).AsArray()
@@ -149,8 +155,14 @@ New-Item -ItemType Directory -Path $output | Out-Null
 $script:published = @()
 $script:failClassifications = $false
 $evidence = [ordered]@{ batch_members = @(); cases = @() }
+Trace-Transport 'partial-start'
 . (Join-Path $fixtureRoot 'loop.ps1')
+Trace-Transport 'partial-done'
 Write-Host ("partial-crossings=" + $evidence.cases.Count)
 Write-Host ("partial-raw=" + $published.Count)
 Write-Host ("partial-last=" + $published[-1])
 Write-Host ("partial-size=" + (Read-Node (Join-Path $output "batch-$batchSize.json")).AsArray().Count)
+$expected = @(0..64 | ForEach-Object {
+    "$_-bytecode-bytecode-raw"; "$_-bytecode-sljit-raw"; "$_-sljit-bytecode-raw"; "$_-sljit-sljit-raw"
+})
+Write-Host ("partial-order=" + (($published -join ',') -ceq ($expected -join ',')))

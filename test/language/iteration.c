@@ -130,9 +130,8 @@ TEST_CASE(iteration_reference_items_write_source_and_preserve_copied_alias)
     const char
         *source = "Loop :: behavior { sum: retain int = 0; items: retain int[] "
                   "= [2,4,6]; "
-                  "on Run :: () { alias := items; for item: ref in items { "
-                  "item += "
-                  "10; "
+                  "on Run :: () { alias := items; for &item in items { "
+                  "item += 10; "
                   "if item == 14 { continue; } if item == 16 { break; } } "
                   "for item in alias { sum += item; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -153,20 +152,20 @@ TEST_CASE(iteration_reference_items_write_source_and_preserve_copied_alias)
 TEST_CASE(iteration_reference_lifetimes_reject_invalidation_and_suspension)
 {
     const char *sources[] = {
-        "Bad :: behavior { on Run :: () { for item: ref in [1,2] { item = 3; } "
+        "Bad :: behavior { on Run :: () { for &item in [1,2] { item = 3; } "
         "} }",
-        "Bad :: behavior { on Run :: () { for item: ref in \"text\" {} } }",
-        "Bad :: behavior { items: retain int[] = [1]; on Run :: () { for item: "
-        "ref "
+        "Bad :: behavior { on Run :: () { for &item in \"text\" {} } }",
+        "Bad :: behavior { items: retain int[] = [1]; on Run :: () { "
+        "for i, &item in items {} } }",
+        "Bad :: behavior { items: retain int[] = [1]; on Run :: () { for &item "
         "in items { items = [2]; } } }",
-        "Bad :: behavior { items: retain int[] = [1]; on Run :: () { for item: "
-        "ref "
+        "Bad :: behavior { items: retain int[] = [1]; on Run :: () { for &item "
         "in items { yield; } } }",
         "Bad :: behavior { items: retain int[] = [1]; Wait :: () { yield; } "
-        "on Run :: () { for item: ref in items { pending := Wait(); } } }",
+        "on Run :: () { for &item in items { pending := Wait(); } } }",
         "Bad :: behavior { items: retain int[] = [1]; Change :: () { items[0] "
         "= 2; } "
-        "on Run :: () { for item: ref in items { Change(); } } }",
+        "on Run :: () { for &item in items { Change(); } } }",
     };
     for (int i = 0; i < (int)(sizeof sources / sizeof *sources); i++) {
         cleanup();

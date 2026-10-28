@@ -230,7 +230,8 @@ static bool tight_after(token t)
            (kind(n, "$") && (kind(p, "type_binder") || kind(p, "parameter"))) ||
            (kind(n, "{") && kind(p, "struct_expression")) ||
            (kind(n, "^") && kind(p, "pointer_type")) ||
-           (kind(n, "&") && kind(p, "address_expression")) ||
+           (kind(n, "&") &&
+            (kind(p, "address_expression") || kind(p, "for_statement"))) ||
            (kind(p, "unary_expression") && !kind(n, "not") &&
             ts_node_start_byte(p) == (uint32_t)t.start);
 }

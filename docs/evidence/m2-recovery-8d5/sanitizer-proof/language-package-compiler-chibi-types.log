@@ -1,4 +1,0 @@
-Running: package_compiler_builds_runnable_typed_packages (OK) (18.637030 secs)
-===============================================================
-Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 4643
-Test command wall time: 18.918s; includes in-test fixture setup; external configuration/build excluded.

@@ -320,9 +320,6 @@ Complete :: (environment: Environment, request: Request, value: Value, symbol: i
                 container = forced_container;
             }
             for (token in tokens) {
-                if (token == "ref") {
-                    flags = flags | 4;
-                }
                 if (token == "?") {
                     flags = flags | 2;
                 }
@@ -410,10 +407,6 @@ pub Parsed :: (environment: Environment, request: Request, tokens: string[]) -> 
 pub Text :: (environment: Environment, request: Request) -> Resolution {
     name := strings.Concatenate(strings.Fields(request.text));
     flags: int = 0;
-    if (strings.HasPrefix(name, "ref") && name != "ref") {
-        name = strings.TrimPrefix(name, "ref");
-        flags = flags | 4;
-    }
     if (strings.HasSuffix(name, "?")) {
         name = strings.TrimSuffix(name, "?");
         flags = flags | 2;

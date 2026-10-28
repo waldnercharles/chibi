@@ -119,8 +119,8 @@ TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots)
     REQUIRE(parse(
         "Effects :: library { items: retain int[] = [1]; "
         "WriteState :: () { items[0] = 2; } "
-        "WriteReference :: (values: ref int[]) { values[0] = 3; } "
-        "Forward :: (values: ref int[]) { WriteReference(ref values); } "
+        "WriteReference :: (values: ^(int[])) { values^[0] = 3; } "
+        "Forward :: (values: ^(int[])) { WriteReference(values); } "
         "WriteLocal :: () -> int { values: int[] = [1]; values[0] = 4; return "
         "values[0]; } }"
     ));

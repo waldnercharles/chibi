@@ -871,6 +871,11 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
     summaries: int[] = [];
     edges: graph.Edge[] = [];
     constants: ConstDecl[] = [];
+    // A scoped parameter's `p^` reads and writes `p` in every body.
+    scoped := forest;
+    if (AnyReference(params)) {
+        scoped = ScopedTargets(forest, documents, callables, params);
+    }
     pass: int = 0;
     while (pass < 2) {
         solid: int[] = [];
@@ -880,7 +885,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
             callable := callables[index];
             generic: int[] = [];
             if (pass > 0) {
-                generic = GenericUpdates(forest, bodies[index], summaries, context);
+                generic = GenericUpdates(scoped, bodies[index], summaries, context);
             }
             if (pass == 0 || length(generic) > 0) {
                 game := games[callable.package];
@@ -909,7 +914,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                     behaving.extend(SystemNames(forest, documents[callable.document].text, declared_types, members,
                                                 query_specs, callable, game_events, event_fields, target));
                 }
-                body := FunctionBody(forest, documents, callables, params, declared_types, members, constants, natives,
+                body := FunctionBody(scoped, documents, callables, params, declared_types, members, constants, natives,
                                      ports, native_ids, extend(Aliases(namespaces, callable.document), behaving),
                                      operators, makes, make_fields, index, solid, undeclared, meaning, context,
                                      generic, ops, target, SourceQueries(query_specs, callables, callable.document));
@@ -933,7 +938,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 if (pass == 0) {
                     bodies.append(body);
                 } else {
-                    if (!StablePreparation(forest, bodies[index], body, summaries, context)) {
+                    if (!StablePreparation(scoped, bodies[index], body, summaries, context)) {
                         return InputFailure(callable.document, "array update effects changed during preparation");
                     }
                     bodies[index] = body;

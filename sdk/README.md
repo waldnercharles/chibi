@@ -118,7 +118,7 @@ to omit language, parser, compiler and authoring packages entirely. The runtime
 package can then load prepared modules with explicit capability and type linkage.
 
 Set `CHIBI_SDK_BUILD_NATIVE=ON` to include the engine's built-in component layouts
-and the entity, audio, rhythm and vector packages. Standalone native builds require
+and the entity, audio and vector packages. Standalone native builds require
 `CHIBI_REFLECT_EXECUTABLE`, a native host reflection generator. When its libclang
 needs an explicit builtin-header directory, supply
 `CHIBI_REFLECT_RESOURCE_INCLUDE_DIR`. Cute math headers come from the

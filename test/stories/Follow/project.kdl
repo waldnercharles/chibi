@@ -1,4 +1,4 @@
-version 38
+version 39
 name "Follow story"
 content "content"
 start_scene "scenes/Main.kdl"

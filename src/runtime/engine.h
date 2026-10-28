@@ -73,7 +73,7 @@ typedef struct
     save *save;
     terrain_storage *terrain_storage;
     ui *ui;
-    bool input, rendering;
+    bool input;
     void *context;
     void (*boundary)(void *, double now, double delta);
     bool (*paused)(void *);

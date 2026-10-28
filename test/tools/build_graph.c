@@ -1279,12 +1279,13 @@ static bool configures_as_cmake(
 TEST_CASE(configured_headers_match_cmake)
 {
     const char *const headers[] = { "package_core_source.h",
+                                    "core_strings_tests_source.h",
                                     "build_workflow_source.h",
                                     "package_compiler_chibi_source.h",
                                     "third_party/pico_headers/pico_unit.h",
                                     "test/prepared_fixture.h" };
     REQUIRE(
-        configures_as_cmake("test_behavior_consumer", "test/language/testing/include", headers, 5)
+        configures_as_cmake("test_behavior_consumer", "test/language/testing/include", headers, 6)
     );
     return true;
 }

@@ -41,7 +41,7 @@ typedef struct
      * detail finite differences. */
     float origin[3], axis_u[3], axis_v[3];
     float uv_origin[2], uv_extent[2];
-    /* Normal, view, time/beat and callbacks are copied. Coordinate fields are
+    /* Normal, view, time and callbacks are copied. Coordinate fields are
      * derived from the plane. Callback contexts and their image pixels remain
      * borrowed and immutable until the job is freed. Callbacks must not allocate
      * per sample or perform IO. A zero Normal uses the plane's normal. */

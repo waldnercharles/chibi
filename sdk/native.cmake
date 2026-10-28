@@ -118,13 +118,6 @@ add_library(Chibi::url_runtime ALIAS chibi_url_runtime)
 set_target_properties(chibi_url_runtime PROPERTIES EXPORT_NAME url_runtime)
 chibi_sdk_headers(chibi_url_runtime PUBLIC runtime/url.h runtime/url_definition.h)
 target_link_libraries(chibi_url_runtime PUBLIC chibi_native_capabilities PRIVATE chibi_support)
-add_library(chibi_rhythm_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/rhythm.c"
-    "${CHIBI_SDK_ROOT}/src/runtime/rhythm_definition.c")
-add_library(Chibi::rhythm_runtime ALIAS chibi_rhythm_runtime)
-set_target_properties(chibi_rhythm_runtime PROPERTIES EXPORT_NAME rhythm_runtime)
-chibi_sdk_headers(chibi_rhythm_runtime PUBLIC runtime/rhythm.h runtime/rhythm_definition.h)
-target_link_libraries(chibi_rhythm_runtime PUBLIC chibi_native_types chibi_native_capabilities
-    PRIVATE chibi_execution)
 add_library(chibi_particle_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/particles.c"
     "${CHIBI_SDK_ROOT}/src/runtime/particles_native.c"
     "${CHIBI_SDK_ROOT}/src/runtime/particles_definition.c")
@@ -157,18 +150,8 @@ target_link_libraries(chibi_input_runtime PUBLIC chibi_input_action chibi_native
     chibi_spatial_runtime)
 target_include_directories(chibi_save_runtime PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
 list(APPEND CHIBI_SDK_TARGETS chibi_native_types chibi_entity_runtime chibi_audio_runtime chibi_url_runtime
-    chibi_rhythm_runtime chibi_particle_runtime chibi_save_runtime chibi_ui_runtime chibi_input_runtime)
+    chibi_particle_runtime chibi_save_runtime chibi_ui_runtime chibi_input_runtime)
 
-add_library(chibi_visual_motion_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/visual_motion.c"
-    "${CHIBI_SDK_ROOT}/src/runtime/visual_motion_native.c"
-    "${CHIBI_SDK_ROOT}/src/runtime/visual_motion_definition.c")
-add_library(Chibi::visual_motion_runtime ALIAS chibi_visual_motion_runtime)
-set_target_properties(chibi_visual_motion_runtime PROPERTIES EXPORT_NAME visual_motion_runtime)
-chibi_sdk_headers(chibi_visual_motion_runtime PUBLIC runtime/visual_motion.h
-    runtime/visual_motion_native.h runtime/visual_motion_definition.h)
-target_link_libraries(chibi_visual_motion_runtime PUBLIC chibi_ecs chibi_native_capabilities
-    PRIVATE chibi_native_types)
-list(APPEND CHIBI_SDK_TARGETS chibi_visual_motion_runtime)
 include(materials.cmake)
 include(physics.cmake)
 include(engine.cmake)
@@ -181,7 +164,7 @@ target_link_libraries(chibi_host_native_default PUBLIC chibi_host_native_catalog
     chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities chibi_state_capabilities
     chibi_selection_capabilities chibi_set_capabilities chibi_comparison_capabilities
     chibi_conversion_capabilities chibi_text_capabilities chibi_native_bindings chibi_entity_runtime
-    chibi_audio_runtime chibi_url_runtime chibi_rhythm_runtime chibi_vector_capabilities chibi_math_capabilities
+    chibi_audio_runtime chibi_url_runtime chibi_vector_capabilities chibi_math_capabilities
     chibi_arithmetic_capabilities chibi_particle_runtime chibi_save_runtime chibi_ui_runtime
-    chibi_visual_motion_runtime chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime chibi_visibility_runtime chibi_input_runtime)
+    chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime chibi_visibility_runtime chibi_input_runtime)
 list(APPEND CHIBI_SDK_TARGETS chibi_host_native_default)

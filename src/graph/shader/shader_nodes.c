@@ -287,8 +287,6 @@ NODE(part_position, "PartPosition", 0, NULL, vector3_out, "Returns position in t
 NODE(normal, "Normal", 0, NULL, vector3_out, "Returns the world-space surface normal; +Y for 2D shapes.");
 NODE(view_direction, "ViewDirection", 0, NULL, vector3_out, "Returns the unit direction from the surface toward the camera; +Y for 2D shapes.");
 NODE(time_node, "Time", 0, NULL, scalar_out, "Returns simulation time in seconds.");
-NODE(beat_phase, "Beat Phase", 0, NULL, scalar_out, "Returns progress through the current beat of the scene's rhythm clock, from 0 to 1.");
-NODE(beat_pulse, "Beat Pulse", 0, NULL, scalar_out, "Returns 1 on each beat of the scene's rhythm clock, easing to 0 over its pulse width.");
 NODE(add, "Add", 2, binary, any_out, "Adds A and B per component; a scalar applies to every component of a vector.");
 NODE(subtract, "Subtract", 2, binary, any_out, "Subtracts B from A per component; a scalar applies to every component of a vector.");
 NODE(multiply, "Multiply", 2, binary, any_out, "Multiplies A by B per component; a scalar scales every component of a vector.");
@@ -489,8 +487,6 @@ static node_desc *const nodes[] = { &constant,
                                     &w_node,
                                     &world_position,
                                     &surface_influence,
-                                    &beat_phase,
-                                    &beat_pulse,
                                     &surface_output,
                                     &shape_output,
                                     &vector3,

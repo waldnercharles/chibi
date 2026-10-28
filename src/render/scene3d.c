@@ -23,7 +23,6 @@
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/particle_emitters.h"
-#include "runtime/rhythm.h"
 #include "runtime/task_pool.h"
 #include "runtime/transform_propagation.h"
 #include "runtime/visual_parts.h"
@@ -114,7 +113,6 @@ struct render_scene3d
     CF_Mesh prism, sphere, octahedron, tetrahedron;
     CF_Mesh particle_quad;
     CF_Mesh polygons[4];
-    CF_V4 rhythm;
     /* Direction toward the sun, sun radiance, and hemisphere ambient radiance. */
     CF_V4 sun_direction, sun_color, ambient_sky, ambient_ground;
     bool sun_shadows;
@@ -1717,7 +1715,6 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
      * passes too, each seen from its light. */
     CF_V4 clock = { time, 0, 0, 0 };
     cf_draw3d_set_uniform("scene_time", &clock, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("scene_rhythm", &scene3d->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_sun_direction", &scene3d->sun_direction, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_sun_color", &scene3d->sun_color, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_ambient_sky", &scene3d->ambient_sky, CF_UNIFORM_TYPE_FLOAT4, 1);
@@ -2283,13 +2280,6 @@ bool render_scene3d_draw(
     aclear(scene3d->buffer.solids);
     render_scene3d_mesh_cache_prune(scene3d->meshes);
     render_scene3d_mesh_cache_dynamic_begin(scene3d->meshes);
-    /* Rhythm is an optional material input; without a valid clock it rests at zero. */
-    beat beat = { 0 };
-    rhythm_sample(world, time, &beat);
-    scene3d->rhythm = (CF_V4){ (float)beat.phase,
-                               (float)beat.pulse,
-                               (float)beat.period,
-                               (float)beat.duration };
     set_ambient(scene3d, environment);
     scene3d->fog_distance = environment->fog_distance;
     if (!render_scene3d_volume_prepare(
@@ -2419,7 +2409,6 @@ bool render_scene3d_preview_material(
     aclear(scene3d->buffer.casters);
     scene3d->light_count = 0;
     scene3d->shadowed_lights = 0;
-    scene3d->rhythm = (CF_V4){ .x = activity->beat_phase, .y = activity->beat_pulse };
     DirectionalLight sun = directional_light_defaults();
     sun.shadows = false;
     Environment environment = environment_defaults();

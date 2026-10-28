@@ -1,9 +1,0 @@
-version 1
-name "Rhythm"
-(array)entities {
-    - {
-        name "Conductor"
-        prototype "Conductor"
-        (array)behaviors "BeatProbe"
-    }
-}

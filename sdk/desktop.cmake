@@ -86,7 +86,7 @@ target_include_directories(chibi_renderer PRIVATE "${render_private}")
 target_link_libraries(chibi_renderer PUBLIC chibi_platform chibi_ui_host chibi_engine chibi_player
     chibi_shader_runtime chibi_model_runtime chibi_mesh_runtime chibi_native_types chibi_spatial_runtime chibi_native_capabilities chibi_particle_runtime chibi_material_runtime
     chibi_ui_runtime chibi_save_runtime chibi_ui_document_values chibi_ui_documents chibi_visual_catalog
-    PRIVATE chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_rhythm_runtime chibi_tilemap_runtime)
+    PRIVATE chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_tilemap_runtime)
 if(APPLE)
     target_sources(chibi_renderer PRIVATE "${CHIBI_SDK_ROOT}/src/render/gpu_clock.m")
     target_link_libraries(chibi_renderer PRIVATE "-framework Metal" "-framework Foundation")

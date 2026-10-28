@@ -455,7 +455,7 @@ behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, co
 Studio capabilities, the prepared native catalog, model baking and the scene
 and prototype documents), and `chibi_native_types` and `chibi_native_bindings`,
 whose sources `reflect` writes, with the libraries over them (the spatial,
-entity, rhythm, particle, input and visual motion runtimes, declared
+entity, particle and input runtimes, declared
 components, the visual catalog, scene authoring and the scenario document),
 and, over the archive's prebuilt tree-sitter runtime, CSS and HTML grammars,
 Box2D and Box3D, the language and project syntax documents and UI authoring,

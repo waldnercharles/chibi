@@ -1,0 +1,19 @@
+-- The C compiler identification is Clang 22.1.8
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /opt/homebrew/opt/llvm@22/bin/clang - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Configuring done (1.3s)
+-- Generating done (0.2s)
+CMake Warning (unused-cli):
+  Manually-specified variables were not used by the project:
+
+    CHIBI_ENABLE_CCACHE
+    CMAKE_CXX_COMPILER
+
+
+-- Build files have been written to: /Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi/.chibi/baseline-tools

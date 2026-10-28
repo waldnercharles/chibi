@@ -1,0 +1,72 @@
+[
+  {
+    "check": "native-final",
+    "summaries": 72,
+    "passed": 648,
+    "failed": 0,
+    "total": 648,
+    "suites": 0,
+    "assertions": 235200,
+    "command_wall_seconds": 4.805
+  },
+  {
+    "check": "materials",
+    "summaries": 7,
+    "passed": 104,
+    "failed": 0,
+    "total": 104,
+    "suites": 0,
+    "assertions": 247602,
+    "command_wall_seconds": 8.607
+  },
+  {
+    "check": "projects",
+    "summaries": 15,
+    "passed": 109,
+    "failed": 0,
+    "total": 109,
+    "suites": 0,
+    "assertions": 11965,
+    "command_wall_seconds": 124.246
+  },
+  {
+    "check": "language-all",
+    "summaries": 49,
+    "passed": 922,
+    "failed": 0,
+    "total": 922,
+    "suites": 1,
+    "assertions": 477658,
+    "command_wall_seconds": 777.6
+  },
+  {
+    "check": "tools",
+    "summaries": 1,
+    "passed": 217,
+    "failed": 3,
+    "total": 220,
+    "suites": 0,
+    "assertions": 30708,
+    "command_wall_seconds": 589.076
+  },
+  {
+    "check": "test-runner-retry",
+    "summaries": 1,
+    "passed": 63,
+    "failed": 0,
+    "total": 63,
+    "suites": 0,
+    "assertions": 856,
+    "command_wall_seconds": 97.869
+  },
+  {
+    "check": "feature-coverage-final",
+    "summaries": 1,
+    "passed": 2,
+    "failed": 0,
+    "total": 2,
+    "suites": 0,
+    "assertions": 8,
+    "command_wall_seconds": 9.316
+  }
+]

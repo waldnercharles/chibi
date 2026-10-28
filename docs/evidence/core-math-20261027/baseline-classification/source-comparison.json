@@ -1,0 +1,74 @@
+[
+  {
+    "path": "AGENTS.md",
+    "sha256": "22784b9e9ed9eb8f37264b2761009a28748dfba378592d67189449fc0f08051f",
+    "candidate_sha256": "22784b9e9ed9eb8f37264b2761009a28748dfba378592d67189449fc0f08051f",
+    "same_as_candidate": true
+  },
+  {
+    "path": "test/tools/CMakeLists.txt",
+    "sha256": "4a67047adf5885c715458c032a2083b0323dbd61222e915ec8018a5443298a1b",
+    "candidate_sha256": "4a67047adf5885c715458c032a2083b0323dbd61222e915ec8018a5443298a1b",
+    "same_as_candidate": true
+  },
+  {
+    "path": "test/tools/c_export.c",
+    "sha256": "944883433a4a073a2b54e67e07f0027ddf1fd45ea0a321fa0bc7b6a48f3e7a78",
+    "candidate_sha256": "944883433a4a073a2b54e67e07f0027ddf1fd45ea0a321fa0bc7b6a48f3e7a78",
+    "same_as_candidate": true
+  },
+  {
+    "path": "test/tools/fixture.c",
+    "sha256": "231509c0cc33f8ffde82035488ece8bcc85a1fde8049bfd016be603e5a0908a2",
+    "candidate_sha256": "231509c0cc33f8ffde82035488ece8bcc85a1fde8049bfd016be603e5a0908a2",
+    "same_as_candidate": true
+  },
+  {
+    "path": "test/tools/fixture.h",
+    "sha256": "52221281893f442ce45636667e62cad42ea726e76b2d92e31886e239aa6367b6",
+    "candidate_sha256": "52221281893f442ce45636667e62cad42ea726e76b2d92e31886e239aa6367b6",
+    "same_as_candidate": true
+  },
+  {
+    "path": "test/tools/export_compiler.h.in",
+    "sha256": "56bca2fcc560915223b3f881d30de9ebde08787d4ca977413e40afb1437deee4",
+    "candidate_sha256": "56bca2fcc560915223b3f881d30de9ebde08787d4ca977413e40afb1437deee4",
+    "same_as_candidate": true
+  },
+  {
+    "path": "src/execution/c.c",
+    "sha256": "528d78129fb2d2950bc849a1ad30802a4bc2bcdccf6c82babe84da12fe2075ae",
+    "candidate_sha256": "528d78129fb2d2950bc849a1ad30802a4bc2bcdccf6c82babe84da12fe2075ae",
+    "same_as_candidate": true
+  },
+  {
+    "path": "src/execution/function.h",
+    "sha256": "ab60c8dce60b2e6732685c9b0db602d511b4005c32cef3278d3b1266d925b412",
+    "candidate_sha256": "ab60c8dce60b2e6732685c9b0db602d511b4005c32cef3278d3b1266d925b412",
+    "same_as_candidate": true
+  },
+  {
+    "path": "src/execution/function.c",
+    "sha256": "485519827c43ff88dae1d7b6bb0cbc301217523e547855cc3d8107dfb527212d",
+    "candidate_sha256": "485519827c43ff88dae1d7b6bb0cbc301217523e547855cc3d8107dfb527212d",
+    "same_as_candidate": true
+  },
+  {
+    "path": "src/execution/source_debug.c",
+    "sha256": "2cac5ae1c3048d290f71ac478e22718d40995b85ab6519fdcf22356edc9d1a24",
+    "candidate_sha256": "2cac5ae1c3048d290f71ac478e22718d40995b85ab6519fdcf22356edc9d1a24",
+    "same_as_candidate": true
+  },
+  {
+    "path": "src/execution/host.c",
+    "sha256": "2c4419e4f99c0a3fb79c88c0ded010a95248662319327d98b67f3a3f1f44151f",
+    "candidate_sha256": "2c4419e4f99c0a3fb79c88c0ded010a95248662319327d98b67f3a3f1f44151f",
+    "same_as_candidate": true
+  },
+  {
+    "path": "sdk/CMakeLists.txt",
+    "sha256": "4391a91bb4efa18a49168d675b3c9810f64ad4d5d57622fd172be7352162654c",
+    "candidate_sha256": "1fc7ab7d312204b232518f4a2466589f51a0a2de5193709a0626adeacf79d010",
+    "same_as_candidate": false
+  }
+]

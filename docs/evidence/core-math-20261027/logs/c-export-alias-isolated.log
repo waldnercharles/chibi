@@ -1,0 +1,22 @@
+Undefined symbols for architecture arm64:
+  "_behavior_function_host_arguments", referenced from:
+      _export_pause in aliases-c07205.o
+      _export_pause in aliases-c07205.o
+      _export_pause in aliases-c07205.o
+      _export_pause in aliases-c07205.o
+      _export_borrow in aliases-c07205.o
+      _export_borrow in aliases-c07205.o
+      _export_borrow_call in aliases-c07205.o
+      ...
+ld: symbol(s) not found for architecture arm64
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+(FAILED: test/tools/c_export.c (1714): compiled == 0)
+(FAILED: test/tools/c_export.c (1746): compile_export(128 * 1024))
+Running: generated_c_preserves_aliased_operands_and_debug_continuations
+Running: generated_c_shifts_every_bit_out_past_the_width (OK) (0.004012 secs)
+===============================================================
+Summary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 755
+Test command wall time: 1.683s; includes in-test fixture setup; external configuration/build excluded.
+real 1.82
+user 0.56
+sys 0.31

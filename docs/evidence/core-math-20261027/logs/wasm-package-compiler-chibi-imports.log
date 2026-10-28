@@ -1,0 +1,15 @@
+FLOAT_REJECTION stage1 implicit-narrow-declaration 2:38 local value differs from its type
+FLOAT_REJECTION stage1 implicit-narrow-assignment 2:60 assigned value differs from its local
+FLOAT_REJECTION stage1 implicit-narrow-return 2:38 returned value differs from the result type
+FLOAT_REJECTION stage1 implicit-narrow-argument 3:45 argument differs from its parameter type
+FLOAT_REJECTION stage1 body-contextual-conversion-overflow 2:56 Numeric literal is outside the range of number
+Running: package_compiler_builds_runnable_importing_packages (OK) (18.979440 secs)
+FLOAT_REJECTION stage1 implicit-narrow-typed-constant 3:18 a constant of another type needs a conversion
+FLOAT_REJECTION stage1 implicit-narrow-typed-constant-return 3:38 returned value differs from the result type
+FLOAT_REJECTION stage1 constant-contextual-conversion-overflow 2:24 Numeric literal is outside the range of number
+FLOAT_REJECTION stage1 constant-contextual-parenthesized-overflow 2:25 Numeric literal is outside the range of number
+FLOAT_REJECTION stage1 constant-contextual-signed-overflow 2:26 Numeric literal is outside the range of number
+Running: package_compiler_float_constant_dependency (OK) (36.483858 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 17109
+Test command wall time: 56.490s; includes in-test fixture setup; external configuration/build excluded.

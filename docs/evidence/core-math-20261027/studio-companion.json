@@ -1,0 +1,47 @@
+{
+  "repository": "waldnercharles/chibi-studio",
+  "base": "9afa743996a72efb491ca169e0928eb3e56429fe",
+  "branch": "codex/core-math-consumer-20261027",
+  "status": "uncommitted companion; must land before engine retirement",
+  "client_date_context": "2026-10-27 America/Denver",
+  "exact_execution_timestamp": null,
+  "provenance": "Independent agent tool transcript. Disposable APFS clone and temporary migration log deleted after checks.",
+  "inputs": {
+    "projects/studio/content/behaviors/OutlinerRows.chibi": "a31f97cd0a41ad8e406b2272abee44098d621a4e80b3043b0a5f8ff6b975709e",
+    "EXTRACTION.json": "e4823d3606030ea6b5fde5cc648aa2a1509d0bf0ca39eb9448e15098dabc7c19"
+  },
+  "executable": "/Users/cwaldner/Personal/chibi/.worktrees/core-math-recovery/chibi/.chibi/math/full/bin/chibi_ctl",
+  "checks": [
+    {
+      "arguments": [
+        "--project-root",
+        "<disposable-clone>",
+        "--migrate"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 4.618,
+      "output": "Upgraded 10 version steps to version 38"
+    },
+    {
+      "arguments": [
+        "--project-root",
+        "<disposable-clone>",
+        "--format"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.27,
+      "output": "Formatted VirtualList.chibi and OutlinerRowPolicies.chibi only; OutlinerRows.chibi already canonical"
+    },
+    {
+      "arguments": [
+        "--project-root",
+        "<disposable-clone>",
+        "--format",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.577,
+      "output": ""
+    }
+  ]
+}

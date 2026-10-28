@@ -1,0 +1,110 @@
+[
+  {
+    "head": "525f2be83b0702c9120f4ecc5fd8aa1b9b6a2007",
+    "command": [
+      "python3",
+      "tools/test_policy.py",
+      "tool",
+      "language-package-math"
+    ],
+    "environment": {
+      "CHIBI_LANGUAGE_BUILD_DIR": ".chibi/math/language"
+    },
+    "passed": 6,
+    "failed": 0,
+    "assertions": 4132,
+    "command_wall_seconds": 1.441,
+    "log": ".chibi/math/strings-integrated-native-math.log",
+    "log_sha256": "d5a1bb303acd06c237beabe5709fec649f65cd14c2fc82fac7918370e1548a07"
+  },
+  {
+    "head": "525f2be83b0702c9120f4ecc5fd8aa1b9b6a2007",
+    "command": [
+      "python3",
+      "tools/test_policy.py",
+      "tool",
+      "language-package-core"
+    ],
+    "environment": {
+      "CHIBI_LANGUAGE_BUILD_DIR": ".chibi/math/language"
+    },
+    "passed": 6,
+    "failed": 0,
+    "assertions": 14750,
+    "command_wall_seconds": 19.062,
+    "log": ".chibi/math/strings-integrated-native-core.log",
+    "log_sha256": "1ffd8bd0c2047997dcc62fbb95b2de5fd386b75519b81a13a355d9a492bab182"
+  },
+  {
+    "head": "525f2be83b0702c9120f4ecc5fd8aa1b9b6a2007",
+    "command": [
+      "python3",
+      "tools/test_policy.py",
+      "tool",
+      "language-docs-markdown"
+    ],
+    "environment": {
+      "CHIBI_LANGUAGE_BUILD_DIR": ".chibi/math/language"
+    },
+    "passed": 14,
+    "failed": 0,
+    "assertions": 1778,
+    "command_wall_seconds": 2.176,
+    "log": ".chibi/math/strings-integrated-native-docs.log",
+    "log_sha256": "b8283cbb843530afd584dec4bd3a3cad28cbdc56009d73396e6045d9bfca2de3"
+  },
+  {
+    "head": "525f2be83b0702c9120f4ecc5fd8aa1b9b6a2007",
+    "command": [
+      "python3",
+      "tools/test_policy.py",
+      "tool",
+      "language-package-compiler-chibi-imports"
+    ],
+    "environment": {
+      "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": ".chibi/math/language"
+    },
+    "passed": 2,
+    "failed": 0,
+    "assertions": 17109,
+    "command_wall_seconds": 19.506,
+    "log": ".chibi/math/strings-integrated-compiler-imports.log",
+    "log_sha256": "7e5646963ffe6b48f9c27eae2f5cba6508a46462cc8bbd281008ceaea4643532"
+  },
+  {
+    "head": "525f2be83b0702c9120f4ecc5fd8aa1b9b6a2007",
+    "command": [
+      "python3",
+      "tools/test_policy.py",
+      "tool",
+      "language-package-compiler-chibi-imports-compiled"
+    ],
+    "environment": {
+      "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": ".chibi/math/language"
+    },
+    "passed": 2,
+    "failed": 0,
+    "assertions": 16740,
+    "command_wall_seconds": 15.098,
+    "log": ".chibi/math/strings-integrated-compiler-imports-compiled.log",
+    "log_sha256": "961aea11ebf4eb8f1d816a1828cc566aee49230cbc5768490d26e8791a8f44e8"
+  },
+  {
+    "head": "525f2be83b0702c9120f4ecc5fd8aa1b9b6a2007",
+    "command": [
+      "python3",
+      "tools/test_policy.py",
+      "tool",
+      "language-package-math"
+    ],
+    "environment": {
+      "CHIBI_LANGUAGE_BUILD_DIR": ".chibi/math/installed-tests"
+    },
+    "passed": 6,
+    "failed": 0,
+    "assertions": 4132,
+    "command_wall_seconds": 1.631,
+    "log": ".chibi/math/strings-integrated-installed-math.log",
+    "log_sha256": "aac3b3f38cc93f84017bcab7e9fd191b0fbdcce84cc5e5222fd448b0bf059cce"
+  }
+]

@@ -1,0 +1,17 @@
+Running: docs_markdown_renders_blocks (OK) (0.210827 secs)
+Running: docs_markdown_highlights_chibi_fences (OK) (0.155668 secs)
+Running: docs_markdown_recovers_incomplete_fences (OK) (0.139185 secs)
+Running: docs_markdown_leaves_other_fences_plain (OK) (0.126411 secs)
+Running: docs_markdown_lists_contents (OK) (0.140825 secs)
+Running: docs_markdown_renders_tables (OK) (0.124531 secs)
+Running: docs_markdown_maps_links_to_pages (OK) (0.128518 secs)
+Running: docs_markdown_reports_unpublished_links (OK) (0.128784 secs)
+Running: docs_site_lays_out_navigation (OK) (0.122400 secs)
+Running: docs_site_follows_color_scheme (OK) (0.121919 secs)
+Running: docs_site_keeps_navigation_in_reach (OK) (0.121564 secs)
+Running: docs_reference_lists_declarations (OK) (0.149192 secs)
+Running: docs_grammar_lists_rules (OK) (0.126150 secs)
+Running: docs_generated_pages_report_unpublished_links (OK) (0.134633 secs)
+===============================================================
+Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 1778
+Test command wall time: 2.113s; includes in-test fixture setup; external configuration/build excluded.

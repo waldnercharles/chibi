@@ -1,0 +1,56 @@
+{
+  "base": "7f35662ac53a3d6635eaac7b95af3f0cafbdc586",
+  "tree": "32087cd2ba7ba18316f1e51f313ef4412cd2f439",
+  "status_before": "",
+  "sources": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "22784b9e9ed9eb8f37264b2761009a28748dfba378592d67189449fc0f08051f"
+    },
+    {
+      "path": "test/tools/CMakeLists.txt",
+      "sha256": "4a67047adf5885c715458c032a2083b0323dbd61222e915ec8018a5443298a1b"
+    },
+    {
+      "path": "test/tools/c_export.c",
+      "sha256": "944883433a4a073a2b54e67e07f0027ddf1fd45ea0a321fa0bc7b6a48f3e7a78"
+    },
+    {
+      "path": "test/tools/fixture.c",
+      "sha256": "231509c0cc33f8ffde82035488ece8bcc85a1fde8049bfd016be603e5a0908a2"
+    },
+    {
+      "path": "test/tools/fixture.h",
+      "sha256": "52221281893f442ce45636667e62cad42ea726e76b2d92e31886e239aa6367b6"
+    },
+    {
+      "path": "test/tools/export_compiler.h.in",
+      "sha256": "56bca2fcc560915223b3f881d30de9ebde08787d4ca977413e40afb1437deee4"
+    },
+    {
+      "path": "src/execution/c.c",
+      "sha256": "528d78129fb2d2950bc849a1ad30802a4bc2bcdccf6c82babe84da12fe2075ae"
+    },
+    {
+      "path": "src/execution/function.h",
+      "sha256": "ab60c8dce60b2e6732685c9b0db602d511b4005c32cef3278d3b1266d925b412"
+    },
+    {
+      "path": "src/execution/function.c",
+      "sha256": "485519827c43ff88dae1d7b6bb0cbc301217523e547855cc3d8107dfb527212d"
+    },
+    {
+      "path": "src/execution/source_debug.c",
+      "sha256": "2cac5ae1c3048d290f71ac478e22718d40995b85ab6519fdcf22356edc9d1a24"
+    },
+    {
+      "path": "src/execution/host.c",
+      "sha256": "2c4419e4f99c0a3fb79c88c0ded010a95248662319327d98b67f3a3f1f44151f"
+    },
+    {
+      "path": "sdk/CMakeLists.txt",
+      "sha256": "4391a91bb4efa18a49168d675b3c9810f64ad4d5d57622fd172be7352162654c"
+    }
+  ],
+  "compiler_version": "Homebrew clang version 22.1.8\nTarget: arm64-apple-darwin25.6.0\nThread model: posix\nInstalledDir: /opt/homebrew/Cellar/llvm@22/22.1.8/bin\nConfiguration file: /opt/homebrew/Cellar/llvm@22/22.1.8/etc/clang/arm64-apple-darwin25.cfg\n"
+}

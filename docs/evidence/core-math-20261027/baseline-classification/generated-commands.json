@@ -1,0 +1,52 @@
+[
+  {
+    "cwd": "/tmp/chibi-c-export-2hRMUe",
+    "reconstructed_from": "7f35662ac53a3d6635eaac7b95af3f0cafbdc586:test/tools/c_export.c:1681-1714 and generated export_compiler.h",
+    "argv": [
+      "/opt/homebrew/opt/llvm@22/bin/clang",
+      "-O3",
+      "-DNDEBUG",
+      "-UNDEBUG",
+      "-std=c11",
+      "-Werror",
+      "-shared",
+      "-fPIC",
+      "-I",
+      "/Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi/src",
+      "/tmp/chibi-c-export-2hRMUe/aliases.c",
+      "/Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi/src/execution/source_debug.c",
+      "-o",
+      "/tmp/chibi-c-export-2hRMUe/aliases.so"
+    ],
+    "source": {
+      "retained": "generated/chibi-c-export-2hRMUe/aliases.c",
+      "bytes": 115208,
+      "sha256": "f43d84dd5242f7f8222eed5e4480a70937e77485425ffe44a2f42b701ef55d4f"
+    }
+  },
+  {
+    "cwd": "/tmp/chibi-c-export-f2XUHM",
+    "reconstructed_from": "7f35662ac53a3d6635eaac7b95af3f0cafbdc586:test/tools/c_export.c:1681-1714 and generated export_compiler.h",
+    "argv": [
+      "/opt/homebrew/opt/llvm@22/bin/clang",
+      "-O3",
+      "-DNDEBUG",
+      "-UNDEBUG",
+      "-std=c11",
+      "-Werror",
+      "-shared",
+      "-fPIC",
+      "-I",
+      "/Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi/src",
+      "/tmp/chibi-c-export-f2XUHM/aliases.c",
+      "/Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi/src/execution/source_debug.c",
+      "-o",
+      "/tmp/chibi-c-export-f2XUHM/aliases.so"
+    ],
+    "source": {
+      "retained": "generated/chibi-c-export-f2XUHM/aliases.c",
+      "bytes": 16574,
+      "sha256": "0bbdc3b727e53c917bc1465269a99ba87eb673281c69f0adfecd01b2f3144719"
+    }
+  }
+]

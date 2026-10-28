@@ -1,0 +1,30 @@
+Running: test_catalog_coverage Feature coverage: 54 of 78 components used
+Feature coverage: 72 of 79 functions used
+Feature coverage: 7 of 7 events used
+(OK) (0.033426 secs)
+Running: test_scenes_run Scene Audio: ran
+Scene Entities: ran
+Scene Flow: ran
+Scene Input: ran
+Scene Materials: ran
+Scene MovingPlatforms3D: ran
+Scene NativeRainField: ran
+Scene OrthographicSurfaces: ran
+Scene Particles: ran
+Scene Physics2D: ran
+Scene Physics3D: ran
+Scene PlanarSurfaces: ran
+Scene Relationships: ran
+Scene Reload: ran
+Scene Rendering3D: ran
+Scene RenderingVisibility: ran
+Scene Save: ran
+Scene Tilemap: ran
+Scene Ui: ran
+(OK) (0.052908 secs)
+===============================================================
+Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 8
+Test command wall time: 7.139s; includes in-test fixture setup; external configuration/build excluded.
+real 7.22
+user 3.02
+sys 2.09

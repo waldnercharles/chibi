@@ -1,0 +1,13 @@
+{
+  "command": [
+    "git",
+    "worktree",
+    "remove",
+    "/Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 0.6694953748956323,
+  "stdout": "",
+  "stderr": "",
+  "checkout_exists": false
+}

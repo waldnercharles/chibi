@@ -1,0 +1,38 @@
+{
+  "base": "7f35662ac53a3d6635eaac7b95af3f0cafbdc586",
+  "command": [
+    "python3",
+    "tools/test_policy.py",
+    "tool",
+    "c-export-alias"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi",
+  "environment": {
+    "CHIBI_TOOLS_BUILD_DIR": ".chibi/baseline-tools"
+  },
+  "exit_code": 1,
+  "wall_seconds": 2.2942020839545876,
+  "status_after": "",
+  "captured": {
+    "/tmp/chibi-c-export-2hRMUe/aliases.c": {
+      "retained": "generated/chibi-c-export-2hRMUe/aliases.c",
+      "bytes": 115208,
+      "sha256": "f43d84dd5242f7f8222eed5e4480a70937e77485425ffe44a2f42b701ef55d4f"
+    },
+    "/tmp/chibi-c-export-2hRMUe/compiler.log": {
+      "retained": "generated/chibi-c-export-2hRMUe/compiler.log",
+      "bytes": 523,
+      "sha256": "0dc7837c67b402254ec1cb501e97b05fd1e02071b28c68fd7669875e2aae5159"
+    },
+    "/tmp/chibi-c-export-f2XUHM/aliases.c": {
+      "retained": "generated/chibi-c-export-f2XUHM/aliases.c",
+      "bytes": 16574,
+      "sha256": "0bbdc3b727e53c917bc1465269a99ba87eb673281c69f0adfecd01b2f3144719"
+    },
+    "/tmp/chibi-c-export-f2XUHM/compiler.log": {
+      "retained": "generated/chibi-c-export-f2XUHM/compiler.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

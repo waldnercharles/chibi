@@ -1,0 +1,31 @@
+{
+  "manifest_sha256": "34bb9848601fa0bd1a91a8ba402addd2fb7367d68a387b2d86cb0d7a5e6e3c97",
+  "artifact_sha256": "f145ba07fb96e21465e22aca478e25fd277c8596cf7ba1463214781a7821baa1",
+  "resource_sha256": "8cd0cf062e8bcc6aac153e22bd2d37a593df7c243dfaf7f1950eb72909b91d66",
+  "sources": [
+    {
+      "path": "packages/core/math/Math.chibi",
+      "sha256": "afe0c72e8e10906688665b192a690905425988b200cb81ae4bd195a95ad1e249"
+    },
+    {
+      "path": "packages/core/math/MathTests.chibi",
+      "sha256": "1c9f59feda2c92a4de28c809a767e7930737937482c80a90a823fb396647b2f7"
+    },
+    {
+      "path": "packages/core/math/Spring.chibi",
+      "sha256": "daf53c43e1a6a88ad42c1a0845d579472bd11503fbe2444fa233d7f7a3f20531"
+    },
+    {
+      "path": "packages/core/math/SpringTests.chibi",
+      "sha256": "a0b2a976dbdd7162de61764518b6a3d5df47291dfa558d636927965ff2ac4872"
+    },
+    {
+      "path": "packages/core/math/ease/Ease.chibi",
+      "sha256": "7a79ea4d808bb49289e99cb59f7196c0b0469210b576bfd44620a2c700112680"
+    },
+    {
+      "path": "packages/core/math/ease/EaseTests.chibi",
+      "sha256": "f2eb762274fa0303a52f86d968d80feee5b95eba2dc67507adc7022d870cec68"
+    }
+  ]
+}

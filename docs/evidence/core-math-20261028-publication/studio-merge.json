@@ -1,0 +1,15 @@
+{
+  "pr": "https://github.com/waldnercharles/chibi-studio/pull/104",
+  "head": "835849551d4690d2ba824071224b23cd7e4944b3",
+  "base": "8ed3ac5cb60a82d140ba4c0eeca9062587a3b1dc",
+  "merge": "be7709fd737cb82bae10fdd553772daba0bc749e",
+  "reviewed_diff_sha256": "3fe437473bc5dbd254eae92fe9ec347149f22009a64c33ddfd20fa511a2d4ed6",
+  "independent_local_review": "no actionable findings",
+  "github_codex_review": "completed without findings at head",
+  "checks": {
+    "version": "success",
+    "editor": "success",
+    "Build and startup against selected engine": "success",
+    "deploy": "skipped"
+  }
+}

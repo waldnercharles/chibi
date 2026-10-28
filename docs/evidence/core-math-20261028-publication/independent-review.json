@@ -1,0 +1,9 @@
+{
+  "head": "525f2be83b0702c9120f4ecc5fd8aa1b9b6a2007",
+  "base": "b54ad3e5c6b475290d73781cac95402e172eda27",
+  "diff_sha256": "6ca81424132f922be2373debbfef988cb48020b4bf6c7cfe7d45bcc37fbdcd55",
+  "scope": "24-file held math feature diff",
+  "verdict": "no actionable findings",
+  "checks": "numerical regimes/domains; native widths/defaults; harness ownership; SDK paths; unique dispatcher registration; stale retired references",
+  "runtime_tests_by_reviewer": false
+}

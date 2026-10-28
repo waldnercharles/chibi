@@ -1,0 +1,30 @@
+{
+  "classification": "pre-existing baseline failure reproduced",
+  "baseline": "7f35662ac53a3d6635eaac7b95af3f0cafbdc586",
+  "baseline_tree": "32087cd2ba7ba18316f1e51f313ef4412cd2f439",
+  "baseline_source_clean": true,
+  "same_undefined_symbol": true,
+  "same_summary": true,
+  "unchanged_relevant_inputs": [
+    "AGENTS.md",
+    "test/tools/CMakeLists.txt",
+    "test/tools/c_export.c",
+    "test/tools/fixture.c",
+    "test/tools/fixture.h",
+    "test/tools/export_compiler.h.in",
+    "src/execution/c.c",
+    "src/execution/function.h",
+    "src/execution/function.c",
+    "src/execution/source_debug.c",
+    "src/execution/host.c"
+  ],
+  "test_wall_seconds": 2.2942020839545876,
+  "generated_failing_source_bytes": 115208,
+  "cause_evidence": {
+    "generated_reference": "src/execution/c.c:608 emits behavior_function_host_arguments",
+    "declaration": "src/execution/function.h:445",
+    "implementation": "src/execution/host.c:256",
+    "fixture_link_inputs": "test/tools/c_export.c compiles generated aliases.c plus source_debug.c, without the host.c definition"
+  },
+  "scope": "No candidate source changes, no unrelated failure fix, no commit."
+}

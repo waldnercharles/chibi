@@ -1,0 +1,42 @@
+[
+  {
+    "phase": "configure",
+    "command": [
+      "cmake",
+      "-S",
+      "test/tools",
+      "-B",
+      ".chibi/baseline-tools",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCHIBI_SDK_BUILD_COMPILER=ON",
+      "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+      "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+      "-DCHIBI_ENABLE_SANITIZERS=OFF",
+      "-DCHIBI_ENABLE_CCACHE=ON",
+      "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+      "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++"
+    ],
+    "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi",
+    "exit_code": 0,
+    "wall_seconds": 1.5761837910395116,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/core-math-recovery/chibi/.chibi/math/baseline-classification/configure.log"
+  },
+  {
+    "phase": "build",
+    "command": [
+      "cmake",
+      "--build",
+      ".chibi/baseline-tools",
+      "--target",
+      "test_tools",
+      "--parallel",
+      "4"
+    ],
+    "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/core-math-baseline/chibi",
+    "exit_code": 0,
+    "wall_seconds": 17.33837329200469,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/core-math-recovery/chibi/.chibi/math/baseline-classification/build.log"
+  }
+]

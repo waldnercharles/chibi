@@ -1,0 +1,24 @@
+Running: package_imports_transitive_calls_execute_on_each_backend (OK) (0.017339 secs)
+Running: package_imports_reused_alias_spelling_remains_file_local (OK) (0.004280 secs)
+Running: package_imports_self_alias_resolves_sibling_function (OK) (0.001797 secs)
+Running: package_imports_do_not_leak_unqualified_names_package_names_or_blank_bindings (OK) (0.009846 secs)
+Running: package_imports_own_record_union_and_aggregate_constant_values (OK) (0.010748 secs)
+Running: package_imports_ids_and_results_survive_input_order_and_root_relocation (OK) (0.006137 secs)
+Running: package_imports_incremental_reuse_follows_all_edges_and_retains_old_valid_generation (OK) (0.011038 secs)
+Running: package_imports_cached_closure_tracks_sibling_membership_and_paths (OK) (0.010156 secs)
+Running: package_imports_keep_templates_package_local (OK) (0.003606 secs)
+Running: package_imports_see_only_pub_declarations (OK) (0.018052 secs)
+Running: package_imports_exported_defaults_are_constant_values_without_host_execution (OK) (0.004691 secs)
+Running: package_import_catalog_snapshot_owns_union_payload_defaults (OK) (0.000642 secs)
+Running: package_exports_keep_private_managed_pointee_metadata (OK) (0.000408 secs)
+Running: package_imports_malformed_public_exports_are_rejected_before_lookup (OK) (0.000156 secs)
+Running: package_imports_ignore_unused_collection_bodies_but_check_every_project (OK) (0.001382 secs)
+Running: package_imports_check_direct_transitive_and_blank_collection_imports (OK) (0.000939 secs)
+Running: package_imports_collection_only_snapshot_checks_first_input_root (OK) (0.001575 secs)
+Running: package_imports_removing_collection_import_releases_only_new_dependency (OK) (0.003240 secs)
+===============================================================
+Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 1530
+Test command wall time: 2.972s; includes in-test fixture setup; external configuration/build excluded.
+real 3.09
+user 0.19
+sys 0.18

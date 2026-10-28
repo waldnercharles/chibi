@@ -1,0 +1,20 @@
+[
+  {
+    "path": "docs/evidence/core-math-20261027/baseline-classification/c-export-alias.log",
+    "original_sha256": "8294fd463cede596a7e66367ecbd50a57e9b26dfde6b4488e19e7c489faa2ea2",
+    "stored_sha256": "b8a6258050899e4d4ee640d0de718764007d75da99bab2105a874dd572cceb21",
+    "change": "remove trailing spaces and tabs only; original task log retained under .chibi/math"
+  },
+  {
+    "path": "docs/evidence/core-math-20261027/logs/c-export-alias-isolated.log",
+    "original_sha256": "03e452f2f7f92f2dbb6673fe1a491f0b3a5598ba21e142ae8298c639d794ad03",
+    "stored_sha256": "b70dc99862ae57e17208904eefc041113d3f9a6f968ada6c6f315c100fbe865c",
+    "change": "remove trailing spaces and tabs only; original task log retained under .chibi/math"
+  },
+  {
+    "path": "docs/evidence/core-math-20261027/logs/fmod-default-before.log",
+    "original_sha256": "dccd8a4cab965baaa042ad9a8345888e53a8cea24f4cf2566f9f951ce30c07af",
+    "stored_sha256": "4db18d3bc3351a47b1b747811dd0175707649b9360fbdfff881a2c6cb18d00eb",
+    "change": "remove trailing spaces and tabs only; original task log retained under .chibi/math"
+  }
+]

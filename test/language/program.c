@@ -3633,6 +3633,274 @@ TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates)
     }
     return true;
 }
+/* These calls use the real native arithmetic pack. A nominal char output
+ * must be checked before an assignment or a discarded result can escape. */
+static bool native_char_result(const char *expression, int scalar, bool fails, bool discard, bool integer, int expected)
+{
+    char statement[160], source[PROGRAM_SOURCE_CAPACITY];
+    snprintf(
+        statement,
+        sizeof statement,
+        discard   ? "unused := %s; code = letter;"
+        : integer ? "code = %s;"
+                  : "letter = %s; code = letter;",
+        expression
+    );
+    snprintf(
+        source,
+        sizeof source,
+        "NativeChars :: behavior { letter: char = char(%d); code: int = -1; "
+        "entered: int = 0; finished: int = 0; on Impulse :: (enabled: bool) { "
+        "entered = 1; %s finished = 1; } }",
+        scalar,
+        statement
+    );
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    bool passed = true;
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        int status = execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000);
+        bool same = int_state(instance, "entered", PIN_I32, 1);
+        if (fails) {
+            const execution_program_failure *failure = execution_program_error(program);
+            same &= status < 0 && failure && failure->kind == BEHAVIOR_FUNCTION_DATA &&
+                    !strcmp(failure->message, "Value does not fit in char") &&
+                    failure->start == (int)(strstr(source, expression) - source) &&
+                    int_state(instance, "letter", PIN_I32, scalar) &&
+                    int_state(instance, "code", PIN_I32, -1) &&
+                    int_state(instance, "finished", PIN_I32, 0);
+        } else {
+            same &= status == FLOW_OK &&
+                    int_state(instance, "code", PIN_I32, expected) &&
+                    int_state(instance, "letter", PIN_I32, integer ? scalar : expected) &&
+                    int_state(instance, "finished", PIN_I32, 1);
+        }
+        if (!same) {
+            const pin_value *letter = execution_instance_state(instance, state_id("letter"));
+            fprintf(
+                stderr,
+                "native char %s scalar %d backend %d: status %d letter %d\n",
+                expression,
+                scalar,
+                b,
+                status,
+                letter ? letter->i : 0
+            );
+        }
+        passed &= same;
+    }
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(program_native_char_results_reject_invalid_scalars)
+{
+    bool passed = native_char_result("negate(letter)", 65, true, false, false, 0);
+    passed &= native_char_result("negate(letter)", 65, true, true, false, 0);
+    passed &= native_char_result("negate(char(65))", 65, true, false, false, 0);
+    passed &= native_char_result("add(letter, letter)", 0x6C00, true, false, false, 0);
+    passed &= native_char_result("add(letter, letter)", 0x88000, true, false, false, 0);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(program_native_char_results_preserve_valid_scalars_and_ints)
+{
+    REQUIRE(native_char_result("negate(letter)", 0, false, false, false, 0));
+    const int scalars[] = { 0, 0xD7FF, 0xE000, 0x10FFFF };
+    for (int i = 0; i < (int)(sizeof scalars / sizeof *scalars); i++) {
+        REQUIRE(native_char_result("abs(letter)", scalars[i], false, false, false, scalars[i]));
+    }
+    REQUIRE(native_char_result("negate(int(letter))", 65, false, false, true, -65));
+    return true;
+}
+/* A direct catalog preserves char's nominal identity, including a later
+ * tuple field that the caller may never read. These hosts deliberately model
+ * a native implementation violating its declared scalar output contract. */
+static int native_letter;
+static const char *fixed_char(arena *, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0);
+    *out = (pin_value){ .type = PIN_I32, .i = native_letter };
+    return NULL;
+}
+static const char *pair_char(void *, const pin_value *, pin_value *out)
+{
+    out[0].i = -1;
+    out[1].i = native_letter;
+    return NULL;
+}
+static const char *optional_char(arena *, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0);
+    *out = (pin_value){ .type = PIN_UNION };
+    return NULL;
+}
+static bool char_host(void *user, uint64_t id, script_lower_host *out)
+{
+    static const node_host_call fixed = { .value = fixed_char };
+    static const node_host_call pair = { .invoke = pair_char };
+    static const node_host_call optional = { .value = optional_char };
+    switch (id) {
+        case 9001: *out = (script_lower_host){ .call = &fixed }; return true;
+        case 9002: *out = (script_lower_host){ .call = &pair }; return true;
+        case 9003: *out = (script_lower_host){ .call = &optional }; return true;
+        default: return host(user, id, out);
+    }
+}
+static bool compile_char_catalog(const char *source, behavior_backend backend)
+{
+    script_catalog_parameter scalar = { .name = "letter", .type = script_char_type() };
+    script_catalog_parameter pair[] = {
+        { .name = "count", .type = { .storage = PIN_I32 } },
+        { .name = "letter", .type = script_char_type() },
+    };
+    script_catalog_parameter optional = scalar;
+    optional.type.flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL;
+    enum
+    {
+        COUNT = sizeof capabilities / sizeof *capabilities
+    };
+    script_catalog_capability caps[COUNT + 3];
+    memcpy(caps, capabilities, sizeof capabilities);
+    const script_catalog_parameter *results[] = { &scalar, pair, &optional };
+    const char *names[] = { "NativeChar", "NativePair", "NativeOptionalChar" };
+    for (int i = 0; i < 3; i++) {
+        caps[COUNT + i] = (script_catalog_capability){
+            .id = 9001 + i,
+            .name = names[i],
+            .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .results = results[i],
+            .result_count = i == 1 ? 2 : 1,
+            .completion_outcome = -1,
+            .effects = SCRIPT_EFFECT_HOST,
+        };
+    }
+    script_catalog active = catalog;
+    active.capabilities = caps;
+    active.capability_count = COUNT + 3;
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, &active);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "native char catalog semantic: %s\n",
+            analysis->diagnostics[i].message
+        );
+    }
+    REQUIRE(analysis->valid && !syntax->diagnostic_count);
+    const script_lower_bindings bindings = { .global = global, .host = char_host };
+    owned_plan = script_lower(analysis, &active, &bindings);
+    REQUIRE(owned_plan && owned_plan->valid);
+    char error[192];
+    module = execution_module_finish(&owned_plan, backend, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "native char catalog publication: %s\n", error);
+    }
+    REQUIRE(module && !owned_plan);
+    program = execution_program_new(module, world, NULL);
+    REQUIRE(program);
+    return true;
+}
+static bool fixed_native_char_result(const char *statement, int scalar, bool fails, int letter, int code)
+{
+    char source[PROGRAM_SOURCE_CAPACITY];
+    snprintf(
+        source,
+        sizeof source,
+        "NativeChars :: behavior { letter: char = 'A'; code: int = 17; "
+        "entered: int = 0; finished: int = 0; on Tick :: () { "
+        "entered = 1; %s finished = 1; } }",
+        statement
+    );
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    bool passed = true;
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        native_letter = scalar;
+        REQUIRE(compile_char_catalog(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        const pin_value dt = { .type = PIN_F64 };
+        int status = execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000);
+        bool same = int_state(instance, "entered", PIN_I32, 1);
+        if (fails) {
+            const execution_program_failure *failure = execution_program_error(program);
+            same &= status < 0 && failure && failure->kind == BEHAVIOR_FUNCTION_DATA &&
+                    !strcmp(failure->message, "Value does not fit in char") &&
+                    failure->start ==
+                        (int)(strstr(source + sizeof "NativeChars" - 1, "Native") - source);
+        } else {
+            same &= status == FLOW_OK;
+        }
+        same &= int_state(instance, "letter", PIN_I32, fails ? 65 : letter) &&
+                int_state(instance, "code", PIN_I32, fails ? 17 : code) &&
+                int_state(instance, "finished", PIN_I32, !fails);
+        if (!same) {
+            fprintf(
+                stderr,
+                "fixed native char %s scalar %d backend %d: status %d\n",
+                statement,
+                scalar,
+                b,
+                status
+            );
+        }
+        passed &= same;
+    }
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(program_fixed_native_char_outputs_are_checked_before_use)
+{
+    const char *statements[] = {
+        "letter = NativeChar();",
+        "letter = NativeChar().letter;",
+        "code = NativeChar();",
+        "values := NativePair(); code = values.count; letter = values.letter;",
+        "code = NativePair().count;",
+        "NativeChar();",
+        "NativePair();",
+    };
+    const int invalid[] = { -1, 0xD800, 0xDFFF, 0x110000 };
+    bool passed = true;
+    for (int i = 0; i < 7; i++) {
+        for (int j = 0; j < 4; j++) {
+            passed &= fixed_native_char_result(statements[i], invalid[j], true, 0, 0);
+        }
+    }
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(program_fixed_native_char_outputs_preserve_valid_and_optional_values)
+{
+    const int scalars[] = { 0, 0xD7FF, 0xE000, 0x10FFFF };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(
+            fixed_native_char_result("letter = NativeChar();", scalars[i], false, scalars[i], 17)
+        );
+        REQUIRE(fixed_native_char_result(
+            "values := NativePair(); code = values.count; letter = "
+            "values.letter;",
+            scalars[i],
+            false,
+            scalars[i],
+            -1
+        ));
+    }
+    REQUIRE(fixed_native_char_result(
+        "value := NativeOptionalChar(); if value == nil { code = 7; }",
+        0,
+        false,
+        65,
+        7
+    ));
+    return true;
+}
 /* `..<` stops before its last bound and `for <` counts down, over ranges and
  * arrays alike; neither wraps at the int bounds or runs an empty range. */
 TEST_CASE(program_loops_count_half_open_and_in_reverse)
@@ -12946,6 +13214,10 @@ void test_language_program()
     RUN_TEST_CASE(program_loops_count_half_open_and_in_reverse);
     RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
+    RUN_TEST_CASE(program_native_char_results_reject_invalid_scalars);
+    RUN_TEST_CASE(program_native_char_results_preserve_valid_scalars_and_ints);
+    RUN_TEST_CASE(program_fixed_native_char_outputs_are_checked_before_use);
+    RUN_TEST_CASE(program_fixed_native_char_outputs_preserve_valid_and_optional_values);
     RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
     RUN_TEST_CASE(program_local_array_store_checks_its_range);
     RUN_TEST_CASE(program_array_methods_change_their_array);
@@ -13066,5 +13338,17 @@ void test_language_program()
     RUN_TEST_CASE(program_repeated_helpers_have_bounded_allocations);
     RUN_TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls);
     RUN_TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals);
+    pu_clear_setup();
+}
+
+void test_language_native_char_results()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
+    RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
+    RUN_TEST_CASE(program_native_char_results_reject_invalid_scalars);
+    RUN_TEST_CASE(program_native_char_results_preserve_valid_scalars_and_ints);
+    RUN_TEST_CASE(program_fixed_native_char_outputs_are_checked_before_use);
+    RUN_TEST_CASE(program_fixed_native_char_outputs_preserve_valid_and_optional_values);
     pu_clear_setup();
 }

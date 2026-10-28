@@ -49,6 +49,7 @@ void test_language_source_assets();
 void test_language_source_prototype_edits();
 void test_language_symbol_references();
 void test_language_program();
+void test_language_native_char_results();
 void test_language_migration34();
 void test_language_migration34_generic_repro();
 void test_language_retention();
@@ -196,6 +197,7 @@ int main(int argc, char **argv)
     bool migration34 = argc == 2 && !strcmp(argv[1], "--migration34");
     bool migration34_generic_repro = argc == 2 &&
                                      !strcmp(argv[1], "--migration34-generic-repro");
+    bool native_char_results = argc == 2 && !strcmp(argv[1], "--native-char-results");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool query_values = argc == 2 && !strcmp(argv[1], "--query-values");
@@ -346,10 +348,11 @@ int main(int argc, char **argv)
          !record_publication && !record_publication_repro && !record_values &&
          !record_document && !record_state && !record_services &&
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !outliner_projection && !row_array && !record_runtime && !runtime_attribution &&
-         !runtime_attribution_benchmark && !query_binding_benchmark &&
-         !scalar_read_benchmark && !packed_benchmark && !wasm && !migration34 &&
-         !migration34_generic_repro && !program && !query_program && !query_values &&
+         !outliner_projection && !row_array && !record_runtime &&
+         !runtime_attribution && !runtime_attribution_benchmark &&
+         !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
+         !wasm && !migration34 && !migration34_generic_repro &&
+         !native_char_results && !program && !query_program && !query_values &&
          !query_migration && !incremental && !operations && !modules &&
          !native_calls && !ranges && !numeric_exact_core && !integer_semantics &&
          !integer_shift_counts && !integer_shift_counts_authored &&
@@ -391,7 +394,8 @@ int main(int argc, char **argv)
             "--execution | "
             "--execution-scope | --semantic "
             "| --inferred-string-arrays | --inferred-string-array-repro "
-            "| --root-state | --program | --query-program | --query-values | "
+            "| --root-state | --program | --native-char-results | "
+            "--query-program | --query-values | "
             "--query-migration | --incremental | "
             "--operations | "
             "--modules | --native-calls | "
@@ -751,6 +755,8 @@ int main(int argc, char **argv)
         test_language_migration34_generic_repro();
     } else if (migration34_generic_repro) {
         test_language_migration34_generic_repro();
+    } else if (native_char_results) {
+        test_language_native_char_results();
     } else if (program) {
         test_language_program();
         test_language_retention();

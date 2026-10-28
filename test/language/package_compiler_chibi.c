@@ -100,7 +100,10 @@ typedef enum
     COLLECTION_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
- * `library` is package lib when present, and `core` adds core:strings. A
+ * `library` is package lib when present, and `core` adds core:strings.
+ * `collection_source` and `collection_dependency` add core:host_only and
+ * core:host_dependency; `project_modules` checks that the emitted closure
+ * contains exactly that many project modules and no collection rows. A
  * `game` sample's target links the core pack a game links, which declares
  * assert; preparing every sample with it would cost each selector seconds. An
  * `updates` sample's `Build(count)` updates a local array in place: doubling
@@ -124,13 +127,14 @@ typedef enum
 typedef struct
 {
     const char *name, *source, *more, *library;
+    const char *collection_source, *collection_dependency;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built, same_rejection,
         c_string_probe, host_effects, update_order, debug_metadata, traced;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
-    int line, column;
+    int line, column, project_modules;
 } sample;
 static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
 {
@@ -863,7 +867,89 @@ static const native_definition_pack ACTION_PACK = {
     .global_bindings = ACTION_GLOBAL_BINDINGS,
     .global_binding_count = NATIVE_COUNT(ACTION_GLOBAL_BINDINGS),
 };
+static const char HOST_ONLY_SOURCE[] = "package host_only\n"
+                                       "pub Probe :: () -> int {\n"
+                                       "    return host_only_probe();\n"
+                                       "}\n";
+static const char HOST_DEPENDENCY_SOURCE[] = "package host_dependency\n"
+                                             "pub Probe :: () -> int {\n"
+                                             "    return host_only_probe();\n"
+                                             "}\n";
 static const sample samples[] = {
+    { .name = "unused collection host capability is not required",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = HOST_ONLY_SOURCE,
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "unused collection ill-typed body is not checked",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\npub Broken :: () -> int { "
+                           "return true; }\n",
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "unused collection declaration is not checked",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\npub Broken :: (value: Missing) "
+                           "-> int { return 0; }\n",
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "unused collection dependencies stay outside closure",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\nimport dep "
+                           "\"core:host_dependency\"\n"
+                           "pub Value :: () -> int { return 2; }\n",
+      .collection_dependency = HOST_DEPENDENCY_SOURCE,
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "direct collection import requires its host capability",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport host \"core:host_only\"\n"
+                "pub Value :: () -> int { return 7; }\n",
+      .collection_source = HOST_ONLY_SOURCE,
+      .message = "Unknown function 'host_only_probe'",
+      .line = 3,
+      .column = 12 },
+    { .name = "transitive collection import requires its host capability",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport host \"core:host_only\"\n"
+                "pub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\nimport dep "
+                           "\"core:host_dependency\"\n"
+                           "pub Value :: () -> int { return 2; }\n",
+      .collection_dependency = HOST_DEPENDENCY_SOURCE,
+      .message = "Unknown function 'host_only_probe'",
+      .line = 3,
+      .column = 12 },
+    { .name = "unrelated project package remains checked",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .library = "package lib\npub Probe :: () -> int {\n"
+                 "    return host_only_probe();\n}\n",
+      .collection_source = "package host_only\npub Value :: () -> int { return "
+                           "2; }\n",
+      .message = "Unknown function 'host_only_probe'",
+      .line = 3,
+      .column = 12 },
+    { .name = "unrelated project imports retain collection checking",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .library = "package lib\nimport host \"core:host_only\"\n"
+                 "pub Value :: () -> int { return 2; }\n",
+      .collection_source = HOST_ONLY_SOURCE,
+      .message = "Unknown function 'host_only_probe'",
+      .line = 3,
+      .column = 12 },
+    { .name = "independent project package remains in emitted closure",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .library = "package lib\npub Independent :: () -> int { return 9; }\n",
+      .collection_source = HOST_ONLY_SOURCE,
+      .project_modules = 2,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
     { .name = "array update debug order",
       .group = COLLECTION_SAMPLES,
       .update_order = true,
@@ -3722,6 +3808,22 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
             sizeof CORE_STRINGS_SOURCE - 1
         };
     }
+    if (s->collection_source) {
+        assert(count < SAMPLE_INPUTS);
+        inputs[count++] = (source_package_input){
+            "/sdk/core/host_only/HostOnly.chibi",
+            s->collection_source,
+            strlen(s->collection_source)
+        };
+    }
+    if (s->collection_dependency) {
+        assert(count < SAMPLE_INPUTS);
+        inputs[count++] = (source_package_input){
+            "/sdk/core/host_dependency/Dependency.chibi",
+            s->collection_dependency,
+            strlen(s->collection_dependency)
+        };
+    }
     return count;
 }
 static pin_value files(const source_package_input *inputs, int count, bool sources)
@@ -5318,6 +5420,27 @@ static bool traces_like_oracle(const unsigned char *bytes, size_t length, const 
     free(expected);
     return same;
 }
+/* Unused collection packages have no emitted row, even an empty one. All
+ * independent project packages retain nonempty module rows. */
+static bool project_closure_only(const unsigned char *bytes, size_t length, int expected)
+{
+    char error[256];
+    int count = 0;
+    uint64_t root = 0;
+    package_module *rows = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
+    if (!rows) {
+        fprintf(stderr, "project-only closure: %s\n", error);
+    }
+    REQUIRE(rows);
+    bool project_only = count == expected &&
+                        root == script_catalog_id("module", "project:facts");
+    for (int i = 0; i < count; i++) {
+        project_only &= !strncmp(rows[i].name, "project:", 8) && rows[i].length > 0;
+    }
+    compiler_artifact_rows_free(rows, count);
+    REQUIRE(project_only);
+    return true;
+}
 static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare_backends(1u << b));
@@ -5412,6 +5535,9 @@ static bool run_samples(sample_group group, int b)
         size_t length;
         unsigned char *bytes = closure_bytes(value, &length);
         arena_free(&detached);
+        if (s->project_modules) {
+            REQUIRE(project_closure_only(bytes, length, s->project_modules));
+        }
         unsigned char *expected = NULL;
         size_t expected_length = 0;
         bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&

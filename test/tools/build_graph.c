@@ -278,7 +278,7 @@ typedef struct
     const char *diagnostic;
 } graph_case;
 
-static int run_graph_batch(const graph_case *cases, int count)
+static int run_graph_entry_batch(const graph_case *cases, int count, const char *entry, const char *checks)
 {
     assert(count > 0 && count <= GRAPH_BATCH_CASES);
     char path[GRAPH_PATH], source[GRAPH_PATH];
@@ -296,6 +296,7 @@ static int run_graph_batch(const graph_case *cases, int count)
         fprintf(
             file,
             "\nVerifyGraph :: () -> int {\n"
+            "%s"
             "    input := build.arguments(); at := 0; index := 0;\n"
             "    while (at < length(input)) {\n"
             "        if (at + 2 > length(input)) { return 3; }\n"
@@ -309,7 +310,7 @@ static int run_graph_batch(const graph_case *cases, int count)
             "}\n"
             "        build.report(format_text(\"graph-case {0} begin\", "
             "index));\n"
-            "        status := LibrariesWithArguments(arguments);\n"
+            "        status := %s(arguments);\n"
             "        build.report(format_text(\"graph-case {0} returned {1}\", "
             "index, status));\n"
             "        if (status != expected) { return 1; }\n"
@@ -318,7 +319,9 @@ static int run_graph_batch(const graph_case *cases, int count)
             "    if (index == 0) { return 3; }\n"
             "    return 0;\n"
             "}\n",
-            GRAPH_BATCH_CASES
+            checks,
+            GRAPH_BATCH_CASES,
+            entry
         ) >= 0
     );
     assert(!fclose(file));
@@ -361,6 +364,11 @@ static int run_graph_batch(const graph_case *cases, int count)
     }
     argv[argc] = NULL;
     return tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
+}
+
+static int run_graph_batch(const graph_case *cases, int count)
+{
+    return run_graph_entry_batch(cases, count, "LibrariesWithArguments", "");
 }
 
 /* Every case owns its diagnostic interval. A previous rejection cannot make a
@@ -1015,6 +1023,84 @@ TEST_CASE(links_match_cmake)
     REQUIRE((size_t)matched == programs && yyjson_arr_size(yyjson_doc_get_root(doc)) == programs);
     yyjson_doc_free(doc);
     free(ninja);
+    return true;
+}
+
+TEST_CASE(sdk_reflection_rejects_invalid_arguments_before_building)
+{
+    char build_dir[GRAPH_PATH];
+    join(build_dir, suite, "sdk-reflect-arguments");
+    const char *const none[] = { NULL };
+    const char *const missing_jobs[] = { "--jobs", NULL };
+    const char *const missing_build[] = { "--build", NULL };
+    const char *const missing_libclang[] = { "--libclang-root", NULL };
+    const char *const empty_jobs[] = { "--jobs", "", NULL };
+    const char *const empty_build[] = { "--build", "", NULL };
+    const char *const empty_libclang[] = { "--libclang-root", "", NULL };
+    const char *const unknown_option[] = { "--commands-only", "on", NULL };
+    const char *const unknown_definition[] = { "--", "-DUNSUPPORTED=ON", NULL };
+    const char *const missing_definition[] = { "--", "-D", NULL };
+    const char *const empty_definition[] = { "--", "-DCMAKE_C_COMPILER:FILEPATH=", NULL };
+    const char *const typed_compiler[] = {
+        "--",
+        "-DCMAKE_C_COMPILER:FILEPATH=/usr/bin/true",
+        "-DUNSUPPORTED=ON",
+        NULL
+    };
+    const char *const split_compiler[] = {
+        "--",
+        "-D",
+        "CMAKE_C_COMPILER:FILEPATH=/usr/bin/true",
+        "-DUNSUPPORTED=ON",
+        NULL
+    };
+    const char *const split_libclang[] = {
+        "--",
+        "-D",
+        "LIBCLANG_ROOT:PATH=/fixture/llvm root",
+        "-DUNSUPPORTED=ON",
+        NULL
+    };
+    const char *const split_unknown[] = { "--", "-D", "UNSUPPORTED=ON", NULL };
+    const graph_case cases[] = {
+        { build_dir, none, missing_jobs, 2, "graph: invalid native reflection option '--jobs'" },
+        { build_dir, none, missing_build, 2, "graph: invalid native reflection option '--build'" },
+        { build_dir, none, missing_libclang, 2, "graph: invalid native reflection option '--libclang-root'" },
+        { build_dir, none, empty_jobs, 2, "graph: invalid native reflection option '--jobs'" },
+        { build_dir, none, empty_build, 2, "graph: invalid native reflection option '--build'" },
+        { build_dir, none, empty_libclang, 2, "graph: invalid native reflection option '--libclang-root'" },
+        { build_dir, none, unknown_option, 2, "graph: invalid native reflection option '--commands-only'" },
+        { build_dir, none, unknown_definition, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
+        { build_dir, none, missing_definition, 2, "graph: -D requires a native toolchain definition" },
+        { build_dir, none, empty_definition, 2, "graph: unsupported native reflection toolchain argument '-DCMAKE_C_COMPILER:FILEPATH='" },
+        { build_dir, none, typed_compiler, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
+        { build_dir, none, split_compiler, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
+        { build_dir, none, split_libclang, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
+        { build_dir, none, split_unknown, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" }
+    };
+    /* Check path parsing in the same compiled invocation. Actual-entry
+     * cases above accept typed/split values before reaching the final rejection. */
+    const char *checks = "    value := \"/fixture/llvm root=value\";\n"
+                         "    mapped := "
+                         "engine.NativeToolchainOption(strings.Join([\"-"
+                         "DLIBCLANG_ROOT:PATH=\", value], \"\"));\n"
+                         "    if (length(mapped) != 2 || mapped[0] != "
+                         "\"--libclang-root\" || mapped[1] != value) {\n"
+                         "        build.report(\"native reflection changed a "
+                         "typed path value\");\n"
+                         "        return 4;\n"
+                         "    }\n"
+                         "    if "
+                         "(length(engine.NativeToolchainOption(\"-DLIBCLANG_"
+                         "ROOT:PATH\")) != 0) {\n"
+                         "        build.report(\"native reflection accepted a "
+                         "definition without a value\");\n"
+                         "        return 4;\n"
+                         "    }\n";
+    int count = (int)(sizeof cases / sizeof *cases);
+    REQUIRE(!run_graph_entry_batch(cases, count, "SDKReflectWithArguments", checks));
+    REQUIRE(graph_batch_matches(cases, count));
+    REQUIRE(access(build_dir, F_OK) != 0);
     return true;
 }
 
@@ -1885,6 +1971,7 @@ void test_build_graph_support(const char *host, const char *cmake_build)
 void test_build_graph_reflect(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
+    RUN_TEST_CASE(sdk_reflection_rejects_invalid_arguments_before_building);
     RUN_TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources);
     tool_remove_tree(suite);
 }

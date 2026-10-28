@@ -753,19 +753,36 @@ separate gate; the native runtime itself is still an explicit prebuilt input.
 
 ### M6. Replace the internal build graph
 
-Linux native route: `GRAPH_BUILD=1` now selects the existing graph for the full
-products and tooling/language drivers. Linux link inventories follow the pinned
-archive; full compile/link, generated-header, corpus/resource and discovery
-checks apply on Linux as on macOS. The Linux default remains CMake pending the
-explicit `ci-linux-graph` label or manual Linux Graph validation gate. The
-proof adds one Ubuntu job only when requested, with two build workers and a
-45-minute ceiling: full Release/Debug builds, a small CMake reference, parity
-and the existing four native groups. Ordinary PR/push CI gains no duplicate
-suites; the later default cutover must replace the native build lane rather
-than retain a second full lane. Hosted wall time remains to be established.
+Linux and macOS native builds select the Chibi graph by default, including full
+products and tooling/language drivers. `GRAPH_BUILD=` selects retained CMake
+construction. Linux link inventories follow the pinned archive; profile,
+compile/link, generated-header, corpus/resource and discovery checks apply on
+both platforms. This supersedes the earlier Linux opt-in checkpoint.
 The first-host bootstrap/reference, standalone test
 consumers, public SDK, web and Studio remain explicit CMake responsibilities;
 this slice is not total CMake/Ninja removal.
+
+Reflection construction slice, 2026-10-28: `sdk-reflect-build` selects the graph's
+existing `reflect` target on Linux/macOS through `Graph.chibi`'s `SDKReflect`
+entry. All four SDK/runtime/browser/player callers retain the same native host
+executable path. The duplicate `tools/reflect/CMakeLists.txt` project is removed.
+The first host is still recovered through the compiler-only SDK CMake project
+when no protocol-13 host is available; Windows retains root-project native
+construction until process execution is supported. `resource.cmake` remains a
+live root-reference dependency. The responsibility/deletion map is in
+[`docs/toolchain-inventory.md`](docs/toolchain-inventory.md#cmake-retirement-boundaries-2026-10-28).
+Local macOS arm64 validation: clean graph reflection compiles 30 sources in
+27.86 seconds; warm Make execution passes in 12.51 seconds. Cold recovery passes
+in 17.18 seconds, including 2.3 seconds configuration, 4.2 seconds host build
+and 10.4 seconds graph execution. The standalone tooling suite passes 232 cases
+and 34,443 assertions in 228.054 seconds of supervised test time. After focused
+path/parser fixture additions, the final package selector passes 6 cases and
+122 assertions in 8.96 seconds outer wall time; graph-reflection passes 2 cases
+and 11 assertions in 30.61 seconds. The reference explicitly selects arm64 so its
+link profile matches the graph; both generated C files compare byte-for-byte.
+Independent review is clear. Native/material/project/language aggregates and
+complete Linux, Windows, browser and relocated public SDK builds are unrun
+locally for this slice. Those broader routes remain separate retirement gates.
 
 Compiler-tools packaging slice, 2026-10-22: `tools/toolchain/SDK.chibi`
 installs graph-built private hosts and their complete compiler/core/bootstrap,

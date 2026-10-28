@@ -333,6 +333,245 @@ TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions)
     return true;
 }
 
+TEST_CASE(sdk_consumers_receive_one_exact_reflection_path)
+{
+    char source[1024], canonical[1024], filename[1024], original[1024],
+        bin[1024], search[8192], selection[2048], expected[2048],
+        environment[2048], absolute_reflect[1024], relative_reflect[1024];
+    path(source, directory, "reflect consumers");
+    assert(!mkdir(source, 0700));
+    REQUIRE(realpath(source, canonical));
+    path(filename, source, "tools");
+    assert(!mkdir(filename, 0700));
+    path(bin, source, "bin");
+    assert(!mkdir(bin, 0700));
+    path(original, tool_root(), "Makefile");
+    path(filename, source, "Makefile");
+    const char *copy[] = { "cp", original, filename, NULL };
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    path(original, tool_root(), "tools/web_env.sh");
+    path(filename, source, "tools/web_env.sh");
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    path(filename, source, "tools/quiet.sh");
+    tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
+    path(filename, source, "tools/configure.sh");
+    tool_write(
+        filename,
+        "#!/bin/sh\nset -eu\n"
+        "test \"$1\" = \"$EXPECTED_PROFILE\"\nshift 2\ncount=0\n"
+        "for argument do\n"
+        " case $argument in\n"
+        " -DCHIBI_REFLECT_EXECUTABLE=*)\n"
+        "  test \"$argument\" = "
+        "\"-DCHIBI_REFLECT_EXECUTABLE=$EXPECTED_REFLECT\"\n"
+        "  count=$((count + 1))\n"
+        "  printf '%s\\n' \"$argument\" > reflection-argument ;;\n"
+        " -D*=*) ;;\n *) exit 1 ;;\n esac\ndone\n"
+        "test \"$count\" = 1\n"
+    );
+    path(filename, bin, "cmake");
+    tool_write(filename, "#!/bin/sh\ncase $1 in --build|--install) exit 0 ;; *) exit 1 ;; esac\n");
+    assert(!chmod(filename, 0700));
+    snprintf(search, sizeof search, "PATH=%s:%s", bin, getenv("PATH"));
+    const char *const targets[] = { "sdk-build",
+                                    "runtime-sdk-build",
+                                    "web-sdk-build",
+                                    "package-web-player" };
+    path(absolute_reflect, canonical, "absolute reflection build");
+    path(relative_reflect, canonical, "reflection build");
+    const char *const selections[] = { "reflection build",
+                                       absolute_reflect,
+                                       "C:/fixture/reflection build" };
+    const char *const resolved[] = { relative_reflect,
+                                     absolute_reflect,
+                                     "C:/fixture/reflection build" };
+    for (int variant = 0; variant < 3; variant++) {
+        snprintf(selection, sizeof selection, "SDK_REFLECT_BUILD_DIR=%s", selections[variant]);
+        snprintf(environment, sizeof environment, "EXPECTED_REFLECT=%s/reflect", resolved[variant]);
+        snprintf(expected, sizeof expected, "-DCHIBI_REFLECT_EXECUTABLE=%s/reflect\n", resolved[variant]);
+        for (int i = 0; i < 4; i++) {
+            const char *args[] = { "env",
+                                   search,
+                                   environment,
+                                   i < 2 ? "EXPECTED_PROFILE=sdk-native"
+                                         : "EXPECTED_PROFILE=sdk-web",
+                                   "make",
+                                   "-o",
+                                   "sdk-reflect-build",
+                                   targets[i],
+                                   "QUIET=sh tools/quiet.sh",
+                                   selection,
+                                   "WEB_PLAYER_OUTPUT=player-output",
+                                   NULL };
+            REQUIRE(tool_run(args, source, log_path) == 0);
+            path(filename, source, "reflection-argument");
+            REQUIRE(file_equals(filename, expected));
+        }
+    }
+    return true;
+}
+
+TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
+{
+    char source[1024], canonical[1024], filename[1024], original[1024],
+        bin[1024], search[8192], calls[1024], expected[8192];
+    path(source, directory, "reflect recipe");
+    assert(!mkdir(source, 0700));
+    REQUIRE(realpath(source, canonical));
+    path(filename, source, "tools");
+    assert(!mkdir(filename, 0700));
+    path(bin, source, "bin");
+    assert(!mkdir(bin, 0700));
+    path(original, tool_root(), "Makefile");
+    path(filename, source, "Makefile");
+    const char *copy[] = { "cp", original, filename, NULL };
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    path(filename, source, "tools/quiet.sh");
+    tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
+    const char
+        *host = "#!/bin/sh\nset -eu\n"
+                "if [ \"$1\" = --protocol-version ]; then\n"
+                " if [ -f \"$0.old\" ]; then echo 12; else echo 13; fi\n "
+                "exit 0\nfi\n"
+                "test \"$CCACHE_BASEDIR\" = \"$PWD\"\n"
+                "printf 'graph\\n' >> calls\n"
+                "printf '%s\\n' \"$0\" > graph-program\n"
+                "printf '%s\\n' \"$@\" > graph-arguments\n"
+                "if [ -f graph-fails ]; then exit 33; fi\n";
+    path(filename, source, "host-template");
+    tool_write(filename, host);
+    path(filename, source, "fixture-host");
+    tool_write(filename, host);
+    assert(!chmod(filename, 0700));
+    path(filename, source, "tools/configure.sh");
+    tool_write(
+        filename,
+        "#!/bin/sh\nset -eu\n"
+        "printf 'configure\\n' >> calls\n"
+        "printf '%s\\n' \"$@\" > configure-arguments\n"
+        "if [ -f configure-fails ]; then exit 34; fi\n"
+    );
+    path(filename, bin, "cmake");
+    tool_write(
+        filename,
+        "#!/bin/sh\nset -eu\n"
+        "printf 'build\\n' >> calls\n"
+        "printf '%s\\n' \"$@\" > build-arguments\n"
+        "if [ -f build-fails ]; then exit 35; fi\n"
+        "test \"$1\" = --build\n"
+        "mkdir -p \"$2\"\n"
+        "cp host-template \"$2/chibi-build-host\"\n"
+        "chmod 700 \"$2/chibi-build-host\"\n"
+        "rm -f \"$2/chibi-build-host.old\"\n"
+    );
+    assert(!chmod(filename, 0700));
+    snprintf(search, sizeof search, "PATH=%s:%s", bin, getenv("PATH"));
+    const char *args[] = { "env",
+                           search,
+                           "make",
+                           "sdk-reflect-build",
+                           "QUIET=sh tools/quiet.sh",
+                           "BUILD_HOST=./fixture-host",
+                           "SDK_REFLECT_BUILD_DIR=reflection build",
+                           "LIBCLANG_ROOT=llvm root",
+                           "JOBS=3",
+                           "NATIVE_TOOLCHAIN_FLAGS=-DCMAKE_C_COMPILER=/fixture/"
+                           "cc -DCMAKE_CXX_COMPILER=/fixture/c++",
+                           NULL };
+    path(calls, source, "calls");
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    REQUIRE(file_equals(calls, "graph\ngraph\n"));
+    path(filename, source, "configure-arguments");
+    REQUIRE(access(filename, F_OK) != 0);
+    path(filename, source, "build-arguments");
+    REQUIRE(access(filename, F_OK) != 0);
+    path(filename, source, "graph-program");
+    REQUIRE(file_equals(filename, "./fixture-host\n"));
+    snprintf(
+        expected,
+        sizeof expected,
+        "--compiler\ntools/compiler\n--compiler-core\npackages/core\n"
+        "--root\n%s\n--source\ntools/toolchain/Graph.chibi\n--core\npackages/"
+        "core\n"
+        "--collection\ngraph=tools/"
+        "graph\n--entry\nSDKReflect\n--timeout-ms\n3600000\n"
+        "--\n--build\n%s/reflection build\n--jobs\n3\n--libclang-root\n%s/llvm "
+        "root\n"
+        "--\n-DCMAKE_C_COMPILER=/fixture/cc\n-DCMAKE_CXX_COMPILER=/fixture/"
+        "c++\n",
+        canonical,
+        canonical,
+        canonical
+    );
+    path(filename, source, "graph-arguments");
+    REQUIRE(file_equals(filename, expected));
+
+    tool_write(calls, "");
+    path(filename, source, "graph-fails");
+    tool_write(filename, "");
+    REQUIRE(tool_run(args, source, log_path) != 0);
+    REQUIRE(file_equals(calls, "graph\n"));
+    assert(!unlink(filename));
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    REQUIRE(file_equals(calls, "graph\ngraph\n"));
+
+    path(filename, source, "fixture-host");
+    assert(!unlink(filename));
+    tool_write(calls, "");
+    path(filename, source, "configure-fails");
+    tool_write(filename, "");
+    REQUIRE(tool_run(args, source, log_path) != 0);
+    REQUIRE(file_equals(calls, "configure\n"));
+    assert(!unlink(filename));
+    tool_write(calls, "");
+    path(filename, source, "build-fails");
+    tool_write(filename, "");
+    REQUIRE(tool_run(args, source, log_path) != 0);
+    REQUIRE(file_equals(calls, "configure\nbuild\n"));
+    assert(!unlink(filename));
+    tool_write(calls, "");
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    REQUIRE(file_equals(calls, "configure\nbuild\ngraph\n"));
+    path(filename, source, "configure-arguments");
+    REQUIRE(file_equals(
+        filename,
+        "sdk-native\nreflection build-host\n-DCMAKE_C_COMPILER=/fixture/cc\n"
+        "-DCMAKE_CXX_COMPILER=/fixture/c++\n-DCMAKE_BUILD_TYPE=Release\n"
+        "-DCHIBI_SDK_BUILD_COMPILER=ON\n-DCHIBI_SDK_BUILD_NATIVE=OFF\n"
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF\n"
+    ));
+    path(filename, source, "build-arguments");
+    REQUIRE(
+        file_equals(filename, "--build\nreflection build-host\n--target\nchibi-build-host\n--parallel\n3\n")
+    );
+    path(filename, source, "graph-arguments");
+    REQUIRE(file_equals(filename, expected));
+    path(filename, source, "graph-program");
+    REQUIRE(file_equals(filename, "reflection build-host/chibi-build-host\n"));
+    tool_write(calls, "");
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    REQUIRE(file_equals(calls, "graph\n"));
+    REQUIRE(file_equals(filename, "reflection build-host/chibi-build-host\n"));
+
+    path(filename, source, "fixture-host");
+    tool_write(filename, host);
+    assert(!chmod(filename, 0700));
+    path(filename, source, "fixture-host.old");
+    tool_write(filename, "");
+    tool_write(calls, "");
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    REQUIRE(file_equals(calls, "graph\n"));
+    path(filename, source, "graph-program");
+    REQUIRE(file_equals(filename, "reflection build-host/chibi-build-host\n"));
+    path(filename, source, "reflection build-host/chibi-build-host.old");
+    tool_write(filename, "");
+    tool_write(calls, "");
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    REQUIRE(file_equals(calls, "configure\nbuild\ngraph\n"));
+    return true;
+}
+
 void test_tool_package()
 {
     strcpy(directory, "/tmp/chibi-package-XXXXXX");
@@ -366,5 +605,7 @@ void test_tool_package()
     RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);
     RUN_TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions);
+    RUN_TEST_CASE(sdk_consumers_receive_one_exact_reflection_path);
+    RUN_TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host);
     tool_remove_tree(directory);
 }

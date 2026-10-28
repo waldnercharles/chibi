@@ -665,7 +665,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
     tool_write(overrides, recipes);
     char old[1024], previous[1024], current[1024], missing[1024];
     path(old, root, "old host");
-    path(previous, root, "protocol-8 host");
+    path(previous, root, "protocol-12 host");
     path(current, root, "current host");
     path(missing, root, "missing host");
     assert(!symlink(worker_path, old));
@@ -673,8 +673,8 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
     assert(!symlink(host_path, current));
     char recursive_make[4096];
     snprintf(recursive_make, sizeof recursive_make, "MAKE=make -f '%s' -f '%s'", makefile, overrides);
-    /* A protocol-8 host answers the query but cannot load the format-21 code
-     * the compiler writes. */
+    /* A protocol-12 host answers the query but cannot load the format-26
+     * compiler bootstrap introduced by collections as values. */
     const char *hosts[] = { missing, old, previous, current };
     for (int i = 0; i < 4; i++) {
         char host_option[1200];

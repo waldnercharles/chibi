@@ -4145,6 +4145,49 @@ static unsigned char *closure_bytes(const pin_union *value, size_t *length)
     }
     return bytes;
 }
+
+bool package_compiler_closure(
+    int compiler_backend,
+    const source_package_input *sources,
+    int count,
+    uintptr_t budget,
+    unsigned char **bytes,
+    size_t *length
+)
+{
+    assert(compiler_backend >= 0 && compiler_backend < 2);
+    *bytes = NULL;
+    *length = 0;
+    pin_value output;
+    bool valid = prepare_backends(1u << compiler_backend) &&
+                 compile(compiler_backend, true, false, false, sources, count, budget, &output);
+    const pin_union *value = valid && output.type == PIN_UNION ? output.ptr : NULL;
+    if (valid && !value) {
+        fprintf(pu_errors(), "Authored closure compilation returned no Result\n");
+        valid = false;
+    }
+    if (valid && value->tag != tag(compiler_backend, "Compiled")) {
+        pin_value message, line, column;
+        if (get(&value->values[0], "message", &message) &&
+            get(&value->values[0], "line", &line) &&
+            get(&value->values[0], "column", &column)) {
+            fprintf(
+                pu_errors(),
+                "Authored closure compilation: %s at %d:%d\n",
+                pin_text(message).bytes,
+                line.i,
+                column.i
+            );
+        }
+        valid = false;
+    }
+    if (valid) {
+        *bytes = closure_bytes(value, length);
+    }
+    cleanup();
+    return valid;
+}
+
 /* Compile the discovered test package with each compiler backend, then run
  * the same fixed assertions on each independently loaded target backend. */
 static bool authored_tests(
@@ -12408,10 +12451,16 @@ static const int CALL_SLOTS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_IN
 static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
 static native_module call_module(const native_code *code, const int *arguments, int argument_count)
 {
-    return (native_module){
-        CALL_FUNCTIONS, 2,         CALL_PARAMETERS, 3, CALL_SLOTS, 5, code,
-        CALL_CODE,      arguments, argument_count
-    };
+    return (native_module){ .functions = CALL_FUNCTIONS,
+                            .function_count = 2,
+                            .parameters = CALL_PARAMETERS,
+                            .parameter_count = 3,
+                            .slots = CALL_SLOTS,
+                            .slot_count = 5,
+                            .code = code,
+                            .code_count = CALL_CODE,
+                            .arguments = arguments,
+                            .argument_count = argument_count };
 }
 static bool contains(pin_string haystack, const char *needle)
 {
@@ -12529,13 +12578,19 @@ static bool native_text(int b, const native_module *m, pin_string *ir)
     *ir = pin_text(value->values[0]);
     return true;
 }
-/* A string is `native_abi.TextType()`, the layout of the runtime's
- * pin_string: its bytes, then its length. */
+/* The native LLVM fixtures target 64-bit layouts. Portable hosts still store
+ * pin_string as their own pointer followed by the 32-bit byte length. */
 _Static_assert(
-    offsetof(pin_string, bytes) == 0 && offsetof(pin_string, length) == 8 &&
-        sizeof(pin_string) == 16 && sizeof(((pin_string *)0)->length) == 4,
-    "pin_string is { ptr, i32 }"
+    offsetof(pin_string, bytes) == 0 &&
+        offsetof(pin_string, length) == sizeof(void *) &&
+        sizeof(((pin_string *)0)->length) == 4,
+    "pin_string is { host pointer, i32 }"
 );
+#if UINTPTR_MAX == UINT64_MAX
+_Static_assert(sizeof(pin_string) == 16, "64-bit native text layout");
+#else
+_Static_assert(sizeof(void *) == 4 && sizeof(pin_string) == 8, "32-bit portable text layout");
+#endif
 /* Main returns whether its two texts differ: each constant is a private
  * global of its bytes and a NUL, named by its index in the text table, and
  * `!=` negates the module's one byte comparison. */
@@ -18861,8 +18916,8 @@ TEST_CASE(package_compiler_query_values_are_readonly)
 {
     static const char *const sources[] = {
         "Fixed :: system(point: Spot) { point.x = 2 }",
-        "Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
-        "row.point.x = 2 } } }",
+        ("Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
+         "row.point.x = 2 } } }"),
         "Fixed :: system(point: ^Spot, amount := 2) { amount = 3 }",
         "Fixed :: system(point: ^Spot) { point = null }",
         "Fixed :: system(point: ^Spot) { point.w = 3 }",
@@ -19217,35 +19272,51 @@ TEST_CASE(native_overload_reference_contract)
         const char *message;
         int column;
     } cases[] = {
-        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32, NULL, 0 },
         { "package facts\nRun :: () -> int { return "
           "native.overload((-(2))); }",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(2.0); "
           "}",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(1e0); "
           "}",
-          PIN_I32 },
-        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
+          PIN_I32,
+          NULL,
+          0 },
+        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32, NULL, 0 },
         { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
           "* "
           "2); }",
-          PIN_F32 },
+          PIN_F32,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
           "* "
           "2); }",
-          PIN_F64 },
+          PIN_F64,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: f64) -> int { return "
           "native.kernel(v); }",
-          PIN_F64 },
+          PIN_F64,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: int) -> int { return "
           "native.overload(v); "
           "}",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return "
           "native.overload(\"three\"); }",
-          PIN_STR },
+          PIN_STR,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(2.5); "
           "}",
           PIN_FLOW,

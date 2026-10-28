@@ -450,6 +450,10 @@ TOOLS = {
                                '--package-files'],
     'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--package-core'],
+    'language-package-portable-compiler': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                           '--package-portable-compiler'],
+    'language-package-portable': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                  '--package-portable'],
     'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--docs-markdown'],
     'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -513,6 +517,9 @@ for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '
     TOOLS['wasm-package-compiler-chibi' + selector] = ['node', str(wasm_build / 'test_language.js'),
                                                        '--package-compiler-chibi' + selector]
 
+for selector in ('package-portable', 'package-portable-compiler'):
+    TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
+
 
 GPU_TOOLS = (
     'studio-source-edit',
@@ -567,7 +574,8 @@ GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
              'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
-             'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
+             'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled',
+             'wasm-package-portable', 'wasm-package-portable-compiler'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
                'physics', 'physics3d',
@@ -598,7 +606,7 @@ GROUPS = {
                   'material-simulation', 'material-ecs', 'material-render'],
     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-query-migration', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
-                 'language-headless', 'language-format', 'language-package-tests', 'language-package-core', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
+                 'language-headless', 'language-format', 'language-package-tests', 'language-package-core', 'language-package-portable', 'language-package-portable-compiler', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',

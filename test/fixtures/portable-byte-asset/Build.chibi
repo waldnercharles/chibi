@@ -1,0 +1,25 @@
+package portable_byte_asset
+
+import data "game:assets"
+import bytes "core:bytes"
+import strings "core:strings"
+import bits "core:math/bits"
+import fnv "core:hash/fnv"
+import adler32 "core:hash/adler32"
+import crc32 "core:hash/crc32"
+
+pub Build :: () -> u8[] {
+    buffer := bytes.FromString("A\u0000B");
+    retained := bytes.ToString(buffer);
+    buffer[0] = u8(90);
+    return data.Encode(data.Object([
+        data.Field.Named("size", data.Value.UInt(u64(strings.ByteLength(retained)))),
+        data.Field.Named("nul", data.Value.UInt(u64(strings.ByteAt(retained, 1)))),
+        data.Field.Named("retainedhead", data.Value.UInt(u64(strings.ByteAt(retained, 0)))),
+        data.Field.Named("mutatedhead", data.Value.UInt(u64(buffer[0]))),
+        data.Field.Named("bits", data.Value.UInt(u64(bits.CountOnes32(0xF0F0)))),
+        data.Field.Named("fnv", data.Value.UInt(u64(fnv.Fnv1a32(bytes.FromString("hello"))))),
+        data.Field.Named("adler", data.Value.UInt(u64(adler32.Sum(bytes.FromString("Wikipedia"))))),
+        data.Field.Named("crc", data.Value.UInt(u64(crc32.Ieee(bytes.FromString("123456789")))))
+    ]));
+}

@@ -49,7 +49,6 @@ struct arena_resource
     size_t references, bytes;
 };
 static _Thread_local uint64_t block_allocations, collect_marks;
-unsigned long long arena_value_bytes;
 /* Slots step by 16 bytes up to 128, then by quarters of each power of two up
  * to ARENA_LARGE_BYTES; a larger value has a slab of its own. */
 #define ARENA_SMALL_CLASSES 8
@@ -472,10 +471,6 @@ static void *allocate_value(arena *a, size_t size)
     value->live = true;
     memset(value->data, 0, size);
     a->allocated += size;
-    {
-        extern unsigned long long arena_value_bytes;
-        arena_value_bytes += size;
-    }
     s->last = value;
     return value->data;
 }

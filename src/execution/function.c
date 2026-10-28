@@ -1209,24 +1209,56 @@ typedef struct
     int next;
     bool flag;
 } managed_work;
-static void managed_push_items(managed_work **stack, const pin_array *items, bool flag)
+/* Most walks stay within the stack's first entries, which need no
+ * allocation. A stack must not move while in use. */
+#define MANAGED_LOCAL_WORK 16
+typedef struct
+{
+    managed_work *items, local[MANAGED_LOCAL_WORK];
+    int count, capacity;
+} managed_stack;
+static void managed_stack_init(managed_stack *stack)
+{
+    stack->items = stack->local;
+    stack->count = 0;
+    stack->capacity = MANAGED_LOCAL_WORK;
+}
+static void managed_stack_free(managed_stack *stack)
+{
+    if (stack->items != stack->local) {
+        free(stack->items);
+    }
+}
+static void managed_push(managed_stack *stack, managed_work work)
+{
+    if (stack->count == stack->capacity) {
+        size_t bytes = (size_t)stack->capacity * sizeof *stack->items;
+        stack->items = stack->items == stack->local
+                         ? memcpy(xmalloc(2 * bytes), stack->local, bytes)
+                         : xrealloc(stack->items, 2 * bytes);
+        stack->capacity *= 2;
+    }
+    stack->items[stack->count++] = work;
+}
+static void managed_push_items(managed_stack *stack, const pin_array *items, bool flag)
 {
     if (items->count) {
-        apush(*stack, ((managed_work){ .items = items, .flag = flag }));
+        managed_push(stack, (managed_work){ .items = items, .flag = flag });
     }
 }
 /* Pops the next value to visit. An array's item comes with `items` set. */
-static managed_work managed_pop(managed_work *stack)
+static managed_work managed_pop(managed_stack *stack)
 {
-    managed_work *top = &stack[acount(stack) - 1];
+    managed_work *top = &stack->items[stack->count - 1];
     if (!top->items) {
-        return apop(stack);
+        stack->count--;
+        return *top;
     }
     managed_work item = { .value = pin_array_get(top->items, top->next),
                           .items = top->items,
                           .flag = top->flag };
     if (++top->next == top->items->count) {
-        (void)apop(stack);
+        stack->count--;
     }
     return item;
 }
@@ -1317,7 +1349,8 @@ static const char *managed_scan(
             return NULL;
         }
     }
-    managed_work *pending = NULL;
+    managed_stack pending;
+    managed_stack_init(&pending);
     managed_seen seen = { 0 };
     typedef struct
     {
@@ -1327,12 +1360,12 @@ static const char *managed_scan(
     checked_layout *checked = NULL;
     arena proof = { 0 };
     const char *error = NULL;
-    apush(pending, ((managed_work){ .value = *root, .flag = restricted }));
+    managed_push(&pending, (managed_work){ .value = *root, .flag = restricted });
     /* Only a cycle reaches the root again, and its second visit stops the
      * cycle, so the root needs no seen entry. */
     bool first = true;
-    while (acount(pending) && !error) {
-        managed_work current = managed_pop(pending);
+    while (pending.count && !error) {
+        managed_work current = managed_pop(&pending);
         pin_value value = current.value;
         bool restricted_value = current.flag;
         bool dynamic = value.container == PIN_CONTAINER_ARRAY ||
@@ -1379,7 +1412,7 @@ static const char *managed_scan(
         }
         first = false;
 #define PUSH_VALUE(v)                                                          \
-    apush(pending, ((managed_work){ .value = (v), .flag = restricted_value }))
+    managed_push(&pending, (managed_work){ .value = (v), .flag = restricted_value })
         if (arrays && value.type == PIN_POINTER &&
             value.container == PIN_CONTAINER_SINGLE && value.ptr) {
             *arrays |= 4u;
@@ -1484,7 +1517,7 @@ static const char *managed_scan(
         }
 #undef PUSH_VALUE
     }
-    afree(pending);
+    managed_stack_free(&pending);
     free(seen.entries);
     afree(checked);
     arena_free(&proof);
@@ -1685,12 +1718,13 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
     /* A record held inside an array or another record is reached only through
      * its holder, which is visited once, so only shareable values need the
      * seen set. `flag` marks a held record. */
-    managed_work *pending = NULL;
+    managed_stack pending;
+    managed_stack_init(&pending);
     managed_seen local = { 0 };
     managed_seen *seen = collection_seen ? collection_seen : &local;
-    apush(pending, ((managed_work){ .value = *root }));
-    while (acount(pending)) {
-        managed_work next = managed_pop(pending);
+    managed_push(&pending, (managed_work){ .value = *root });
+    while (pending.count) {
+        managed_work next = managed_pop(&pending);
         pin_value value = next.value;
         bool held = next.items ? value.type == PIN_STRUCT : next.flag;
         if (!held && managed_seen_before(seen, value, false)) {
@@ -1700,8 +1734,8 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
         if (value.container == PIN_CONTAINER_MAP) {
             const pin_map *map = value.ptr;
             for (int i = 0; map && i < map->count; i++) {
-                apush(pending, ((managed_work){ .value = map->entries[i].key }));
-                apush(pending, ((managed_work){ .value = map->entries[i].value }));
+                managed_push(&pending, (managed_work){ .value = map->entries[i].key });
+                managed_push(&pending, (managed_work){ .value = map->entries[i].value });
             }
         } else if (value.container != PIN_CONTAINER_SINGLE) {
             const pin_array *array = value.ptr;
@@ -1715,7 +1749,7 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
         } else if (value.type == PIN_UNION) {
             const pin_union *sum = value.ptr;
             for (int i = 0; sum && i < sum->count; i++) {
-                apush(pending, ((managed_work){ .value = sum->values[i] }));
+                managed_push(&pending, (managed_work){ .value = sum->values[i] });
             }
         } else if (value.type == PIN_STRUCT && value.ptr) {
             const type_desc *layout = pin_value_type(&value);
@@ -1736,11 +1770,14 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                 } else {
                     continue;
                 }
-                apush(pending, ((managed_work){ .value = member, .flag = field->type == PIN_STRUCT }));
+                managed_push(
+                    &pending,
+                    (managed_work){ .value = member, .flag = field->type == PIN_STRUCT }
+                );
             }
         }
     }
-    afree(pending);
+    managed_stack_free(&pending);
     free(local.entries);
 }
 void behavior_managed_heap_trace_roots(const behavior_managed_heap *heap, arena_marker mark, void *user)

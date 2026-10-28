@@ -1384,9 +1384,12 @@ static void manage_header(
     const char *name
 )
 {
+    /* The root has no entry: nothing reaches it again. */
     graph_entry *entry = graph_find(graph, value);
-    entry->copy.record = record;
-    entry->copy.type_name = name;
+    if (entry) {
+        entry->copy.record = record;
+        entry->copy.type_name = name;
+    }
     if (slot) {
         slot->record = record;
         slot->type_name = name;
@@ -1396,17 +1399,21 @@ static int manage_owned_graph(arena *storage, pin_array *array)
 {
     graph_copy visited = { 0 };
     manage_pending *pending = NULL;
-    apush(
-        pending,
-        ((manage_pending){ .value = { .type = array->element_type,
-                                      .container = PIN_CONTAINER_ARRAY,
-                                      .type_name = array->type_name,
-                                      .record = array->record,
-                                      .ptr = array } })
-    );
+    /* The root is visited first and off the work list, so a packed array
+     * allocates neither. */
+    manage_pending at = { .value = { .type = array->element_type,
+                                     .container = PIN_CONTAINER_ARRAY,
+                                     .type_name = array->type_name,
+                                     .record = array->record,
+                                     .ptr = array } };
     int error = 0;
-    while (acount(pending) && !error) {
-        manage_pending at = apop(pending);
+    for (bool root = true; !error; root = false) {
+        if (!root) {
+            if (!acount(pending)) {
+                break;
+            }
+            at = apop(pending);
+        }
         pin_value value = at.value;
         bool aggregate = value.container != PIN_CONTAINER_SINGLE ||
                          value.type == PIN_UNION || value.type == PIN_STRUCT;
@@ -1421,7 +1428,9 @@ static int manage_owned_graph(arena *storage, pin_array *array)
             }
             continue;
         }
-        graph_remember(&visited, &value, value);
+        if (!root) {
+            graph_remember(&visited, &value, value);
+        }
 #define MANAGE_SLOT(p) apush(pending, ((manage_pending){ *(p), (p) }))
         if (value.container == PIN_CONTAINER_MAP) {
             pin_map *map = value.ptr;
@@ -2067,6 +2076,9 @@ void pin_value_collection_visit_owners(
     pin_value *pending = NULL;
     graph_copy visited = { 0 };
     apush(pending, root);
+    /* Values form no cycles, so nothing reaches the root again and it needs
+     * no visited entry. */
+    bool first = true;
     while (acount(pending)) {
         pin_value next = apop(pending);
         if (!next.ptr) {
@@ -2082,7 +2094,10 @@ void pin_value_collection_visit_owners(
             graph_find(&visited, &next)) {
             continue;
         }
-        graph_remember(&visited, &next, next);
+        if (!first) {
+            graph_remember(&visited, &next, next);
+        }
+        first = false;
         if (next.type == PIN_UNION) {
             const pin_union *tagged = next.ptr;
             for (int i = 0; i < tagged->count; i++) {
@@ -2116,11 +2131,20 @@ void pin_value_collection_release(const pin_value *value)
 {
     /* Copy owning shell headers before a last-reference drop frees the outer
      * malloc payload. Nested releases append work rather than recurse in C. */
-    pin_value_collection_visit_owners(value, collection_enqueue_owner, NULL);
     if (releasing_collections) {
+        pin_value_collection_visit_owners(value, collection_enqueue_owner, NULL);
         return;
     }
     releasing_collections = true;
+    pin_value root = value ? *value : (pin_value){ 0 };
+    if (root.ptr && (root.container == PIN_CONTAINER_ARRAY ||
+                     root.container == PIN_CONTAINER_MAP ||
+                     root.container == PIN_CONTAINER_SET)) {
+        /* One collection is its only owner and needs no work list. */
+        collection_release_owner(&root, NULL);
+    } else {
+        pin_value_collection_visit_owners(&root, collection_enqueue_owner, NULL);
+    }
     while (acount(release_pending)) {
         pin_value next = apop(release_pending);
         collection_release_owner(&next, NULL);

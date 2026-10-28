@@ -132,7 +132,7 @@ TaskResultPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Na
         return false;
     }
     body := Field(forest, function, "body");
-    aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body), binding.name);
+    aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body, []), binding.name);
     child := node;
     parent := forest[node].parent;
     while (parent >= 0 && parent != function) {

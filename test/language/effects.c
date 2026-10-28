@@ -198,6 +198,63 @@ TEST_CASE(effects_array_receivers_match_arguments)
     }
     return true;
 }
+/* A view any number of unions deep is still read; the walk has no depth at
+ * which it gives up. A pointer at the same depth stays pure. */
+TEST_CASE(effects_views_deep_in_unions_are_read)
+{
+    cleanup();
+    char error[256];
+    arrays = native_capabilities_from_definition_packs(
+        NULL,
+        0,
+        &NATIVE_ARRAY_DEFINITION_PACK,
+        1,
+        error,
+        sizeof error
+    );
+    REQUIRE(arrays);
+    enum
+    {
+        DEPTH = 80
+    };
+    static char source[16384];
+    int n = snprintf(
+        source,
+        sizeof source,
+        "Effects :: library { V0 :: union { Window(v: view int[]) | Empty } "
+        "P0 :: union { Target(p: ^(int[])) | Nowhere } "
+    );
+    for (int i = 1; i <= DEPTH; i++) {
+        n += snprintf(
+            source + n,
+            sizeof source - (size_t)n,
+            "V%d :: union { In(v: V%d) | No } P%d :: union { In(p: P%d) | No "
+            "} ",
+            i,
+            i - 1,
+            i,
+            i - 1
+        );
+    }
+    n += snprintf(
+        source + n,
+        sizeof source - (size_t)n,
+        "Views :: (xs: V%d[], x: V%d) -> bool { return contains(xs, x); } "
+        "Pointers :: (xs: P%d[], x: P%d) -> bool { return xs.contains(x); } }",
+        DEPTH,
+        DEPTH,
+        DEPTH,
+        DEPTH
+    );
+    REQUIRE((size_t)n < sizeof source);
+    REQUIRE(parse_with(source, native_capabilities_catalog(arrays)));
+    REQUIRE(function("Views") && (function("Views")->effects & SCRIPT_EFFECT_READ));
+    REQUIRE(
+        function("Pointers") && function("Pointers")->pure &&
+        !function("Pointers")->effects
+    );
+    return true;
+}
 TEST_CASE(effects_query_checks_inferred_helpers_and_retained_reads)
 {
     REQUIRE(parse(
@@ -449,6 +506,7 @@ void test_language_effects()
     RUN_TEST_CASE(effects_infer_recursive_and_transitive_callables);
     RUN_TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots);
     RUN_TEST_CASE(effects_array_receivers_match_arguments);
+    RUN_TEST_CASE(effects_views_deep_in_unions_are_read);
     RUN_TEST_CASE(effects_query_checks_inferred_helpers_and_retained_reads);
     RUN_TEST_CASE(effects_component_await_is_synchronous_but_host_await_is_not);
     RUN_TEST_CASE(effects_imports_publish_transitive_effects_before_query_analysis);

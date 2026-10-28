@@ -1284,45 +1284,45 @@ static bool requires_pointer_value(const script_catalog *catalog, script_type ty
     }
     return false;
 }
-#define HOLDS_VIEW_DEPTH 64
 /* Whether a value can hold a view: itself, or an element, key, field or union
  * payload. A pointer stops the walk, since comparing one compares identity
- * and reads nothing. Each type is walked once per path. */
-static bool holds_view(const script_catalog *catalog, script_type type, uint64_t *parents, int depth)
+ * and reads nothing. Each named type is walked once: one already seen either
+ * held no view or is still being walked further up. */
+static bool holds_view(const script_catalog *catalog, script_type type, uint64_t **seen)
 {
     if (type.container == PIN_CONTAINER_VIEW) {
         return true;
     }
     if (type.container != PIN_CONTAINER_SINGLE) {
         return (type.container == PIN_CONTAINER_MAP &&
-                holds_view(catalog, script_catalog_key_type(catalog, type), parents, depth)) ||
-               holds_view(catalog, script_catalog_element_type(catalog, type), parents, depth);
+                holds_view(catalog, script_catalog_key_type(catalog, type), seen)) ||
+               holds_view(catalog, script_catalog_element_type(catalog, type), seen);
     }
     if (type.storage != PIN_STRUCT && type.storage != PIN_UNION) {
         return false;
     }
     const script_catalog_type *record = script_catalog_type_by_id(catalog, type.nominal);
-    if (!record || depth == HOLDS_VIEW_DEPTH) {
+    if (!record) {
         return false;
     }
-    for (int i = 0; i < depth; i++) {
-        if (parents[i] == record->id) {
+    for (int i = 0; i < acount(*seen); i++) {
+        if ((*seen)[i] == record->id) {
             return false;
         }
     }
-    parents[depth++] = record->id;
+    apush(*seen, record->id);
     for (int i = 0; i < record->field_count; i++) {
-        if (holds_view(catalog, record->fields[i].type, parents, depth)) {
+        if (holds_view(catalog, record->fields[i].type, seen)) {
             return true;
         }
     }
     for (int i = 0; i < record->variant_count; i++) {
         const script_catalog_variant *v = &record->variants[i];
-        if (!v->tagged && holds_view(catalog, v->type, parents, depth)) {
+        if (!v->tagged && holds_view(catalog, v->type, seen)) {
             return true;
         }
         for (int j = 0; j < v->field_count; j++) {
-            if (holds_view(catalog, v->fields[j].type, parents, depth)) {
+            if (holds_view(catalog, v->fields[j].type, seen)) {
                 return true;
             }
         }
@@ -1475,10 +1475,11 @@ static int event_receiver(analyzer *a, TSNode target, const script_catalog_capab
 static unsigned argument_effects(const analyzer *a, int expression)
 {
     unsigned effects = script_analyzer_expr_effects(a, expression);
-    uint64_t parents[HOLDS_VIEW_DEPTH];
-    if (holds_view(a->catalog, script_analyzer_expr_type(a, expression), parents, 0)) {
+    uint64_t *seen = NULL;
+    if (holds_view(a->catalog, script_analyzer_expr_type(a, expression), &seen)) {
         effects |= SCRIPT_EFFECT_READ;
     }
+    afree(seen);
     return effects;
 }
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)

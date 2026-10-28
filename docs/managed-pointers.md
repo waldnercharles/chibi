@@ -124,24 +124,32 @@ compiler-generated destructors and reference updates throughout the program.
 Reusing Chibi's existing tracing collector avoids adding that second ownership
 system. Reference: [Nim ORC source at the inspected revision](https://github.com/nim-lang/Nim/blob/2b9e94433dd9c3e8e138f8bc6fb52060d54c436a/lib/system/orc.nim).
 
+## Hot reload and cell storage
+
+- **Pointee layouts.** A replacement preserves state only when every authored
+  record the state reaches through a pointer has the layout the new module
+  declares. Otherwise that state restarts from its initial value, as state
+  whose own type changed does. Adding a field to `Actor` therefore resets
+  `saved: ^Actor?` to `nil`, while `kept: ^number?` survives
+  (`program_replacement_restarts_state_reaching_changed_pointee_layouts`).
+- **Retired heaps.** A commit adopts the previous heap into the family, and
+  every heap names the family's current head as its owner. The collection
+  after a commit frees each adopted heap that holds no cell and no root, so a
+  family keeps only the heaps whose cells are still reachable
+  (`program_replacement_releases_empty_retired_heaps`).
+- **Items of a managed array.** A cell owns its payload alone, so element and
+  field writes through a pointer (`p^[i] = v`, `p.field = v`) change it in
+  place instead of copying the whole value first. Stage zero reads an item of `p^` or of an addressed
+  local through the cell, which copies that item alone
+  (`program_managed_array_items_copy_alone`).
+
 ## Known limitations
 
-The independent runtime review of #695 left these for follow-up work:
-
-- **Pointee layouts across hot reload.** Matching preserved state compares the
-  pointer header, not the pointee's layout. If a replacement changes a record
-  that preserved cells hold (for example, a field added to `Actor` while
-  `saved: ^Actor` is kept), those cells keep the old layout. Reads through them
-  then fail with "Reference read differs from its declared result" until a
-  restart. Nothing reads freed or misaligned memory. The fix is to compare the
-  layouts reachable through pointers when state is matched.
-- **Retired heaps.** Each committed replacement keeps the previous heap in the
-  family until the program is destroyed, even once it holds no live cell.
-  Collection and ownership checks grow linearly with the number of reloads.
-- **Elements through a pointer to an array.** `p^[i]` reads and `p^[i] = v`
-  writes copy the whole cell value, and an address-taken array local leaves the
-  in-place array path. Loops over large `^(T[])` targets are quadratic until
-  writes go into the cell in place and reads copy only the item.
+- The Chibi-written compiler (`Pointers.chibi`) still lowers `p^[i]` reads as
+  a read of the whole cell followed by an index. Programs it compiles get
+  in-place writes, but each item read copies the array.
+- Appending to an address-taken array local (`xs.append(v)` after `&xs`)
+  reads and replaces the whole cell.
 
 ## Verification ledger
 

@@ -1013,8 +1013,13 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
                  : NULL;
     }
     const type_desc *root_layout = reference_root_layout(ref);
-    pin_value value, retained;
-    if (pin_value_snapshot_to_arena(owner_storage, &value, &args[1]) ||
+    pin_value value, retained = root;
+    if (pin_value_snapshot_to_arena(owner_storage, &value, &args[1])) {
+        return "Cannot retain referenced value";
+    }
+    /* A path write changes a copy of the root, which other values may share.
+     * A managed cell owns its payload alone, so its paths change it in place. */
+    if (ref->path && ref->kind != LANGUAGE_REFERENCE_MANAGED &&
         snapshot_reference_root(owner_storage, &retained, &root, root_layout)) {
         return "Cannot retain referenced value";
     }

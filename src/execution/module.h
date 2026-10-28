@@ -145,7 +145,9 @@ void execution_module_free(execution_module *module);
  * and must outlive the program, including imported programs and replacements. */
 /* Register host-retained pointer values with this heap before the next run.
  * Destroying the program clears registered root slots; pointers never outlive
- * their owning program. The returned heap remains stable across replacement. */
+ * their owning program. A committed replacement moves the program to a new
+ * heap and frees earlier ones once they hold no cell or root, so fetch the
+ * heap again after one. */
 behavior_managed_heap *execution_program_managed_heap(execution_program *);
 execution_program *execution_program_new(
     execution_module *module,

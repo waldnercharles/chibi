@@ -19,6 +19,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/union.h"
@@ -429,12 +430,7 @@ static execution_program *program_new(
                 return NULL;
             }
             child->owner_program = p;
-            behavior_managed_heap *tail = p->managed;
-            while (tail->previous) {
-                tail = tail->previous;
-            }
-            tail->previous = child->managed;
-            child->managed->owner = p->managed;
+            behavior_managed_heap_adopt(p->managed, child->managed);
             child->managed = NULL;
             apush(p->imports, child);
         }
@@ -2640,6 +2636,98 @@ static int matching_state(const execution_module *before, const execution_module
     }
     return -1;
 }
+static bool record_current(const execution_module *module, const pin_record *record)
+{
+    for (int i = 0; i < module->plan.type_count; i++) {
+        const execution_type_requirement *type = &module->plan.types[i];
+        if (type->id == record->id) {
+            return pin_record_same(type->record, record);
+        }
+    }
+    return false;
+}
+/* Whether every authored record that value reaches through a managed pointer
+ * has the layout module declares. A preserved cell keeps the layout it was
+ * made with, so state reaching an older one restarts from its initial value. */
+static bool pointees_current(const execution_module *module, pin_value value)
+{
+    typedef struct
+    {
+        pin_value value;
+        bool pointee;
+    } pending_value;
+    pending_value *pending = NULL;
+    const pin_record **current = NULL;
+    program_pointer_set cells = { 0 };
+    bool result = true;
+    apush(pending, ((pending_value){ value, false }));
+    while (acount(pending)) {
+        pending_value item = apop(pending);
+        pin_value v = item.value;
+        const pin_array *array = v.container != PIN_CONTAINER_SINGLE &&
+                                         v.container != PIN_CONTAINER_MAP
+                                   ? v.ptr
+                                   : NULL;
+        const pin_record *record = array ? array->record : v.record;
+        if (item.pointee && record) {
+            bool known = false;
+            for (int i = 0; i < acount(current) && !known; i++) {
+                known = current[i] == record;
+            }
+            if (!known && !record_current(module, record)) {
+                result = false;
+                break;
+            }
+            if (!known) {
+                apush(current, record);
+            }
+        }
+        if (v.container == PIN_CONTAINER_MAP) {
+            const pin_map *map = v.ptr;
+            for (int i = 0; map && i < map->count; i++) {
+                apush(pending, ((pending_value){ map->entries[i].key, item.pointee }));
+                apush(pending, ((pending_value){ map->entries[i].value, item.pointee }));
+            }
+        } else if (v.container != PIN_CONTAINER_SINGLE) {
+            /* Packed scalar items reach nothing; boxed items may be nested
+             * containers. */
+            bool reaches = array && (!array->stride || array->element_type == PIN_STRUCT ||
+                                     array->element_type == PIN_UNION ||
+                                     array->element_type == PIN_POINTER);
+            for (int i = 0; reaches && i < array->count; i++) {
+                apush(pending, ((pending_value){ pin_array_get(array, i), item.pointee }));
+            }
+        } else if (v.type == PIN_POINTER && v.ptr) {
+            const pin_pointer *cell = v.ptr;
+            while (cell->base) {
+                cell = cell->base;
+            }
+            if (program_pointer_first_visit(&cells, cell)) {
+                apush(pending, ((pending_value){ cell->value, true }));
+            }
+        } else if (v.type == PIN_UNION && v.ptr) {
+            const pin_union *sum = v.ptr;
+            for (int i = 0; i < sum->count; i++) {
+                apush(pending, ((pending_value){ sum->values[i], item.pointee }));
+            }
+        } else if (v.type == PIN_STRUCT && v.ptr) {
+            const type_desc *layout = pin_value_type(&v);
+            for (int i = 0; layout && i < layout->field_count; i++) {
+                const type_field *field = &layout->fields[i];
+                pin_value member;
+                if ((field->type == PIN_STRUCT || field->type == PIN_POINTER ||
+                     field->type == PIN_UNION) &&
+                    !pin_read_field(NULL, v.ptr, field, &member)) {
+                    apush(pending, ((pending_value){ member, item.pointee }));
+                }
+            }
+        }
+    }
+    afree(pending);
+    afree(current);
+    free(cells.slots);
+    return result;
+}
 static void preserve_shared(execution_program *next, const execution_program *before)
 {
     for (int i = 0; i < next->module->plan.state_count; i++) {
@@ -2648,7 +2736,8 @@ static void preserve_shared(execution_program *next, const execution_program *be
             continue;
         }
         int old = matching_state(before->module, state);
-        if (old >= 0 && registration_state(before, old)) {
+        if (old >= 0 && registration_state(before, old) &&
+            pointees_current(next->module, before->shared[old].value)) {
             int status = state_assign(&next->shared[i], &before->shared[old].value);
             assert(!status);
             (void)status;
@@ -2694,7 +2783,8 @@ static void preserve_state(
         const execution_module_state *state = &next->module->plan.states[i];
         int index = matching_state(before->module, state);
         if (registration_state(next, i) || index < 0 ||
-            registration_state(before, index)) {
+            registration_state(before, index) ||
+            !pointees_current(next->module, old->states[index].value)) {
             continue;
         }
         /* A staged candidate deliberately retains the original family's
@@ -2944,12 +3034,7 @@ void execution_program_commit_replace(execution_program *p, execution_program *n
     replacement_unroot(next);
     next->replacement_of = NULL;
     next->replacement_module = NULL;
-    behavior_managed_heap *tail = next->managed;
-    while (tail->previous) {
-        tail = tail->previous;
-    }
-    tail->previous = p->managed;
-    p->managed->owner = next->managed;
+    behavior_managed_heap_adopt(next->managed, p->managed);
     p->managed = NULL;
     execution_program old = *p;
     *p = *next;

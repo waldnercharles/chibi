@@ -13710,16 +13710,20 @@ static bool native_text(int b, const native_module *m, pin_string *ir)
     *ir = pin_text(value->values[0]);
     return true;
 }
-/* A string is `native_abi.TextType()`, the layout of the runtime's
- * pin_string: its bytes, its length, then its owner. */
+/* The native LLVM fixtures target 64-bit layouts. Portable hosts still store
+ * pin_string as their own bytes pointer, 32-bit length and owner pointer. */
 _Static_assert(
     offsetof(pin_string, bytes) == 0 &&
         offsetof(pin_string, length) == sizeof(void *) &&
         offsetof(pin_string, owner) == 2 * sizeof(void *) &&
-        sizeof(pin_string) == 3 * sizeof(void *) &&
         sizeof(((pin_string *)0)->length) == 4,
-    "pin_string is { ptr, i32, ptr }"
+    "pin_string is { host pointer, i32, host pointer }"
 );
+#if UINTPTR_MAX == UINT64_MAX
+_Static_assert(sizeof(pin_string) == 24, "64-bit native text layout");
+#else
+_Static_assert(sizeof(void *) == 4 && sizeof(pin_string) == 12, "32-bit portable text layout");
+#endif
 /* Main returns whether its two texts differ: each constant is a private
  * global of its bytes and a NUL, named by its index in the text table, and
  * `!=` negates the module's one byte comparison. */
@@ -20423,37 +20427,51 @@ TEST_CASE(native_overload_reference_contract)
         const char *message;
         int column;
     } cases[] = {
-        { "package facts\nRun :: () -> int { return native.overload(2); }",
-          .parameter = PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32, NULL, 0 },
         { "package facts\nRun :: () -> int { return "
           "native.overload((-(2))); }",
-          .parameter = PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(2.0); "
           "}",
-          .parameter = PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(1e0); "
           "}",
-          .parameter = PIN_I32 },
-        { "package facts\nRun :: () -> int { return native.kernel(2); }",
-          .parameter = PIN_F32 },
+          PIN_I32,
+          NULL,
+          0 },
+        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32, NULL, 0 },
         { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
           "* "
           "2); }",
-          .parameter = PIN_F32 },
+          PIN_F32,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
           "* "
           "2); }",
-          .parameter = PIN_F64 },
+          PIN_F64,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: f64) -> int { return "
           "native.kernel(v); }",
-          .parameter = PIN_F64 },
+          PIN_F64,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: int) -> int { return "
           "native.overload(v); "
           "}",
-          .parameter = PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return "
           "native.overload(\"three\"); }",
-          .parameter = PIN_STR },
+          PIN_STR,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(2.5); "
           "}",
           PIN_FLOW,

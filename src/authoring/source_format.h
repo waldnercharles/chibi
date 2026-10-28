@@ -10,6 +10,7 @@ typedef struct
     int indent_width;    /* 1..16 spaces per level (or tab display width). */
     int preferred_width; /* 0 preserves line breaks; otherwise 1..4096 columns. */
     bool use_tabs;       /* One tab per indentation level, no alignment tabs. */
+    bool remove_optional_semicolons; /* Keep separators needed by the parser. */
 } authoring_format_options;
 
 authoring_format_options authoring_format_defaults();
@@ -48,7 +49,13 @@ char *authoring_source_format(const script_syntax *, char *error, size_t size);
  * Comments, literals and indivisible expressions can exceed preferred_width.
  * Output line endings are LF; embedded comment/literal bytes stay exact.
  *
- * Optional map receives owned, ordered, non-overlapping whitespace replacements.
+ * remove_optional_semicolons also removes redundant statement/declaration
+ * terminators, retaining separators before expression continuations and comments
+ * whose syntax ownership would change. All other tokens and the parsed structure
+ * stay unchanged. This is not semantic minimization.
+ *
+ * Optional map receives owned, ordered, non-overlapping whitespace replacements
+ * (and removed semicolons when that option is enabled).
  * Copy text[new_start:new_end] over source[start:end], working from last to first,
  * to reproduce the result. Free a previous map before reusing it. Failure clears
  * the map and leaves the input unchanged; no partial edits are published. */
@@ -62,7 +69,7 @@ char *authoring_source_format_with_options(
 void authoring_format_map_free(authoring_format_map *);
 /* Maps a byte offset in [0, source_size]. Unchanged text retains its byte offset
  * within the token. Replaced gap endpoints map to their corresponding endpoints;
- * affinity chooses a side for offsets inside replaced whitespace and insertions. */
+ * affinity chooses a side for offsets inside replaced text and insertions. */
 int authoring_format_map_position(const authoring_format_map *, int offset, authoring_format_affinity);
 
 #endif

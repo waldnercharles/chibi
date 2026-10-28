@@ -83,6 +83,19 @@ static bool end_line(TSNode node)
            kind(node, "component_field") || kind(node, "record_field");
 }
 
+/* Automatic terminators may extend an ancestor through trailing whitespace.
+ * The final visible child, not that ancestor's byte end, closes layout frames. */
+static bool last_visible_child(TSNode node)
+{
+    for (TSNode next = ts_node_next_sibling(node); !ts_node_is_null(next);
+         next = ts_node_next_sibling(next)) {
+        if (ts_node_start_byte(next) != ts_node_end_byte(next)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static token leaf(TSNode node)
 {
     token t = { .node = node,
@@ -105,9 +118,9 @@ static token leaf(TSNode node)
          p = ts_node_parent(p)) {
         t.chain_open += chain(p);
     }
-    for (TSNode p = parent;
-         !ts_node_is_null(p) && ts_node_end_byte(p) == (uint32_t)t.end;
-         p = ts_node_parent(p)) {
+    for (TSNode child = node, p = parent;
+         !ts_node_is_null(p) && last_visible_child(child);
+         child = p, p = ts_node_parent(p)) {
         t.end_line |= end_line(p);
         t.chain_close += chain(p);
         if (kind(p, "block") && kind(ts_node_parent(p), "switch_arm") &&
@@ -335,9 +348,77 @@ int authoring_format_map_position(const authoring_format_map *map, int offset, a
     return offset + delta;
 }
 
+/* These are the grammar's _end sites and optional trailing declaration tokens.
+ * An explicit list keeps future required separators out of this policy. */
+static bool optional_semicolon(TSNode node)
+{
+    if (!kind(node, ";")) {
+        return false;
+    }
+    TSNode parent = ts_node_parent(node);
+    static const char *const parents[] = {
+        "package_header",       "import_declaration",   "prototype_body",
+        "component_field",      "record_field",         "state_declaration",
+        "action_declaration",   "event_declaration",    "bind_declaration",
+        "constant_declaration", "exit_declaration",     "local_declaration",
+        "assignment",           "expression_statement", "reduce_statement",
+        "return_statement",     "goto_statement",       "break_statement",
+        "continue_statement",   "yield_statement",      "cancel_statement",
+        "delete_statement",     "function_declaration", "record_declaration",
+        "union_declaration",
+    };
+    for (int i = 0; i < (int)(sizeof parents / sizeof *parents); i++) {
+        if (kind(parent, parents[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Match the automatic terminator scanner's continuation guard. Comments remain
+ * byte-exact, and a semicolon after an owned comment stays explicit: deleting
+ * it could move the comment outside its original statement in the CST. */
+static void remove_semicolons(token *list, const char *text)
+{
+    int count = acount(list), used = 0;
+    bool boundary = false;
+    for (int i = 0; i < count; i++) {
+        token current = list[i];
+        bool remove = used && optional_semicolon(current.node);
+        if (remove && kind(list[used - 1].node, "comment") &&
+            ts_node_eq(
+                ts_node_parent(list[used - 1].node),
+                ts_node_parent(current.node)
+            )) {
+            remove = false;
+        }
+        int next = i + 1;
+        while (remove && next < count && kind(list[next].node, "comment")) {
+            next++;
+        }
+        if (remove && next < count &&
+            strchr("+-*/%&|^!<>=.,?:([", text[list[next].start])) {
+            remove = false;
+        }
+        if (remove) {
+            list[used - 1].end_line = true;
+            list[used - 1].case_close |= current.case_close;
+            boundary = true;
+            continue;
+        }
+        if (boundary && kind(current.node, "comment")) {
+            current.end_line = true;
+        } else {
+            boundary = false;
+        }
+        list[used++] = current;
+    }
+    asetlen(list, used);
+}
+
 /* Compare the complete CST, including comments and field relationships. Byte
  * positions alone may change; zero-width automatic terminators are omitted. */
-static bool advance(TSTreeCursor *cursor, int *depth)
+static bool advance(TSTreeCursor *cursor, int *depth, bool semicolons)
 {
     for (;;) {
         if (ts_tree_cursor_goto_first_child(cursor)) {
@@ -351,13 +432,14 @@ static bool advance(TSTreeCursor *cursor, int *depth)
             }
         }
         TSNode node = ts_tree_cursor_current_node(cursor);
-        if (ts_node_start_byte(node) != ts_node_end_byte(node)) {
+        if (ts_node_start_byte(node) != ts_node_end_byte(node) &&
+            !(semicolons && optional_semicolon(node))) {
             return true;
         }
     }
 }
 
-static bool equivalent(TSNode a, TSNode b, const char *before, const char *after)
+static bool equivalent(TSNode a, TSNode b, const char *before, const char *after, bool semicolons)
 {
     TSTreeCursor ca = ts_tree_cursor_new(a), cb = ts_tree_cursor_new(b);
     int da = 0, db = 0;
@@ -382,7 +464,8 @@ static bool equivalent(TSNode a, TSNode b, const char *before, const char *after
                 break;
             }
         }
-        bool next_a = advance(&ca, &da), next_b = advance(&cb, &db);
+        bool next_a = advance(&ca, &da, semicolons),
+             next_b = advance(&cb, &db, semicolons);
         if (!next_a || !next_b) {
             same = next_a == next_b;
             break;
@@ -436,6 +519,9 @@ char *authoring_source_format_with_options(
     size_t source_size = strlen(source->text);
     if (source_size > FORMAT_MAX_BYTES || !tokens(source->tree, &list)) {
         goto limit;
+    }
+    if (config.remove_optional_semicolons) {
+        remove_semicolons(list, source->text);
     }
     if (config.preferred_width) {
         measure_groups(list);
@@ -571,7 +657,8 @@ char *authoring_source_format_with_options(
                                                 ts_tree_root_node(source->tree),
                                                 ts_tree_root_node(check->tree),
                                                 source->text,
-                                                out
+                                                out,
+                                                config.remove_optional_semicolons
                                             );
     script_syntax_free(check);
     afree(list);

@@ -1,7 +1,8 @@
 #!/bin/sh
-# Formats staged C sources with the clang-format version CI checks, then
-# re-stages them. Vendored third_party sources are outside its scope.
+# Opt in with make install-hooks. Validate exact staged Chibi bytes without
+# changing partial staging; retain the existing C formatter afterwards.
+set -eu
 root=$(git rev-parse --show-toplevel)
-# Branches older than the shared script keep committing unformatted.
-[ -f "$root/tools/clang-format.sh" ] || exit 0
-exec sh "$root/tools/clang-format.sh" --staged
+cd "$root"
+[ ! -f tools/chibi_format.py ] || python3 tools/chibi_format.py --staged
+[ ! -f tools/clang-format.sh ] || sh tools/clang-format.sh --staged

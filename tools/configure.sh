@@ -24,10 +24,7 @@ configure()
 source_dir=$(pwd -P)
 configure_source=$source_dir
 [ "$source_subdir" = . ] || configure_source="$source_dir/$source_subdir"
-# Commits run the clang-format CI checks (.githooks/pre-commit).
-if [ -z "$(git -C "$source_dir" config --get core.hooksPath 2>/dev/null)" ]; then
-	git -C "$source_dir" config core.hooksPath .githooks 2>/dev/null || :
-fi
+# Hooks are an explicit developer choice: make install-hooks.
 # CMake records every loaded listfile. Unchanged inputs skip reconfiguration;
 # ordinary compilation remains incremental.
 fast_stamp="$build_dir/.chibi-config-inputs"

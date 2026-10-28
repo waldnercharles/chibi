@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "exact_bytes": {
+    "test/fixtures/studio-declarations/OutlinerRows.chibi": {
+      "sha256": "662153302b4add30584c36e47151b72dc2c3d147844842ab49d1adc1f774b4b2",
+      "reason": "Exact historical Studio version-23 source; project-declarations migration regression requires original bytes and current-syntax rejection.",
+      "test": "test/tools/project_declarations.c"
+    },
+    "test/fixtures/studio-declarations/VirtualList.chibi": {
+      "sha256": "7af3b0b177624393cce56fcc94a0c4d8d58d8d059a424c8229ad031fbf55ce86",
+      "reason": "Exact historical Studio version-23 source; project-declarations migration regression requires original bytes and current-syntax rejection.",
+      "test": "test/tools/project_declarations.c"
+    }
+  },
+  "generated": {}
+}

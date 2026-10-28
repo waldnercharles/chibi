@@ -673,10 +673,9 @@ TEST_CASE(compiler_test_needs_the_core_collection)
     return true;
 }
 
-/* fmt hands each project, or the one at or above the working directory, to
- * the compiler's --format, with --check when asked, and fails when one does;
- * an older project is reported, not migrated. A folder without a project.kdl
- * goes to the compiler as given, which formats its packages. */
+/* fmt hands each project, source file or recursive source tree to the
+ * compiler's --format, preserving --check/--config and failing when one does;
+ * an older project is reported, not migrated. Omitted PATH finds the project. */
 TEST_CASE(fmt_formats_each_project)
 {
     char file[256], expected[1024];
@@ -687,6 +686,10 @@ TEST_CASE(fmt_formats_each_project)
     const char *one[] = { launcher, "fmt", "tidy", NULL };
     REQUIRE(tool_run(one, root, log_path) == 0);
     snprintf(expected, sizeof expected, "--project-root\n%s/tidy\n--format\n", root);
+    REQUIRE(file_is("compile.args", expected));
+    /* A manifest path is a project selector, not a standalone source. */
+    const char *manifest_path[] = { launcher, "fmt", "tidy/project.kdl", NULL };
+    REQUIRE(tool_run(manifest_path, root, log_path) == 0);
     REQUIRE(file_is("compile.args", expected));
 
     char *before = contents("compiles");
@@ -721,6 +724,40 @@ TEST_CASE(fmt_formats_each_project)
     const char *packages[] = { launcher, "fmt", "--check", "loose", NULL };
     REQUIRE(tool_run(packages, root, log_path) == 0);
     REQUIRE(file_is("compile.args", "--project-root\nloose\n--format\n--check\n"));
+    write_file("loose/Free source.chibi", "Free :: library {}\n");
+    write_file("format settings", "indent_width = 2\n");
+    const char *standalone[] = { launcher,
+                                 "fmt",
+                                 "loose/Free source.chibi",
+                                 "--config",
+                                 "format settings",
+                                 "--check",
+                                 NULL };
+    REQUIRE(tool_run(standalone, root, log_path) == 0);
+    REQUIRE(file_is(
+        "compile.args",
+        "--project-root\nloose/Free source.chibi\n--format\n"
+        "--config\nformat settings\n--check\n"
+    ));
+    const char *configured[] = {
+        launcher, "fmt", "--config", "format settings", "tidy", "loose", NULL
+    };
+    REQUIRE(tool_run(configured, root, log_path) == 0);
+    REQUIRE(file_is(
+        "compile.args",
+        "--project-root\nloose\n--format\n"
+        "--config\nformat settings\n"
+    ));
+    const char *no_config[] = { launcher, "fmt", "--config", NULL };
+    const char *two_configs[] = { launcher,   "fmt",
+                                  "--config", "format settings",
+                                  "--config", "format settings",
+                                  "loose",    NULL };
+    const char *two_checks[] = { launcher,  "fmt",   "--check",
+                                 "--check", "loose", NULL };
+    REQUIRE(tool_run(no_config, root, log_path) == 2);
+    REQUIRE(tool_run(two_configs, root, log_path) == 2);
+    REQUIRE(tool_run(two_checks, root, log_path) == 2);
     const char *missing[] = { launcher, "fmt", "absent", NULL };
     REQUIRE(tool_run(missing, root, log_path) == 2);
     const char *help[] = { launcher, "fmt", "--help", NULL };
@@ -759,10 +796,9 @@ static const char
                      "  on Tick :: (dt: number s) {   angle = "
                      "angle + dt; }\n}\n";
 
-/* The real compiler's --format --check names the assets that are not
- * canonical and changes nothing; --format rewrites them as their savers
- * write them. It refuses prototypes that share a name, as the player does,
- * and an older project, which it does not migrate. */
+/* The real compiler's --format --check names noncanonical assets and writes
+ * nothing. Source formatting preserves explicit types and expressions;
+ * KDL retains its saver format. Duplicate prototypes and old projects fail. */
 TEST_CASE(compiler_format_rewrites_noncanonical_assets)
 {
     project("messy", CHIBI_PROJECT_VERSION);
@@ -776,7 +812,7 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     const char *check[] = { compiler,   "--project-root", messy,
                             "--format", "--check",        NULL };
     REQUIRE(tool_run(check, root, output) == 1);
-    REQUIRE(file_has("format.log", "not canonical: content/behaviors/Spin.chibi\n"));
+    REQUIRE(file_has("format.log", "not canonical: behaviors/Spin.chibi\n"));
     REQUIRE(file_has("format.log", "not canonical: content/scenes/Start.kdl\n"));
     REQUIRE(file_is("messy/content/scenes/Start.kdl", MESSY_SCENE));
     REQUIRE(file_is("messy/content/behaviors/Spin.chibi", MESSY_SOURCE));
@@ -787,9 +823,27 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
     REQUIRE(file_is(
         "messy/content/behaviors/Spin.chibi",
-        "Spin :: behavior {\n    angle := 0.0\n    on Tick :: (dt: number "
+        "Spin :: behavior {\n    angle: number = 0.0;\n    on Tick :: (dt: "
+        "number "
         "s) {\n"
-        "        angle = angle + dt\n    }\n}\n"
+        "        angle = angle + dt;\n    }\n}\n"
+    ));
+    REQUIRE(tool_run(check, root, output) == 0);
+    /* Project content recurses beyond catalog asset families, uses the same
+     * file settings, and retains explicit types instead of minimizing them. */
+    path(directory, "messy/content/custom");
+    REQUIRE(!mkdir(directory, 0700));
+    write_file("messy/content/custom/Extra.chibi", "Extra :: library { Value: int : 7; }\n");
+    write_file("messy/.chibi-format", "indent_width = 2\nremove_optional_semicolons = true\n");
+    REQUIRE(tool_run(check, root, output) == 1);
+    REQUIRE(file_is("messy/content/custom/Extra.chibi", "Extra :: library { Value: int : 7; }\n"));
+    REQUIRE(tool_run(format, root, output) == 0);
+    REQUIRE(file_is("messy/content/custom/Extra.chibi", "Extra :: library {\n  Value: int : 7\n}\n"));
+    REQUIRE(file_is(
+        "messy/content/behaviors/Spin.chibi",
+        "Spin :: behavior {\n  angle: number = 0.0\n  on Tick :: (dt: number "
+        "s) {\n"
+        "    angle = angle + dt\n  }\n}\n"
     ));
     REQUIRE(tool_run(check, root, output) == 0);
 
@@ -840,10 +894,9 @@ static void directory(const char *relative)
 static const char MESSY_PACKAGE[] = "package lib\nDouble :: (x: int) -> int "
                                     "{   return x*2; }\n";
 
-/* Below a folder without a project.kdl, the real compiler's --format formats
- * each package source, naming them as it does a project's. A file that is
- * not a package, or a tree the package loader refuses, fails the run before
- * anything is written, and so does a folder with no sources. */
+/* Below a folder without project.kdl, --format recursively handles every
+ * source form. Invalid syntax or symlinks fail before source writes; empty
+ * folders succeed. Explicit config also works for a single source file. */
 TEST_CASE(compiler_format_rewrites_package_sources)
 {
     directory("tree");
@@ -861,10 +914,10 @@ TEST_CASE(compiler_format_rewrites_package_sources)
     REQUIRE(file_is("tree/lib/Lib.chibi", MESSY_PACKAGE));
 
     directory("tree/z");
-    write_file("tree/z/Spin.chibi", MESSY_SOURCE);
+    write_file("tree/z/Spin.chibi", "Broken :: behavior {");
     const char *format[] = { compiler, "--project-root", tree, "--format", NULL };
     REQUIRE(tool_run(format, root, output) == 1);
-    REQUIRE(file_has("packages.log", "z/Spin.chibi: it does not declare a package"));
+    REQUIRE(file_has("packages.log", "z/Spin.chibi: Cannot format source with syntax errors"));
     REQUIRE(file_is("tree/lib/Lib.chibi", MESSY_PACKAGE));
     char spin[256];
     path(spin, "tree/z/Spin.chibi");
@@ -873,7 +926,7 @@ TEST_CASE(compiler_format_rewrites_package_sources)
     path(link, "tree/z/Link.chibi");
     REQUIRE(!symlink("../lib/Lib.chibi", link));
     REQUIRE(tool_run(format, root, output) == 1);
-    REQUIRE(file_has("packages.log", "Package descendants must not be symlinks"));
+    REQUIRE(file_has("packages.log", "formatter paths must not be symlinks or special files"));
     REQUIRE(file_is("tree/lib/Lib.chibi", MESSY_PACKAGE));
     REQUIRE(!unlink(link));
 
@@ -883,6 +936,28 @@ TEST_CASE(compiler_format_rewrites_package_sources)
         file_is("tree/lib/Lib.chibi", "package lib\nDouble :: (x: int) -> int {\n    return x * 2;\n}\n")
     );
     REQUIRE(tool_run(check, root, output) == 0);
+    /* A mixed source tree is legal; standalone file mode shares explicit
+     * configuration without requiring a project or package declaration. */
+    write_file("tree/z/Spin.chibi", MESSY_SOURCE);
+    REQUIRE(tool_run(format, root, output) == 0);
+    REQUIRE(tool_run(check, root, output) == 0);
+    char settings[256];
+    path(settings, "settings");
+    write_file("settings", "indent_width = 2\nremove_optional_semicolons = true\n");
+    const char *single[] = { compiler,   "--project-root", spin, "--format",
+                             "--config", settings,         NULL };
+    REQUIRE(tool_run(single, root, output) == 0);
+    REQUIRE(file_is(
+        "tree/z/Spin.chibi",
+        "Spin :: behavior {\n  angle: number = 0.0\n  on Tick :: (dt: number "
+        "s) {\n"
+        "    angle = angle + dt\n  }\n}\n"
+    ));
+    const char *single_check[] = { compiler,   "--project-root",
+                                   spin,       "--format",
+                                   "--config", settings,
+                                   "--check",  NULL };
+    REQUIRE(tool_run(single_check, root, output) == 0);
 
     write_file("tree/z/Broken.chibi", "package z\nBroken :: ( {\n");
     REQUIRE(tool_run(check, root, output) == 1);
@@ -892,8 +967,7 @@ TEST_CASE(compiler_format_rewrites_package_sources)
     char bare[256];
     path(bare, "bare");
     const char *empty[] = { compiler, "--project-root", bare, "--format", NULL };
-    REQUIRE(tool_run(empty, root, output) == 1);
-    REQUIRE(file_has("packages.log", "holds no project.kdl or package files"));
+    REQUIRE(tool_run(empty, root, output) == 0);
     return true;
 }
 

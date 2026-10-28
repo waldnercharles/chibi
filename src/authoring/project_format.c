@@ -7,12 +7,8 @@
 #include "assets/scene_document.h"
 #include "authoring/component_declarations.h"
 #include "authoring/component_presentation.h"
-#include "authoring/language_catalog.h"
 #include "authoring/source_asset.h"
-#include "authoring/source_catalog.h"
-#include "authoring/source_format.h"
-#include "authoring/source_minimize.h"
-#include "authoring/source_package_files.h"
+#include "authoring/source_format_file.h"
 #include "graph/document/serialize.h"
 #include "runtime/declared_components.h"
 #include "support/array.h"
@@ -28,9 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-
-/* Formatting and optional identity remapping consume exact syntax snapshots. */
-#define CANONICAL_SOURCE_MAX_BYTES (8 * 1024 * 1024)
 
 typedef enum
 {
@@ -73,7 +66,7 @@ typedef struct
 {
     char *content;
     bool check;
-    source_catalog *sources;
+    const char *config;
     /* Prototypes by the names they declare, read when one is first included. */
     char **names, **texts;
     /* The project's relationships, which prototype links name. */
@@ -120,30 +113,6 @@ static int settle(bool check, const char *name, const char *path, const char *te
         return -1;
     }
     return 1;
-}
-
-static char *canonical_source(const formatter *f, const char *text, const char *path, char *error, size_t size)
-{
-    if (strlen(text) > CANONICAL_SOURCE_MAX_BYTES) {
-        snprintf(error, size, "source exceeds formatter byte limit");
-        return NULL;
-    }
-    for (int i = 0; i < source_catalog_source_count(f->sources); i++) {
-        const source_catalog_source *entry = source_catalog_source_at(f->sources, i);
-        if (!strcmp(entry->path, path)) {
-            return authoring_source_canonical(
-                text,
-                source_catalog_view(f->sources),
-                entry->identity,
-                error,
-                size
-            );
-        }
-    }
-    script_syntax *source = script_parse(text);
-    char *saved = authoring_source_format(source, error, size);
-    script_syntax_free(source);
-    return saved;
 }
 
 /* A regular file, not a link: formatting rewrites it in place. */
@@ -268,14 +237,6 @@ static const char *include_prototype(const char *name, void *user)
     return NULL;
 }
 
-static char *format_text(const char *text, char *error, size_t size)
-{
-    script_syntax *syntax = script_parse(text);
-    char *saved = authoring_source_format(syntax, error, size);
-    script_syntax_free(syntax);
-    return saved;
-}
-
 static char *canonical_graph(const char *text, char *error, size_t size)
 {
     behavior_asset *asset = behavior_asset_load(text);
@@ -321,9 +282,10 @@ static char *canonical_prototype(formatter *f, const char *text, const char *pat
     prototype *authored = resolved
                             ? prototype_load_authored(text, &registry, error, size)
                             : NULL;
-    char *saved = !authored       ? NULL
-                : code_path(path) ? format_text(text, error, size)
-                                  : prototype_save(authored);
+    char *saved = !authored ? NULL
+                : code_path(path)
+                    ? authoring_format_file_text(path, text, f->config, error, size)
+                    : prototype_save(authored);
     prototype_free(authored);
     prototype_free(resolved);
     return saved;
@@ -340,7 +302,8 @@ static char *canonical_asset(
 )
 {
     switch (family->kind) {
-        case FORMAT_SOURCE: return canonical_source(f, text, path, error, size);
+        case FORMAT_SOURCE:
+            return authoring_format_file_text(path, text, f->config, error, size);
         case FORMAT_GRAPH: return canonical_graph(text, error, size);
         case FORMAT_PROTOTYPE:
             return canonical_prototype(f, text, path, error, size);
@@ -351,7 +314,7 @@ static char *canonical_asset(
                 return NULL;
             }
             authoring_relationship_source_free(relationship);
-            return format_text(text, error, size);
+            return authoring_format_file_text(path, text, f->config, error, size);
         }
         case FORMAT_SCENE: {
             scene_document *scene = scene_document_load(text, error, size);
@@ -431,47 +394,6 @@ static int format_input_map(const formatter *f)
     return differing;
 }
 
-/* One component source, already validated by loading the declarations. */
-static int format_component(bool check, const char *folder, const char *name)
-{
-    char error[256] = "could not read it",
-         *relative = join("content/components", name);
-    char *path = join(folder, name);
-    char *text = file_read_text(path);
-    script_syntax *syntax = text ? script_parse(text) : NULL;
-    char *canonical = syntax ? authoring_source_format(syntax, error, sizeof error)
-                             : NULL;
-    int differing = -1;
-    if (!canonical) {
-        fprintf(stderr, "format: %s: %s\n", relative, error);
-    } else {
-        differing = settle(check, relative, path, text, canonical);
-    }
-    script_syntax_free(syntax);
-    free(canonical);
-    free(text);
-    free(path);
-    free(relative);
-    return differing;
-}
-
-static int format_components(const formatter *f)
-{
-    char *folder = join(f->content, "components");
-    char **names = NULL;
-    int differing = folder_files(folder, CODE_ASSET_EXTENSION, &names) ? 0 : -1;
-    if (differing < 0) {
-        fprintf(stderr, "format: could not read content/components\n");
-    }
-    for (int i = 0; i < acount(names) && differing >= 0; i++) {
-        int one = format_component(f->check, folder, names[i]);
-        differing = one < 0 ? one : differing + one;
-    }
-    free_names(names);
-    free(folder);
-    return differing;
-}
-
 /* A folder the formatter rewrites in, not a link to one elsewhere; 0 when it
  * does not exist and -1 when it is not a directory. */
 static int real_folder(const char *path, char *error, size_t size)
@@ -538,13 +460,18 @@ static bool list_assets(const formatter *f, asset_entry **out, char *error, size
     return true;
 }
 
-int authoring_project_format(const char *root, native_capabilities *native, bool check)
+int authoring_project_format_with_config(
+    const char *root,
+    native_capabilities *native,
+    const char *config,
+    bool check
+)
 {
     char error[512] = { 0 };
     formatter f = { .content = chibi_project_content(root, error, sizeof error),
-                    .check = check };
+                    .check = check,
+                    .config = config };
     declared_components *declared = NULL;
-    authoring_language_catalog *catalog = NULL;
     asset_entry *entries = NULL;
     int differing = -1;
     if (!f.content ||
@@ -560,18 +487,11 @@ int authoring_project_format(const char *root, native_capabilities *native, bool
         fprintf(stderr, "format: %s\n", error);
         goto done;
     }
-    catalog = authoring_language_catalog_new(
-        &(authoring_language_catalog_input){ .native = native },
-        error,
-        sizeof error
-    );
-    if (!catalog) {
-        fprintf(stderr, "format: %s\n", error);
-        goto done;
-    }
-    f.sources = source_catalog_new(f.content, authoring_language_catalog_view(catalog));
     differing = 0;
     for (int i = 0; i < acount(entries) && differing >= 0; i++) {
+        if (code_path(entries[i].relative)) {
+            continue; /* One recursive source pass below. */
+        }
         int one = format_asset(&f, &entries[i]);
         differing = one < 0 ? one : differing + one;
     }
@@ -580,12 +500,13 @@ int authoring_project_format(const char *root, native_capabilities *native, bool
         differing = map < 0 ? map : differing + map;
     }
     if (differing >= 0) {
-        int components = format_components(&f);
-        differing = components < 0 ? components : differing + components;
+        int sources = real_folder(f.content, error, sizeof error);
+        if (sources > 0) {
+            sources = authoring_format_path(f.content, config, check);
+        }
+        differing = sources < 0 ? sources : differing + sources;
     }
 done:
-    source_catalog_free(f.sources);
-    authoring_language_catalog_free(catalog);
     free_entries(entries);
     for (int i = 0; i < acount(f.names); i++) {
         free(f.names[i]);
@@ -602,51 +523,12 @@ done:
     return differing;
 }
 
-/* Whether a source declares a package. */
-static bool package_source(const script_syntax *syntax)
+int authoring_project_format(const char *root, native_capabilities *native, bool check)
 {
-    TSNode root = ts_tree_root_node(syntax->tree);
-    return !ts_node_is_null(ts_node_child_by_field_name(root, "package", 7));
+    return authoring_project_format_with_config(root, native, NULL, check);
 }
 
 int authoring_packages_format(const char *root, bool check)
 {
-    source_package_input *files = NULL;
-    source_package_load_error error;
-    if (!source_package_files_read(root, &files, &error)) {
-        fprintf(stderr, "format: %s: %s\n", error.path, error.message);
-        return -1;
-    }
-    if (!acount(files)) {
-        fprintf(stderr, "format: %s holds no project.kdl or package files\n", root);
-        return -1;
-    }
-    size_t prefix = strlen(root) + 1;
-    char **canonical = NULL;
-    int differing = 0;
-    for (int i = 0; i < acount(files) && differing >= 0; i++) {
-        assert(!strncmp(files[i].path, root, prefix - 1) && files[i].path[prefix - 1] == '/');
-        char message[256] = "it does not declare a package";
-        script_syntax *syntax = script_parse(files[i].text);
-        char *text = package_source(syntax)
-                       ? authoring_source_format(syntax, message, sizeof message)
-                       : NULL;
-        script_syntax_free(syntax);
-        if (!text) {
-            fprintf(stderr, "format: %s: %s\n", files[i].path + prefix, message);
-            differing = -1;
-        }
-        apush(canonical, text);
-    }
-    for (int i = 0; i < acount(canonical) && differing >= 0; i++) {
-        const char *name = files[i].path + prefix;
-        int one = settle(check, name, files[i].path, files[i].text, canonical[i]);
-        differing = one < 0 ? one : differing + one;
-    }
-    for (int i = 0; i < acount(canonical); i++) {
-        free(canonical[i]);
-    }
-    afree(canonical);
-    source_package_files_free(files);
-    return differing;
+    return authoring_format_path(root, NULL, check);
 }

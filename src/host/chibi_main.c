@@ -47,7 +47,7 @@ extern char **environ;
  * chibi check [PROJECT]: prepares the project as build does, without
  * migrating it or writing anything.
  * chibi test [ROOT]: runs the @test functions of the packages below ROOT.
- * chibi fmt [--check] [PATH...]: rewrites each project's assets, or the
+ * chibi fmt [--check] [--config FILE] [PATH...]: rewrites each project's assets, or the
  * package sources of a folder without a project.kdl, in their canonical form,
  * or with --check names the ones that are not.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
@@ -178,7 +178,7 @@ static int usage(const char *program)
         "       %s build --native [-O0|-O2] [-g] [--target TRIPLE]\n"
         "                [--llvm DIR] [ROOT]\n"
         "       %s check [PROJECT]\n"
-        "       %s fmt [--check] [PATH...]\n"
+        "       %s fmt [--check] [--config FILE] [PATH...]\n"
         "       %s test [ROOT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
@@ -211,10 +211,10 @@ static int usage(const char *program)
         "test runs each @test function of the packages below ROOT, the\n"
         "working directory without one, and fails when one fails. ROOT holds\n"
         "only package files.\n"
-        "fmt rewrites each project's sources and KDL assets as their savers\n"
-        "write them; --check writes nothing and fails when one would change.\n"
-        "A PATH that is a folder without a project.kdl has the package\n"
-        "sources below it formatted instead, as test reads them.\n"
+        "fmt applies nearest .chibi-format settings to every source form;\n"
+        "PATH may be a file, recursive source folder or project. Project KDL\n"
+        "assets retain their saver format. --check never writes; --config\n"
+        "selects an explicit settings file. No semantic minimization occurs.\n"
         "run prepares and starts the player.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
@@ -1198,10 +1198,14 @@ static int build_game(int argc, char **argv)
 
 /* Has the compiler format the package sources below a requested folder
  * without a project.kdl, or else the project at or above `requested`. */
-static int format_game(char *compiler, char *requested, bool check)
+static int format_game(char *compiler, char *requested, const char *config, bool check)
 {
     chibi_project project = { 0 };
-    bool packages = requested && chibi_project_package_folder(requested);
+    struct stat info;
+    size_t length = requested ? strlen(requested) : 0;
+    bool source = length >= 6 && !strcmp(requested + length - 6, ".chibi") &&
+                  !stat(requested, &info) && S_ISREG(info.st_mode);
+    bool packages = requested && (source || chibi_project_package_folder(requested));
     if (!packages && !open_project(&project, requested, false)) {
         return 2;
     }
@@ -1209,38 +1213,51 @@ static int format_game(char *compiler, char *requested, bool check)
                      "--project-root",
                      packages ? requested : project.root,
                      "--format",
-                     check ? "--check" : NULL,
+                     config ? "--config" : (check ? "--check" : NULL),
+                     config ? (char *)config : NULL,
+                     config && check ? "--check" : NULL,
                      NULL };
     int status = chibi_process_run(args);
     chibi_project_free(&project);
     return status;
 }
 
-/* chibi fmt [--check] [PATH...]: the compiler formats each project or folder
- * of packages, or the project at or above the working directory; nonzero
- * when any fails. */
+/* chibi fmt [--check] [--config FILE] [PATH...]: the compiler formats each
+ * project or folder of packages, or the project at or above the working
+ * directory; nonzero when any fails. */
 static int format_games(int argc, char **argv)
 {
     bool check = false;
-    int projects = 0;
+    const char *config = NULL;
+    char **paths = NULL;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            afree(paths);
             return usage(argv[0]);
         }
-        if (argv[i][0] == '-' && (strcmp(argv[i], "--check") || check)) {
+        if (!strcmp(argv[i], "--check") && !check) {
+            check = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--config") && !config && i + 1 < argc) {
+            config = argv[++i];
+            continue;
+        }
+        if (argv[i][0] == '-') {
             fprintf(stderr, "Invalid fmt option; use --help.\n");
+            afree(paths);
             return 2;
         }
-        check |= argv[i][0] == '-';
-        projects += argv[i][0] != '-';
+        apush(paths, argv[i]);
     }
     char *bin = file_executable_dir();
     char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
-    int status = projects ? 0 : format_game(compiler, NULL, check);
-    for (int i = 2; i < argc; i++) {
-        int result = argv[i][0] == '-' ? 0 : format_game(compiler, argv[i], check);
+    int status = acount(paths) ? 0 : format_game(compiler, NULL, config, check);
+    for (int i = 0; i < acount(paths); i++) {
+        int result = format_game(compiler, paths[i], config, check);
         status = result ? result : status;
     }
+    afree(paths);
     free(compiler);
     free(bin);
     return status;

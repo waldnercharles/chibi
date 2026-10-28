@@ -1,0 +1,6 @@
+# Shared CLI, editor/SDK and repository formatting policy.
+indent_width = 4
+preferred_width = 0
+use_tabs = false
+# Opt in per project when ready; fmt never runs semantic minimization.
+remove_optional_semicolons = false

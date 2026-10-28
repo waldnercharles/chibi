@@ -50,7 +50,7 @@ CanonicalPath :: (path: string) -> string {
         resolved := build.resolve_path(candidate);
         kind := build.file_kind(candidate);
         if (kind != "" && (resolved == "" ||
-            (index < length(parts) - 1 && build.file_kind(resolved) != "directory"))) {
+                           (index < length(parts) - 1 && build.file_kind(resolved) != "directory"))) {
             return "";
         }
         result = candidate;

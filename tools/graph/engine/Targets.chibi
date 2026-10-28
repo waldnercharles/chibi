@@ -515,6 +515,7 @@ Files :: (target: string) -> string[] {
             "src/authoring/native_bindings.c", "src/authoring/source_literal.c",
             "src/authoring/source_references.c", "src/authoring/source_prepare.c",
             "src/authoring/source_link.c", "src/authoring/source_format.c",
+            "src/authoring/source_format_file.c",
             "src/authoring/source_navigation.c", "src/authoring/source_prototype_flow.c",
             "src/authoring/source_rename.c", "src/authoring/source_intelligence.c"
         ];
@@ -1306,6 +1307,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_authoring") {
         return [
             "authoring/native_bindings.h", "authoring/source_declaration.h", "authoring/source_format.h",
+            "authoring/source_format_file.h",
             "authoring/source_intelligence.h", "authoring/source_link.h", "authoring/source_literal.h",
             "authoring/source_navigation.h", "authoring/source_prepare.h", "authoring/source_prototype_flow.h",
             "authoring/source_references.h", "authoring/source_rename.h"

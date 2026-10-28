@@ -93,7 +93,7 @@ static bool configured(const char *input, authoring_format_options options)
     return !formatted->diagnostic_count && !strcmp(source->text, input);
 }
 
-static bool map_reproduces_source()
+static bool map_reproduces_source_with_semicolons(bool semicolons)
 {
     REQUIRE(edit_map.source_size == (int)strlen(source->text));
     REQUIRE(edit_map.formatted_size == (int)strlen(text));
@@ -121,7 +121,10 @@ static bool map_reproduces_source()
             );
         }
         for (int p = e.start; p < e.end; p++) {
-            REQUIRE(isspace((unsigned char)source->text[p]));
+            REQUIRE(
+                isspace((unsigned char)source->text[p]) ||
+                (semicolons && source->text[p] == ';')
+            );
         }
         for (int p = e.new_start; p < e.new_end; p++) {
             REQUIRE(isspace((unsigned char)text[p]));
@@ -150,6 +153,11 @@ static bool map_reproduces_source()
     REQUIRE(edit_map.source_size - before == edit_map.formatted_size - after);
     REQUIRE(!strcmp(source->text + before, text + after));
     return true;
+}
+
+static bool map_reproduces_source()
+{
+    return map_reproduces_source_with_semicolons(false);
 }
 
 /* A handler that names its payload fields keeps the list and its types. */
@@ -549,6 +557,140 @@ TEST_CASE(source_format_rejects_options_and_drafts_atomically)
     source = script_parse("Broken :: behavior {x:=}");
     text = authoring_source_format_with_options(source, NULL, &edit_map, NULL, 0);
     REQUIRE(!text && !edit_map.edits && !edit_map.count);
+    return true;
+}
+
+TEST_CASE(source_format_removes_only_optional_semicolons)
+{
+    REQUIRE(configured(
+        "package app; import \"x\"; Pair :: struct { value: int; }; "
+        "Choice :: union { A | B }; F :: (n:int)->int { x:int=(n); "
+        "for i in 0..<n { for j in 0..<i { continue; } break; } return x; };",
+        (authoring_format_options){ .indent_width = 4, .remove_optional_semicolons = true }
+    ));
+    REQUIRE(!strchr(text, ';'));
+    REQUIRE(strstr(text, "package app\nimport \"x\"\n"));
+    REQUIRE(strstr(text, "x: int = (n)\n"));
+    REQUIRE(strstr(text, "for i in 0..<n {\n        for j in 0..<i {\n"));
+    REQUIRE(map_reproduces_source_with_semicolons(true));
+    cleanup();
+    REQUIRE(configured(
+        "Demo::behavior{x:int=1;on Tick::(){F(value: x);return (x);}}",
+        (authoring_format_options){ .indent_width = 4, .remove_optional_semicolons = true }
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "Demo :: behavior {\n    x: int = 1\n    on Tick :: () {\n"
+        "        F(value: x)\n        return (x)\n    }\n}\n"
+    ));
+    REQUIRE(map_reproduces_source_with_semicolons(true));
+    return true;
+}
+
+TEST_CASE(source_format_semicolons_preserve_comments_and_literals)
+{
+    REQUIRE(configured(
+        "Demo::behavior{x:=1;/*after*/y:=2 /*before*/ ;"
+        "s:=\"literal; //not a comment\";c:=';';"
+        "on Tick::(){F(); // tail\r\nG();}}",
+        (authoring_format_options){ .indent_width = 4, .remove_optional_semicolons = true }
+    ));
+    REQUIRE(strstr(text, "x := 1 /*after*/\n"));
+    REQUIRE(strstr(text, "y := 2 /*before*/;\n"));
+    REQUIRE(strstr(text, "s := \"literal; //not a comment\"\n"));
+    REQUIRE(strstr(text, "c := ';'\n"));
+    REQUIRE(strstr(text, "F() // tail\r\n        G()\n"));
+    REQUIRE(map_reproduces_source_with_semicolons(true));
+    cleanup();
+    REQUIRE(configured(
+        "package app;/*header*/ import \"x\";/*one*/ /*two*/ F::(){}; // end",
+        (authoring_format_options){ .indent_width = 4, .remove_optional_semicolons = true }
+    ));
+    REQUIRE(!strchr(text, ';'));
+    REQUIRE(strstr(text, "package app /*header*/\n"));
+    REQUIRE(strstr(text, "import \"x\" /*one*/ /*two*/\n"));
+    REQUIRE(strstr(text, "F :: () {} // end\n"));
+    REQUIRE(map_reproduces_source_with_semicolons(true));
+    return true;
+}
+
+TEST_CASE(source_format_semicolons_keep_continuation_boundaries)
+{
+    REQUIRE(configured(
+        "package app; F :: () { Foo(); /*boundary*/ (Bar)(); "
+        "Baz(); [1]; Qux(); -1; Foo(); &value; }",
+        (authoring_format_options){ .indent_width = 4, .remove_optional_semicolons = true }
+    ));
+    REQUIRE(strstr(text, "Foo(); /*boundary*/ (Bar)()\n"));
+    REQUIRE(strstr(text, "Baz();\n    [1]\n"));
+    REQUIRE(strstr(text, "Qux();\n    -1\n"));
+    REQUIRE(strstr(text, "Foo();\n    &value\n"));
+    REQUIRE(map_reproduces_source_with_semicolons(true));
+    return true;
+}
+
+TEST_CASE(source_format_semicolons_compose_with_layout_options)
+{
+    REQUIRE(configured(
+        "package app; F::(){values:=[111,222,333,444]; "
+        "Call(first: values, second: 1234);}",
+        (authoring_format_options){ .indent_width = 2,
+                                    .preferred_width = 22,
+                                    .use_tabs = true,
+                                    .remove_optional_semicolons = true }
+    ));
+    REQUIRE(!strchr(text, ';'));
+    REQUIRE(strstr(text, "\n\tvalues := [\n\t\t111,"));
+    REQUIRE(strstr(text, "first: values"));
+    REQUIRE(map_reproduces_source_with_semicolons(true));
+    return true;
+}
+
+TEST_CASE(source_format_semicolonless_switch_frames_are_idempotent)
+{
+    const char
+        *input = "package app\nF :: () {\n"
+                 "switch x {\ncase 1:\nreturn 1\ncase:\nreturn 2\n}\n}\n";
+    REQUIRE(format(input));
+    REQUIRE(!strcmp(
+        text,
+        "package app\nF :: () {\n    switch x {\n"
+        "        case 1:\n            return 1\n"
+        "        case:\n            return 2\n    }\n}\n"
+    ));
+    cleanup();
+    REQUIRE(configured(
+        "package app; F::(){switch x{case 1:return 1;case:return 2;}}",
+        (authoring_format_options){ .indent_width = 4, .remove_optional_semicolons = true }
+    ));
+    REQUIRE(strstr(text, "\n        case:\n            return 2\n    }\n}\n"));
+    REQUIRE(map_reproduces_source_with_semicolons(true));
+    return true;
+}
+
+TEST_CASE(source_format_semicolon_policy_does_not_repair_invalid_source)
+{
+    /* C-style for headers and empty statements are not Chibi syntax. */
+    const char *invalid[] = {
+        "Demo :: behavior { on Tick :: () { for (i:=0; i<2; i+=1) {} } }",
+        "Demo :: behavior { on Tick :: () { ; } }",
+        "package app; F :: () { value := ; }",
+    };
+    authoring_format_options options = authoring_format_defaults();
+    options.remove_optional_semicolons = true;
+    for (int i = 0; i < 3; i++) {
+        source = script_parse(invalid[i]);
+        REQUIRE(source->diagnostic_count);
+        char error[192];
+        text = authoring_source_format_with_options(source, &options, &edit_map, error, sizeof error);
+        REQUIRE(!text && strstr(error, "syntax errors"));
+        REQUIRE(
+            !edit_map.edits && !edit_map.count && !edit_map.source_size &&
+            !edit_map.formatted_size
+        );
+        REQUIRE(!strcmp(source->text, invalid[i]));
+        cleanup();
+    }
     return true;
 }
 
@@ -1987,6 +2129,12 @@ void test_language_format()
     RUN_TEST_CASE(source_format_reflow_preserves_comments);
     RUN_TEST_CASE(source_format_maps_insertions_deletions_and_empty_draft);
     RUN_TEST_CASE(source_format_rejects_options_and_drafts_atomically);
+    RUN_TEST_CASE(source_format_removes_only_optional_semicolons);
+    RUN_TEST_CASE(source_format_semicolons_preserve_comments_and_literals);
+    RUN_TEST_CASE(source_format_semicolons_keep_continuation_boundaries);
+    RUN_TEST_CASE(source_format_semicolons_compose_with_layout_options);
+    RUN_TEST_CASE(source_format_semicolonless_switch_frames_are_idempotent);
+    RUN_TEST_CASE(source_format_semicolon_policy_does_not_repair_invalid_source);
     RUN_TEST_CASE(source_format_preserves_package_separators);
     RUN_TEST_CASE(source_format_block_layout);
     RUN_TEST_CASE(source_format_reductions);

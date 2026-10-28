@@ -122,7 +122,8 @@ help:
 		'make web STUDIO_SOURCE=/studio  Build external browser Studio and installed web SDK' \
 		'make web-threads    Build the separate worker SDK/browser profile' \
 		'make package-web-player  Build the browser player for chibi export --web' \
-		'make format / check-format  Format or check project C sources' \
+		'make format / check-format  Format or check C and all tracked Chibi sources' \
+		'make install-hooks          Explicit local pre-commit hook opt-in' \
 		'make clean          Remove default engine build outputs'
 
 build:
@@ -308,10 +309,22 @@ web-profile:
 	@$(MAKE) web-serve WEB_CMAKE_FLAGS="-DCHIBI_STUDIO_WEB_TRACE=ON $(WEB_CMAKE_FLAGS)"
 
 format:
+	@python3 tools/chibi_format.py --write
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh
 
 check-format:
+	@python3 tools/chibi_format.py --check
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
+
+.PHONY: format-chibi check-format-chibi install-hooks
+format-chibi:
+	@python3 tools/chibi_format.py --write
+
+check-format-chibi:
+	@python3 tools/chibi_format.py --check
+
+install-hooks:
+	@sh tools/install-hooks.sh
 
 # Agent selectors run existing drivers; use test-build to build them.
 .PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build test-stage-one native-census

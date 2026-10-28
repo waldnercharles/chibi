@@ -1,0 +1,36 @@
+name: Chibi formatting
+
+# A cheap source-only backstop on every PR and every branch push, including
+# cloud/API commits that do not execute local Git hooks. No engine/SDK build.
+on:
+  pull_request:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+concurrency:
+  # PR and branch-push runs check the same exact source head. Coalesce overlap.
+  group: chibi-format-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: All tracked Chibi sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Provision only the existing pinned syntax runtime
+        uses: actions/checkout@v4
+        with:
+          repository: tree-sitter/tree-sitter
+          ref: da6fe9beb4f7f67beb75914ca8e0d48ae48d6406
+          path: .chibi/tree-sitter
+      - name: Formatter filesystem and enforcement regressions
+        run: python3 test/tools/chibi_format.py
+      - name: Check every tracked Chibi file
+        run: python3 tools/chibi_format.py --check

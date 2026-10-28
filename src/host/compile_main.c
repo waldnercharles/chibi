@@ -3,6 +3,7 @@
 #include "authoring/project_format.h"
 #include "authoring/project_prepare.h"
 #include "authoring/source_catalog.h"
+#include "authoring/source_format_file.h"
 #include "graph/model/registry.h"
 #include "runtime/component_catalog.h"
 #include "support/file_io.h"
@@ -65,7 +66,8 @@ static int usage(const char *program)
         stderr,
         "Usage: %s --project-root PATH (--output FILE [--modules FILE | "
         "--resources-only] | "
-        "--check | --test | --format [--check] | --docs | --stage-one-input "
+        "--check | --test | --format [--check] [--config FILE] | --docs | "
+        "--stage-one-input "
         "FILE) [--scene PATH]\n",
         program
     );
@@ -78,7 +80,7 @@ static int test(const char *)
     fprintf(stderr, "This compiler prepares browser exports; it runs no tests\n");
     return 2;
 }
-static int format(const char *, bool)
+static int format(const char *, const char *, bool)
 {
     fprintf(stderr, "This compiler prepares browser exports; it formats nothing\n");
     return 2;
@@ -140,27 +142,18 @@ static int docs(const char *project)
     free(root);
     return status;
 }
-/* Formats the package sources below a folder that holds no project.kdl. */
-static int format_packages(const char *folder, bool check)
-{
-    char *root = realpath(folder, NULL);
-    if (!root) {
-        fprintf(stderr, "%s: %s\n", folder, strerror(errno));
-        return 1;
-    }
-    int differing = authoring_packages_format(root, check);
-    free(root);
-    return differing < 0 || (check && differing) ? 1 : 0;
-}
 /* Formats the project's assets with the composition chibi build uses, or the
  * package sources below a folder without a project.kdl; with check only
  * reports what differs. Fails for an older project, which it does not
  * migrate, an asset that differs under check, an invalid one or a failed
  * write. */
-static int format(const char *project, bool check)
+static int format(const char *project, const char *config, bool check)
 {
-    if (chibi_project_package_folder(project)) {
-        return format_packages(project, check);
+    size_t length = strlen(project);
+    if ((length >= 6 && !strcmp(project + length - 6, ".chibi")) ||
+        chibi_project_package_folder(project)) {
+        int differing = authoring_format_path(project, config, check);
+        return differing < 0 || (check && differing) ? 1 : 0;
     }
     char error[512] = { 0 };
     chibi_project read = { 0 };
@@ -171,7 +164,7 @@ static int format(const char *project, bool check)
         fprintf(stderr, "format: %s\n", error);
         return 1;
     }
-    int differing = authoring_project_format(project, application.native, check);
+    int differing = authoring_project_format_with_config(project, application.native, config, check);
     authoring_application_end(&application);
     return differing < 0 || (check && differing) ? 1 : 0;
 }
@@ -281,7 +274,7 @@ static int assemble(const char *project, const char *closure, const char *output
 int main(int argc, char **argv)
 {
     const char *project = NULL, *scene = NULL, *output = NULL, *target = NULL,
-               *modules = NULL;
+               *modules = NULL, *config = NULL;
     bool check = false, tests = false, formats = false, site = false, resources = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
@@ -311,6 +304,10 @@ int main(int argc, char **argv)
         if (i + 1 == argc) {
             return usage(argv[0]);
         }
+        if (!strcmp(argv[i], "--config") && !config) {
+            config = argv[++i];
+            continue;
+        }
         if (!strcmp(argv[i], "--project-root") && !project) {
             project = argv[++i];
             continue;
@@ -335,8 +332,9 @@ int main(int argc, char **argv)
     }
     int modes = (check && !formats) + tests + formats + site +
                 (output != NULL) + (target != NULL);
-    if (!project || !*project || modes != 1 || (output && !*output) ||
-        (target && !*target) || ((tests || formats || site || target) && scene) ||
+    if ((config && (!formats || !*config)) || !project || !*project ||
+        modes != 1 || (output && !*output) || (target && !*target) ||
+        ((tests || formats || site || target) && scene) ||
         (modules && (!output || !*modules || scene)) ||
         (resources && (!output || modules || scene))) {
         return usage(argv[0]);
@@ -357,7 +355,7 @@ int main(int argc, char **argv)
         return test(project);
     }
     if (formats) {
-        return format(project, check);
+        return format(project, config, check);
     }
     return authoring_project_compile(project, scene, output);
 }

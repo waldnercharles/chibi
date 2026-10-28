@@ -37,10 +37,10 @@ formatter()
 	return 1
 }
 
-# The checked sources: C files under src, tools/reflect and test, and public headers.
+# The checked sources: C files under src, tools/reflect, tools/format and test, and public headers.
 sources()
 {
-	find src tools/reflect test -type f \( -name '*.c' -o -name '*.h' \)
+	find src tools/reflect tools/format test -type f \( -name '*.c' -o -name '*.h' \)
 	find include -type f -name '*.h'
 }
 
@@ -63,6 +63,7 @@ case "${1:-}" in
 	failed=0
 	for file in $(git diff --cached --name-only --diff-filter=ACMR -- \
 		'src/*.c' 'src/*.h' 'tools/reflect/*.c' 'tools/reflect/*.h' \
+		'tools/format/*.c' 'tools/format/*.h' \
 		'test/*.c' 'test/*.h' 'include/*.h'); do
 		git show ":$file" > "$temporary/staged"
 		"$clang_format" --style=file --assume-filename="$file" \

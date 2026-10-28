@@ -57,8 +57,18 @@ jobs:
           python3 -m venv /tmp/cmake
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
+      # Generation uses optimized helpers, as in native CI. Products below keep
+      # the sanitizer profile; this does not replace sanitizer validation.
+      - name: Build Release generator helpers
+        run: |
+          make build-release BUILD_TARGET='chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+          sha256sum build-release/sdk/chibi-build-host build-release/sdk/chibi-build-host.chibi-record \
+            build-release/sdk/chibi-compiler-host build-release/sdk/chibi-compiler-host.chibi-record \
+            > "$RUNNER_TEMP/docs-generator-helpers.sha256"
       - name: Build chibi and chibi-compile
-        run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+        run: |
+          make build BUILD_PROFILE=sanitizer BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+            ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Preserve failed Graph stage log
         if: failure()
         uses: actions/upload-artifact@v4
@@ -68,6 +78,41 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
+      - name: Verify helper identity and sanitized documentation tools
+        run: |
+          sha256sum --check "$RUNNER_TEMP/docs-generator-helpers.sha256"
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          import runpy
+          check = runpy.run_path('.github/verify-native-profile.py')
+          require = check['require']
+          database = json.loads(Path('build/compile_commands.json').read_text())
+          for source in ('src/host/chibi_main.c', 'src/host/compile_main.c'):
+              entries = [entry for entry in database if entry['file'].endswith('/' + source)]
+              require(len(entries) == 1, f'missing or ambiguous compile entry: {source}')
+              entry = entries[0]
+              arguments = check['argv'](entry)
+              check['sanitizer_flags'](arguments, True)
+              require('-g' in arguments and '-g0' not in arguments and
+                      '-fno-omit-frame-pointer' in arguments and '-fomit-frame-pointer' not in arguments,
+                      f'debug/frame-pointer flags differ: {source}')
+              require(not any(arg.startswith('-O') for arg in arguments),
+                      f'default Debug optimization changed: {source}')
+              require(not any(arg.startswith('-DNDEBUG') or arg == 'NDEBUG' for arg in arguments),
+                      f'assertions disabled: {source}')
+              check['execution_record'](Path(entry['output']), arguments)
+          links = json.loads(Path('build/link_commands.json').read_text())
+          for target in ('chibi', 'chibi-compile', 'chibi-player', 'chibi_ctl'):
+              entries = [entry for entry in links if Path(entry['output']).name == target]
+              require(len(entries) == 1, f'missing or ambiguous link entry: {target}')
+              entry = entries[0]
+              arguments = check['argv'](entry)
+              binary = Path(entry['output'])
+              check['sanitizer_flags'](arguments, True)
+              check['execution_record'](binary, arguments)
+              print(target, check['symbols'](binary, True))
+          PYTHON
       - name: Build the site
         run: build/sdk/chibi doc
       - uses: mymindstorm/setup-emsdk@v14

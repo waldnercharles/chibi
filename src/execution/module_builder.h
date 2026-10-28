@@ -63,6 +63,7 @@ typedef enum
 typedef struct
 {
     execution_query_kind kind;
+    bool required; /* Component binding membership, independent of ordered guards. */
     uint64_t component;
     uint64_t source_relationship;
     int source_traversal;
@@ -71,6 +72,14 @@ typedef struct
     int *children;                /* Owned malloc buffer. */
     int child_count;
 } execution_module_query;
+typedef struct
+{
+    int query, query_variable_count;
+    pin_value row_type;
+    /* Arguments are captured values. Results are acceptance followed by the
+     * named row fields, in declaration order. */
+    behavior_function *evaluate;
+} execution_module_query_description;
 typedef struct
 {
     uint64_t component;
@@ -132,6 +141,7 @@ typedef struct execution_module_plan
     execution_module_state *states;
     execution_module_function *functions;
     execution_module_query *queries;
+    execution_module_query_description *descriptions;
     execution_module_binding *bindings;
     execution_module_action *actions;
     execution_module_diagnostic *diagnostics;
@@ -141,6 +151,7 @@ typedef struct execution_module_plan
     int import_count;
     int state_count, function_count, query_count, binding_count, action_count,
         diagnostic_count;
+    int description_count, system_description; /* One-based scheduled description. */
     int query;
     int query_filter; /* One-based authored header filter; zero if absent. */
     int query_variable_count;

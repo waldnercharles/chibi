@@ -328,7 +328,7 @@ static int begin_command(behavior_function_context *ctx, int command)
                    : binding->begin(
                          binding->service,
                          binding->reference,
-                         ctx->command_arguments + binding->first,
+                         binding->count ? ctx->command_arguments + binding->first : NULL,
                          binding->count,
                          request,
                          &error
@@ -338,6 +338,11 @@ static int begin_command(behavior_function_context *ctx, int command)
         flow_host_release(request);
         execution_request_detach(request);
         return result;
+    }
+    /* A native begin may remove the target and complete synchronously. Stop
+     * before consuming that result or invoking an authored continuation. */
+    if (!program_task_check(activation, ctx->now)) {
+        return 1;
     }
     wait->begun = true;
     if (flow_host_status(request) == FLOW_HOST_READY) {
@@ -349,6 +354,9 @@ static int begin_command(behavior_function_context *ctx, int command)
             c->result_count ? ctx->command_results + c->result_first : NULL,
             c->result_count
         );
+        if (activation->stopping || !program_wait_attached(activation, wait)) {
+            return 1;
+        }
         wait->delivered = true;
         execution_request_finish(request, FLOW_HOST_FINISHED);
         if (completed < 0) {
@@ -384,6 +392,9 @@ bool program_request_deliver(flow_host_request *request, const pin_value *values
 int program_complete_action(behavior_function_context *ctx, uint64_t action, const pin_value *values, int count)
 {
     execution_activation *owner = ctx->inspection_user;
+    if (!program_task_check(owner, ctx->now)) {
+        return FLOW_OK;
+    }
     execution_program *p = owner->instance->program;
     action_values *bank = action_bank(ctx, action);
     const execution_module *scope = ((execution_instance *)ctx->value_owner)
@@ -462,6 +473,9 @@ int program_complete_action(behavior_function_context *ctx, uint64_t action, con
         }
         if (status < 0) {
             return status;
+        }
+        if (owner->finished || owner->stopping) {
+            return FLOW_OK;
         }
     }
     return FLOW_OK;

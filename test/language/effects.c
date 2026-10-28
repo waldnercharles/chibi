@@ -137,17 +137,16 @@ TEST_CASE(effects_indexed_writes_follow_retained_and_reference_roots)
 TEST_CASE(effects_query_checks_inferred_helpers_and_retained_reads)
 {
     REQUIRE(parse(
-        "Filter :: system() where Match(3) { "
-        "Match :: (n: int) -> bool { local := n + 1; return local > 0; } }"
+        "Filter :: system( if Match(3)) { Match :: (n: int) -> bool { local := "
+        "n + 1; return local "
+        "> 0; } }"
     ));
     REQUIRE(function("Match") && function("Match")->pure);
+    REQUIRE(!parse("Filter :: system( if Match()) { Match :: () -> bool { Mutate(); return true; } }"));
     REQUIRE(!parse(
-        "Filter :: system() where Match() { "
-        "Match :: () -> bool { Mutate(); return true; } }"
-    ));
-    REQUIRE(!parse(
-        "Filter :: system() where Match() { count: retain int = 0; "
-        "Match :: () -> bool { return count > 0; } }"
+        "Filter :: system( if Match()) { count: retain int = 0; Match :: () -> "
+        "bool { return count "
+        "> 0; } }"
     ));
     return true;
 }
@@ -220,12 +219,12 @@ TEST_CASE(effects_imports_publish_transitive_effects_before_query_analysis)
     REQUIRE(read >= 0 && view->capabilities[read].pure);
     REQUIRE(view->capabilities[read].effects & SCRIPT_EFFECT_INVOCATION_READ);
     REQUIRE(!(view->capabilities[read].effects & SCRIPT_EFFECT_HOST));
-    syntax = script_parse("Filter :: system() where A.Check() {}");
+    syntax = script_parse("Filter :: system( if A.Check()) {}");
     analysis = script_analyze(syntax, view);
     REQUIRE(!syntax->diagnostic_count && !analysis->valid);
     script_analysis_free(analysis);
     script_syntax_free(syntax);
-    syntax = script_parse("Filter :: system() where B.Read() {}");
+    syntax = script_parse("Filter :: system( if B.Read()) {}");
     analysis = script_analyze(syntax, view);
     REQUIRE(!syntax->diagnostic_count && !analysis->valid);
     return true;

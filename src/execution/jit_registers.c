@@ -215,7 +215,7 @@ void behavior_jit_integer_registers(
         if (registers[i->output] || invariants[i->output] ||
             !(behavior_scalar_integer(type) || type == PIN_BOOL ||
               (type == PIN_HANDLE || type == PIN_TASK || type == PIN_UNION ||
-               type == PIN_POINTER) ||
+               type == PIN_POINTER || type == PIN_QUERY) ||
               behavior_scalar_string(type)) ||
             next_integer_clobber[pc + 1] < last[i->output]) {
             continue;
@@ -249,10 +249,11 @@ int behavior_jit_invariant_registers(
                        base + used + scratch < SLJIT_NUMBER_OF_REGISTERS;
          slot++) {
         pin_type type = f->slots[slot];
-        if (invariants[slot] && (behavior_scalar_integer(type) || type == PIN_BOOL ||
-                                 (type == PIN_HANDLE || type == PIN_TASK ||
-                                  type == PIN_UNION || type == PIN_POINTER) ||
-                                 behavior_scalar_string(type))) {
+        if (invariants[slot] &&
+            (behavior_scalar_integer(type) || type == PIN_BOOL ||
+             (type == PIN_HANDLE || type == PIN_TASK || type == PIN_UNION ||
+              type == PIN_POINTER || type == PIN_QUERY) ||
+             behavior_scalar_string(type))) {
             registers[slot] = SLJIT_S(base + used++);
         }
     }
@@ -282,7 +283,7 @@ int *behavior_jit_local_registers(const behavior_function *f, int base, int scra
             if (!registers[i] && uses[i] &&
                 (behavior_scalar_integer(type) || type == PIN_BOOL ||
                  (type == PIN_HANDLE || type == PIN_TASK || type == PIN_UNION ||
-                  type == PIN_POINTER) ||
+                  type == PIN_POINTER || type == PIN_QUERY) ||
                  behavior_scalar_string(type)) &&
                 (best < 0 || uses[i] > uses[best])) {
                 best = i;

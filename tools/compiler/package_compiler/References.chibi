@@ -356,7 +356,7 @@ ReadThroughSlots :: (storage: int, container: int, target: Target) -> Slot[] {
     return [address, address, value];
 }
 ReadThroughHost :: (cell: int) -> Host {
-    return {intrinsic: ReferenceReadIntrinsic, linked: -1, first: cell, result_first: cell + 1, result_count: 1,
+    return {command: 0, syntax_node: 0, intrinsic: ReferenceReadIntrinsic, linked: -1, first: cell, result_first: cell + 1, result_count: 1,
             written: false};
 }
 // The write of the value in slot `value` through the descriptor in slot
@@ -373,7 +373,7 @@ WriteThroughCells :: (storage: int, container: int, record: int, target: Target)
     return [ReferenceCell(target), TypedCell(storage, container, record), done];
 }
 WriteThroughHost :: (cell: int) -> Host {
-    return {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: cell, result_first: cell + 2, result_count: 1,
+    return {command: 0, syntax_node: 0, intrinsic: ReferenceWriteIntrinsic, linked: -1, first: cell, result_first: cell + 2, result_count: 1,
             written: false};
 }
 // A read of `binding`, a scoped parameter, through its descriptor, or a boxed
@@ -540,7 +540,7 @@ MakeValueSlots :: (target: Target) -> Slot[] {
     return [address, address, address, address, address, DescriptorSlot(target)];
 }
 MakeValueHost :: (first: int) -> Host {
-    return {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+    return {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
             written: true};
 }
 // The argument of a scoped parameter of the type item.storage,
@@ -668,7 +668,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
                         variant: -1, kind: ValueKind};
         element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
         cells.extend([ReferenceCell(target), TypedCell(storage, 0, -1), offset, element, ReferenceCell(target)]);
-        reach: Host = {intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first, result_first: first + 4,
+        reach: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first, result_first: first + 4,
                        result_count: 1, written: false};
         hosts.append(reach);
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
@@ -706,7 +706,7 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
                     kind: ValueKind};
     element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
     cells: Cell[] = [ReferenceCell(target), TypedCell(field.storage, 0, -1), offset, element, ReferenceCell(target)];
-    reach: Host = {intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
+    reach: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
                    result_count: 1, written: false};
     hosts: Host[] = [reach];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};

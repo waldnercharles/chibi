@@ -54,6 +54,7 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
     out->statement_count = acount(out->statements);
     out->function_count = acount(out->functions);
     out->query_count = acount(out->queries);
+    out->description_count = acount(out->descriptions);
     out->binding_count = acount(out->bindings);
     out->diagnostic_count = acount(out->diagnostics);
     out->valid = !out->diagnostic_count;
@@ -76,28 +77,26 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
     script_analyzer_generic_free(a);
     return out;
 }
-/* `on Tick :: (dt: s)` in a system's header names the fields of the step's
- * payload that its body reads, as a handler's list does. */
+/* Systems always receive their current simulation step. */
 static void system_step(analyzer *a, TSNode program, int function)
 {
-    TSNode list = script_analyzer_field(program, "payload");
-    if (ts_node_is_null(list)) {
-        return;
-    }
-    TSNode name = script_analyzer_field(program, "event");
+    (void)program;
     const script_catalog_capability
         *tick = script_catalog_capability_by_id(a->catalog, a->catalog->tick_event);
-    char *spelled = script_analyzer_name_copy(a, name);
-    if (!tick || !script_name_matches(tick->name, spelled)) {
-        script_analyzer_diagnostic(a, name, "A system runs on %s", tick ? tick->name : "Tick");
-    } else if (tick->parameter_count != 1) {
-        script_analyzer_diagnostic(a, name, "A system reads only the step, %s's one payload field", tick->name);
-    } else if (!script_analyzer_named_count(list)) {
-        script_analyzer_diagnostic(a, list, "List the step's fields the system reads, or leave out the clause");
-    } else {
-        script_analyzer_named_payload(a, function, list, tick->parameters, tick->parameter_count, tick->name);
+    if (!tick || tick->parameter_count != 1) {
+        return;
     }
-    free(spelled);
+    const script_catalog_parameter *field = &tick->parameters[0];
+    script_symbol step = { .id = script_catalog_id("system-step", a->out->identity),
+                           .name = xstrdup("dt"),
+                           .unit = field->unit ? xstrdup(field->unit) : NULL,
+                           .kind = SCRIPT_PARAMETER,
+                           .type = field->type,
+                           .scope = a->scope,
+                           .initializer = -1,
+                           .function = function,
+                           .declaration = { .start = -1, .end = -1 } };
+    apush(a->out->symbols, step);
 }
 static script_analysis *analyze(
     const script_syntax *syntax,
@@ -122,7 +121,6 @@ static script_analysis *analyze(
     out->text = xstrdup(syntax->text);
     out->package_scope = -1;
     out->query = -1;
-    out->query_filter = -1;
     out->owner_symbol = -1;
     out->owner_type = catalog->entity_type
                         ? catalog->entity_type
@@ -189,9 +187,9 @@ static script_analysis *analyze(
             self = acount(out->symbols) - 1;
             out->owner_symbol = self;
         }
+        script_analyzer_declaration_pass(&a, body);
         int system = -1;
         if (out->kind == SCRIPT_PROGRAM_SYSTEM) {
-            script_analyzer_system_parameters(&a, program);
             /* The step binds before any declaration reads it. */
             if (!declarations) {
                 system = script_analyzer_function_new(&a, body, SCRIPT_FUNCTION_SYSTEM, -1);
@@ -199,8 +197,8 @@ static script_analysis *analyze(
                 out->functions[system].event = catalog->tick_event;
                 system_step(&a, program, system);
             }
+            script_analyzer_system_parameters(&a, program);
         }
-        script_analyzer_declaration_pass(&a, body);
         if (self >= 0) {
             out->symbols[self].type.nominal = out->owner_type;
         }
@@ -227,13 +225,6 @@ static script_analysis *analyze(
                 script_analyzer_callable_definition(&a, system, body);
             }
             script_analyzer_callable_definitions(&a, false);
-            TSNode where = script_analyzer_field(program, "where");
-            if (out->kind == SCRIPT_PROGRAM_SYSTEM && !ts_node_is_null(where)) {
-                a.query = true;
-                out->query_filter = script_analyzer_query_expression(&a, where);
-                a.query = false;
-                script_analyzer_query_intersect(&a, out->query_filter);
-            }
         }
         if (declarations && out->kind == SCRIPT_PROGRAM_LIBRARY) {
             /* Library signatures need inferred results; the full analysis
@@ -346,7 +337,6 @@ static script_analysis *analyze_package(const script_package_options *options, b
     out->kind = SCRIPT_PROGRAM_LIBRARY;
     out->package_scope = -1;
     out->query = -1;
-    out->query_filter = -1;
     out->owner_symbol = -1;
     out->owner_type = catalog->entity_type
                         ? catalog->entity_type
@@ -550,6 +540,12 @@ void script_analysis_free(script_analysis *out)
     for (int i = 0; i < acount(out->queries); i++) {
         afree(out->queries[i].children);
     }
+    for (int i = 0; i < acount(out->descriptions); i++) {
+        afree(out->descriptions[i].symbols);
+        afree(out->descriptions[i].captures);
+        afree(out->descriptions[i].stages);
+    }
+    afree(out->descriptions);
     for (int i = 0; i < acount(out->bindings); i++) {
         afree(out->bindings[i].reads);
         afree(out->bindings[i].writes);

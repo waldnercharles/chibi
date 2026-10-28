@@ -9,7 +9,7 @@
 
 /* Raise with the Makefile's `build` gate whenever tools/toolchain/Build.chibi
  * needs a capability or syntax that an older host lacks. */
-#define CHIBI_BUILD_HOST_PROTOCOL 9
+#define CHIBI_BUILD_HOST_PROTOCOL 12
 #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
 
 /* A collection a program imports as name:path, as Odin's -collection names. */

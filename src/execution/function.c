@@ -8,6 +8,7 @@
 #include "support/xalloc.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/query.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
@@ -314,6 +315,36 @@ void behavior_function_note_derived(behavior_function *f)
     f->builds_results = false;
     for (int i = 0; i < acount(f->host_calls); i++) {
         f->builds_results |= execution_intrinsic_in_result(f->host_calls[i].capability_id);
+        const behavior_function_host_call *host = &f->host_calls[i];
+        const node_host_call *canonical = execution_intrinsic_resolve(host->capability_id);
+        const node_host_call *actual = host->call;
+        bool intrinsic = canonical &&
+                         host->capability_abi ==
+                             execution_intrinsic_abi(host->capability_id) &&
+                         actual->invoke == canonical->invoke &&
+                         actual->value == canonical->value &&
+                         actual->context == canonical->context &&
+                         actual->action == canonical->action &&
+                         actual->service == canonical->service &&
+                         actual->missing_service == canonical->missing_service &&
+                         actual->optional_service == canonical->optional_service &&
+                         actual->variadic == canonical->variadic &&
+                         actual->reusable == canonical->reusable;
+        execution_intrinsic kind = intrinsic
+                                     ? execution_intrinsic_kind(host->capability_id)
+                                     : 0;
+        f->binds_world |= kind == EXECUTION_INTRINSIC_QUERY_BEGIN ||
+                          kind == EXECUTION_INTRINSIC_QUERY_NEXT ||
+                          kind == EXECUTION_INTRINSIC_QUERY_SOURCE ||
+                          kind == EXECUTION_INTRINSIC_QUERY_TARGET ||
+                          kind == EXECUTION_INTRINSIC_COMPONENT_HAS ||
+                          kind == EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP ||
+                          kind == EXECUTION_INTRINSIC_COMPONENT_POINTER ||
+                          kind == EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT;
+        if (kind == EXECUTION_INTRINSIC_REFERENCE_MAKE &&
+            f->data_values[host->first + 2].initial.i == LANGUAGE_REFERENCE_COMPONENT) {
+            f->binds_world = true;
+        }
     }
     /* A result moves only when execution_builds_safely proves that nothing
      * else changes or shares what the function builds there. */
@@ -791,6 +822,35 @@ void behavior_managed_heap_free(behavior_managed_heap *heap)
     }
     *heap = (behavior_managed_heap){ 0 };
 }
+void behavior_managed_heap_adopt(behavior_managed_heap *heap, behavior_managed_heap *other)
+{
+    assert(heap->owner == heap && other->owner == other);
+    behavior_managed_heap *tail = heap;
+    while (tail->previous) {
+        tail = tail->previous;
+    }
+    tail->previous = other;
+    /* Every heap names the head directly, so releasing one never strands an
+     * owner link. */
+    for (; other; other = other->previous) {
+        other->owner = heap;
+    }
+}
+void behavior_managed_heap_release_empty(behavior_managed_heap *heap)
+{
+    assert(heap->owner == heap);
+    for (behavior_managed_heap **link = &heap->previous; *link;) {
+        behavior_managed_heap *scope = *link;
+        if (scope->storage.allocations || acount(scope->roots)) {
+            link = &scope->previous;
+            continue;
+        }
+        *link = scope->previous;
+        scope->previous = NULL;
+        behavior_managed_heap_free(scope);
+        free(scope);
+    }
+}
 static behavior_managed_heap *managed_owner(behavior_managed_heap *heap)
 {
     while (heap->owner && heap->owner != heap) {
@@ -818,6 +878,7 @@ static const char *managed_value_error(behavior_managed_heap *heap, const pin_va
         int depth;
     } pending_value;
     pending_value *pending = NULL;
+    const pin_query **queries = NULL;
     const char *error = NULL;
     apush(pending, ((pending_value){ *root, 0 }));
     while (acount(pending) && !error) {
@@ -829,25 +890,46 @@ static const char *managed_value_error(behavior_managed_heap *heap, const pin_va
         }
 #define PUSH_VALUE(v)                                                          \
     apush(pending, ((pending_value){ (v), current.depth + 1 }))
-        if (heap && value.type == PIN_POINTER &&
+        if (heap && (value.type == PIN_POINTER || value.type == PIN_QUERY) &&
             value.container == PIN_CONTAINER_SINGLE && value.ptr) {
             bool owned = false;
             for (behavior_managed_heap *scope = heap; scope; scope = scope->previous) {
                 if (arena_contains(&scope->storage, value.ptr)) {
-                    owned = ((const pin_pointer *)value.ptr)->storage == &scope->storage;
+                    owned = value.type == PIN_QUERY
+                              ? ((const pin_query *)value.ptr)->storage ==
+                                    &scope->storage
+                              : ((const pin_pointer *)value.ptr)->storage ==
+                                    &scope->storage;
                     break;
                 }
             }
             if (!owned) {
-                error = "Managed pointers cannot cross heap owners";
+                error = value.type == PIN_QUERY
+                          ? "Queries cannot cross heap owners"
+                          : "Managed pointers cannot cross heap owners";
                 break;
+            }
+        }
+        if (heap && value.type == PIN_QUERY &&
+            value.container == PIN_CONTAINER_SINGLE && value.ptr) {
+            const pin_query *query = value.ptr;
+            bool seen = false;
+            for (int i = 0; i < acount(queries); i++) {
+                seen |= queries[i] == query;
+            }
+            if (seen) {
+                continue;
+            }
+            apush(queries, query);
+            for (int i = 0; i < query->count; i++) {
+                PUSH_VALUE(query->values[i]);
             }
         }
         bool collection_header = value.container != PIN_CONTAINER_SINGLE &&
                                  value.type_name &&
                                  !strncmp(value.type_name, "__collection_", 13);
         if (restricted && value.type == PIN_STRUCT && !value.record &&
-            !collection_header) {
+            !value.schema && !collection_header) {
             error = "Managed values require authored record layouts";
             break;
         }
@@ -860,7 +942,7 @@ static const char *managed_value_error(behavior_managed_heap *heap, const pin_va
             }
             for (int i = 0; i < layout->field_count; i++) {
                 const type_field *field = &layout->fields[i];
-                if (restricted && field->type == PIN_STRUCT) {
+                if (restricted && !value.schema && field->type == PIN_STRUCT) {
                     error = "Managed pointers do not yet support inline nested "
                             "record layouts";
                     break;
@@ -868,11 +950,13 @@ static const char *managed_value_error(behavior_managed_heap *heap, const pin_va
                 if (!heap || value.container != PIN_CONTAINER_SINGLE || !value.ptr) {
                     continue;
                 }
-                pin_value member = { .type = field->type, .type_name = field->type_name };
+                pin_value member = { .type = field->type,
+                                     .type_name = field->type_name,
+                                     .schema = value.schema };
                 const void *data = (const char *)value.ptr + field->offset;
                 if (field->type == PIN_STRUCT) {
                     member.ptr = (void *)data;
-                } else if (field->type == PIN_POINTER || field->type == PIN_UNION) {
+                } else if (field->type == PIN_POINTER || field->type == PIN_QUERY || field->type == PIN_UNION) {
                     memcpy(&member.ptr, data, sizeof member.ptr);
                 } else {
                     continue;
@@ -900,6 +984,7 @@ static const char *managed_value_error(behavior_managed_heap *heap, const pin_va
 #undef PUSH_VALUE
     }
     afree(pending);
+    afree(queries);
     return error;
 }
 const char *behavior_managed_value_error(const pin_value *value)
@@ -989,10 +1074,12 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
             for (int i = 0; layout && i < layout->field_count; i++) {
                 const type_field *field = &layout->fields[i];
                 const void *data = (const char *)value.ptr + field->offset;
-                pin_value member = { .type = field->type, .type_name = field->type_name };
+                pin_value member = { .type = field->type,
+                                     .type_name = field->type_name,
+                                     .schema = value.schema };
                 if (field->type == PIN_STRUCT) {
                     member.ptr = (void *)data;
-                } else if (field->type == PIN_POINTER || field->type == PIN_UNION) {
+                } else if (field->type == PIN_POINTER || field->type == PIN_QUERY || field->type == PIN_UNION) {
                     memcpy(&member.ptr, data, sizeof member.ptr);
                 } else {
                     continue;

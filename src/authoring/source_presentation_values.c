@@ -39,6 +39,8 @@ static const char *expression_name(source_projection *p, const script_expression
         case SCRIPT_EXPR_MEMBER: return "Field";
         case SCRIPT_EXPR_COMPONENT: return "Component";
         case SCRIPT_EXPR_RELATION: return "Relationship targets";
+        case SCRIPT_EXPR_QUERY: return "Query";
+        case SCRIPT_EXPR_QUERY_FIELD: return "Query field";
         case SCRIPT_EXPR_UNION: return "Union";
         case SCRIPT_EXPR_IS: return e->negated ? "is not" : "is";
         case SCRIPT_EXPR_AS: return "as";
@@ -101,6 +103,14 @@ static const char *member_name(source_projection *p, uint64_t id)
         for (int j = 0; j < t->field_count; j++) {
             if (t->fields[j].id == id) {
                 return t->fields[j].name;
+            }
+        }
+    }
+    for (int i = 0; i < p->analysis->type_count; i++) {
+        const script_catalog_type *type = &p->analysis->types[i];
+        for (int j = 0; j < type->field_count; j++) {
+            if (type->fields[j].id == id) {
+                return type->fields[j].name;
             }
         }
     }

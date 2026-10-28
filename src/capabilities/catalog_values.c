@@ -4,6 +4,7 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/record.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/union.h"
 
@@ -40,7 +41,7 @@ static bool key_text(unsigned char **key, const char *text)
            key_bytes(key, text, size);
 }
 static bool key_value(unsigned char **key, const pin_value *value, int depth);
-static bool key_layout(unsigned char **key, const type_desc *type, int depth)
+static bool key_layout(unsigned char **key, const type_desc *type, int depth, type_resolver resolver)
 {
     if (!type || !type->size || type->field_count < 0 || depth >= DEFAULT_KEY_DEPTH ||
         !key_word(key, type->size) || !key_word(key, (uint64_t)type->field_count) ||
@@ -76,7 +77,7 @@ static bool key_layout(unsigned char **key, const type_desc *type, int depth)
                 width = field->size;
                 break;
             case PIN_STRUCT:
-                nested = type_catalog_find(field->type_name);
+                nested = type_resolve(resolver, field->type_name);
                 if (!nested) {
                     return false;
                 }
@@ -94,7 +95,7 @@ static bool key_layout(unsigned char **key, const type_desc *type, int depth)
             !key_bytes(key, &field->max, sizeof field->max) ||
             !key_bytes(key, &field->range_default, sizeof field->range_default) ||
             !key_text(key, field->unit) ||
-            (nested && !key_layout(key, nested, depth + 1))) {
+            (nested && !key_layout(key, nested, depth + 1, resolver))) {
             return false;
         }
     }
@@ -115,7 +116,10 @@ static bool key_struct(unsigned char **key, const pin_value *value, int depth)
      * Raw copying handles packed scalar fields without alignment assumptions.
      * Separately snapshotted managed pointers and padding may conservatively
      * miss; their addresses cannot coincide between two live owned snapshots. */
-    return key_layout(key, type, depth) && key_bytes(key, value->ptr, type->size);
+    type_resolver resolver = value->schema ? pin_schema_resolver(value->schema)
+                                           : (type_resolver){ 0 };
+    return key_layout(key, type, depth, resolver) &&
+           key_bytes(key, value->ptr, type->size);
 }
 static bool key_value(unsigned char **key, const pin_value *value, int depth)
 {
@@ -189,7 +193,8 @@ static bool key_value(unsigned char **key, const pin_value *value, int depth)
                    key_bytes(key, text.bytes, text.length);
         }
         case PIN_STRUCT: return key_struct(key, value, depth);
-        case PIN_POINTER: return !value->ptr && key_word(key, 0);
+        case PIN_POINTER:
+        case PIN_QUERY: return !value->ptr && key_word(key, 0);
         case PIN_UNION: {
             const pin_union *tagged = value->ptr;
             if (!key_word(key, tagged != NULL)) {

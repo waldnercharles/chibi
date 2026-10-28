@@ -481,6 +481,9 @@ int script_analyzer_dereference(analyzer *a, TSNode node, int value)
     ) {
         script_analyzer_diagnostic(a, node, "Nullable pointer requires a presence guard before dereference");
     }
+    const script_catalog_type
+        *definition = script_catalog_type_by_id(a->catalog, pointee.nominal);
+    bool writable = !definition || !definition->component || !definition->derived;
     return script_analyzer_expr_add(
         a,
         (script_expression){ .kind = SCRIPT_EXPR_DEREFERENCE,
@@ -489,13 +492,16 @@ int script_analyzer_dereference(analyzer *a, TSNode node, int value)
                              .symbol = -1,
                              .left = value,
                              .right = -1,
-                             .writable = true,
+                             .writable = writable,
                              .effects = source.effects | SCRIPT_EFFECT_READ }
     );
 }
 static const char *managed_address_layout(analyzer *a, int expression)
 {
     const script_expression *value = &a->out->expressions[expression];
+    if (value->kind == SCRIPT_EXPR_DEREFERENCE) {
+        return NULL; /* The pointer already owns and validates its native layout. */
+    }
     if (value->kind == SCRIPT_EXPR_MEMBER) {
         return managed_address_layout(a, value->left);
     }
@@ -1176,6 +1182,36 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         asetlen(a->narrowed, 0);
         return value;
     }
+    if (script_analyzer_is(node, "query_expression")) {
+        int description = script_analyzer_query_description(a, node, false);
+        unsigned effects = SCRIPT_EFFECT_READ;
+        const script_query_description *query = &a->out->descriptions[description];
+        for (int i = 0; i < acount(query->captures); i++) {
+            const script_symbol *capture = &a->out->symbols[query->captures[i]];
+            int function = capture->scope >= 0 ? a->out->scopes[capture->scope].function
+                                               : -1;
+            if ((!capture->query_description &&
+                 (capture->kind == SCRIPT_STATE || capture->kind == SCRIPT_SHARED_STATE ||
+                  function < 0 || function != a->function)) ||
+                (capture->query_description && a->function >= 0 &&
+                 function != a->function)) {
+                effects |= SCRIPT_EFFECT_INVOCATION_READ;
+            }
+        }
+        script_type type = a->out->descriptions[description].row_type;
+        type.flags = SCRIPT_TYPE_QUERY;
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_QUERY,
+                                 .type = type,
+                                 .range = script_analyzer_range(a, node),
+                                 .entry = description,
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .effects = effects }
+        );
+    }
     if (script_analyzer_is(node, "number")) {
         return number_constant(a, node, expected, false);
     }
@@ -1699,7 +1735,8 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
     a->depth++;
     int result = script_analyzer_expression_inner(a, node, expected);
     const script_expression *resolved = &a->out->expressions[result];
-    bool unknown_effects = resolved->kind == SCRIPT_EXPR_CALL &&
+    /* Header callables are proved pure after their bodies are resolved. */
+    bool unknown_effects = !a->query && resolved->kind == SCRIPT_EXPR_CALL &&
                            resolved->right >= 0 &&
                            !script_analyzer_readonly_callable(a, resolved->right);
     if (unknown_effects || (script_analyzer_expr_effects(a, result) &

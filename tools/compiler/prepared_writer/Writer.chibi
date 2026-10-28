@@ -17,7 +17,7 @@ import strings "core:strings"
 // far more than a field.
 
 Magic: u64 : 0x4348494249505245;
-Version: int : 23;
+Version: int : 25;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),
@@ -179,6 +179,16 @@ pub Host :: struct {
     outcome_first: int;
     outcome_count: int;
 }
+// Existing asynchronous runtime command; all indices address this function's banks.
+pub Command :: struct {
+    capability: int;
+    abi: int;
+    first: int;
+    count: int;
+    node: int;
+    result_first: int;
+    result_count: int;
+}
 pub Call :: struct {
     function: int;
     first: int;
@@ -228,13 +238,18 @@ Stacks: int : 13;
 Results: int : 14;
 DataValues: int : 15;
 Hosts: int : 16;
-Calls: int : 17;
-Definitions: int : 18;
-Components: int : 19;
-ComponentWrites: int : 20;
-SourcePoints: int : 21;
-SourceWatches: int : 22;
-pub Tables: int : 23;
+Commands: int : 17;
+CommandArguments: int : 18;
+CommandArgumentKinds: int : 19;
+CommandResults: int : 20;
+CommandResultKinds: int : 21;
+Calls: int : 22;
+Definitions: int : 23;
+Components: int : 24;
+ComponentWrites: int : 25;
+SourcePoints: int : 26;
+SourceWatches: int : 27;
+pub Tables: int : 28;
 pub Function :: struct {
     argument_count: int;
     result_count: int;
@@ -271,14 +286,37 @@ pub Entry :: struct {
     body: int;
     subscription: int;
 }
+// One structural query term. Children name ints[first, first + count), and
+// predicate indexes references, or is -1 for terms without an evaluator.
+pub Query :: struct {
+    kind: int;
+    required: bool;
+    component_id: int;
+    source_relationship: int;
+    source_traversal: int;
+    source_variable: int;
+    target_variable: int;
+    predicate: int;
+    first: int;
+    count: int;
+}
+// A reusable query's root term, entity variables, row shape and evaluator.
+// row_type indexes values; evaluate indexes references.
+pub QueryDescription :: struct {
+    query_root: int;
+    query_variable_count: int;
+    row_type: int;
+    evaluate: int;
+}
 pub Module :: union {
     Tables(id: u64, owner_type: u64, abi: u64, pointer_size: int, wide: u64[], values: Value[], ints: int[],
            requirements: Requirement[], fields: Field[], event_declarations: Event[],
            event_fields: EventField[], imports: Import[], functions: Function[], spans: Span[], roots: Root[],
            instructions: Instruction[], locals: Local[], parameters: Parameter[], frames: Frame[],
-           sources: Source[], results: ResultLayout[], data: Data[], hosts: Host[], calls: Call[],
+           sources: Source[], results: ResultLayout[], data: Data[], hosts: Host[], commands: Command[], calls: Call[],
            references: Reference[], components: Component[], points: Point[], watches: Watch[],
-           states: State[], entries: Entry[])
+           states: State[], entries: Entry[], queries: Query[], query_root: int, query_variable_count: int,
+           query_filter: int, descriptions: QueryDescription[], system_description: int)
 }
 
 // Varints of 64-bit words: seven bits at a time from the low end, the high bit
@@ -536,8 +574,8 @@ Gather :: (module: Module) -> Gathered {
     switch module {
         case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
-                     sources, results, data, hosts, calls, references, components, points, watches, states,
-                     entries):
+                     sources, results, data, hosts, commands, calls, references, components, points, watches, states,
+                     entries, queries, query_root, query_variable_count, query_filter, descriptions, system_description):
             // Each step is a value Write writes, or -1 - n for named[n].
             named: string[] = [];
             steps: int[] = [];
@@ -579,7 +617,8 @@ Gather :: (module: Module) -> Gathered {
                     span := spans[function.spans + table];
                     item := span.first;
                     last := span.first + span.count;
-                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults) {
+                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults ||
+                        table == CommandArguments || table == CommandResults) {
                         while (item < last) {
                             steps.append(item);
                             item += 1;
@@ -656,6 +695,9 @@ Gather :: (module: Module) -> Gathered {
                     steps.append(-length(named));
                 }
             }
+            for (description in descriptions) {
+                steps.append(description.row_type);
+            }
             // A value writes its own strings, then those of its nested values
             // in order, so a stack walks each written value in that order.
             texts: string[] = [];
@@ -710,8 +752,8 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
     switch module {
         case .Tables(id, owner_type, abi, pointer_size, wide, values, ints, requirements, fields, event_declarations,
                      event_fields, imports, functions, spans, roots, instructions, locals, parameters, frames,
-                     sources, results, data, hosts, calls, references, components, points, watches, states,
-                     entries):
+                     sources, results, data, hosts, commands, calls, references, components, points, watches, states,
+                     entries, queries, query_root, query_variable_count, query_filter, descriptions, system_description):
             // Nested values follow their parent, so encoding from the last
             // value back finds every nested value already in the pool.
             pool: u8[] = [];
@@ -770,13 +812,14 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
                     bytes.extend(Ints([span.count]));
                     item := span.first;
                     last := span.first + span.count;
-                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults) {
+                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults ||
+                        table == CommandArguments || table == CommandResults) {
                         while (item < last) {
                             bytes.extend(slice(pool, starts[item], sizes[item]));
                             item += 1;
                         }
                     } else if (table == ArgumentKinds || table == ResultKinds || table == Slots ||
-                               table == SlotKinds) {
+                               table == SlotKinds || table == CommandArgumentKinds || table == CommandResultKinds) {
                         bytes.extend(Ints(slice(ints, span.first, span.count)));
                     } else if (table == Roots) {
                         while (item < last) {
@@ -836,8 +879,17 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
                             bytes.extend(HostBytes(hosts[item], wide));
                             item += 1;
                         }
-                        // Queries, commands and their banks follow host calls; calls follow them.
-                        bytes.extend(Zeros(6));
+                        // No query rows. Commands and their banks follow separately.
+                        bytes.extend(Zeros(1));
+                    } else if (table == Commands) {
+                        while (item < last) {
+                            command := commands[item];
+                            bytes.extend(Words([wide[command.capability], wide[command.abi], 0, 0]));
+                            bytes.extend(Text("", false, items, slots));
+                            bytes.extend(Words([Zig(command.first), Zig(command.count), wide[command.node], 0,
+                                                Zig(command.result_first), Zig(command.result_count), 0]));
+                            item += 1;
+                        }
                     } else if (table == Calls) {
                         while (item < last) {
                             bytes.extend(CallBytes(calls[item], references[calls[item].function], wide));
@@ -893,8 +945,28 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
                 bytes.extend(ReferenceBytes(references[item.body], wide));
                 bytes.extend(ReferenceBytes(references[item.subscription], wide));
             }
-            // No queries, query -1, no query variables or filter, bindings or actions.
-            bytes.extend(Ints([0, -1, 0, 0, 0, 0]));
+            bytes.extend(Ints([length(queries)]));
+            for (term in queries) {
+                bytes.extend(Words([Zig(term.kind), Flag(term.required), wide[term.component_id], wide[term.source_relationship],
+                                    Zig(term.source_traversal), Zig(term.source_variable), Zig(term.target_variable)]));
+                if (term.predicate < 0) {
+                    bytes.extend(Ints([-1, -1, 0, 0]));
+                } else {
+                    bytes.extend(ReferenceBytes(references[term.predicate], wide));
+                }
+                bytes.extend(Ints([term.count]));
+                bytes.extend(Ints(slice(ints, term.first, term.count)));
+            }
+            bytes.extend(Ints([query_root, query_variable_count, query_filter, length(descriptions)]));
+            for (description in descriptions) {
+                bytes.extend(Ints([description.query_root, description.query_variable_count]));
+                initial := description.row_type;
+                bytes.extend(slice(pool, starts[initial], sizes[initial]));
+                bytes.extend(ReferenceBytes(references[description.evaluate], wide));
+            }
+            // The selected system description is one-based; zero means none.
+            // Reactive bindings and actions are absent from authored compiler modules.
+            bytes.extend(Ints([system_description, 0, 0]));
             strings_at := length(bytes);
             bytes.extend(TableBytes(items));
             return extend(bytes, Word(u64(strings_at)));

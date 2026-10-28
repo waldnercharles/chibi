@@ -233,6 +233,8 @@ execution_activation *program_activation_new(
         .value_owner = instance,
         .value_storage = &a->payload,
         .managed_heap = instance->program->owner_program->managed,
+        .module = instance->program->module,
+        .program = instance->program,
         .result_storage = &a->payload,
 
         .arguments = args,
@@ -250,6 +252,11 @@ execution_activation *program_activation_new(
 
         .inspection_user = a
     };
+    if (instance->query_row.type == PIN_QUERY) {
+        pin_value *row = arena_alloc(&a->payload, sizeof *row);
+        *row = instance->query_row;
+        a->context.query_row = row;
+    }
     program_bind_world_callbacks(&a->context);
     program_bind_commands(&a->context);
     program_bind_tasks(&a->context);
@@ -293,13 +300,21 @@ void program_continuation_finish(execution_activation *a)
         ctx->exit_requested = a->context.exit_requested;
     }
 }
+bool program_wait_attached(const execution_activation *a, const command_wait *wait)
+{
+    for (int i = 0; i < acount(a->requests); i++) {
+        if (a->requests[i] == wait) {
+            return true;
+        }
+    }
+    return false;
+}
 int program_activation_run(execution_activation *a, double now, double delta, unsigned budget)
 {
     a->cacheable &= !a->has_run && !a->instance->program->owner_program->inspector;
-    if (program_task_due(a, now)) {
-        program_tasks_tick(a->instance, now);
-    }
+    program_task_check(a, now);
     if (a->finished) {
+        program_task_finished(a, a->stopping);
         return a->status;
     }
     program_inspection_bind(a);
@@ -307,6 +322,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         return FLOW_PAUSED_RESULT;
     }
     for (int i = 0; i < acount(a->requests);) {
+        if (!program_task_check(a, now)) {
+            return a->status;
+        }
         command_wait *wait = a->requests[i];
         if (program_wait_due(wait, now)) {
             bool completed = flow_host_complete(wait->request, -1, (pin_value){ 0 });
@@ -318,7 +336,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         flow_host_state status = flow_host_status(wait->request);
         if (status == FLOW_HOST_CANCELLED) {
             a->finished = true;
-            return a->status = FLOW_ERR_STATE;
+            a->status = FLOW_ERR_STATE;
+            program_task_finished(a, true);
+            return a->status;
         }
         if (status != FLOW_HOST_READY || wait->delivered) {
             i++;
@@ -332,6 +352,13 @@ int program_activation_run(execution_activation *a, double now, double delta, un
                                   : NULL,
             command->result_count
         );
+        /* An inline continuation can invalidate the task and detach wait. */
+        if (a->stopping || !program_wait_attached(a, wait)) {
+            if (a->finished) {
+                program_task_finished(a, a->stopping);
+            }
+            return a->status;
+        }
         wait->delivered = true;
         flow_host_request *request = wait->request;
         if (a->wait == wait) {
@@ -340,7 +367,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         execution_request_finish(request, FLOW_HOST_FINISHED);
         if (completed < 0) {
             a->finished = true;
-            return a->status = completed;
+            a->status = completed;
+            program_task_finished(a, true);
+            return a->status;
         }
         if (i < acount(a->requests) && a->requests[i] == wait) {
             i++;
@@ -412,6 +441,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         }
     }
     program_commit_instance(&a->context);
+    program_task_check(a, now);
     if (a->stopping) {
         program_activation_cancel(a);
     }

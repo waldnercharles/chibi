@@ -1,6 +1,7 @@
 #include "execution/definition.h"
 #include "execution/function.h"
 #include "execution/intrinsics.h"
+#include "execution/module_effects.h"
 #include "execution/program_internal.h"
 #include "execution/request.h"
 #include "execution/status.h"
@@ -12,6 +13,7 @@
 #include "types/copy_internal.h"
 #include "types/map.h"
 #include "types/pointer.h"
+#include "types/query.h"
 #include "types/record.h"
 #include "types/union.h"
 
@@ -241,9 +243,48 @@ uint64_t program_owning_task(const execution_activation *a)
     }
     return a->task;
 }
-static int start_task(behavior_function_context *ctx, int index)
+static void add_target(execution_activation *a, ecs_component_cell *cell)
 {
+    for (int i = 0; i < a->task_target_count; i++) {
+        if (a->task_targets[i] == cell) {
+            return;
+        }
+    }
+    if (cell) {
+        ecs_component_cell_retain(cell);
+        ecs_component_cell_retain_storage(cell, &a->payload);
+    }
+    a->task_targets[a->task_target_count++] = cell;
+}
+static void release_targets(execution_activation *a)
+{
+    for (int i = 0; i < a->task_target_count; i++) {
+        if (a->task_targets[i]) {
+            ecs_component_cell_release_storage(a->task_targets[i], &a->payload);
+        }
+    }
+    a->task_targets = NULL;
+    a->task_target_count = 0;
+}
+int program_task_start_bound(
+    behavior_function_context *ctx,
+    int index,
+    ecs_component_cell *const *targets,
+    int target_count
+)
+{
+    if (target_count < 0 || (target_count && !targets)) {
+        ctx->error_message = "task lifetime targets are invalid";
+        return FLOW_ERR_ARGUMENT;
+    }
     execution_activation *caller = ctx->inspection_user;
+    if (!program_task_check(caller, ctx->now)) {
+        return FLOW_SUSPENDED_RESULT;
+    }
+    if ((size_t)target_count > SIZE_MAX / sizeof *targets) {
+        ctx->error_message = "too many task lifetime targets";
+        return FLOW_ERR_ARGUMENT;
+    }
     execution_instance *instance = caller->instance;
     const behavior_function *function = caller->function;
     behavior_function_active_context(&caller->context, &function);
@@ -262,6 +303,18 @@ static int start_task(behavior_function_context *ctx, int index)
         return FLOW_ERR_ARGUMENT;
     }
     capture_references(a, call);
+    /* A task binds only its own targets. Its parent's stay the parent's:
+     * cancelling an active parent cancels its children, and a parent that
+     * finishes leaves them running. */
+    if (target_count) {
+        a->task_targets = arena_alloc(
+            &a->storage,
+            (size_t)target_count * sizeof *a->task_targets
+        );
+        for (int i = 0; i < target_count; i++) {
+            add_target(a, targets[i]);
+        }
+    }
     /* An outcome continuation runs on behalf of the task that owns it. */
     execution_task *t = task_new(instance),
                    *parent = find(instance, program_owning_task(caller));
@@ -284,6 +337,54 @@ static int start_task(behavior_function_context *ctx, int index)
         return FLOW_SUSPENDED_RESULT;
     }
     return status < 0 ? status : FLOW_OK;
+}
+/* The component cell a managed pointer or its projection roots at, if any. */
+static ecs_component_cell *pointer_target(pin_value value)
+{
+    if (value.type != PIN_POINTER || value.container != PIN_CONTAINER_SINGLE ||
+        !value.ptr) {
+        return NULL;
+    }
+    const pin_pointer *pointer = value.ptr;
+    while (pointer->base) {
+        pointer = pointer->base;
+    }
+    return pointer->component;
+}
+/* The cell an argument roots at: a managed pointer's, or for a scoped
+ * parameter, the target of the pointer the caller lends. */
+static ecs_component_cell *argument_target(const behavior_function *callee, int k, pin_value value)
+{
+    if (behavior_function_kind(callee, BEHAVIOR_BANK_ARGUMENT, k) == BEHAVIOR_REFERENCE &&
+        !execution_reference_managed_pointer(value, &value)) {
+        return NULL;
+    }
+    return pointer_target(value);
+}
+/* A task depends on each component its pointer arguments root at when the
+ * callee may dereference that argument. */
+static int start_task(behavior_function_context *ctx, int index)
+{
+    execution_activation *caller = ctx->inspection_user;
+    const behavior_function *function = caller->function;
+    behavior_function_active_context(&caller->context, &function);
+    const behavior_function_invocation *call = &function->calls[index];
+    if (!call->function->task_dependencies) {
+        return program_task_start_bound(ctx, index, NULL, 0);
+    }
+    ecs_component_cell **targets = xmalloc(((size_t)call->count + 1) * sizeof *targets);
+    int count = 0;
+    for (int k = 0; k < call->count; k++) {
+        ecs_component_cell *
+            cell = argument_target(call->function, k, ctx->data->values[call->first + k]);
+        if (cell &&
+            (call->function->task_dependencies & execution_task_argument_bit(k))) {
+            targets[count++] = cell;
+        }
+    }
+    int status = program_task_start_bound(ctx, index, targets, count);
+    free(targets);
+    return status;
 }
 void program_bind_tasks(behavior_function_context *ctx)
 {
@@ -324,6 +425,7 @@ static void deliver(const execution_task *t, task_waiter waiter)
 }
 void program_task_finished(execution_activation *a, bool cancelled)
 {
+    release_targets(a);
     execution_instance *instance = a->instance;
     execution_task *t = find(instance, a->task);
     if (!t || t->activation != a) {
@@ -376,13 +478,59 @@ static void cancel(execution_instance *instance, uint64_t handle)
 bool program_task_due(const execution_activation *a, double now)
 {
     execution_task *t = find(a->instance, program_owning_task(a));
-    return t && t->activation && t->timed && t->deadline <= now;
+    if (!t || !t->activation) {
+        return false;
+    }
+    for (int i = 0; i < t->activation->task_target_count; i++) {
+        ecs_component_cell *cell = t->activation->task_targets[i];
+        if (!ecs_component_cell_alive(cell)) {
+            return true;
+        }
+        uint64_t entity, layout;
+        ecs_component_id component;
+        /* Check cell liveness first: its world can already have been freed. */
+        if (!ecs_component_cell_target(
+                cell,
+                ecs_world_execution(a->instance->program->world),
+                &entity,
+                &component,
+                &layout
+            )) {
+            return true;
+        }
+    }
+    return t->timed && t->deadline <= now;
+}
+bool program_task_check(execution_activation *a, double now)
+{
+    uint64_t owner = program_owning_task(a);
+    if (!owner || a->finished) {
+        return true;
+    }
+    /* An active ancestor that lost a target or ran out of time cancels this
+     * task with it, before this task's next continuation runs. */
+    for (execution_task *t = find(a->instance, owner); t;
+         t = slot(a->instance, t->parent)) {
+        if (t->activation && program_task_due(t->activation, now)) {
+            cancel(a->instance, handle_of(a->instance, t));
+            break;
+        }
+    }
+    execution_task *t = find(a->instance, owner);
+    if (t && t->activation && !t->activation->stopping) {
+        return true;
+    }
+    a->stopping = true;
+    if (!a->running && !a->finished) {
+        program_activation_cancel(a);
+    }
+    return false;
 }
 void program_tasks_tick(execution_instance *instance, double now)
 {
     for (int i = 0; i < acount(instance->tasks); i++) {
         execution_task *t = &instance->tasks[i];
-        if (t->activation && t->timed && t->deadline <= now) {
+        if (t->activation && program_task_due(t->activation, now)) {
             cancel(instance, handle_of(instance, t));
         }
     }
@@ -485,8 +633,8 @@ typedef struct
     task_root *index;
     execution_task **pending;
     pin_value *values; /* Reached values whose contents are not yet marked. */
-    const pin_pointer **pointers; /* Visited pointer roots, open-addressed. */
-    size_t pointer_capacity, pointer_count;
+    program_pointer_set pointers; /* Visited pointer roots. */
+    const pin_query **queries;    /* Visited query values. */
     uint64_t lookup_steps;
 } task_roots;
 static int compare_roots(const void *left, const void *right)
@@ -523,49 +671,51 @@ static void mark_task(task_roots *roots, uint64_t handle)
         }
     }
 }
-static size_t pointer_slot(const task_roots *roots, const pin_pointer *pointer)
+static size_t pointer_slot(const program_pointer_set *set, const pin_pointer *pointer)
 {
     uint64_t hash = (uint64_t)(uintptr_t)pointer * 0x9e3779b97f4a7c15ull;
-    size_t i = (size_t)(hash >> 32) & (roots->pointer_capacity - 1);
-    while (roots->pointers[i] && roots->pointers[i] != pointer) {
-        i = (i + 1) & (roots->pointer_capacity - 1);
+    size_t i = (size_t)(hash >> 32) & (set->capacity - 1);
+    while (set->slots[i] && set->slots[i] != pointer) {
+        i = (i + 1) & (set->capacity - 1);
     }
     return i;
 }
 /* Keeps the table at most half full, so long pointer chains stay linear. */
-static bool first_visit(task_roots *roots, const pin_pointer *pointer)
+bool program_pointer_first_visit(program_pointer_set *set, const pin_pointer *pointer)
 {
-    if (2 * (roots->pointer_count + 1) > roots->pointer_capacity) {
-        const pin_pointer **old = roots->pointers;
-        size_t old_capacity = roots->pointer_capacity;
-        roots->pointer_capacity = old_capacity ? old_capacity * 2 : 64;
-        roots->pointers = xcalloc(roots->pointer_capacity, sizeof *roots->pointers);
+    if (2 * (set->count + 1) > set->capacity) {
+        const pin_pointer **old = set->slots;
+        size_t old_capacity = set->capacity;
+        set->capacity = old_capacity ? old_capacity * 2 : 64;
+        set->slots = xcalloc(set->capacity, sizeof *set->slots);
         for (size_t i = 0; i < old_capacity; i++) {
             if (old[i]) {
-                roots->pointers[pointer_slot(roots, old[i])] = old[i];
+                set->slots[pointer_slot(set, old[i])] = old[i];
             }
         }
         free(old);
     }
-    size_t i = pointer_slot(roots, pointer);
-    if (roots->pointers[i]) {
+    size_t i = pointer_slot(set, pointer);
+    if (set->slots[i]) {
         return false;
     }
-    roots->pointers[i] = pointer;
-    roots->pointer_count++;
+    set->slots[i] = pointer;
+    set->count++;
     return true;
 }
-static void push_fields(task_roots *roots, const type_desc *type, const void *data)
+static void push_fields(task_roots *roots, const type_desc *type, const void *data, const pin_schema *schema)
 {
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         const void *member = (const char *)data + field->offset;
-        pin_value value = { .type = field->type, .type_name = field->type_name };
+        pin_value value = { .type = field->type,
+                            .type_name = field->type_name,
+                            .schema = schema };
         if (field->type == PIN_STRUCT) {
             value.ptr = (void *)member;
         } else if (field->type == PIN_TASK) {
             memcpy(&value.u64, member, sizeof value.u64);
-        } else if (field->type == PIN_UNION || field->type == PIN_POINTER) {
+        } else if (field->type == PIN_UNION || field->type == PIN_POINTER || field->type == PIN_QUERY) {
             memcpy(&value.ptr, member, sizeof value.ptr);
         } else {
             continue;
@@ -576,6 +726,22 @@ static void push_fields(task_roots *roots, const type_desc *type, const void *da
 /* Marks one value's own task handle and queues the values it reaches. */
 static void mark_one(task_roots *roots, const pin_value *value)
 {
+    if (value->type == PIN_QUERY && value->container == PIN_CONTAINER_SINGLE) {
+        const pin_query *query = value->ptr;
+        if (!query) {
+            return;
+        }
+        for (int i = 0; i < acount(roots->queries); i++) {
+            if (roots->queries[i] == query) {
+                return;
+            }
+        }
+        apush(roots->queries, query);
+        for (int i = 0; i < query->count; i++) {
+            apush(roots->values, query->values[i]);
+        }
+        return;
+    }
     if (value->type == PIN_POINTER && value->container == PIN_CONTAINER_SINGLE) {
         const pin_pointer *pointer = value->ptr;
         if (!pointer) {
@@ -584,7 +750,7 @@ static void mark_one(task_roots *roots, const pin_value *value)
         while (pointer->base) {
             pointer = pointer->base;
         }
-        if (first_visit(roots, pointer)) {
+        if (program_pointer_first_visit(&roots->pointers, pointer)) {
             apush(roots->values, pointer->value);
         }
         return;
@@ -601,8 +767,8 @@ static void mark_one(task_roots *roots, const pin_value *value)
         const pin_array *array = value->ptr;
         /* Packed pointer and record arrays can reach managed task handles. */
         if (array && array->stride && value->type != PIN_POINTER &&
-            value->type != PIN_STRUCT && value->type != PIN_TASK &&
-            value->type != PIN_UNION) {
+            value->type != PIN_QUERY && value->type != PIN_STRUCT &&
+            value->type != PIN_TASK && value->type != PIN_UNION) {
             return;
         }
         for (int i = 0; array && i < array->count; i++) {
@@ -623,7 +789,7 @@ static void mark_one(task_roots *roots, const pin_value *value)
             if (value->ptr) {
                 const type_desc *type = pin_value_type(value);
                 assert(type);
-                push_fields(roots, type, value->ptr);
+                push_fields(roots, type, value->ptr, value->schema);
             }
             break;
         default: break;
@@ -685,6 +851,12 @@ void program_tasks_collect(execution_program *p)
     qsort(roots.index, (size_t)acount(roots.index), sizeof *roots.index, compare_roots);
     for (int scope = -1; scope < acount(p->imports); scope++) {
         execution_program *program = scope < 0 ? p : p->imports[scope];
+        for (int i = 0; i < acount(program->query_values); i++) {
+            mark_value(&roots, &program->query_values[i]);
+        }
+        for (int i = 0; i < acount(program->system_values); i++) {
+            mark_value(&roots, &program->system_values[i]);
+        }
         for (int i = 0; i < program->module->plan.state_count; i++) {
             mark_value(&roots, &program->shared[i].value);
         }
@@ -703,6 +875,7 @@ void program_tasks_collect(execution_program *p)
         }
         for (int i = 0; i < acount(program->instances); i++) {
             execution_instance *instance = program->instances[i];
+            mark_value(&roots, &instance->query_row);
             for (int j = 0; j < program->module->plan.state_count; j++) {
                 mark_value(&roots, &instance->values[j]);
             }
@@ -733,7 +906,8 @@ void program_tasks_collect(execution_program *p)
     p->task_lookup_steps = roots.lookup_steps;
     afree(roots.pending);
     afree(roots.values);
-    free(roots.pointers);
+    free(roots.pointers.slots);
+    afree(roots.queries);
     afree(roots.index);
 }
 

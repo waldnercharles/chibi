@@ -164,4 +164,11 @@ char **chibi_migrate_ref_calls(const char *const *sources, int count, char *erro
  * first or the current grammar rejects the result. */
 int chibi_migrate_pointers(const char *source, char **migrated, char *error, size_t error_size);
 
+/* Version 38 uses flat query lists, component pointer bindings and implicit
+ * system dt. Preserves the live component access of version 37 bindings by
+ * spelling every component type ^T. Returns an owned rewrite, or NULL when
+ * unchanged. Refuses removed query declarations instead of changing their
+ * scope. See project_migrate37.h for the source-only migration contract. */
+int chibi_migrate37_queries(const char *source, char **migrated, char *error, size_t error_size);
+
 #endif

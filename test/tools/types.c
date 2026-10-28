@@ -6,7 +6,9 @@
 #include "types/catalog.h"
 #include "types/map.h"
 #include "types/pointer.h"
+#include "types/query.h"
 #include "types/record.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
@@ -1267,9 +1269,451 @@ TEST_CASE(types_nested_pointer_records_require_owned_layout_support)
     REQUIRE(flat && pin_record_valid(flat));
     return true;
 }
+TEST_CASE(types_queries_preserve_identity_and_managed_edges)
+{
+    arena_init_collectable(&snapshots);
+    pin_query *query = arena_alloc(&snapshots, sizeof *query);
+    *query = (pin_query){ .kind = PIN_QUERY_DESCRIPTION, .storage = &snapshots };
+    pin_value original = { .type = PIN_QUERY, .type_name = "Query.Damage", .ptr = query };
+    pin_value copy, snapshot;
+    REQUIRE(!pin_value_copy(&copy, &original));
+    REQUIRE(!pin_value_snapshot_to_arena(&snapshots, &snapshot, &original));
+    REQUIRE(copy.ptr == query && snapshot.ptr == query);
+    REQUIRE(pin_value_equal(&copy, &original));
+    pin_query other = *query;
+    copy.ptr = &other;
+    REQUIRE(!pin_value_equal(&copy, &original));
+    pin_value_destroy(&copy);
+
+    pin_array boxed = { .element_type = PIN_QUERY,
+                        .type_name = original.type_name,
+                        .items = &original,
+                        .count = 1,
+                        .capacity = 1 };
+    pin_array *packed = pin_array_snapshot_to_arena(&snapshots, &boxed);
+    REQUIRE(packed && packed->stride == sizeof(void *));
+    pin_value root = { .type = PIN_QUERY,
+                       .container = PIN_CONTAINER_ARRAY,
+                       .type_name = original.type_name,
+                       .ptr = packed };
+    REQUIRE(pin_value_managed_boundary_error(&root));
+    arena *arenas[] = { &snapshots };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 1);
+    pin_value_trace(&root, arena_collect_mark, &collection);
+    arena_collect_end(&collection);
+    REQUIRE(arena_contains(&snapshots, query));
+    REQUIRE(pin_array_get(packed, 0).ptr == query);
+
+    const type_field field = { .name = "matches",
+                               .type = PIN_QUERY,
+                               .type_name = original.type_name };
+    const pin_record *record = pin_record_create(&snapshots, "QueryHolder", 9874, &field, 1);
+    REQUIRE(record && record->type.size == sizeof(void *));
+    pin_value holder = { .type = PIN_STRUCT,
+                         .type_name = record->type.name,
+                         .record = record,
+                         .ptr = arena_alloc(&snapshots, record->type.size) };
+    REQUIRE(!pin_write_field(&snapshots, holder.ptr, &record->type.fields[0], original));
+    REQUIRE(!pin_read_field(&snapshots, holder.ptr, &record->type.fields[0], &copy));
+    REQUIRE(copy.ptr == query && pin_value_equal(&copy, &original));
+    REQUIRE(pin_value_managed_boundary_error(&holder));
+    return true;
+}
+TEST_CASE(types_query_persistence_accepts_only_nil)
+{
+    pin_value value = { .type = PIN_QUERY, .type_name = "Query.Damage" };
+    execution_wire writer = { 0 };
+    execution_wire_value(&writer, &value);
+    REQUIRE(!writer.error && writer.size);
+    execution_wire reader = { .reading = true,
+                              .data = writer.data,
+                              .size = writer.size,
+                              .storage = &snapshots };
+    pin_value restored;
+    execution_wire_value(&reader, &restored);
+    REQUIRE(!reader.error && reader.offset == reader.size);
+    REQUIRE(pin_value_equal(&value, &restored));
+    afree(writer.data);
+
+    source_document = av_doc_new();
+    av_value *nil = pin_value_to_document(source_document, &value);
+    REQUIRE(nil && av_is_null(nil));
+    char error[192];
+    REQUIRE(!pin_value_read_document(&snapshots, value, nil, &restored, error, sizeof error));
+    REQUIRE(pin_value_equal(&value, &restored));
+    REQUIRE(
+        pin_value_read_document(&snapshots, value, av_obj(source_document), &restored, error, sizeof error)
+    );
+    REQUIRE(strstr(error, "Queries cannot be persisted"));
+
+    pin_query query = { 0 };
+    value.ptr = &query;
+    writer = (execution_wire){ 0 };
+    execution_wire_value(&writer, &value);
+    REQUIRE(writer.error && strstr(writer.error, "Queries cannot be persisted"));
+    afree(writer.data);
+    REQUIRE(!pin_value_to_document(source_document, &value));
+    return true;
+}
+TEST_CASE(types_owned_native_schemas_survive_catalog_and_source_retirement)
+{
+    typedef struct
+    {
+        int x, y;
+    } pair;
+    typedef struct
+    {
+        pair position;
+        const char *text;
+    } owner;
+    char pair_name[] = "test.owned_pair", owner_name[] = "test.owned_owner";
+    type_field pair_fields[] = {
+        { .name = "x", .type = PIN_I32, .offset = offsetof(pair, x), .size = sizeof(int) },
+        { .name = "y", .type = PIN_I32, .offset = offsetof(pair, y), .size = sizeof(int) }
+    };
+    type_desc pair_type = { .name = pair_name,
+                            .size = sizeof(pair),
+                            .fields = pair_fields,
+                            .field_count = 2 };
+    type_field owner_fields[] = { { .name = "position",
+                                    .type = PIN_STRUCT,
+                                    .offset = offsetof(owner, position),
+                                    .size = sizeof(pair),
+                                    .type_name = pair_name },
+                                  { .name = "text",
+                                    .type = PIN_STR,
+                                    .offset = offsetof(owner, text),
+                                    .size = sizeof(const char *) } };
+    type_desc owner_type = { .name = owner_name,
+                             .size = sizeof(owner),
+                             .fields = owner_fields,
+                             .field_count = 2 };
+    const type_desc *types[] = { &pair_type, &owner_type };
+    type_catalog_pack project = { .types = types, .type_count = 2 };
+    type_catalog_set_project(&project);
+    pointer_project_catalog = true;
+    char text[] = "retained";
+    owner original = { { 12, 34 }, text };
+    arena input = { 0 }, copies = { 0 };
+    const pin_schema *schema = pin_schema_create(&input, &owner_type, (type_resolver){ 0 });
+    REQUIRE(schema);
+    pin_value source_value = { .type = PIN_STRUCT,
+                               .type_name = owner_name,
+                               .schema = schema,
+                               .ptr = &original };
+    arena_init_collectable(&snapshots);
+    pin_value retained;
+    REQUIRE(!pin_value_snapshot_to_arena(&snapshots, &retained, &source_value));
+    pin_value item = { .type = PIN_STRUCT,
+                       .type_name = pair_name,
+                       .schema = schema,
+                       .ptr = &original.position };
+    pin_array source_array = { .element_type = PIN_STRUCT,
+                               .type_name = pair_name,
+                               .count = 1,
+                               .capacity = 1,
+                               .items = &item };
+    pin_array *packed = pin_array_snapshot_to_arena(&snapshots, &source_array);
+    REQUIRE(packed && packed->schema && packed->stride == sizeof(pair));
+    pin_value array = { .type = PIN_STRUCT,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = packed->type_name,
+                        .schema = packed->schema,
+                        .ptr = packed };
+    pin_value native = source_value;
+    native.schema = NULL;
+    pin_map_entry entry = { .key = { .type = PIN_I32, .i = 7 }, .value = native };
+    pin_map map = { .key_type = { .type = PIN_I32 },
+                    .value_type = { .type = PIN_STRUCT, .type_name = owner_name },
+                    .count = 1,
+                    .capacity = 1,
+                    .entries = &entry };
+    pin_array native_rows = { .element_type = PIN_STRUCT,
+                              .type_name = owner_name,
+                              .count = 1,
+                              .capacity = 1,
+                              .items = &native };
+    pin_value rows = { .type = PIN_STRUCT,
+                       .container = PIN_CONTAINER_ARRAY,
+                       .type_name = owner_name,
+                       .ptr = &native_rows };
+    pin_array nested_rows = { .element_type = PIN_STRUCT,
+                              .type_name = "__collection_native_rows",
+                              .count = 1,
+                              .capacity = 1,
+                              .items = &rows };
+    pin_union
+        *payload = arena_alloc(&input, sizeof *payload + 2 * sizeof *payload->values);
+    *payload = (pin_union){ .tag = 99, .count = 2 };
+    payload->values[0] = (pin_value){ .type = PIN_UNION,
+                                      .container = PIN_CONTAINER_MAP,
+                                      .type_name = "__map_int_native",
+                                      .ptr = &map };
+    payload->values[1] = (pin_value){ .type = PIN_STRUCT,
+                                      .container = PIN_CONTAINER_ARRAY,
+                                      .type_name = nested_rows.type_name,
+                                      .ptr = &nested_rows };
+    pin_value borrowed = { .type = PIN_UNION, .type_name = "NestedNative", .ptr = payload },
+              captured;
+    REQUIRE(!pin_value_snapshot_owned_to_arena(&snapshots, &captured, &borrowed));
+    type_catalog_set_project(NULL);
+    pointer_project_catalog = false;
+    arena_free(&input);
+    memset(text, 'x', sizeof text - 1);
+    memset(pair_name, 'x', sizeof pair_name - 1);
+    memset(owner_name, 'x', sizeof owner_name - 1);
+    pair_type.field_count = owner_type.field_count = 0;
+    original.position.x = -1;
+    arena *arenas[] = { &snapshots };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 1);
+    pin_value_trace(&retained, arena_collect_mark, &collection);
+    pin_value_trace(&array, arena_collect_mark, &collection);
+    pin_value_trace(&captured, arena_collect_mark, &collection);
+    arena_collect_end(&collection);
+    REQUIRE(pin_value_type(&retained) && pin_value_type(&retained)->field_count == 2);
+    REQUIRE(pin_array_valid(packed));
+    pin_value element = pin_array_get(packed, 0), nested;
+    REQUIRE(element.schema && pin_value_type(&element)->size == sizeof(pair));
+    REQUIRE(((pair *)element.ptr)->x == 12);
+    REQUIRE(
+        !pin_read_field(&copies, retained.ptr, &pin_value_type(&retained)->fields[0], &nested)
+    );
+    nested.schema = retained.schema;
+    pin_value detached, copied_owner;
+    REQUIRE(!pin_value_copy_to_arena(&copies, &detached, &nested));
+    REQUIRE(!pin_value_copy_to_arena(&copies, &copied_owner, &retained));
+    REQUIRE(pin_value_equal(&retained, &copied_owner));
+    source_document = av_doc_new();
+    av_value *document = pin_value_to_document(source_document, &copied_owner);
+    REQUIRE(document && av_is_obj(document));
+    REQUIRE(av_get_sint(av_obj_get(av_obj_get(document, "position"), "x")) == 12);
+    execution_wire writer = { 0 };
+    execution_wire_value(&writer, &copied_owner);
+    REQUIRE(!writer.error && writer.size);
+    afree(writer.data);
+    pin_array *copied_array = pin_array_snapshot_to_arena(&copies, packed);
+    REQUIRE(copied_array && pin_array_equal(packed, copied_array));
+    array.schema = NULL;
+    pin_value copied_array_value;
+    REQUIRE(pin_value_type(&array));
+    REQUIRE(!pin_value_copy_to_arena(&copies, &copied_array_value, &array));
+    REQUIRE(copied_array_value.schema && pin_value_type(&copied_array_value));
+    pin_value copied_capture;
+    REQUIRE(!pin_value_snapshot_owned_to_arena(&copies, &copied_capture, &captured));
+    REQUIRE(pin_value_equal(&captured, &copied_capture));
+    REQUIRE(pin_value_to_document(source_document, &copied_capture));
+    writer = (execution_wire){ 0 };
+    execution_wire_value(&writer, &copied_capture);
+    REQUIRE(!writer.error && writer.size);
+    afree(writer.data);
+    arena_free(&snapshots);
+    REQUIRE(pin_value_type(&detached)->size == sizeof(pair));
+    REQUIRE(((pair *)detached.ptr)->x == 12 && ((pair *)detached.ptr)->y == 34);
+    REQUIRE(!strcmp(((owner *)copied_owner.ptr)->text, "retained"));
+    REQUIRE(((pair *)pin_array_get(copied_array, 0).ptr)->x == 12);
+    REQUIRE(((pair *)pin_array_get(copied_array_value.ptr, 0).ptr)->y == 34);
+    const pin_union *kept = copied_capture.ptr;
+    const pin_map *kept_map = kept->values[0].ptr;
+    REQUIRE(kept_map->value_type.schema && kept_map->entries[0].value.schema);
+    REQUIRE(!strcmp(((owner *)kept_map->entries[0].value.ptr)->text, "retained"));
+    pin_value kept_rows = pin_array_get(kept->values[1].ptr, 0);
+    pin_value kept_owner = pin_array_get(kept_rows.ptr, 0);
+    REQUIRE(kept_owner.schema && pin_value_type(&kept_owner)->field_count == 2);
+    REQUIRE(((owner *)kept_owner.ptr)->position.y == 34);
+    arena_free(&copies);
+    return true;
+}
+TEST_CASE(types_maps_reject_incompatible_carried_native_layouts)
+{
+    type_field first_field = { .name = "value", .type = PIN_I32, .size = sizeof(int32_t) };
+    type_field second_field = { .name = "value", .type = PIN_F32, .size = sizeof(float) };
+    type_desc first_type = { .name = "test.map_native_layout",
+                             .size = sizeof(int32_t),
+                             .fields = &first_field,
+                             .field_count = 1 };
+    type_desc second_type = { .name = first_type.name,
+                              .size = sizeof(float),
+                              .fields = &second_field,
+                              .field_count = 1 };
+    arena layouts = { 0 };
+    const pin_schema *first = pin_schema_create(&layouts, &first_type, (type_resolver){ 0 });
+    const pin_schema *second = pin_schema_create(&layouts, &second_type, (type_resolver){ 0 });
+    REQUIRE(first && second);
+    int32_t integer = 42;
+    float real = 1.25f;
+    pin_value key = { .type = PIN_I32, .i = 1 };
+    pin_value value = { .type = PIN_STRUCT,
+                        .type_name = first_type.name,
+                        .schema = first,
+                        .ptr = &integer };
+    pin_map_entry entry = { key, value };
+    pin_map *map = pin_map_create(&snapshots, (pin_value){ .type = PIN_I32 }, value, &entry, 1);
+    REQUIRE(map);
+    pin_value compatible = value, incompatible = value;
+    compatible.schema = pin_schema_snapshot(&snapshots, first);
+    incompatible.schema = pin_schema_snapshot(&snapshots, second);
+    incompatible.ptr = &real;
+    REQUIRE(compatible.schema != first);
+    arena_free(&layouts);
+    REQUIRE(pin_map_entry_valid(map, &key, &compatible));
+    REQUIRE(!pin_map_entry_valid(map, &key, &incompatible));
+    REQUIRE(!pin_map_set(&snapshots, map, &key, &incompatible));
+    REQUIRE(pin_map_store_owned(&snapshots, &map, &key, &incompatible));
+    pin_map_entry bad = { key, incompatible };
+    REQUIRE(!pin_map_create(&snapshots, map->key_type, map->value_type, &bad, 1));
+    pin_map *other = pin_map_create(&snapshots, map->key_type, incompatible, &bad, 1);
+    REQUIRE(other && !pin_map_equal(map, other));
+    REQUIRE(map->count == 1 && *(const int32_t *)map->entries[0].value.ptr == 42);
+    REQUIRE(pin_map_set(&snapshots, map, &key, &compatible));
+    return true;
+}
+
+static const pin_record *retained_record_wire_layout(execution_wire *, void *, const pin_value *value, bool)
+{
+    return value->record;
+}
+TEST_CASE(types_authored_wrappers_retain_native_children)
+{
+    type_field native_fields[] = {
+        { .name = "x", .type = PIN_I32, .size = sizeof(int32_t) },
+        { .name = "y", .type = PIN_I32, .offset = sizeof(int32_t), .size = sizeof(int32_t) }
+    };
+    type_desc native = { .name = "test.captured_native_child",
+                         .size = 2 * sizeof(int32_t),
+                         .fields = native_fields,
+                         .field_count = 2 };
+    const type_desc *types[] = { &native };
+    type_catalog_pack project = { .types = types, .type_count = 1 };
+    type_catalog_set_project(&project);
+    pointer_project_catalog = true;
+    arena input = { 0 }, copies = { 0 };
+    const type_field fields[] = {
+        { .name = "inner", .type = PIN_STRUCT, .type_name = native.name },
+        { .name = "label", .type = PIN_STR },
+        { .name = "alias", .type = PIN_POINTER, .type_name = "^int" }
+    };
+    const pin_record *record = pin_record_create(&input, "CapturedWrapper", 9961, fields, 3);
+    REQUIRE(record);
+    arena_init_collectable(&snapshots);
+    pin_pointer *pointer = arena_alloc(&snapshots, sizeof *pointer);
+    *pointer = (pin_pointer){ .storage = &snapshots,
+                              .value = { .type = PIN_I32, .i = 91 } };
+    pin_arena_trace_pointer(&snapshots, pointer);
+    pin_value wrapper = { .type = PIN_STRUCT,
+                          .type_name = record->type.name,
+                          .record = record,
+                          .ptr = arena_alloc(&input, record->type.size) };
+    memset(wrapper.ptr, 0, record->type.size);
+    int32_t coordinates[] = { 12, 34 };
+    memcpy(wrapper.ptr, coordinates, sizeof coordinates);
+    pin_value label;
+    REQUIRE(!pin_value_text(&input, &label, "retained", 8));
+    REQUIRE(!pin_write_field(&input, wrapper.ptr, &record->type.fields[1], label));
+    REQUIRE(!pin_write_field(
+        &input,
+        wrapper.ptr,
+        &record->type.fields[2],
+        (pin_value){ .type = PIN_POINTER, .type_name = "^int", .ptr = pointer }
+    ));
+    pin_map_entry entry = { .key = { .type = PIN_I32, .i = 7 }, .value = wrapper };
+    pin_map map = { .key_type = { .type = PIN_I32 },
+                    .value_type = wrapper,
+                    .entries = &entry,
+                    .count = 1,
+                    .capacity = 1 };
+    map.value_type.ptr = NULL;
+    pin_array array = { .element_type = PIN_STRUCT,
+                        .type_name = record->type.name,
+                        .record = record,
+                        .items = &wrapper,
+                        .count = 1,
+                        .capacity = 1 };
+    pin_array empty = array;
+    empty.items = NULL;
+    empty.count = empty.capacity = 0;
+    pin_union
+        *payload = arena_alloc(&input, sizeof *payload + 4 * sizeof *payload->values);
+    *payload = (pin_union){ .tag = 9962, .count = 4 };
+    payload->values[0] = wrapper;
+    payload->values[1] = (pin_value){ .type = PIN_UNION,
+                                      .container = PIN_CONTAINER_MAP,
+                                      .type_name = "__map_int_wrapper",
+                                      .ptr = &map };
+    payload->values[2] = (pin_value){ .type = PIN_STRUCT,
+                                      .container = PIN_CONTAINER_ARRAY,
+                                      .type_name = record->type.name,
+                                      .record = record,
+                                      .ptr = &array };
+    payload->values[3] = payload->values[2];
+    payload->values[3].ptr = &empty;
+    pin_value borrowed = { .type = PIN_UNION, .type_name = "WrappedCapture", .ptr = payload },
+              captured;
+    REQUIRE(!pin_value_snapshot_owned_to_arena(&snapshots, &captured, &borrowed));
+    type_catalog_set_project(NULL);
+    pointer_project_catalog = false;
+    native_fields[0].type = PIN_F32;
+    native.field_count = 0;
+    arena_free(&input);
+    arena *arenas[] = { &snapshots };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 1);
+    pin_value_trace(&captured, arena_collect_mark, &collection);
+    arena_collect_end(&collection);
+    REQUIRE(arena_contains(&snapshots, pointer) && pointer->value.i == 91);
+    pin_value copied;
+    REQUIRE(!pin_value_snapshot_owned_to_arena(&copies, &copied, &captured));
+    REQUIRE(pin_value_equal(&captured, &copied));
+    const pin_union *kept = copied.ptr;
+    const pin_array *kept_empty = kept->values[3].ptr;
+    REQUIRE(kept_empty->count == 0 && kept_empty->schema && kept_empty->record);
+    REQUIRE(pin_value_record_current(&kept->values[3]));
+    const pin_value values[] = {
+        kept->values[0],
+        ((const pin_map *)kept->values[1].ptr)->entries[0].value,
+        pin_array_get(kept->values[2].ptr, 0)
+    };
+    source_document = av_doc_new();
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(values[i].record && values[i].schema && pin_value_record_current(&values[i]));
+        REQUIRE(!pin_record_current(values[i].record));
+        pin_value nested;
+        REQUIRE(
+            !pin_read_field(&copies, values[i].ptr, &values[i].record->type.fields[0], &nested)
+        );
+        nested.schema = values[i].schema;
+        REQUIRE(pin_value_type(&nested)->field_count == 2);
+        REQUIRE(
+            ((const int32_t *)nested.ptr)[0] == 12 &&
+            ((const int32_t *)nested.ptr)[1] == 34
+        );
+        pin_value exported = values[i];
+        *(pin_pointer **)((char *)exported.ptr +
+                          exported.record->type.fields[2].offset) = NULL;
+        REQUIRE(pin_value_to_document(source_document, &exported));
+        execution_wire writer = { 0 };
+        execution_wire_value_owned(&writer, &exported, retained_record_wire_layout, NULL);
+        REQUIRE(!writer.error && writer.size);
+        afree(writer.data);
+    }
+    REQUIRE(pin_value_to_document(source_document, &copied));
+    execution_wire writer = { 0 };
+    execution_wire_value_owned(&writer, &copied, retained_record_wire_layout, NULL);
+    REQUIRE(!writer.error && writer.size);
+    afree(writer.data);
+    arena_free(&copies);
+    return true;
+}
+
 void test_tool_types()
 {
     pu_setup(NULL, release_values);
+    RUN_TEST_CASE(types_maps_reject_incompatible_carried_native_layouts);
+    RUN_TEST_CASE(types_authored_wrappers_retain_native_children);
+    RUN_TEST_CASE(types_owned_native_schemas_survive_catalog_and_source_retirement);
+    RUN_TEST_CASE(types_queries_preserve_identity_and_managed_edges);
+    RUN_TEST_CASE(types_query_persistence_accepts_only_nil);
     RUN_TEST_CASE(types_nested_pointer_records_require_owned_layout_support);
     RUN_TEST_CASE(types_document_array_collection_retains_split_payloads);
     RUN_TEST_CASE(types_authored_record_document_uses_nested_native_layout);

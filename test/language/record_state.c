@@ -322,7 +322,9 @@ TEST_CASE(record_state_replacement)
         REQUIRE(compile(2, backends[b], &next));
         REQUIRE(row_id == initial_row && rows_id == initial_rows);
         REQUIRE(nominal == first_nominal && layout != first_layout);
-        REQUIRE(execution_program_replace(program, next, false) == FLOW_OK);
+        REQUIRE(execution_program_replace(program, next, false) == FLOW_ERR_COMPILE);
+        REQUIRE(state(execution_program_instance(program, owner), "second", 1, 3));
+        REQUIRE(execution_program_replace(program, next, true) == FLOW_OK);
         execution_module_free(module);
         module = next;
         next = NULL;

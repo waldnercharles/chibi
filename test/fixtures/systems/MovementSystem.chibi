@@ -1,5 +1,3 @@
 MovementSystem :: system() {
-    on Tick :: (dt: float s) {
-        set_transform(add(get_transform(), multiply(multiply(Unwrap_Input(get_input()), Unwrap_Movement(get_movement())), dt)))
-    }
+    set_transform(add(get_transform(), multiply(multiply(Unwrap_Input(get_input()), Unwrap_Movement(get_movement())), dt)))
 }

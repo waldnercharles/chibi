@@ -161,7 +161,13 @@ pub ValueTag :: (storage: int) -> int {
 }
 // The LLVM type of execution_native_context, the hidden first parameter of
 // every function of a module that calls the runtime: a pointer to each
-// operation, `format_text(context, values, count, result)` first.
+// operation, `format_text(context, values, count, result)` first, then the
+// failure native code ends the call with, or null.
 pub ContextType :: () -> string {
-    return "{ ptr }";
+    return "{ ptr, ptr }";
+}
+// The LLVM type of execution_native_failure: the stable ID of the function
+// whose assert failed, and the assert's source range.
+pub FailureType :: () -> string {
+    return "{ i64, i32, i32 }";
 }

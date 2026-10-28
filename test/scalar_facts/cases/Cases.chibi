@@ -97,7 +97,7 @@ Cases :: () -> Case[] {
         Accepted("arithmetic", "package scalar\nMain :: () -> int { return Half(2); }\nHalf :: (x: int) -> int { return x + (2147483647 + 1) / 2; }", 1073741826, "Main,Half", "return 2 ; Half(2) | return x ; (2147483647 + 1) / 2 ; x + (2147483647 + 1) / 2"),
         Accepted("branch", "package scalar\nMain :: () -> int { if (true) { return 42; } return 0; }", 42, "Main", "if true return 42 end return 0"),
         Accepted("local", "package scalar\nMain :: () -> int { x: int = 42; return x; }", 42, "Main", "x := 42 return x"),
-        Rejected("after_return", "package scalar\nMain :: () -> int { return 42; assert(false); }", "scalar proof supports only locals, assignments, if statements, switches, loops and returns", "assert(false);"),
+        Rejected("after_return", "package scalar\nMain :: () -> int { return 42; Main(); }", "scalar proof supports only locals, assignments, asserts, if statements, switches, loops and returns", "Main();"),
         Accepted("extra_return", "package scalar\nMain :: () -> int { return 42; return 0; }", 42, "Main", "return 42 return 0"),
         Rejected("unknown_call", "package scalar\nMain :: () -> int { return unknown(); }", "Unknown function 'unknown'", "unknown"),
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
@@ -123,7 +123,7 @@ Cases :: () -> Case[] {
         Rejected("nul", "package scalar\nMain :: () -> int { return 42; }\u0000", "Package source contains NUL bytes", "\u0000"),
         Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires its first function to return int", "string"),
         Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "[int: int]"),
-        Rejected("assert_before", "package scalar\nMain :: () -> int { assert(false); return 42; }", "scalar proof supports only locals, assignments, if statements, switches, loops and returns", "assert(false);"),
+        Accepted("assert_before", "package scalar\nMain :: () -> int {\n    x: int = 41;\n    assert(Message: \"x is 41\", Condition: x == 41);\n    assert(true);\n    return x + 1;\n}", 42, "Main", "x := 41 assert x ; 41 ; x == 41 assert true return x ; 1 ; x + 1"),
         Rejected("return_outcome", "package scalar\nMain :: () -> int { return .Done 42; }", "scalar proof does not support return outcomes", "Done"),
         Accepted("float_one", "package scalar\nMain :: () -> int { return 1.0; }", 1, "Main", "return 1.0"),
         Accepted("exponent_one", "package scalar\nMain :: () -> int { return 1e0; }", 1, "Main", "return 1e0"),
@@ -341,9 +341,10 @@ Skipped :: (rows: facts.Row[], at: int) -> int {
 // is 1 and otherwise its alternative, until a return. Each statement's
 // operands are read as the evaluation they record, operand by operand, with
 // `variables` the values of the function's variables by ordinal; a logical
-// whose left operand decides it skips its right rows. Bools are 0 and 1, and
-// each integer is the i64 its type's value is. Only calls recurse, one
-// frame each, so the depth is the call chain's.
+// whose left operand decides it skips its right rows. Each case's asserts
+// hold, so an assert runs on. Bools are 0 and 1, and each integer is the i64
+// its type's value is. Only calls recurse, one frame each, so the depth is
+// the call chain's.
 Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: i64[]) -> i64 {
     head := heads[function];
     variables := arguments;
@@ -430,7 +431,7 @@ Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: i64[]) -
             if (rows[at].kind == facts.ElseRow) {
                 at += 1;
             }
-        } else if (row.kind != facts.IfRow) {
+        } else if (row.kind != facts.IfRow && row.kind != facts.AssertRow) {
             // A local of a branch that did not run has no value.
             while (length(variables) <= row.value) {
                 variables.append(i64(0));
@@ -476,6 +477,8 @@ Trace :: (rows: facts.Row[]) -> string {
             word = format_text("{} =", names[row.value]);
         } else if (row.kind == facts.IfRow) {
             word = "if";
+        } else if (row.kind == facts.AssertRow) {
+            word = "assert";
         } else if (row.kind == facts.ElseRow) {
             word = "else";
         } else if (row.kind == facts.EndRow) {

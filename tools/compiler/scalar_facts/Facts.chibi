@@ -3,8 +3,8 @@ package scalar_facts
 // Internal opt-in owned result for one source document holding a set of
 // ordinary pure functions over numbers, bool, strings, and records and
 // unions of numbers and bool, which may recurse. A function's body is
-// locals, assignments, if statements, switches over integers or a union's
-// variants, while loops, loops over int ranges, breaks, continues and
+// locals, assignments, asserts, if statements, switches over integers or a
+// union's variants, while loops, loops over int ranges, breaks, continues and
 // returns. Values and conditions are literals, variables, arithmetic,
 // shifts, conversions, comparisons, logic, record literals, field reads,
 // union variants, their tests and payloads, a string's byte count, bytes and
@@ -99,7 +99,11 @@ package scalar_facts
 //   before the arm's statements;
 // - a Break or Continue row leaves, or ends the pass of, the innermost loop
 //   it is in, through any switch around it. It has no operands;
-// - a Return row is followed by its `count` operands, the returned value.
+// - a Return row is followed by its `count` operands, the returned value;
+// - an Assert row, with the range of its assert's call, is followed by its
+//   `count` condition operands. When the condition is false, the call from
+//   the VM ends with the failure the VM's assert at that range gives, and
+//   every call it is in ends with it.
 // A variable is visible from the end of its declaration to the end of the
 // statements it is declared among; locals of a consequence, an alternative,
 // an arm or a loop body are not visible after it, and a For row's variable is
@@ -217,6 +221,7 @@ pub MakeRow: int : 32;
 pub TagRow: int : 33;
 pub PayloadRow: int : 34;
 pub TextRow: int : 35;
+pub AssertRow: int : 36;
 
 // The value types: int and bool, then the other integer types, then the
 // floating ones, then string. The facts carry no compiler storage ordinal.

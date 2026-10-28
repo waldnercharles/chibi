@@ -8,6 +8,7 @@
 #include "execution/native.h"
 #include "execution/status.h"
 #include "runtime/behaviors/source.h"
+#include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/text_definition.h"
 #include "runtime/text_format.h"
@@ -37,11 +38,13 @@ static const script_catalog_capability tick = { .id = 10,
                                                 .parameter_count = 1,
                                                 .completion_outcome = -1 };
 static const script_catalog catalog = { .capabilities = &tick, .capability_count = 1 };
-/* Tick and the text natives, which Label calls. */
+/* Tick, the core natives, whose assert Below and Checked call, and the text
+ * natives, which Label calls. */
 static native_capabilities *natives_catalog;
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
 
-/* The functions the Probe calls, which native code can compile. */
+/* The functions the Probe and the Checker call, which native code can
+ * compile. */
 #define PURE_FUNCTIONS                                                         \
     "    Reward :: (points: int, bonus: int = 5) -> int { return points * 2 "  \
     "+ bonus; }\n"                                                             \
@@ -53,7 +56,14 @@ static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BA
     "        return g - f64(a);\n"                                             \
     "    }\n"                                                                  \
     "    Label :: (x: number) -> int { return "                                \
-    "text_byte_length(format_text(\"{} cells\", x)); }\n"
+    "text_byte_length(format_text(\"{} cells\", x)); }\n"                      \
+    "    Below :: (x: int, limit: int) -> int {\n"                             \
+    "        assert(x < limit, \"x stays below its limit\");\n"                \
+    "        return x;\n"                                                      \
+    "    }\n"                                                                  \
+    "    Checked :: (x: int) -> int { assert(x >= 0); return Below(x, 3) + "   \
+    "1; "                                                                      \
+    "}\n"
 const char NATIVE_CALLS_LIBRARY
     [] = "Native :: library {\n" PURE_FUNCTIONS NATIVE_CALLS_WIDE "}\n";
 /* With functions that wait, exceed the entry's parameter bound or take a
@@ -87,6 +97,16 @@ static const char PROBE[] = "Probe :: behavior {\n"
                             "        label = Native.Label(cells);\n"
                             "    }\n"
                             "}\n";
+/* Counts each Tick through Checked, which fails once the count reaches 3,
+ * in Below's assert, or at once in its own when a Tick's cells are
+ * negative. */
+static const char CHECKER[] = "Checker :: behavior {\n"
+                              "    total: int = 0;\n"
+                              "    on Tick :: (cells: number) {\n"
+                              "        if (cells < 0) { total = -1; }\n"
+                              "        total = Native.Checked(total);\n"
+                              "    }\n"
+                              "}\n";
 
 static int32_t int_word(uint64_t word)
 {
@@ -159,6 +179,7 @@ static const uint8_t MIX[] = { EXECUTION_NATIVE_INT, EXECUTION_NATIVE_BOOL,
                                EXECUTION_NATIVE_U64, EXECUTION_NATIVE_NUMBER,
                                EXECUTION_NATIVE_F64, EXECUTION_NATIVE_F64 };
 static const uint8_t LABEL[] = { EXECUTION_NATIVE_NUMBER, EXECUTION_NATIVE_INT };
+static const uint8_t CHECKED[] = { EXECUTION_NATIVE_INT, EXECUTION_NATIVE_INT };
 /* A library function's stable ID, as its prepared module records it. */
 static uint64_t function_id(const char *name)
 {
@@ -172,14 +193,40 @@ static execution_native_export exported(const char *name, const uint8_t *types, 
                                       types, parameters,
                                       1,     entry };
 }
+/* An assert of the library: its function's ID and its call's range. */
+static execution_native_failure library_assert(const char *function, const char *call)
+{
+    int start = (int)(strstr(NATIVE_CALLS_LIBRARY, call) - NATIVE_CALLS_LIBRARY);
+    return (execution_native_failure){ function_id(function),
+                                       start,
+                                       start + (int)strlen(call) };
+}
+/* Checked's asserts and Below's, which Checked calls. */
+static execution_native_failure checked_assert, below_assert;
+static void checked(execution_native_context *context, const uint64_t *arguments, uint64_t *results)
+{
+    calls++;
+    int32_t x = int_word(arguments[0]);
+    if (x < 0) {
+        context->failure = &checked_assert;
+        return;
+    }
+    if (x >= 3) {
+        context->failure = &below_assert;
+        return;
+    }
+    results[0] = (uint64_t)(int64_t)(x + 1);
+}
 #define RUNTIME ((execution_native_runtime){ NATIVE_FORMAT_TEXT_HOST.value })
-static execution_native_export EXPORTS[5];
-static const execution_native_manifest MANIFEST = { EXECUTION_NATIVE_ABI, 5, EXPORTS };
+static execution_native_export EXPORTS[6];
+static const execution_native_manifest MANIFEST = { EXECUTION_NATIVE_ABI, 6, EXPORTS };
 /* The synchronous calls one Tick makes. */
 enum
 {
     TICK_CALLS = 6,
-    TICKS = 4
+    TICKS = 4,
+    /* The Checker's calls until each of its asserts fails. */
+    CHECKED_CALLS = 5
 };
 
 static void setup()
@@ -187,15 +234,19 @@ static void setup()
     strcpy(root, "/tmp/chibi-native-calls-XXXXXX");
     assert(mkdtemp(root));
     const native_capability_pack events = { .catalog = &catalog };
-    const native_definition_pack texts[] = { NATIVE_TEXT_DEFINITION_PACK };
+    const native_definition_pack packs[] = { CORE_DEFINITION_PACK,
+                                             NATIVE_TEXT_DEFINITION_PACK };
     char error[256];
-    natives_catalog = native_capabilities_from_definition_packs(&events, 1, texts, 1, error, sizeof error);
+    natives_catalog = native_capabilities_from_definition_packs(&events, 1, packs, 2, error, sizeof error);
     assert(natives_catalog);
     EXPORTS[0] = exported("Reward", REWARD, 2, reward);
     EXPORTS[1] = exported("Positive", POSITIVE, 1, positive);
     EXPORTS[2] = exported("Wrap", WRAP, 1, wrap);
     EXPORTS[3] = exported("Mix", MIX, 7, mix);
     EXPORTS[4] = exported("Label", LABEL, 1, label);
+    EXPORTS[5] = exported("Checked", CHECKED, 1, checked);
+    checked_assert = library_assert("Checked", "assert(x >= 0)");
+    below_assert = library_assert("Below", "assert(x < limit, \"x stays below its limit\")");
 }
 static void clear()
 {
@@ -225,14 +276,16 @@ static const authoring_source *source(const char *name)
 }
 static bool prepare_library(const char *text, behavior_backend backend)
 {
-    char library[256], probe[256];
+    char library[256], probe[256], checker[256];
     snprintf(library, sizeof library, "%s/libraries/Native.chibi", root);
     snprintf(probe, sizeof probe, "%s/behaviors/Probe.chibi", root);
+    snprintf(checker, sizeof checker, "%s/behaviors/Checker.chibi", root);
     const source_catalog_edit edits[] = { { .path = library, .text = text },
-                                          { .path = probe, .text = PROBE } };
+                                          { .path = probe, .text = PROBE },
+                                          { .path = checker, .text = CHECKER } };
     script_lower_bindings bindings = authoring_native_bindings(natives_catalog);
     sources = authoring_sources_prepare_catalog(
-        source_catalog_replaced(root, native_capabilities_catalog(natives_catalog), edits, 2),
+        source_catalog_replaced(root, native_capabilities_catalog(natives_catalog), edits, 3),
         &bindings,
         backend
     );
@@ -326,9 +379,120 @@ static bool same_states(const probe_states *a, const probe_states *b)
     return true;
 }
 
+/* The Checker's run, with the table's natives when `bound`, through `count`
+ * Ticks of `cells`, the last of which fails: its status and the program's
+ * failure, and the native entries the calls took. */
+typedef struct
+{
+    int status;
+    execution_program_failure failure;
+    uint64_t entries;
+} checker_run;
+static bool run_checker(bool bound, const float *cells, int count, checker_run *out)
+{
+    program = execution_program_new(source("Checker")->module, NULL, NULL);
+    REQUIRE(program);
+    if (bound) {
+        execution_program_set_natives(program, natives);
+    }
+    execution_instance *instance = execution_program_attach(program, 1);
+    REQUIRE(instance);
+    behavior_run_scope scope = { 0 };
+    behavior_run_scope_begin(&scope);
+    int status = FLOW_OK;
+    for (int i = 0; i < count && status == FLOW_OK; i++) {
+        const pin_value arg = { .type = PIN_F32, .f = cells[i] };
+        status = execution_instance_dispatch(instance, tick.id, &arg, 1, i, 0, 1000);
+        REQUIRE((status == FLOW_OK) == (i + 1 < count));
+    }
+    behavior_run_scope_end(&scope);
+    const execution_program_failure *failure = execution_program_error(program);
+    REQUIRE(failure);
+    *out = (checker_run){ status, *failure, scope.counts.native_entries };
+    execution_program_free(program);
+    program = NULL;
+    return true;
+}
+static bool same_failure(const execution_program_failure *a, const execution_program_failure *b)
+{
+    return a->status == b->status && a->kind == b->kind &&
+           a->module_id == b->module_id && a->function_id == b->function_id &&
+           a->owner == b->owner && a->node_id == b->node_id &&
+           a->start == b->start && a->end == b->end && a->line == b->line &&
+           a->column == b->column && !strcmp(a->asset_name, b->asset_name) &&
+           !strcmp(a->message, b->message);
+}
+/* Whether a failed assert in native code fails the Checker as the VM's does:
+ * the same status and failure, at the assert's source, with its message,
+ * whether Below's fails in a call from Checked or Checked's own does. */
+static bool fails_alike()
+{
+    static const float counted[] = { 1, 1, 1, 1 }, negative[] = { -1 };
+    static const struct
+    {
+        const float *cells;
+        int count;
+        const char *call, *message;
+    } runs[] = {
+        { counted,
+          4,
+          "assert(x < limit, \"x stays below its limit\")",
+          "Assertion failed: x stays below its limit" },
+        { negative, 1, "assert(x >= 0)", "Assertion failed: x >= 0" },
+    };
+    for (size_t i = 0; i < sizeof runs / sizeof *runs; i++) {
+        checker_run vm, native;
+        REQUIRE(run_checker(false, runs[i].cells, runs[i].count, &vm) && !vm.entries);
+        REQUIRE(run_checker(true, runs[i].cells, runs[i].count, &native));
+        REQUIRE(native.entries == (uint64_t)runs[i].count);
+        const char *library = NATIVE_CALLS_LIBRARY,
+                   *at = strstr(library, runs[i].call);
+        int line = 1, column = 1;
+        for (const char *c = library; c < at; c++) {
+            line += *c == '\n';
+            column = *c == '\n' ? 1 : column + 1;
+        }
+        const execution_program_failure *f = &vm.failure;
+        if (strcmp(f->message, runs[i].message) || f->start != at - library ||
+            f->line != line || f->column != column) {
+            fprintf(
+                stderr,
+                "VM assert: %s at %d:%d [%d, %d)\n",
+                f->message,
+                f->line,
+                f->column,
+                f->start,
+                f->end
+            );
+        }
+        REQUIRE(vm.status == FLOW_ERR_INVALID_GRAPH && f->kind == BEHAVIOR_FUNCTION_DATA);
+        REQUIRE(!strcmp(f->message, runs[i].message) && f->start == at - library);
+        REQUIRE(
+            f->end == f->start + (int)strlen(runs[i].call) && f->line == line &&
+            f->column == column
+        );
+        const execution_program_failure *g = &native.failure;
+        bool same = native.status == vm.status && same_failure(f, g);
+        if (!same) {
+            fprintf(
+                stderr,
+                "native assert: %s at %d:%d [%d, %d) in %s\n",
+                g->message,
+                g->line,
+                g->column,
+                g->start,
+                g->end,
+                g->asset_name
+            );
+        }
+        REQUIRE(same);
+    }
+    return true;
+}
 /* Whether the Probe, compiled with `library` on backend b, reaches the
  * same states with `manifest` bound as in the VM, every call running
- * natively; `vm` receives the VM's. */
+ * natively, and a failed assert fails the Checker as it does in the VM;
+ * `vm` receives the VM's states. */
 static bool agrees(
     const char *library,
     const execution_native_manifest *manifest,
@@ -350,6 +514,7 @@ static bool agrees(
     REQUIRE(run(true, false, native, &native_entries));
     REQUIRE(native_entries == TICK_CALLS * TICKS);
     REQUIRE(same_states(vm, native));
+    REQUIRE(fails_alike());
     clear();
     return true;
 }
@@ -369,7 +534,7 @@ TEST_CASE(native_calls_match_the_vm)
         probe_states vm[TICKS];
         calls = 0;
         REQUIRE(agrees(LIBRARY, &MANIFEST, b, vm));
-        REQUIRE(calls == TICK_CALLS * TICKS);
+        REQUIRE(calls == TICK_CALLS * TICKS + CHECKED_CALLS);
         /* Reward's bonus defaults to 5, Positive is false for -2 and 0, Wrap
          * wraps its u8, and Mix takes either branch. */
         REQUIRE(vm[0].total == 11 && vm[0].flag && vm[0].small == 200 && vm[0].wide == 231.25);

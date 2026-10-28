@@ -838,8 +838,8 @@ TEST_CASE(native_calls_format_text_like_the_vm)
     {
         COUNT = sizeof values / sizeof *values
     };
-    pin_string format = { FORMAT, sizeof FORMAT - 1 }, nul = { "a\0b", 3 },
-               empty = { 0 };
+    pin_string format = { .bytes = FORMAT, .length = sizeof FORMAT - 1 },
+               nul = { .bytes = "a\0b", .length = 3 }, empty = { 0 };
     const pin_value inputs[COUNT] = {
         { .type = PIN_STR, .text = &format },
         { .type = PIN_I32, .i = -7 },

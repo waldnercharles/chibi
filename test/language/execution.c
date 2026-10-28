@@ -629,7 +629,7 @@ TEST_CASE(execution_finished_definition_owns_producer_strings)
     const char expected[] = { 'p', 0, 'x', (char)0xff };
     char type_name[] = "fixture.text", origin[] = "fixture.chibi";
     builder = behavior_function_builder_new();
-    pin_string descriptor = { text, sizeof text - 1 };
+    pin_string descriptor = { .bytes = text, .length = sizeof text - 1 };
     pin_value initial = { .type = PIN_STR, .text = &descriptor, .type_name = type_name };
     behavior_function_builder_signature(builder, NULL, 0, &initial, 1, NULL, 0);
     int source = behavior_function_builder_origin(
@@ -1892,8 +1892,8 @@ TEST_CASE(execution_print_string_is_synchronous_and_preserves_context)
             if (mode != 2) {
                 apush(log_services, ((service_binding){ EXECUTION_LOG_SERVICE, &sink }));
             }
-            pin_string descriptor = { "logged before return",
-                                      sizeof("logged before return") - 1 };
+            pin_string descriptor = { .bytes = "logged before return",
+                                      .length = sizeof("logged before return") - 1 };
             text.text = mode == 0 ? &descriptor : NULL;
             context = (behavior_function_context){
                 .arguments = &text,
@@ -3816,10 +3816,10 @@ TEST_CASE(execution_string_equality_and_iteration_use_full_bytes)
     REQUIRE(finish() && behavior_function_compile(function));
     const char first[] = { 'A', 0, 'B', (char)0xff, 0 };
     const char second[] = { 'A', 0, 'C', (char)0xff, 0 };
-    pin_string texts[] = { { first, sizeof first - 1 },
-                           { second, sizeof second - 1 },
-                           { first, 1 },
-                           { first, sizeof first - 1 } };
+    pin_string texts[] = { { .bytes = first, .length = sizeof first - 1 },
+                           { .bytes = second, .length = sizeof second - 1 },
+                           { .bytes = first, .length = 1 },
+                           { .bytes = first, .length = sizeof first - 1 } };
     const bool expected[] = { true, false, false, true };
     for (int backend = 0; backend < 2; backend++) {
         args[0].text = &texts[0];
@@ -3859,7 +3859,7 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
     memset(source, 'x', sizeof source - 1);
     REQUIRE(pin_text(read).length == 6 && !memcmp(pin_text(read).bytes, "before", 6));
     const char binary[] = { 'A', 0, 'B', 0 };
-    pin_string descriptor = { binary, 3 };
+    pin_string descriptor = { .bytes = binary, .length = 3 };
     pin_value writes[] = { field, { .type = PIN_STR, .text = &descriptor } }, result;
     void *previous = root.ptr;
     REQUIRE(EXECUTION_reference_write_call.value(&managed, writes, 2, &result));
@@ -3870,7 +3870,7 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
     result = (pin_value){ .type = PIN_I32, .i = 77 };
     REQUIRE(EXECUTION_construct_call.value(&managed, construct, 3, &result));
     REQUIRE(result.type == PIN_I32 && result.i == 77);
-    descriptor = (pin_string){ "after", 5 };
+    descriptor = (pin_string){ .bytes = "after", .length = 5 };
     /* A valid write then lands in the referenced value itself. */
     REQUIRE(!EXECUTION_reference_write_call.value(&managed, writes, 2, &result));
     REQUIRE(root.ptr == previous && !strcmp(native.text, "after"));
@@ -3881,7 +3881,7 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
     REQUIRE(!EXECUTION_snapshot_call.value(&managed, &writes[1], 1, &named));
     REQUIRE(named.type == PIN_NAME && !strcmp(named.str, "after"));
     const char *kept = named.str;
-    descriptor = (pin_string){ binary, 3 };
+    descriptor = (pin_string){ .bytes = binary, .length = 3 };
     REQUIRE(EXECUTION_snapshot_call.value(&managed, &writes[1], 1, &named));
     REQUIRE(named.type == PIN_NAME && named.str == kept);
     pin_value converted = { .type = PIN_STR };
@@ -4027,7 +4027,8 @@ TEST_CASE(execution_native_boundary_rejects_hidden_managed_pointers)
             REQUIRE(pin_array_valid(&array));
         }
         pin_value boxed[2];
-        const pin_string text[] = { { "first", 5 }, { "second", 6 } };
+        const pin_string text[] = { { .bytes = "first", .length = 5 },
+                                    { .bytes = "second", .length = 6 } };
         const pin_string *text_rows[] = { &text[0], &text[1] };
         if (variant >= 5 && variant < 7) {
             const type_field field = { .name = "text",

@@ -269,7 +269,7 @@ TEST_CASE(scalar_unions_keep_escaping_and_managed_payloads_owned)
 #endif
         for (int backend = 0; backend < 4; backend++) {
             char text[] = "original";
-            pin_string descriptor = { text, sizeof text - 1 };
+            pin_string descriptor = { .bytes = text, .length = sizeof text - 1 };
             if (j == 3) {
                 input.text = &descriptor;
             }

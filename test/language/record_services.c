@@ -364,7 +364,8 @@ TEST_CASE(record_headless_ui_owned_data)
     const av_value *before = datum->value;
     const pin_string *valid_name = arguments[1].text;
     const char nul_name[] = "rows\0other";
-    const pin_string invalid_name = { nul_name, sizeof nul_name - 1 };
+    const pin_string invalid_name = { .bytes = nul_name,
+                                      .length = sizeof nul_name - 1 };
     arguments[1].text = &invalid_name;
     const char *invalid_text = UI_SET_DATA_CALL.context(&context, model, arguments, NULL);
     REQUIRE(invalid_text && !strcmp(invalid_text, "String contains embedded NUL"));

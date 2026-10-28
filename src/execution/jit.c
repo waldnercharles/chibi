@@ -443,6 +443,13 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     behavior_machine m = layout->machine;
     m.compiler = c;
     const behavior_function *f = m.function, *system = m.system_root;
+    int *uses = NULL;
+    bool *targets = NULL;
+    if (!m.scoped) {
+        behavior_jit_usage(f, &uses, &targets);
+        m.single_uses = uses;
+        m.branch_targets = targets;
+    }
     bool inspected = m.inspected, arguments = layout->arguments, loop = layout->loop;
     const int *registers = m.registers, *local_registers = m.local_registers;
     int locals = m.locals, parents = m.parents;
@@ -1076,6 +1083,8 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     free(labels);
     free(jumps);
     free(failures);
+    free(uses);
+    free(targets);
     return (behavior_emission){ resume_labels, m.system_loop, m.system_exits };
 }
 

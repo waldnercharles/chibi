@@ -631,7 +631,8 @@ static char *compile_input(const build_host *host, const native_capabilities *na
         yyjson_mut_arr_add_strcpy(doc, paths, files[i].path);
         yyjson_mut_arr_add_strncpy(doc, texts, files[i].text, files[i].size);
     }
-    yyjson_mut_arr_add_true(doc, arguments);
+    /* This private host runs builds without a debugger or watch inspection. */
+    yyjson_mut_arr_add_false(doc, arguments);
     size_t target_length = 0;
     char *target = compiler_target_json(native_capabilities_catalog(native), &target_length);
     yyjson_doc *target_doc = yyjson_read(target, target_length, 0);

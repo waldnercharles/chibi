@@ -1372,6 +1372,28 @@ static script_type managed_type(lower *l, script_type pointee)
     assert(!"Managed pointee type was not published");
     return (script_type){ .flags = SCRIPT_TYPE_ERROR };
 }
+/* Whether evaluating an expression can change no value: it reads names and
+ * constants through operators and conversions only. */
+static bool inert(lower *l, int index)
+{
+    const script_expression *e = &l->a->expressions[index];
+    switch (e->kind) {
+        case SCRIPT_EXPR_CONSTANT:
+        case SCRIPT_EXPR_SYMBOL: return true;
+        case SCRIPT_EXPR_UNARY:
+        case SCRIPT_EXPR_CAST: return inert(l, e->left);
+        case SCRIPT_EXPR_BINARY: return inert(l, e->left) && inert(l, e->right);
+        default: return false;
+    }
+}
+/* Whether e names an addressed local, which lives in a managed cell. */
+static bool managed_symbol(lower *l, const script_expression *e)
+{
+    return e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+           l->a->symbols[e->symbol].addressed &&
+           (l->parameters[e->symbol] < 0 ||
+            (l->captured && l->captured[e->symbol] >= 0));
+}
 static int managed_read(lower *l, int pointer, script_type pointee, script_range range)
 {
     const script_catalog_type
@@ -4068,8 +4090,7 @@ static int symbol_value(lower *l, const script_expression *e)
             s->type
         );
     }
-    if (s->addressed && (l->parameters[e->symbol] < 0 ||
-                         (l->captured && l->captured[e->symbol] >= 0))) {
+    if (managed_symbol(l, e)) {
         return managed_read(l, managed_local(l, e->symbol, e->range), s->type, e->range);
     }
     if (s->kind == SCRIPT_CONSTANT) {
@@ -4449,9 +4470,7 @@ static int reference_expression(lower *l, const script_expression *e, bool writt
         }
         return managed_reference(l, expression(l, e->left), e->type, e->range);
     }
-    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
-        l->a->symbols[e->symbol].addressed &&
-        (l->parameters[e->symbol] < 0 || (l->captured && l->captured[e->symbol] >= 0))) {
+    if (managed_symbol(l, e)) {
         return managed_reference(
             l,
             managed_local(l, e->symbol, e->range),
@@ -4872,8 +4891,18 @@ static int expression_value(lower *l, int index)
                 e->range
             );
         case SCRIPT_EXPR_INDEX: {
+            const script_expression *left = &l->a->expressions[e->left];
+            script_type collection = left->type;
+            /* An item of an array in a managed cell reads through the cell,
+             * which copies the item alone rather than the whole array. The
+             * cell is read after the index, so an index that could change it
+             * reads a copy taken first, as any other array does. */
+            if (collection.container == PIN_CONTAINER_ARRAY &&
+                (left->kind == SCRIPT_EXPR_DEREFERENCE || managed_symbol(l, left)) &&
+                inert(l, e->right)) {
+                return reference_read(l, reference_expression(l, e, false), e->type, e->range);
+            }
             int array = expression(l, e->left);
-            script_type collection = l->a->expressions[e->left].type;
             if (collection.container == PIN_CONTAINER_MAP) {
                 /* An absent key reads the value type's zero when it has one. */
                 script_type key = script_catalog_key_type(l->catalog, collection);

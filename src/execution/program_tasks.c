@@ -486,9 +486,8 @@ typedef struct
     task_root *index;
     execution_task **pending;
     pin_value *values; /* Reached values whose contents are not yet marked. */
-    const pin_pointer **pointers; /* Visited pointer roots, open-addressed. */
-    size_t pointer_capacity, pointer_count;
-    const pin_query **queries; /* Visited query values. */
+    program_pointer_set pointers; /* Visited pointer roots. */
+    const pin_query **queries;    /* Visited query values. */
     uint64_t lookup_steps;
 } task_roots;
 static int compare_roots(const void *left, const void *right)
@@ -525,36 +524,36 @@ static void mark_task(task_roots *roots, uint64_t handle)
         }
     }
 }
-static size_t pointer_slot(const task_roots *roots, const pin_pointer *pointer)
+static size_t pointer_slot(const program_pointer_set *set, const pin_pointer *pointer)
 {
     uint64_t hash = (uint64_t)(uintptr_t)pointer * 0x9e3779b97f4a7c15ull;
-    size_t i = (size_t)(hash >> 32) & (roots->pointer_capacity - 1);
-    while (roots->pointers[i] && roots->pointers[i] != pointer) {
-        i = (i + 1) & (roots->pointer_capacity - 1);
+    size_t i = (size_t)(hash >> 32) & (set->capacity - 1);
+    while (set->slots[i] && set->slots[i] != pointer) {
+        i = (i + 1) & (set->capacity - 1);
     }
     return i;
 }
 /* Keeps the table at most half full, so long pointer chains stay linear. */
-static bool first_visit(task_roots *roots, const pin_pointer *pointer)
+bool program_pointer_first_visit(program_pointer_set *set, const pin_pointer *pointer)
 {
-    if (2 * (roots->pointer_count + 1) > roots->pointer_capacity) {
-        const pin_pointer **old = roots->pointers;
-        size_t old_capacity = roots->pointer_capacity;
-        roots->pointer_capacity = old_capacity ? old_capacity * 2 : 64;
-        roots->pointers = xcalloc(roots->pointer_capacity, sizeof *roots->pointers);
+    if (2 * (set->count + 1) > set->capacity) {
+        const pin_pointer **old = set->slots;
+        size_t old_capacity = set->capacity;
+        set->capacity = old_capacity ? old_capacity * 2 : 64;
+        set->slots = xcalloc(set->capacity, sizeof *set->slots);
         for (size_t i = 0; i < old_capacity; i++) {
             if (old[i]) {
-                roots->pointers[pointer_slot(roots, old[i])] = old[i];
+                set->slots[pointer_slot(set, old[i])] = old[i];
             }
         }
         free(old);
     }
-    size_t i = pointer_slot(roots, pointer);
-    if (roots->pointers[i]) {
+    size_t i = pointer_slot(set, pointer);
+    if (set->slots[i]) {
         return false;
     }
-    roots->pointers[i] = pointer;
-    roots->pointer_count++;
+    set->slots[i] = pointer;
+    set->count++;
     return true;
 }
 static void push_fields(task_roots *roots, const type_desc *type, const void *data, const pin_schema *schema)
@@ -604,7 +603,7 @@ static void mark_one(task_roots *roots, const pin_value *value)
         while (pointer->base) {
             pointer = pointer->base;
         }
-        if (first_visit(roots, pointer)) {
+        if (program_pointer_first_visit(&roots->pointers, pointer)) {
             apush(roots->values, pointer->value);
         }
         return;
@@ -760,7 +759,7 @@ void program_tasks_collect(execution_program *p)
     p->task_lookup_steps = roots.lookup_steps;
     afree(roots.pending);
     afree(roots.values);
-    free(roots.pointers);
+    free(roots.pointers.slots);
     afree(roots.queries);
     afree(roots.index);
 }

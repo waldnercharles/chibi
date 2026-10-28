@@ -202,6 +202,7 @@ void program_collect_payloads(execution_program *p, execution_activation *extra)
     arena_collect_end(&c);
     afree(arenas);
     afree(values);
+    behavior_managed_heap_release_empty(p->managed);
 }
 execution_memory_usage execution_program_memory_usage(const execution_program *p)
 {

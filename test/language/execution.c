@@ -7,6 +7,7 @@
 #include "execution/function_builder.h"
 #include "execution/integer_report.h"
 #include "execution/intrinsics.h"
+#include "execution/jit_internal.h"
 #include "execution/log.h"
 #include "execution/managed.h"
 #include "execution/module_effects.h"
@@ -6190,6 +6191,59 @@ TEST_CASE(execution_query_descriptions_reject_unowned_terms_and_null_legacy_gate
     REQUIRE(query_prepared_plan_rejected());
     return true;
 }
+TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries)
+{
+    behavior_function f = { 0 };
+    asetlen(f.slots, 8);
+    asetlen(f.instructions, 7);
+    asetlen(f.runtime_map, 8);
+    memset(f.runtime_map, 0, 8 * sizeof *f.runtime_map);
+    f.instructions[0] = (behavior_function_instruction){ .op = BF_CONSTANT };
+    f.instructions[1] = (behavior_function_instruction){ .op = BF_ADD,
+                                                         .left = 0,
+                                                         .right = 0 };
+    f.instructions[2] = (behavior_function_instruction){ .op = BF_SELECT,
+                                                         .left = 1,
+                                                         .right = 2,
+                                                         .target = 3 };
+    f.instructions[3] = (behavior_function_instruction){ .op = BF_FMA,
+                                                         .left = 2,
+                                                         .right = 2,
+                                                         .target = 4 };
+    f.instructions[4] = (behavior_function_instruction){ .op = BF_BRANCH,
+                                                         .left = 5,
+                                                         .target = 6 };
+    f.instructions[5] = (behavior_function_instruction){ .op = BF_JUMP, .target = 1 };
+    f.instructions[6] = (behavior_function_instruction){ .op = BF_CONSTANT };
+    int *uses;
+    bool *targets;
+    behavior_jit_usage(&f, &uses, &targets);
+    /* A repeated operand at one PC is one use; a second PC is not. Even
+     * instructions omitted by runtime_map participate in the original proof. */
+    const int expected[] = { 1, 2, -2, 2, 3, 4, -1, -1, -1 };
+    int observed[9];
+    memcpy(observed, uses, sizeof observed);
+    bool entries[8];
+    memcpy(entries, targets, sizeof entries);
+    free(uses);
+    free(targets);
+    f.instructions[6] = (behavior_function_instruction){ .op = BF_NEG, .left = 0 };
+    behavior_jit_usage(&f, &uses, &targets);
+    int repeated = uses[0];
+    free(uses);
+    free(targets);
+    afree(f.slots);
+    afree(f.instructions);
+    afree(f.runtime_map);
+    for (int i = 0; i < 9; i++) {
+        REQUIRE(observed[i] == expected[i]);
+    }
+    for (int pc = 0; pc < 8; pc++) {
+        REQUIRE(entries[pc] == (pc == 1 || pc == 6));
+    }
+    REQUIRE(repeated == -2);
+    return true;
+}
 
 void test_language_execution()
 {
@@ -6210,6 +6264,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_component_references_reject_unavailable_write_paths);
     RUN_TEST_CASE(execution_component_targets_do_not_revive_after_lookup_loss_or_entity_reuse);
     RUN_TEST_CASE(execution_component_pointer_reductions_use_the_consumer_and_live_identity);
+    RUN_TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
     RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);

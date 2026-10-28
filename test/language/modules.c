@@ -294,6 +294,43 @@ TEST_CASE(modules_library_state_is_not_an_exported_value)
     return true;
 }
 
+/* One owner on bytecode. A behavior keeps a pointer to a record its library
+ * declares: an identical reload keeps the pointer, and one that adds a field
+ * to the record is refused while the pointer reaches an old one. */
+TEST_CASE(modules_replacement_checks_imported_pointee_layouts)
+{
+#define CALLER(fields)                                                         \
+    "Caller :: behavior { offset: number = 0; saved: ^Store.Actor?; "          \
+    "on Tick :: (cells: number) { if saved == nil { "                          \
+    "actor: Store.Actor = {" fields "}; saved = &actor; } "                    \
+    "if saved != nil { offset = saved.hp; } } }"
+    static const input
+        inputs[] = { { "libraries/Store.chibi",
+                       "Store :: library { Actor :: struct { hp: number; } }" },
+                     { "behaviors/Caller.chibi", CALLER("hp: cells") } },
+        added[] = { { "libraries/Store.chibi", "Store :: library { Actor :: struct { hp: number; armor: number; } }" },
+                    { "behaviors/Caller.chibi", CALLER("hp: cells, armor: 0") } };
+#undef CALLER
+    prepare(0, inputs, 2, false, BEHAVIOR_BYTECODE);
+    prepare(1, inputs, 2, false, BEHAVIOR_BYTECODE);
+    prepare(2, added, 2, false, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(0) && valid(1) && valid(2));
+    program = execution_program_new(source(0, "Caller")->module, NULL, NULL);
+    REQUIRE(program);
+    execution_instance *instance = execution_program_attach(program, 1);
+    const pin_value amount = { .type = PIN_F32, .f = 5 };
+    REQUIRE(
+        instance &&
+        execution_instance_dispatch(instance, tick.id, &amount, 1, 0, 0, 1000) == FLOW_OK
+    );
+    REQUIRE(execution_program_replace(program, source(1, "Caller")->module, false) == FLOW_OK);
+    REQUIRE(execution_program_replace(program, source(2, "Caller")->module, false) == FLOW_ERR_COMPILE);
+    REQUIRE(execution_program_module(program) == source(1, "Caller")->module);
+    REQUIRE(execution_program_replace(program, source(2, "Caller")->module, true) == FLOW_OK);
+    clear();
+    return true;
+}
+
 TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies)
 {
     const input inputs[] = {
@@ -862,6 +899,7 @@ void test_language_modules()
     RUN_TEST_CASE(modules_duplicate_qualified_helpers_cannot_publish_by_path_order);
     RUN_TEST_CASE(modules_cross_library_cycles_reject_callers_without_generations);
     RUN_TEST_CASE(modules_library_state_is_not_an_exported_value);
+    RUN_TEST_CASE(modules_replacement_checks_imported_pointee_layouts);
     RUN_TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies);
     RUN_TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope);
     RUN_TEST_CASE(modules_imported_scalar_templates_resolve_nested_calls_without_record_types);

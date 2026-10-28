@@ -4,6 +4,42 @@
 
 #include <stdlib.h>
 #include <string.h>
+/* Record distinct instruction uses, not operand occurrences: a value may
+ * appear more than once in the one instruction a fusion consumes. Include
+ * every instruction in the emitted definition, just as the linear single-use
+ * proof does, regardless of runtime_map. These tables live for one emission. */
+static void note_use(int *use, int pc)
+{
+    if (*use == -1) {
+        *use = pc;
+    } else if (*use != pc) {
+        *use = -2;
+    }
+}
+void behavior_jit_usage(const behavior_function *f, int **uses, bool **targets)
+{
+    int slots = acount(f->slots), instructions = acount(f->instructions);
+    *uses = xmalloc((size_t)(slots + 1) * sizeof **uses);
+    *targets = xcalloc((size_t)(instructions + 1), sizeof **targets);
+    for (int slot = 0; slot <= slots; slot++) {
+        (*uses)[slot] = -1;
+    }
+    for (int pc = 0; pc < instructions; pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (behavior_function_left_slot(i->op)) {
+            note_use(*uses + i->left, pc);
+        }
+        if (behavior_function_right_slot(i->op)) {
+            note_use(*uses + i->right, pc);
+        }
+        if (behavior_function_third_slot(i->op)) {
+            note_use(*uses + i->target, pc);
+        }
+        if (i->op == BF_BRANCH || i->op == BF_JUMP) {
+            (*targets)[i->target] = true;
+        }
+    }
+}
 #if CHIBI_HAVE_SJLIT
 /* Slots are defined before their uses within one lowered expression. Allocate
  * scratch registers by live interval; excess live values spill to the
@@ -439,10 +475,16 @@ void behavior_jit_alias_variables(const behavior_function *f, int *registers, co
         }
     }
 }
+static bool private_use(const behavior_machine *m, int slot, int expected)
+{
+    int use = m->single_uses[slot];
+    return !m->branch_targets[expected] && (use == -1 || use == expected);
+}
 /* Comparisons may feed a Boolean zero test before the branch. Consume only
  * private values with no control entry into the skipped instructions. */
-static int predicate_branch(const behavior_function *f, int pc, bool *invert)
+static int predicate_branch(const behavior_machine *m, int pc, bool *invert)
 {
+    const behavior_function *f = m->function;
     const behavior_function_instruction *compare = &f->instructions[pc];
     if (compare->op < BF_LT || compare->op > BF_NE) {
         return -1;
@@ -465,7 +507,8 @@ static int predicate_branch(const behavior_function *f, int pc, bool *invert)
          * A constant defined earlier may not dominate an external entry into
          * the comparison, even when its textual definition precedes it. */
         if (constant < 0 || f->instructions[constant].output != literal ||
-            !single_use(f, test->output, next + 1) || !single_use(f, literal, next)) {
+            !private_use(m, test->output, next + 1) ||
+            !private_use(m, literal, next)) {
             return -1;
         }
         *invert = (test->op == BF_EQ) != f->instructions[constant].value.b;
@@ -477,13 +520,11 @@ static int predicate_branch(const behavior_function *f, int pc, bool *invert)
     if (next >= acount(f->instructions) ||
         (f->instructions[next].op != BF_BRANCH && f->instructions[next].op != BF_ASSERT) ||
         f->instructions[next].left != result ||
-        !single_use(f, compare->output, consumer)) {
+        !private_use(m, compare->output, consumer)) {
         return -1;
     }
-    for (int at = 0; at < acount(f->instructions); at++) {
-        const behavior_function_instruction *i = &f->instructions[at];
-        if ((i->op == BF_BRANCH || i->op == BF_JUMP) && i->target > pc &&
-            i->target <= next) {
+    for (int at = pc + 1; at <= next; at++) {
+        if (m->branch_targets[at]) {
             return -1;
         }
     }
@@ -507,7 +548,7 @@ int behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_ju
     const behavior_function *f = m->function;
     const behavior_function_instruction *i = &f->instructions[pc];
     bool invert;
-    int last = predicate_branch(f, pc, &invert);
+    int last = predicate_branch(m, pc, &invert);
     if (last < 0) {
         return 0;
     }
@@ -584,23 +625,21 @@ int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_ju
                      behavior_scalar_bits(literal->value) != (uint64_t)INT64_MIN;
     int comparison = pc + 1 + immediate;
     bool invert;
-    int last = predicate_branch(f, comparison, &invert);
+    int last = predicate_branch(m, comparison, &invert);
     if (last < 0 || last >= acount(f->instructions)) {
         return 0;
     }
     const behavior_function_instruction *compare = &f->instructions[comparison],
                                         *branch = &f->instructions[last];
     if (compare->op < BF_LT || compare->op > BF_NE || compare->left != load->output ||
-        branch->op != BF_BRANCH || !single_use(f, load->output, comparison) ||
+        branch->op != BF_BRANCH || !private_use(m, load->output, comparison) ||
         f->slots[compare->right] != type ||
         (immediate && (compare->right != literal->output ||
-                       !single_use(f, literal->output, comparison)))) {
+                       !private_use(m, literal->output, comparison)))) {
         return 0;
     }
-    for (int i = 0; i < acount(f->instructions); i++) {
-        const behavior_function_instruction *op = &f->instructions[i];
-        if ((op->op == BF_BRANCH || op->op == BF_JUMP) && op->target > pc &&
-            op->target <= last) {
+    for (int at = pc + 1; at <= last; at++) {
+        if (m->branch_targets[at]) {
             return 0;
         }
     }

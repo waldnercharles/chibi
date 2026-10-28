@@ -189,13 +189,10 @@ sdk-reflect-bootstrap:
 	@$(QUIET) build-sdk-reflect-host -- cmake --build "$(SDK_REFLECT_BUILD_DIR)/host" --target chibi-build-host --parallel $(JOBS)
 else
 # Windows retains native construction until its build host can run processes.
-# A separate root-project tree also accepts existing standalone reflect caches.
+# Keep its restricted C-only SDK profile until that replacement is verified.
 sdk-reflect-build:
-	@$(MAKE) build GRAPH_BUILD= BUILD_DIR="$(SDK_REFLECT_BUILD_DIR)/native" BUILD_TARGET=reflect BUILD_HOST_TARGET= LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
-	@mkdir -p "$(SDK_REFLECT_BUILD_DIR)"
-	@if [ -f "$(SDK_REFLECT_BUILD_DIR)/native/reflect.exe" ]; then \
-		cp "$(SDK_REFLECT_BUILD_DIR)/native/reflect.exe" "$(SDK_REFLECT_BUILD_DIR)/reflect.exe"; \
-	else cp "$(SDK_REFLECT_BUILD_DIR)/native/reflect" "$(SDK_REFLECT_BUILD_DIR)/reflect"; fi
+	@$(QUIET) configure-sdk-reflect -- cmake -S tools/reflect -B "$(SDK_REFLECT_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	@$(QUIET) build-sdk-reflect -- cmake --build "$(SDK_REFLECT_BUILD_DIR)" --target reflect --parallel $(JOBS)
 endif
 
 sdk-build: sdk-reflect-build

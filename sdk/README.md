@@ -24,9 +24,10 @@ only product executable is `chibi-player`. `package-player` derives a deployment
 containing that executable, resources, licenses and exact SDK pin. It carries no
 SDK headers/libraries or authoring tools. Native profiles construct the
 `tools/reflect` generator with the Chibi graph on Linux/macOS; matching libclang
-headers belong to that host tool. Private host recovery and retained native
-construction stay inside `SDK_REFLECT_BUILD_DIR`, alongside its `reflect`
-executable. `SDK_CMAKE_FLAGS` selects Debug by default or an explicit Release
+headers belong to that host tool. Private host recovery stays inside
+`SDK_REFLECT_BUILD_DIR`, alongside its `reflect` executable. Windows retains the
+restricted standalone CMake construction until its authored replacement passes.
+`SDK_CMAKE_FLAGS` selects Debug by default or an explicit Release
 profile. `package-player` requests Release.
 
 For a library-only compiler or headless runtime, configure explicitly:

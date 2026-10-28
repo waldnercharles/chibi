@@ -774,10 +774,10 @@ this slice is not total CMake/Ninja removal.
 Reflection construction slice, 2026-10-28: `sdk-reflect-build` selects the graph's
 existing `reflect` target on Linux/macOS through `Graph.chibi`'s `SDKReflect`
 entry. All four SDK/runtime/browser/player callers retain the same native host
-executable path. The duplicate `tools/reflect/CMakeLists.txt` project is removed.
+executable path. Windows retains `tools/reflect/CMakeLists.txt` with its restricted
+C-only SDK profile until its graph/process and dependency proof is available.
 The first host is still recovered through the compiler-only SDK CMake project
-when no protocol-13 host is available; Windows retains root-project native
-construction until process execution is supported. `resource.cmake` remains a
+when no protocol-13 host is available. `resource.cmake` remains a
 live root-reference dependency. The responsibility/deletion map is in
 [`docs/toolchain-inventory.md`](docs/toolchain-inventory.md#cmake-retirement-boundaries-2026-10-28).
 Local macOS arm64 validation: clean graph reflection compiles 30 sources in
@@ -793,11 +793,19 @@ Independent review is clear. Native/material/project/language aggregates and
 complete Linux, Windows, browser and relocated public SDK builds are unrun
 locally for this slice. Those broader routes remain separate retirement gates.
 
-CI follow-up: cold recovery/native construction stays inside the reflection
-build root, under `host` and `native`. The initial sibling host directory made
+CI follow-up: cold recovery stays inside the reflection build root, under `host`.
+The initial sibling host directory made
 the SDK source identity dirty despite successful construction. The regression
 runs the actual Make route in a committed fixture and checks the real package
 source identity through cold/warm builds; authored edits must still change it.
+The proposed Windows root-project fallback was withdrawn because it added C++
+and compiler/native/desktop configuration requirements to a C-only tool. The
+existing Windows recipe and standalone project remain unchanged; paused Windows
+jobs are not evidence of replacement execution.
+After accepted `498f1b9a` integration, the combined package, graph-reflection and
+resource/version selectors pass 7/125 in 10.00 seconds, 2/11 in 30.69 seconds and
+3/20 in 40.51 seconds respectively, with counts given as cases/assertions and
+times as outer wall time.
 
 Compiler-tools packaging slice, 2026-10-22: `tools/toolchain/SDK.chibi`
 installs graph-built private hosts and their complete compiler/core/bootstrap,

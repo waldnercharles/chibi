@@ -930,6 +930,7 @@ TEST_CASE(compiler_fixture_preserves_a_custom_authored_budget)
 TEST_CASE(compiler_fixture_selects_an_exact_collection)
 {
     const char project[] = "package fixture\n"
+                           "import _ \"core:core_fixture\"\n"
                            "@test ProjectOnly :: () { assert(false, "
                            "\"project-only\"); }\n";
     const char collection[] = "package core_fixture\n"
@@ -978,10 +979,10 @@ TEST_CASE(compiler_fixture_selects_an_exact_collection)
         expected,
         sizeof expected,
         "FAIL fixture.ProjectOnly (BYTECODE)\n  "
-        "/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\n"
+        "/compiler/fixture/Tests.chibi:3:27: Assertion failed: project-only\n"
         "BYTECODE: 1 tests, 1 failed\n"
         "FAIL fixture.ProjectOnly (%s)\n  "
-        "/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\n"
+        "/compiler/fixture/Tests.chibi:3:27: Assertion failed: project-only\n"
         "%s: 1 tests, 1 failed\n",
         backend,
         backend

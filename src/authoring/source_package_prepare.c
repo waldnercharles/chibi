@@ -435,6 +435,40 @@ static void prepare_generation(
     }
 }
 
+/* Project packages are independent roots, including packages containing tests.
+ * Without project files, the first input file selects the collection root.
+ * Other collection packages contribute only through imports from those roots. */
+static bool *needed_packages(const authoring_packages *owner, const source_packages *graph)
+{
+    int count = source_packages_count(graph);
+    bool *needed = xcalloc((size_t)count, sizeof *needed);
+    int *pending = NULL;
+    for (int i = 0; i < count; i++) {
+        const char *identity = source_package_snapshot_identity(owner->snapshot, i);
+        if (!strncmp(identity, "project:", sizeof "project:" - 1)) {
+            needed[i] = true;
+            apush(pending, i);
+        }
+    }
+    if (!acount(pending) && count) {
+        int root = source_packages_file(graph, 0);
+        needed[root] = true;
+        apush(pending, root);
+    }
+    while (acount(pending)) {
+        int from = pending[acount(pending) - 1];
+        asetlen(pending, acount(pending) - 1);
+        for (int to = 0; to < count; to++) {
+            if (!needed[to] && source_packages_dependency(graph, from, to) >= 0) {
+                needed[to] = true;
+                apush(pending, to);
+            }
+        }
+    }
+    afree(pending);
+    return needed;
+}
+
 authoring_packages *authoring_packages_prepare(
     source_package_snapshot *snapshot,
     const script_catalog *native,
@@ -455,9 +489,13 @@ authoring_packages *authoring_packages_prepare(
     }
     owner->count = source_packages_count(graph);
     owner->packages = xcalloc((size_t)owner->count, sizeof *owner->packages);
+    bool *needed = needed_packages(owner, graph);
     owner->valid = true;
     for (int ordinal = 0; ordinal < owner->count; ordinal++) {
         int index = source_packages_order(graph, ordinal);
+        if (!needed[index]) {
+            continue;
+        }
         script_package_document documents[SOURCE_PACKAGE_MAX_FILES];
         script_package_import *imports = NULL;
         package_generation *
@@ -474,6 +512,16 @@ authoring_packages *authoring_packages_prepare(
         owner->packages[index] = generation;
         owner->valid = owner->valid && generation->view.valid;
     }
+    free(needed);
+    /* Dependency construction above uses graph indices. Public enumeration
+     * contains only prepared packages, in the graph's original index order. */
+    int count = 0;
+    for (int i = 0; i < owner->count; i++) {
+        if (owner->packages[i]) {
+            owner->packages[count++] = owner->packages[i];
+        }
+    }
+    owner->count = count;
     return owner;
 }
 

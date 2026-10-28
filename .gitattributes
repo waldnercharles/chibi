@@ -1,2 +1,3 @@
 third_party/*/*.patch -whitespace
 *.chibip binary
+*.chibi linguist-language=Odin

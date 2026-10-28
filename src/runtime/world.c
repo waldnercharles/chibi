@@ -130,7 +130,6 @@ world *world_new(const world_options *options, char *error, size_t size)
     w->modules.boundary = boundary;
     w->modules.paused = paused;
     w->modules.input = (options->modules & WORLD_INPUT) != 0;
-    w->modules.rendering = (options->modules & WORLD_VISUAL_MOTION) != 0;
     w->modules.save = save_new();
     w->scenes = scene_flow_new();
     w->urls = url_requests_new();

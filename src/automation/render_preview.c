@@ -134,7 +134,7 @@ static bool read_preview_pair(yyjson_val *object, const char *key, float pair[2]
     return true;
 }
 
-/* Beat and surface-influence values a material reads from its scene. */
+/* Surface-influence values a material reads from its scene. */
 static bool parse_preview_activity(
     yyjson_val *root,
     render_scene3d_activity *activity,
@@ -143,20 +143,6 @@ static bool parse_preview_activity(
 )
 {
     *activity = (render_scene3d_activity){ 0 };
-    static const char *beats[] = { "beat_phase", "beat_pulse" };
-    float *targets[] = { &activity->beat_phase, &activity->beat_pulse };
-    for (int i = 0; i < 2; i++) {
-        yyjson_val *value = yyjson_obj_get(root, beats[i]);
-        if (!value) {
-            continue;
-        }
-        double number = yyjson_is_num(value) ? yyjson_get_num(value) : NAN;
-        if (!(number >= 0 && number <= 1)) {
-            snprintf(error, error_size, "%s must be between 0 and 1", beats[i]);
-            return false;
-        }
-        *targets[i] = (float)number;
-    }
     yyjson_val *influence = yyjson_obj_get(root, "influence");
     if (!influence) {
         return true;
@@ -790,8 +776,6 @@ static bool add_sample_grid(
                 .normal = { 0, 1, 0 },
                 .view_direction = { 0, 1, 0 },
                 .time = time,
-                .beat_phase = material ? activity->beat_phase : 0,
-                .beat_pulse = material ? activity->beat_pulse : 0,
                 .resolve_influence = material ? render_influences_sample : NULL,
                 .influence_userdata = influences,
             };

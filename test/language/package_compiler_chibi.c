@@ -4759,6 +4759,79 @@ static unsigned char *closure_bytes(const pin_union *value, size_t *length)
     }
     return bytes;
 }
+/* Compile the discovered test package with each compiler backend, then run
+ * the same fixed assertions on each independently loaded target backend. */
+static bool authored_tests(
+    const compiler_fixture *metadata,
+    const source_package_input *sources,
+    int count,
+    uintptr_t budget
+)
+{
+    bool all_passed = true;
+    for (int compiler = 0; compiler < 2; compiler++) {
+        REQUIRE(prepare_backends(1u << compiler));
+        pin_value output;
+        REQUIRE(compile(compiler, false, false, true, sources, count, COMPILE_BUDGET, &output));
+        const pin_union *value = output.ptr;
+        REQUIRE(output.type == PIN_UNION && value);
+        if (value->tag != tag(compiler, "Compiled")) {
+            pin_value message, line, column;
+            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(&value->values[0], "line", &line));
+            REQUIRE(get(&value->values[0], "column", &column));
+            fprintf(
+                pu_errors(),
+                "Authored test compilation: %s at %d:%d\n",
+                pin_text(message).bytes,
+                line.i,
+                column.i
+            );
+            return false;
+        }
+        size_t length;
+        unsigned char *bytes = closure_bytes(value, &length);
+        bool passed = true;
+        for (int backend = 0; backend < 2; backend++) {
+            char error[256];
+            host = compiler_host_load(
+                bytes,
+                length,
+                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+                error,
+                sizeof error
+            );
+            if (!host) {
+                fprintf(pu_errors(), "Authored test closure: %s\n", error);
+                passed = false;
+                break;
+            }
+            fprintf(
+                pu_output(),
+                "Stage-one compiler %s\n",
+                compiler ? behavior_backend_name(TEST_COMPILED_BACKEND) : "BYTECODE"
+            );
+            passed &= compiler_fixture_module_tests(metadata, backend, compiler_host_root(host), budget);
+            compiler_host_free(host);
+            host = NULL;
+        }
+        free(bytes);
+        all_passed &= passed;
+        cleanup();
+    }
+    return all_passed;
+}
+bool package_compiler_authored_tests(
+    const compiler_fixture *metadata,
+    const source_package_input *sources,
+    int count,
+    uintptr_t budget
+)
+{
+    bool passed = authored_tests(metadata, sources, count, budget);
+    cleanup();
+    return passed;
+}
 /* The values `Build(count)` copies in `host`. */
 static uint64_t copies(int count)
 {

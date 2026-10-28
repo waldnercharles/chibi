@@ -12,8 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char PROJECT[] = "project:";
-
 static const behavior_function *body(const execution_module *module, uint64_t id)
 {
     for (int i = 0; i < execution_module_function_count(module); i++) {
@@ -61,11 +59,19 @@ static void add_tests(package_test **tests, const authoring_package *package)
 
 package_test *package_tests_find(const authoring_packages *packages)
 {
+    return package_tests_find_collection(packages, "project");
+}
+
+package_test *package_tests_find_collection(const authoring_packages *packages, const char *collection)
+{
     assert(authoring_packages_valid(packages));
+    assert(collection && *collection && !strchr(collection, ':'));
+    size_t length = strlen(collection);
     package_test *tests = NULL;
     for (int i = 0; i < authoring_packages_count(packages); i++) {
         const authoring_package *package = authoring_packages_at(packages, i);
-        if (!strncmp(package->identity, PROJECT, strlen(PROJECT))) {
+        if (!strncmp(package->identity, collection, length) &&
+            package->identity[length] == ':') {
             add_tests(&tests, package);
         }
     }

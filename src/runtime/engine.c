@@ -12,7 +12,6 @@
 #include "runtime/source_input.h"
 #include "runtime/task_pool.h"
 #include "runtime/transform_propagation.h"
-#include "runtime/visual_motion.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -153,7 +152,7 @@ static bool has_simulation(const engine *e)
 {
     return e->modules.sources || e->modules.entities || e->modules.physics ||
            e->modules.physics3d || e->modules.materials ||
-           e->modules.particles || e->modules.visibility || e->modules.rendering;
+           e->modules.particles || e->modules.visibility;
 }
 static bool engine_paused(const engine *e)
 {
@@ -1015,23 +1014,6 @@ static int pump_events(engine *engine)
     return FLOW_OK;
 }
 
-static int update_visual_motion(engine *engine, float delta)
-{
-    int result = visual_motion_tick(engine->world, delta);
-    if (result < 0) {
-        snprintf(
-            engine->error,
-            sizeof engine->error,
-            "%s",
-            result == FLOW_ERR_STATE
-                ? "Visual Motion requires Visual Transform and 3D Geometry."
-                : "Visual Motion requires finite values and nonnegative speed "
-                  "and timing."
-        );
-    }
-    return result;
-}
-
 static int propagate_transforms(engine *engine)
 {
     CHIBI_TRACE_ZONE_BEGIN(zone, "Transform propagation");
@@ -1191,11 +1173,6 @@ static int finish_systems(engine *engine)
                             )) {
         return FLOW_ERR_NODE;
     }
-    /* Begin and reactions can change motion after integration. Resolve those
-       authored values before presentation without advancing their clocks. */
-    if (engine->modules.rendering && (result = update_visual_motion(engine, 0)) < 0) {
-        return result;
-    }
     if (engine->modules.visibility) {
         const char *error = visibility_update(engine->modules.visibility, ENGINE_FIXED_SECONDS);
         if (error) {
@@ -1257,9 +1234,6 @@ static int continue_step(engine *engine)
         result = live->particles
                    ? particles_tick(live->particles, ENGINE_FIXED_SECONDS)
                    : FLOW_OK;
-        if (result >= 0 && live->rendering) {
-            result = update_visual_motion(engine, (float)ENGINE_FIXED_SECONDS);
-        }
         if (clock_now(&end) != 0) {
             CHIBI_TRACE_ZONE_END(visual_zone);
             return FLOW_ERR_STATE;

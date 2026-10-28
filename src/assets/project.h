@@ -12,7 +12,7 @@
    project (in this repository or chibi-studio) would load wrong or fail to
    load and a step in project_migrate.c would rewrite it; see the first rule
    in AGENTS.md for what needs no bump. */
-#define CHIBI_PROJECT_VERSION 38
+#define CHIBI_PROJECT_VERSION 39
 /* Opening a project from this version on upgrades it in place first. */
 #define CHIBI_PROJECT_OLDEST_VERSION 10
 

@@ -28,10 +28,11 @@ typedef struct
 } test_job;
 
 static test_job jobs[BATCH_SIZE];
-static int count, workers = 1, requested;
+static int count, workers = 1;
 static bool scope_open;
 static _Thread_local bool running;
 #ifdef CHIBI_TEST_ENKITS
+static int requested;
 static enkiTaskScheduler *scheduler;
 static enkiTaskSet *tasks[BATCH_SIZE];
 #endif
@@ -141,7 +142,9 @@ bool test_parallel_init()
         fputs("CHIBI_TEST_THREADS must be an integer from 1 to 8\n", stderr);
         return false;
     }
+#ifdef CHIBI_TEST_ENKITS
     requested = *value - '0';
+#endif
     return true;
 }
 

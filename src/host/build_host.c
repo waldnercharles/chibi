@@ -131,8 +131,10 @@ static const char *environment_value(const build_host *host, const char *name)
     }
     return "";
 }
+/* Every host call starts here. */
 const char *build_host_ready(build_host *host)
 {
+    build_values_begin_call(&host->values);
     if (host->options->cancelled && *host->options->cancelled) {
         return "build process cancelled";
     }
@@ -994,6 +996,6 @@ done:
     free(host.program_directory);
     free(host.last_stdout);
     free(host.last_stderr);
-    arena_free(&host.values.memory);
+    build_values_free(&host.values);
     return success;
 }

@@ -20,6 +20,22 @@ static void performance_diagnostics(authoring_source *source)
             continue;
         }
         execution_cost_summary costs = behavior_function_costs(function.body);
+        authoring_function_costs facts = { .function = function.id,
+                                           .entry = function.entry ? function.entry
+                                                                   : function.event_name,
+                                           .summary = costs };
+        for (int at = 0; at < behavior_function_source_count(function.body); at++) {
+            const behavior_function_source
+                *origin = behavior_function_source_at(function.body, at);
+            if (origin->asset_name && origin->asset_name[0] && origin->line > 0) {
+                facts.origin = *origin;
+                if (!strcmp(origin->asset_name, source->analysis->name)) {
+                    facts.origin.asset_name = source->path;
+                }
+                break;
+            }
+        }
+        apush(source->costs, facts);
         for (int possible = 0; possible < 2; possible++) {
             unsigned flags = possible ? costs.possible : costs.proven;
             const execution_cost_site *sites = possible ? costs.possible_sites
@@ -53,6 +69,7 @@ static void performance_diagnostics(authoring_source *source)
         }
     }
     source->performance_count = acount(source->performance);
+    source->cost_count = acount(source->costs);
 }
 
 authoring_source *authoring_source_analyze_requested(
@@ -179,6 +196,7 @@ void authoring_source_free(authoring_source *source)
     script_syntax_free(source->syntax);
     afree(source->diagnostics);
     afree(source->performance);
+    afree(source->costs);
     free(source->path);
     free(source);
 }

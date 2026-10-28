@@ -618,7 +618,7 @@ Files :: (target: string) -> string[] {
         return [
             "src/authoring/component_declarations.c", "src/authoring/project_open.c",
             "src/authoring/project_prepare.c", "src/authoring/project_prepare_assets.c",
-            "src/authoring/project_compile.c", "src/authoring/renderer_catalog.c",
+            "src/authoring/project_compile.c", "src/authoring/source_costs.c", "src/authoring/renderer_catalog.c",
             "src/authoring/prototype_prepare.c", "src/authoring/graph_sources.c",
             "src/authoring/native_graph_prepare.c", "src/authoring/source_graph_library.c",
             "src/authoring/material_prepare.c", "src/authoring/scene_prepare.c",
@@ -1360,7 +1360,7 @@ pub PublicHeaders :: (target: string) -> string[] {
             "authoring/component_declarations.h", "authoring/material_prepare.h",
             "authoring/project_compile.h", "authoring/project_open.h", "authoring/project_prepare.h",
             "authoring/prototype_prepare.h", "authoring/renderer_catalog.h", "authoring/scene_prepare.h",
-            "authoring/sound_prepare.h", "authoring/source_graph_library.h"
+            "authoring/sound_prepare.h", "authoring/source_graph_library.h", "authoring/source_costs.h"
         ];
     }
     if (target == "chibi_project_format") {
@@ -1509,7 +1509,7 @@ pub PrivateHeaders :: (target: string) -> string[] {
         return [
             "authoring/graph_sources.h", "authoring/native_graph_prepare.h",
             "authoring/project_prepare_internal.h", "authoring/ui_prepare.h", "toolchain/compiler_json.h",
-            "toolchain/compiler_syntax.h"
+            "toolchain/compiler_syntax.h", "authoring/asset_compiler_host_internal.h"
         ];
     }
     if (target == "chibi_project_preparation") {
@@ -2333,7 +2333,7 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "chibi_project_compilation") {
         return [
-            "public/project_compilation", "private/project_compilation", "public/source_catalog",
+            "public/project_compilation", "private/project_compilation", "public/source_catalog", "public/asset_compiler_host",
             "public/authoring", "public/compiler", "public/language", "public/language_syntax",
             "public/support", "public/capabilities", "public/types",
             "public/execution", "public/execution_contract", "public/ecs", "public/tasks",
@@ -4067,7 +4067,8 @@ pub Links :: (target: string) -> string[] {
     }
     if (target == "chibi-compile" && build.platform() == "Darwin") {
         return [
-            "chibi_project_compilation", "chibi_project_document", "chibi_behavior_runtime", "chibi_asset_json",
+            "chibi_project_compilation", "chibi_asset_compiler_host", "chibi_compiler_host",
+            "chibi_project_document", "chibi_behavior_runtime", "chibi_asset_json",
             "chibi_project_format", "chibi_project_compilation", "chibi_native_prepared",
             "chibi_shader_preparation", "chibi_player", "chibi_engine", "chibi_scheduling",
             "chibi_visual_catalog", "chibi_graph_catalog", "chibi_host_native_default",
@@ -4116,6 +4117,7 @@ pub Links :: (target: string) -> string[] {
             "chibi_text_search", "chibi_text_source", "chibi_types", "chibi_ui_host", "chibi_ui_authoring",
             "chibi_ui_document", "chibi_ui_runtime", "chibi_visual_catalog", "chibi_model_bake",
             "chibi_studio_catalog", "chibi_component_presentation", "chibi_project_compilation",
+            "chibi_asset_compiler_host", "chibi_compiler_host",
             "chibi_asset_authoring", "chibi_graph_catalog", "chibi_host_native_default",
             "chibi_host_native_catalog", "chibi_native_bindings", "chibi_image_preparation",
             "chibi_project_document", "chibi_native_prepared", "chibi_compiler_syntax", "chibi_compiler_json",
@@ -4204,7 +4206,7 @@ pub Links :: (target: string) -> string[] {
     }
     if (target == "test_tools" && build.platform() == "Darwin") {
         return [
-            "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document", "chibi_compiler_host",
+            "chibi_behavior_runtime", "chibi_scene_runtime", "chibi_value_document", "chibi_asset_compiler_host", "chibi_compiler_host",
             "chibi_shader_runtime",
             "chibi_authoring", "chibi_execution", "chibi_array_capabilities", "chibi_audio_runtime",
             "chibi_scene_authoring", "chibi_scene_document", "chibi_scene_authoring", "chibi_source_catalog",

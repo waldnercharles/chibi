@@ -1,6 +1,7 @@
 #ifndef CHIBI_AUTHORING_PROJECT_PREPARE_H
 #define CHIBI_AUTHORING_PROJECT_PREPARE_H
 #include "assets/project.h"
+#include "authoring/source_costs.h"
 #include "runtime/behaviors/package.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/player_prepared.h"
@@ -13,12 +14,15 @@ typedef struct
     unsigned modules;
     /* Read the project as it is: an older project fails instead of migrating. */
     bool read_only;
+    /* Optional reporting of the finalized source facts; no game code runs. */
+    authoring_cost_report_mode cost_report;
 } authoring_project_options;
 typedef struct
 {
     unsigned char *data;
     size_t size;
-    char *manifest; /* Owned JSON resource manifest; no executable source. */
+    char *manifest;    /* Owned JSON resource manifest; no executable source. */
+    char *cost_report; /* Owned optional report, separate from runtime bytes. */
 } authoring_project_artifact;
 /* Offline operation owns and clears the process's authoring visual catalogs;
  * call only while previews are quiescent. Compile a bounded disk snapshot

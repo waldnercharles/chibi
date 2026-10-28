@@ -1,11 +1,29 @@
 name: Documentation site
 
-# Builds the public site that docs/site.kdl lists, uploads it as the Pages
-# artifact and deploys it. Run it by hand; the repository's Pages source must
-# be GitHub Actions, and the github-pages environment decides which branches
-# may deploy.
+# Builds docs plus the real browser formatter. Manual runs validate
+# without deploying unless explicitly requested. Existing Pages protections stay.
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/docs.yml"
+      - "docs/site.kdl"
+      - "docs/guide/formatter.md"
+      - "tools/docs/**"
+      - "test/tools/docs_website.c"
+      - "test/tools/formatter_web.c"
+      - "src/authoring/source_format*"
+      - "src/language/syntax.*"
+      - "src/language/src/**"
+      - "src/support/array.h"
+      - "src/support/xalloc.*"
+      - "third_party/CMakeLists.txt"
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the verified complete documentation website
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,6 +39,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   CC: clang-18
   CXX: clang++-18
+  EMSDK_VERSION: 6.0.10
 
 jobs:
   site:
@@ -43,14 +62,32 @@ jobs:
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Build the site
         run: build/sdk/chibi doc
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+      - name: Provision the pinned formatter parser runtime
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/tree-sitter/tree-sitter.git "$RUNNER_TEMP/tree-sitter"
+          git -C "$RUNNER_TEMP/tree-sitter" checkout --detach da6fe9beb4f7f67beb75914ca8e0d48ae48d6406
+      - name: Build the browser formatter from this exact source
+        run: |
+          python3 tools/docs/formatter/build.py --runtime "$RUNNER_TEMP/tree-sitter" \
+            --output "$RUNNER_TEMP/formatter"
+      - name: Check website packaging and native formatter boundaries
+        run: python3 tools/docs/check.py --runtime "$RUNNER_TEMP/tree-sitter"
+      - name: Compose the complete website
+        run: |
+          python3 tools/docs/package.py compose --docs build/docs --formatter "$RUNNER_TEMP/formatter" \
+            --revision "$GITHUB_SHA" --output build/website
       - name: Upload the site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/docs
+          path: build/website
 
   deploy:
     name: Deploy the documentation site
     needs: site
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

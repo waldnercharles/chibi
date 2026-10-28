@@ -10,7 +10,28 @@
 #include <stdio.h>
 #include <string.h>
 
-#if defined(CHIBI_TEST_WEBGPU_STAGING) || defined(CHIBI_TEST_AUDIO_WEB)
+#if defined(CHIBI_TEST_DOCS_ONLY)
+void test_tool_docs_website();
+#ifdef CHIBI_TEST_FORMATTER_WEB
+void test_tool_formatter_web();
+#endif
+int main(int argc, char **argv)
+{
+    tool_init();
+    pu_display_time(true);
+    if (argc == 2 && !strcmp(argv[1], "--docs-website")) {
+        test_tool_docs_website();
+#ifdef CHIBI_TEST_FORMATTER_WEB
+    } else if (argc == 2 && !strcmp(argv[1], "--formatter-web")) {
+        test_tool_formatter_web();
+#endif
+    } else {
+        return 2;
+    }
+    pu_print_stats();
+    return pu_test_failed() ? 1 : 0;
+}
+#elif defined(CHIBI_TEST_WEBGPU_STAGING) || defined(CHIBI_TEST_AUDIO_WEB)
 #ifdef CHIBI_TEST_WEBGPU_STAGING
 int test_webgpu_staging_start();
 #endif
@@ -83,6 +104,10 @@ void test_tool_package_ownership();
 void test_tool_collab();
 void test_tool_test_policy();
 void test_tool_validation_plan();
+void test_tool_docs_website();
+#ifdef CHIBI_TEST_FORMATTER_WEB
+void test_tool_formatter_web();
+#endif
 void test_tool_web_storage();
 void test_tool_player_url();
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
@@ -1061,6 +1086,11 @@ int main(int argc, char **argv)
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool test_runner = argc == 2 && !strcmp(argv[1], "--test-runner");
     bool validation_plan = argc == 2 && !strcmp(argv[1], "--validation-plan");
+    bool docs_website = argc == 2 && !strcmp(argv[1], "--docs-website");
+    bool formatter_web = false;
+#ifdef CHIBI_TEST_FORMATTER_WEB
+    formatter_web = argc == 2 && !strcmp(argv[1], "--formatter-web");
+#endif
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
@@ -1242,10 +1272,11 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
-        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
-        !tilemap && !package && !desktop_dependencies && !third_party_publish &&
-        !collab && !package_ownership && !unit && !test_runner && !validation_plan &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage &&
+        !preview_components && !shader_parameters && !source_edit && !new_asset &&
+        !asset_refactor && !tilemap && !package && !desktop_dependencies &&
+        !third_party_publish && !collab && !package_ownership && !unit &&
+        !test_runner && !validation_plan && !docs_website && !formatter_web &&
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
         !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
         !scene_snapshot_read && !native && !native_values && !native_catalog &&
@@ -1271,7 +1302,10 @@ int main(int argc, char **argv)
             "Usage: %s [--tilemap | --package | "
             "--desktop-dependencies | --third-party-publish | --collab | "
             "--package-ownership | --unit | "
-            "--test-runner | --validation-plan | "
+            "--test-runner | --validation-plan | --docs-website | "
+#ifdef CHIBI_TEST_FORMATTER_WEB
+            "--formatter-web | "
+#endif
             "--reflect-ranges | --c-export-alias | "
             "--ecs-query | --ecs-strings | "
             "--shader-bake | --material-bake chibi_ctl | --terrain-seams | "
@@ -1669,6 +1703,12 @@ int main(int argc, char **argv)
         test_tool_test_policy();
     } else if (validation_plan) {
         test_tool_validation_plan();
+    } else if (docs_website) {
+        test_tool_docs_website();
+#ifdef CHIBI_TEST_FORMATTER_WEB
+    } else if (formatter_web) {
+        test_tool_formatter_web();
+#endif
     } else if (web_storage) {
         test_tool_web_storage();
     } else if (query_benchmark) {

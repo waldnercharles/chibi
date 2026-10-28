@@ -84,4 +84,14 @@ title "Chibi"
             }
         }
     }
+    - {
+        name "Tools"
+        (array)pages {
+            - {
+                title "Formatter playground"
+                source "docs/guide/formatter.md"
+                output "formatter.html"
+            }
+        }
+    }
 }

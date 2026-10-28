@@ -1,0 +1,34 @@
+/* The documentation site's shared stylesheet owns color and typography. */
+body:has(#formatter-app) .page { max-width: 100rem; padding-right: 0; }
+body:has(#formatter-app) main { max-width: none; }
+#formatter-app { margin-top: 1.5rem; }
+#formatter-app [hidden] { display: none; }
+#formatter-app button, #formatter-app input, #formatter-app textarea { font: inherit; color: var(--text); }
+#formatter-app button, #formatter-app input[type="number"], #formatter-app input[type="text"] { border: 1px solid var(--line); background: var(--page); border-radius: 0; padding: 0.45rem 0.7rem; }
+#formatter-app button { cursor: pointer; min-height: 2.75rem; }
+#formatter-app button:hover:not(:disabled) { border-color: var(--link); color: var(--link); }
+#formatter-app button:disabled { cursor: not-allowed; opacity: 0.55; }
+#formatter-app input[type="checkbox"] { accent-color: var(--link); margin: 0 0.4rem 0 0; width: 1rem; height: 1rem; flex: none; }
+.format-toolbar { display: flex; align-items: center; gap: 1rem; min-height: 3rem; }
+.format-toolbar p { margin: 0; }
+.format-options fieldset { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(11rem, 1fr) minmax(15rem, 1.4fr); gap: 1.25rem; margin: 0.75rem 0 1.5rem; padding: 1rem; border: 1px solid var(--line); }
+.format-options legend { font-weight: 600; padding: 0 0.35rem; }
+.format-options label { display: flex; flex-direction: column; gap: 0.35rem; }
+.format-options input[type="number"] { max-width: 8rem; box-sizing: border-box; }
+.format-options small, .format-note { font-size: 0.875rem; color: var(--muted); }
+.format-switches { display: flex; flex-direction: column; gap: 0.75rem; }
+.format-switches label, .format-share > label { display: flex; flex-direction: row; align-items: center; min-height: 1.75rem; }
+.format-editors { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+.format-editor { min-width: 0; }
+.format-editor > label { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+.format-editor label span { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+#formatter-app textarea { display: block; box-sizing: border-box; width: 100%; min-height: 24rem; resize: vertical; padding: 1rem; border: 1px solid var(--line); border-radius: 0; font: 0.875rem/1.55 ui-monospace, monospace; color: var(--syntax-foreground); background: var(--syntax-background); tab-size: 4; white-space: pre; overflow: auto; }
+#formatter-app textarea[aria-invalid="true"] { border-color: var(--code); }
+#format-error { color: var(--code); white-space: pre-wrap; }
+.format-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1rem 0; }
+.format-config pre { max-width: 45rem; }
+#format-share-result label { display: block; margin: 0.5rem 0; }
+#format-share-url { box-sizing: border-box; width: 100%; margin-bottom: 0.5rem; font-family: ui-monospace, monospace; }
+#format-feedback { min-height: 1.5rem; }
+@media (max-width: 65rem) { .format-options fieldset { grid-template-columns: 1fr 1fr; } .format-switches { grid-column: 1 / -1; } .format-editors { grid-template-columns: minmax(0, 1fr); } #formatter-app textarea { min-height: 18rem; } }
+@media (max-width: 28rem) { .format-options fieldset { grid-template-columns: minmax(0, 1fr); } }

@@ -1,0 +1,67 @@
+<link rel="stylesheet" href="formatter/app.css">
+<section id="formatter-app" aria-label="Interactive formatter">
+  <div class="format-toolbar">
+    <p id="format-status" role="status" aria-live="polite">Loading the Chibi formatter…</p>
+    <button id="format-retry" type="button" hidden>Retry loading</button>
+  </div>
+  <p id="format-version-warning" role="status" hidden></p>
+  <form id="format-options" class="format-options">
+    <fieldset>
+      <legend>Formatting options</legend>
+      <label for="indent-width">Indent width
+        <input id="indent-width" name="indent_width" type="number" min="1" max="16" step="1" value="4" required aria-describedby="indent-help">
+        <small id="indent-help">1–16 spaces, or the display width of a tab.</small>
+      </label>
+      <label for="preferred-width">Preferred line width
+        <input id="preferred-width" name="preferred_width" type="number" min="0" max="4096" step="1" value="0" required aria-describedby="width-help">
+        <small id="width-help">0 keeps existing expression line breaks. A positive width is a preference, not a hard limit.</small>
+      </label>
+      <div class="format-switches">
+        <label><input id="use-tabs" name="use_tabs" type="checkbox"> Indent with tabs</label>
+        <label><input id="remove-semicolons" name="remove_optional_semicolons" type="checkbox"> Remove optional semicolons</label>
+        <small>Required separators, comments and literal bytes are preserved.</small>
+      </div>
+    </fieldset>
+  </form>
+  <div class="format-editors">
+    <div class="format-editor">
+      <label for="format-source">Chibi source <span>Editable</span></label>
+      <textarea id="format-source" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-describedby="format-privacy"></textarea>
+    </div>
+    <div class="format-editor">
+      <label for="format-output">Formatted preview <span id="format-result-label">Waiting for formatter</span></label>
+      <textarea id="format-output" readonly spellcheck="false" wrap="off" aria-describedby="format-error"></textarea>
+    </div>
+  </div>
+  <p id="format-error" role="alert" hidden></p>
+  <div class="format-actions">
+    <button id="format-copy" type="button" disabled>Copy formatted source</button>
+    <button id="format-download" type="button" disabled>Download .chibi</button>
+    <button id="format-example" type="button">Load example</button>
+  </div>
+  <p id="format-privacy" class="format-note">Formatting runs in your browser. Source is not uploaded or saved automatically. The playground accepts up to 256 KiB of UTF-8 source.</p>
+  <section class="format-config" aria-labelledby="format-config-heading">
+    <h2 id="format-config-heading">Use these settings in your project</h2>
+    <p>Save this file as <code>.chibi-format</code>. The CLI looks for the nearest configuration from the source file up to the repository boundary. An explicit configuration overrides discovery.</p>
+    <pre><code id="format-config-text"></code></pre>
+    <div class="format-actions">
+      <button id="format-config-copy" type="button">Copy configuration</button>
+      <button id="format-config-download" type="button">Download .chibi-format</button>
+    </div>
+  </section>
+  <section class="format-share" aria-labelledby="format-share-heading">
+    <h2 id="format-share-heading">Share your configuration</h2>
+    <label><input id="format-share-source" type="checkbox"> Include my source in the link</label>
+    <p class="format-note">Links contain settings only unless you choose to include source. Anyone with a source link can read that code. Link contents stay in the URL fragment, not in the request sent to the website. Maximum link length: 16,384 characters.</p>
+    <div class="format-actions"><button id="format-share" type="button">Create share link</button></div>
+    <div id="format-share-result" hidden>
+      <label for="format-share-url">Share link</label>
+      <input id="format-share-url" type="text" readonly spellcheck="false">
+      <button id="format-share-copy" type="button">Copy link</button>
+    </div>
+  </section>
+  <p id="format-feedback" role="status" aria-live="polite"></p>
+  <p class="format-note">Formatter revision: <code id="format-revision">not loaded</code>. Sharing records this revision; a link from another formatter version is reported rather than silently treated as equivalent.</p>
+</section>
+<noscript><p>The interactive formatter needs JavaScript and WebAssembly. You can still use <code>chibi fmt</code> locally.</p></noscript>
+<script type="module" src="formatter/app.js"></script>

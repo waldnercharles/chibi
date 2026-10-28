@@ -9,11 +9,10 @@
 #define BUILD_TEXT_LIMIT (16 * 1024 * 1024)
 #define BUILD_ARRAY_LIMIT 8192
 /* Values are never freed. An up-to-date build graph holds every compile
- * record it reads, about 15 MB for 362 sources with sanitizers; the macOS
- * debug graph of the engine and its test drivers outgrew 256 MB. The limit
+ * record it reads, about 15 MB for 362 sources with sanitizers. The limit
  * counts the arena's doubling blocks, so it holds about half as many bytes of
  * values: room for the whole engine, while still stopping a runaway program. */
-#define BUILD_STORAGE_LIMIT (512 * 1024 * 1024)
+#define BUILD_STORAGE_LIMIT (256 * 1024 * 1024)
 
 typedef struct
 {

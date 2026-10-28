@@ -26,6 +26,7 @@ static inline int behavior_jit_stack_slots(const behavior_function *f, const int
     }
     return count;
 }
+void behavior_jit_usage(const behavior_function *f, int **uses, bool **targets);
 #if CHIBI_HAVE_SJLIT
 #include <sljitLir.h>
 
@@ -120,7 +121,6 @@ void behavior_jit_alias_variables(const behavior_function *f, int *registers, co
 void behavior_jit_load_variables(const behavior_machine *m);
 void behavior_jit_flush_variables(const behavior_machine *m);
 void behavior_jit_coalesce_saves(const behavior_function *f, int *registers, const int *locals);
-void behavior_jit_usage(const behavior_function *f, int **uses, bool **targets);
 int behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
 int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
 void behavior_jit_failure(

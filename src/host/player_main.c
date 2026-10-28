@@ -17,6 +17,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/native_prepared.h"
 #include "runtime/player_prepared.h"
+#include "runtime/text_format.h"
 #include "support/file_io.h"
 #include "support/resources.h"
 #include "support/xalloc.h"
@@ -693,6 +694,7 @@ int main(int argc, char **argv)
                            .linker = &host.linker,
                            .natives = manifests,
                            .native_count = native_count,
+                           .native_runtime = { NATIVE_FORMAT_TEXT_HOST.value },
                            .log = { log_message, NULL },
                            .resources = render_prepared_resources(root) };
     host.player = player_open(artifact, &loader, backend, error, sizeof error);

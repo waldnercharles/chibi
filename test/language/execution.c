@@ -3850,7 +3850,6 @@ TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles)
     REQUIRE(pointer_root.type == PIN_FLOW && !pointer_root.ptr);
     return true;
 }
-#if CHIBI_HAVE_SJLIT
 TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries)
 {
     behavior_function f = { 0 };
@@ -3904,14 +3903,11 @@ TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries)
     REQUIRE(repeated == -2);
     return true;
 }
-#endif
 
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
-#if CHIBI_HAVE_SJLIT
     RUN_TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries);
-#endif
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
     RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);

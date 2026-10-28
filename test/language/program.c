@@ -27,6 +27,7 @@
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
 #include "runtime/text_definition.h"
+#include "runtime/text_format.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -2105,7 +2106,7 @@ TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values)
 }
 
 static int native_predicate_calls;
-static void native_above(const uint64_t *arguments, uint64_t *results)
+static void native_above(execution_native_context *, const uint64_t *arguments, uint64_t *results)
 {
     native_predicate_calls++;
     double value;
@@ -2143,7 +2144,9 @@ TEST_CASE(program_query_predicates_call_bound_natives)
                          : above.id;
         }
         const execution_native_manifest manifest = { EXECUTION_NATIVE_ABI, 1, &above };
-        execution_natives *natives = execution_natives_new();
+        execution_natives *natives = execution_natives_new(
+            (execution_native_runtime){ NATIVE_FORMAT_TEXT_HOST.value }
+        );
         char error[256] = "";
         REQUIRE(execution_natives_bind(natives, module, &manifest, error, sizeof error));
         execution_program_set_natives(program, natives);

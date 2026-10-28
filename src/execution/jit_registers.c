@@ -4,6 +4,42 @@
 
 #include <stdlib.h>
 #include <string.h>
+/* Record distinct instruction uses, not operand occurrences: a value may
+ * appear more than once in the one instruction a fusion consumes. Include
+ * every instruction in the emitted definition, just as the linear single-use
+ * proof does, regardless of runtime_map. These tables live for one emission. */
+static void note_use(int *use, int pc)
+{
+    if (*use == -1) {
+        *use = pc;
+    } else if (*use != pc) {
+        *use = -2;
+    }
+}
+void behavior_jit_usage(const behavior_function *f, int **uses, bool **targets)
+{
+    int slots = acount(f->slots), instructions = acount(f->instructions);
+    *uses = xmalloc((size_t)(slots + 1) * sizeof **uses);
+    *targets = xcalloc((size_t)(instructions + 1), sizeof **targets);
+    for (int slot = 0; slot <= slots; slot++) {
+        (*uses)[slot] = -1;
+    }
+    for (int pc = 0; pc < instructions; pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (behavior_function_left_slot(i->op)) {
+            note_use(*uses + i->left, pc);
+        }
+        if (behavior_function_right_slot(i->op)) {
+            note_use(*uses + i->right, pc);
+        }
+        if (behavior_function_third_slot(i->op)) {
+            note_use(*uses + i->target, pc);
+        }
+        if (i->op == BF_BRANCH || i->op == BF_JUMP) {
+            (*targets)[i->target] = true;
+        }
+    }
+}
 #if CHIBI_HAVE_SJLIT
 /* Slots are defined before their uses within one lowered expression. Allocate
  * scratch registers by live interval; excess live values spill to the
@@ -435,42 +471,6 @@ void behavior_jit_alias_variables(const behavior_function *f, int *registers, co
             next->op == BF_STORE && next->left == i->output && i->type == next->type &&
             variables[next->target] && single_use(f, i->output, pc + 1)) {
             registers[i->output] = variables[next->target];
-        }
-    }
-}
-/* Record distinct instruction uses, not operand occurrences: a value may
- * appear more than once in the one instruction a fusion consumes. Include
- * every instruction in the emitted definition, just as the linear single-use
- * proof does, regardless of runtime_map. These tables live for one emission. */
-static void note_use(int *use, int pc)
-{
-    if (*use == -1) {
-        *use = pc;
-    } else if (*use != pc) {
-        *use = -2;
-    }
-}
-void behavior_jit_usage(const behavior_function *f, int **uses, bool **targets)
-{
-    int slots = acount(f->slots), instructions = acount(f->instructions);
-    *uses = xmalloc((size_t)(slots + 1) * sizeof **uses);
-    *targets = xcalloc((size_t)(instructions + 1), sizeof **targets);
-    for (int slot = 0; slot <= slots; slot++) {
-        (*uses)[slot] = -1;
-    }
-    for (int pc = 0; pc < instructions; pc++) {
-        const behavior_function_instruction *i = &f->instructions[pc];
-        if (behavior_function_left_slot(i->op)) {
-            note_use(*uses + i->left, pc);
-        }
-        if (behavior_function_right_slot(i->op)) {
-            note_use(*uses + i->right, pc);
-        }
-        if (behavior_function_third_slot(i->op)) {
-            note_use(*uses + i->target, pc);
-        }
-        if (i->op == BF_BRANCH || i->op == BF_JUMP) {
-            (*targets)[i->target] = true;
         }
     }
 }

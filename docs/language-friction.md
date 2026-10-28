@@ -827,6 +827,14 @@ programs import like `core:strings`, through the same import namespace so
 locals shadow it; look catalog names up exactly; and use one case convention
 for package members.
 
+Clock-first foundation: ordinary source-backed `host:` packages can wrap selected canonical kernels,
+with exact private kernel lookup in the owning package and normal lexical
+imports for callers. Registration and runtime grants are separate. Both compiler
+stages preserve the kernel identity, ABI and effects; no prepared-format change
+is needed. The public clock API awaits result parity owned by the results
+workstream. Native-only declarations and conversion of `build.*` remain open.
+See the [host-package contract](host-packages.md).
+
 ## Ordinary nouns are reserved, and the build host doesn't say where
 
 Language and toolchain. A local named `entry` in `Build.chibi` failed with

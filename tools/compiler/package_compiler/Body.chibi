@@ -1569,6 +1569,9 @@ NameMatches :: (left: string, right: string) -> bool {
     return false;
 }
 NativeNameMatches :: (native: ResolvedNative, name: string) -> bool {
+    if (strings.HasPrefix(native.qualified_name, "host:")) {
+        return native.name != native.qualified_name && native.name == name;
+    }
     return NameMatches(native.qualified_name, name) || NameMatches(native.name, name);
 }
 ExactNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {

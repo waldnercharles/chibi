@@ -54,6 +54,7 @@ chibi_sdk_contract(chibi_value_document "${CHIBI_SDK_ROOT}/src/types" chibi_type
 chibi_sdk_contract(chibi_capabilities "${CHIBI_SDK_ROOT}/src/capabilities" chibi_types)
 chibi_sdk_contract(chibi_native_capabilities "${CHIBI_SDK_ROOT}/src/runtime"
     chibi_capabilities chibi_execution_contract)
+chibi_sdk_contract(chibi_host_clock "${CHIBI_SDK_ROOT}/src/host" chibi_native_capabilities)
 chibi_sdk_contract(chibi_core_capabilities "${CHIBI_SDK_ROOT}/src/runtime"
     chibi_native_capabilities chibi_execution)
 chibi_sdk_contract(chibi_array_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities)

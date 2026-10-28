@@ -12769,11 +12769,11 @@ static bool replace_library(const char *source)
     return compile_module(source, BEHAVIOR_BYTECODE);
 }
 /* One library owner on bytecode. A reload that keeps Actor's layout preserves
- * a pointer to an Actor. One that adds a field is refused while kept state
- * reaches an old Actor: at preparation, or at commit when the running program
- * stores one in a kept cell after preparation. The program keeps its state
- * and module, and a restart applies the change. */
-TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts)
+ * a pointer to an Actor. One that adds a field still applies, and resets each
+ * state that reaches an old Actor: at preparation, or at commit when the
+ * running program stores one in a kept cell after preparation. Other state
+ * keeps its cells. */
+TEST_CASE(program_replacement_resets_state_reaching_changed_pointee_layouts)
 {
     const char
         *same = "Store :: library { Actor :: struct { hp: f64; } "
@@ -12826,21 +12826,22 @@ TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts)
     instance = execution_program_attach(program, entity);
     REQUIRE(instance && execution_instance_state(instance, saved)->ptr == target.ptr);
     REQUIRE(replace_library(added));
-    REQUIRE(execution_program_replace(program, module, false) == FLOW_ERR_COMPILE);
-    REQUIRE(execution_program_module(program) == prior_module);
-    REQUIRE(execution_instance_state(instance, saved)->ptr == target.ptr);
-    REQUIRE(execution_instance_set_state(instance, saved, absent) == FLOW_OK);
+    REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+    REQUIRE(execution_program_module(program) == module);
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance && !execution_instance_state(instance, saved)->ptr);
+    REQUIRE(execution_instance_state(instance, slot)->ptr == inner);
+    REQUIRE(execution_instance_state(instance, kept)->ptr == number.ptr);
+    REQUIRE(replace_library(added));
     other_program = execution_program_prepare_replace(program, module, false);
     REQUIRE(other_program);
     inner->value = target;
-    REQUIRE(execution_program_commit_replace(program, other_program) == FLOW_ERR_STATE);
+    execution_program_commit_replace(program, other_program);
     other_program = NULL;
-    REQUIRE(execution_program_module(program) == prior_module);
-    REQUIRE(execution_instance_state(instance, slot)->ptr == inner);
-    REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+    REQUIRE(execution_program_module(program) == module);
     instance = execution_program_attach(program, entity);
     REQUIRE(instance && !execution_instance_state(instance, slot)->ptr);
-    REQUIRE(!execution_instance_state(instance, kept)->ptr);
+    REQUIRE(execution_instance_state(instance, kept)->ptr == number.ptr);
     return true;
 }
 /* One entity on two backends. Items of an array behind a pointer, and of an
@@ -12909,7 +12910,7 @@ void test_language_program()
     RUN_TEST_CASE(program_paused_reducing_systems_keep_pointer_targets);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
     RUN_TEST_CASE(program_replacement_releases_empty_retired_heaps);
-    RUN_TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts);
+    RUN_TEST_CASE(program_replacement_resets_state_reaching_changed_pointee_layouts);
     RUN_TEST_CASE(program_managed_array_items_copy_alone);
     RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);

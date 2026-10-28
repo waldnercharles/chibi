@@ -12502,11 +12502,17 @@ static bool native_fails_emit(int b)
         "0, i32 1\n"
         "  store ptr @chibi_scalar.failure.1.3, ptr %fail3.at\n  br label "
         "%failed\n",
+        /* Each function ends failing with its zero. */
+        "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  "
+        "unreachable\n}"
+        "\n\ndefine internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n",
+        "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  "
+        "unreachable\n}"
+        "\n\nattributes #0 = { ",
     };
     for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
         REQUIRE(contains(ir, expected[i]));
     }
-    REQUIRE(occurrences(ir, "failed:\n  ret i32 0\n") == 2);
     /* A function that cannot fail checks no call and has no failed block. */
     native_code ending[FAIL_COUNT];
     memcpy(ending, FAIL_CODE, sizeof ending);

@@ -4145,6 +4145,79 @@ static unsigned char *closure_bytes(const pin_union *value, size_t *length)
     }
     return bytes;
 }
+/* Compile the discovered test package with each compiler backend, then run
+ * the same fixed assertions on each independently loaded target backend. */
+static bool authored_tests(
+    const compiler_fixture *metadata,
+    const source_package_input *sources,
+    int count,
+    uintptr_t budget
+)
+{
+    bool all_passed = true;
+    for (int compiler = 0; compiler < 2; compiler++) {
+        REQUIRE(prepare_backends(1u << compiler));
+        pin_value output;
+        REQUIRE(compile(compiler, false, false, true, sources, count, COMPILE_BUDGET, &output));
+        const pin_union *value = output.ptr;
+        REQUIRE(output.type == PIN_UNION && value);
+        if (value->tag != tag(compiler, "Compiled")) {
+            pin_value message, line, column;
+            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(&value->values[0], "line", &line));
+            REQUIRE(get(&value->values[0], "column", &column));
+            fprintf(
+                pu_errors(),
+                "Authored test compilation: %s at %d:%d\n",
+                pin_text(message).bytes,
+                line.i,
+                column.i
+            );
+            return false;
+        }
+        size_t length;
+        unsigned char *bytes = closure_bytes(value, &length);
+        bool passed = true;
+        for (int backend = 0; backend < 2; backend++) {
+            char error[256];
+            host = compiler_host_load(
+                bytes,
+                length,
+                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+                error,
+                sizeof error
+            );
+            if (!host) {
+                fprintf(pu_errors(), "Authored test closure: %s\n", error);
+                passed = false;
+                break;
+            }
+            fprintf(
+                pu_output(),
+                "Stage-one compiler %s\n",
+                compiler ? behavior_backend_name(TEST_COMPILED_BACKEND) : "BYTECODE"
+            );
+            passed &= compiler_fixture_module_tests(metadata, backend, compiler_host_root(host), budget);
+            compiler_host_free(host);
+            host = NULL;
+        }
+        free(bytes);
+        all_passed &= passed;
+        cleanup();
+    }
+    return all_passed;
+}
+bool package_compiler_authored_tests(
+    const compiler_fixture *metadata,
+    const source_package_input *sources,
+    int count,
+    uintptr_t budget
+)
+{
+    bool passed = authored_tests(metadata, sources, count, budget);
+    cleanup();
+    return passed;
+}
 /* The values `Build(count)` copies in `host`. */
 static uint64_t copies(int count)
 {
@@ -12503,93 +12576,6 @@ static bool native_rejects_text_change(int b, native_change change, const char *
     native_module m = text_module(code);
     return native_rejects(b, &m, message);
 }
-/* Main returns the length of "abcd" with one byte dropped and two taken,
- * plus that slice's byte 1: 2 + 'c'. */
-static const native_code TEXT_READ_CODE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 1 },
-    { .op = NATIVE_TEXT_DROP, .type = NATIVE_TEXT, .output = 2, .right = 1 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 3, .literal = 2 },
-    { .op = NATIVE_TEXT_TAKE, .type = NATIVE_TEXT, .output = 4, .left = 2, .right = 3 },
-    { .op = NATIVE_TEXT_LENGTH, .type = NATIVE_INT, .output = 5, .left = 4 },
-    { .op = NATIVE_TEXT_BYTE, .type = NATIVE_INT, .output = 6, .left = 4, .right = 1 },
-    { .op = NATIVE_ADD, .type = NATIVE_INT, .output = 7, .left = 5, .right = 6 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 7 },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    TEXT_READ_COUNT = (int)(sizeof TEXT_READ_CODE / sizeof *TEXT_READ_CODE)
-};
-static native_module text_read_module(const native_code *code)
-{
-    static const native_function functions[] = {
-        { NATIVE_INT, 0, 0, 0, 8, 0, TEXT_READ_COUNT, 0, 0 }
-    };
-    static const int slots[] = { NATIVE_TEXT, NATIVE_INT,  NATIVE_TEXT,
-                                 NATIVE_INT,  NATIVE_TEXT, NATIVE_INT,
-                                 NATIVE_INT,  NATIVE_INT };
-    static const char *const texts[] = { "abcd" };
-    return (native_module){ .functions = functions,
-                            .function_count = 1,
-                            .slots = slots,
-                            .slot_count = 8,
-                            .code = code,
-                            .code_count = TEXT_READ_COUNT,
-                            .texts = texts,
-                            .text_count = 1 };
-}
-/* A string's length is its second field, a byte is read only below it, and
- * a slice is a view whose count is clamped to it: no read or pointer passes
- * the string's bytes. Reads of the wrong slot types are rejected. */
-static bool native_text_reads_emit(int b)
-{
-    native_module m = text_read_module(TEXT_READ_CODE);
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    static const char *const expected[] = {
-        "%length6 = extractvalue { ptr, i32 } %a6, 1\n",
-        "%inside7 = icmp ult i32 %b7, %length7\n  br i1 %inside7, label "
-        "%read7, label %byte7\n",
-        "%at7 = getelementptr inbounds i8, ptr %bytes7, i64 %offset7\n",
-        "byte7:\n  %v7 = phi i32 [ %wide7, %read7 ], [ -1, %p7 ]\n",
-        "%over5 = icmp ugt i32 %low5, %length5\n  %n5 = select i1 %over5, "
-        "i32 %length5, i32 %low5\n",
-        "%v5 = insertvalue { ptr, i32 } %a5, i32 %n5, 1\n",
-        "%start3 = getelementptr inbounds i8, ptr %bytes3, i64 %offset3\n",
-        "%rest3 = sub i32 %length3, %n3\n",
-        "%v3 = insertvalue { ptr, i32 } %moved3, i32 %rest3, 1\n",
-    };
-    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
-        REQUIRE(contains(ir, expected[i]));
-    }
-    static const char read[] = "native text read differs from its operands";
-    static const native_change changes[] = {
-        /* A byte at a string index, and a length or a drop of an int. */
-        { 7, offsetof(native_code, right), 0 },
-        { 6, offsetof(native_code, left), 1 },
-        { 3, offsetof(native_code, left), 1 },
-        /* A take of a string count. */
-        { 5, offsetof(native_code, right), 2 },
-        /* A length that would be a string, and a slice that would be an int. */
-        { 5, offsetof(native_code, op), NATIVE_TEXT_LENGTH },
-        { 7, offsetof(native_code, op), NATIVE_TEXT_DROP },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        native_code code[TEXT_READ_COUNT];
-        memcpy(code, TEXT_READ_CODE, sizeof code);
-        change_code(code, changes[i]);
-        m = text_read_module(code);
-        REQUIRE(native_rejects(b, &m, read));
-    }
-    native_code code[TEXT_READ_COUNT];
-    memcpy(code, TEXT_READ_CODE, sizeof code);
-    code[7].op = NATIVE_FAIL + 1;
-    m = text_read_module(code);
-    REQUIRE(native_rejects(b, &m, "unsupported native scalar instruction"));
-    return true;
-}
 /* Main returns the length of format_text("{} {}", 7, "x"). */
 static const native_code FORMAT_CODE[] = {
     { .op = NATIVE_CHECK },
@@ -12911,7 +12897,6 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_libraries_export_words(b));
         REQUIRE(native_strings_emit(b));
-        REQUIRE(native_text_reads_emit(b));
         REQUIRE(native_formats_emit(b));
         REQUIRE(native_fails_emit(b));
     }

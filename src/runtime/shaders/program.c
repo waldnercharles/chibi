@@ -69,8 +69,6 @@ static const char *const names[] = { "Constant",
                                      "Image Texture",
                                      "Image Texture Alpha",
                                      "Surface Influence",
-                                     "Beat Phase",
-                                     "Beat Pulse",
                                      "Floor",
                                      "Sqrt",
                                      "Sign",
@@ -96,9 +94,8 @@ int shader_op_inputs(shader_op op)
                  ? 4
                  : 3;
     }
-    if (op <= SHADER_TIME || op == SHADER_WORLD_POSITION ||
-        op == SHADER_PART_POSITION || op == SHADER_BEAT_PHASE ||
-        op == SHADER_BEAT_PULSE || (op >= SHADER_UV && op <= SHADER_VIEW_DIRECTION)) {
+    if (op <= SHADER_TIME || op == SHADER_WORLD_POSITION || op == SHADER_PART_POSITION ||
+        (op >= SHADER_UV && op <= SHADER_VIEW_DIRECTION)) {
         return 0;
     }
     if (op >= SHADER_MAPPING && op <= SHADER_FRACTAL_NOISE) {
@@ -233,9 +230,7 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
             case SHADER_SURFACE_INFLUENCE:
                 valid = n->width == 3 && a == 3;
                 break;
-            case SHADER_TIME:
-            case SHADER_BEAT_PHASE:
-            case SHADER_BEAT_PULSE: valid = n->width == 1; break;
+            case SHADER_TIME: valid = n->width == 1; break;
             case SHADER_LENGTH: valid = n->width == 1; break;
             case SHADER_DOT: valid = n->width == 1 && a == b; break;
             case SHADER_CIRCLE:
@@ -364,8 +359,6 @@ bool shader_graph_particle_validate(const shader_graph *g, shader_error *error)
             case SHADER_CONSTANT:
             case SHADER_PARAMETER:
             case SHADER_TIME:
-            case SHADER_BEAT_PHASE:
-            case SHADER_BEAT_PULSE:
             case SHADER_ADD:
             case SHADER_SUBTRACT:
             case SHADER_MULTIPLY:
@@ -510,11 +503,6 @@ static bool eval_values(
             if (!shader_detail_eval(g, n, sample, params, (const float (*)[4])v, v[i], error)) {
                 return false;
             }
-            continue;
-        }
-        if (n->op == SHADER_BEAT_PHASE || n->op == SHADER_BEAT_PULSE) {
-            v[i][0] = n->op == SHADER_BEAT_PHASE ? sample->beat_phase
-                                                 : sample->beat_pulse;
             continue;
         }
         if (n->op == SHADER_SURFACE_INFLUENCE) {
@@ -1265,7 +1253,7 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
             ramp_glsl(&s, &g->nodes[i], prefix, i, ramp_offset(g, i, ramp_base));
         }
     }
-    append(&s, "#ifndef SG_INFLUENCE_DEFINED\n#define SG_INFLUENCE_DEFINED\n#ifndef SG_SCENE_INFLUENCE\nvec3 sg_scene_influence(vec3 position) { return vec3(0); }\nfloat sg_scene_beat_phase() { return 0.0; }\nfloat sg_scene_beat_pulse() { return 0.0; }\n#endif\n#endif\n");
+    append(&s, "#ifndef SG_INFLUENCE_DEFINED\n#define SG_INFLUENCE_DEFINED\n#ifndef SG_SCENE_INFLUENCE\nvec3 sg_scene_influence(vec3 position) { return vec3(0); }\n#endif\n#endif\n");
     append(&s, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 part_position; vec3 object_from_world[3]; vec3 part_from_world[3]; vec3 uv_from_world[2]; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
     bool details = false;
     for (int i = 0; i < acount(g->nodes); i++) {
@@ -1327,12 +1315,6 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
                 break;
             case SHADER_UV: append(&s, "vec4(sg_sample.uv,0.0,0.0)"); break;
             case SHADER_TIME: append(&s, "vec4(sg_sample.time)"); break;
-            case SHADER_BEAT_PHASE:
-                append(&s, "vec4(sg_scene_beat_phase())");
-                break;
-            case SHADER_BEAT_PULSE:
-                append(&s, "vec4(sg_scene_beat_pulse())");
-                break;
             case SHADER_WORLD_POSITION:
                 append(&s, "vec4(sg_sample.world_position,0.0)");
                 break;

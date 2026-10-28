@@ -6,7 +6,6 @@ layout(set = 3, binding = 0) uniform uniform_block {
     // distant viewer such as the sun.
     vec4 scene_eye;
     vec4 scene_time;
-    vec4 scene_rhythm;
     vec4 scene_sun_direction;
     vec4 scene_sun_color;
     vec4 scene_ambient_sky;
@@ -26,9 +25,6 @@ layout(set = 3, binding = 0) uniform uniform_block {
     vec4 scene_light_shadow;
     vec4 scene_light_shadow_sizes;
 };
-
-float sg_scene_beat_phase() { return scene_rhythm.x; }
-float sg_scene_beat_pulse() { return scene_rhythm.y; }
 
 vec3 sg_scene_influence(vec3 position)
 {

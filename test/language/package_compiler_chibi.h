@@ -1,6 +1,15 @@
 #ifndef CHIBI_TEST_PACKAGE_COMPILER_CHIBI_H
 #define CHIBI_TEST_PACKAGE_COMPILER_CHIBI_H
 
+#include "compiler_fixture.h"
+
+bool package_compiler_authored_tests(
+    const compiler_fixture *,
+    const source_package_input *,
+    int count,
+    uintptr_t budget
+);
+
 void test_language_package_compiler_chibi();
 void test_language_package_compiler_chibi_types();
 void test_language_package_compiler_chibi_imports();

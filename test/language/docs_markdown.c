@@ -333,7 +333,8 @@ TEST_CASE(docs_markdown_highlights_chibi_fences)
             strstr(html, "copy <span class=\"chibi-operator\">:=</span> number <span class=\"chibi-operator\">+</span> string\n")
         );
         REQUIRE(!has_token(html, "namespace", "object"));
-        REQUIRE(!has_token(html, "builtin", "number"));
+        /* The type named number is builtin; this loop uses the local value. */
+        REQUIRE(strstr(html, " { number <span class=\"chibi-operator\">+=</span> i }"));
         free(html);
 
         html = fence(b, comments);

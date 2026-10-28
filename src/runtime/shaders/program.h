@@ -63,8 +63,6 @@ typedef enum
     SHADER_IMAGE_TEXTURE,
     SHADER_IMAGE_TEXTURE_ALPHA,
     SHADER_SURFACE_INFLUENCE,
-    SHADER_BEAT_PHASE,
-    SHADER_BEAT_PULSE,
     SHADER_FLOOR,
     SHADER_SQRT,
     SHADER_SIGN,
@@ -214,7 +212,6 @@ typedef struct
     float (*derivative_scratch)[4];
     int derivative_capacity;
     float time;
-    float beat_phase, beat_pulse;
     shader_image_resolver resolve_image; /* Returns resident pixels; does no file IO. */
     void *image_userdata;
     shader_influence_resolver resolve_influence; /* Optional scene activity; absent means zero. */
@@ -232,7 +229,7 @@ const char *shader_op_name(shader_op op);
 int shader_op_inputs(shader_op op);
 bool shader_graph_validate(const shader_graph *g, shader_error *error);
 /* Particle functions return Position:vec3, Size:float, Color:vec4 and use only
- * numeric operations plus time/beat. Slots 0..2 are Index, Count and Seed. */
+ * numeric operations plus time. Slots 0..2 are Index, Count and Seed. */
 bool shader_graph_particle_validate(const shader_graph *, shader_error *);
 bool shader_particle_parameters_validate(
     char *const names[SHADER_PARAMETER_MAX],

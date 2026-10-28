@@ -511,6 +511,33 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             script_analyzer_diagnostic(a, member, "Unknown result/payload '%s'", name);
         }
         free(name);
+        int root = script_analyzer_result_member_root(a, &result);
+        if (root >= 0) {
+            result.presence_mutations = a->out->symbols[root].mutations;
+            result.presence_epoch = a->presence_epoch;
+        }
+        if ((result.type.flags & SCRIPT_TYPE_OPTIONAL) &&
+            script_analyzer_result_member_present(a, root, result.member)) {
+            script_type required = result.type;
+            required.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+            if (result.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) {
+                int source = script_analyzer_expr_add(a, result);
+                return script_analyzer_expr_add(
+                    a,
+                    (script_expression){ .kind = SCRIPT_EXPR_UNWRAP,
+                                         .type = required,
+                                         .range = result.range,
+                                         .left = source,
+                                         .right = -1,
+                                         .symbol = -1,
+                                         .entry = -1,
+                                         .tag = 0,
+                                         .writable = result.writable,
+                                         .effects = result.effects }
+                );
+            }
+            result.type = required;
+        }
         return script_analyzer_expr_add(a, result);
     }
     if (receiver.type.storage == PIN_HANDLE &&
@@ -1037,7 +1064,39 @@ static void require_reference_type(analyzer *a, TSNode node, script_type expecte
 int script_analyzer_scoped_argument(analyzer *a, TSNode value, script_type type)
 {
     if (script_analyzer_is(value, "address_expression")) {
-        return script_analyzer_expression(a, script_analyzer_field(value, "operand"), type);
+        TSNode operand = script_analyzer_field(value, "operand");
+        int index = script_analyzer_expression(a, operand, type);
+        TSNode place = operand;
+        while (script_analyzer_is(place, "parenthesized_expression")) {
+            place = script_analyzer_field(place, "expression");
+        }
+        if (script_analyzer_is(place, "identifier")) {
+            int storage = index;
+            const script_expression *view = &a->out->expressions[storage];
+            if (view->kind == SCRIPT_EXPR_UNWRAP && !view->tag &&
+                !view->offset && view->left >= 0) {
+                storage = view->left;
+            }
+            script_expression location = a->out->expressions[storage];
+            if (location.kind == SCRIPT_EXPR_SYMBOL && location.symbol >= 0) {
+                script_type original = a->out->symbols[location.symbol].type;
+                if ((original.flags & SCRIPT_TYPE_OPTIONAL) &&
+                    script_type_equal(
+                        script_catalog_canonical_type(a->catalog, type),
+                        script_catalog_canonical_type(a->catalog, original)
+                    )) {
+                    /* This parameter borrows the optional cell, not the
+                     * payload exposed by its presence guard. A parameter
+                     * requesting the required payload keeps the old view. */
+                    if (script_type_equal(location.type, original)) {
+                        return storage;
+                    }
+                    location.type = original;
+                    return script_analyzer_expr_add(a, location);
+                }
+            }
+        }
+        return index;
     }
     int index = script_analyzer_expression(a, value, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
     const script_expression *e = &a->out->expressions[index];

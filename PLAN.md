@@ -7,6 +7,66 @@
 
 # Chibi toolchain consolidation and self-hosting
 
+## Recoverable errors, approved 2026-10-27
+
+Use ordinary named results with a final typed optional error. A nil error means
+success. Each API defines whether its other outputs remain useful on failure;
+the compiler does not require success before their use. Exceptions, a generic
+Result wrapper and propagation operators are outside this change.
+
+Mark fallible functions with `@fallible`; their final optional error requires
+acknowledgment. Testing, reporting, forwarding or storing the error acknowledges
+it. Reading only sibling outputs or copying it through unused aliases does not.
+Overwriting an outcome must not erase the obligation. Ordinary optional absence
+results remain unaffected. Acknowledgment does not prove useful recovery or
+eventual consumption after storage.
+
+The current source forward port targets base
+`dafe746411182c3320281c0b1fe4e75e7b9b6456`, including merged PR #694 and the
+accepted protocol-13/scalar transport updates, canonical #800 fixture repairs
+and the #797 native runtime. Rebuild native objects against its arena layout.
+Preserve its collection ownership machinery and on-demand optional type
+construction.
+Port the recoverable-error checker and the required named-result parity without
+reintroducing the earlier optional discovery pass. Public package compiler
+`Compile`, `CompileWithEffects` and `CompileBehavior` return module ID, bytes
+and optional `syntax.Diagnostic`. The asset compiler facade returns entry ID,
+prepared bytes and optional diagnostic. Internal assembly unions remain
+package-local; closure byte APIs and the native 29-byte transport are unchanged.
+Preserve the accepted `ExplainCosts` facade.
+
+The current diagnostic Release checkpoint passes 102 semantic cases / 2,495
+assertions and the 73-sample fallible group with 3 cases / 29,817 assertions on
+both compiler backends. Query-value, import/cache, formatter and whole-tree
+clang-format checks also pass. This asset-host-disabled harness is separate
+from normal sanitizer/asset acceptance.
+
+The recorded `frozen-7c6ca-01` checkpoint passed focused native/source, public
+API, query, asset, named-result, argument-sharing and debugger/cleanup checks,
+compiler self-reproduction with post-bootstrap samples, ASan/UBSan semantic
+and source checks, tools and formatting. Earlier frozen-candidate results do
+not validate this base. Normal scratch artifact writing and recovery also
+passed against that checkpoint, with identical compiler bytes. The accepted
+main updates were then integrated at recorded boundaries. The fresh normal
+SAN/asset-enabled build failed after 890.00 seconds: bootstrap reuse succeeded,
+then the 41-source facade compile reached its existing 600,000 ms timeout. No
+normal test drivers or downstream check results were produced. That failed
+snapshot predates later checker regression repairs. Normal build success,
+matching-artifact integer integration, eligible library/shared-helper
+reconciliation, required engine aggregates and publication remain pending.
+Marked async calls and marked calls inside generated query evaluators retain
+explicit unsupported diagnostics. Do not import held character, math, generic
+or library work. Keep compiler ownership, bootstrap publication, manifest
+updates, phase/ABI and installed defaults with their existing owners.
+
+Validate fixed success, partial-progress and failure oracles in both compiler
+stages. Cover dropped errors, aliases, overwrites, branches, loops, imports,
+await arguments and explicit forwarding. Keep native-boundary assertions for
+exact asset status, token offsets, source line/column and message text. Check
+source recovery and applicable repository groups on the integrated candidate;
+record actual results, elapsed time and unexecuted coverage. See
+[recoverable errors](docs/recoverable-errors.md) for the contract.
+
 ## Coordinated named struct results, 2026-10-22
 
 The next local setup slice extends the ABI20 authored compiler's existing

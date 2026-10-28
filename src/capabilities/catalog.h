@@ -229,6 +229,7 @@ typedef struct
     uint64_t receiver;
     bool pure, variadic, variadic_optional, numeric_aggregate, event_sender,
         language_values, owned_result;
+    bool fallible; /* Source contract; not part of the native runtime ABI. */
 } script_catalog_capability;
 typedef struct
 {

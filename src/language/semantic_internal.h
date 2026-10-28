@@ -37,6 +37,7 @@ typedef struct
 typedef struct
 {
     int symbol;
+    uint64_t member; /* Zero for a symbol; a named result's resolved identity otherwise. */
     bool present;
     script_type type;
     bool typed;
@@ -73,6 +74,7 @@ typedef struct
     initializer *initializers;
     function_body *bodies;
     narrowing *narrowed;
+    unsigned presence_epoch;
     constant_proof *constant_proofs;
     unsigned constant_generation;
     generic_template *templates;
@@ -95,6 +97,8 @@ typedef struct
     bool query;            /* Analyzing an ordered query header. */
     int query_description; /* Active one-based description. */
 } analyzer;
+
+void script_analyzer_check_results(analyzer *);
 
 script_named_facts script_analyzer_named_facts(const analyzer *);
 script_range script_analyzer_range(const analyzer *, TSNode);
@@ -169,6 +173,8 @@ int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind
 int script_analyzer_result_new(analyzer *a, TSNode node, const char *name, script_type type);
 void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind kind, uint64_t member);
 bool script_analyzer_present(const analyzer *a, int symbol);
+bool script_analyzer_result_member_present(const analyzer *, int root, uint64_t member);
+int script_analyzer_result_member_root(const analyzer *, const script_expression *);
 script_type script_analyzer_bad_type();
 script_type script_analyzer_boolean_type();
 void script_analyzer_require(analyzer *a, TSNode node, script_type expected, script_type actual);

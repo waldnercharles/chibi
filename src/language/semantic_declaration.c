@@ -184,26 +184,35 @@ void script_analyzer_function_type(analyzer *a, int function)
     );
     afree(results);
 }
-/* Whether `@test` marks a function declaration. It is the only attribute. */
-static bool test_attribute(analyzer *a, TSNode node)
+enum
 {
-    bool test = false;
+    FUNCTION_TEST = 1,
+    FUNCTION_FALLIBLE = 2
+};
+static unsigned function_attributes(analyzer *a, TSNode node)
+{
+    unsigned attributes = 0;
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
         TSNode attribute = ts_node_named_child(node, i);
         if (!script_analyzer_is(attribute, "attribute")) {
             continue;
         }
         TSNode name = script_analyzer_field(attribute, "name");
-        if (!script_analyzer_text_is(a, name, "test")) {
+        unsigned flag = script_analyzer_text_is(a, name, "test") ? FUNCTION_TEST
+                      : script_analyzer_text_is(a, name, "fallible") ? FUNCTION_FALLIBLE
+                                                                     : 0;
+        if (!flag && !a->instantiating) {
             char *text = script_analyzer_text_copy(a, name);
             script_analyzer_diagnostic(a, attribute, "Unknown attribute '@%s'", text);
             free(text);
-        } else if (test) {
-            script_analyzer_diagnostic(a, attribute, "Duplicate attribute '@test'");
+        } else if ((attributes & flag) && !a->instantiating) {
+            char *text = script_analyzer_text_copy(a, name);
+            script_analyzer_diagnostic(a, attribute, "Duplicate attribute '@%s'", text);
+            free(text);
         }
-        test |= script_analyzer_text_is(a, name, "test");
+        attributes |= flag;
     }
-    return test;
+    return attributes;
 }
 /* A test is a package function with no parameters or results, so the
  * runner can call it alone. Its declared header says so,
@@ -223,7 +232,8 @@ static void mark_test(analyzer *a, TSNode node, int function)
 }
 void script_analyzer_declare_function(analyzer *a, TSNode node)
 {
-    bool test = !a->instantiating && test_attribute(a, node);
+    unsigned attributes = function_attributes(a, node);
+    bool test = !a->instantiating && (attributes & FUNCTION_TEST);
     if (!a->instantiating && script_analyzer_generic_declare(a, node)) {
         if (test) {
             script_analyzer_diagnostic(a, node, "A @test function takes no parameters and returns nothing");
@@ -254,6 +264,10 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
      * duplicate is diagnosed where it is registered. */
     if (test && header.function >= 0) {
         mark_test(a, node, header.function);
+    }
+    if (header.function >= 0) {
+        a->out->functions[header.function].fallible = (attributes &
+                                                       FUNCTION_FALLIBLE) != 0;
     }
 }
 static uint64_t query_relationship_id(const analyzer *a, const char *name)

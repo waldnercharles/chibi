@@ -163,7 +163,9 @@ bool source_catalog_metadata_equal(const script_catalog *a, const script_catalog
             x->completion_outcome != y->completion_outcome ||
             x->effects != y->effects || x->operation != y->operation ||
             x->receiver != y->receiver || x->pure != y->pure ||
-            x->variadic != y->variadic || x->variadic_optional != y->variadic_optional ||
+            x->fallible != y->fallible || x->language_values != y->language_values ||
+            x->owned_result != y->owned_result || x->variadic != y->variadic ||
+            x->variadic_optional != y->variadic_optional ||
             x->numeric_aggregate != y->numeric_aggregate ||
             x->event_sender != y->event_sender ||
             !same_parameters(x->parameters, y->parameters, x->parameter_count) ||

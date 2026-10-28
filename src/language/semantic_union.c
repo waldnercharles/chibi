@@ -498,7 +498,7 @@ int script_analyzer_union_constructor(analyzer *a, TSNode node)
 script_type script_analyzer_narrowed_type(const analyzer *a, int symbol, script_type fallback)
 {
     for (int i = acount(a->narrowed) - 1; i >= 0; i--) {
-        if (a->narrowed[i].symbol == symbol) {
+        if (a->narrowed[i].symbol == symbol && !a->narrowed[i].member) {
             return a->narrowed[i].typed && a->narrowed[i].mutations ==
                                                a->out->symbols[symbol].mutations
                      ? a->narrowed[i].type
@@ -509,6 +509,9 @@ script_type script_analyzer_narrowed_type(const analyzer *a, int symbol, script_
 }
 void script_analyzer_invalidate_narrowing(analyzer *a, int symbol)
 {
+    if (symbol < 0) {
+        a->presence_epoch++;
+    }
     for (int i = acount(a->narrowed) - 1; i >= 0; i--) {
         if (symbol < 0 || a->narrowed[i].symbol == symbol) {
             if (symbol < 0 && (a->narrowed[i].typed || a->narrowed[i].present)) {

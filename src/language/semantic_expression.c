@@ -1685,6 +1685,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
     if (script_analyzer_is(node, "struct_expression")) {
         result.kind = SCRIPT_EXPR_STRUCT;
         result.type = expected;
+        /* Construct the record before conversion wraps an optional payload. */
+        result.type.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
         if (!type || expected.storage != PIN_STRUCT) {
@@ -1764,9 +1766,22 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
     bool unknown_effects = !a->query && resolved->kind == SCRIPT_EXPR_CALL &&
                            resolved->right >= 0 &&
                            !script_analyzer_readonly_callable(a, resolved->right);
-    if (unknown_effects || (script_analyzer_expr_effects(a, result) &
-                            (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL |
-                             SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST))) {
+    unsigned invalidating = SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL |
+                            SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST;
+    const script_catalog_capability
+        *getter = resolved->kind == SCRIPT_EXPR_MEMBER
+                    ? script_catalog_capability_by_id(a->catalog, resolved->read)
+                    : NULL;
+    bool operation = resolved->kind == SCRIPT_EXPR_CALL ||
+                     resolved->kind == SCRIPT_EXPR_JOIN ||
+                     resolved->kind == SCRIPT_EXPR_CANCEL ||
+                     resolved->kind == SCRIPT_EXPR_YIELD ||
+                     resolved->kind == SCRIPT_EXPR_ARRAY_MUTATE ||
+                     resolved->kind == SCRIPT_EXPR_MAP_REMOVE ||
+                     (getter && (getter->effects & invalidating));
+    /* Children invalidate at their operation. Repeating their inherited
+     * effects at a parent would stale a later read in Clear(p) && value. */
+    if (unknown_effects || (operation && (resolved->effects & invalidating))) {
         script_analyzer_invalidate_narrowing(a, -1);
     }
     a->depth--;

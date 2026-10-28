@@ -97,7 +97,8 @@ typedef enum
     BASE_SAMPLES,
     TYPE_SAMPLES,
     IMPORT_SAMPLES,
-    COLLECTION_SAMPLES
+    COLLECTION_SAMPLES,
+    FALLIBLE_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
  * `library` is package lib when present, and `core` adds core:strings. A
@@ -907,6 +908,7 @@ static const native_definition_pack ACTION_PACK = {
     .global_binding_count = NATIVE_COUNT(ACTION_GLOBAL_BINDINGS),
 };
 static const sample samples[] = {
+#include "fallible_chibi_samples.h"
     { .name = "array update debug order",
       .group = COLLECTION_SAMPLES,
       .update_order = true,
@@ -1179,6 +1181,144 @@ static const sample samples[] = {
                  { .function = "Assigned", .arguments = "[-129]", .expected = "[-128]" },
                  { .function = "Converted", .arguments = "[300]", .expected = "[127]" },
                  { .function = "Converted", .arguments = "[-129]", .expected = "[-128]" } } },
+    { .name = "optional errors beside named struct results",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Instant :: struct { ticks: i64; domain: u64; }\n"
+                "Failure :: union { Denied | Platform(code: int) }\n"
+                "Now :: (fail: bool) -> (instant: Instant, error: Failure?) {\n"
+                "    if fail { return({ticks: 3, domain: 8}, "
+                "Failure.Platform(17)); }\n"
+                "    return({ticks: 12, domain: 8}, nil);\n}\n"
+                "Use :: (fail: bool) -> int {\n"
+                "    result := Now(fail);\n"
+                "    error := result.error;\n"
+                "    if error {\n"
+                "        switch error { case .Denied: return -1; case "
+                ".Platform(code): return int(result.instant.ticks) + code; }\n"
+                "    }\n"
+                "    return int(result.instant.ticks);\n}\n"
+                "Empty :: () -> int { error: Failure? = nil; if error == nil { "
+                "return 1; } return 0; }\n",
+      .calls = { { .function = "Use", .arguments = "[false]", .expected = "[12]" },
+                 { .function = "Use", .arguments = "[true]", .expected = "[20]" },
+                 { .function = "Empty", .arguments = "[]", .expected = "[1]" } } },
+    { .name = "partial text and bytes beside optional record errors",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Failure :: struct { code: int; message: string; }\n"
+                "Read :: (fail: bool) -> (text: string, bytes: u8[], error: "
+                "Failure?) {\n"
+                "    if fail { return(\"partial\", [u8(3), u8(4)], {code: 7, "
+                "message: \"bad input\"}); }\n"
+                "    return(\"done\", [u8(8)], nil);\n}\n"
+                "Use :: (fail: bool) -> int {\n"
+                "    result := Read(fail);\n"
+                "    bytes := result.bytes;\n"
+                "    copy := bytes;\n"
+                "    copy[0] = 9;\n"
+                "    error := result.error;\n"
+                "    if error {\n"
+                "        if error.message != \"bad input\" { return -1; }\n"
+                "        if result.text != \"partial\" { return -2; }\n"
+                "        return int(bytes[0]) * 100 + int(bytes[1]) * 10 + "
+                "error.code;\n"
+                "    }\n"
+                "    if result.text != \"done\" { return -3; }\n"
+                "    return int(bytes[0]);\n}\n"
+                "Defaults :: () -> (text: string, bytes: u8[], error: "
+                "Failure?) { return; }\n"
+                "UseDefaults :: () -> int { result := Defaults(); if "
+                "result.error { return -1; }\n"
+                "    if result.text != \"\" { return -2; } return "
+                "length(result.bytes); }\n"
+                "Code :: (error: Failure?) -> int { if error == nil { return "
+                "0; } return error.code; }\n"
+                "Guarded :: (fail: bool) -> int { result := Read(fail); return "
+                "Code(result.error); }\n",
+      .calls = { { .function = "Use", .arguments = "[false]", .expected = "[8]" },
+                 { .function = "Use", .arguments = "[true]", .expected = "[347]" },
+                 { .function = "UseDefaults", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Guarded", .arguments = "[false]", .expected = "[0]" },
+                 { .function = "Guarded", .arguments = "[true]", .expected = "[7]" } } },
+    { .name = "constant and dynamic byte array debugger origins",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Folded :: () -> u8[] { return [u8(1) + u8(2), u8(4)]; }\n"
+                "Mixed :: (value: u8) -> u8[] { return [u8(3), value]; }\n"
+                "Inferred :: () -> int { values := [u8(3), u8(4)]; "
+                "return int(values[0]) + int(values[1]); }\n",
+      .calls = { { .function = "Folded", .arguments = "[]", .expected = "[[3,4]]" },
+                 { .function = "Mixed", .arguments = "[7]", .expected = "[[3,7]]" },
+                 { .function = "Inferred", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "array conversion names preserve authored calls",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "u8 :: (value: int) -> int { return value + 1; }\n"
+                "Use :: () -> int[] { return [u8(3), u8(4)]; }\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[[4,5]]" } } },
+    { .name = "named syntax fact arrays survive forwarding and copies",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Node :: struct { kind: string; start: int; end: int; }\n"
+                "ReadSyntax :: () -> (nodes: Node[], fields: string[], named: "
+                "bool[], clean: bool) {\n"
+                "    node: Node = {kind: \"word\", start: 3, end: 7};\n"
+                "    return([node], [\"body\"], [true], true);\n}\n"
+                "Forward :: () -> (nodes: Node[], fields: string[], named: "
+                "bool[], clean: bool) {\n"
+                "    result := ReadSyntax();\n"
+                "    return(result.nodes, result.fields, result.named, "
+                "result.clean);\n}\n"
+                "Use :: () -> int {\n"
+                "    original := Forward();\n"
+                "    nodes := original.nodes; fields := original.fields; named "
+                ":= original.named;\n"
+                "    changed := nodes[0]; changed.kind = \"changed\"; "
+                "changed.start = 99;\n"
+                "    nodes[0] = changed; fields[0] = \"changed\"; named[0] = "
+                "false;\n"
+                "    if !original.clean { return -1; }\n"
+                "    if original.nodes[0].kind != \"word\" { return -2; }\n"
+                "    if original.fields[0] != \"body\" { return -3; }\n"
+                "    if !original.named[0] { return -4; }\n"
+                "    if nodes[0].kind != \"changed\" || nodes[0].start != 99 { "
+                "return -5; }\n"
+                "    if fields[0] != \"changed\" || named[0] { return -6; }\n"
+                "    return original.nodes[0].start * 100 + "
+                "original.nodes[0].end * 10 + length(original.fields);\n}\n"
+                "Defaults :: () -> (nodes: Node[], fields: string[], named: "
+                "bool[], clean: bool) { return; }\n"
+                "DefaultSize :: () -> int {\n"
+                "    result := Defaults(); if result.clean { return -1; }\n"
+                "    return length(result.nodes) + length(result.fields) + "
+                "length(result.named);\n}\n",
+      .calls = { { .function = "ReadSyntax", .arguments = "[]", .expected = "[[{\"kind\":\"word\",\"start\":3,\"end\":7}],[\"body\"],[true],true]" },
+                 { .function = "Use", .arguments = "[]", .expected = "[371]" },
+                 { .function = "DefaultSize", .arguments = "[]", .expected = "[0]" } } },
+    { .name = "optional presence preserves false zero and empty text",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Flag :: () -> bool? { return false; }\n"
+                "Count :: () -> int? { return 0; }\n"
+                "Text :: () -> string? { return \"\"; }\n"
+                "Absent :: () -> int? { return nil; }\n"
+                "Use :: () -> int {\n"
+                "    score: int = 0;\n"
+                "    if Flag() { score += 1; }\n"
+                "    if Count() { score += 10; }\n"
+                "    if Text() { score += 100; }\n"
+                "    if Absent() { score += 1000; }\n"
+                "    return score;\n}\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[111]" } } },
+    { .name = "optional error payload requires a presence guard",
+      .group = TYPE_SAMPLES,
+      .same_rejection = true,
+      .source = "package facts\n"
+                "Failure :: struct { code: int; }\n"
+                "Use :: (error: Failure?) -> int { return error.code; }\n",
+      .message = "Optional component requires a presence guard before member "
+                 "access" },
     { .name = "named struct results",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -4296,10 +4436,6 @@ static uint64_t variant_tag(int b, const char *union_name, const char *variant)
 {
     return fixture_variant_tag(&fixture, b, PACKAGE, union_name, variant);
 }
-static uint64_t tag(int b, const char *variant)
-{
-    return variant_tag(b, "Result", variant);
-}
 static bool prepare_backends(unsigned backends)
 {
     const source_package_input sources[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
@@ -4450,6 +4586,48 @@ static bool arguments(int b, bool game, const source_package_input *inputs, int 
 {
     return arguments_for(b, game, false, inputs, count, args);
 }
+typedef struct
+{
+    pin_value module, bytes, error;
+} compiler_result;
+static bool compiler_succeeded(const compiler_result *result)
+{
+    return !result->error.ptr;
+}
+static const pin_value *compiler_error(const compiler_result *result)
+{
+    const pin_union *error = result->error.ptr;
+    assert(error && error->count == 1);
+    return &error->values[0];
+}
+static bool compiler_call(
+    int b,
+    const char *entry,
+    const pin_value *arguments,
+    int count,
+    uintptr_t budget,
+    compiler_result *out
+)
+{
+    pin_value values[3];
+    REQUIRE(
+        compiler_fixture_call_results(&fixture, b, PACKAGE, entry, arguments, count, budget, &detached, values, 3)
+    );
+    REQUIRE(values[0].type == PIN_U64);
+    REQUIRE(values[1].type == PIN_U8 && values[1].container == PIN_CONTAINER_ARRAY);
+    REQUIRE(values[2].type == PIN_UNION && values[2].container == PIN_CONTAINER_SINGLE);
+    const pin_union *error = values[2].ptr;
+    REQUIRE(!error || (error->count == 1 && error->values[0].type == PIN_STRUCT));
+    if (error) {
+        const pin_array *bytes = values[1].ptr;
+        REQUIRE(values[0].u64 == 0);
+        REQUIRE(!bytes || bytes->count == 0);
+    }
+    *out = (compiler_result){ .module = values[0],
+                              .bytes = values[1],
+                              .error = values[2] };
+    return true;
+}
 static bool compile(
     int b,
     bool game,
@@ -4458,23 +4636,15 @@ static bool compile(
     const source_package_input *inputs,
     int count,
     uintptr_t budget,
-    pin_value *out
+    compiler_result *out
 )
 {
     pin_value args[ARGUMENTS + 1];
     REQUIRE(arguments_for(b, game, probe, inputs, count, args));
     args[ARGUMENTS] = linked_effects[game][probe][b];
-    REQUIRE(compiler_fixture_call(
-        &fixture,
-        b,
-        PACKAGE,
-        effects ? "CompileWithEffects" : "Compile",
-        args,
-        ARGUMENTS + effects,
-        budget,
-        &detached,
-        out
-    ));
+    REQUIRE(
+        compiler_call(b, effects ? "CompileWithEffects" : "Compile", args, ARGUMENTS + effects, budget, out)
+    );
     return true;
 }
 static uint64_t function_id(const char *name)
@@ -4748,10 +4918,10 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     REQUIRE(valid);
     return true;
 }
-/* The closure of a Compiled result. */
-static unsigned char *closure_bytes(const pin_union *value, size_t *length)
+/* Own the compiler's detached byte output after its result arena is retired. */
+static unsigned char *closure_bytes(const compiler_result *result, size_t *length)
 {
-    const pin_array *array = value->values[1].ptr;
+    const pin_array *array = result->bytes.ptr;
     *length = (size_t)array->count;
     unsigned char *bytes = xmalloc(*length);
     for (size_t i = 0; i < *length; i++) {
@@ -4759,6 +4929,44 @@ static unsigned char *closure_bytes(const pin_union *value, size_t *length)
     }
     return bytes;
 }
+
+bool package_compiler_closure(
+    int compiler_backend,
+    const source_package_input *sources,
+    int count,
+    uintptr_t budget,
+    unsigned char **bytes,
+    size_t *length
+)
+{
+    assert(compiler_backend == 0 || compiler_backend == 1);
+    *bytes = NULL;
+    *length = 0;
+    compiler_result output;
+    bool valid = prepare_backends(1u << compiler_backend) &&
+                 compile(compiler_backend, true, false, false, sources, count, budget, &output);
+    if (valid && !compiler_succeeded(&output)) {
+        pin_value message, line, column;
+        if (get(compiler_error(&output), "message", &message) &&
+            get(compiler_error(&output), "line", &line) &&
+            get(compiler_error(&output), "column", &column)) {
+            fprintf(
+                pu_errors(),
+                "Authored closure compilation: %s at %d:%d\n",
+                pin_text(message).bytes,
+                line.i,
+                column.i
+            );
+        }
+        valid = false;
+    }
+    if (valid) {
+        *bytes = closure_bytes(&output, length);
+    }
+    cleanup();
+    return valid;
+}
+
 /* Compile the discovered test package with each compiler backend, then run
  * the same fixed assertions on each independently loaded target backend. */
 static bool authored_tests(
@@ -4771,15 +4979,13 @@ static bool authored_tests(
     bool all_passed = true;
     for (int compiler = 0; compiler < 2; compiler++) {
         REQUIRE(prepare_backends(1u << compiler));
-        pin_value output;
+        compiler_result output;
         REQUIRE(compile(compiler, false, false, true, sources, count, COMPILE_BUDGET, &output));
-        const pin_union *value = output.ptr;
-        REQUIRE(output.type == PIN_UNION && value);
-        if (value->tag != tag(compiler, "Compiled")) {
+        if (!compiler_succeeded(&output)) {
             pin_value message, line, column;
-            REQUIRE(get(&value->values[0], "message", &message));
-            REQUIRE(get(&value->values[0], "line", &line));
-            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(get(compiler_error(&output), "message", &message));
+            REQUIRE(get(compiler_error(&output), "line", &line));
+            REQUIRE(get(compiler_error(&output), "column", &column));
             fprintf(
                 pu_errors(),
                 "Authored test compilation: %s at %d:%d\n",
@@ -4790,7 +4996,7 @@ static bool authored_tests(
             return false;
         }
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
+        unsigned char *bytes = closure_bytes(&output, &length);
         bool passed = true;
         for (int backend = 0; backend < 2; backend++) {
             char error[256];
@@ -5875,22 +6081,12 @@ static bool rejects_malformed_effects()
         args[ARGUMENTS] = (pin_value){ .type = PIN_I32,
                                        .container = PIN_CONTAINER_ARRAY,
                                        .ptr = masks };
-        pin_value out, message, document;
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            0,
-            PACKAGE,
-            "CompileWithEffects",
-            args,
-            ARGUMENTS + 1,
-            COMPILE_BUDGET,
-            &detached,
-            &out
-        ));
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(0, "Rejected"));
-        REQUIRE(get(&value->values[0], "message", &message));
-        REQUIRE(get(&value->values[0], "document", &document));
+        compiler_result out;
+        pin_value message, document;
+        REQUIRE(compiler_call(0, "CompileWithEffects", args, ARGUMENTS + 1, COMPILE_BUDGET, &out));
+        REQUIRE(!compiler_succeeded(&out));
+        REQUIRE(get(compiler_error(&out), "message", &message));
+        REQUIRE(get(compiler_error(&out), "document", &document));
         REQUIRE(
             !strcmp(pin_text(message).bytes, "unsupported compiler input or target") &&
             document.i == -1
@@ -6124,7 +6320,7 @@ static bool run_samples(sample_group group, int b)
         }
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
-        pin_value out;
+        compiler_result out;
         bool compiled = compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out);
         if (!compiled) {
             fprintf(
@@ -6141,10 +6337,8 @@ static bool run_samples(sample_group group, int b)
             );
         }
         REQUIRE(compiled);
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
-            if (value->tag != tag(b, "Rejected")) {
+            if (compiler_succeeded(&out)) {
                 fprintf(stderr, "package compiler %s: accepted\n", s->name);
                 if (s->same_rejection && s->oracle_message && s->line > 0 &&
                     s->column > 0) {
@@ -6158,12 +6352,12 @@ static bool run_samples(sample_group group, int b)
                     );
                 }
             }
-            REQUIRE(value->tag == tag(b, "Rejected"));
+            REQUIRE(!compiler_succeeded(&out));
             pin_value message, line, column;
-            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(compiler_error(&out), "message", &message));
             REQUIRE(
-                get(&value->values[0], "line", &line) &&
-                get(&value->values[0], "column", &column)
+                get(compiler_error(&out), "line", &line) &&
+                get(compiler_error(&out), "column", &column)
             );
             bool position = s->same_rejection
                               ? rejects_like_oracle(
@@ -6187,11 +6381,11 @@ static bool run_samples(sample_group group, int b)
             arena_free(&detached);
             continue;
         }
-        if (value->tag != tag(b, "Compiled")) {
+        if (!compiler_succeeded(&out)) {
             pin_value message, line, column;
-            get(&value->values[0], "message", &message);
-            get(&value->values[0], "line", &line);
-            get(&value->values[0], "column", &column);
+            get(compiler_error(&out), "message", &message);
+            get(compiler_error(&out), "line", &line);
+            get(compiler_error(&out), "column", &column);
             fprintf(
                 stderr,
                 "package compiler %s rejected: %s at %d:%d\n",
@@ -6201,9 +6395,9 @@ static bool run_samples(sample_group group, int b)
                 column.i
             );
         }
-        REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+        REQUIRE(compiler_succeeded(&out));
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
+        unsigned char *bytes = closure_bytes(&out, &length);
         arena_free(&detached);
         unsigned char *expected = NULL;
         size_t expected_length = 0;
@@ -6271,17 +6465,17 @@ static unsigned char *debug_free_closure(const sample *s, size_t *length)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS], out;
+    pin_value args[ARGUMENTS];
+    compiler_result out;
     if (!arguments(1, false, inputs, count, args)) {
         return NULL;
     }
     args[DEBUG_ARGUMENT].b = false;
-    if (!compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)) {
+    if (!compiler_call(1, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &out)) {
         return NULL;
     }
-    const pin_union *value = out.ptr;
-    bool compiled = out.type == PIN_UNION && value && value->tag == tag(1, "Compiled");
-    unsigned char *bytes = compiled ? closure_bytes(value, length) : NULL;
+    unsigned char *bytes = compiler_succeeded(&out) ? closure_bytes(&out, length)
+                                                    : NULL;
     arena_free(&detached);
     return bytes;
 }
@@ -6376,11 +6570,10 @@ static uint64_t declaring_steps(int records)
     source_package_input input = { "facts/Main.chibi", source, (size_t)used };
     behavior_execution_scope scope = { .remaining = UINT64_MAX };
     behavior_execution_scope_begin(&scope);
-    pin_value out;
+    compiler_result out;
     bool called = compile(0, false, false, false, &input, 1, COMPILE_BUDGET, &out);
     behavior_execution_scope_end(&scope);
-    const pin_union *value = called ? out.ptr : NULL;
-    bool compiled = value && out.type == PIN_UNION && value->tag == tag(0, "Compiled");
+    bool compiled = called && compiler_succeeded(&out);
     arena_free(&detached);
     return compiled ? UINT64_MAX - scope.remaining : 0;
 }
@@ -6428,13 +6621,11 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(&cases[i], inputs);
         for (int b = 0; b < 2; b++) {
-            pin_value out;
+            compiler_result out;
             REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-            const pin_union *value = out.ptr;
-            REQUIRE(out.type == PIN_UNION && value);
-            REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+            REQUIRE(compiler_succeeded(&out));
             size_t length;
-            unsigned char *bytes = closure_bytes(value, &length);
+            unsigned char *bytes = closure_bytes(&out, &length);
             arena_free(&detached);
             native_capabilities *native;
             package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
@@ -6481,17 +6672,14 @@ static bool approved_float_conversion_admission(int compiler, bool constants)
         source_package_input source = { "facts/Main.chibi",
                                         item->source,
                                         strlen(item->source) };
-        pin_value out;
+        compiler_result out;
         REQUIRE(compile(compiler, false, false, false, &source, 1, COMPILE_BUDGET, &out));
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value);
-        REQUIRE(value->tag == tag(compiler, "Compiled") || value->tag == tag(compiler, "Rejected"));
-        bool accepted = value->tag == tag(compiler, "Compiled");
+        bool accepted = compiler_succeeded(&out);
         if (!accepted) {
             pin_value message, line, column;
-            REQUIRE(get(&value->values[0], "message", &message));
-            REQUIRE(get(&value->values[0], "line", &line));
-            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(get(compiler_error(&out), "message", &message));
+            REQUIRE(get(compiler_error(&out), "line", &line));
+            REQUIRE(get(compiler_error(&out), "column", &column));
             REQUIRE(line.type == PIN_I32 && column.type == PIN_I32);
             fprintf(
                 stderr,
@@ -6539,14 +6727,14 @@ static bool approved_float_conversion_admission(int compiler, bool constants)
             );
             if (!accepted) {
                 pin_value message;
-                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(compiler_error(&out), "message", &message));
                 fprintf(stderr, "  %s\n", pin_text(message).bytes);
             }
             agreed = false;
         }
         if (accepted && item->accepted) {
             size_t length;
-            unsigned char *bytes = closure_bytes(value, &length);
+            unsigned char *bytes = closure_bytes(&out, &length);
             arena_free(&detached);
             sample_call call = { .function = "Fold",
                                  .arguments = item->arguments,
@@ -6600,6 +6788,14 @@ TEST_CASE(package_compiler_builds_runnable_typed_packages)
 TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled)
 {
     return run_samples(TYPE_SAMPLES, 1);
+}
+TEST_CASE(package_compiler_checks_fallible_source_results)
+{
+    return run_samples(FALLIBLE_SAMPLES, 0);
+}
+TEST_CASE(package_compiler_checks_fallible_source_results_compiled)
+{
+    return run_samples(FALLIBLE_SAMPLES, 1);
 }
 TEST_CASE(package_compiler_builds_runnable_collection_packages)
 {
@@ -6727,26 +6923,25 @@ static bool stage_two_literals()
 }
 /* Whether stage two, loaded in `host`, compiles sample `s` as stage one does:
  * to the same closure, or to the same rejection. A closure is compared as
- * bytes, since its Result as JSON outgrows the host's projection limits. */
+ * bytes, since its JSON output outgrows the host's projection limits. */
 static bool stage_two_sample(const sample *s)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS + 1], out;
+    pin_value args[ARGUMENTS + 1];
+    compiler_result out;
     REQUIRE(arguments_for(1, s->game, s->c_string_probe, inputs, count, args));
     args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
     int argument_count = ARGUMENTS + s->host_effects;
     const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
-    REQUIRE(
-        compiler_fixture_call(&fixture, 1, PACKAGE, entry_name, args, argument_count, COMPILE_BUDGET, &detached, &out)
-    );
-    const pin_union *value = out.ptr;
+    REQUIRE(compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out));
     size_t length, expected_length;
     char *json = document_json(args, argument_count, &length);
-    bool compiled = value->tag == tag(1, "Compiled");
+    bool compiled = compiler_succeeded(&out);
+    const pin_value outputs[] = { out.module, out.bytes, out.error };
     unsigned char *expected = compiled
-                                ? closure_bytes(value, &expected_length)
-                                : (unsigned char *)document_json(&out, 1, &expected_length);
+                                ? closure_bytes(&out, &expected_length)
+                                : (unsigned char *)document_json(outputs, 3, &expected_length);
     arena_free(&detached);
     bool same;
     if (compiled) {
@@ -6817,6 +7012,7 @@ static int copying_functions(const execution_module_plan *p)
     const char *const once[] = { "Compile",
                                  "CompileClosure",
                                  "CompileWithEffects",
+                                 "CompileInput",
                                  "CompileClosureWithEffects",
                                  "CompileBehavior",
                                  "CompileBehaviorResolved",
@@ -6869,21 +7065,18 @@ TEST_CASE(package_compiler_compiles_itself)
             }
         }
     }
-    pin_value args[ARGUMENTS], out;
+    pin_value args[ARGUMENTS];
+    compiler_result out;
     REQUIRE(arguments(1, false, inputs, count, args));
     /* The compiler is compiled without debugger points and watches, which
      * no one debugging a game steps through. */
     args[DEBUG_ARGUMENT].b = false;
-    REQUIRE(
-        compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, SELF_BUDGET, &detached, &out)
-    );
-    const pin_union *value = out.ptr;
-    REQUIRE(out.type == PIN_UNION && value);
-    if (value->tag != tag(1, "Compiled")) {
+    REQUIRE(compiler_call(1, "Compile", args, ARGUMENTS, SELF_BUDGET, &out));
+    if (!compiler_succeeded(&out)) {
         pin_value message, line, column;
-        get(&value->values[0], "message", &message);
-        get(&value->values[0], "line", &line);
-        get(&value->values[0], "column", &column);
+        get(compiler_error(&out), "message", &message);
+        get(compiler_error(&out), "line", &line);
+        get(compiler_error(&out), "column", &column);
         fprintf(
             stderr,
             "package compiler stage one rejected: %s at %d:%d\n",
@@ -6892,9 +7085,9 @@ TEST_CASE(package_compiler_compiles_itself)
             column.i
         );
     }
-    REQUIRE(value->tag == tag(1, "Compiled") && value->count == 2);
+    REQUIRE(compiler_succeeded(&out));
     size_t length, json_length;
-    unsigned char *stage_two = closure_bytes(value, &length);
+    unsigned char *stage_two = closure_bytes(&out, &length);
     char *json = document_json(args, ARGUMENTS, &json_length);
     arena_free(&detached);
     char error[256];
@@ -9849,12 +10042,11 @@ static bool append_sample_alike(const sample *s, bool writing)
     for (int b = 0; b < 2; b++) {
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
-        pin_value out;
+        compiler_result out;
         REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Compiled"));
+        REQUIRE(compiler_succeeded(&out));
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
+        unsigned char *bytes = closure_bytes(&out, &length);
         arena_free(&detached);
         bool runs = true;
         for (int backend = 0; backend < 2; backend++) {
@@ -11561,7 +11753,8 @@ TEST_CASE(package_compiler_rejects_unhandled_task_result_shapes)
         for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
             REQUIRE(rejects(b, &rejected[i]));
         }
-        pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS], out, message;
+        pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS], message;
+        compiler_result out;
         REQUIRE(arguments(b, false, NULL, 0, compile));
         args[0] = text("MissingTargetFact");
         args[1] = text("B :: behavior { on Tick :: () { yield } }");
@@ -11570,21 +11763,11 @@ TEST_CASE(package_compiler_rejects_unhandled_task_result_shapes)
         int first_native = ((pin_array *)args[5].ptr)->count;
         REQUIRE(behavior_natives(b, &args[5]));
         REQUIRE(game_arguments(b, first_native, &args[8]));
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            b,
-            PACKAGE,
-            "CompileBehavior",
-            args,
-            BEHAVIOR_ARGUMENTS,
-            COMPILE_BUDGET,
-            &detached,
-            &out
-        ));
-        REQUIRE(out.type == PIN_UNION && out.ptr);
-        const pin_union *result = out.ptr;
-        REQUIRE(result->tag == tag(b, "Rejected"));
-        REQUIRE(get(&result->values[0], "message", &message));
+        REQUIRE(
+            compiler_call(b, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &out)
+        );
+        REQUIRE(!compiler_succeeded(&out));
+        REQUIRE(get(compiler_error(&out), "message", &message));
         REQUIRE(!strcmp(pin_text(message).bytes, "task lowering needs the target error-status offset"));
         arena_free(&detached);
     }
@@ -14772,11 +14955,10 @@ static bool vm_closure(int b, pin_string source, unsigned char **bytes, size_t *
     const source_package_input inputs[] = {
         { "scalar/Main.chibi", source.bytes, source.length }
     };
-    pin_value out;
+    compiler_result out;
     REQUIRE(compile(b, false, false, false, inputs, 1, COMPILE_BUDGET, &out));
-    const pin_union *value = out.ptr;
-    REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Compiled"));
-    *bytes = closure_bytes(value, length);
+    REQUIRE(compiler_succeeded(&out));
+    *bytes = closure_bytes(&out, length);
     return true;
 }
 /* The text of `ir` from `start` to the end of the definition it begins. */
@@ -18899,7 +19081,7 @@ static script_catalog query_game_catalog()
     catalog.relationship_count = 1;
     return catalog;
 }
-static bool query_compile_result(int b, const char *identity, const char *source, pin_value *out)
+static bool query_compile_result(int b, const char *identity, const char *source, compiler_result *out)
 {
     fixture.observe_failures = true;
     pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
@@ -18940,23 +19122,71 @@ static bool query_compile_result(int b, const char *identity, const char *source
         "abi",
         u64(script_catalog_capability_abi(&catalog, &catalog.capabilities[0]))
     ));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
-    );
-    REQUIRE(out->type == PIN_UNION && out->ptr);
+    REQUIRE(compiler_call(b, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, out));
+    return true;
+}
+TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        for (int marked = 0; marked < 2; marked++) {
+            char source[512];
+            snprintf(
+                source,
+                sizeof source,
+                "Fixed :: system(point: Spot, if Ready().value) {\n"
+                "    %sReady :: () -> (value: bool, error: int?) { "
+                "return(true, 1); }\n"
+                "}\n",
+                marked ? "@fallible " : ""
+            );
+            compiler_result out;
+            REQUIRE(query_compile_result(b, "Fixed", source, &out));
+            if (marked) {
+                if (compiler_succeeded(&out)) {
+                    fprintf(pu_errors(), "Marked system query accepted: %s\n", source);
+                }
+                REQUIRE(!compiler_succeeded(&out));
+                pin_value message, document, line, column;
+                REQUIRE(get(compiler_error(&out), "message", &message));
+                REQUIRE(get(compiler_error(&out), "document", &document));
+                REQUIRE(get(compiler_error(&out), "line", &line));
+                REQUIRE(get(compiler_error(&out), "column", &column));
+                REQUIRE(
+                    !strcmp(pin_text(message).bytes, "@fallible result checking requires an authored function body in stage one")
+                );
+                REQUIRE(document.i == 0 && line.i == 1 && column.i == 33);
+            } else {
+                if (!compiler_succeeded(&out)) {
+                    pin_value message, line, column;
+                    REQUIRE(get(compiler_error(&out), "message", &message));
+                    REQUIRE(get(compiler_error(&out), "line", &line));
+                    REQUIRE(get(compiler_error(&out), "column", &column));
+                    fprintf(
+                        pu_errors(),
+                        "Ordinary system query rejected: %s at %d:%d\n",
+                        pin_text(message).bytes,
+                        line.i,
+                        column.i
+                    );
+                }
+                REQUIRE(compiler_succeeded(&out));
+            }
+            arena_free(&detached);
+        }
+    }
     return true;
 }
 static bool query_stage_one_module(int b, const char *identity, const char *source, execution_module **module)
 {
     *module = NULL;
-    pin_value out;
+    compiler_result out;
     REQUIRE(query_compile_result(b, identity, source, &out));
-    const pin_union *value = out.ptr;
-    if (value->tag != tag(b, "Compiled")) {
+    if (!compiler_succeeded(&out)) {
         pin_value message = { 0 }, line = { 0 }, column = { 0 };
-        get(&value->values[0], "message", &message);
-        get(&value->values[0], "line", &line);
-        get(&value->values[0], "column", &column);
+        get(compiler_error(&out), "message", &message);
+        get(compiler_error(&out), "line", &line);
+        get(compiler_error(&out), "column", &column);
         fprintf(
             stderr,
             "stage one query %s rejected: %s at %d:%d\n",
@@ -18969,7 +19199,7 @@ static bool query_stage_one_module(int b, const char *identity, const char *sour
         return false;
     }
     size_t length = 0;
-    unsigned char *bytes = closure_bytes(value, &length);
+    unsigned char *bytes = closure_bytes(&out, &length);
     arena_free(&detached);
     script_catalog catalog = query_game_catalog();
     const execution_prepared_linker linker = { .user = &catalog,
@@ -19612,11 +19842,10 @@ TEST_CASE(package_compiler_query_rejects_hidden_mutation_and_old_headers)
     bool passed = true;
     for (int b = 0; passed && b < 2; b++) {
         for (size_t i = 0; passed && i < sizeof sources / sizeof *sources; i++) {
-            pin_value out;
+            compiler_result out;
             passed = query_compile_result(b, "Fixed", sources[i], &out);
             if (passed) {
-                const pin_union *value = out.ptr;
-                passed = value->tag == tag(b, "Rejected");
+                passed = !compiler_succeeded(&out);
                 if (!passed) {
                     fprintf(stderr, "stage one accepted invalid query: %s\n", sources[i]);
                 }
@@ -19804,13 +20033,12 @@ TEST_CASE(package_compiler_query_values_are_readonly)
     bool passed = true;
     for (int b = 0; passed && b < 2; b++) {
         for (size_t i = 0; passed && i < sizeof sources / sizeof *sources; i++) {
-            pin_value out;
+            compiler_result out;
             passed = query_compile_result(b, "Fixed", sources[i], &out);
             if (passed) {
-                const pin_union *value = out.ptr;
                 pin_value message = { 0 };
-                passed = value->tag == tag(b, "Rejected") &&
-                         get(&value->values[0], "message", &message) &&
+                passed = !compiler_succeeded(&out) &&
+                         get(compiler_error(&out), "message", &message) &&
                          (strstr(pin_text(message).bytes, "writable") ||
                           strstr(pin_text(message).bytes, "read-only"));
                 if (!passed) {
@@ -19836,6 +20064,14 @@ void test_language_package_compiler_chibi_types()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_fallible()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_checks_fallible_source_results);
+    RUN_TEST_CASE(package_compiler_checks_fallible_source_results_compiled);
+    RUN_TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_imports()
@@ -20277,18 +20513,16 @@ TEST_CASE(native_arguments_authored_contract)
             const sample *s = &native_argument_samples[i];
             source_package_input inputs[SAMPLE_INPUTS];
             int count = sample_inputs(s, inputs);
-            pin_value out;
+            compiler_result out;
             REQUIRE(
                 compile(b, false, s->c_string_probe, false, inputs, count, COMPILE_BUDGET, &out)
             );
-            const pin_union *value = out.ptr;
-            REQUIRE(out.type == PIN_UNION && value);
             bool passed = false;
-            if (value->tag == tag(b, "Rejected")) {
+            if (!compiler_succeeded(&out)) {
                 pin_value message, line, column;
-                REQUIRE(get(&value->values[0], "message", &message));
-                REQUIRE(get(&value->values[0], "line", &line));
-                REQUIRE(get(&value->values[0], "column", &column));
+                REQUIRE(get(compiler_error(&out), "message", &message));
+                REQUIRE(get(compiler_error(&out), "line", &line));
+                REQUIRE(get(compiler_error(&out), "column", &column));
                 passed = s->message && !strcmp(s->message, pin_text(message).bytes) &&
                          line.i == s->line && column.i == s->column;
                 fprintf(
@@ -20302,9 +20536,8 @@ TEST_CASE(native_arguments_authored_contract)
                     passed ? "expected" : "MISMATCH"
                 );
             } else {
-                REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
                 size_t length = 0;
-                unsigned char *bytes = closure_bytes(value, &length);
+                unsigned char *bytes = closure_bytes(&out, &length);
                 unsigned char *expected = NULL;
                 size_t expected_length = 0;
                 passed = !s->message &&

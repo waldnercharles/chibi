@@ -5,18 +5,12 @@ import routes "project:package_routes"
 import binding "project:lexical_binding"
 import source "project:asset_source"
 import packaging "project:asset_packaging"
+import syntax "project:syntax_diagnostics"
 import strings "core:strings"
 import costs "project:cost_explanations"
 
 pub ExplainCosts :: (functions: costs.Function[], values: costs.Cost[], json: bool) -> u8[] {
     return costs.Report(functions, values, json);
-}
-
-// A union result admits owned arrays/text on both bootstrap and authored
-// compiler paths. Named aggregate results are not supported by stage one yet.
-pub Result :: union {
-    Completed(ok: bool, entry_id: u64, prepared: u8[], document: int, start: int,
-              end: int, line: int, column: int, message: string)
 }
 
 pub Write :: (kinds: int[], parents: int[], keys: string[], texts: string[],
@@ -111,18 +105,18 @@ Entry :: (project: string, collection_names: string[], collection_paths: string[
 // The embedding host supplies its explicit source snapshot and target/catalog
 // facts. This facade preserves compile diagnostics without JSON interpretation
 // or generated source. The compiled public Build entry returns owned byte[].
+@fallible
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                 sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
-                natives: compiler.Native[], ports: compiler.Port[], identities: u64[]) -> Result {
-    switch compiler.Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
-                            names, natives, ports, identities) {
-        case .Rejected(diagnostic):
-            return Result.Completed(false, 0, [], diagnostic.document, diagnostic.start, diagnostic.end,
-                                    diagnostic.line, diagnostic.column, diagnostic.message);
-        case .Compiled(module, bytes):
-            entry_id := Entry(project, collection_names, collection_paths, paths[0]);
-            return Result.Completed(true, entry_id, bytes, -1, 0, 0, 0, 0, "");
+                natives: compiler.Native[], ports: compiler.Port[], identities: u64[])
+                -> (entry_id: u64, prepared: u8[], error: syntax.Diagnostic?) {
+    compiled := compiler.Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                                 names, natives, ports, identities);
+    diagnostic := compiled.error;
+    if (diagnostic) {
+        return (0, [], diagnostic);
     }
+    return (Entry(project, collection_names, collection_paths, paths[0]), compiled.bytes, nil);
 }
 
 // Native transport envelope: status byte, entry uint64 LE, five int32 LE
@@ -131,39 +125,41 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
 pub CompileBytes :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                      sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
                      natives: compiler.Native[], ports: compiler.Port[], identities: u64[]) -> u8[] {
-    switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
-                   names, natives, ports, identities) {
-        case .Completed(ok, entry_id, prepared, document, start, end, line, column, message):
-            out: u8[] = [0];
-            if (ok) {
-                out[0] = 1;
-            }
-            wide := entry_id;
-            index: int = 0;
-            while (index < 8) {
-                out.append(u8(wide & 255));
-                wide = wide >> 8;
-                index += 1;
-            }
-            positions: int[] = [document, start, end, line, column];
-            for (position in positions) {
-                bits := u32(wrap: position);
-                index = 0;
-                while (index < 4) {
-                    out.append(u8(bits & 255));
-                    bits = bits >> 8;
-                    index += 1;
-                }
-            }
-            if (ok) {
-                max_prepared: int = 16777187;
-                assert(length(prepared) <= max_prepared, "Compiled asset exceeds transport byte quota");
-                out.extend(prepared);
-            } else {
-                for (part in strings.Bytes(message)) {
-                    out.append(u8(part));
-                }
-            }
-            return out;
+    compiled := Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                        names, natives, ports, identities);
+    diagnostic := compiled.error;
+    positions: int[] = [-1, 0, 0, 0, 0];
+    message: string = "";
+    out: u8[] = [1];
+    if (diagnostic) {
+        out[0] = 0;
+        positions = [diagnostic.document, diagnostic.start, diagnostic.end, diagnostic.line, diagnostic.column];
+        message = diagnostic.message;
     }
+    wide := compiled.entry_id;
+    index: int = 0;
+    while (index < 8) {
+        out.append(u8(wide & 255));
+        wide = wide >> 8;
+        index += 1;
+    }
+    for (position in positions) {
+        bits := u32(wrap: position);
+        index = 0;
+        while (index < 4) {
+            out.append(u8(bits & 255));
+            bits = bits >> 8;
+            index += 1;
+        }
+    }
+    if (diagnostic) {
+        for (part in strings.Bytes(message)) {
+            out.append(u8(part));
+        }
+        return out;
+    }
+    max_prepared: int = 16777187;
+    assert(length(compiled.prepared) <= max_prepared, "Compiled asset exceeds transport byte quota");
+    out.extend(compiled.prepared);
+    return out;
 }

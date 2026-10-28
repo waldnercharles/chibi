@@ -324,7 +324,7 @@ TypeMember :: struct {
     read: int;
     read_key: string;
 }
-pub Result :: union {
+Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: u64, bytes: u8[])
 }
 // Package assembly also returns the effects of its callables, so importers
@@ -1669,9 +1669,11 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
     return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
 }
 // The signature of the function `member` named `name`, its params numbered
-// from `first`. A named result is a scalar or a single record.
+// from `first`. Named results include text, arrays and boxed optionals.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], table: ^(TypeDecl[]),
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
+    attributes := FallibleAttributes(forest, text, file, member);
+    if (length(attributes) > 0) { return Signature.Failed(attributes[0]); }
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
     while (parameter >= 0) {
@@ -1742,9 +1744,16 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                 return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
             }
             declared := ReadType(forest, text, table, aliases, package, Field(forest, named, "type"));
-            if (declared.storage == 0 || declared.storage == TextStorage || declared.storage == UnionStorage ||
-                declared.storage == PointerStorage || declared.container != 0) {
+            if (declared.storage == 0 || declared.storage == PointerStorage ||
+                (declared.container != 0 && declared.container != ArrayContainer) ||
+                (declared.storage == UnionStorage && declared.container == 0 &&
+                 OptionalElement(table^, Typed(-1, declared.storage, declared.container, declared.record)).storage == 0)) {
                 return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
+            }
+            initial := Field(forest, named, "value");
+            if (OptionalElement(table^, Typed(-1, declared.storage, declared.container, declared.record)).storage != 0 &&
+                initial >= 0 && !Is(forest, initial, "nil")) {
+                return Signature.Failed(Diagnose(forest, initial, file, "named optional result initializer is not supported yet"));
             }
             result_name := Text(forest, text, Field(forest, named, "name"));
             param: Param = {name: result_name, storage: declared.storage, container: declared.container,
@@ -1767,6 +1776,16 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
     callable: Callable = {name: name, package: package, document: file, node: member, first: first, count: count,
                           result: result.storage, result_container: result.container, result_record: result.record,
                           results: length(added) - count, waits: false};
+    if (FallibleMarked(forest, text, member)) {
+        last := result;
+        if (callable.results > 0) {
+            parameter := added[length(added) - 1];
+            last = {storage: parameter.storage, container: parameter.container, record: parameter.record};
+        }
+        if (!FallibleOptional(table^, last)) {
+            return Signature.Failed(Diagnose(forest, member, file, "@fallible requires a final optional error result"));
+        }
+    }
     return Signature.Read(callable, added);
 }
 ScalarValue :: (storage: int, wide: int) -> writer.Value {
@@ -2266,8 +2285,9 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
                  ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
     callable := callables[index];
     document := documents[callable.document];
+    generated_query := QueryEvaluator(query_specs, index) >= 0;
     analysis_body := Field(forest, callable.node, "body");
-    if (QueryEvaluator(query_specs, index) >= 0) {
+    if (generated_query) {
         analysis_body = Field(forest, callable.node, "parameters");
     }
     if (analysis_body < 0) {
@@ -2284,10 +2304,38 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     if (callable.results == 0) {
         built = BuiltLocals(forest, document.text, table^, aliases, callable.package, analysis_body, referenced);
     }
-    return EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
-                    natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
-                    undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target,
-                    query_specs);
+    emitted := EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
+                        natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
+                        undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target,
+                        query_specs);
+    switch emitted {
+        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+            // Copy the source closure into the checker only when a resolved
+            // producer has the optional result every marked contract requires.
+            possible_fallible := false;
+            for (fact in facts) {
+                if (fact.kind == CallFact && fact.target >= 0 && fact.target < length(callables)) {
+                    producer := callables[fact.target];
+                    last: ValueType = {storage: producer.result, container: producer.result_container,
+                                       record: producer.result_record};
+                    if (producer.results > 0) {
+                        parameter := params[producer.first + producer.count + producer.results - 1];
+                        last = {storage: parameter.storage, container: parameter.container, record: parameter.record};
+                    }
+                    if (FallibleOptional(table^, last)) {
+                        possible_fallible = true;
+                        break;
+                    }
+                }
+            }
+            if (possible_fallible) {
+                problems := FallibleBody(forest, documents, callables, params, callable, facts, generated_query);
+                if (length(problems) > 0) { return Body.Failed(problems[0]); }
+            }
+        case:
+            return emitted;
+    }
+    return emitted;
 }
 Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
              package_names: string[], package_ids: u64[], fingerprints: u64[], reachable: bool[],
@@ -2958,18 +3006,33 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 // and imports resolve against. `abi` is the target's prepared header ABI,
 // `names` its instruction names in ordinal order, and `natives` the native
 // functions it links.
+@fallible
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                 sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
-                ports: Port[], identities: u64[]) -> Result {
-    return CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
-                              names, natives, ports, identities, resize([int(0)], length(natives)));
+                ports: Port[], identities: u64[]) -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
+    compiled := CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                                   names, natives, ports, identities, resize([int(0)], length(natives)));
+    return (compiled.module, compiled.bytes, compiled.error);
 }
 // The complete target catalog supplies one effect mask per native, in the
-// same order as natives and identities. Compile retains the bootstrap's
-// stable signature for its verified pure-native catalog.
+// same order as natives and identities. Compile supplies zero effect masks
+// for its verified pure-native catalog.
+@fallible
 pub CompileWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                            sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
-                           ports: Port[], identities: u64[], native_effects: int[]) -> Result {
+                           ports: Port[], identities: u64[], native_effects: int[])
+                           -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
+    switch CompileInput(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                        names, natives, ports, identities, native_effects) {
+        case .Rejected(diagnostic):
+            return (0, [], diagnostic);
+        case .Compiled(compiled_module, prepared):
+            return (compiled_module, prepared, nil);
+    }
+}
+CompileInput :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                 sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
+                 ports: Port[], identities: u64[], native_effects: int[]) -> Result {
     ops := ResolveOps(names, debug);
     resolved_ports := LegacyPorts(ports);
     resolved_natives := LegacyNatives(natives, names);
@@ -3022,22 +3085,20 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
 pub CompileClosure :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                        sources: string[], debug: bool, target: Target, abi: u64, names: string[],
                        natives: Native[], ports: Port[], identities: u64[]) -> u8[] {
-    switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi, names, natives,
-                   ports, identities) {
-        case .Rejected(diagnostic):
-            return [];
-        case .Compiled(module, bytes):
-            return bytes;
+    compiled := Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                        names, natives, ports, identities);
+    if (compiled.error) {
+        return [];
     }
+    return compiled.bytes;
 }
 pub CompileClosureWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                                   sources: string[], debug: bool, target: Target, abi: u64, names: string[],
                                   natives: Native[], ports: Port[], identities: u64[], native_effects: int[]) -> u8[] {
-    switch CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
-                              names, natives, ports, identities, native_effects) {
-        case .Rejected(diagnostic):
-            return [];
-        case .Compiled(module, bytes):
-            return bytes;
+    compiled := CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                                   names, natives, ports, identities, native_effects);
+    if (compiled.error) {
+        return [];
     }
+    return compiled.bytes;
 }

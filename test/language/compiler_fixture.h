@@ -100,7 +100,7 @@ const pin_record *compiler_fixture_record(
     const char *name,
     arena *
 );
-/* Exactly one result; its type is seeded from exported signature metadata.
+/* Exactly one result; its header comes from the prepared function declaration.
  * Snapshots into detached before destroying producer context/activation/storage.
  * The caller owns arguments and must retire their arena before comparison.
  * Managed pointer results retain identity in the fixture-owned heap, which
@@ -115,6 +115,21 @@ bool compiler_fixture_call(
     int budget,
     arena *detached,
     pin_value *out
+);
+/* Exact exported result count, including zero with out == NULL. Each output
+ * follows compiler_fixture_call's detached and managed-pointer ownership rules.
+ * Do not use any outputs when this returns false; snapshots can be partial. */
+bool compiler_fixture_call_results(
+    const compiler_fixture *,
+    int backend,
+    const char *identity,
+    const char *name,
+    const pin_value *arguments,
+    int count,
+    int budget,
+    arena *detached,
+    pin_value *out,
+    int result_count
 );
 /* A port's storage as Compile takes it: the inferred generic type (0), each
  * argument's own type (-2), or a type the compiler cannot pass (-1). */

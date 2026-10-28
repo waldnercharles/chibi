@@ -1566,7 +1566,9 @@ QueryBooleanStep :: (types: TypeDecl[], step: Step, ops: Ops, target: Target, at
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks):
             storage := value.storage;
             if (value.container != 0 || value.record < 0 ||
-                (storage != PointerStorage && (storage != StructStorage || types[value.record].kind != OptionalComponentDecl))) {
+                (storage != PointerStorage && !IsBoxedOptional(types, {storage: value.storage, container: value.container,
+                                                                    record: value.record}) &&
+                 (storage != StructStorage || types[value.record].kind != OptionalComponentDecl))) {
                 return step;
             }
             if (storage == StructStorage) {
@@ -1578,11 +1580,20 @@ QueryBooleanStep :: (types: TypeDecl[], step: Step, ops: Ops, target: Target, at
             if (storage == PointerStorage) {
                 null_value.value_record = value.record;
             }
-            rewritten := append(code, null_value);
+            rewritten := code;
+            if ops.debug && IsBoxedOptional(types, {storage: value.storage, container: value.container, record: value.record}) {
+                // Presence is a contextual conversion. The debugger observes
+                // the optional expression itself, as the native frontend does.
+                rewritten.append(WatchCode(ops, value.slot, value.storage, value.container, value.record,
+                                           0, true, node, target));
+            }
+            rewritten.append(null_value);
             rewritten.append(Instruction(ops.ne, storage, output, value.slot, null_slot, -1, node));
             null_type := AddressSlot(target);
             if (storage == PointerStorage) {
                 null_type = ValueLocal(PointerStorage);
+            } else if (storage == UnionStorage) {
+                null_type = ValueLocal(UnionStorage);
             }
             added := append(slots, null_type);
             added.append(ValueLocal(BoolStorage));

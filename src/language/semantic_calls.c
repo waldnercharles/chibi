@@ -1746,6 +1746,11 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     if (migrated_self(a, capability)) {
         result.effects &= ~(unsigned)SCRIPT_EFFECT_INVOCATION_READ;
     }
+    /* A language-value native reads only its arguments: owned ones are the
+     * caller's values, and a view argument adds its own read below. */
+    if (capability && capability->language_values) {
+        result.effects &= ~(unsigned)SCRIPT_EFFECT_READ;
+    }
     if (capability && a->out->kind == SCRIPT_PROGRAM_LIBRARY &&
         (capability->id == script_catalog_id("capability", "Self") ||
          (capability->component && capability->component_entity < 0))) {
@@ -1961,6 +1966,11 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                 script_analyzer_range(a, argument) })
         );
         result.effects |= script_analyzer_expr_effects(a, expression_index);
+        /* A view argument is read through its pointer. */
+        if (script_analyzer_expr_type(a, expression_index).container ==
+            PIN_CONTAINER_VIEW) {
+            result.effects |= SCRIPT_EFFECT_READ;
+        }
         function = function_index >= 0 ? &a->out->functions[function_index] : NULL;
     }
     for (int i = 0; i < parameter_count; i++) {
@@ -2272,7 +2282,11 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         result.results = NULL;
         apush(result.results, result.type);
         result.result_count = 1;
-        result.effects |= SCRIPT_EFFECT_WRITE;
+        /* Changing a local array changes only the caller's value. */
+        if (script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_VIEW ||
+            script_analyzer_writes_external(a->out, receiver)) {
+            result.effects |= SCRIPT_EFFECT_WRITE;
+        }
     }
     result.writable = (result.type.flags & SCRIPT_TYPE_REFERENCE) != 0;
     if (symbol >= 0) {

@@ -627,7 +627,7 @@ uint64_t script_analyzer_component_target(const script_analysis *out, int index)
 }
 /* Member/index stores replace owned local values. A path through a reference,
  * component or reflected setter writes storage outside that value instead. */
-static bool writes_external_storage(const script_analysis *out, int index)
+bool script_analyzer_writes_external(const script_analysis *out, int index)
 {
     while (index >= 0) {
         const script_expression *e = &out->expressions[index];
@@ -695,7 +695,7 @@ static int delete_key(analyzer *a, TSNode node, script_statement result, TSNode 
         key
     );
     result.effects = script_analyzer_expr_effects(a, result.second);
-    if (writes_external_storage(a->out, result.expression)) {
+    if (script_analyzer_writes_external(a->out, result.expression)) {
         result.effects |= SCRIPT_EFFECT_WRITE;
     }
     if (address.symbol >= 0) {
@@ -888,7 +888,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         result.effects = address.effects |
                          script_analyzer_expr_effects(a, result.second);
-        if (writes_external_storage(a->out, result.expression)) {
+        if (script_analyzer_writes_external(a->out, result.expression)) {
             result.effects |= SCRIPT_EFFECT_WRITE;
             script_analyzer_invalidate_pointers(a);
         }

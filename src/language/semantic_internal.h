@@ -219,6 +219,9 @@ const script_catalog_capability *script_analyzer_array_method(analyzer *, TSNode
 /* Whether an array function returns its array changed, so its method changes
  * the array in place, as `append` does and `slice` does not. */
 bool script_analyzer_array_changer(const script_catalog_capability *);
+/* Whether writing the place at an expression changes storage outside the
+ * function's own locals, parameters and results. */
+bool script_analyzer_writes_external(const script_analysis *, int);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
 script_type script_analyzer_char_operand(script_type operand, script_type other);
 bool script_analyzer_integers_match(script_type, script_type);

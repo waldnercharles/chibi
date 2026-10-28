@@ -35,6 +35,8 @@ static execution_module *retained;
 static behavior_function_context context;
 static behavior_function_activation activation;
 static arena storage, inputs_storage;
+/* Owns the collections a call returns until the next call. */
+static behavior_managed_heap heap;
 static pin_value output;
 static size_t slice_calls, slice_bytes, byte_reads;
 /* Count actual owned slice payloads through the existing native binding seam.
@@ -78,6 +80,7 @@ static void finish_call()
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
     arena_free(&storage);
+    behavior_managed_heap_free(&heap);
     context = (behavior_function_context){ 0 };
     activation = (behavior_function_activation){ 0 };
     output = (pin_value){ 0 };
@@ -237,11 +240,13 @@ static bool invoke(
         behavior_function_activation_init(function, &activation);
     }
     output = (pin_value){ .type = type };
+    behavior_managed_heap_init(&heap);
     context = (behavior_function_context){
         .activation = behavior_function_resumable(function) ? &activation : NULL,
         .arguments = arguments,
         .argument_count = count,
         .results = &output,
+        .managed_heap = &heap,
         .budget = 10000,
     };
     behavior_function_bind_storage(&context, &storage);

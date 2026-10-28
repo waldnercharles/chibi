@@ -68,17 +68,17 @@ static pin_value item(pin_type type, int number)
     value.ptr = row;
     return value;
 }
-/* Legacy kernels never give a value an authored record; a native element
- * may carry its catalog type's native record. */
-static bool native_or_none(const pin_record *record)
+/* Legacy kernels never give a value an authored record; a native row may
+ * carry its catalog type's native record. */
+static bool native_or_none(pin_type type, const pin_record *record)
 {
-    return !record ||
-           (record->native && !strcmp(record->type.name, native_type.name));
+    return !record || (type == PIN_STRUCT && record->native &&
+                       !strcmp(record->type.name, native_type.name));
 }
 static bool check_item(const pin_value *value, pin_type type, int number)
 {
     REQUIRE(value->type == type && value->container == PIN_CONTAINER_SINGLE);
-    REQUIRE(native_or_none(value->record));
+    REQUIRE(native_or_none(type, value->record));
     if (type == PIN_I32) {
         REQUIRE(value->i == number);
         return true;
@@ -205,12 +205,12 @@ TEST_CASE(record_legacy_array_callbacks)
             for (int operation = 0; operation < 8; operation++) {
                 const pin_value *value = &out[wrapper][operation];
                 REQUIRE(value->type == kinds[kind] && value->container == PIN_CONTAINER_ARRAY);
-                REQUIRE(native_or_none(value->record));
+                REQUIRE(native_or_none(kinds[kind], value->record));
                 const pin_array *array = value->ptr;
                 REQUIRE(array && arena_contains(&results, array));
                 REQUIRE(!array->count || arena_contains(&results, pin_array_data(array, 0)));
                 REQUIRE(array->count == counts[operation] && array->element_type == kinds[kind]);
-                REQUIRE(native_or_none(array->record));
+                REQUIRE(native_or_none(kinds[kind], array->record));
                 if (kinds[kind] == PIN_STRUCT) {
                     REQUIRE(!strcmp(value->type_name, native_type.name));
                     REQUIRE(!strcmp(array->type_name, native_type.name));

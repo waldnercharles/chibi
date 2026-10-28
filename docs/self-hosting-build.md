@@ -240,6 +240,36 @@ builds still use CMake as below, so a source, define or library CMake gains
 belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
 the graph's commands equal CMake's again.
 
+### Linux native graph (opt-in)
+
+Linux uses the same graph for native products and the full tooling/language
+test drivers when `GRAPH_BUILD=1` is supplied:
+
+```sh
+make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi chibi_ctl chibi-build-host chibi-compiler-host'
+make build GRAPH_BUILD=1 BUILD_PROFILE=debug BUILD_DEBUG_OPTIMIZATION=1 \
+  BUILD_DEBUG_FRAME_POINTERS=on BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+  ASSET_GENERATOR_HOSTS=build-release/sdk \
+  BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language'
+```
+
+Use the existing Linux development prerequisites and pinned third-party archive;
+player, renderer and native-export support are not removed. `LIBCLANG_ROOT` is
+forwarded explicitly. Graph pairs versioned compiler drivers such as `clang-18`
+and `clang++-18`, and discovers OpenGL development headers/libraries through the
+explicit include/library search paths and the selected compiler. Direct Graph
+invocations can supply `--opengl-include`, `--opengl-library` and `--glx-library`;
+`--profile explicit` performs no discovery. `GRAPH_REFLECT` forwards the existing
+`--reflect` override for cross or relocated toolchains without extending the
+build host's environment allowlist.
+
+Linux's default remains CMake while the opt-in `ci-linux-graph`/manual workflow proves the selected
+profile, commands, generated files, resources, test groups and compiler-tools
+SDK relocation. The matching reference is a separate CMake tree, selected with
+`CHIBI_GRAPH_REFERENCE` for parity checks. CMake also remains the temporary first
+host bootstrap, the standalone tooling/language consumer build, and the public
+SDK, web and Studio build. This opt-in route does not retire those responsibilities.
+
 The graph parses compiler dependency files in Chibi, reading their bytes once
 and treating line continuations as spaces. It unescapes only paths that need
 it. Large record and command-database joins use the existing `build.join`
@@ -474,8 +504,8 @@ records the run as a link is recorded, over the inputs CMake names, and
 reruns it only when one changed. `--reflect PATH` runs another reflect
 instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
-includes name. On macOS `make build` builds them with the graph; elsewhere
-CMake still does, and `build-graph` checks that their compile commands agree
+includes name. On macOS `make build` builds them with the graph; Linux can
+opt in with `GRAPH_BUILD=1`, and `build-graph` checks that their compile commands agree
 with a configured CMake build's; `build-graph-support` compiles only
 `chibi_support`. Before the dependency-parser and join improvements, building
 everything, `test_tools` included, took about 25 to 32 minutes with sanitizers

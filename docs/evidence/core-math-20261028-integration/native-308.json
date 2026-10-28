@@ -1,0 +1,1503 @@
+{
+  "purpose": "fresh accepted308 runtime focused native Math validation; only optional asset-host block omitted; no ordinary full/installed SDK acceptance",
+  "event_date": "2026-10-28",
+  "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+  "tree": "cfb02134ea9f59bbfe1023808ee2489439ae7aee",
+  "snapshot_revision": "b87afaea2-dirty",
+  "prepared_format": 26,
+  "authoritative_tracked_clean_after": true,
+  "only_changed_tracked_paths": [
+    "test/language/CMakeLists.txt"
+  ],
+  "helper_diff_sha256": "69062a481869920fc8585c1531556f5dda7dee9d422abde4f9d3ee70f108e163",
+  "tracked_files_compared": 3473,
+  "all_postrun_tracked_source_hashes_match_preflight": true,
+  "no_bootstrap_artifact_substitution_or_regeneration": true,
+  "checked_bootstrap_sha256": {
+    "bootstrap.json": "812635d0e2c0c5336071dda2394b881dfcd1ed8aef17999d92511a506f5d2485",
+    "compiler.chibip": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
+  },
+  "no_production_or_sibling_source_copies": true,
+  "fresh_build": {
+    "configure_seconds": 5.369314040988684,
+    "build_seconds": 63.548787416890264,
+    "prebuild_objects": 0,
+    "actual_objects": 486,
+    "actual_compile_log_lines": 486,
+    "actual_complete_clang_compile_log_lines": 485,
+    "compile_log_count_note": "Independent audit corrected the retained original summary's ambiguous 485-line label. The raw log has 486 lines containing ' -c ', including 485 complete recognizable clang compile lines; parallel output interleaves an archive/compile line and splits another compiler command with a progress message. Output/source pairing independently accounts for all 486 invocations and objects.",
+    "actual_compile_invocations": 486,
+    "all_objects_new_mtime": true,
+    "driver_sha256": "f5de82109feeda547055a7c14f247a5eb8521c6be31dc0b2f6dcfc3b7d64b7fa",
+    "selected_objects": [
+      {
+        "source": "test/language/package_math.c",
+        "object": "CMakeFiles/test_language.dir/package_math.c.o",
+        "sha256": "cc679a977df3a7cb726ce81a16d89054122dc334934b3cd161175632b2d46247",
+        "mtime_ns": 1793211806619287153
+      },
+      {
+        "source": "test/language/native_calls.c",
+        "object": "CMakeFiles/test_language.dir/native_calls.c.o",
+        "sha256": "44b699386ff1c5d848701c80315419455e0d4869bb25d26679c7fd1fce184b1c",
+        "mtime_ns": 1793211802640526056
+      },
+      {
+        "source": "test/language/package_compiler_chibi.c",
+        "object": "CMakeFiles/test_language.dir/package_compiler_chibi.c.o",
+        "sha256": "6638043276046698e2d75d57a608838223f7bcec3ccd6d9a0d82e925090ee6d1",
+        "mtime_ns": 1793211816371740854
+      },
+      {
+        "source": "test/language/package_imports.c",
+        "object": "CMakeFiles/test_language.dir/package_imports.c.o",
+        "sha256": "ab56b5aecbeda16a17e49727c23d18a1b2063b51f71230fed8751549bb0e93dd",
+        "mtime_ns": 1793211806611627691
+      },
+      {
+        "source": "test/language/package_snapshot_chibi.c",
+        "object": "CMakeFiles/test_language.dir/package_snapshot_chibi.c.o",
+        "sha256": "e7ef784b91e69e9165e667eb6de0beff6646eccb159c9b84ba6cf0f2a0eddd3b",
+        "mtime_ns": 1793211807651734672
+      },
+      {
+        "source": "test/language/record_publication.c",
+        "object": "CMakeFiles/test_language.dir/record_publication.c.o",
+        "sha256": "aa4ab676551fffaa018994810d63312153b6f00c5408090cd122430e49d04018",
+        "mtime_ns": 1793211798490911555
+      },
+      {
+        "source": "test/language/main.c",
+        "object": "CMakeFiles/test_language.dir/main.c.o",
+        "sha256": "f71a5f138facc93a584cfa88ccaa66452d62d3c748ebf16d6427678fc9d9a90a",
+        "mtime_ns": 1793211798545537661
+      },
+      {
+        "source": "test/language/compiler_fixture.c",
+        "object": "CMakeFiles/test_language.dir/compiler_fixture.c.o",
+        "sha256": "1ee09cfb7b7ccad470286f578c73c8452c7d61449643f1577aa442512775dffc",
+        "mtime_ns": 1793211807112120569
+      }
+    ],
+    "asset_generation_or_complete_host_executables": false,
+    "compiler_target": {
+      "source_sha256": "266ed2bcc132c29c6e1a30f3f34445be36ba29fa113c902697b566b76081424c",
+      "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/toolchain/compiler_target.c.o",
+      "object_sha256": "64bef407ce29f4e1f0e239c6f76909a7b7ca400afb6c6c8827339e8193bd9503",
+      "object_mtime_ns": 1793211789465227743,
+      "dependency_file_sha256": "bee03af324ea74f8c40aa888d85cd46e8365092c4df56076004a818c767cb55c",
+      "actual_generated_header_dependencies": [
+        {
+          "path": "sdk/private/compiler-host/toolchain/compiler_target.h",
+          "sha256": "d323ebaad3106802f95692b4a3194b5a63800252231bf974f74c48906ab12ffa"
+        },
+        {
+          "path": "sdk/public/capabilities/capabilities/catalog.h",
+          "sha256": "b1220fabea73d28ee98df316e97c14bd3350168b9a2783526cb2c8eca56e1857"
+        },
+        {
+          "path": "sdk/public/types/types/state_machine.h",
+          "sha256": "d4c47f6243a9ee865eccac9cf35dc9e8493ed828af54152c7402b1884698d81f"
+        },
+        {
+          "path": "sdk/public/types/types/value.h",
+          "sha256": "ab1e219b28444bbb56672a5e432f0ddff91c90b74d22208e43314d3641a9c435"
+        },
+        {
+          "path": "sdk/public/support/support/enum.h",
+          "sha256": "2e06b3d664bb509e7fbcd2bb8e87427503b035fb397afc9388817bfdcffafd1d"
+        },
+        {
+          "path": "sdk/public/ecs/ecs/ecs.h",
+          "sha256": "a6fd59849270894be455fa5cbd670c663c7bf12f763990fb0169a5d2ad2c0912"
+        },
+        {
+          "path": "sdk/public/types/types/type.h",
+          "sha256": "dcf7e2344be192394c475110b9d51c8e2b0b50951d63dd12f94b3b080599146c"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/function.h",
+          "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/diagnostic.h",
+          "sha256": "2422a6d402dc0c8901a1c6da65f76d83da17b1fe1ac704c720d9b9c462069c5f"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/host.h",
+          "sha256": "8c1b9592d5cc6ba625f6003a87c15e5bf50e5b7a8782332a8e6eaebb6a8fd4a3"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/managed.h",
+          "sha256": "295ff1bd16204d171a5852384c86b0dd99b4bc624a786928c3b60987763b5088"
+        },
+        {
+          "path": "sdk/public/support/support/arena.h",
+          "sha256": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/source_debug.h",
+          "sha256": "3f74ca92e54cc5df84924fffa1a256e03fb38d2bae50487c1836a86bf5b43859"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/state.h",
+          "sha256": "c8637ed95a48693a6c6393758788cc137497da10ae89498c4314a4d7f4dabfc8"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/value_kind.h",
+          "sha256": "49e639ea89befdc44475ef567e8ff4e7140c07928b13d48d6cb010b61f4a343b"
+        },
+        {
+          "path": "sdk/public/types/types/array.h",
+          "sha256": "8e534280a867a14cc27d3eef0e9780a383dd8f8aedfa00015b6d3bb48ab3c2cf"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/instruction.h",
+          "sha256": "d8588e4d9cc1df8e619c8da8a08c44a762df1120bee01ad79ebc3234c8810bb3"
+        },
+        {
+          "path": "sdk/public/support/support/cos_sin.h",
+          "sha256": "e38f458835e9201f2dc49180d77bb318ee285df4e6341c03401975e8da4d80ba"
+        },
+        {
+          "path": "sdk/public/execution/execution/prepared.h",
+          "sha256": "02d219f2f7d637efdcb6abacd1e3b78c9e8eba1207463373295dfa5c445c4254"
+        },
+        {
+          "path": "sdk/public/execution/execution/module.h",
+          "sha256": "82ca2085088aca529b99fbed8f1c703fdb273d89badc1ec5e7a3f5919f3653d3"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/backend.h",
+          "sha256": "e91ac9f385c40963a4ad72da57a2a45d7d10664922c44e0c758372d39fc7be23"
+        },
+        {
+          "path": "sdk/public/execution_contract/execution/service.h",
+          "sha256": "fbf5e3dc5b4ab310412ef083fd1457c2ba244c162a508b19440c9f04bfedfd9f"
+        },
+        {
+          "path": "sdk/public/native_capabilities/runtime/native_capabilities.h",
+          "sha256": "f85acc774ae938939e69d3831bb6fdf9ef60db4186ef6a7cd16a3d9cd0f69335"
+        },
+        {
+          "path": "sdk/public/support/support/array.h",
+          "sha256": "62a43c9f1c66eb131da2baa918e04669e54b73c4b80a0ef964a19e575269d576"
+        },
+        {
+          "path": "sdk/public/support/support/xalloc.h",
+          "sha256": "843983fa5a8f9d139d49b9c76b2cd6bddab8741f8e2dab48c13e5b21d1c6a1ff"
+        },
+        {
+          "path": "sdk/public/types/types/map.h",
+          "sha256": "b25fbb0bb7005453d4585e7503714a9a5763f225c6ee04b48fc7beeabea33e67"
+        },
+        {
+          "path": "sdk/public/types/types/text.h",
+          "sha256": "c28a2261a4122594487cbd83b1b9a1fb02610f93b2df907df0d62bc4c1b03dfc"
+        }
+      ],
+      "raw_target_json_not_captured": true,
+      "historical_target_json_not_reused": true,
+      "target_byte_equality_not_claimed": true,
+      "compile_command": {
+        "directory": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk",
+        "command": "/opt/homebrew/opt/llvm@22/bin/clang  -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/private/compiler-host -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/third_party/yyjson -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/compiler_host -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/behavior_runtime -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/execution -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/types -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/support -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/execution_contract -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/capabilities -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/ecs -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/tasks -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/events -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/native_prepared -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/native_capabilities -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/text_capabilities -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/array_capabilities -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/value_document -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/asset_values -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/asset_json -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/json -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/language_syntax -I/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/sdk/public/asset_text -isystem /Users/cwaldner/Personal/chibi/chibi/.git/chibi/third_party/602d82c6d59563b5af00c5be2d69c0447654ff00728ddcd94acf179c27c1092b/include/chibi/vendor/tree_sitter/1 -O3 -DNDEBUG -std=gnu23 -arch arm64 -Wall -Wextra -Werror -o CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/toolchain/compiler_target.c.o -c /Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/toolchain/compiler_target.c",
+        "file": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/toolchain/compiler_target.c",
+        "output": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/toolchain/compiler_target.c.o"
+      },
+      "generated_arena_header_copies": [
+        {
+          "path": "sdk/public/support/support/arena.h",
+          "sha256": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1"
+        }
+      ]
+    },
+    "dynamic_target_oracles": "existing compiler fixture builds target arguments from the fresh native layout/catalog; both compiler modes and emitted Math target-entry/no-inspection-fallback oracles passed"
+  },
+  "configuration": {
+    "compiler": [
+      "Homebrew clang version 22.1.8",
+      "Target: arm64-apple-darwin25.6.0",
+      "Thread model: posix",
+      "InstalledDir: /opt/homebrew/Cellar/llvm@22/22.1.8/bin",
+      "Configuration file: /opt/homebrew/Cellar/llvm@22/22.1.8/etc/clang/arm64-apple-darwin25.cfg"
+    ],
+    "platform": "Darwin arm64",
+    "build_type": "Release",
+    "sdk_compiler": true,
+    "sdk_native": false,
+    "sdk_desktop": false,
+    "jobs": 4,
+    "selected_flags": "-O3 -DNDEBUG -std=gnu23 -arch arm64 -Wall -Wextra -Werror -UNDEBUG",
+    "sanitizers": false,
+    "cmake_cache_sha256": "615b696d2ff0f0b54708e4fcb8f04e6fdeedb9e0a10d9837148edf38b1fd858d",
+    "compile_commands_sha256": "0f6e9b3e051322625e1df58a69238429d0388e747de1d7f977414197da159b9c"
+  },
+  "authored_tests": [
+    {
+      "backend": "BYTECODE",
+      "tests": 29,
+      "prepare_ms": 24.753
+    },
+    {
+      "backend": "SLJIT",
+      "tests": 29,
+      "prepare_ms": 23.253
+    }
+  ],
+  "tests": [
+    {
+      "name": "package-math",
+      "passed": 6,
+      "failed": 0,
+      "cases": 6,
+      "assertions": 4132,
+      "wall_seconds": 1.114758415846154
+    },
+    {
+      "name": "compiler-imports-bytecode",
+      "passed": 2,
+      "failed": 0,
+      "cases": 2,
+      "assertions": 17453,
+      "wall_seconds": 32.34349029115401
+    },
+    {
+      "name": "compiler-imports-sljit",
+      "passed": 2,
+      "failed": 0,
+      "cases": 2,
+      "assertions": 17024,
+      "wall_seconds": 24.135277915978804
+    },
+    {
+      "name": "package-imports",
+      "passed": 18,
+      "failed": 0,
+      "cases": 18,
+      "assertions": 1530,
+      "wall_seconds": 0.5583202498964965
+    },
+    {
+      "name": "package-snapshot-chibi",
+      "passed": 16,
+      "failed": 0,
+      "cases": 16,
+      "assertions": 286093,
+      "wall_seconds": 0.38106654211878777
+    },
+    {
+      "name": "record-publication",
+      "passed": 7,
+      "failed": 0,
+      "cases": 7,
+      "assertions": 230,
+      "wall_seconds": 0.1764982920140028
+    },
+    {
+      "name": "native-calls",
+      "passed": 7,
+      "failed": 0,
+      "cases": 7,
+      "assertions": 758,
+      "wall_seconds": 0.2665127080399543
+    },
+    {
+      "name": "package-math-benchmark",
+      "passed": 1,
+      "failed": 0,
+      "cases": 1,
+      "assertions": 2021,
+      "wall_seconds": 0.4702176251448691
+    }
+  ],
+  "total_passed_cases_including_benchmark": 59,
+  "total_assertions_including_benchmark": 329241,
+  "backend_scope": {
+    "package_math": "BYTECODE and SLJIT; checks require positive matching backend entries, no bytecode entries on compiled Math calls and no inspection fallback",
+    "compiler_imports": "compiler modes BYTECODE and SLJIT; both emitted runtime modes BYTECODE and SLJIT; nine reachability samples plus two Math samples included",
+    "emitted_math_calls": "run_math asserts positive SLJIT entries, zero bytecode entries on compiled calls, zero inspection fallback",
+    "compiler_fixture_exception": "existing compiler_fixture permits bytecode entries equal to size_bytecode_fallbacks; numeric fallback counts not printed, so blanket zero compiler-size-fallback not claimed",
+    "native_calls": "BYTECODE and SLJIT plus deliberately inspected VM path; existing result and native binding checks passed",
+    "benchmark": "reports BYTECODE/SLJIT prepared bodies and runs them with matching execution selection; benchmark measure does not print backend entry counters",
+    "package_imports": "BYTECODE and SLJIT; existing exclusive-backend positive-entry/no-inspection-fallback assertions passed",
+    "package_snapshot_chibi": "BYTECODE and SLJIT authored Build via existing compiler_fixture",
+    "record_publication": "BYTECODE and SLJIT preparation/publication with accepted owned-default lifetime oracle; no authored execution claimed"
+  },
+  "benchmark": {
+    "opt_in": "existing --package-math-benchmark selector; no enabling env flag",
+    "environment_overrides": {},
+    "loops": 128,
+    "invocations_per_trial": 16,
+    "trials_per_backend_body": 3,
+    "warmup": "one invocation before the timed trials for each body",
+    "preparation": [
+      {
+        "backend": "BYTECODE",
+        "milliseconds": 24.666,
+        "source_files": 6,
+        "invocation_includes": "reusable_storage_reset_and_binding",
+        "allocation_scope": "xalloc_wrappers_and_arena_blocks"
+      },
+      {
+        "backend": "SLJIT",
+        "milliseconds": 24.787,
+        "source_files": 6,
+        "invocation_includes": "reusable_storage_reset_and_binding",
+        "allocation_scope": "xalloc_wrappers_and_arena_blocks"
+      }
+    ],
+    "scope": "each timed invocation includes reusable storage reset and binding; xalloc wrapper calls/requested bytes and arena blocks measured; not all process allocations",
+    "footprints": "arena/activation/host/managed bytes sampled after timed trial, not added together as a total memory claim",
+    "trials": [
+      {
+        "backend": "BYTECODE",
+        "body": "ImportedLerp",
+        "trial": 0,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 632.324,
+        "us_per_invocation": 80.938,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 7600,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "ImportedLerp",
+        "trial": 1,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 646.973,
+        "us_per_invocation": 82.812,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 7600,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "ImportedLerp",
+        "trial": 2,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 594.238,
+        "us_per_invocation": 76.062,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 7600,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "InlineLerp",
+        "trial": 0,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 268.066,
+        "us_per_invocation": 34.312,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 2256,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "InlineLerp",
+        "trial": 1,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 263.672,
+        "us_per_invocation": 33.75,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 2256,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "InlineLerp",
+        "trial": 2,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 261.231,
+        "us_per_invocation": 33.438,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 2256,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringValue",
+        "trial": 0,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 13209.961,
+        "us_per_invocation": 1690.875,
+        "xalloc_calls": 2672,
+        "requested_bytes": 2522496,
+        "arena_blocks": 112,
+        "arena_used": 3734,
+        "arena_capacity": 4890,
+        "activation_bytes": 7376,
+        "host_bytes": 4416,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringValue",
+        "trial": 1,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 13330.078,
+        "us_per_invocation": 1706.25,
+        "xalloc_calls": 2672,
+        "requested_bytes": 2522496,
+        "arena_blocks": 112,
+        "arena_used": 3734,
+        "arena_capacity": 4890,
+        "activation_bytes": 7376,
+        "host_bytes": 4416,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringValue",
+        "trial": 2,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 14435.059,
+        "us_per_invocation": 1847.687,
+        "xalloc_calls": 2672,
+        "requested_bytes": 2522496,
+        "arena_blocks": 112,
+        "arena_used": 3734,
+        "arena_capacity": 4890,
+        "activation_bytes": 7376,
+        "host_bytes": 4416,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringFields",
+        "trial": 0,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 14046.875,
+        "us_per_invocation": 1798.0,
+        "xalloc_calls": 2672,
+        "requested_bytes": 2522496,
+        "arena_blocks": 112,
+        "arena_used": 2702,
+        "arena_capacity": 4890,
+        "activation_bytes": 6424,
+        "host_bytes": 4392,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringFields",
+        "trial": 1,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 13448.731,
+        "us_per_invocation": 1721.438,
+        "xalloc_calls": 2672,
+        "requested_bytes": 2522496,
+        "arena_blocks": 112,
+        "arena_used": 2702,
+        "arena_capacity": 4890,
+        "activation_bytes": 6424,
+        "host_bytes": 4392,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringFields",
+        "trial": 2,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 13929.687,
+        "us_per_invocation": 1783.0,
+        "xalloc_calls": 2672,
+        "requested_bytes": 2522496,
+        "arena_blocks": 112,
+        "arena_used": 2702,
+        "arena_capacity": 4890,
+        "activation_bytes": 6424,
+        "host_bytes": 4392,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "ImportedLerp",
+        "trial": 0,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 98.144,
+        "us_per_invocation": 12.562,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 4880,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "ImportedLerp",
+        "trial": 1,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 97.168,
+        "us_per_invocation": 12.438,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 4880,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "ImportedLerp",
+        "trial": 2,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 96.68,
+        "us_per_invocation": 12.375,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 4880,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "InlineLerp",
+        "trial": 0,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 5.371,
+        "us_per_invocation": 0.688,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 320,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "InlineLerp",
+        "trial": 1,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 5.371,
+        "us_per_invocation": 0.687,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 320,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "InlineLerp",
+        "trial": 2,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 5.371,
+        "us_per_invocation": 0.688,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 320,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringValue",
+        "trial": 0,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 3074.707,
+        "us_per_invocation": 393.562,
+        "xalloc_calls": 128,
+        "requested_bytes": 71040,
+        "arena_blocks": 16,
+        "arena_used": 3734,
+        "arena_capacity": 4890,
+        "activation_bytes": 63760,
+        "host_bytes": 4416,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringValue",
+        "trial": 1,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 3042.969,
+        "us_per_invocation": 389.5,
+        "xalloc_calls": 128,
+        "requested_bytes": 71040,
+        "arena_blocks": 16,
+        "arena_used": 3734,
+        "arena_capacity": 4890,
+        "activation_bytes": 63760,
+        "host_bytes": 4416,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringValue",
+        "trial": 2,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 3275.391,
+        "us_per_invocation": 419.25,
+        "xalloc_calls": 128,
+        "requested_bytes": 71040,
+        "arena_blocks": 16,
+        "arena_used": 3734,
+        "arena_capacity": 4890,
+        "activation_bytes": 63760,
+        "host_bytes": 4416,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringFields",
+        "trial": 0,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 3075.684,
+        "us_per_invocation": 393.688,
+        "xalloc_calls": 128,
+        "requested_bytes": 71040,
+        "arena_blocks": 16,
+        "arena_used": 2702,
+        "arena_capacity": 4890,
+        "activation_bytes": 63624,
+        "host_bytes": 4392,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringFields",
+        "trial": 1,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 3070.801,
+        "us_per_invocation": 393.063,
+        "xalloc_calls": 128,
+        "requested_bytes": 71040,
+        "arena_blocks": 16,
+        "arena_used": 2702,
+        "arena_capacity": 4890,
+        "activation_bytes": 63624,
+        "host_bytes": 4392,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringFields",
+        "trial": 2,
+        "loops": 128,
+        "invocations": 16,
+        "ns_per_step": 3105.469,
+        "us_per_invocation": 397.5,
+        "xalloc_calls": 128,
+        "requested_bytes": 71040,
+        "arena_blocks": 16,
+        "arena_used": 2702,
+        "arena_capacity": 4890,
+        "activation_bytes": 63624,
+        "host_bytes": 4392,
+        "managed_bytes": 0
+      }
+    ],
+    "median_by_backend_body": [
+      {
+        "backend": "BYTECODE",
+        "body": "ImportedLerp",
+        "median_ns_per_step": 632.324,
+        "median_us_per_invocation": 80.938,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 7600,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "InlineLerp",
+        "median_ns_per_step": 263.672,
+        "median_us_per_invocation": 33.75,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 2256,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringValue",
+        "median_ns_per_step": 13330.078,
+        "median_us_per_invocation": 1706.25,
+        "xalloc_calls": 2672,
+        "requested_bytes": 2522496,
+        "arena_blocks": 112,
+        "arena_used": 3734,
+        "arena_capacity": 4890,
+        "activation_bytes": 7376,
+        "host_bytes": 4416,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringFields",
+        "median_ns_per_step": 13929.687,
+        "median_us_per_invocation": 1783.0,
+        "xalloc_calls": 2672,
+        "requested_bytes": 2522496,
+        "arena_blocks": 112,
+        "arena_used": 2702,
+        "arena_capacity": 4890,
+        "activation_bytes": 6424,
+        "host_bytes": 4392,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "ImportedLerp",
+        "median_ns_per_step": 97.168,
+        "median_us_per_invocation": 12.438,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 4880,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "InlineLerp",
+        "median_ns_per_step": 5.371,
+        "median_us_per_invocation": 0.688,
+        "xalloc_calls": 0,
+        "requested_bytes": 0,
+        "arena_blocks": 0,
+        "arena_used": 0,
+        "arena_capacity": 0,
+        "activation_bytes": 320,
+        "host_bytes": 2552,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringValue",
+        "median_ns_per_step": 3074.707,
+        "median_us_per_invocation": 393.562,
+        "xalloc_calls": 128,
+        "requested_bytes": 71040,
+        "arena_blocks": 16,
+        "arena_used": 3734,
+        "arena_capacity": 4890,
+        "activation_bytes": 63760,
+        "host_bytes": 4416,
+        "managed_bytes": 0
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringFields",
+        "median_ns_per_step": 3075.684,
+        "median_us_per_invocation": 393.688,
+        "xalloc_calls": 128,
+        "requested_bytes": 71040,
+        "arena_blocks": 16,
+        "arena_used": 2702,
+        "arena_capacity": 4890,
+        "activation_bytes": 63624,
+        "host_bytes": 4392,
+        "managed_bytes": 0
+      }
+    ],
+    "allocation_counters_are_observations_not_approved_budget_or_expected_baseline": true,
+    "unverified_allocation_cause": true
+  },
+  "original_red_preserved": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/summary.json",
+  "original_red_classification": "pre308 historical8b normal asset route had33vs27inputs and directed cancellation; preserved without reclassifying it as a fresh new-runtime failure",
+  "pending": [
+    "Math PR791/SDK publication hold after795",
+    "coordinator-owned full normal Graph/reviewed matching artifact/installed SDK gates",
+    "new-runtime full bootstrap/self-build/asset producer not run here",
+    "pre308 Wasm/compiler proofs historical only; no fresh new-runtime Wasm claim"
+  ],
+  "commands": [
+    {
+      "name": "configure",
+      "command": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/native-math-308-language",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "--graphviz=/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/dependencies.dot"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793211714.018844,
+      "environment": {},
+      "wall_seconds": 5.369314040988684,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/configure.log",
+      "log_sha256": "f0b55f41ab2200ca895d2b40bec1803c3777874093f3f497c213e7c9993721f0",
+      "summaries": []
+    },
+    {
+      "name": "build-test-language",
+      "command": [
+        "cmake",
+        "--build",
+        ".chibi/integration/native-math-308-language",
+        "--target",
+        "test_language",
+        "--parallel",
+        "4",
+        "--verbose"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793211757.569053,
+      "environment": {},
+      "wall_seconds": 63.548787416890264,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/build-test-language.log",
+      "log_sha256": "045be8862e36c6bedf87c00813a09d345a4cfcf10a28973aa78971c373793dfc",
+      "summaries": []
+    },
+    {
+      "name": "package-math",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+        "--package-math"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793211865.233815,
+      "environment": {},
+      "wall_seconds": 1.114758415846154,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/package-math.log",
+      "log_sha256": "b6ec07a973e0f2ea8786c7fef34d06045224ddc33f260045a91a2691d96553a2",
+      "summaries": [
+        "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 4132",
+        "Test command wall time: 1.010s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "compiler-imports-bytecode",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+        "--package-compiler-chibi-imports"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793211914.152147,
+      "environment": {},
+      "wall_seconds": 32.34349029115401,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/compiler-imports-bytecode.log",
+      "log_sha256": "41ee4949136030197f5ed4f5722c9326d45d60c4f1d8e1b31a89dedb1ffff51e",
+      "summaries": [
+        "Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 17453",
+        "Test command wall time: 32.185s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "compiler-imports-sljit",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+        "--package-compiler-chibi-imports-compiled"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793211967.488288,
+      "environment": {},
+      "wall_seconds": 24.135277915978804,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/compiler-imports-sljit.log",
+      "log_sha256": "ab809c741dd4178dfb08b12d85071d222c5676ac4e8e545a76a0c5717b8f5b4e",
+      "summaries": [
+        "Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 17024",
+        "Test command wall time: 23.970s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-imports",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+        "--package-imports"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793212032.3063831,
+      "environment": {},
+      "wall_seconds": 0.5583202498964965,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/package-imports.log",
+      "log_sha256": "a7a61ba37a6611cf18c4bc2c28accf191db2deb2288f1ef9e5934d25313de6db",
+      "summaries": [
+        "Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 1530",
+        "Test command wall time: 0.403s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-snapshot-chibi",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+        "--package-snapshot-chibi"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793212036.619267,
+      "environment": {},
+      "wall_seconds": 0.38106654211878777,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/package-snapshot-chibi.log",
+      "log_sha256": "db2c0a43dcea8acb1732356efa593e7d2ee8f5680ed703c0c74590e57234bfc3",
+      "summaries": [
+        "Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 286093",
+        "Test command wall time: 0.317s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "record-publication",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+        "--record-publication"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793212043.3771038,
+      "environment": {},
+      "wall_seconds": 0.1764982920140028,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/record-publication.log",
+      "log_sha256": "f60a555b79f2ed9376defa08eead824eb9483a13daa7614ddeac8ae55becd786",
+      "summaries": [
+        "Summary: Passed: 7 Failed: 0 Total: 7 Suites: 0 Asserts: 230",
+        "Test command wall time: 0.121s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "native-calls",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+        "--native-calls"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793212050.728416,
+      "environment": {},
+      "wall_seconds": 0.2665127080399543,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/native-calls.log",
+      "log_sha256": "6483e42e3f6a1fe9dbf41d85fa6c5efc1259712cb446edc256bbf17c49ff93f7",
+      "summaries": [
+        "Summary: Passed: \u001b[1;32m7\u001b[0m Failed: \u001b[1;31m0\u001b[0m Total: 7 Suites: 1 Asserts: 758",
+        "Summary: Passed: \u001b[1;32m7\u001b[0m Failed: \u001b[1;31m0\u001b[0m Total: 7 Suites: 1 Asserts: 758",
+        "Test command wall time: 0.208s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-math-benchmark",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+        "--package-math-benchmark"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+      "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+      "snapshot_revision": "b87afaea2-dirty",
+      "started_unix": 1793212054.091315,
+      "environment": {},
+      "wall_seconds": 0.4702176251448691,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/package-math-benchmark.log",
+      "log_sha256": "6c5fdca7296d01c5b6cc5bb333c94620dfeb06c1c41388e53c910d0e810307d0",
+      "summaries": [
+        "Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 2021",
+        "Test command wall time: 0.408s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    }
+  ],
+  "red_results_this_route": [],
+  "scratch_retained_at_coordinator_request": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+    "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language",
+    "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence"
+  ],
+  "selected_source_sha256": {
+    "test/language/package_math.c": "11da76c495693d9f0018983f96bcb95c8a7b145a3f51e022a6eed3d361c6a138",
+    "test/language/native_calls.c": "b6974a81a8da35a9b7746d2baf97f7c11f82de80c8225e50abb45f9fd60fb690",
+    "test/language/package_compiler_chibi.c": "0cf124b9ce8ee904dd2ef56ef2847f6cf5dd96a942a8a3b8be748adfd1c2e32f",
+    "test/language/package_imports.c": "63bfb8f61eaef80fbc0ee45179567f5200146618f76855e81b8cc978a8b28f35",
+    "test/language/package_snapshot_chibi.c": "3fe3410523fabf67107b2295d6a951586ce07e03734992b61fba3d00fdf28029",
+    "test/language/record_publication.c": "c74dd85958c97c0aa23fbc8e219e96be910b8146640796d391b4b91de3deb637",
+    "test/language/main.c": "bc13d3f31cb57e57b73ca22f90cc3b68a342b604bb51c6d62002ad0571264e00",
+    "test/language/compiler_fixture.c": "67685b1785a3fd0077edc6934b4a43d981e15c5215aa6594be590818a00d4d05",
+    "test/language/backend.h": "b83f8e968605a439907cda3f3571036b0f35a47863e7a8dc0f9f94255bc4c917",
+    "src/toolchain/compiler_target.c": "266ed2bcc132c29c6e1a30f3f34445be36ba29fa113c902697b566b76081424c",
+    "src/toolchain/compiler_target.h": "d323ebaad3106802f95692b4a3194b5a63800252231bf974f74c48906ab12ffa",
+    "src/support/arena.h": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1",
+    "src/support/arena.c": "bacef774cc7ea9b038fbb8135086eefb7adb6f639a8a58044699a8800e741ab9",
+    "src/execution/function.h": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+    "src/execution/prepared.h": "02d219f2f7d637efdcb6abacd1e3b78c9e8eba1207463373295dfa5c445c4254",
+    "packages/core/math/MathTests.chibi": "1c9f59feda2c92a4de28c809a767e7930737937482c80a90a823fb396647b2f7",
+    "packages/core/math/Spring.chibi": "daf53c43e1a6a88ad42c1a0845d579472bd11503fbe2444fa233d7f7a3f20531",
+    "packages/core/math/Math.chibi": "afe0c72e8e10906688665b192a690905425988b200cb81ae4bd195a95ad1e249",
+    "packages/core/math/SpringTests.chibi": "a0b2a976dbdd7162de61764518b6a3d5df47291dfa558d636927965ff2ac4872",
+    "packages/core/math/ease/Ease.chibi": "7a79ea4d808bb49289e99cb59f7196c0b0469210b576bfd44620a2c700112680",
+    "packages/core/math/ease/EaseTests.chibi": "f2eb762274fa0303a52f86d968d80feee5b95eba2dc67507adc7022d870cec68"
+  },
+  "accepted_runtime": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "historical699_matched_math_and_benchmark_sources": {
+    "test/language/package_math.c": "11da76c495693d9f0018983f96bcb95c8a7b145a3f51e022a6eed3d361c6a138",
+    "packages/core/math/MathTests.chibi": "1c9f59feda2c92a4de28c809a767e7930737937482c80a90a823fb396647b2f7",
+    "packages/core/math/Spring.chibi": "daf53c43e1a6a88ad42c1a0845d579472bd11503fbe2444fa233d7f7a3f20531",
+    "packages/core/math/Math.chibi": "afe0c72e8e10906688665b192a690905425988b200cb81ae4bd195a95ad1e249",
+    "packages/core/math/SpringTests.chibi": "a0b2a976dbdd7162de61764518b6a3d5df47291dfa558d636927965ff2ac4872",
+    "packages/core/math/ease/Ease.chibi": "7a79ea4d808bb49289e99cb59f7196c0b0469210b576bfd44620a2c700112680",
+    "packages/core/math/ease/EaseTests.chibi": "f2eb762274fa0303a52f86d968d80feee5b95eba2dc67507adc7022d870cec68"
+  },
+  "pre308_proofs_are_historical_only": true,
+  "historical_benchmark_comparison": {
+    "prior_head": "6990373667fc211faf828035ab9d4bb051f085bd",
+    "prior_summary_sha256": "0ee1780a7370f7d7cbc9e99e445e70d2bb7220cdb5a2c800a52213c6b5e7956a",
+    "same_math_and_benchmark_code_verified": true,
+    "same128_16_3_settings_verified": true,
+    "comparison": [
+      {
+        "backend": "BYTECODE",
+        "body": "ImportedLerp",
+        "historical699": {
+          "backend": "BYTECODE",
+          "body": "ImportedLerp",
+          "median_ns_per_step": 599.121,
+          "median_us_per_invocation": 76.688,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "arena_used": 0,
+          "arena_capacity": 0,
+          "activation_bytes": 7808,
+          "host_bytes": 2552,
+          "managed_bytes": 0
+        },
+        "fresh_b87": {
+          "backend": "BYTECODE",
+          "body": "ImportedLerp",
+          "median_ns_per_step": 632.324,
+          "median_us_per_invocation": 80.938,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "arena_used": 0,
+          "arena_capacity": 0,
+          "activation_bytes": 7600,
+          "host_bytes": 2552,
+          "managed_bytes": 0
+        },
+        "differences": {
+          "median_ns_per_step": 33.202999999999975,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "activation_bytes": -208,
+          "host_bytes": 0,
+          "managed_bytes": 0
+        }
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "InlineLerp",
+        "historical699": {
+          "backend": "BYTECODE",
+          "body": "InlineLerp",
+          "median_ns_per_step": 254.883,
+          "median_us_per_invocation": 32.625,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "arena_used": 0,
+          "arena_capacity": 0,
+          "activation_bytes": 2256,
+          "host_bytes": 2552,
+          "managed_bytes": 0
+        },
+        "fresh_b87": {
+          "backend": "BYTECODE",
+          "body": "InlineLerp",
+          "median_ns_per_step": 263.672,
+          "median_us_per_invocation": 33.75,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "arena_used": 0,
+          "arena_capacity": 0,
+          "activation_bytes": 2256,
+          "host_bytes": 2552,
+          "managed_bytes": 0
+        },
+        "differences": {
+          "median_ns_per_step": 8.789000000000016,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "activation_bytes": 0,
+          "host_bytes": 0,
+          "managed_bytes": 0
+        }
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringValue",
+        "historical699": {
+          "backend": "BYTECODE",
+          "body": "SpringValue",
+          "median_ns_per_step": 13597.168,
+          "median_us_per_invocation": 1740.437,
+          "xalloc_calls": 23136,
+          "requested_bytes": 5474048,
+          "arena_blocks": 112,
+          "arena_used": 3734,
+          "arena_capacity": 4890,
+          "activation_bytes": 7480,
+          "host_bytes": 4416,
+          "managed_bytes": 0
+        },
+        "fresh_b87": {
+          "backend": "BYTECODE",
+          "body": "SpringValue",
+          "median_ns_per_step": 13330.078,
+          "median_us_per_invocation": 1706.25,
+          "xalloc_calls": 2672,
+          "requested_bytes": 2522496,
+          "arena_blocks": 112,
+          "arena_used": 3734,
+          "arena_capacity": 4890,
+          "activation_bytes": 7376,
+          "host_bytes": 4416,
+          "managed_bytes": 0
+        },
+        "differences": {
+          "median_ns_per_step": -267.09000000000015,
+          "xalloc_calls": -20464,
+          "requested_bytes": -2951552,
+          "arena_blocks": 0,
+          "activation_bytes": -104,
+          "host_bytes": 0,
+          "managed_bytes": 0
+        }
+      },
+      {
+        "backend": "BYTECODE",
+        "body": "SpringFields",
+        "historical699": {
+          "backend": "BYTECODE",
+          "body": "SpringFields",
+          "median_ns_per_step": 13954.59,
+          "median_us_per_invocation": 1786.188,
+          "xalloc_calls": 21088,
+          "requested_bytes": 5179136,
+          "arena_blocks": 112,
+          "arena_used": 2702,
+          "arena_capacity": 4890,
+          "activation_bytes": 6528,
+          "host_bytes": 4392,
+          "managed_bytes": 0
+        },
+        "fresh_b87": {
+          "backend": "BYTECODE",
+          "body": "SpringFields",
+          "median_ns_per_step": 13929.687,
+          "median_us_per_invocation": 1783.0,
+          "xalloc_calls": 2672,
+          "requested_bytes": 2522496,
+          "arena_blocks": 112,
+          "arena_used": 2702,
+          "arena_capacity": 4890,
+          "activation_bytes": 6424,
+          "host_bytes": 4392,
+          "managed_bytes": 0
+        },
+        "differences": {
+          "median_ns_per_step": -24.903000000000247,
+          "xalloc_calls": -18416,
+          "requested_bytes": -2656640,
+          "arena_blocks": 0,
+          "activation_bytes": -104,
+          "host_bytes": 0,
+          "managed_bytes": 0
+        }
+      },
+      {
+        "backend": "SLJIT",
+        "body": "ImportedLerp",
+        "historical699": {
+          "backend": "SLJIT",
+          "body": "ImportedLerp",
+          "median_ns_per_step": 103.027,
+          "median_us_per_invocation": 13.187,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "arena_used": 0,
+          "arena_capacity": 0,
+          "activation_bytes": 5088,
+          "host_bytes": 2552,
+          "managed_bytes": 0
+        },
+        "fresh_b87": {
+          "backend": "SLJIT",
+          "body": "ImportedLerp",
+          "median_ns_per_step": 97.168,
+          "median_us_per_invocation": 12.438,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "arena_used": 0,
+          "arena_capacity": 0,
+          "activation_bytes": 4880,
+          "host_bytes": 2552,
+          "managed_bytes": 0
+        },
+        "differences": {
+          "median_ns_per_step": -5.858999999999995,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "activation_bytes": -208,
+          "host_bytes": 0,
+          "managed_bytes": 0
+        }
+      },
+      {
+        "backend": "SLJIT",
+        "body": "InlineLerp",
+        "historical699": {
+          "backend": "SLJIT",
+          "body": "InlineLerp",
+          "median_ns_per_step": 5.371,
+          "median_us_per_invocation": 0.688,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "arena_used": 0,
+          "arena_capacity": 0,
+          "activation_bytes": 320,
+          "host_bytes": 2552,
+          "managed_bytes": 0
+        },
+        "fresh_b87": {
+          "backend": "SLJIT",
+          "body": "InlineLerp",
+          "median_ns_per_step": 5.371,
+          "median_us_per_invocation": 0.688,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "arena_used": 0,
+          "arena_capacity": 0,
+          "activation_bytes": 320,
+          "host_bytes": 2552,
+          "managed_bytes": 0
+        },
+        "differences": {
+          "median_ns_per_step": 0.0,
+          "xalloc_calls": 0,
+          "requested_bytes": 0,
+          "arena_blocks": 0,
+          "activation_bytes": 0,
+          "host_bytes": 0,
+          "managed_bytes": 0
+        }
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringValue",
+        "historical699": {
+          "backend": "SLJIT",
+          "body": "SpringValue",
+          "median_ns_per_step": 3454.101,
+          "median_us_per_invocation": 442.125,
+          "xalloc_calls": 20624,
+          "requested_bytes": 3024128,
+          "arena_blocks": 16,
+          "arena_used": 3734,
+          "arena_capacity": 4890,
+          "activation_bytes": 63768,
+          "host_bytes": 4416,
+          "managed_bytes": 0
+        },
+        "fresh_b87": {
+          "backend": "SLJIT",
+          "body": "SpringValue",
+          "median_ns_per_step": 3074.707,
+          "median_us_per_invocation": 393.562,
+          "xalloc_calls": 128,
+          "requested_bytes": 71040,
+          "arena_blocks": 16,
+          "arena_used": 3734,
+          "arena_capacity": 4890,
+          "activation_bytes": 63760,
+          "host_bytes": 4416,
+          "managed_bytes": 0
+        },
+        "differences": {
+          "median_ns_per_step": -379.39400000000023,
+          "xalloc_calls": -20496,
+          "requested_bytes": -2953088,
+          "arena_blocks": 0,
+          "activation_bytes": -8,
+          "host_bytes": 0,
+          "managed_bytes": 0
+        }
+      },
+      {
+        "backend": "SLJIT",
+        "body": "SpringFields",
+        "historical699": {
+          "backend": "SLJIT",
+          "body": "SpringFields",
+          "median_ns_per_step": 3421.387,
+          "median_us_per_invocation": 437.938,
+          "xalloc_calls": 18576,
+          "requested_bytes": 2729216,
+          "arena_blocks": 16,
+          "arena_used": 2702,
+          "arena_capacity": 4890,
+          "activation_bytes": 63632,
+          "host_bytes": 4392,
+          "managed_bytes": 0
+        },
+        "fresh_b87": {
+          "backend": "SLJIT",
+          "body": "SpringFields",
+          "median_ns_per_step": 3075.684,
+          "median_us_per_invocation": 393.688,
+          "xalloc_calls": 128,
+          "requested_bytes": 71040,
+          "arena_blocks": 16,
+          "arena_used": 2702,
+          "arena_capacity": 4890,
+          "activation_bytes": 63624,
+          "host_bytes": 4392,
+          "managed_bytes": 0
+        },
+        "differences": {
+          "median_ns_per_step": -345.703,
+          "xalloc_calls": -18448,
+          "requested_bytes": -2658176,
+          "arena_blocks": 0,
+          "activation_bytes": -8,
+          "host_bytes": 0,
+          "managed_bytes": 0
+        }
+      }
+    ],
+    "scope": "historical699 only; observed whole-runtime difference, no cause assigned to an individual797 change; not an approved budget or expected baseline"
+  },
+  "accepted_runtime_tree": "4c916c9c6ecc29c3d6babb3f86d49961d3651d7e"
+}

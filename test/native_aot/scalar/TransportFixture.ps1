@@ -2,6 +2,12 @@
 # prepends the actual Run.ps1 helpers and supplies a copy of its corpus loop.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$fixtureTimer = [Diagnostics.Stopwatch]::StartNew()
+function Trace-Transport([string]$phase) {
+    [Console]::Error.WriteLine(('scalar-transport phase={0} elapsed={1:F6}' -f $phase, $fixtureTimer.Elapsed.TotalSeconds))
+}
+Trace-Transport 'fixture-enter'
+[Console]::Error.WriteLine(('scalar-transport runtime pwsh={0} dotnet={1} cpus={2}' -f $PSVersionTable.PSVersion, [Runtime.InteropServices.RuntimeInformation]::FrameworkDescription, [Environment]::ProcessorCount))
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $output = $args[0]
 $evidence = [ordered]@{ batch_members = @(); cases = @() }
@@ -9,13 +15,18 @@ $source = Join-Path $output 'transport.json'
 $text = ' [ [ {"text":"☃\\n\\\"[]","value":18446744073709551615} ], [true,1e-30], [] ] '
 [IO.File]::WriteAllText($source, $text, $utf8)
 $result = [pscustomobject]@{ Name = 'fixture'; Exit = 0; Stdout = $source; Stderr = '' }
+Trace-Transport 'split-start'
 $parts = @(Split-Batch $result 'member' 3)
+Trace-Transport 'split-done'
 Write-Batch (Join-Path $output 'joined.json') @($parts | ForEach-Object { $_.Stdout })
+Trace-Transport 'join-done'
 $evidence.batch_members | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $output 'members.json') -Encoding utf8
+Trace-Transport 'evidence-done'
 $singleton = Join-Path $output 'singleton.json'
 Write-Batch $singleton @($parts[0].Stdout)
 $singleResult = [pscustomobject]@{ Name = 'singleton'; Exit = 0; Stdout = $singleton; Stderr = '' }
 $single = @(Split-Batch $singleResult 'single' 1)
+Trace-Transport 'singleton-done'
 Write-Host ("singleton=" + $single.Count)
 Write-Host ("singleton-identical=" + ((Digest $single[0].Stdout) -eq (Digest $parts[0].Stdout)))
 foreach ($count in @(0, 2, 9)) {
@@ -37,6 +48,7 @@ catch { Write-Host 'utf8 rejected' }
 $failure = [pscustomobject]@{ Name = '16-sljit-produce-batch'; Exit = 1; Stdout = $source; Stderr = 'compiler batch item 2: compiler argument count mismatch' }
 try { $null = Split-Batch $failure 'bad' 3; Write-Host 'host accepted' }
 catch { Write-Host $_.Exception.Message }
+Trace-Transport 'invalid-done'
 
 # A large selected count must not hide even one other-backend/fallback entry.
 foreach ($backend in @('bytecode', 'sljit')) {
@@ -52,6 +64,7 @@ foreach ($backend in @('bytecode', 'sljit')) {
         catch { Write-Host "$backend counters rejected" }
     }
 }
+Trace-Transport 'counters-done'
 
 # Simulate two negative authored results in different backend batches. The
 # transport must report the first in original case/producer/consumer order,
@@ -96,8 +109,10 @@ for ($i = 0; $i -lt 9; $i++) { $sources.Add((String-Node "source-$i")) }
 $manifest = [System.Text.Json.Nodes.JsonNode]::Parse('{"target":[0,0,0,0,0,0]}')
 $compiler = 'compiler'
 $regression = 'regression'
+Trace-Transport 'corpus-start'
 try { . (Join-Path $output 'loop.ps1'); Write-Host 'classification accepted' }
 catch { Write-Host $_.Exception.Message }
+Trace-Transport 'corpus-done'
 Write-Host ("published=" + ($published -join ','))
 Write-Host ("crossings=" + $evidence.cases.Count)
 Write-Host ("next-batch=" + (Test-Path -LiteralPath (Join-Path $output 'batch-8.json')))

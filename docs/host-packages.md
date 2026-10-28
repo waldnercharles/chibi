@@ -24,6 +24,10 @@ package's private source spelling. No prepared-format change is introduced.
 This foundation uses source-backed wrappers; native-only package declarations
 and migration of the build catalog remain separate work.
 
+Private host-kernel resolution is recorded as bootstrap version 8. The minimum
+remains 2 because the compiler sources do not call host packages. The matching
+reviewed compiler artifact changes; the prepared ABI and runtime pin do not.
+
 A `host:` package without a selected kernel rejects before execution with
 `Host package is unavailable for this target`. Registering a package makes it
 compilable. It does not grant its service or create an OS sandbox.

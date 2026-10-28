@@ -6,5 +6,5 @@
 // bootstrap/ holds the artifact that recovers the compiler from a clean
 // checkout. Rewrite it with make bootstrap-artifact when minimum rises or the
 // host's target changes; see docs/self-hosting-build.md.
-version 7
+version 8
 minimum 2

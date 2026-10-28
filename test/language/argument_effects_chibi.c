@@ -154,7 +154,21 @@ TEST_CASE(package_argument_effects_match_across_compilers)
           "pub MapView :: (values: [int: Window]) -> int { return "
           "IgnoreMap(values); }\n"
           "pub Dereference :: () -> int { value: int = 1; pointer := &value; "
-          "return pointer^; }\n",
+          "return pointer^; }\n"
+          "Counter :: struct { value: int; }\n"
+          "pub StoreInt :: (pointer: ^int) { pointer^ = 2; }\n"
+          "pub StoreRecord :: (pointer: ^Counter) { pointer^ = {value: 2}; }\n"
+          "pub CallWriteInt :: (pointer: ^int) { StoreInt(pointer); }\n"
+          "pub CallWriteRecord :: (pointer: ^Counter) { StoreRecord(pointer); "
+          "}\n"
+          "pub OwnWriteInt :: () -> int { value: int = 1; StoreInt(&value); "
+          "return value; }\n"
+          "pub OwnWriteRecord :: () -> int { value: Counter = {value: 1}; "
+          "StoreRecord(&value); return value.value; }\n"
+          "pub LocalBox :: () -> int { value: int = 1; before := "
+          "ScopedRead(&value); value = 2; return before + value; }\n"
+          "pub CallRead :: (pointer: ^int) -> int { return "
+          "ScopedRead(pointer); }\n",
           0 },
         { "helper/Helper.chibi", "package helper\npub Has :: (values: int[]) -> bool { value: int = 2; return contains(values, value); }\n", 0 },
     };
@@ -162,24 +176,35 @@ TEST_CASE(package_argument_effects_match_across_compilers)
         sources[i].size = strlen(sources[i].text);
     }
     REQUIRE(compiler_fixture_prepare(&oracle, sources, 2));
-    const char *names[] = { "Owned",      "Imported",     "View",
-                            "ViewMethod", "ViewSlice",    "Deep",
-                            "Identity",   "Dereference",  "ScopedRead",
-                            "ViewIndex",  "OptionalView", "MapView",
-                            "StoreView" };
-    const unsigned expected[] = { 0,
-                                  0,
-                                  SCRIPT_EFFECT_READ,
-                                  SCRIPT_EFFECT_READ,
-                                  SCRIPT_EFFECT_READ,
-                                  SCRIPT_EFFECT_READ,
-                                  0,
-                                  SCRIPT_EFFECT_READ,
-                                  0,
-                                  SCRIPT_EFFECT_READ,
-                                  SCRIPT_EFFECT_READ,
-                                  SCRIPT_EFFECT_READ,
-                                  0 };
+    const struct
+    {
+        const char *name;
+        unsigned effects;
+        bool parallel;
+    } cases[] = {
+        { "Owned", 0, true },
+        { "Imported", 0, true },
+        { "View", SCRIPT_EFFECT_READ, false },
+        { "ViewMethod", SCRIPT_EFFECT_READ, false },
+        { "ViewSlice", SCRIPT_EFFECT_READ, false },
+        { "Deep", SCRIPT_EFFECT_READ, false },
+        { "Identity", 0, true },
+        { "Dereference", SCRIPT_EFFECT_READ, false },
+        { "ScopedRead", 0, true },
+        { "ViewIndex", SCRIPT_EFFECT_READ, false },
+        { "OptionalView", SCRIPT_EFFECT_READ, false },
+        { "MapView", SCRIPT_EFFECT_READ, false },
+        { "StoreView", 0, true },
+        { "StoreInt", SCRIPT_EFFECT_WRITE, false },
+        { "StoreRecord", SCRIPT_EFFECT_WRITE, false },
+        { "CallWriteInt", SCRIPT_EFFECT_WRITE, false },
+        { "CallWriteRecord", SCRIPT_EFFECT_WRITE, false },
+        /* A scoped write retains its callee's WRITE even for an owned local. */
+        { "OwnWriteInt", SCRIPT_EFFECT_WRITE, false },
+        { "OwnWriteRecord", SCRIPT_EFFECT_WRITE, false },
+        { "LocalBox", 0, true },
+        { "CallRead", 0, true },
+    };
     const char *paths[] = { sources[0].path, sources[1].path };
     const char *source_text[] = { sources[0].text, sources[1].text };
     const char *collection_names[] = { "core" },
@@ -285,38 +310,42 @@ TEST_CASE(package_argument_effects_match_across_compilers)
             REQUIRE(module);
             const authoring_package *reference = compiler_fixture_package(&oracle, backend, "project:facts");
             REQUIRE(reference);
-            for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
-                execution_module_function_info actual = function(module, names[i]);
-                execution_module_function_info original = function(reference->module, names[i]);
+            for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+                execution_module_function_info
+                    actual = function(module, cases[i].name);
+                execution_module_function_info
+                    original = function(reference->module, cases[i].name);
                 REQUIRE(actual.body && original.body);
                 const script_function *source_function = NULL;
                 for (int f = 0; f < reference->analysis->function_count; f++) {
                     const script_function *candidate = &reference->analysis->functions[f];
-                    if (!strcmp(reference->analysis->symbols[candidate->symbol].name, names[i])) {
+                    if (!strcmp(
+                            reference->analysis->symbols[candidate->symbol].name,
+                            cases[i].name
+                        )) {
                         source_function = candidate;
                     }
                 }
                 REQUIRE(source_function);
                 bool parallel = source_function->pure && !actual.effects &&
                                 behavior_function_hosts_pure(actual.body);
-                bool expected_parallel = i == 0 || i == 1 || i == 6 || i == 8 ||
-                                         i == 12;
-                if (actual.effects != expected[i] ||
-                    original.effects != expected[i] || parallel != expected_parallel) {
+                if (actual.effects != cases[i].effects ||
+                    original.effects != cases[i].effects ||
+                    parallel != cases[i].parallel) {
                     fprintf(
                         stderr,
                         "argument-effects %s compiler=%d target=%d source=%u "
                         "pure=%d stage-one=%u expected=%u parallel=%d "
                         "expected_parallel=%d\n",
-                        names[i],
+                        cases[i].name,
                         b,
                         backend,
                         original.effects,
                         source_function->pure,
                         actual.effects,
-                        expected[i],
+                        cases[i].effects,
                         parallel,
-                        expected_parallel
+                        cases[i].parallel
                     );
                     correct = false;
                 }

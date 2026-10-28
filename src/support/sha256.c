@@ -18,36 +18,46 @@ static const uint32_t ROUND[64] = {
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 };
 
-static uint32_t rotate(uint32_t value, int bits)
-{
-    return value >> bits | value << (32 - bits);
-}
+/* Every rotation uses a uint32_t local and a fixed count from 1 through 31. */
+#define ROTATE(value, bits) (((value) >> (bits)) | ((value) << (32 - (bits))))
 
 static void compress(uint32_t state[8], const unsigned char *block)
 {
-    uint32_t w[64], s[8];
+    uint32_t w[64];
     for (int i = 0; i < 16; i++) {
         w[i] = (uint32_t)block[4 * i] << 24 | (uint32_t)block[4 * i + 1] << 16 |
                (uint32_t)block[4 * i + 2] << 8 | block[4 * i + 3];
     }
     for (int i = 16; i < 64; i++) {
-        uint32_t s0 = rotate(w[i - 15], 7) ^ rotate(w[i - 15], 18) ^ w[i - 15] >> 3;
-        uint32_t s1 = rotate(w[i - 2], 17) ^ rotate(w[i - 2], 19) ^ w[i - 2] >> 10;
+        uint32_t x = w[i - 15], y = w[i - 2];
+        uint32_t s0 = ROTATE(x, 7) ^ ROTATE(x, 18) ^ x >> 3;
+        uint32_t s1 = ROTATE(y, 17) ^ ROTATE(y, 19) ^ y >> 10;
         w[i] = w[i - 16] + s0 + w[i - 7] + s1;
     }
-    memcpy(s, state, sizeof s);
+    uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
+    uint32_t e = state[4], f = state[5], g = state[6], h = state[7];
     for (int i = 0; i < 64; i++) {
-        uint32_t t1 = s[7] + (rotate(s[4], 6) ^ rotate(s[4], 11) ^ rotate(s[4], 25)) +
-                      ((s[4] & s[5]) ^ (~s[4] & s[6])) + ROUND[i] + w[i];
-        uint32_t t2 = (rotate(s[0], 2) ^ rotate(s[0], 13) ^ rotate(s[0], 22)) +
-                      ((s[0] & s[1]) ^ (s[0] & s[2]) ^ (s[1] & s[2]));
-        memmove(s + 1, s, 7 * sizeof *s);
-        s[4] += t1;
-        s[0] = t1 + t2;
+        uint32_t t1 = h + (ROTATE(e, 6) ^ ROTATE(e, 11) ^ ROTATE(e, 25)) +
+                      ((e & f) ^ (~e & g)) + ROUND[i] + w[i];
+        uint32_t t2 = (ROTATE(a, 2) ^ ROTATE(a, 13) ^ ROTATE(a, 22)) +
+                      ((a & b) ^ (a & c) ^ (b & c));
+        h = g;
+        g = f;
+        f = e;
+        e = d + t1;
+        d = c;
+        c = b;
+        b = a;
+        a = t1 + t2;
     }
-    for (int i = 0; i < 8; i++) {
-        state[i] += s[i];
-    }
+    state[0] += a;
+    state[1] += b;
+    state[2] += c;
+    state[3] += d;
+    state[4] += e;
+    state[5] += f;
+    state[6] += g;
+    state[7] += h;
 }
 
 void sha256_begin(sha256 *hash)

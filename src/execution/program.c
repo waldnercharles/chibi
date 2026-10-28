@@ -20,6 +20,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/union.h"
@@ -469,12 +470,7 @@ static execution_program *program_new(
                 return NULL;
             }
             child->owner_program = p;
-            behavior_managed_heap *tail = p->managed;
-            while (tail->previous) {
-                tail = tail->previous;
-            }
-            tail->previous = child->managed;
-            child->managed->owner = p->managed;
+            behavior_managed_heap_adopt(p->managed, child->managed);
             child->managed = NULL;
             apush(p->imports, child);
         }
@@ -2761,33 +2757,135 @@ int execution_program_bindings(execution_program *p, double now, double delta, u
     program_collect_states(p);
     return status;
 }
-static int matching_state(const execution_module *before, const execution_module_state *state)
+/* Index of before's state with state's id, or -1 for a new state. */
+static int prior_state(const execution_module *before, const execution_module_state *state)
 {
     for (int i = 0; i < before->plan.state_count; i++) {
-        const execution_module_state *old = &before->plan.states[i];
-        if (old->id == state->id && old->shared == state->shared &&
-            program_same_type(old->initial, state->initial)) {
+        if (before->plan.states[i].id == state->id) {
             return i;
         }
     }
     return -1;
 }
-static void preserve_shared(execution_program *next, const execution_program *before)
+static bool same_state(const execution_module_state *a, const execution_module_state *b)
+{
+    return a->shared == b->shared && program_same_type(a->initial, b->initial);
+}
+static bool record_current(const execution_module *module, const pin_record *record)
+{
+    for (int i = 0; i < module->plan.type_count; i++) {
+        const execution_type_requirement *type = &module->plan.types[i];
+        if (type->id == record->id) {
+            return pin_record_same(type->record, record);
+        }
+    }
+    return false;
+}
+typedef struct
+{
+    pin_value value;
+    bool pointee;
+} layout_value;
+/* Records already found current and cells already visited, shared by every
+ * value of one scope. */
+typedef struct
+{
+    const execution_module *module;
+    layout_value *pending;
+    const pin_record **current;
+    program_pointer_set cells;
+} layout_check;
+/* Whether every authored record that value reaches through a managed pointer
+ * has the layout module declares. A kept cell keeps the layout it was made
+ * with, so a replacement keeping state that reaches an older one is refused. */
+static bool pointees_current(layout_check *c, pin_value value)
+{
+    apush(c->pending, ((layout_value){ value, false }));
+    while (acount(c->pending)) {
+        layout_value item = apop(c->pending);
+        pin_value v = item.value;
+        const pin_array *array = v.container != PIN_CONTAINER_SINGLE &&
+                                         v.container != PIN_CONTAINER_MAP
+                                   ? v.ptr
+                                   : NULL;
+        const pin_record *record = array ? array->record : v.record;
+        if (item.pointee && record) {
+            bool known = false;
+            for (int i = 0; i < acount(c->current) && !known; i++) {
+                known = c->current[i] == record;
+            }
+            if (!known && !record_current(c->module, record)) {
+                return false;
+            }
+            if (!known) {
+                apush(c->current, record);
+            }
+        }
+        if (v.container == PIN_CONTAINER_MAP) {
+            const pin_map *map = v.ptr;
+            for (int i = 0; map && i < map->count; i++) {
+                apush(c->pending, ((layout_value){ map->entries[i].key, item.pointee }));
+                apush(c->pending, ((layout_value){ map->entries[i].value, item.pointee }));
+            }
+        } else if (v.container != PIN_CONTAINER_SINGLE) {
+            /* Packed scalar items reach nothing; boxed items may be nested
+             * containers. */
+            bool reaches = array && (!array->stride || array->element_type == PIN_STRUCT ||
+                                     array->element_type == PIN_UNION ||
+                                     array->element_type == PIN_POINTER);
+            for (int i = 0; reaches && i < array->count; i++) {
+                apush(c->pending, ((layout_value){ pin_array_get(array, i), item.pointee }));
+            }
+        } else if (v.type == PIN_POINTER && v.ptr) {
+            const pin_pointer *cell = v.ptr;
+            while (cell->base) {
+                cell = cell->base;
+            }
+            if (program_pointer_first_visit(&c->cells, cell)) {
+                apush(c->pending, ((layout_value){ cell->value, true }));
+            }
+        } else if (v.type == PIN_UNION && v.ptr) {
+            const pin_union *sum = v.ptr;
+            for (int i = 0; i < sum->count; i++) {
+                apush(c->pending, ((layout_value){ sum->values[i], item.pointee }));
+            }
+        } else if (v.type == PIN_STRUCT && v.ptr) {
+            const type_desc *layout = pin_value_type(&v);
+            for (int i = 0; layout && i < layout->field_count; i++) {
+                const type_field *field = &layout->fields[i];
+                pin_value member;
+                if ((field->type == PIN_STRUCT || field->type == PIN_POINTER ||
+                     field->type == PIN_UNION) &&
+                    !pin_read_field(NULL, v.ptr, field, &member)) {
+                    apush(c->pending, ((layout_value){ member, item.pointee }));
+                }
+            }
+        }
+    }
+    return true;
+}
+/* Rejects a replacement that would drop a kept value: the old program keeps
+ * running, and a restart applies the change. A shared value always exists;
+ * preserve_state checks instance values per row. */
+static int preserve_shared(execution_program *next, const execution_program *before)
 {
     for (int i = 0; i < next->module->plan.state_count; i++) {
         const execution_module_state *state = &next->module->plan.states[i];
-        if (!registration_state(next, i)) {
+        int old = prior_state(before->module, state);
+        if (old < 0 || !registration_state(before, old)) {
             continue;
         }
-        int old = matching_state(before->module, state);
-        if (old >= 0 && registration_state(before, old)) {
-            int status = state_assign(&next->shared[i], &before->shared[old].value);
-            assert(!status);
-            (void)status;
+        if (!registration_state(next, i) ||
+            !same_state(&before->module->plan.states[old], state)) {
+            return FLOW_ERR_ARGUMENT;
         }
+        int status = state_assign(&next->shared[i], &before->shared[old].value);
+        assert(!status);
+        (void)status;
     }
+    return FLOW_OK;
 }
-static void preserve_state(
+static int preserve_state(
     execution_program *next,
     const execution_program *before,
     uint64_t owner,
@@ -2798,7 +2896,7 @@ static void preserve_state(
     execution_instance *instance = program_instance_row(next, owner, variables);
     assert(instance);
     if (!old) {
-        return;
+        return FLOW_OK;
     }
     instance->time = old->time;
     for (int i = 0; i < next->module->plan.action_count; i++) {
@@ -2824,10 +2922,13 @@ static void preserve_state(
     }
     for (int i = 0; i < next->module->plan.state_count; i++) {
         const execution_module_state *state = &next->module->plan.states[i];
-        int index = matching_state(before->module, state);
-        if (registration_state(next, i) || index < 0 ||
-            registration_state(before, index)) {
+        int index = prior_state(before->module, state);
+        if (index < 0 || registration_state(before, index)) {
             continue;
+        }
+        if (registration_state(next, i) ||
+            !same_state(&before->module->plan.states[index], state)) {
+            return FLOW_ERR_ARGUMENT;
         }
         /* A staged candidate deliberately retains the original family's
          * identities; its stable root snapshots pin them until adoption. */
@@ -2839,6 +2940,44 @@ static void preserve_state(
         (void)status;
         sync_state(instance);
     }
+    return FLOW_OK;
+}
+/* Whether every value a candidate scope keeps reaches only current record
+ * layouts. Kept cells are shared with the running program, which may change
+ * them until commit. */
+static bool scope_current(const execution_program *scope)
+{
+    const execution_module *module = scope->module;
+    layout_check c = { .module = module };
+    bool current = true;
+    for (int i = 0; current && i < module->plan.state_count; i++) {
+        current = pointees_current(&c, scope->shared[i].value);
+    }
+    for (int i = 0; current && i < acount(scope->instances); i++) {
+        const execution_instance *instance = scope->instances[i];
+        for (int j = 0; current && j < module->plan.state_count; j++) {
+            current = pointees_current(&c, instance->states[j].value);
+        }
+        for (int j = 0; current && j < acount(instance->node_states); j++) {
+            current = pointees_current(&c, instance->node_states[j]);
+        }
+    }
+    afree(c.pending);
+    afree(c.current);
+    free(c.cells.slots);
+    return current;
+}
+static bool candidate_current(const execution_program *candidate)
+{
+    if (!scope_current(candidate)) {
+        return false;
+    }
+    for (int i = 0; i < acount(candidate->imports); i++) {
+        if (!scope_current(candidate->imports[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 static bool query_shape_equal(const execution_module *a, const execution_module *b)
 {
@@ -3005,20 +3144,18 @@ execution_program *execution_program_prepare_replace_services(
     }
     execution_program_set_name(next, p->name);
     next->enabled = p->enabled;
-    if (!restart) {
-        preserve_shared(next, p);
-        for (int n = 0; n < acount(next->imports); n++) {
-            for (int o = 0; o < acount(p->imports); o++) {
-                const execution_module *old = p->imports[o]->module;
-                const execution_module *now = next->imports[n]->module;
-                if (old == now || (now->plan.id && now->plan.id == old->plan.id)) {
-                    preserve_shared(next->imports[n], p->imports[o]);
-                    break;
-                }
+    int status = restart ? FLOW_OK : preserve_shared(next, p);
+    for (int n = 0; !restart && !status && n < acount(next->imports); n++) {
+        for (int o = 0; o < acount(p->imports); o++) {
+            const execution_module *old = p->imports[o]->module;
+            const execution_module *now = next->imports[n]->module;
+            if (old == now || (now->plan.id && now->plan.id == old->plan.id)) {
+                status = preserve_shared(next->imports[n], p->imports[o]);
+                break;
             }
         }
     }
-    for (int i = 0; i < acount(p->instances); i++) {
+    for (int i = 0; !status && i < acount(p->instances); i++) {
         execution_instance *before = p->instances[i];
         if (before->query_managed && !query_shape_equal(module, p->module)) {
             continue;
@@ -3029,16 +3166,16 @@ execution_program *execution_program_prepare_replace_services(
         if (restart) {
             continue;
         }
-        preserve_state(next, p, before->owner, before->query_variables);
+        status = preserve_state(next, p, before->owner, before->query_variables);
         preserve_changes(after, before);
-        for (int n = 0; n < acount(next->imports); n++) {
+        for (int n = 0; !status && n < acount(next->imports); n++) {
             for (int o = 0; o < acount(p->imports); o++) {
                 const execution_module *old = p->imports[o]->module;
                 const execution_module *now = next->imports[n]->module;
                 if (old != now && (!now->plan.id || now->plan.id != old->plan.id)) {
                     continue;
                 }
-                preserve_state(
+                status = preserve_state(
                     next->imports[n],
                     p->imports[o],
                     before->owner,
@@ -3047,6 +3184,10 @@ execution_program *execution_program_prepare_replace_services(
                 break;
             }
         }
+    }
+    if (status || !candidate_current(next)) {
+        execution_program_free(next);
+        return NULL;
     }
     next->replacement_of = p;
     next->replacement_module = p->module;
@@ -3065,7 +3206,7 @@ execution_program *execution_program_prepare_replace_services(
     }
     return next;
 }
-void execution_program_commit_replace(execution_program *p, execution_program *next)
+int execution_program_commit_replace(execution_program *p, execution_program *next)
 {
     assert(
         p && next && !p->dispatching && !p->running &&
@@ -3073,16 +3214,18 @@ void execution_program_commit_replace(execution_program *p, execution_program *n
         !next->running && !next->system_prepared
     );
     assert(next->replacement_of == p && next->replacement_module == p->module);
+    if (!candidate_current(next)) {
+        execution_program_free(next);
+        return FLOW_ERR_STATE;
+    }
     execution_program_cancel_system(p);
     replacement_unroot(next);
     next->replacement_of = NULL;
     next->replacement_module = NULL;
-    behavior_managed_heap *tail = next->managed;
-    while (tail->previous) {
-        tail = tail->previous;
-    }
-    tail->previous = p->managed;
-    p->managed->owner = next->managed;
+    /* The family keeps its head, so the program's heap handle stays valid. */
+    behavior_managed_heap *heap = p->managed;
+    behavior_managed_heap_adopt(heap, next->managed);
+    next->managed = heap;
     p->managed = NULL;
     execution_program old = *p;
     *p = *next;
@@ -3110,6 +3253,8 @@ void execution_program_commit_replace(execution_program *p, execution_program *n
         next->instances[i]->program = next;
     }
     execution_program_free(next);
+    behavior_managed_heap_release_empty(heap);
+    return FLOW_OK;
 }
 int execution_program_replace(execution_program *p, execution_module *module, bool restart)
 {
@@ -3117,8 +3262,7 @@ int execution_program_replace(execution_program *p, execution_module *module, bo
     if (!next) {
         return FLOW_ERR_COMPILE;
     }
-    execution_program_commit_replace(p, next);
-    return FLOW_OK;
+    return execution_program_commit_replace(p, next);
 }
 
 static bool services_busy(const execution_program *p)

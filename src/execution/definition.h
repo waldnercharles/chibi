@@ -148,6 +148,10 @@ struct behavior_function
      * binds the execution world. */
     bool binds_world;
     behavior_argument_sharing argument_sharing;
+    /* Arguments a task started on this definition depends on, one bit per
+     * argument (the last bit stands for the rest); derived like sharing. */
+    uint64_t task_dependencies;
+    bool task_dependencies_ready;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;

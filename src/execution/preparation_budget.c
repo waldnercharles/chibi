@@ -27,6 +27,15 @@ static size_t bank(size_t n, size_t width)
     }
     return sum(sizeof(dyna_hdr), product(n < 16 ? 16 : n * 2, width));
 }
+/* A vector sized once to at most `n` elements keeps that capacity, from the
+ * same minimum of 16. */
+static size_t sized(size_t n, size_t width)
+{
+    if (n > INT_MAX) {
+        return SIZE_MAX;
+    }
+    return sum(sizeof(dyna_hdr), product(n < 16 ? 16 : n, width));
+}
 behavior_function_preparation behavior_function_preparation_bytes(const behavior_function *f)
 {
     const behavior_function_preparation unsupported = { SIZE_MAX, SIZE_MAX };
@@ -77,9 +86,10 @@ behavior_function_preparation behavior_function_preparation_bytes(const behavior
     if (execution_integer_reports_enabled() && !f->integer_reports) {
         retained = sum(retained, behavior_integer_report_bytes(acount(f->sources)));
     }
-    /* Runtime read reuse owns a canonical-PC body, a compact body and map. */
-    retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
-    retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
+    /* Runtime read reuse owns a canonical-PC body, a compact body and map,
+     * each sized once from the instruction count. */
+    retained = sum(retained, sized(count, sizeof(behavior_function_instruction)));
+    retained = sum(retained, sized(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, product(count + 1, sizeof(int)));
     retained = sum(retained, bank(reads, sizeof(uint64_t)));
     retained = sum(retained, bank(writes, sizeof(uint64_t)));

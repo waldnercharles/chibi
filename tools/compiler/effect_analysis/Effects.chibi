@@ -21,6 +21,7 @@ pub Expression :: struct {
     write_slot: int;
     task: bool;
     range: int;
+    storage: int;
 }
 pub Statement :: struct {
     kind: int;
@@ -51,14 +52,29 @@ pub Symbol :: struct {
     nominal_slot: int;
     range: int;
     flags: int;
+    query_description: int;
+    component_slot: int;
+    storage: int;
+    mutations: int;
 }
 pub Scope :: struct {
     function: int;
 }
 pub Query :: struct {
+    description: int;
     kind: int;
     value: int;
     component_slot: int;
+    range: int;
+}
+pub Description :: struct {
+    system: bool;
+    stage_start: int;
+    stage_count: int;
+}
+pub Stage :: struct {
+    symbol: int;
+    expression: int;
     range: int;
 }
 pub Binding :: struct {
@@ -90,7 +106,7 @@ pub Range :: struct {
     document: int;
 }
 pub Environment :: union {
-    Tables(expressions: Expression[], arguments: int[], statements: Statement[], children: int[], functions: Function[], symbols: Symbol[], scopes: Scope[], queries: Query[], bindings: Binding[], reads: u64[], writes: u64[], capabilities: Capability[], catalog_types: CatalogType[], ids: u64[], ranges: Range[])
+    Tables(expressions: Expression[], arguments: int[], statements: Statement[], children: int[], functions: Function[], symbols: Symbol[], scopes: Scope[], queries: Query[], bindings: Binding[], reads: u64[], writes: u64[], capabilities: Capability[], catalog_types: CatalogType[], ids: u64[], ranges: Range[], descriptions: Description[], stages: Stage[])
 }
 pub Analysis :: union {
     Completed(expression_effects: int[], statement_effects: int[], function_effects: int[], diagnostics: syntax.Diagnostic[])
@@ -107,92 +123,105 @@ Reduction :: union {
 
 Expressions :: (environment: Environment) -> Expression[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return expressions;
     }
 }
 Arguments :: (environment: Environment) -> int[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return arguments;
     }
 }
 Statements :: (environment: Environment) -> Statement[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return statements;
     }
 }
 Children :: (environment: Environment) -> int[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return children;
     }
 }
 Functions :: (environment: Environment) -> Function[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return functions;
     }
 }
 Symbols :: (environment: Environment) -> Symbol[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return symbols;
     }
 }
 Scopes :: (environment: Environment) -> Scope[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return scopes;
     }
 }
 Queries :: (environment: Environment) -> Query[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return queries;
     }
 }
 Bindings :: (environment: Environment) -> Binding[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return bindings;
     }
 }
 Reads :: (environment: Environment) -> u64[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return reads;
     }
 }
 Writes :: (environment: Environment) -> u64[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return writes;
     }
 }
 Capabilities :: (environment: Environment) -> Capability[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return capabilities;
     }
 }
 CatalogTypes :: (environment: Environment) -> CatalogType[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return catalog_types;
     }
 }
 Ids :: (environment: Environment) -> u64[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return ids;
     }
 }
 Ranges :: (environment: Environment) -> Range[] {
     switch environment {
-        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges):
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
             return ranges;
+    }
+}
+
+Descriptions :: (environment: Environment) -> Description[] {
+    switch environment {
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
+            return descriptions;
+    }
+}
+Stages :: (environment: Environment) -> Stage[] {
+    switch environment {
+        case .Tables(expressions, arguments, statements, children, functions, symbols, scopes, queries, bindings, reads, writes, capabilities, catalog_types, ids, ranges, descriptions, stages):
+            return stages;
     }
 }
 
@@ -200,6 +229,8 @@ Call: int : 6;
 Join: int : 18;
 Relation: int : 20;
 Member: int : 7;
+Dereference: int : 27;
+PointerStorage: int : 19;
 Component: int : 8;
 SymbolValue: int : 2;
 Nil: int : 15;
@@ -213,7 +244,7 @@ InvocationRead: int : 64;
 InvocationSymbol :: (environment: Environment, index: int) -> bool {
     symbol := Symbols(environment)[index];
     return symbol.kind == 4 || symbol.kind == 5 ||
-           ((symbol.kind == 6 || symbol.kind == 8) && symbol.scope >= 0 && Scopes(environment)[symbol.scope].function < 0);
+           ((symbol.kind == 6 || symbol.kind == 8) && symbol.query_description == 0 && symbol.scope >= 0 && Scopes(environment)[symbol.scope].function < 0);
 }
 // A loop over a reference may not suspend, start tasks, call mutating
 // procedures or reach its borrowed source except through the item.
@@ -281,19 +312,23 @@ StatementEffects :: (environment: Environment, expressionEffects: int[], stateme
 }
 // Query filter restrictions over an expression and every function body it
 // reaches: bit 1 starts a task, bit 2 reads retained or per-invocation storage.
-// Items are expression * 2 or statement * 2 + 1. The walk keeps its own stack
-// because callable depth is limited to 64.
+// Work items combine the expression/statement index with its enclosing helper
+// function. The context detects hidden captures while allowing helper parameters.
+// An explicit stack keeps this walk independent of the callable depth limit.
 QueryRestrictions :: (environment: Environment, effects: int[], root: int, seen: bool[]) -> Restrictions {
     stack: int[] = [];
     depth: int = 0;
     bits: int = 0;
+    context_base := length(Functions(environment)) + 2;
     if (root >= 0) {
-        stack.append(root * 2);
+        stack.append(root * 2 * context_base);
         depth = 1;
     }
     while (depth > 0) {
         depth -= 1;
-        item := stack[depth];
+        encoded := stack[depth];
+        item := encoded / context_base;
+        function := encoded % context_base - 1;
         index := item >> 1;
         pending: int[] = [];
         if ((item & 1) == 1) {
@@ -311,10 +346,18 @@ QueryRestrictions :: (environment: Environment, effects: int[], root: int, seen:
             }
             if ((effects[index] & InvocationRead) != 0) {
                 bits = bits | 2;
+                if (function >= 0) {
+                    bits = bits | 4;
+                }
             }
             if (row.kind == SymbolValue && row.symbol >= 0) {
                 symbol := Symbols(environment)[row.symbol];
-                if (symbol.kind == 4 || symbol.kind == 5 || ((symbol.kind == 6 || symbol.kind == 8) && symbol.scope >= 0 && Scopes(environment)[symbol.scope].function < 0)) {
+                if (function >= 0 && symbol.scope >= 0 && Scopes(environment)[symbol.scope].function != function &&
+                    (symbol.kind == 4 || symbol.kind == 5 || symbol.kind == 6 || symbol.kind == 7 ||
+                     symbol.kind == 8 || symbol.kind == 10 || symbol.kind == 15)) {
+                    bits = bits | 4;
+                }
+                if (symbol.kind == 4 || symbol.kind == 5 || ((symbol.kind == 6 || symbol.kind == 8) && symbol.query_description == 0 && symbol.scope >= 0 && Scopes(environment)[symbol.scope].function < 0)) {
                     bits = bits | 2;
                 }
             }
@@ -322,7 +365,16 @@ QueryRestrictions :: (environment: Environment, effects: int[], root: int, seen:
             if (row.kind == Call || row.kind == Join) {
                 if (row.right >= 0 && !seen[row.right]) {
                     seen[row.right] = true;
-                    pending.append(Functions(environment)[row.right].body * 2 + 1);
+                    called := Functions(environment)[row.right].body * 2 + 1;
+                    if (called >= 0) {
+                        next := called * context_base + row.right + 1;
+                        if (depth == length(stack)) {
+                            stack.append(next);
+                        } else {
+                            stack[depth] = next;
+                        }
+                        depth += 1;
+                    }
                 }
             } else {
                 pending.append(row.right * 2);
@@ -336,9 +388,9 @@ QueryRestrictions :: (environment: Environment, effects: int[], root: int, seen:
         for (next in pending) {
             if (next >= 0) {
                 if (depth == length(stack)) {
-                    stack.append(next);
+                    stack.append(next * context_base + function + 1);
                 } else {
-                    stack[depth] = next;
+                    stack[depth] = next * context_base + function + 1;
                 }
                 depth += 1;
             }
@@ -348,22 +400,31 @@ QueryRestrictions :: (environment: Environment, effects: int[], root: int, seen:
 }
 ComponentTarget :: (environment: Environment, index: int) -> u64 {
     expressions := Expressions(environment);
-    while (index >= 0 && expressions[index].kind == Member) {
+    remaining := length(expressions);
+    while (index >= 0 && remaining > 0) {
+        remaining -= 1;
         row := expressions[index];
-        if (IDAt(environment, row.read_slot) != 0 || IDAt(environment, row.write_slot) != 0 || row.container != 0) {
-            return 0;
+        if (row.kind == Member || row.kind == Dereference) {
+            if (IDAt(environment, row.read_slot) != 0 || IDAt(environment, row.write_slot) != 0 || row.container != 0) {
+                return 0;
+            }
+            index = row.left;
+            continue;
         }
-        index = row.left;
-    }
-    if (index < 0) {
+        if (row.kind == Component) {
+            return IDAt(environment, row.capability_slot);
+        }
+        if (row.kind == SymbolValue && row.symbol >= 0) {
+            symbol := Symbols(environment)[row.symbol];
+            if (symbol.kind == 10) {
+                return IDAt(environment, symbol.component_slot);
+            }
+            if (symbol.kind == 8 && symbol.storage == PointerStorage && symbol.mutations == 0 && symbol.initializer >= 0) {
+                index = symbol.initializer;
+                continue;
+            }
+        }
         return 0;
-    }
-    row := expressions[index];
-    if (row.kind == Component) {
-        return IDAt(environment, row.capability_slot);
-    }
-    if (row.kind == SymbolValue && row.symbol >= 0 && Symbols(environment)[row.symbol].kind == 10) {
-        return IDAt(environment, Symbols(environment)[row.symbol].nominal_slot);
     }
     return 0;
 }
@@ -430,8 +491,10 @@ ReductionExpression :: (environment: Environment, componentID: u64, check: Reduc
             touches := access;
             if (!(condition && (row.flags & 2) != 0)) {
                 touches = touches || (row.kind == Component && IDAt(environment, row.capability_slot) == componentID);
+                touches = touches || (row.kind == Dereference && ComponentTarget(environment, index) == componentID);
                 if (row.kind == SymbolValue && row.symbol >= 0) {
-                    touches = touches || (Symbols(environment)[row.symbol].kind == 10 && IDAt(environment, Symbols(environment)[row.symbol].nominal_slot) == componentID);
+                    symbol := Symbols(environment)[row.symbol];
+                    touches = touches || (symbol.kind == 10 && symbol.storage != PointerStorage && IDAt(environment, symbol.component_slot) == componentID);
                 }
             }
             check = Reduction.Checked(touches, opaque, task || row.task, seen);
@@ -457,7 +520,14 @@ ReductionExpression :: (environment: Environment, componentID: u64, check: Reduc
     }
     j: int = 0;
     while (j < row.arg_count) {
-        check = ReductionExpression(environment, componentID, check, Arguments(environment)[row.arg_start + j], false);
+        argument := Arguments(environment)[row.arg_start + j];
+        if (row.kind == Call && argument >= 0 && Expressions(environment)[argument].storage == PointerStorage && ComponentTarget(environment, argument) == componentID) {
+            switch check {
+                case .Checked(access, opaque, task, seen):
+                    check = Reduction.Checked(true, opaque, task, seen);
+            }
+        }
+        check = ReductionExpression(environment, componentID, check, argument, false);
         j += 1;
     }
     return check;
@@ -506,6 +576,27 @@ ReductionDiagnostics :: (environment: Environment, functionEffects: int[], diagn
                         name = type.name;
                     }
                     j += 1;
+                }
+                for (description in Descriptions(environment)) {
+                    if (description.system) {
+                        k: int = 0;
+                        while (k < description.stage_count) {
+                            stage := Stages(environment)[description.stage_start + k];
+                            if (stage.symbol >= 0) {
+                                if (stage.expression >= 0) {
+                                    check = ReductionExpression(environment, componentID, check, stage.expression, false);
+                                }
+                                binding := Symbols(environment)[stage.symbol];
+                                if (binding.kind == 10 && binding.storage == 15 && IDAt(environment, binding.component_slot) == componentID) {
+                                    switch check {
+                                        case .Checked(access, opaque, task, seen):
+                                            check = Reduction.Checked(true, opaque, task, seen);
+                                    }
+                                }
+                            }
+                            k += 1;
+                        }
+                    }
                 }
                 for (queryRow in Queries(environment)) {
                     if (queryRow.kind == 6) {
@@ -631,10 +722,34 @@ pub Analyze :: (environment: Environment) -> Analysis {
                     if ((expressionEffects[queryRow.value] & Impure) != 0 || (bits & 1) != 0) {
                         diagnostics = Report(environment, diagnostics, queryRow.range, "Query predicate requires a deterministic value without side effects or suspension");
                     }
-                    if ((bits & 2) != 0) {
+                    if ((bits & 4) != 0) {
+                        diagnostics = Report(environment, diagnostics, queryRow.range, "Pass captured values explicitly to query helper functions");
+                    }
+                    if ((bits & 2) != 0 && (queryRow.description == 0 || Descriptions(environment)[queryRow.description - 1].system)) {
                         diagnostics = Report(environment, diagnostics, queryRow.range, "Query predicate cannot read system state, body locals or event payload; test invocation values in the system body");
                     }
             }
+        }
+    }
+    for (description in Descriptions(environment)) {
+        index: int = 0;
+        while (index < description.stage_count) {
+            stage := Stages(environment)[description.stage_start + index];
+            if (stage.symbol >= 0 && stage.expression >= 0) {
+                switch QueryRestrictions(environment, expressionEffects, stage.expression, EmptySeen(environment)) {
+                    case .Restricted(bits, seen):
+                        if ((bits & 4) != 0) {
+                            diagnostics = Report(environment, diagnostics, stage.range, "Pass captured values explicitly to query helper functions");
+                        }
+                        if (description.system && (bits & 2) != 0) {
+                            diagnostics = Report(environment, diagnostics, stage.range, "Query binding cannot read system state, body locals or event payload");
+                        }
+                        if ((expressionEffects[stage.expression] & Impure) != 0 || (bits & 1) != 0) {
+                            diagnostics = Report(environment, diagnostics, stage.range, "Query binding requires a deterministic value without side effects or suspension");
+                        }
+                }
+            }
+            index += 1;
         }
     }
     for (row in Statements(environment)) {

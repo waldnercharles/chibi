@@ -9,7 +9,7 @@
  * the library's module lets a program's synchronous calls of those functions
  * run the native entry instead of a VM frame. Tasks, inspected calls and
  * every unbound function stay in the VM. */
-#define EXECUTION_NATIVE_ABI 2u
+#define EXECUTION_NATIVE_ABI 3u
 /* The most parameters and results an entry takes: native_abi.ExportParameters,
  * and one result. The emitter exports no function with more. */
 #define EXECUTION_NATIVE_MAX_PARAMETERS 8
@@ -40,6 +40,14 @@ typedef struct
     uint64_t bits;
     const char *bytes;
 } execution_native_value;
+/* An assert that failed in native code: the stable ID of the function it is
+ * in and its call's source range, [start, end). native_abi.FailureType() is
+ * its LLVM type. */
+typedef struct
+{
+    uint64_t function;
+    int32_t start, end;
+} execution_native_failure;
 /* The hidden first parameter of every function of a library that calls the
  * runtime, as Odin's procedures take their context: the runtime's operations,
  * which native code calls through it, so a library leaves no symbol for its
@@ -56,6 +64,10 @@ struct execution_native_context
         int32_t count,
         pin_string *result
     );
+    /* The assert that failed, or NULL. Native code sets it, then returns
+     * from every function it is in, so the call from the VM fails as the
+     * VM's assert would. */
+    const execution_native_failure *failure;
 };
 /* An entry reads its arguments and writes its results as 64-bit words in
  * declaration order: an integer sign- or zero-extended from its width, a bool
@@ -124,19 +136,28 @@ const execution_native_export *execution_natives_find(
     const execution_natives *,
     const behavior_function *function
 );
+/* The VM's assert that failed in a native call: the authored function it is
+ * in and its instruction's index. */
+typedef struct
+{
+    const behavior_function *function;
+    int pc;
+} execution_native_assert;
 /* Runs `native`, which is bound to `function` in `natives`, on a call's
  * `count` arguments, filling omitted parameters with their defaults as a VM
  * frame does, and writes the first `result_count` of its results as the
- * function's declared result values. What the runtime allocates for the call
- * is freed when it returns. */
-void execution_native_call(
+ * function's declared result values. When an assert fails, it writes none and
+ * returns false with the VM's assert in `failed`. What the runtime allocates
+ * for the call is freed when it returns. */
+bool execution_native_call(
     const execution_natives *natives,
     const execution_native_export *native,
     const behavior_function *function,
     const pin_value *arguments,
     int count,
     pin_value *results,
-    int result_count
+    int result_count,
+    execution_native_assert *failed
 );
 /* Every later activation of `program` and the programs it imports calls the
  * table's bound entries. The table outlives the program. Set it before any

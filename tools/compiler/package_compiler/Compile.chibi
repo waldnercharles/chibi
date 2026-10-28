@@ -20,11 +20,15 @@ pub Target :: struct {
     pointer_size: int;
     value_size: int;
     payload_offset: int;
+    arguments_offset: int;
+    delta_seconds_offset: int;
     results_offset: int;
+    error_status_offset: int;
     type_offset: int;
     container_offset: int;
     name_offset: int;
     record_offset: int;
+    schema_offset: int;
     count_offset: int;
     items_offset: int;
     data_offset: int;
@@ -50,6 +54,11 @@ Ops :: struct {
     write: int;
     result: int;
     host_call: int;
+    command_argument: int;
+    command_begin: int;
+    command_result: int;
+    command_output: int;
+    suspend: int;
     invoke: int;
     guard: int;
     check: int;
@@ -81,6 +90,7 @@ Ops :: struct {
     store: int;
     store_value: int;
     owner: int;
+    query_variable: int;
     convert: int;
     source_point: int;
     source_watch: int;
@@ -108,6 +118,7 @@ Callable :: struct {
     result_container: int;
     result_record: int;
     results: int;
+    waits: bool;
 }
 // A function's parameters, then its named results, and its callable.
 Signature :: union {
@@ -143,6 +154,7 @@ pub Native :: struct {
     parameters: int;
     results: int;
     variadic: bool;
+    effects: int;
 }
 // Rich catalogs retain function and action declarations with their actual
 // names and kinds. `direct` admits only bindings callable as synchronous data;
@@ -157,6 +169,7 @@ pub CatalogNative :: struct {
     qualified_name: string;
     kind: int;
     intrinsic: int;
+    effects: int;
 }
 ResolvedNative :: struct {
     name: string;
@@ -168,6 +181,8 @@ ResolvedNative :: struct {
     qualified_name: string;
     kind: int;
     intrinsic: int;
+    // The catalog's declared script effects, such as suspension.
+    effects: int;
     // Exact parsed callable IDs identify source-owned rows for this compile.
     source: bool;
 }
@@ -183,7 +198,8 @@ LegacyNatives :: (natives: Native[], names: string[]) -> ResolvedNative[] {
         }
         row: ResolvedNative = {name: native.name, first: native.first, parameters: native.parameters,
                                results: native.results, variadic: native.variadic, direct: true,
-                               qualified_name: native.name, kind: NativeFunctionKind, intrinsic: intrinsic, source: false};
+                               qualified_name: native.name, kind: NativeFunctionKind, intrinsic: intrinsic,
+                               effects: native.effects, source: false};
         resolved.append(row);
     }
     return resolved;
@@ -194,7 +210,7 @@ CatalogNatives :: (natives: CatalogNative[]) -> ResolvedNative[] {
         row: ResolvedNative = {name: native.name, first: native.first, parameters: native.parameters,
                                results: native.results, variadic: native.variadic, direct: native.direct,
                                qualified_name: native.qualified_name, kind: native.kind,
-                               intrinsic: native.intrinsic, source: false};
+                               intrinsic: native.intrinsic, effects: native.effects, source: false};
         resolved.append(row);
     }
     return resolved;
@@ -319,6 +335,7 @@ Assembly :: union {
 EffectCall :: struct {
     caller: int;
     callee: int;
+    task: bool;
 }
 // The target catalog's READ, WRITE, STRUCTURAL, HOST, SUSPEND, RANDOM and
 // INVOCATION_READ bits.
@@ -352,6 +369,7 @@ TextStorage: int : 13;
 HandleStorage: int : 14;
 StructStorage: int : 15;
 UnionStorage: int : 18;
+TaskStorage: int : 17;
 RecordDecl: int : 0;
 UnionDecl: int : 1;
 VariantDecl: int : 2;
@@ -392,7 +410,10 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
             array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
             string_equal: Ordinal(names, "STRING_EQUAL"), index: Ordinal(names, "INDEX"),
             load: Ordinal(names, "LOAD"), write: Ordinal(names, "WRITE"), result: Ordinal(names, "RESULT"),
-            host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
+            host_call: Ordinal(names, "HOST_CALL"),
+            command_argument: Ordinal(names, "COMMAND_ARGUMENT"), command_begin: Ordinal(names, "COMMAND_BEGIN"),
+            command_result: Ordinal(names, "COMMAND_RESULT"), command_output: Ordinal(names, "COMMAND_OUTPUT"),
+            suspend: Ordinal(names, "SUSPEND"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
             check: Ordinal(names, "CHECK"),
             branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
             end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
@@ -403,7 +424,7 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
             store: Ordinal(names, "STORE"), store_value: Ordinal(names, "STORE_VALUE"),
-            owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
+            owner: Ordinal(names, "OWNER"), query_variable: Ordinal(names, "QUERY_VARIABLE"), convert: Ordinal(names, "CONVERT"),
             source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH"),
             debug: debug};
 }
@@ -411,10 +432,11 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
 Complete :: (ops: Ops) -> bool {
     used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.array,
                    ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
+                   ops.command_argument, ops.command_begin, ops.command_result, ops.command_output, ops.suspend,
                    ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
                    ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
                    ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
-                   ops.select, ops.variable, ops.store, ops.store_value, ops.owner, ops.convert, ops.source_point,
+                   ops.select, ops.variable, ops.store, ops.store_value, ops.owner, ops.query_variable, ops.convert, ops.source_point,
                    ops.source_watch];
     for (op in used) {
         if (op < 0) {
@@ -718,6 +740,10 @@ AlignTo :: (size: int, alignment: int) -> int {
 InputFailure :: (document: int, message: string) -> Result {
     diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: document, message: message};
     return Result.Rejected(diagnostic);
+}
+AssemblyFailure :: (document: int, message: string) -> Assembly {
+    diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: document, message: message};
+    return Assembly.Rejected(diagnostic);
 }
 
 // Every record, union and function of each package, dependencies first, so
@@ -1659,7 +1685,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
     }
     callable: Callable = {name: name, package: package, document: file, node: member, first: first, count: count,
                           result: result.storage, result_container: result.container, result_record: result.record,
-                          results: length(added) - count};
+                          results: length(added) - count, waits: false};
     return Signature.Read(callable, added);
 }
 ScalarValue :: (storage: int, wide: int) -> writer.Value {
@@ -1670,6 +1696,13 @@ ScalarValue :: (storage: int, wide: int) -> writer.Value {
 // array of records, like a record, names its type, and so does a handle of a
 // game type, such as an entity. A native type's header lists no fields.
 Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts: int[]) -> writer.Value {
+    if (storage == QueryStorage && record >= 0) {
+        described := ScalarValue(storage, 0);
+        described.container = container;
+        described.type_name = types[record].type_name;
+        described.has_type_name = true;
+        return described;
+    }
     if (container != 0) {
         value := ScalarValue(storage, 0);
         value.container = container;
@@ -1698,7 +1731,7 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
     if (storage != StructStorage) {
         return ScalarValue(storage, 0);
     }
-    if (types[record].kind == NativeDecl) {
+    if (types[record].kind == NativeDecl || types[record].kind == OptionalComponentDecl) {
         return {tag: StructStorage, container: 0, type_name: types[record].type_name, has_type_name: true,
                 authored: false, wide: layouts[record], text: "", has_text: false, present: false, first: 0, count: 0};
     }
@@ -1791,9 +1824,17 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
 // `root`. Dependencies come first, so an importer has every module it imports.
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
          files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
-         callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+         input_callables: Callable[], params: Param[], input_types: TypeDecl[], input_members: TypeMember[],
          constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], native_effects: int[], ops: Ops,
          target: Target, abi: u64) -> Result {
+    callables := WaitingCallables(forest, input_callables);
+    types := input_types;
+    members := input_members;
+    switch TaskResultDeclarations(callables, params, types, members) {
+        case .Collected(declared_types, declared_members):
+            types = declared_types;
+            members = declared_members;
+    }
     // Each package's identity and module ID, and the fingerprint of its module.
     package_names: string[] = [];
     package_ids: u64[] = [];
@@ -1820,7 +1861,7 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
         switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
                         package_ids, fingerprints,
                         Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
-                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package, prepared) {
+                        natives, ports, identities, native_effects, effects, ops, target, abi, Game.Package, prepared, []) {
             case .Rejected(diagnostic):
                 return Result.Rejected(diagnostic);
             case .Compiled(module, bytes, summaries):
@@ -1918,6 +1959,8 @@ WriteSummaries :: (bodies: Body[]) -> int[] {
         switch body {
             case .Failed(diagnostic):
                 summaries.append(UnknownWrite);
+            case .Inferred(value):
+                summaries.append(UnknownWrite);
             case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                           direct_write, facts):
                 summaries.append(direct_write);
@@ -1930,6 +1973,8 @@ WriteSummaries :: (bodies: Body[]) -> int[] {
         for (body in bodies) {
             switch body {
                 case .Failed(diagnostic):
+                    summaries[index] = UnknownWrite;
+                case .Inferred(value):
                     summaries[index] = UnknownWrite;
                 case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                               direct_write, facts):
@@ -1969,6 +2014,8 @@ GenericUpdates :: (forest: snapshot.SnapshotNode[], body: Body, summaries: int[]
     switch body {
         case .Failed(diagnostic):
             return generic;
+        case .Inferred(value):
+            return generic;
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
             for (fact in facts) {
@@ -1985,10 +2032,14 @@ StablePreparation :: (forest: snapshot.SnapshotNode[], before: Body, next_body: 
     switch before {
         case .Failed(diagnostic):
             return false;
+        case .Inferred(value):
+            return false;
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
             switch next_body {
                 case .Failed(diagnostic):
+                    return false;
+                case .Inferred(next_value):
                     return false;
                 case .Emitted(next_slots, next_locals, next_cells, next_code, next_calls, next_hosts, next_roots,
                               next_points, next_watches, next_effects, next_write, next_facts):
@@ -2093,10 +2144,13 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                                                       callable.name));
                     body := FunctionBody(scoped, documents, callables, params, types, members, used, natives, ports,
                                          identities, Aliases(links, callable.document), [], [], [], index, solid,
-                                         undeclared, meaning, context, generic, ops, target);
+                                         undeclared, meaning, context, generic, ops, target, []);
                     switch body {
                         case .Failed(diagnostic):
                             return Preparation.Failed(diagnostic);
+                        case .Inferred(value):
+                            return Preparation.Failed(Diagnose(forest, callable.node, callable.document,
+                                                               "expression inferred where a callable body was required"));
                         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                                       direct_write, facts):
                             if (pass > 0 && !StablePreparation(scoped, bodies[index], body, summaries, context)) {
@@ -2116,35 +2170,45 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     }
     return Preparation.Read(bodies);
 }
+// A query evaluator's analysis covers its parameter list, which holds the
+// query's predicate; every other callable's covers its body.
 FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
                  params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
                  natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], aliases: Name[],
                  operators: NumericOperator[], makes: NativeMake[], make_fields: int[], index: int,
                  solid: int[], undeclared: u64, meaning: u64, context: BodyContext, generic_updates: int[],
-                 ops: Ops, target: Target) -> Body {
+                 ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
     callable := callables[index];
     document := documents[callable.document];
+    analysis_body := Field(forest, callable.node, "body");
+    if (QueryEvaluator(query_specs, index) >= 0) {
+        analysis_body = Field(forest, callable.node, "parameters");
+    }
+    if (analysis_body < 0) {
+        return Body.Failed(Diagnose(forest, callable.node, callable.document,
+                                    format_text("Callable '{}' has no body", callable.name)));
+    }
     referenced: string[] = [];
     if (AnyReference(params)) {
         referenced = ReferencedNames(forest, document.text, callables, params, natives, aliases, callable.package,
-                                     Field(forest, callable.node, "body"));
+                                     analysis_body);
     }
-    mutated := MutatedNames(forest, document.text, Field(forest, callable.node, "body"), referenced);
+    mutated := MutatedNames(forest, document.text, analysis_body, referenced);
     built: int[] = [];
     if (callable.results == 0) {
-        built = BuiltLocals(forest, document.text, types, aliases, callable.package,
-                            Field(forest, callable.node, "body"), referenced);
+        built = BuiltLocals(forest, document.text, types, aliases, callable.package, analysis_body, referenced);
     }
     return EmitBody(forest, document.text, callable.document, callables, params, types, members, constants,
                     natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
-                    undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target);
+                    undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target,
+                    query_specs);
 }
 Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
              package_names: string[], package_ids: u64[], fingerprints: u64[], reachable: bool[],
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
              members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[],
              identities: u64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
-             abi: u64, game: Game, prepared: Body[]) -> Assembly {
+             abi: u64, game: Game, prepared: Body[], query_specs: QuerySpec[]) -> Assembly {
     identity := package_names[package];
     module := package_ids[package];
     // A behavior's states, the event each of its functions handles, the
@@ -2182,6 +2246,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     sources: writer.Source[] = [];
     data: writer.Data[] = [];
     hosts: writer.Host[] = [];
+    commands: writer.Command[] = [];
     roots: writer.Root[] = [];
     calls: writer.Call[] = [];
     references: writer.Reference[] = [];
@@ -2201,6 +2266,10 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     for (declared in types) {
         layouts.append(int(0));
         tags.append(int(0));
+        if (declared.kind == OptionalComponentDecl) {
+            layouts[length(layouts) - 1] = layouts[declared.parent];
+            continue;
+        }
         if (!source_mode && !reachable[declared.package]) {
             continue;
         }
@@ -2208,7 +2277,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             // Stage zero's tag: the union's ID in decimal, then the variant.
             union_id := binding.ID("package-symbol",
                                    format_text("{}:{}:{}", package_names[declared.package], TypeKind, types[declared.parent].name));
-            wide.append(binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
+            tag := binding.ID("union-variant", format_text("{}:{}", union_id, declared.name));
+            if (types[declared.parent].kind == TaskResultDecl) {
+                tag = declared.id;
+            }
+            wide.append(tag);
             tags[length(tags) - 1] = length(wide) - 1;
         } else if (declared.kind == RecordDecl) {
             id := declared.id;
@@ -2235,9 +2308,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 fields.append(field);
                 at += 1;
             }
-        } else if (declared.kind == PointerDecl && declared.key == 0) {
+        } else if ((declared.kind == PointerDecl && declared.key == 0) || declared.kind == QueryDecl) {
             wide.append(declared.id);
-            pointer_requirement: writer.Requirement = {id: length(wide) - 1, layout: 0, storage: PointerStorage,
+            pointer_requirement: writer.Requirement = {id: length(wide) - 1, layout: 0, storage: declared.storage,
                                                        name: declared.type_name, size: target.pointer_size,
                                                        authored: false, first: 0, count: 0};
             requirements.append(pointer_requirement);
@@ -2274,6 +2347,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         switch tables {
             case .Failed(diagnostic):
                 return Assembly.Rejected(diagnostic);
+            case .Inferred(value):
+                return AssemblyFailure(callable.document, "expression inferred where a callable body was required");
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots,
                           body_points, body_watches, body_effects, body_write, body_facts):
                 direct_effects := body_effects;
@@ -2284,19 +2359,43 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                         }
                     }
                 }
+                host_indices: int[] = [];
+                command_indices: int[] = [];
+                host_count: int = 0;
+                command_count: int = 0;
+                for (operation in body_hosts) {
+                    host_indices.append(host_count);
+                    command_indices.append(command_count);
+                    if (operation.command == 0) {
+                        host_count += 1;
+                    } else {
+                        command_count += 1;
+                    }
+                }
                 base := length(spans);
-                // Argument defaults and kinds.
-                spans.append(Range(length(values), callable.count));
+                // Event payload slots remain part of the physical handler ABI.
+                // A system reads dt from context and declares no source parameter.
+                system_payload := handler >= 0 && Is(forest, callable.node, "system");
+                argument_count := callable.count;
+                if (system_payload) {
+                    argument_count = game_events[handler].count;
+                }
+                spans.append(Range(length(values), argument_count));
                 at: int = 0;
-                while (at < callable.count) {
-                    values.append(ParamHeader(params[callable.first + at], types, layouts, target));
+                while (at < argument_count) {
+                    if (system_payload) {
+                        field := game_fields[game_events[handler].first + at];
+                        values.append(ScalarValue(field.storage, 0));
+                    } else {
+                        values.append(ParamHeader(params[callable.first + at], types, layouts, target));
+                    }
                     at += 1;
                 }
-                spans.append(Range(length(ints), callable.count));
+                spans.append(Range(length(ints), argument_count));
                 at = 0;
-                while (at < callable.count) {
+                while (at < argument_count) {
                     kind: int = 0;
-                    if (params[callable.first + at].reference) {
+                    if (!system_payload && params[callable.first + at].reference) {
                         kind = ReferenceKind;
                     }
                     ints.append(kind);
@@ -2348,7 +2447,20 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 // Instructions, each with its own value row and source at pc + 1.
                 spans.append(Range(length(instructions), length(body_code)));
                 pc: int = 0;
-                for (code in body_code) {
+                for (body_instruction in body_code) {
+                    code := body_instruction;
+                    if (code.op == ops.host_call) {
+                        code.target = host_indices[code.target];
+                    }
+                    if (code.op == ops.command_begin) {
+                        code.target = command_indices[code.target];
+                    }
+                    node_id: int = 0;
+                    if (code.op == ops.command_begin || code.op == ops.suspend) {
+                        wide.append(code.payload);
+                        node_id = length(wide) - 1;
+                        code.payload = 0;
+                    }
                     value := Header(code.value_storage, code.value_container, code.value_record, types, layouts);
                     if (code.has_text) {
                         value.text = code.text;
@@ -2361,7 +2473,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     values.append(value);
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
                                                left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
-                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
+                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: node_id,
                                                value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
                     instructions.append(row);
                     pc += 1;
@@ -2420,8 +2532,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     datum: writer.Data = {kind: cell.kind, initial: length(values) - 1, size: size};
                     data.append(datum);
                 }
-                spans.append(Range(length(hosts), length(body_hosts)));
+                spans.append(Range(length(hosts), host_count));
                 for (host in body_hosts) {
+                    if (host.command != 0) {
+                        continue;
+                    }
                     capability := length(wide);
                     host_abi := abi_one;
                     if (host.linked >= 0) {
@@ -2437,9 +2552,72 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                         outcome_count: 0};
                     hosts.append(row);
                 }
+                spans.append(Range(length(commands), command_count));
+                for (operation in body_hosts) {
+                    if (operation.command == 0) {
+                        continue;
+                    }
+                    wide.append(TaskCommandBase | u64(operation.command));
+                    command_abi: u64 = 2;
+                    if (operation.command == DelayCommand) {
+                        command_abi = 1;
+                    }
+                    wide.append(command_abi);
+                    wide.append(TaskCommandNode(operation.command, operation.syntax_node));
+                    command: writer.Command = {capability: length(wide) - 3, abi: length(wide) - 2,
+                                               first: operation.first, count: operation.result_first - operation.first,
+                                               node: length(wide) - 1, result_first: operation.result_first,
+                                               result_count: operation.result_count};
+                    commands.append(command);
+                    if (operation.command == CancelCommand || operation.command == CancelAfterCommand) {
+                        direct_effects = direct_effects | WriteEffect;
+                    } else {
+                        direct_effects = direct_effects | SuspendEffect;
+                    }
+                }
+                // The command banks use the same stable cell coordinates as the
+                // body's host banks. Each has independent mutable payload storage.
+                command_cells: int = 0;
+                if (command_count > 0) {
+                    command_cells = length(body_cells);
+                }
+                spans.append(Range(length(values), command_cells));
+                at = 0;
+                while (at < command_cells) {
+                    cell := body_cells[at];
+                    initial := Header(cell.storage, cell.container, cell.record, types, layouts);
+                    if (cell.constant != 0) {
+                        wide.append(cell.constant);
+                        initial.wide = length(wide) - 1;
+                    }
+                    if (cell.variant >= 0) {
+                        initial.wide = tags[cell.variant];
+                    }
+                    values.append(initial);
+                    at += 1;
+                }
+                spans.append(Range(length(ints), command_cells));
+                at = 0;
+                while (at < command_cells) {
+                    ints.append(ValueKind);
+                    at += 1;
+                }
+                spans.append(Range(length(values), command_cells));
+                at = 0;
+                while (at < command_cells) {
+                    cell := body_cells[at];
+                    values.append(Header(cell.storage, cell.container, cell.record, types, layouts));
+                    at += 1;
+                }
+                spans.append(Range(length(ints), command_cells));
+                at = 0;
+                while (at < command_cells) {
+                    ints.append(ValueKind);
+                    at += 1;
+                }
                 spans.append(Range(length(calls), length(body_calls)));
                 for (invocation in body_calls) {
-                    effect_call: EffectCall = {caller: index, callee: invocation.callee};
+                    effect_call: EffectCall = {caller: index, callee: invocation.callee, task: invocation.task};
                     effect_calls.append(effect_call);
                     callee := callables[invocation.callee];
                     if (callee.package == package) {
@@ -2465,7 +2643,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     }
                     call: writer.Call = {function: length(references) - 1, first: invocation.first,
                                          count: invocation.count, result_first: invocation.result_first,
-                                         result_count: invocation.result_count, task: false};
+                                         result_count: invocation.result_count, task: invocation.task};
                     calls.append(call);
                 }
                 // No definitions; then the components the body reads or
@@ -2520,7 +2698,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 while (length(spans) < base + writer.Tables) {
                     spans.append(Range(0, 0));
                 }
-                head: writer.Function = {argument_count: callable.count, result_count: result_count,
+                head: writer.Function = {argument_count: argument_count, result_count: result_count,
                                          variable_count: length(kept_states), root_steps: 0, child_budget: 0,
                                          depth_bound: 0, pure_depth_limit: 0, breakpoints: false, batchable: false,
                                          managed: false, custom_lowering: false, checkpoints: false, pin_watches: false,
@@ -2532,17 +2710,23 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 if (handler >= 0) {
                     // Stage zero's handler ID: the source, the handler's offset and its kind.
                     handled_event := game_events[handler];
+                    function_kind := HandlerFunction;
+                    if (Is(forest, callable.node, "system")) {
+                        function_kind = 3;
+                    }
                     wide.append(binding.ID("function", format_text("{}:{}:{}", identity,
-                                                                   forest[callable.node].start, HandlerFunction)));
+                                                                   forest[callable.node].start, function_kind)));
                     wide.append(handled_event.id);
                     wide.append(handled_event.abi);
                     wide.append(u64(0));
-                    row: writer.Entry = {id: length(wide) - 4, kind: HandlerFunction, entry_name: "", has_entry: false,
+                    row: writer.Entry = {id: length(wide) - 4, kind: function_kind, entry_name: "", has_entry: false,
                                          event_id: length(wide) - 3, event_abi: length(wide) - 2,
                                          event_name: handled_event.name, has_event_name: true, continuation_wait: false,
                                          effects: length(wide) - 1, body: length(references) - 2,
                                          subscription: length(references) - 1};
                     entries.append(row);
+                } else if (QueryEvaluator(query_specs, index) >= 0) {
+                    // Evaluators are reached through descriptions.
                 } else if (source_mode) {
                     // A behavior's member procedure is a symbol of its source's scope.
                     // Stage zero lets every authored function wait.
@@ -2571,7 +2755,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     while (changed) {
         changed = false;
         for (called in effect_calls) {
-            combined := effects[called.caller] | effects[called.callee];
+            inherited := effects[called.callee];
+            if (called.task) {
+                inherited = inherited & ~SuspendEffect;
+            }
+            combined := effects[called.caller] | inherited;
             if (combined != effects[called.caller]) {
                 effects[called.caller] = combined;
                 changed = true;
@@ -2621,10 +2809,62 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         states.append(row);
     }
     layouts_table: writer.ResultLayout[] = [];
+    queries: writer.Query[] = [];
+    descriptions: writer.QueryDescription[] = [];
+    system_root: int = -1;
+    system_variables: int = 0;
+    system_description: int = 0;
+    for (described in query_specs) {
+        clause_roots: int[] = [];
+        query_base := length(queries);
+        query_terms := QueryTerms(forest, documents[first_document].text, types, members, params, described);
+        for (term in query_terms) {
+            children := length(ints);
+            child_count: int = 0;
+            if (term.left >= 0) {
+                ints.append(query_base + term.left);
+                child_count += 1;
+            }
+            if (term.right >= 0) {
+                ints.append(query_base + term.right);
+                child_count += 1;
+            }
+            wide.append(term.source_relationship);
+            relation_index := length(wide) - 1;
+            wide.append(term.component);
+            query_term: writer.Query = {kind: term.kind, required: term.required,
+                                        component_id: length(wide) - 1, source_relationship: relation_index,
+                                        source_traversal: term.source_traversal, source_variable: term.source_variable,
+                                        target_variable: term.target_variable, predicate: -1, first: children, count: child_count};
+            if (term.root) {
+                clause_roots.append(length(queries));
+            }
+            queries.append(query_term);
+        }
+        children := length(ints);
+        ints.extend(clause_roots);
+        all: writer.Query = {kind: 1, required: false, component_id: 0, source_relationship: 0, source_traversal: 0,
+                             source_variable: 0, target_variable: 0, predicate: -1,
+                             first: children, count: length(clause_roots)};
+        root := length(queries);
+        queries.append(all);
+        values.append(Header(QueryStorage, 0, described.row, types, layouts));
+        references.append(Own(described.evaluator - first_own));
+        description: writer.QueryDescription = {query_root: root, query_variable_count: described.variables,
+                                                row_type: length(values) - 1, evaluate: length(references) - 1};
+        descriptions.append(description);
+        if (Is(forest, described.node, "system")) {
+            system_root = root;
+            system_variables = described.variables;
+            system_description = length(descriptions);
+        }
+    }
     return Assembly.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, target.pointer_size, wide, values, ints, requirements,
                                                                        fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
-                                                                       locals, parameters, frames, sources, layouts_table, data, hosts, calls,
-                                                                       references, components, points, watches, states, entries)), effects);
+                                                                       locals, parameters, frames, sources, layouts_table, data, hosts, commands, calls,
+                                                                       references, components, points, watches, states, entries,
+                                                                       queries, system_root, system_variables, 0, descriptions,
+                                                                       system_description)), effects);
 }
 
 // `paths` and `sources` are the files of every package, `paths[0]` one of the

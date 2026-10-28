@@ -165,7 +165,7 @@ Span :: (rows: facts.Row[], at: int, kind: int) -> int {
 // Whether `kind` is a statement row with operands of its own.
 Statement :: (kind: int) -> bool {
     return kind == facts.LocalRow || kind == facts.AssignRow || kind == facts.IfRow || kind == facts.ReturnRow ||
-           kind == facts.WhileRow || kind == facts.ForRow || kind == facts.SwitchRow;
+           kind == facts.WhileRow || kind == facts.ForRow || kind == facts.SwitchRow || kind == facts.AssertRow;
 }
 // Whether `kind` is an if statement's, a switch's or a loop's row, which an
 // End row closes.
@@ -627,7 +627,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
         if (rows[at].kind == facts.ForRow) {
             return "scalar range differs from its int bounds";
         }
-        if (rows[at].kind == facts.IfRow || rows[at].kind == facts.WhileRow) {
+        if (rows[at].kind == facts.IfRow || rows[at].kind == facts.WhileRow || rows[at].kind == facts.AssertRow) {
             return "scalar condition is not one bool";
         }
         if (rows[at].kind == facts.SwitchRow) {
@@ -795,7 +795,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             continue;
         }
         result := declaration.type;
-        if (row.kind == facts.IfRow || row.kind == facts.WhileRow) {
+        if (row.kind == facts.IfRow || row.kind == facts.WhileRow || row.kind == facts.AssertRow) {
             result = facts.BoolType;
         } else if (row.kind == facts.SwitchRow) {
             if (facts.Bits(row.type) == 0) {
@@ -967,6 +967,8 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // at its head, and a For row keeps its index and its other bound in locals of
 // their own, tests the index at its head and steps it at the end of each
 // pass, where a continue goes; a break and the failed test leave the loop.
+// An assert's condition branches past a Fail of its call's range and its
+// function's stable ID, which a package's functions lack, so theirs is 0.
 // A switch, as the switch step lowers it, saves its value in a local, and
 // each value arm tests it in turn, entering its arm on equality and otherwise
 // jumping to the next test; a default arm is jumped over where it stands and
@@ -1422,6 +1424,10 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             } else if (row.kind == facts.ReturnRow) {
                 body.extend([Op(native.Publish, result, 0, value, 0, 0), Op(native.Return, 0, 0, 0, 0, 0)]);
                 ends = true;
+            } else if (row.kind == facts.AssertRow) {
+                fail := Op(native.Fail, 0, 0, row.start, row.end, 0);
+                fail.literal = declaration.literal;
+                body.extend([Op(native.Branch, 0, 0, value, 0, length(body) + 2), fail]);
             } else if (row.kind == facts.LocalRow) {
                 type := NativeType(row.type);
                 locals.append(type);

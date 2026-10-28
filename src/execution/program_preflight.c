@@ -67,7 +67,7 @@ static void add_function(const behavior_function ***functions, const behavior_fu
  * cannot hide a pointer field when it crosses a service boundary. */
 static bool managed_shape(pin_value value, int depth)
 {
-    if (value.type == PIN_POINTER || depth >= 64) {
+    if (value.type == PIN_POINTER || value.type == PIN_QUERY || depth >= 64) {
         return true;
     }
     if (value.type != PIN_STRUCT) {
@@ -130,7 +130,12 @@ static bool function_valid(const behavior_function *f, const ecs_world *world)
                          host->call->invoke == canonical->invoke &&
                          host->call->value == canonical->value &&
                          host->call->context == canonical->context &&
-                         host->call->action == canonical->action;
+                         host->call->action == canonical->action &&
+                         host->call->service == canonical->service &&
+                         host->call->missing_service == canonical->missing_service &&
+                         host->call->optional_service == canonical->optional_service &&
+                         host->call->variadic == canonical->variadic &&
+                         host->call->reusable == canonical->reusable;
         if (!intrinsic && !host->call->borrows) {
             for (int bank = host->first; bank < host->result_first + host->result_count;
                  bank++) {
@@ -139,24 +144,38 @@ static bool function_valid(const behavior_function *f, const ecs_world *world)
                 }
             }
         }
-        if (host->call != &EXECUTION_query_source_call &&
-            host->call != &EXECUTION_query_target_call &&
-            host->call != &EXECUTION_reference_make_call &&
-            host->call != &EXECUTION_component_has_call &&
-            host->call != &EXECUTION_component_membership_call) {
+        execution_intrinsic kind = intrinsic
+                                     ? execution_intrinsic_kind(host->capability_id)
+                                     : 0;
+        if (kind != EXECUTION_INTRINSIC_QUERY_SOURCE &&
+            kind != EXECUTION_INTRINSIC_QUERY_TARGET &&
+            kind != EXECUTION_INTRINSIC_REFERENCE_MAKE &&
+            kind != EXECUTION_INTRINSIC_COMPONENT_HAS &&
+            kind != EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP &&
+            kind != EXECUTION_INTRINSIC_COMPONENT_POINTER &&
+            kind != EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT) {
             continue;
         }
         const behavior_function_data_value *values = f->data_values + host->first;
-        if (host->call == &EXECUTION_query_source_call &&
+        if ((kind == EXECUTION_INTRINSIC_COMPONENT_POINTER ||
+             kind == EXECUTION_INTRINSIC_COMPONENT_SNAPSHOT) &&
+            !layout_matches(
+                world,
+                values[2].initial.u64,
+                values[4].initial.u64,
+                values[5].initial.u64
+            )) {
+            return false;
+        }
+        if (kind == EXECUTION_INTRINSIC_QUERY_SOURCE &&
             (!installed(world, values[2].initial.u64) ||
              !source_installed(world, values[3].initial.u64, values[4].initial.i))) {
             return false;
         }
-        if (host->call == &EXECUTION_query_target_call &&
-            (!world || !ecs_world_relationship(world, values[2].initial.u64))) {
-            return false;
-        }
-        if (host->call == &EXECUTION_reference_make_call &&
+        /* A body traversal can precede scene relationship registration. Its
+         * callback returns no target until pairs exist; it has no payload
+         * layout to link. Required query-plan relationships are checked below. */
+        if (kind == EXECUTION_INTRINSIC_REFERENCE_MAKE &&
             values[2].initial.i == LANGUAGE_REFERENCE_COMPONENT &&
             !layout_matches(
                 world,
@@ -166,8 +185,8 @@ static bool function_valid(const behavior_function *f, const ecs_world *world)
             )) {
             return false;
         }
-        if ((host->call == &EXECUTION_component_has_call ||
-             host->call == &EXECUTION_component_membership_call) &&
+        if ((kind == EXECUTION_INTRINSIC_COMPONENT_HAS ||
+             kind == EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP) &&
             !installed(world, values[2].initial.u64)) {
             return false;
         }
@@ -195,6 +214,9 @@ bool program_preflight(const execution_module *module, const ecs_world *world)
         }
     }
     const behavior_function **functions = NULL;
+    for (int i = 0; i < plan->description_count; i++) {
+        add_function(&functions, plan->descriptions[i].evaluate);
+    }
     for (int i = 0; i < plan->query_count; i++) {
         add_function(&functions, plan->queries[i].predicate);
     }

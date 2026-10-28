@@ -49,6 +49,8 @@ struct execution_activation
     behavior_function_context *continuation_context;
     uint64_t origin_action;
     uint64_t task; /* Handle when this activation runs a task, else 0. */
+    ecs_component_cell **task_targets; /* Explicit original identities, independently retained. */
+    int task_target_count;
     execution_box **boxes; /* Boxes over this activation's locals. */
     execution_box **held;  /* Boxes this task's references keep. */
     uint64_t debug_run;
@@ -102,6 +104,7 @@ struct execution_instance
     bool query_seen, query_ready, query_started, query_new;
     uint64_t query_variables[ECS_QUERY_VARS];
     uint64_t query_order;
+    pin_value query_row;
     query_change *query_changes, *query_snapshot;
     pin_value *values, *node_states;
     state_value *states;
@@ -180,6 +183,7 @@ struct execution_program
     bool query_streaming;
     int stream_system;
     uint64_t *query_admissions;
+    pin_value *query_values, *system_values; /* Ordered accepted row snapshots. */
     struct query_evaluator *query_evaluators;
     size_t query_cache_bytes;
     /* Detached scalar contributions and immutable prepared query row IDs. */
@@ -253,6 +257,20 @@ size_t program_activation_cache_bytes(const execution_program *);
 size_t program_row_worker_bytes(const execution_program *);
 void program_activation_cancel(execution_activation *a);
 void program_bind_tasks(behavior_function_context *);
+/* Retains the supplied targets before running any authored instruction. The
+ * new task does not take its parent's targets: an active parent's cancellation
+ * reaches it as the parent's child. NULL entries, unavailable cells and
+ * foreign-world targets produce Cancelled tasks. An empty list adds no
+ * targets. The program's world governs admission even when context.world is
+ * unset. */
+int program_task_start_bound(
+    behavior_function_context *,
+    int call_index,
+    ecs_component_cell *const *targets,
+    int target_count
+);
+/* Cancels an overdue or invalidly bound owning task at an execution boundary. */
+bool program_task_check(execution_activation *, double now);
 int program_task_command(
     behavior_function_context *,
     const behavior_function_command *,
@@ -268,6 +286,7 @@ void program_tasks_free(execution_instance *);
 void program_tasks_collect(execution_program *);
 void program_tasks_tick(execution_instance *, double now);
 bool program_task_due(const execution_activation *, double now);
+bool program_wait_attached(const execution_activation *, const command_wait *);
 bool program_request_deliver(flow_host_request *, const pin_value *, int);
 int program_activation_run(execution_activation *, double, double, unsigned);
 execution_activation *program_activation_new(

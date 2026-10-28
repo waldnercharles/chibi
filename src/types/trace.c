@@ -5,6 +5,7 @@
 #include "types/pointer.h"
 #include "types/record.h"
 #include "types/scalar.h"
+#include "types/schema.h"
 
 #include <assert.h>
 #include <string.h>
@@ -18,8 +19,8 @@ static void struct_fields(const type_desc *type, const void *data, arena_marker 
         if (field->type == PIN_STRUCT) {
             struct_fields(type_catalog_find(field->type_name), member, mark, user, depth + 1);
         }
-        if (field->type == PIN_STR || field->type == PIN_NAME ||
-            field->type == PIN_UNION || field->type == PIN_POINTER) {
+        if (field->type == PIN_STR || field->type == PIN_NAME || field->type == PIN_UNION ||
+            field->type == PIN_POINTER || field->type == PIN_QUERY) {
             const char *value;
             memcpy(&value, member, sizeof value);
             mark(user, value);
@@ -33,20 +34,25 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
 {
     mark(user, value->type_name);
     mark(user, value->record);
+    mark(user, value->schema);
     if (value->container == PIN_CONTAINER_SINGLE && value->type == PIN_STR &&
         value->text) {
         mark(user, value->text->bytes);
     }
     if (value->container != PIN_CONTAINER_SINGLE || value->type == PIN_STRUCT ||
-        value->type == PIN_STR || value->type == PIN_NAME ||
-        value->type == PIN_UNION || value->type == PIN_POINTER) {
+        value->type == PIN_STR || value->type == PIN_NAME || value->type == PIN_UNION ||
+        value->type == PIN_POINTER || value->type == PIN_QUERY) {
         mark(user, value->ptr);
     }
     if (value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE &&
         value->ptr) {
         const type_desc *type = pin_value_type(value);
         assert(type);
-        struct_fields(type, value->ptr, mark, user, 0);
+        if (value->schema) {
+            pin_schema_trace_fields(value->schema, type, value->ptr, mark, user);
+        } else {
+            struct_fields(type, value->ptr, mark, user, 0);
+        }
     }
 }
 static void trace_struct(const void *data, const void *shape, arena_marker mark, void *user)
@@ -59,12 +65,14 @@ static void trace_array(const void *data, const void *, arena_marker mark, void 
     const pin_array *array = data;
     mark(user, array->type_name);
     mark(user, array->record);
+    mark(user, array->schema);
     mark(user, array->items);
     mark(user, array->data);
     mark(user, array->buckets);
     /* Only authored records hold pointers, and their layouts travel with the
      * array; native layouts may leave the catalog while a payload holds them. */
     bool managed = !array->stride || array->element_type == PIN_POINTER ||
+                   array->element_type == PIN_QUERY ||
                    (array->element_type == PIN_STRUCT && array->record &&
                     !type_is_plain(&array->record->type));
     for (int i = 0; managed && i < array->count; i++) {
@@ -115,16 +123,16 @@ static bool boundary_scalar_width(const type_field *field)
 
 /* Validate physical access before the fallback reads any aggregate field.
  * This permits dynamic pointer/union fields but never trusts their offsets. */
-static bool boundary_layout_valid(const type_desc *type, int depth)
+static bool boundary_layout_valid(const type_desc *type, int depth, type_resolver resolver)
 {
     if (!type || !type->size || type->field_count < 0 ||
         (type->field_count && !type->fields) || depth >= 64) {
         return false;
     }
     if (type->alias_of) {
-        const type_desc *nested = type_catalog_find(type->alias_of);
+        const type_desc *nested = type_resolve(resolver, type->alias_of);
         return nested && nested->size == type->size &&
-               boundary_layout_valid(nested, depth + 1);
+               boundary_layout_valid(nested, depth + 1, resolver);
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
@@ -132,12 +140,12 @@ static bool boundary_layout_valid(const type_desc *type, int depth)
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_resolve(resolver, field->type_name);
             if (!nested || nested->size != field->size ||
-                !boundary_layout_valid(nested, depth + 1)) {
+                !boundary_layout_valid(nested, depth + 1, resolver)) {
                 return false;
             }
-        } else if (field->type == PIN_UNION || field->type == PIN_POINTER) {
+        } else if (field->type == PIN_UNION || field->type == PIN_POINTER || field->type == PIN_QUERY) {
             if (field->size != sizeof(void *)) {
                 return false;
             }
@@ -150,15 +158,15 @@ static bool boundary_layout_valid(const type_desc *type, int depth)
 
 /* A complete physical layout proves that every array element is free of
  * managed pointers. Union fields remain dynamic and require a payload walk. */
-static bool boundary_layout_pointer_free(const type_desc *type, int depth)
+static bool boundary_layout_pointer_free(const type_desc *type, int depth, type_resolver resolver)
 {
     if (!type || !type->size || type->field_count <= 0 || !type->fields || depth >= 64) {
         return false;
     }
     if (type->alias_of) {
-        const type_desc *nested = type_catalog_find(type->alias_of);
+        const type_desc *nested = type_resolve(resolver, type->alias_of);
         return nested && nested->size == type->size &&
-               boundary_layout_pointer_free(nested, depth + 1);
+               boundary_layout_pointer_free(nested, depth + 1, resolver);
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
@@ -166,12 +174,12 @@ static bool boundary_layout_pointer_free(const type_desc *type, int depth)
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_resolve(resolver, field->type_name);
             if (!nested || nested->size != field->size ||
-                !boundary_layout_pointer_free(nested, depth + 1)) {
+                !boundary_layout_pointer_free(nested, depth + 1, resolver)) {
                 return false;
             }
-        } else if (field->type == PIN_POINTER || field->type == PIN_UNION || !boundary_scalar_width(field)) {
+        } else if (field->type == PIN_POINTER || field->type == PIN_QUERY || field->type == PIN_UNION || !boundary_scalar_width(field)) {
             return false;
         }
     }
@@ -185,10 +193,32 @@ static bool boundary_array_pointer_free(const pin_array *array, int depth)
     }
     pin_value shape = { .type = PIN_STRUCT,
                         .type_name = array->type_name,
-                        .record = array->record };
+                        .record = array->record,
+                        .schema = array->schema };
     const type_desc *type = pin_value_type(&shape);
     return type && (!array->stride || type->size == array->stride) &&
-           boundary_layout_pointer_free(type, depth);
+           boundary_layout_pointer_free(
+               type,
+               depth,
+               array->schema ? pin_schema_resolver(array->schema) : (type_resolver){ 0 }
+           );
+}
+static bool boundary_array_layout_same(const pin_array *array, const pin_value *item)
+{
+    if (!array->schema && !item->schema) {
+        return true;
+    }
+    pin_value shape = { .type = PIN_STRUCT,
+                        .type_name = array->type_name,
+                        .record = array->record,
+                        .schema = array->schema };
+    const type_desc *expected = pin_value_type(&shape),
+                    *actual = pin_value_type(item);
+    uint64_t left = array->schema ? pin_schema_layout(array->schema, array->type_name)
+                                  : type_layout_hash(expected);
+    uint64_t right = item->schema ? pin_schema_layout(item->schema, item->type_name)
+                                  : type_layout_hash(actual);
+    return expected && actual && expected->size == actual->size && left && left == right;
 }
 
 /* Examine values before publication, without following managed pointees.
@@ -196,8 +226,10 @@ static bool boundary_array_pointer_free(const pin_array *array, int depth)
  * pointer. No native callback has run when this rejects a value. */
 static const char *managed_boundary_error(const pin_value *value, int depth)
 {
-    if (value->type == PIN_POINTER) {
-        return "Native calls cannot retain managed pointer arguments";
+    if (value->type == PIN_POINTER || value->type == PIN_QUERY) {
+        return value->type == PIN_QUERY
+                 ? "Native calls cannot retain query arguments"
+                 : "Native calls cannot retain managed pointer arguments";
     }
     if (depth >= 64) {
         return "Cannot retain language value";
@@ -225,7 +257,8 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
             return NULL;
         }
         if (array && array->stride && array->element_type != PIN_STRUCT &&
-            array->element_type != PIN_UNION && array->element_type != PIN_POINTER) {
+            array->element_type != PIN_UNION && array->element_type != PIN_POINTER &&
+            array->element_type != PIN_QUERY) {
             return NULL;
         }
         for (int i = 0; array && i < array->count; i++) {
@@ -235,7 +268,8 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
             if (pointer_free && item.type == PIN_STRUCT &&
                 item.container == PIN_CONTAINER_SINGLE && item.type_name &&
                 array->type_name && !strcmp(item.type_name, array->type_name) &&
-                pin_record_same(item.record, array->record)) {
+                pin_record_same(item.record, array->record) &&
+                boundary_array_layout_same(array, &item)) {
                 continue;
             }
             const char *error = managed_boundary_error(&item, depth + 1);
@@ -256,21 +290,26 @@ static const char *managed_boundary_error(const pin_value *value, int depth)
     }
     if (value->type == PIN_STRUCT && value->ptr) {
         const type_desc *type = pin_value_type(value);
-        if (!boundary_layout_valid(type, depth)) {
+        type_resolver resolver = value->schema ? pin_schema_resolver(value->schema)
+                                               : (type_resolver){ 0 };
+        if (!boundary_layout_valid(type, depth, resolver)) {
             return "Cannot retain language value";
         }
         /* Validation already proves this alias chain finite and size-matched. */
         while (type->alias_of) {
-            type = type_catalog_find(type->alias_of);
+            type = type_resolve(resolver, type->alias_of);
         }
         for (int i = 0; i < type->field_count; i++) {
             const type_field *field = &type->fields[i];
             if (field->type != PIN_STRUCT && field->type != PIN_UNION &&
-                field->type != PIN_POINTER) {
+                field->type != PIN_POINTER && field->type != PIN_QUERY) {
                 continue;
             }
             const char *member = (const char *)value->ptr + field->offset;
-            pin_value item = { .type = field->type, .type_name = field->type_name };
+            pin_value item = { .type = field->type,
+                               .type_name = field->type_name,
+                               .schema = field->type == PIN_STRUCT ? value->schema
+                                                                   : NULL };
             if (field->type == PIN_STRUCT) {
                 item.ptr = (void *)member;
             } else {

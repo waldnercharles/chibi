@@ -235,6 +235,7 @@ JoinExpression: int : 18;
 IsExpression: int : 22;
 AsExpression: int : 23;
 UnwrapExpression: int : 24;
+QueryFieldExpression: int : 28;
 GlobalSymbol: int : 0;
 StateSymbol: int : 4;
 SharedStateSymbol: int : 5;
@@ -441,6 +442,16 @@ SymbolInput :: (environment: Environment, index: int) -> SymbolSource {
     source.known_only = true;
     return source;
 }
+QueryFieldSymbol :: (environment: Environment, expression: Expression) -> int {
+    member := IDAt(environment, expression.member_slot);
+    rows := Symbols(environment);
+    for row, index in rows {
+        if (IDAt(environment, row.id_slot) == member) {
+            return index;
+        }
+    }
+    return -1;
+}
 SymbolUnit :: (environment: Environment, current: State, index: int, range: Range) -> Evaluation {
     source := SymbolInput(environment, index);
     if (source.expression < 0) {
@@ -644,8 +655,15 @@ Eval :: (environment: Environment, current: State, index: int) -> Evaluation {
                 if (Numeric(Types(environment)[expression.type], environment)) {
                     value = units.Empty(units.Literal);
                 }
-            } else if (expression.kind == SymbolExpression) {
-                source := SymbolInput(environment, expression.symbol);
+            } else if (expression.kind == SymbolExpression || expression.kind == QueryFieldExpression) {
+                index := expression.symbol;
+                if (expression.kind == QueryFieldExpression) {
+                    index = QueryFieldSymbol(environment, expression);
+                }
+                source: SymbolSource = {expression: -1, known_only: false, has_unit: false, unit: ""};
+                if (index >= 0) {
+                    source = SymbolInput(environment, index);
+                }
                 if (source.expression < 0) {
                     switch Annotated(current, range, source.has_unit, source.unit) {
                         case .Evaluated(unit, next):

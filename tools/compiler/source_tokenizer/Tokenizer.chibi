@@ -66,65 +66,62 @@ Import: int : 55;
 Behavior: int : 56;
 Library: int : 57;
 System: int : 58;
-Without: int : 59;
-State: int : 60;
-Retain: int : 61;
-Action: int : 62;
-Event: int : 63;
-Disabled: int : 64;
-On: int : 65;
-After: int : 66;
-As: int : 67;
-Bind: int : 68;
-Events: int : 69;
-Union: int : 70;
-Struct: int : 71;
-Switch: int : 72;
-Is: int : 73;
-NotKeyword: int : 74;
-AndKeyword: int : 75;
-OrKeyword: int : 76;
-Where: int : 77;
-Macro: int : 78;
-Entry: int : 79;
-Exit: int : 80;
-Query: int : 81;
-Join: int : 82;
-If: int : 83;
-Else: int : 84;
-While: int : 85;
-For: int : 86;
-In: int : 87;
-Case: int : 88;
-Sequence: int : 89;
-Branch: int : 90;
-Return: int : 91;
-Reduce: int : 92;
-Unordered: int : 93;
-Goto: int : 94;
-Break: int : 95;
-Continue: int : 96;
-Await: int : 97;
-Yield: int : 98;
-Cancel: int : 99;
-True: int : 100;
-False: int : 101;
-Nil: int : 102;
-Null: int : 103;
-Plain: int : 104;
-Ref: int : 105;
-Service: int : 106;
-Setting: int : 107;
-Wildcard: int : 108;
-From: int : 109;
-Split: int : 110;
-Component: int : 111;
-Prototype: int : 112;
-Relationship: int : 113;
-Pub: int : 114;
-Delete: int : 115;
-HalfOpenRange: int : 116;
-KindCount: int : 117;
+State: int : 59;
+Retain: int : 60;
+Action: int : 61;
+Event: int : 62;
+Disabled: int : 63;
+On: int : 64;
+After: int : 65;
+As: int : 66;
+Bind: int : 67;
+Events: int : 68;
+Union: int : 69;
+Struct: int : 70;
+Switch: int : 71;
+Is: int : 72;
+NotKeyword: int : 73;
+AndKeyword: int : 74;
+OrKeyword: int : 75;
+Macro: int : 76;
+Entry: int : 77;
+Exit: int : 78;
+Query: int : 79;
+If: int : 80;
+Else: int : 81;
+While: int : 82;
+For: int : 83;
+In: int : 84;
+Case: int : 85;
+Sequence: int : 86;
+Branch: int : 87;
+Return: int : 88;
+Reduce: int : 89;
+Unordered: int : 90;
+Goto: int : 91;
+Break: int : 92;
+Continue: int : 93;
+Await: int : 94;
+Yield: int : 95;
+Cancel: int : 96;
+True: int : 97;
+False: int : 98;
+Nil: int : 99;
+Null: int : 100;
+Plain: int : 101;
+Ref: int : 102;
+Service: int : 103;
+Setting: int : 104;
+Wildcard: int : 105;
+From: int : 106;
+Split: int : 107;
+Component: int : 108;
+Prototype: int : 109;
+Relationship: int : 110;
+Pub: int : 111;
+Delete: int : 112;
+HalfOpenRange: int : 113;
+KindCount: int : 114;
 
 // Byte classes.
 SpaceClass: int : 1;
@@ -174,10 +171,10 @@ pub KindNames :: () -> string[] {
             ">>", "&&", "||", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "->",
             "=>", "==", "!=", "<", ">", "<=", ">=", "(", ")", "[", "]", "{", "}", ":",
             ";", ".", ",", "..", "::", ":=", "package", "import", "behavior",
-            "library", "system", "without", "state", "retain", "action", "event",
+            "library", "system", "state", "retain", "action", "event",
             "disabled", "on", "after", "as", "bind", "events", "union", "struct",
-            "switch", "is", "not", "and", "or", "where", "macro", "entry", "exit",
-            "query", "join", "if", "else", "while", "for", "in", "case", "sequence",
+            "switch", "is", "not", "and", "or", "macro", "entry", "exit",
+            "query", "if", "else", "while", "for", "in", "case", "sequence",
             "branch", "return", "reduce", "unordered", "goto", "break", "continue",
             "await", "yield", "cancel", "true", "false", "nil", "null", "plain",
             "service", "setting", "wildcard", "from", "split", "component",
@@ -466,7 +463,7 @@ Endings :: () -> bool[] {
     for (kind in [Ident, Integer, Float, String, CloseParen, CloseBracket, Question, Gt, Shr,
                   True, False, Nil, Null, State, Event, Entry, Unordered, Break, Continue,
                   Yield, Return, Package, Import, Struct, From, Split, Component,
-                  NotKeyword, Join]) {
+                  NotKeyword]) {
         endings[kind] = true;
     }
     return endings;

@@ -6,6 +6,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
+#include "types/schema.h"
 #include "types/text.h"
 
 #include <assert.h>
@@ -36,6 +37,27 @@ struct ecs_command
     void *value;
     size_t value_size;
 };
+
+typedef struct
+{
+    arena *storage;
+    int references;
+    size_t charged;
+} cell_storage;
+struct ecs_component_cell
+{
+    ecs_world *world;
+    ecs_entity entity;
+    ecs_component_id component;
+    uint64_t layout;
+    int references;
+    int index;
+    arena schemas;
+    const pin_schema *schema;
+    const type_desc *type;
+    cell_storage *owners;
+};
+static void invalidate_cells(ecs_world *, ecs_entity, ecs_component_id);
 
 /* Observers that keep recording commands or marking rows would never reach
  * the end of a sync point. */
@@ -322,6 +344,11 @@ static void release_row(ecs_component *component, uint32_t slot)
 
 static void occupancy_remove(ecs_world *world, ecs_component *component, uint32_t slot)
 {
+    invalidate_cells(
+        world,
+        (ecs_entity){ slot, world->generations[slot] },
+        component->desc.id
+    );
     uint64_t *word = &component->occupancy[slot / 64u];
     uint64_t bit = UINT64_C(1) << (slot % 64u);
     assert(*word & bit);
@@ -1001,12 +1028,18 @@ void ecs_world_free(ecs_world *world)
         return;
     }
     ecs_world_clear_commands(world);
+    while (acount(world->cells)) {
+        ecs_component_cell *cell = world->cells[acount(world->cells) - 1];
+        invalidate_cells(world, cell->entity, cell->component);
+    }
+    afree(world->cells);
     for (int i = 0; i < acount(world->components); i++) {
         ecs_component *component = &world->components[i];
         for (int slot = 0; slot < acount(component->owned_rows); slot++) {
             arena_free(&component->owned_rows[slot]);
         }
         afree(component->owned_rows);
+        afree(component->cells);
         component_desc_free_names(&world->components[i].desc);
         free(world->components[i].desc.column_base);
         free(world->components[i].occupancy);
@@ -1947,6 +1980,7 @@ static bool field_size_valid(const type_field *field, type_resolver resolver)
         }
         case PIN_FLOW:
         case PIN_TASK:
+        case PIN_QUERY:
         case PIN_POINTER:
         case PIN_UNION: return false;
     }
@@ -2166,6 +2200,193 @@ int ecs_component_write_value(
         mark_modified(component, entity.slot);
     }
     return result;
+}
+
+static void cell_free(ecs_component_cell *cell)
+{
+    assert(!acount(cell->owners));
+    arena_free(&cell->schemas);
+    afree(cell->owners);
+    free(cell);
+}
+static void cell_charge(ecs_component_cell *cell)
+{
+    size_t bytes = sizeof *cell + arena_storage_bytes(&cell->schemas);
+    if (cell->owners) {
+        bytes += sizeof(dyna_hdr) + (size_t)acap(cell->owners) * sizeof *cell->owners;
+    }
+    for (int i = 0; i < acount(cell->owners); i++) {
+        cell_storage *owner = &cell->owners[i];
+        arena_external_resize(owner->storage, owner->charged, bytes);
+        owner->charged = bytes;
+    }
+}
+void ecs_component_cell_retain_storage(ecs_component_cell *cell, arena *storage)
+{
+    assert(storage && storage->collectable);
+    for (int i = 0; i < acount(cell->owners); i++) {
+        if (cell->owners[i].storage == storage) {
+            cell->owners[i].references++;
+            return;
+        }
+    }
+    apush(cell->owners, ((cell_storage){ .storage = storage, .references = 1 }));
+    cell_charge(cell);
+}
+void ecs_component_cell_release_storage(ecs_component_cell *cell, arena *storage)
+{
+    for (int i = 0; i < acount(cell->owners); i++) {
+        cell_storage *owner = &cell->owners[i];
+        if (owner->storage != storage) {
+            continue;
+        }
+        assert(owner->references > 0);
+        if (!--owner->references) {
+            arena_external_resize(storage, owner->charged, 0);
+            adel(cell->owners, i);
+        }
+        ecs_component_cell_release(cell);
+        return;
+    }
+    assert(false);
+}
+static void cell_unlink(ecs_component_cell *cell)
+{
+    ecs_world *world = cell->world;
+    ecs_component *component = find_component(world, cell->component);
+    assert(component && component->cells[cell->entity.slot] == cell);
+    component->cells[cell->entity.slot] = NULL;
+    int last = acount(world->cells) - 1;
+    assert(cell->index >= 0 && cell->index <= last && world->cells[cell->index] == cell);
+    world->cells[cell->index] = world->cells[last];
+    world->cells[cell->index]->index = cell->index;
+    asetlen(world->cells, last);
+    cell->world = NULL;
+}
+void ecs_component_cell_retain(ecs_component_cell *cell)
+{
+    assert(cell && cell->references > 0);
+    cell->references++;
+}
+ecs_component_cell *ecs_component_cell_acquire(ecs_world *world, ecs_entity entity, ecs_component_id id)
+{
+    ecs_component *component = world ? find_component(world, id) : NULL;
+    if (!component || !component->desc.type || entity.slot >= INT_MAX ||
+        !ecs_component_has(world, entity, id)) {
+        return NULL;
+    }
+    if (entity.slot < (uint32_t)acount(component->cells) &&
+        component->cells[entity.slot]) {
+        ecs_component_cell *cell = component->cells[entity.slot];
+        ecs_component_cell_retain(cell);
+        return cell;
+    }
+    ecs_component_cell *cell = xcalloc(1, sizeof *cell);
+    cell->schema = pin_schema_create(&cell->schemas, component->desc.type, (type_resolver){ 0 });
+    if (!cell->schema) {
+        cell_free(cell);
+        return NULL;
+    }
+    cell->type = pin_schema_type(cell->schema, component->desc.type->name);
+    cell->world = world;
+    cell->entity = entity;
+    cell->component = id;
+    cell->layout = component->desc.layout_hash;
+    cell->references = 2; /* World plus returned ownership. */
+    cell->index = acount(world->cells);
+    apush(world->cells, cell);
+    if (entity.slot >= (uint32_t)acount(component->cells)) {
+        int before = acount(component->cells);
+        asetlen(component->cells, (int)entity.slot + 1);
+        memset(
+            component->cells + before,
+            0,
+            (size_t)(acount(component->cells) - before) * sizeof *component->cells
+        );
+    }
+    component->cells[entity.slot] = cell;
+    return cell;
+}
+void ecs_component_cell_release(ecs_component_cell *cell)
+{
+    assert(cell && cell->references > 0);
+    cell->references--;
+    if (cell->references == 1 && cell->world) {
+        cell_unlink(cell);
+        cell->references--;
+    }
+    if (!cell->references) {
+        cell_free(cell);
+    }
+}
+const type_desc *ecs_component_cell_type(const ecs_component_cell *cell)
+{
+    return cell->type;
+}
+type_resolver ecs_component_cell_resolver(const ecs_component_cell *cell)
+{
+    return pin_schema_resolver(cell->schema);
+}
+bool ecs_component_cell_target(
+    ecs_component_cell *cell,
+    const ecs_execution_view *world,
+    uint64_t *entity,
+    ecs_component_id *component,
+    uint64_t *layout
+)
+{
+    if (!cell || !cell->world || ecs_world_execution(cell->world) != world) {
+        return false;
+    }
+    if (!ecs_component_cell_value(cell).ptr) {
+        return false;
+    }
+    *entity = ecs_entity_to_u64(cell->entity);
+    *component = cell->component;
+    *layout = cell->layout;
+    return true;
+}
+pin_value ecs_component_cell_value(ecs_component_cell *cell)
+{
+    void *data = NULL;
+    if (cell->world) {
+        const ecs_execution_view *world = ecs_world_execution(cell->world);
+        uint32_t row = ecs_execution_entity(world, ecs_entity_to_u64(cell->entity));
+        const ecs_execution_column *column = ecs_execution_component(world, row, cell->component);
+        if (column && column->data && column->layout == cell->layout &&
+            column->stride == cell->type->size) {
+            data = (char *)column->data + (size_t)row * column->stride;
+        } else {
+            cell_unlink(cell);
+            ecs_component_cell_release(cell); /* Drop world ownership. */
+        }
+    }
+    return (pin_value){ .type = PIN_STRUCT,
+                        .type_name = cell->type->name,
+                        .schema = cell->schema,
+                        .ptr = data };
+}
+bool ecs_component_cell_alive(ecs_component_cell *cell)
+{
+    return cell && ecs_component_cell_value(cell).ptr;
+}
+static void invalidate_cells(ecs_world *world, ecs_entity entity, ecs_component_id component)
+{
+    ecs_component *owner = find_component(world, component);
+    if (!owner || entity.slot >= (uint32_t)acount(owner->cells) ||
+        !owner->cells[entity.slot]) {
+        return;
+    }
+    ecs_component_cell *cell = owner->cells[entity.slot];
+    cell_unlink(cell);
+    ecs_component_cell_release(cell); /* Drop world ownership. */
+}
+int ecs_component_cell_write(ecs_component_cell *cell, size_t offset, pin_value declared, pin_value value)
+{
+    if (ecs_component_cell_value(cell).ptr) {
+        return ecs_component_write_value(cell->world, cell->entity, cell->component, offset, declared, value);
+    }
+    return ECS_ERR_COMPONENT;
 }
 
 int ecs_component_modified(ecs_world *world, ecs_entity entity, ecs_component_id id)

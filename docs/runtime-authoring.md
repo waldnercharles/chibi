@@ -55,6 +55,12 @@ form first. Version 31 removes the step globals `dt`, `delta` and
 `delta_time()`: a read in an `on Tick` handler or a system becomes a listed
 `dt`, and the migration refuses one anywhere else, where the step must be
 passed in.
+Version 38 gives systems an implicit, read-only body-local `dt` and flattens
+their query headers. It migrates live component bindings to `^T`, merges
+`join` entries into the binding list, and replaces `without` and query `where`
+clauses with `if` entries. Behavior handlers still list their payload fields.
+The migration refuses ambiguous optional whole-component reads and body
+`query expression;` declarations; rewrite those sources before retrying.
 A prototype is the `name` it declares, whatever its file is called: scenes and
 other prototypes' `(array)includes` find it by that name in the player and in
 `chibi_ctl` alike, and two prototypes that declare one name, or a name over
@@ -259,15 +265,18 @@ the removal commits.
 
 ## System queries
 
-A system's query header binds components and infers reads and writes from its
-body. Required bindings determine which root entities run it. `where` combines
-component membership with `and`, `or`, `not` and parentheses; an unqualified
-component always refers to the root entity, as does `self.Component`.
+A system uses the same typed description as an explicit query iterator.
+Its flat header binds root components, relationship generators, components
+from other sources, pure intermediate values and `if` filters. Reads and
+writes are inferred from the evaluator and body.
 
 ```code
-Home :: system(position: Transform, velocity: Velocity)
-    join aim: Targets.Transform?
-    where (Player or Ally) and not self.Frozen and not Targets.Frozen {
+Home :: system(
+    position: ^Transform,
+    velocity: Velocity,
+    aim: ^Transform? from Targets,
+    if (Player || Ally) && !self.Frozen && !Targets.Frozen,
+) {
     if aim {
         position.x = aim.x
         position.y = aim.y
@@ -275,101 +284,95 @@ Home :: system(position: Transform, velocity: Velocity)
 }
 ```
 
-Here `Targets` must be an authored or engine relationship exposed in the script catalog
-with the exclusive trait. A scalar `Targets.Transform` binding follows that
-single target and requires its component. Adding `?` keeps roots with no target
-or no target component; test the binding before reading its fields. Reads and
-writes resolve the current provider rather than retaining a component pointer.
-Test optional presence again after a structural change or suspension.
-Several roots may share a target, so sourced access does not assume that their
-writes are independent.
+`Targets` is an authored or engine relationship exposed in the script catalog.
+A scalar `from Targets` binding requires an exclusive relationship and follows
+its one target. Adding `?` retains roots without that target or component.
+A value binding copies the component for the row and is read-only. A pointer
+binding accesses the stored component. Guards must prove optional presence
+before fields are read. Several roots may share a target, so sourced writes
+are not assumed independent.
 
-`join` followed by a typed binding groups sourced components; it does not
-introduce another loop or an entity alias. `join aim: Targets.Transform` and a regular header binding
-`aim: Targets.Transform` have identical membership and access costs. The expanded
-spelling is `join aim: Transform from Targets`; root bindings can explicitly say
-`position: Transform from self`. A typed `join` must name a relationship, bound entity variable or ancestor
-source. Several bindings can share one `join`, separated by commas, or use
-separate `join` clauses.
+`Frozen` and `self.Frozen` test root membership; `Targets.Frozen` tests the
+exclusive target. A missing target makes the latter false. `has(Targets)`
+tests relationship existence, including relationships with multiple targets,
+without generating extra rows. `has(Component)` tests component membership.
+A catalog component takes precedence if a relationship has the same name.
 
-Pure membership `where` clauses filter the root's membership. `Frozen` or `self.Frozen` tests
-the root; `Targets.Frozen` tests its exclusive target. A missing target makes
-`Targets.Frozen` false and `not Targets.Frozen` true. Thus the optional join above
-keeps a projectile without a target, but excludes one whose target is frozen.
-Making `aim` required excludes roots without that target component regardless of
-the filter. Filters do not replace the presence guard on an optional binding.
-
-`has(Targets)` tests whether the root has at least one target, including for a
-relationship with multiple targets. It never duplicates the root's body. Combine
-it with `not`, `and` or `or`, for example `where has(Targets) and not Disabled`.
-`has(Component)` retains its component meaning; component names take precedence
-if a catalog also exposes a relationship with that name.
-
-Ancestor sources are explicit and independent of relationship paths:
+Ancestor sources are explicit:
 
 ```code
-Inherit :: system(position: Transform,
-    team: Team from ancestor(ChildOf)) {
+Inherit :: system(
+    position: ^Transform,
+    team: Team from ancestor(ChildOf),
+) {
     position.x = team.spawn_x
 }
 ```
 
-`ancestor(ChildOf)` starts at the parent and selects the nearest ancestor with
-the requested component. `self_or_ancestor(ChildOf)` checks the root first.
-Traversal requires an exclusive, traversable relationship. `ChildOf` is built
-in; other names and their traits come from the embedding engine's catalog.
-An optional ancestor binding uses the same `?` spelling. A compact path does
-not implicitly continue searching ancestors.
+`ancestor(ChildOf)` selects the nearest ancestor carrying the requested
+component. `self_or_ancestor(ChildOf)` checks the root first. Traversal requires
+an exclusive, traversable relationship; `ChildOf` is built in. Optional sources
+use `?`. Membership guards use the same notation, such as
+`if ancestor(ChildOf).Team`.
 
-Filters use the same source notation: `where ancestor(ChildOf).Team` or
-`where self_or_ancestor(ChildOf).Team`. Each term independently searches for its
-requested component; two ancestor terms need not select the same provider.
-
-For a relationship with multiple targets, a body loop visits one
-target at a time without materializing an array, while the outer body and its
-invocation-local variables still run once per root:
+A header generator gives each relationship target its own system row:
 
 ```code
-DamageTargets :: system(damage: Damage) {
-    for target in self.Targets {
-        if target.Health {
-            target.Health.value -= damage.amount
-        }
-    }
+DamageTargets :: system(
+    damage: Damage,
+    target: entity in self.Targets,
+    health: ^Health from target,
+    if health.value > 0 && changed(damage),
+    amount := damage.amount,
+) {
+    health.value -= amount
 }
 ```
 
-The loop supplies target identity for component access and ordinary Boolean
-conditions. Its body may write component values, but cannot suspend or change
-entity structure while the relationship stream is open. Required scalar query
-bindings remove the root from membership when their provider disappears;
-optional bindings do not. Reactive `bind` destinations remain on the root;
-write a target or ancestor in the system body.
+A generator can use an earlier variable, for example `ally in target.Allies`.
+Independent generators form all matching combinations. Eight and four targets
+produce up to 32 rows per root. There are at most eight named entity variables.
+Forward references and duplicate names are errors. An optional component does
+not make its generator optional: a root with no targets produces no rows.
+`has(target.Health)` tests membership on that entity without generating rows.
 
-To give each matching target its own system execution, use an explicit generator
-in the header:
+`in` generates identities; `from` selects a component on an existing identity.
+The type on a generator may be omitted and is inferred as `entity`.
+Intermediate bindings use `name := expression` or `name: Type = expression`.
+Entries evaluate in source order; a false `if` skips the remaining entries.
+Every system has an implicit read-only local `dt` in seconds in its body.
+
+An explicit query uses that same list:
 
 ```code
-DamageTargets :: system(damage: Damage)
-    join target in self.Targets
-    join health: Health from target
-    where health.value > 0 and changed(damage) {
-    health.value -= damage.amount
+matches := query(
+    damage: Damage,
+    target in self.Targets,
+    health: ^Health from target,
+    if health.value > 0,
+)
+for row in matches {
+    row.health.value -= row.damage.amount
 }
 ```
 
-`join target in self.Targets` binds an entity variable for each target. The typed
-binding reads `Health` from that variable. Generators can chain through earlier
-variables, such as `join ally in target.Allies`, or enumerate another relationship
-from `self`. Two independent generators with eight and four targets produce up
-to 32 rows per root. The current query engine supports eight named variables;
-forward references, duplicate names and uses before binding are errors.
+The description captures outer values at construction. Each loop owns its
+iteration state; nested and repeated loops use independent cursors. Cleanup
+also occurs on early exits. Query rows expose their named bindings as fields.
+Managed component references resolve current storage while their original
+component incarnation exists. Component removal, entity destruction or world
+destruction permanently invalidates the target; re-addition has a distinct
+identity. Invalid access stops the activation with a runtime diagnostic, which
+the embedding caller can inspect. Authored code has no catch or checked recovery
+operation yet. Keeping a reference does not keep the component attached to its entity.
+A scalar `from` binding keeps the selected component through suspension.
+Relationship edits affect later admissions; an existing pointer keeps its
+component identity.
 
-An optional component binding does not make its generator optional. A root with
-no `Targets` has no generated rows; a target without an optional component still
-has a row. `has(target.Health)` tests component membership on the bound entity,
-and `has(target.Targets)` tests relationship existence without creating more rows.
-The existing scalar join spelling continues to execute once per root.
+A body loop over `self.Targets` remains available when one system invocation
+should cover all targets. That streaming relationship loop cannot suspend or
+change entity structure while open. Reactive `bind` destinations remain on
+the root; target or ancestor writes belong in the system body.
 
 Each complete root/target tuple owns independent invocation locals and suspended
 work. Ordinary locals survive suspension without `retain`; they end when the
@@ -391,19 +394,22 @@ Suspended, inspected, cancelled and failed work does not return to this cache.
 Prepared system batches still need separate activations for simultaneous rows.
 `execution_program_memory_usage` reports idle `activation_cache_bytes` separately
 from live activation headers.
-Value-filtered streaming first records one admission bit per structural row so
-body writes cannot change later rows' admission within the same update.
+Before bodies run, streaming systems stage admitted rows and their binding
+values so body writes cannot change later rows' admission or snapshots within
+the same update. This storage grows with the admitted rows and their values.
 
 ### Value and change filters
 
-`where` also accepts Boolean value expressions using component bindings,
+`if` entries accept Boolean value expressions using component bindings,
 constants, supported globals and read-only helper functions. Preserve ordinary
-short-circuit order: `where aim and aim.x > 0` guards an optional binding; `where
-aim or aim.x > 0` does not. Header predicates cannot write, suspend, perform host
+short-circuit order: `if aim && aim.x > 0` guards an optional binding; `if
+aim || aim.x > 0` does not. Header predicates cannot write, suspend, perform host
 side effects, consume randomness, or read system state or event payloads. These
 restrictions also apply through helpers. Put conditions on persistent system
 state inside the body. Registration-owned retained state exists independently of
 query admission, including when no rows match.
+Pass query bindings and captured outer values to header helpers as explicit
+arguments; a helper cannot implicitly read the surrounding query or invocation.
 
 `changed(damage)` observes published writes to the whole bound component, not
 only the fields used in the body. A same-value write counts. A new matching row
@@ -411,7 +417,7 @@ is eligible once. Each system row has its own observation history, so another
 system does not consume its notification. Direct native pointer writes become
 observable when their owner calls `ecs_component_modified`.
 
-The complete dynamic `where` expression gates new work in source order. Required
+The ordered dynamic `if` entries gate new work in source order. Required
 header bindings and generators define structural membership; membership tests
 inside a mixed value/change expression belong to that gate. A false gate does not destroy
 existing invocation locals or cancel an already suspended body. Structural tuple loss

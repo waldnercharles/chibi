@@ -534,6 +534,7 @@ void behavior_function_prepare_borrows(behavior_function *f)
         return;
     }
     execution_prepare_argument_sharing(f);
+    execution_prepare_task_dependencies(f);
     /* With every callee's argument sharing known, a raw address to a built
      * value may reach a callee that changes no argument. */
     behavior_function_note_derived(f);

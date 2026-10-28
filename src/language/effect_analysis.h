@@ -18,6 +18,9 @@ typedef struct
     int query_count;
     const script_binding *bindings;
     int binding_count;
+    /* Ordered stages and ownership distinguish row locals from invocation reads. */
+    const script_query_description *descriptions;
+    int description_count;
 } script_effect_facts;
 typedef struct
 {

@@ -43,6 +43,8 @@ pub GameType :: struct {
     component: u64;
     first: int;
     count: int;
+    relationship: bool;
+    traits: int;
 }
 // A game type's field: of the type types[record] when that is not -1; a
 // constant whose value is its name; read by natives[read] when that is not
@@ -199,11 +201,27 @@ NativeTypes :: (types: GameType[]) -> TypeDecl[] {
         if (!linked.required) {
             kind = NamespaceDecl;
         }
+        if (linked.relationship) {
+            kind = RelationshipDecl;
+        }
         row: TypeDecl = {name: linked.name, type_name: linked.name, package: -1, node: -1, kind: kind,
                          first: linked.first, count: linked.count, size: linked.size, parent: linked.underlying,
                          storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component,
-                         key: 0, value_storage: 0, value_container: 0, value_record: -1};
+                         key: linked.traits, value_storage: 0, value_container: 0, value_record: -1};
         declared.append(row);
+    }
+    // Optional query snapshots keep their underlying nominal component type
+    // and layout, while semantic lookup remembers that a guard is required.
+    index: int = 0;
+    while (index < length(types)) {
+        if (declared[index].kind == NativeDecl && declared[index].component != 0) {
+            optional := declared[index];
+            optional.kind = OptionalComponentDecl;
+            optional.parent = index;
+            optional.name = format_text("{}?", optional.name);
+            declared.append(optional);
+        }
+        index += 1;
     }
     return declared;
 }
@@ -450,6 +468,12 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
     }
     return Default.Failed(Diagnose(forest, value, 0, "state default needs a literal of its declared type"));
 }
+// A system's body reads its step from the execution context, including empty
+// headers. Helpers receive it explicitly; it is not a mutable local.
+SystemStepName :: (target: Target, storage: int) -> Name {
+    return {name: "dt", place: SystemStepPlace, index: target.delta_seconds_offset,
+            storage: storage, container: 0, record: -1, writable: false, node: -1};
+}
 // `identity` names the source as the project does, such as
 // "behaviors/Counter.chibi"; the module, states and handlers take their IDs
 // from it. The target, natives, events, types, entity, operators, globals and
@@ -543,9 +567,22 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
     identity := document.identity;
     solid := SolidOffsets(source);
     is_library := Is(forest, declaration, "library");
+    is_system := Is(forest, declaration, "system");
     kept_states: StateDecl[] = [];
     handled: int[] = [];
     member := FirstMember(forest, Field(forest, declaration, "body"));
+    if (is_system) {
+        tick := FindEvent(game_events, "Tick");
+        if (tick < 0 || game_events[tick].count != 1 || event_fields[game_events[tick].first].name != "dt") {
+            return SourceMembers.Failed(Diagnose(forest, declaration, package,
+                                                 "systems require Tick(dt) in the target event catalog"));
+        }
+        callable: Callable = {name: Text(forest, source, Field(forest, declaration, "name")), package: package,
+                              document: package, node: declaration, first: length(params), count: 0, result: 0,
+                              result_container: 0, result_record: -1, results: 0, waits: false};
+        callables.append(callable);
+        handled.append(tick);
+    }
     while (member >= 0) {
         if (!is_library && Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
@@ -595,7 +632,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
             }
             callable: Callable = {name: name, package: package, document: package, node: member, first: first,
                                   count: game_events[found].count, result: 0, result_container: 0, result_record: -1,
-                                  results: 0};
+                                  results: 0, waits: false};
             callables.append(callable);
             handled.append(found);
         } else if (Is(forest, member, "function_declaration")) {
@@ -612,7 +649,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
                     callables.append(procedure);
                     handled.append(int(-1));
             }
-        } else if (!is_library || !Is(forest, member, "record_declaration")) {
+        } else if (!is_system && (!is_library || !Is(forest, member, "record_declaration"))) {
             return SourceMembers.Failed(Diagnose(forest, member, package, "unsupported executable source member"));
         }
         member = NextMember(forest, member);
@@ -622,6 +659,51 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
     }
     return SourceMembers.Read(Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators,
                                             globals, makes, make_fields), callables, params);
+}
+// The names a query in the source at `root` reads: its states, the game's
+// globals and the owner, and a system's step.
+SourceNames :: (forest: snapshot.SnapshotNode[], root: int, game: Game, types: TypeDecl[], target: Target) -> Name[] {
+    names: Name[] = [];
+    switch game {
+        case .Package:
+            return names;
+        case .Library(owner, operators, globals, makes, fields):
+            return BehaviorNames([], globals, TypeWithId(types, owner));
+        case .Behavior(kept, handlers, declared_events, payloads, owner, operators, globals, makes, fields):
+            names = BehaviorNames(kept, globals, TypeWithId(types, owner));
+            if (Is(forest, root, "system")) {
+                tick := declared_events[FindEvent(declared_events, "Tick")];
+                names.append(SystemStepName(target, payloads[tick.first].storage));
+            }
+    }
+    return names;
+}
+// A system's step, and the rows of the system query enclosing a callable.
+SystemNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                query_specs: QuerySpec[], callable: Callable, game_events: GameEvent[],
+                event_fields: GameEventField[], target: Target) -> Name[] {
+    names: Name[] = [];
+    if (Is(forest, callable.node, "system")) {
+        tick := game_events[FindEvent(game_events, "Tick")];
+        names.append(SystemStepName(target, event_fields[tick.first].storage));
+    }
+    for (described in query_specs) {
+        if (Is(forest, described.node, "system") &&
+            (callable.node == described.node || Ancestor(forest, Field(forest, described.node, "body"), callable.node))) {
+            names.extend(QueryNames(forest, text, types, members, described));
+        }
+    }
+    return names;
+}
+// The queries whose evaluators `document` declares, as its module owns them.
+SourceQueries :: (queries: QuerySpec[], callables: Callable[], document: int) -> QuerySpec[] {
+    owned: QuerySpec[] = [];
+    for (described in queries) {
+        if (callables[described.evaluator].document == document) {
+            owned.append(described);
+        }
+    }
+    return owned;
 }
 // Parsed roots, signatures and catalog types share one index space. Bodies
 // establish exact imports; dependencies are assembled before their callers.
@@ -684,8 +766,9 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 top = root + first;
         }
         root := FirstMember(forest, top);
-        if ((!Is(forest, root, "behavior") && !Is(forest, root, "library")) || NextMember(forest, root) >= 0) {
-            return InputFailure(index, "an executable asset needs one behavior or library declaration");
+        if ((!Is(forest, root, "behavior") && !Is(forest, root, "system") && !Is(forest, root, "library")) ||
+            NextMember(forest, root) >= 0) {
+            return InputFailure(index, "an executable asset needs one behavior, system or library declaration");
         }
         if (Is(forest, root, "library")) {
             name := Text(forest, sources[index], Field(forest, root, "name"));
@@ -723,6 +806,31 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
         case .Read(promoted):
             declared_types = promoted;
     }
+    // A library has no owner to query from.
+    has_queries := false;
+    index = 0;
+    while (index < length(documents)) {
+        if (!Is(forest, roots[index], "library")) {
+            declared_types = DeclarePointers(forest, sources[index], declared_types, Aliases(namespaces, index),
+                                             index, roots[index]);
+        }
+        node := documents[index].node_start;
+        while (node < documents[index].node_start + documents[index].node_count) {
+            if (Is(forest, node, "query_expression") ||
+                (Is(forest, node, "system") && length(Members(forest, Field(forest, node, "parameters"))) > 0)) {
+                if (Is(forest, roots[index], "library")) {
+                    return Result.Rejected(Diagnose(forest, node, index, "queries need a behavior or system source"));
+                }
+                has_queries = true;
+            }
+            node += 1;
+        }
+        index += 1;
+    }
+    if (has_queries) {
+        declared_types = QueryPointers(declared_types, members);
+    }
+    query_specs: QuerySpec[] = [];
     games: Game[] = [];
     callables: Callable[] = [];
     params: Param[] = [];
@@ -738,7 +846,31 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 callables = declared;
                 params = parameters;
         }
+        // A source's evaluators follow its callables, which its module owns.
+        if (has_queries && !Is(forest, roots[index], "library")) {
+            first := documents[index].node_start;
+            switch CollectQueries(forest, sources[index], identities[index], index, first,
+                                  first + documents[index].node_count, declared_types, members, callables, params,
+                                  natives, ports, query_specs,
+                                  SourceNames(forest, roots[index], games[index], declared_types, target), entity,
+                                  target, ops) {
+                case .Failed(diagnostic):
+                    return Result.Rejected(diagnostic);
+                case .Collected(query_types, query_members, query_callables, query_params, descriptions):
+                    declared_types = query_types;
+                    members = query_members;
+                    callables = query_callables;
+                    params = query_params;
+                    query_specs = descriptions;
+            }
+        }
         index += 1;
+    }
+    callables = WaitingCallables(forest, callables);
+    switch TaskResultDeclarations(callables, params, declared_types, members) {
+        case .Collected(task_types, task_members):
+            declared_types = task_types;
+            members = task_members;
     }
     natives = SourceNatives(documents, callables, natives, native_ids);
     bodies: Body[] = [];
@@ -781,14 +913,22 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 meaning := binding.ID("symbol", format_text("{}:1:{}:callable", identities[callable.package], callable.name));
                 if (Is(forest, callable.node, "handler")) {
                     meaning = game_events[FindEvent(game_events, callable.name)].id;
+                } else if (Is(forest, callable.node, "system")) {
+                    meaning = game_events[FindEvent(game_events, "Tick")].id;
+                }
+                if (QueryEvaluator(query_specs, index) < 0) {
+                    behaving.extend(SystemNames(forest, documents[callable.document].text, declared_types, members,
+                                                query_specs, callable, game_events, event_fields, target));
                 }
                 body := FunctionBody(scoped, documents, callables, params, declared_types, members, constants, natives,
                                      ports, native_ids, extend(Aliases(namespaces, callable.document), behaving),
                                      operators, makes, make_fields, index, solid, undeclared, meaning, context,
-                                     generic, ops, target);
+                                     generic, ops, target, SourceQueries(query_specs, callables, callable.document));
                 switch body {
                     case .Failed(diagnostic):
                         return Result.Rejected(diagnostic);
+                    case .Inferred(value):
+                        return InputFailure(callable.document, "expression inferred where a callable body was required");
                     case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                                   direct_write, facts):
                         if (pass == 0) {
@@ -838,7 +978,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 switch Assemble(forest, documents, index, index, identities, module_ids, fingerprints,
                                 resize([true], length(documents)), namespaces, callables, params, declared_types,
                                 members, constants, natives, ports, native_ids, native_effects, effects, ops,
-                                target, abi, games[index], bodies) {
+                                target, abi, games[index], bodies, SourceQueries(query_specs, callables, index)) {
                     case .Rejected(diagnostic):
                         return Result.Rejected(diagnostic);
                     case .Compiled(module, bytes, summaries):
@@ -935,10 +1075,11 @@ CatalogPorts :: (ports: CatalogPort[], types: TypeDecl[], entity: u64) -> Resolv
         if (port.nominal != 0) {
             found := TypeWithId(types, port.nominal);
             duplicate := false;
+            // A component's optional query view shares its identity.
             if (found >= 0) {
                 at := found + 1;
                 while (at < length(types)) {
-                    duplicate = duplicate || types[at].id == port.nominal;
+                    duplicate = duplicate || (types[at].id == port.nominal && types[at].kind != OptionalComponentDecl);
                     at += 1;
                 }
             }

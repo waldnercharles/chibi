@@ -9,23 +9,31 @@
 
 static uint64_t component_target(const script_effect_facts *out, int index)
 {
-    while (index >= 0 && out->expressions[index].kind == SCRIPT_EXPR_MEMBER) {
+    int remaining = out->expression_count;
+    while (index >= 0 && remaining--) {
         const script_expression *e = &out->expressions[index];
-        if (e->read || e->write || e->type.container != PIN_CONTAINER_SINGLE) {
-            return 0;
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_DEREFERENCE) {
+            if (e->read || e->write || e->type.container != PIN_CONTAINER_SINGLE) {
+                return 0;
+            }
+            index = e->left;
+            continue;
         }
-        index = e->left;
-    }
-    if (index < 0) {
+        if (e->kind == SCRIPT_EXPR_COMPONENT) {
+            return e->capability;
+        }
+        if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0) {
+            const script_symbol *symbol = &out->symbols[e->symbol];
+            if (symbol->kind == SCRIPT_COMPONENT) {
+                return symbol->component_type.nominal;
+            }
+            if (symbol->kind == SCRIPT_LOCAL && symbol->type.storage == PIN_POINTER &&
+                !symbol->mutations && symbol->initializer >= 0) {
+                index = symbol->initializer;
+                continue;
+            }
+        }
         return 0;
-    }
-    const script_expression *e = &out->expressions[index];
-    if (e->kind == SCRIPT_EXPR_COMPONENT) {
-        return e->capability;
-    }
-    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
-        out->symbols[e->symbol].kind == SCRIPT_COMPONENT) {
-        return out->symbols[e->symbol].type.nominal;
     }
     return 0;
 }
@@ -52,26 +60,38 @@ static unsigned statement_effects(const script_effect_facts *out, const script_s
 enum
 {
     QUERY_STARTS_TASK = 1,
-    QUERY_READS_INVOCATION = 2
+    QUERY_READS_INVOCATION = 2,
+    QUERY_HIDDEN_CAPTURE = 4
 };
-static unsigned query_expression_restrictions(const script_effect_facts *, int, bool *);
-static unsigned query_statement_restrictions(const script_effect_facts *out, int index, bool *functions)
+static unsigned query_expression_restrictions(const script_effect_facts *, int, bool *, int);
+static unsigned query_statement_restrictions(
+    const script_effect_facts *out,
+    int index,
+    bool *functions,
+    int function
+)
 {
     if (index < 0) {
         return 0;
     }
     const script_statement *statement = &out->statements[index];
-    unsigned restrictions = query_expression_restrictions(out, statement->expression, functions) |
-                            query_expression_restrictions(out, statement->second, functions) |
-                            query_expression_restrictions(out, statement->third, functions) |
-                            query_statement_restrictions(out, statement->body, functions) |
-                            query_statement_restrictions(out, statement->alternative, functions);
+    unsigned
+        restrictions = query_expression_restrictions(out, statement->expression, functions, function) |
+                       query_expression_restrictions(out, statement->second, functions, function) |
+                       query_expression_restrictions(out, statement->third, functions, function) |
+                       query_statement_restrictions(out, statement->body, functions, function) |
+                       query_statement_restrictions(out, statement->alternative, functions, function);
     for (int i = 0; i < statement->child_count; i++) {
-        restrictions |= query_statement_restrictions(out, statement->children[i], functions);
+        restrictions |= query_statement_restrictions(out, statement->children[i], functions, function);
     }
     return restrictions;
 }
-static unsigned query_expression_restrictions(const script_effect_facts *out, int index, bool *functions)
+static unsigned query_expression_restrictions(
+    const script_effect_facts *out,
+    int index,
+    bool *functions,
+    int function
+)
 {
     if (index < 0) {
         return 0;
@@ -83,27 +103,41 @@ static unsigned query_expression_restrictions(const script_effect_facts *out, in
     }
     if (value->kind == SCRIPT_EXPR_SYMBOL && value->symbol >= 0) {
         const script_symbol *symbol = &out->symbols[value->symbol];
+        if (function >= 0 && symbol->scope >= 0 &&
+            out->scopes[symbol->scope].function != function &&
+            (symbol->kind == SCRIPT_LOCAL || symbol->kind == SCRIPT_PARAMETER ||
+             symbol->kind == SCRIPT_RESULT || symbol->kind == SCRIPT_STATE ||
+             symbol->kind == SCRIPT_SHARED_STATE || symbol->kind == SCRIPT_COMPONENT ||
+             symbol->kind == SCRIPT_QUERY_VARIABLE)) {
+            restrictions |= QUERY_HIDDEN_CAPTURE;
+        }
         if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
             ((symbol->kind == SCRIPT_PARAMETER || symbol->kind == SCRIPT_LOCAL) &&
-             symbol->scope >= 0 && out->scopes[symbol->scope].function < 0)) {
+             !symbol->query_description && symbol->scope >= 0 &&
+             out->scopes[symbol->scope].function < 0)) {
             restrictions |= QUERY_READS_INVOCATION;
         }
     }
-    restrictions |= query_expression_restrictions(out, value->left, functions);
+    restrictions |= query_expression_restrictions(out, value->left, functions, function);
     if (value->kind == SCRIPT_EXPR_CALL || value->kind == SCRIPT_EXPR_JOIN) {
         if (value->right >= 0 && !functions[value->right]) {
             functions[value->right] = true;
-            restrictions |= query_statement_restrictions(
+            unsigned called = query_statement_restrictions(
                 out,
                 out->functions[value->right].body,
-                functions
+                functions,
+                value->right
             );
+            restrictions |= called;
+            if (called & QUERY_READS_INVOCATION) {
+                restrictions |= QUERY_HIDDEN_CAPTURE;
+            }
         }
     } else {
-        restrictions |= query_expression_restrictions(out, value->right, functions);
+        restrictions |= query_expression_restrictions(out, value->right, functions, function);
     }
     for (int i = 0; i < value->argument_count; i++) {
-        restrictions |= query_expression_restrictions(out, value->arguments[i].value, functions);
+        restrictions |= query_expression_restrictions(out, value->arguments[i].value, functions, function);
     }
     return restrictions;
 }
@@ -180,9 +214,13 @@ static void reduction_expression(reduction_check *check, int index, bool conditi
     if (!membership) {
         check->access |= e->kind == SCRIPT_EXPR_COMPONENT &&
                          e->capability == check->component;
+        check->access |= e->kind == SCRIPT_EXPR_DEREFERENCE &&
+                         component_target(out, index) == check->component;
         check->access |= e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
                          out->symbols[e->symbol].kind == SCRIPT_COMPONENT &&
-                         out->symbols[e->symbol].type.nominal == check->component;
+                         out->symbols[e->symbol].type.storage != PIN_POINTER &&
+                         out->symbols[e->symbol].component_type.nominal ==
+                             check->component;
     }
     check->task |= e->task;
     bool predicate = (e->kind == SCRIPT_EXPR_UNARY && e->op == SCRIPT_OP_NOT) ||
@@ -206,7 +244,12 @@ static void reduction_expression(reduction_check *check, int index, bool conditi
         reduction_expression(check, e->right, predicate);
     }
     for (int i = 0; i < e->argument_count; i++) {
-        reduction_expression(check, e->arguments[i].value, false);
+        int argument = e->arguments[i].value;
+        if (e->kind == SCRIPT_EXPR_CALL && argument >= 0 &&
+            out->expressions[argument].type.storage == PIN_POINTER) {
+            check->access |= component_target(out, argument) == check->component;
+        }
+        reduction_expression(check, argument, false);
     }
 }
 static void finish_reductions(const script_effect_facts *a, script_diagnostic **diagnostics)
@@ -253,6 +296,24 @@ static void finish_reductions(const script_effect_facts *a, script_diagnostic **
             }
         }
         const script_catalog_type *type = script_catalog_type_by_id(a->catalog, component);
+        for (int j = 0; j < out->description_count; j++) {
+            const script_query_description *description = &out->descriptions[j];
+            if (!description->system) {
+                continue;
+            }
+            for (int k = 0; k < acount(description->stages); k++) {
+                const script_query_stage *stage = &description->stages[k];
+                if (stage->symbol >= 0 && stage->expression >= 0) {
+                    reduction_expression(&check, stage->expression, false);
+                }
+            }
+            for (int k = 0; k < acount(description->symbols); k++) {
+                const script_symbol *binding = &out->symbols[description->symbols[k]];
+                check.access |= binding->kind == SCRIPT_COMPONENT &&
+                                binding->type.storage == PIN_STRUCT &&
+                                binding->component_type.nominal == component;
+            }
+        }
         for (int j = 0; j < out->query_count; j++) {
             const script_query *q = &out->queries[j];
             if (q->kind == SCRIPT_QUERY_VALUE) {
@@ -332,7 +393,8 @@ static void finish_effects(script_effect_facts *a, script_diagnostic **diagnosti
                 const script_symbol *symbol = &out->symbols[expression->symbol];
                 if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
                     ((symbol->kind == SCRIPT_PARAMETER || symbol->kind == SCRIPT_LOCAL) &&
-                     symbol->scope >= 0 && out->scopes[symbol->scope].function < 0)) {
+                     !symbol->query_description && symbol->scope >= 0 &&
+                     out->scopes[symbol->scope].function < 0)) {
                     effects |= SCRIPT_EFFECT_INVOCATION_READ;
                 }
             }
@@ -392,7 +454,7 @@ static void finish_effects(script_effect_facts *a, script_diagnostic **diagnosti
             continue;
         }
         bool *functions = xcalloc((size_t)(out->function_count + 1), sizeof *functions);
-        unsigned restrictions = query_expression_restrictions(out, query->value, functions);
+        unsigned restrictions = query_expression_restrictions(out, query->value, functions, -1);
         free(functions);
         if ((out->expressions[query->value].effects & impure) ||
             (restrictions & QUERY_STARTS_TASK)) {
@@ -400,10 +462,44 @@ static void finish_effects(script_effect_facts *a, script_diagnostic **diagnosti
             snprintf(d.message, sizeof d.message, "Query predicate requires a deterministic value without side effects or suspension");
             apush(*diagnostics, d);
         }
-        if (restrictions & QUERY_READS_INVOCATION) {
+        if (restrictions & QUERY_HIDDEN_CAPTURE) {
+            script_diagnostic d = { .range = query->range };
+            snprintf(d.message, sizeof d.message, "Pass captured values explicitly to query helper functions");
+            apush(*diagnostics, d);
+        }
+        if ((restrictions & QUERY_READS_INVOCATION) &&
+            (!query->description || out->descriptions[query->description - 1].system)) {
             script_diagnostic d = { .range = query->range };
             snprintf(d.message, sizeof d.message, "Query predicate cannot read system state, body locals or event payload; test invocation values in the system body");
             apush(*diagnostics, d);
+        }
+    }
+    for (int i = 0; i < out->description_count; i++) {
+        const script_query_description *query = &out->descriptions[i];
+        for (int j = 0; j < acount(query->stages); j++) {
+            const script_query_stage *stage = &query->stages[j];
+            if (stage->symbol < 0 || stage->expression < 0) {
+                continue;
+            }
+            bool *functions = xcalloc((size_t)(out->function_count + 1), sizeof *functions);
+            unsigned restrictions = query_expression_restrictions(out, stage->expression, functions, -1);
+            free(functions);
+            if (restrictions & QUERY_HIDDEN_CAPTURE) {
+                script_diagnostic diagnostic = { .range = stage->range };
+                snprintf(diagnostic.message, sizeof diagnostic.message, "Pass captured values explicitly to query helper functions");
+                apush(*diagnostics, diagnostic);
+            }
+            if (query->system && (restrictions & QUERY_READS_INVOCATION)) {
+                script_diagnostic diagnostic = { .range = stage->range };
+                snprintf(diagnostic.message, sizeof diagnostic.message, "Query binding cannot read system state, body locals or event payload");
+                apush(*diagnostics, diagnostic);
+            }
+            if ((out->expressions[stage->expression].effects & impure) ||
+                (restrictions & QUERY_STARTS_TASK)) {
+                script_diagnostic diagnostic = { .range = stage->range };
+                snprintf(diagnostic.message, sizeof diagnostic.message, "Query binding requires a deterministic value without side effects or suspension");
+                apush(*diagnostics, diagnostic);
+            }
         }
     }
     for (int i = 0; i < out->statement_count; i++) {

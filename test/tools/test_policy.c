@@ -498,7 +498,7 @@ static const char driver_ci_build
          "        host.unlink(missing_ok=True)\n"
          "    else:\n"
          "        host.write_text('#!/bin/sh\\n[ \"$1\" = --protocol-version ] "
-         "|| exit 99\\nprintf \"9\\\\n\"\\n')\n"
+         "|| exit 99\\nprintf \"12\\\\n\"\\n')\n"
          "        host.chmod(0o700)\n"
          "    (root / 'Makefile').write_bytes(Path('Makefile').read_bytes())\n"
          "    env = dict(os.environ, CI_TRACE=str(trace), CI_FAIL=failure, "

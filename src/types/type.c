@@ -297,11 +297,12 @@ const char *pin_write_struct_resolved(
     if (!target || !destination || !value.ptr || value.type != PIN_STRUCT ||
         value.container != PIN_CONTAINER_SINGLE || !target->size ||
         target->field_count < 0 || (target->field_count && !target->fields) ||
-        (value.record &&
-         (!pin_record_valid(value.record) || !pin_record_current(value.record)))) {
+        (value.record && (value.schema ? !pin_value_record_current(&value)
+                                       : !pin_record_valid(value.record) ||
+                                             !pin_record_current(value.record)))) {
         return "Field record layout is unavailable";
     }
-    const type_desc *source = value.record
+    const type_desc *source = value.record || value.schema
                                 ? pin_value_type(&value)
                                 : type_resolve(resolver, value.type_name);
     if (!source && !value.record && value.type_name && target->name &&
@@ -336,7 +337,7 @@ const char *pin_write_struct_resolved(
         }
         pin_type type = target->fields[i].type;
         if ((type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE ||
-             type == PIN_POINTER) &&
+             type == PIN_POINTER || type == PIN_QUERY) &&
             strcmp(
                 target->fields[i].type_name ? target->fields[i].type_name : "",
                 source->fields[i].type_name ? source->fields[i].type_name : ""
@@ -346,6 +347,9 @@ const char *pin_write_struct_resolved(
         }
         pin_value member;
         error = pin_read_field(&temporary, value.ptr, &source->fields[i], &member);
+        if (!error && member.type == PIN_STRUCT) {
+            member.schema = value.schema;
+        }
         if (!error) {
             error = pin_write_field_resolved(storage, copy, &target->fields[i], member, resolver);
         }
@@ -424,9 +428,11 @@ const char *pin_write_field_resolved(arena *storage, void *base, const type_fiel
         }
         case PIN_HANDLE:
         case PIN_TASK: *(uint64_t *)dst = v.u64; break;
+        case PIN_QUERY:
         case PIN_POINTER:
             if (strcmp(f->type_name ? f->type_name : "", v.type_name ? v.type_name : "")) {
-                return "Field pointer type differs";
+                return f->type == PIN_QUERY ? "Field query type differs"
+                                            : "Field pointer type differs";
             }
             *(void **)dst = v.ptr;
             break;
@@ -493,6 +499,7 @@ const char *pin_read_field(arena *storage, const void *base, const type_field *f
         }
         case PIN_HANDLE:
         case PIN_TASK: out->u64 = *(const uint64_t *)src; break;
+        case PIN_QUERY:
         case PIN_POINTER:
         case PIN_UNION: out->ptr = *(void *const *)src; break;
         case PIN_ENUM: {
@@ -609,7 +616,7 @@ static bool plain(const type_desc *type, int depth)
         const type_field *f = &type->fields[i];
         if (f->offset > type->size || f->size > type->size - f->offset ||
             f->type == PIN_FLOW || f->type == PIN_STR || f->type == PIN_NAME ||
-            f->type == PIN_UNION || f->type == PIN_POINTER) {
+            f->type == PIN_UNION || f->type == PIN_POINTER || f->type == PIN_QUERY) {
             return false;
         }
         if (f->type == PIN_STRUCT) {

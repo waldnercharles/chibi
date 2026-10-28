@@ -2,6 +2,7 @@
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "execution/native.h"
+#include "execution/query.h"
 #include "execution/runner.h"
 #include "execution/service.h"
 #include "execution/status.h"
@@ -11,6 +12,7 @@
 #include "types/trace.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 /* Spare frames a settled stack keeps for its next run, and the larger set a
  * running stack keeps so its hot callees reuse their frames. */
@@ -41,6 +43,7 @@ struct behavior_function_calls
      * `spare_bytes`, is bounded and never forms a live value root. */
     invocation_frame *spare;
     size_t spare_bytes;
+    arena errors;
     int result;
 };
 
@@ -73,7 +76,7 @@ size_t behavior_function_calls_storage_bytes(const struct behavior_function_call
     if (!calls) {
         return 0;
     }
-    size_t bytes = sizeof *calls;
+    size_t bytes = sizeof *calls + arena_storage_bytes(&calls->errors);
     if (calls->frames) {
         bytes += sizeof(dyna_hdr) + (size_t)acap(calls->frames) * sizeof *calls->frames;
     }
@@ -158,6 +161,7 @@ void behavior_function_calls_free(struct behavior_function_calls *calls)
         frame_free(calls->frames[i], FLOW_ERR_STATE);
     }
     afree(calls->frames);
+    arena_free(&calls->errors);
     free(calls);
 }
 
@@ -289,6 +293,10 @@ static invocation_frame *frame_new(
     frame->context = (behavior_function_context){
         .parent = parent,
         .managed_heap = parent->managed_heap,
+        .module = parent->module,
+        .program = parent->program,
+        .query_row = parent->query_row,
+        .query_test = parent->query_test,
         .call_enter = parent->call_enter,
         .call_leave = parent->call_leave,
         .activation = &frame->activation,
@@ -367,7 +375,7 @@ static invocation_frame *frame_new(
     arena *payload = parent->value_storage;
     behavior_function_bind_storage(
         &frame->context,
-        payload->collectable ? payload : &frame->storage
+        payload && payload->collectable ? payload : &frame->storage
     );
     frame->context.result_storage = payload;
     behavior_function_prepare_results(
@@ -399,6 +407,10 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     context->variable_storage = root->variable_storage;
     context->value_owner = root->value_owner;
     context->query_variables = root->query_variables;
+    context->query_row = root->query_row;
+    context->query_test = root->query_test;
+    context->module = root->module;
+    context->program = root->program;
     context->store_value = root->store_value;
     context->add_set_value = root->add_set_value;
     context->own_type_name = root->own_type_name;
@@ -457,6 +469,11 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
         if (frame->function->builds_results && pointer && result->ptr &&
             context->value_storage != parent->value_storage &&
             arena_contains(parent->value_storage, result->ptr)) {
+            pin_value header = *result;
+            header.ptr = NULL;
+            if (pin_value_snapshot_to_arena(parent->value_storage, out, &header)) {
+                return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result header cannot be retained");
+            }
             out->ptr = result->ptr;
             continue;
         }
@@ -486,18 +503,64 @@ static const execution_native_export *native_call(
              ? native
              : NULL;
 }
-static void copy_failure(behavior_function_context *root, const behavior_function_context *context)
+static void copy_failure(behavior_function_context *root, const behavior_function_context *source)
 {
-    root->error_message = context->error_message;
-    root->failure = context->failure;
-    root->source_function = context->source_function;
-    root->node_id = context->node_id;
-    root->error_source = context->error_source;
-    root->error_frame = context->error_frame;
-    root->error_stack = context->error_stack;
-    root->error_pin = context->error_pin;
-    root->error_steps = context->error_steps;
-    root->error_status = context->error_status;
+    if (root == source) {
+        return;
+    }
+    root->failure = source->failure;
+    root->node_id = source->node_id;
+    root->error_frame = source->error_frame;
+    root->error_source = source->error_source;
+    root->error_stack = source->error_stack;
+    root->error_pin = source->error_pin;
+    root->error_steps = source->error_steps;
+    root->error_status = source->error_status;
+    root->source_function = source->source_function;
+    if (source->error_message) {
+        size_t size = strlen(source->error_message) + 1;
+        arena *storage = root->value_storage ? root->value_storage
+                                             : &root->activation->calls->errors;
+        char *message = arena_alloc(storage, size);
+        memcpy(message, source->error_message, size);
+        root->error_message = message;
+    }
+}
+
+/* Fails `context`'s call as the VM's assert `failed` fails a frame of its
+ * function: in a context bound to that function's instance, which observes
+ * the failure, then hands it to the root. */
+static int native_failure(
+    struct behavior_function_calls *calls,
+    behavior_function_context *root,
+    behavior_function_context *context,
+    execution_native_assert failed
+)
+{
+    const behavior_function_instruction *i = &failed.function
+                                                  ->instructions[failed.pc];
+    behavior_function_context frame = *context;
+    frame.parent = context;
+    if (frame.bind_instance) {
+        frame.bind_instance(failed.function, &frame);
+    }
+    frame.source_function = failed.function;
+    frame.failure = (behavior_function_failure)i->target;
+    frame.error_message = i->message;
+    frame.node_id = i->node_id;
+    frame.error_frame = i->frame;
+    frame.error_source = i->source;
+    frame.error_stack = i->stack;
+    frame.error_pin = i->pin;
+    frame.error_steps = context->activation->steps;
+    if (frame.failure_observer) {
+        frame.failure_observer(failed.function, &frame, FLOW_ERR_INVALID_GRAPH);
+    }
+    if (frame.commit_instance) {
+        frame.commit_instance(&frame);
+    }
+    copy_failure(root, &frame);
+    return settle_calls(calls, FLOW_ERR_INVALID_GRAPH);
 }
 
 int behavior_function_run_calls(
@@ -541,25 +604,28 @@ int behavior_function_run_calls(
             const execution_native_export *native = native_call(root, active, context, call);
             if (native) {
                 pin_value *values = context->data->values;
-                execution_native_call(
+                execution_native_assert failed;
+                bool returned = execution_native_call(
                     root->activation->natives,
                     native,
                     call->function,
                     &values[call->first],
                     call->count,
                     &values[call->result_first],
-                    call->result_count
+                    call->result_count,
+                    &failed
                 );
+                behavior_run_record(EXECUTION_RUN_NATIVE);
+                if (!returned) {
+                    return native_failure(calls, root, context, failed);
+                }
                 /* A frame's callee without outcomes returns none. */
                 context->returned_outcome = 0;
-                behavior_run_record(EXECUTION_RUN_NATIVE);
                 continue;
             }
             invocation_frame *frame = frame_new(calls, active, context);
             if (!frame) {
-                if (context != root) {
-                    copy_failure(root, context);
-                }
+                copy_failure(root, context);
                 return settle_calls(
                     calls,
                     context->failure == BEHAVIOR_FUNCTION_DEPTH ? FLOW_ERR_INVALID_GRAPH
@@ -590,7 +656,7 @@ int behavior_function_run_calls(
             context = count > 1 ? &calls->frames[count - 2]->context : root;
         }
         root->wake_time = context->wake_time;
-        if (result < 0 && context != root) {
+        if (result < 0) {
             /* Preserve the diagnostic before failure unwinds the owned frames.
              * Source observers already received the precise callee location. */
             copy_failure(root, context);
@@ -626,6 +692,7 @@ static void trace_context(
 )
 {
     const behavior_function_activation *a = ctx->activation;
+    mark(user, ctx->error_message);
     if (a && a->values && a->pc > 0) {
         const behavior_function_suspension
             *s = &f->suspensions[f->instructions[a->pc - 1].target];
@@ -637,10 +704,14 @@ static void trace_context(
             behavior_value_kind kind = value < slots ? f->slot_kinds[value]
                                                      : f->locals[value - slots].kind;
             if (kind != BEHAVIOR_VALUE || type == PIN_STR || type == PIN_NAME ||
-                type == PIN_UNION || type == PIN_POINTER) {
+                type == PIN_UNION || type == PIN_POINTER || type == PIN_QUERY) {
                 mark(user, (const void *)(uintptr_t)a->values[value]);
             }
         }
+    }
+    if (ctx->query_row) {
+        mark(user, ctx->query_row);
+        pin_value_trace(ctx->query_row, mark, user);
     }
     trace_values(ctx->arguments, f->argument_kinds, ctx->argument_count, mark, user);
     trace_values(ctx->results, f->result_kinds, f->result_count, mark, user);
@@ -725,6 +796,13 @@ static void visit_context(
                                           : f->locals[index - slots].initial.type;
             behavior_value_kind kind = index < slots ? f->slot_kinds[index]
                                                      : f->locals[index - slots].kind;
+            if (kind == BEHAVIOR_QUERY_CURSOR) {
+                pin_value cursor = { .type = BF_POINTER_TYPE, .u64 = a->values[index] },
+                          query;
+                if (execution_query_cursor_value(cursor, &query)) {
+                    visit(user, &query);
+                }
+            }
             if (kind == BEHAVIOR_REFERENCE) {
                 pin_value reference = { .type = BF_POINTER_TYPE,
                                         .u64 = a->values[index] },
@@ -733,14 +811,18 @@ static void visit_context(
                     visit(user, &pointer);
                 }
             }
-            if (type == PIN_TASK || type == PIN_UNION || type == PIN_POINTER) {
+            if (type == PIN_TASK || type == PIN_UNION || type == PIN_POINTER ||
+                type == PIN_QUERY) {
                 pin_value value = { .type = type, .u64 = a->values[index] };
-                if (type == PIN_UNION || type == PIN_POINTER) {
+                if (type == PIN_UNION || type == PIN_POINTER || type == PIN_QUERY) {
                     value.ptr = (void *)(uintptr_t)a->values[index];
                 }
                 visit(user, &value);
             }
         }
+    }
+    if (ctx->query_row) {
+        visit(user, ctx->query_row);
     }
     visit_bank(ctx->arguments, ctx->argument_count, visit, user);
     visit_reference_bank(ctx->arguments, f->argument_kinds, ctx->argument_count, visit, user);

@@ -48,6 +48,10 @@ typedef struct
     uint64_t source_relationship; /* Query component provider; zero is self. */
     int source_traversal;         /* script_query_source */
     int source_variable;          /* Query row variable; zero is self. */
+    int query_description;        /* One-based descriptor for a row binding. */
+    int query_field;
+    int query_row_owner; /* One-based row symbol for a hidden field proof. */
+    script_type component_type; /* Provider type before pointer wrapping. */
 } script_symbol;
 typedef enum
 {
@@ -98,6 +102,8 @@ typedef enum
     SCRIPT_EXPR_UNWRAP,
     SCRIPT_EXPR_ADDRESS,
     SCRIPT_EXPR_DEREFERENCE,
+    SCRIPT_EXPR_QUERY,
+    SCRIPT_EXPR_QUERY_FIELD,
 } script_expression_kind;
 typedef enum
 {
@@ -233,6 +239,8 @@ typedef enum
 typedef struct
 {
     script_query_kind kind;
+    int description; /* One-based ordered query that owns the term. */
+    bool required; /* Membership introduced by a required component binding. */
     uint64_t component;
     uint64_t source_relationship;
     int source_traversal;
@@ -242,6 +250,21 @@ typedef struct
     int child_count;
     script_range range;
 } script_query;
+typedef struct
+{
+    int symbol;     /* -1 for a guard. */
+    int expression; /* Initializer, or query term for a guard. */
+    script_range range;
+} script_query_stage;
+typedef struct
+{
+    int query, query_variable_count;
+    int *symbols, *captures;
+    script_query_stage *stages;
+    script_type row_type;
+    script_range range;
+    bool system;
+} script_query_description;
 typedef struct
 {
     int target, value;
@@ -351,6 +374,8 @@ typedef struct
     script_statement *statements;
     script_function *functions;
     script_query *queries;
+    script_query_description *descriptions;
+    int description_count, system_description;
     script_binding *bindings;
     script_catalog_type *types; /* Authored and structural union definitions. */
     int type_count;
@@ -365,7 +390,6 @@ typedef struct
     int symbol_count, use_count, scope_count, expression_count, statement_count,
         function_count, query_count, binding_count, diagnostic_count, warning_count;
     int query;
-    int query_filter; /* Authored header filter; separate from row requirements. */
     int query_variable_count;
     int owner_symbol;
     uint64_t owner_type;

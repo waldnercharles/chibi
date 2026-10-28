@@ -586,6 +586,7 @@ static void cleanup()
 static bool mutations(int b)
 {
     pin_union *u = plans[b][2].ptr;
+    REQUIRE(u->tag == ready_tags[b] && u->count == 9);
     pin_array *code = u->values[8].ptr;
     pin_value *targets[4] = { &u->values[0], &code->items[0], NULL, NULL };
     const char *keys[] = { "results_offset", "source", "target", "payload" };

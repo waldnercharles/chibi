@@ -1,4 +1,4 @@
-version 37
+version 38
 name "3D Scene"
 content "content"
 start_scene "scenes/Shapes.kdl"

@@ -909,12 +909,21 @@ TEST_CASE(modules_retained_library_state_inherits_consuming_owner)
         ecs_world *world = ecs_world_new();
         ecs_entity a = ecs_world_create_entity(world),
                    b = ecs_world_create_entity(world);
+        /* An empty system() queries nothing: it runs on the owners attached. */
         program = execution_program_new(counter->module, world, NULL);
-        REQUIRE(program && execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            program && execution_program_attach(program, ecs_entity_to_u64(a)) &&
+            execution_program_attach(program, ecs_entity_to_u64(b))
+        );
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
         execution_instance *row = execution_program_instance(program, ecs_entity_to_u64(a));
         REQUIRE(row && execution_instance_state(row, counter_value)->i == 4);
         execution_program *other = execution_program_new(counter->module, world, NULL);
-        REQUIRE(other && execution_program_step(other, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            other && execution_program_attach(other, ecs_entity_to_u64(a)) &&
+            execution_program_attach(other, ecs_entity_to_u64(b))
+        );
+        REQUIRE(execution_program_step(other, 0, 0, 1000) == FLOW_OK);
         execution_instance *isolated = execution_program_instance(other, ecs_entity_to_u64(a));
         REQUIRE(isolated && execution_instance_state(isolated, counter_value)->i == 4);
         execution_program_free(other);
@@ -922,6 +931,7 @@ TEST_CASE(modules_retained_library_state_inherits_consuming_owner)
         REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(execution_program_replace(program, counter->module, false) == FLOW_OK);
         a = ecs_world_create_entity(world);
+        REQUIRE(execution_program_attach(program, ecs_entity_to_u64(a)));
         REQUIRE(execution_program_step(program, 2, 0, 1000) == FLOW_OK);
         row = execution_program_instance(program, ecs_entity_to_u64(a));
         REQUIRE(row && execution_instance_state(row, counter_value)->i == 6);

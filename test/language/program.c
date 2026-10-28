@@ -38,6 +38,7 @@
 #include "types/copy.h"
 #include "types/map.h"
 #include "types/pointer.h"
+#include "types/query.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
@@ -304,6 +305,45 @@ static execution_inspector *debugger;
 static behavior_function_context parser_context;
 static behavior_function_activation parser_activation;
 static arena parser_storage;
+static const node_command lifetime_command;
+static flow_host_request *lifetime_requests[8];
+static int lifetime_request_count;
+static ecs_component_cell *lifetime_cells[2];
+static ecs_component_cell *lifetime_targets[2];
+static ecs_component_cell *lifetime_child_targets[3];
+static int lifetime_target_count;
+static int lifetime_child_target_count;
+static ecs_world *lifetime_foreign_world;
+static ecs_entity lifetime_target;
+static const behavior_function *lifetime_bound;
+static const behavior_function *lifetime_extra_bound;
+static bool lifetime_remove_in_begin, lifetime_complete_in_begin,
+    lifetime_begin_completed, lifetime_inferred;
+
+static void lifetime_cleanup()
+{
+    for (int i = 0; i < lifetime_request_count; i++) {
+        if (lifetime_requests[i]) {
+            flow_host_release(lifetime_requests[i]);
+        }
+        lifetime_requests[i] = NULL;
+    }
+    lifetime_request_count = 0;
+    ecs_world_free(lifetime_foreign_world);
+    lifetime_foreign_world = NULL;
+    for (int i = 0; i < 2; i++) {
+        if (lifetime_cells[i]) {
+            ecs_component_cell_release(lifetime_cells[i]);
+        }
+        lifetime_cells[i] = lifetime_targets[i] = NULL;
+    }
+    lifetime_target_count = 0;
+    lifetime_child_target_count = 0;
+    memset(lifetime_child_targets, 0, sizeof lifetime_child_targets);
+    lifetime_bound = lifetime_extra_bound = NULL;
+    lifetime_remove_in_begin = lifetime_complete_in_begin = lifetime_begin_completed = false;
+    lifetime_inferred = false;
+}
 
 static void cleanup()
 {
@@ -323,6 +363,7 @@ static void cleanup()
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     ecs_world_free(world);
+    lifetime_cleanup();
     native_capabilities_free(state_native);
     state_native = NULL;
     program = NULL;
@@ -448,8 +489,25 @@ static const char *scene_binding(arena *, const pin_value *in, int count, pin_va
     return NULL;
 }
 static const node_host_call scene_binding_call = { .value = scene_binding };
+static const char *lifetime_invalidate(arena *, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0);
+    assert(ecs_world_record_remove(world, lifetime_target, 501, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    *out = (pin_value){ .type = PIN_F64, .d = 7 };
+    return NULL;
+}
+static const node_host_call lifetime_invalidate_call = { .value = lifetime_invalidate };
 static bool host(void *, uint64_t id, script_lower_host *out)
 {
+    if (id == 77) {
+        *out = (script_lower_host){ .command = &lifetime_command };
+        return true;
+    }
+    if (id == 78) {
+        *out = (script_lower_host){ .call = &lifetime_invalidate_call };
+        return true;
+    }
     if (id == 61) {
         *out = (script_lower_host){ .call = &clock_call };
         return true;
@@ -699,6 +757,148 @@ static ecs_entity positioned(double x, bool moving)
     return entity;
 }
 
+/* Inject the private target set without choosing authored inference semantics.
+ * All task bodies and awaiters still run authored code. */
+static int lifetime_begin(
+    void *,
+    const char *,
+    const pin_value *,
+    int count,
+    flow_host_request *request,
+    const char **
+)
+{
+    assert(count == 0 && lifetime_request_count < 8);
+    lifetime_requests[lifetime_request_count++] = request;
+    if (lifetime_remove_in_begin) {
+        assert(ecs_world_record_remove(world, lifetime_target, 501, 0) == ECS_OK);
+        assert(ecs_world_apply_commands(world) == ECS_OK);
+    }
+    if (lifetime_remove_in_begin || lifetime_complete_in_begin) {
+        lifetime_begin_completed = flow_host_complete(request, -1, (pin_value){ 0 });
+    }
+    return 1;
+}
+static const node_command lifetime_command = { .begin = lifetime_begin };
+static bool lifetime_compile(const char *source, behavior_backend backend)
+{
+    static script_catalog_capability
+        active_capabilities[sizeof capabilities / sizeof *capabilities + 2];
+    memcpy(active_capabilities, capabilities, sizeof capabilities);
+    active_capabilities[sizeof capabilities / sizeof *capabilities] = (script_catalog_capability){
+        .id = 77,
+        .name = "Pending",
+        .kind = SCRIPT_CAPABILITY_ACTION,
+        .outcomes = completed,
+        .outcome_count = 1,
+        .completion_outcome = 0,
+        .effects = SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_HOST
+    };
+    active_capabilities[sizeof capabilities / sizeof *capabilities + 1] = (script_catalog_capability){
+        .id = 78,
+        .name = "Invalidate",
+        .kind = SCRIPT_CAPABILITY_FUNCTION,
+        .results = &failed_result,
+        .result_count = 1,
+        .effects = SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_WRITE
+    };
+    static script_catalog active;
+    active = catalog;
+    active.capabilities = active_capabilities;
+    active.capability_count += 2;
+    if (!compile_catalog(source, backend, &active)) {
+        return false;
+    }
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        bool extra = !strcmp(analysis->symbols[i].name, "ExtraBound");
+        if (strcmp(analysis->symbols[i].name, "Bound") && !extra) {
+            continue;
+        }
+        for (int j = 0; j < module->plan.function_count; j++) {
+            if (module->plan.functions[j].id == analysis->symbols[i].id) {
+                if (extra) {
+                    lifetime_extra_bound = module->plan.functions[j].body;
+                } else {
+                    lifetime_bound = module->plan.functions[j].body;
+                }
+            }
+        }
+    }
+    program = execution_program_new(module, world, NULL);
+    return program && (lifetime_bound || lifetime_inferred);
+}
+static int lifetime_start(behavior_function_context *ctx, int index)
+{
+    execution_activation *caller = ctx->inspection_user;
+    const behavior_function *function = caller->function;
+    behavior_function_active_context(&caller->context, &function);
+    bool bound = function->calls[index].function == lifetime_bound;
+    bool extra = lifetime_extra_bound &&
+                 function->calls[index].function == lifetime_extra_bound;
+    if (extra) {
+        return program_task_start_bound(ctx, index, lifetime_child_targets, lifetime_child_target_count);
+    }
+    return program_task_start_bound(ctx, index, bound ? lifetime_targets : NULL, bound ? lifetime_target_count : 0);
+}
+static void lifetime_install_start(behavior_function_context *ctx)
+{
+    ctx->start_task = lifetime_start;
+}
+static int lifetime_dispatch(execution_instance *instance, double now)
+{
+    for (int i = 0; i < module->plan.function_count; i++) {
+        const execution_module_function *function = &module->plan.functions[i];
+        if (function->event != 11) {
+            continue;
+        }
+        execution_activation
+            *a = program_activation_new(instance, function->body, NULL, 0, now, 0, 1000);
+        assert(a);
+        if (!lifetime_inferred) {
+            a->context.start_task = lifetime_start;
+        }
+        int status = program_activation_run(a, now, 0, 1000);
+        if (!a->finished || acount(a->requests)) {
+            apush(instance->activations, a);
+        } else {
+            program_activation_free(a);
+        }
+        for (int j = 0; !lifetime_inferred && j < acount(instance->activations); j++) {
+            behavior_function_visit_contexts(&instance->activations[j]->context, lifetime_install_start);
+        }
+        return status < 0 ? status : FLOW_OK;
+    }
+    return FLOW_ERR_ARGUMENT;
+}
+static void lifetime_bind(ecs_world *target_world, ecs_entity target)
+{
+    lifetime_target = target;
+    lifetime_cells[0] = ecs_component_cell_acquire(target_world, target, 501);
+    assert(lifetime_cells[0]);
+    lifetime_targets[0] = lifetime_targets[1] = lifetime_cells[0];
+    lifetime_target_count = 2; /* Duplicate original identities are one dependency. */
+}
+static bool lifetime_remove()
+{
+    return ecs_world_record_remove(world, lifetime_target, 501, 0) == ECS_OK &&
+           ecs_world_apply_commands(world) == ECS_OK;
+}
+static bool lifetime_requests_cancelled(int expected)
+{
+    if (lifetime_request_count != expected) {
+        return false;
+    }
+    for (int i = 0; i < lifetime_request_count; i++) {
+        flow_host_request *request = lifetime_requests[i];
+        if (flow_host_status(request) != FLOW_HOST_CANCELLED ||
+            execution_request_owner(request) ||
+            flow_host_complete(request, -1, (pin_value){ 0 })) {
+            return false;
+        }
+    }
+    return true;
+}
+
 TEST_CASE(program_nested_typed_records_preserve_explicit_labels)
 {
     const char
@@ -807,7 +1007,7 @@ TEST_CASE(program_handlers_name_payload_fields)
         { "A :: behavior { x: f64 = 0; on Impulse :: () { x = event.amount; "
           "} }",
           "list the field instead" },
-        { "M :: system(p: Position) { on Impulse :: (enabled: bool) { p.x = "
+        { "M :: system(p: ^Position) { on Impulse :: (enabled: bool) { p.x = "
           "event.dt; } }",
           "list the field instead" },
     };
@@ -1170,8 +1370,8 @@ TEST_CASE(program_prepared_integer_reports_include_imported_functions)
     cleanup();
     return true;
 }
-/* A system names the fields of its step's payload in its header, as a
- * handler does; only its body reads them, and it has no `event`. */
+/* Systems receive dt implicitly in their body, and helpers receive it as
+ * an ordinary explicit argument. */
 TEST_CASE(program_systems_name_their_step)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -1179,81 +1379,52 @@ TEST_CASE(program_systems_name_their_step)
         prepare();
         ecs_entity moving = positioned(1, true);
         REQUIRE(compile(
-            "Motion :: system(position: Position, velocity: Velocity) on Tick "
-            ":: (dt: f64) { position.x += velocity.x * dt; }",
+            "Motion :: system(position: ^Position, velocity: Velocity) {"
+            " Scale :: (step: f64) -> f64 { return step * 2; }"
+            " position.x += velocity.x * Scale(dt); }",
             backends[backend]
         ));
         REQUIRE(execution_program_step(program, 0, .5, 1000) == FLOW_OK);
         const program_position *position = ecs_component_data_const(world, moving, 501);
-        REQUIRE(position && position->x == 3);
+        REQUIRE(position && position->x == 5);
     }
     const struct
     {
         const char *source, *message;
     } refused[] = {
-        { "Motion :: system(p: Position) on Impulse :: (amount: f64) { p.x "
-          "+= amount; }",
-          "A system runs on Tick" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) { p.x += "
-          "event.dt; }",
-          "Unknown value" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) { Step :: () "
-          "-> f64 { return dt; } p.x += Step(); }",
+        { "Motion :: system(p: ^Position) { p.x += event.dt; }", "Unknown value" },
+        { "Motion :: system(p: ^Position) { Step :: () -> f64 { return dt; "
+          "} p.x += Step(); }",
           "Read the step in the system's body" },
-        { "Motion :: system(p: Position) on Tick :: (step: f64) { p.x += 1; "
-          "}",
-          "Tick has no payload field 'step'" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) {\n"
-          "Step :: () { return dt; }\np.x += Step(); }",
+        { "Motion :: system(p: ^Position) { on Impulse :: (amount: f64) { "
+          "p.x += dt; } }",
           "Read the step in the system's body" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) {\n"
-          "on Impulse :: (amount: f64) { p.x += dt; } }",
+        { "Motion :: system(p: ^Position) { bind self.Position.x = dt; p.x += "
+          "1; }",
           "Read the step in the system's body" },
-        { "Motion :: system(p: Position) on Tick :: () { p.x += 1; }",
-          "List the step's fields" },
-        { "Motion :: system(p: Position) on Tick :: (dt: f64) {\n"
-          "bind self.Position.x = dt;\np.x += 1; }",
-          "Read the step in the system's body" },
-        { "Motion :: system(p: Position) { p.x += event.dt; }", "Unknown value 'event'" },
-        { "Motion :: system(p: Position) where dt > 0 on Tick :: (dt: f64) "
-          "{ p.x += dt; }",
+        { "Motion :: system(p: ^Position, if dt > 0) { p.x += dt; }",
           "Query predicate cannot read" },
     };
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < (int)(sizeof refused / sizeof *refused); i++) {
         prepare();
         syntax = script_parse(refused[i].source);
         REQUIRE(!syntax->diagnostic_count);
         analysis = script_analyze(syntax, &catalog);
-        bool found = false, inner = false;
+        bool found = false;
         for (int d = 0; d < analysis->diagnostic_count; d++) {
             found |= strstr(analysis->diagnostics[d].message, refused[i].message) != NULL;
-            inner |= strstr(analysis->diagnostics[d].message, "Read the step") != NULL;
         }
         REQUIRE(!analysis->valid && found);
-        /* A query reads no callable's step; it says so once. */
-        REQUIRE(i != 9 || !inner);
     }
-    /* Lowering reads Tick's one field as the step, so a Tick with more
-     * fields has no system step. */
-    script_catalog_capability wider[64];
-    REQUIRE(catalog.capability_count <= 64);
-    memcpy(wider, catalog.capabilities, (size_t)catalog.capability_count * sizeof *wider);
-    for (int i = 0; i < catalog.capability_count; i++) {
-        if (wider[i].id == catalog.tick_event) {
-            wider[i].parameters = impulse_parameters;
-            wider[i].parameter_count = 2;
-        }
+    const char *obsolete[] = {
+        "Motion :: system(p: ^Position) on Tick :: (dt: f64) {}",
+        "Motion :: system(p: ^Position) on Impulse :: (amount: f64) {}",
+    };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        syntax = script_parse(obsolete[i]);
+        REQUIRE(syntax->diagnostic_count);
     }
-    script_catalog two = catalog;
-    two.capabilities = wider;
-    prepare();
-    syntax = script_parse("Motion :: system(p: Position) on Tick :: (amount: f64) { p.x += amount; }");
-    analysis = script_analyze(syntax, &two);
-    bool step = false;
-    for (int d = 0; d < analysis->diagnostic_count; d++) {
-        step |= strstr(analysis->diagnostics[d].message, "reads only the step") != NULL;
-    }
-    REQUIRE(!analysis->valid && step);
     return true;
 }
 TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
@@ -1263,9 +1434,9 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
         prepare();
         ecs_entity moving = positioned(1, true);
         REQUIRE(compile(
-            "Motion :: system( position: Position, velocity: Velocity) on Tick "
-            ":: (dt: number s) { position.x += velocity.x * dt; position.y = "
-            "position.x + velocity.x; }",
+            "Motion :: system( position: ^Position, velocity: ^Velocity)       "
+            "{ position.x += "
+            "velocity.x * dt; position.y = position.x + velocity.x; }",
             backends[backend]
         ));
         execution_effect_summary effects = execution_module_effects(module);
@@ -1288,10 +1459,32 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
     return true;
 }
 
+TEST_CASE(program_query_projected_component_pointers_keep_serial_effects)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity moving = positioned(1, false);
+        REQUIRE(compile(
+            "Motion :: system(position: ^Position) { "
+            "projected := &position.x; projected^ += 1; }",
+            backends[backend]
+        ));
+        execution_effect_summary effects = execution_module_effects(module);
+        REQUIRE(effects.declared && effects.deterministic && !effects.parallel_safe);
+        REQUIRE(!effects.structural && !effects.host_sink && !effects.world_read);
+        REQUIRE(effects.write_count == 1 && effects.writes[0] == 501);
+        REQUIRE(execution_program_step(program, 0, .5, 1000) == FLOW_OK);
+        const program_position *position = ecs_component_data_const(world, moving, 501);
+        REQUIRE(position && position->x == 2 && position->y == 0);
+    }
+    return true;
+}
+
 TEST_CASE(program_system_membership_exit_cancels_pending_work)
 {
-    const char *source = "Motion :: system(position: Position, velocity: "
-                         "Velocity) on Tick :: (dt: number s) {\n"
+    const char *source = "Motion :: system(position: ^Position, velocity: "
+                         "^Velocity)       {\n"
                          "    position.x += velocity.x * dt;\n"
                          "    await Delay(10);\n"
                          "    position.y = 99;\n"
@@ -1356,9 +1549,10 @@ TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors)
         REQUIRE(ecs_world_record_add_pair(world, child, targets.id, root, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Follow :: system( p: Position, aim: Targets.Position?, team: "
-            "Position from ancestor(ChildOf)) where not Velocity { p.x = "
-            "team.x; if aim { p.y = aim.x; } }",
+            "Follow :: system( p: ^Position, aim: ^Position? from Targets, "
+            "team: ^Position from "
+            "ancestor(ChildOf) , if not Velocity) { p.x = team.x; if aim { p.y "
+            "= aim.x; } }",
             backends[backend],
             native_capabilities_catalog(state_native)
         ));
@@ -1425,8 +1619,9 @@ TEST_CASE(program_query_required_path_keeps_one_instance_per_root)
         REQUIRE(ecs_world_record_add_pair(world, second, targets.id, target, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Follow :: system( p: Position, aim: Targets.Position) where not "
-            "self.Velocity { p.x += 1; aim.y += 1; }",
+            "Follow :: system( p: ^Position, aim: ^Position from Targets , if "
+            "not self.Velocity) { p.x "
+            "+= 1; aim.y += 1; }",
             backends[backend],
             &active
         ));
@@ -1479,10 +1674,11 @@ TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension)
         REQUIRE(ecs_world_record_add_pair(world, root, targets.id, first, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Follow :: system( p: Position from self) join aim: "
-            "Targets.Position where not self.Velocity and Targets.Velocity and "
-            "has(Likes) { count: retain f64 = 0; count += 1; p.x = count; "
-            "await Delay(1); p.y = aim.x; }",
+            "Follow :: system( p: ^Position from self , aim: ^Position from "
+            "Targets , if not "
+            "self.Velocity and Targets.Velocity and has(Likes)) { count: "
+            "retain f64 = 0; count += "
+            "1; p.x = count; await Delay(1); p.y = aim.x; }",
             backends[backend],
             &active
         ));
@@ -1519,13 +1715,15 @@ TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension)
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
         row = ecs_component_data_const(world, root, 501);
-        REQUIRE(row && row->x == 2 && row->y == 20);
+        /* This invocation retains the component selected before suspension.
+         * The new relationship target is bound by the next invocation. */
+        REQUIRE(row && row->x == 2 && row->y == 10);
         REQUIRE(ecs_world_record_remove(world, second, 502, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(execution_program_step(program, 2, 0, 1000) == FLOW_OK);
         REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(root)));
         row = ecs_component_data_const(world, root, 501);
-        REQUIRE(row && row->x == 2 && row->y == 20);
+        REQUIRE(row && row->x == 2 && row->y == 10);
         REQUIRE(ecs_world_record_add_pair(world, root, targets.id, first, 0) == ECS_OK);
         REQUIRE(ecs_world_record_remove_pair(world, root, likes.id, first, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
@@ -1567,9 +1765,9 @@ TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions)
         REQUIRE(ecs_world_record_add_pair(world, filtered, targets.id, target, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Follow :: system( p: Position) join aim: Targets.Position? where "
-            "not self.Velocity and not Targets.Velocity { p.y += 1; if aim { "
-            "p.x = aim.x; } }",
+            "Follow :: system( p: ^Position , aim: ^Position? from Targets , "
+            "if not self.Velocity and "
+            "not Targets.Velocity) { p.y += 1; if aim { p.x = aim.x; } }",
             backends[backend],
             &active
         ));
@@ -1613,10 +1811,11 @@ TEST_CASE(program_relationship_loops_stream_targets_explicitly)
         REQUIRE(ecs_world_record_add_pair(world, source, targets.id, empty, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Sum :: system( p: Position) where not Velocity { ticks: retain "
-            "f64 = 0; ticks += 1; p.y = ticks; p.x = 0; for target in "
-            "self.Targets { if not target.Position { continue; } p.x += "
-            "target.Position.x; } }",
+            "Sum :: system( p: ^Position , if not Velocity) { ticks: retain "
+            "f64 = 0; ticks += 1; "
+            "p.y = ticks; p.x = 0; for target in self.Targets { if not "
+            "target.Position { continue; } "
+            "p.x += target.Position.x; } }",
             backends[backend],
             &active
         ));
@@ -1656,7 +1855,7 @@ TEST_CASE(program_relationship_loops_stream_targets_explicitly)
         REQUIRE(count && count->type == PIN_I32 && count->i == 1);
     }
     prepare();
-    syntax = script_parse("Bad :: system( p: Position) { for target in self.Targets { await Delay(1); } }");
+    syntax = script_parse("Bad :: system( p: ^Position) { for target in self.Targets { await Delay(1); } }");
     analysis = script_analyze(syntax, &active);
     REQUIRE(!analysis->valid);
     bool rejected = false;
@@ -1767,13 +1966,15 @@ TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples)
             }
             REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
             REQUIRE(compile_catalog(
-                "Chained :: system( p:Position) join middle in self.Targets "
-                "join leaf in middle.Leaves join mid:Position from middle join "
-                "aim:Position from leaf where aim.x > mid.x { ticks:retain "
+                "Chained :: system( p:^Position , middle in self.Targets , "
+                "leaf in middle.Leaves , "
+                "mid:^Position from middle , aim:^Position from leaf , if "
+                "aim.x > mid.x) { ticks:retain "
                 "f64=0; seen:retain f64=0; on Impulse :: (amount: "
-                "f64, enabled: bool) { "
-                "if enabled { seen=amount; p.x+=amount+mid.x+aim.x; } } "
-                "ticks+=1; p.y+=mid.x+aim.x; aim.y+=mid.x; }",
+                "f64, enabled: bool) { if "
+                "enabled { seen=amount; p.x+=amount+mid.x+aim.x; } } ticks+=1; "
+                "p.y+=mid.x+aim.x; "
+                "aim.y+=mid.x; }",
                 backends[backend],
                 &active
             ));
@@ -1860,9 +2061,10 @@ TEST_CASE(program_query_rows_keep_locals_and_cancel_removed_tuple)
         REQUIRE(ecs_world_record_add_pair(world, owner, row_targets.id, second, 0) == ECS_OK);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Rows :: system( p:Position) join target in self.Targets join "
-            "aim:Position from target { starts:retain f64=0; starts+=1; "
-            "saved:=aim.x; await Delay(1); p.y+=saved; }",
+            "Rows :: system( p:^Position , target in self.Targets , "
+            "aim:^Position from target) { "
+            "starts:retain f64=0; starts+=1; saved:=aim.x; await Delay(1); "
+            "p.y+=saved; }",
             backends[backend],
             &active
         ));
@@ -1909,9 +2111,11 @@ TEST_CASE(program_query_changed_preserves_busy_published_writes)
         prepare();
         ecs_entity owner = positioned(0, false);
         REQUIRE(compile_module(
-            "Changed :: system( p:Position) where changed(p) and Accept(p.x) { "
-            "Accept :: (value:f64)->bool { return value>=0; } calls:retain "
-            "f64=0; calls+=1; await Delay(1); }",
+            "Changed :: system( p:^Position , if changed(p) and Accept(p.x)) { "
+            "Accept :: "
+            "(value:f64)->bool { return value>=0; } calls:retain f64=0; "
+            "calls+=1; await "
+            "Delay(1); }",
             backends[backend]
         ));
         unsigned char *bytes = NULL;
@@ -1968,8 +2172,8 @@ TEST_CASE(program_query_admission_is_frozen_before_row_writes)
         }
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
-            "Snapshot :: system( p:Position) join target in self.Targets where "
-            "p.x==0 { p.x+=1; }",
+            "Snapshot :: system( p:^Position , target in self.Targets , if "
+            "p.x==0) { p.x+=1; }",
             backends[backend],
             &active
         ));
@@ -1981,6 +2185,37 @@ TEST_CASE(program_query_admission_is_frozen_before_row_writes)
                             ->x;
         int run = execution_program_run_system(program);
         int finish = execution_program_finish_system(program);
+        if (memory.instance_count || memory.activation_bytes) {
+            execution_effect_summary effects = execution_module_effects(module);
+            fprintf(
+                stderr,
+                "stream row backend=%d instances=%d activation=%zu rows=%llu "
+                "history=%zu effects=%d/%d/%d\n",
+                backend,
+                memory.instance_count,
+                memory.activation_bytes,
+                (unsigned long long)memory.query_rows,
+                memory.query_history_bytes,
+                effects.declared,
+                effects.parallel_safe,
+                effects.deterministic
+            );
+            fprintf(
+                stderr,
+                "stream eligibility selected=%d functions=%d states=%d "
+                "bindings=%d actions=%d imports=%d changes=%d structural=%d "
+                "sink=%d\n",
+                program->query_streaming,
+                module->plan.function_count,
+                module->plan.state_count,
+                module->plan.binding_count,
+                module->plan.action_count,
+                module->plan.import_count,
+                acount(program->change_queries),
+                effects.structural,
+                effects.host_sink
+            );
+        }
         REQUIRE(memory.instance_count == 0 && memory.activation_bytes == 0);
         REQUIRE(memory.query_rows == 3 && memory.query_history_bytes == sizeof(uint64_t));
         REQUIRE(before == 0);
@@ -2002,12 +2237,12 @@ TEST_CASE(program_query_admission_is_frozen_before_row_writes)
 TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order)
 {
     const char *sources[] = {
-        "Ordered :: system() where Risky(int(self.Position.x)) and "
-        "has(Velocity) { Risky :: (index:int)->bool { values:=[10,20]; return "
-        "values[index]>0; } }",
-        "Guarded :: system() where has(Velocity) and "
-        "Risky(int(self.Position.x)) { Risky :: (index:int)->bool { "
-        "values:=[10,20]; return values[index]>0; } }",
+        "Ordered :: system( if Risky(int(self.Position.x)) and has(Velocity)) "
+        "{ Risky :: "
+        "(index:int)->bool { values:=[10,20]; return values[index]>0; } }",
+        "Guarded :: system( if has(Velocity) and Risky(int(self.Position.x))) "
+        "{ Risky :: "
+        "(index:int)->bool { values:=[10,20]; return values[index]>0; } }",
     };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
@@ -2051,10 +2286,12 @@ TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values)
             owners[i] = positioned(2 * i - 1, false);
         }
         REQUIRE(compile(
-            "Filter :: system( p:Position) where Above(p.x) and Below(p.x) and "
-            "p.x<100 { Above :: (value:f64)->bool { return Positive(value); "
-            "} Positive :: (value:f64)->bool { return value>0; } Below :: "
-            "(value:f64)->bool { return value<4; } p.y+=1; }",
+            "Filter :: system( p:^Position , if Above(p.x) and Below(p.x) and "
+            "p.x<100) { Above :: "
+            "(value:f64)->bool { return Positive(value); } Positive :: "
+            "(value:f64)->bool { "
+            "return value>0; } Below :: (value:f64)->bool { return value<4; "
+            "} p.y+=1; }",
             backends[backend]
         ));
         REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
@@ -2086,10 +2323,12 @@ TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values)
         script_syntax_free(syntax);
         syntax = NULL;
         REQUIRE(compile_module(
-            "Filter :: system( p:Position) where Above(p.x) and Below(p.x) { "
-            "Above :: (value:f64)->bool { return Negative(value); } "
-            "Negative :: (value:f64)->bool { return value<0; } Below :: "
-            "(value:f64)->bool { return value<4; } p.y+=1; }",
+            "Filter :: system( p:^Position , if Above(p.x) and Below(p.x)) { "
+            "Above :: "
+            "(value:f64)->bool { return Negative(value); } Negative :: "
+            "(value:f64)->bool { "
+            "return value<0; } Below :: (value:f64)->bool { return value<4; "
+            "} p.y+=1; }",
             backends[backend]
         ));
         REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
@@ -2126,7 +2365,7 @@ TEST_CASE(program_query_predicates_call_bound_natives)
                                  positioned(1, false),
                                  positioned(3, false) };
         REQUIRE(compile(
-            "Filter :: system(p: Position) where Above(p.x) { "
+            "Filter :: system(p: ^Position, if Above(p.x)) { "
             "Above :: (value: f64) -> bool { return value > 0; } p.y += 1; }",
             backends[backend]
         ));
@@ -2265,9 +2504,9 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
 }
 TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned)
 {
-    const char *source = "Shared :: system(position: Position) { total: "
-                         "retain f64 = 0; position.x += 1; total += 1; "
-                         "position.y = total; }";
+    const char *source = "Shared :: system(position: ^Position) { total: "
+                         "retain f64 = 0; position.x += 1; total "
+                         "+= 1; position.y = total; }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -4255,6 +4494,544 @@ TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller)
     }
     return true;
 }
+TEST_CASE(program_bound_task_checks_admission_before_its_body)
+{
+    const char *source = "L :: behavior { began: f64 = 0; done: f64 = 0; "
+                         "cancelled: f64 = 0; "
+                         "worker: task; Bound :: () -> () { began += 1; await "
+                         "Pending(); done += 1; } "
+                         "Watch :: () -> () { result := await worker; "
+                         "if result is Cancelled { cancelled += 1; } } "
+                         "on Impulse :: () { worker = Bound(); Watch(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int mode = 0; mode < 4; mode++) {
+            prepare();
+            REQUIRE(lifetime_compile(source, backends[b]));
+            if (mode == 1) {
+                lifetime_target_count = 1; /* An absent explicit target. */
+            } else if (mode == 2) {
+                lifetime_bind(world, positioned(2, false));
+                REQUIRE(lifetime_remove());
+                program_position replacement = { .x = 10 };
+                REQUIRE(
+                    ecs_world_record_add(world, lifetime_target, 501, &replacement, 0) == ECS_OK
+                );
+                REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+                REQUIRE(!ecs_component_cell_alive(lifetime_cells[0]));
+            } else if (mode == 3) {
+                lifetime_foreign_world = ecs_world_new();
+                REQUIRE(
+                    ecs_world_register_component(lifetime_foreign_world, &position_component, NULL) == ECS_OK
+                );
+                ecs_entity foreign = ecs_world_create_entity(lifetime_foreign_world);
+                program_position position = { .x = 2 };
+                REQUIRE(
+                    ecs_world_record_add(lifetime_foreign_world, foreign, 501, &position, 0) == ECS_OK
+                );
+                REQUIRE(ecs_world_apply_commands(lifetime_foreign_world) == ECS_OK);
+                lifetime_bind(lifetime_foreign_world, foreign);
+            }
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            REQUIRE(instance);
+            REQUIRE(lifetime_dispatch(instance, 0) == FLOW_OK);
+            REQUIRE(number_state(instance, "began", mode == 0 ? 1 : 0));
+            REQUIRE(number_state(instance, "done", 0));
+            REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "cancelled", mode == 0 ? 0 : 1));
+            REQUIRE(lifetime_request_count == (mode == 0 ? 1 : 0));
+            if (mode == 3) {
+                REQUIRE(ecs_component_cell_alive(lifetime_cells[0]));
+            }
+        }
+    }
+    return true;
+}
+TEST_CASE(program_effect_free_bound_task_uses_the_owning_program_world)
+{
+    const char *source = "L :: behavior { worker: task(f64); running: "
+                         "f64 = 0; cancelled: f64 = 0; "
+                         "Bound :: () -> f64 { yield; return 7; } "
+                         "Watch :: () -> () { result := await worker; "
+                         "if result is Cancelled { cancelled += 1; } } "
+                         "on Impulse :: () { worker = Bound(); if worker { "
+                         "running += 1; } Watch(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int foreign = 0; foreign < 2; foreign++) {
+            prepare();
+            REQUIRE(lifetime_compile(source, backends[b]));
+            ecs_world *target_world = world;
+            if (foreign) {
+                lifetime_foreign_world = ecs_world_new();
+                target_world = lifetime_foreign_world;
+                REQUIRE(
+                    ecs_world_register_component(target_world, &position_component, NULL) == ECS_OK
+                );
+            }
+            ecs_entity target = ecs_world_create_entity(target_world);
+            program_position position = { .x = 2 };
+            REQUIRE(ecs_world_record_add(target_world, target, 501, &position, 0) == ECS_OK);
+            REQUIRE(ecs_world_apply_commands(target_world) == ECS_OK);
+            lifetime_bind(target_world, target);
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+            REQUIRE(number_state(instance, "running", foreign ? 0 : 1));
+            REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "cancelled", foreign ? 1 : 0));
+            REQUIRE(ecs_component_cell_alive(lifetime_cells[0]));
+        }
+    }
+    return true;
+}
+TEST_CASE(program_bound_task_cancels_pending_children_and_preserves_unbound_pointer_users)
+{
+    const char *source =
+        "L :: behavior { worker: task; began: f64 = 0; done: f64 = 0; "
+        "woke: f64 = 0; cancelled: f64 = 0; survived: f64 = 0; "
+        "Leaf :: () -> () { await Pending(); done += 1; } "
+        "Bound :: (held: ^Position) -> () { began += 1; Leaf(); Leaf(); "
+        "await Pending(); done += 10; } "
+        "Unbound :: (held: ^Position) -> () { await Delay(2); "
+        "if held == held { survived += 1; } } "
+        "Watch :: () -> () { result := await worker; "
+        "if result is Cancelled { cancelled += 1; } woke += 1; } "
+        "on Impulse :: () { for row in query(p: ^Position) { "
+        "worker = Bound(row.p); Unbound(row.p); cancel worker after 100; "
+        "Watch(); } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(lifetime_compile(source, backends[b]));
+        lifetime_bind(world, positioned(2, false));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+        REQUIRE(number_state(instance, "began", 1) && lifetime_request_count == 3);
+        REQUIRE(number_state(instance, "woke", 0));
+        REQUIRE(lifetime_remove());
+        program_position replacement = { .x = 10 };
+        REQUIRE(ecs_world_record_add(world, lifetime_target, 501, &replacement, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "cancelled", 1) && number_state(instance, "woke", 1));
+        REQUIRE(number_state(instance, "done", 0));
+        REQUIRE(lifetime_requests_cancelled(3));
+        REQUIRE(execution_program_update(program, 2.1, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "survived", 1));
+        REQUIRE(number_state(instance, "done", 0) && number_state(instance, "woke", 1));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+TEST_CASE(program_bound_task_does_not_consume_ready_external_results_after_removal)
+{
+    const char
+        *source = "L :: behavior { worker: task; consumed: f64 = 0; "
+                  "cancelled: f64 = 0; "
+                  "Bound :: () -> () { await Pending(); consumed += 1; } "
+                  "Watch :: () -> () { result := await worker; "
+                  "if result is Cancelled { cancelled += 1; } } "
+                  "on Impulse :: () { worker = Bound(); Watch(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int synchronous = 0; synchronous < 2; synchronous++) {
+            prepare();
+            REQUIRE(lifetime_compile(source, backends[b]));
+            lifetime_bind(world, positioned(2, false));
+            lifetime_remove_in_begin = synchronous;
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+            REQUIRE(lifetime_request_count == 1);
+            if (synchronous) {
+                REQUIRE(lifetime_begin_completed);
+            } else {
+                REQUIRE(lifetime_remove());
+                /* Completion races with removal; consumption must still stop. */
+                flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 });
+            }
+            REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "consumed", 0));
+            REQUIRE(number_state(instance, "cancelled", 1));
+            REQUIRE(lifetime_requests_cancelled(1));
+            REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            REQUIRE(
+                number_state(instance, "consumed", 0) &&
+                number_state(instance, "cancelled", 1)
+            );
+        }
+    }
+    return true;
+}
+TEST_CASE(program_bound_task_stops_when_an_inline_outcome_invalidates_its_target)
+{
+    const char *source = "L :: behavior { worker: task; consumed: f64 = 0; "
+                         "cancelled: f64 = 0; "
+                         "action gate = Pending(); "
+                         "Bound :: () -> () { gate(); await Delay(100); "
+                         "consumed += 10; } "
+                         "after gate { await Pending(); consumed += 1; } "
+                         "Watch :: () -> () { result := await worker; "
+                         "if result is Cancelled { cancelled += 1; } } "
+                         "on Impulse :: () { worker = Bound(); Watch(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(lifetime_compile(source, backends[b]));
+        lifetime_bind(world, positioned(2, false));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+        REQUIRE(lifetime_request_count == 1);
+        lifetime_remove_in_begin = true;
+        REQUIRE(flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 }));
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+        REQUIRE(lifetime_begin_completed && lifetime_requests_cancelled(2));
+        REQUIRE(number_state(instance, "consumed", 0) && number_state(instance, "cancelled", 1));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+TEST_CASE(program_failing_inline_outcome_detaches_its_completed_request)
+{
+    const char
+        *source = "L :: behavior { worker: task; consumed: f64 = 0; "
+                  "cancelled: f64 = 0; action "
+                  "gate = Pending(); "
+                  "Bound :: () -> () { yield; await gate(); "
+                  "consumed += 10; } "
+                  "after gate { value := fail_native(); consumed += 1; } "
+                  "Watch :: () -> () { result := await worker; "
+                  "if result is Cancelled { cancelled += 1; } } "
+                  "on Impulse :: () { worker = Bound(); Watch(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int synchronous = 0; synchronous < 2; synchronous++) {
+            prepare();
+            REQUIRE(lifetime_compile(source, backends[b]));
+            lifetime_bind(world, positioned(2, false));
+            lifetime_complete_in_begin = synchronous;
+            strcpy(failure_message, "inline outcome failed");
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+            int status = execution_program_update(program, 0.1, 0, 1000);
+            REQUIRE(lifetime_request_count == 1);
+            if (!synchronous) {
+                REQUIRE(status == FLOW_OK);
+                REQUIRE(flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 }));
+                status = execution_program_update(program, 0.2, 0, 1000);
+            }
+            REQUIRE(number_state(instance, "consumed", 0));
+            REQUIRE(number_state(instance, "cancelled", 1));
+            REQUIRE(flow_host_status(lifetime_requests[0]) == FLOW_HOST_FINISHED);
+            REQUIRE(!flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 }));
+            REQUIRE(flow_host_resume(lifetime_requests[0]) < 0);
+            REQUIRE(flow_host_resume(lifetime_requests[0]) < 0);
+            REQUIRE(
+                number_state(instance, "consumed", 0) &&
+                number_state(instance, "cancelled", 1)
+            );
+            /* Releasing the service's reference detaches the finished request;
+             * a retained inspection handle must not be mistaken for a leak. */
+            flow_host_release(lifetime_requests[0]);
+            lifetime_requests[0] = NULL;
+            lifetime_request_count = 0;
+            status = execution_program_update(program, 0.3, 0, 1000);
+            REQUIRE(status < 0);
+            REQUIRE(execution_program_error(program));
+            REQUIRE(strstr(execution_program_error(program)->message, "inline outcome failed"));
+            execution_program_clear_error(program);
+            REQUIRE(execution_program_update(program, 0.4, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instance) == 0);
+            REQUIRE(execution_program_memory_usage(program).activation_bytes == 0);
+        }
+    }
+    return true;
+}
+TEST_CASE(program_bound_task_cannot_succeed_after_its_last_expression_removes_the_target)
+{
+    const char *source = "L :: behavior { worker: task(f64); got: f64 = 0; "
+                         "cancelled: f64 = 0; "
+                         "Bound :: () -> f64 { yield; return Invalidate(); } "
+                         "Watch :: () -> () { result := await worker; "
+                         "if result is f64 value { got = value; } "
+                         "if result is Cancelled { cancelled += 1; } } "
+                         "on Impulse :: () { worker = Bound(); Watch(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(lifetime_compile(source, backends[b]));
+        lifetime_bind(world, positioned(2, false));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+        REQUIRE(!ecs_component_cell_alive(lifetime_cells[0]));
+        REQUIRE(number_state(instance, "got", 0) && number_state(instance, "cancelled", 1));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* A child binds only its own targets. Losing one cancels the child alone;
+ * losing a target of its active parent cancels the parent and, through it,
+ * the child, even though the child does not depend on that component. */
+TEST_CASE(program_bound_child_keeps_its_own_targets_and_follows_parent_cancellation)
+{
+    const char *
+        source = "L :: behavior { parent: task; child: task; started: f64 = "
+                 "0; "
+                 "parent_done: f64 = 0; child_done: f64 = 0; "
+                 "parent_cancelled: f64 = 0; child_cancelled: f64 = 0; "
+                 "ExtraBound :: () -> () { await Pending(); child_done += 1; } "
+                 "Bound :: () -> () { yield; child = ExtraBound(); await "
+                 "Pending(); parent_done += 1; } "
+                 "ParentWatch :: () -> () { result := await parent; "
+                 "if result is Cancelled { parent_cancelled += 1; } } "
+                 "ChildWatch :: () -> () { result := await child; "
+                 "if result is Cancelled { child_cancelled += 1; } } "
+                 "on Impulse :: () { if started == 0 { parent = Bound(); "
+                 "started = 1; ParentWatch(); } "
+                 "else { ChildWatch(); } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int parent_first = 0; parent_first < 2; parent_first++) {
+            prepare();
+            REQUIRE(lifetime_compile(source, backends[b]));
+            lifetime_bind(world, positioned(2, false));
+            ecs_entity second = positioned(3, false);
+            lifetime_cells[1] = ecs_component_cell_acquire(world, second, 501);
+            REQUIRE(lifetime_cells[1]);
+            lifetime_child_targets[0] = lifetime_child_targets[1] = lifetime_cells[1];
+            lifetime_child_target_count = 2;
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+            REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+            REQUIRE(lifetime_request_count == 2);
+            REQUIRE(lifetime_dispatch(instance, 0.1) == FLOW_OK);
+            if (parent_first) {
+                REQUIRE(lifetime_remove());
+                REQUIRE(execution_program_update(program, 0.2, 0, 1000) == FLOW_OK);
+                REQUIRE(ecs_component_cell_alive(lifetime_cells[1]));
+                REQUIRE(number_state(instance, "parent_cancelled", 1));
+                REQUIRE(number_state(instance, "child_cancelled", 1));
+                REQUIRE(lifetime_requests_cancelled(2));
+            } else {
+                REQUIRE(ecs_world_record_remove(world, second, 501, 0) == ECS_OK);
+                REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+                REQUIRE(execution_program_update(program, 0.2, 0, 1000) == FLOW_OK);
+                REQUIRE(number_state(instance, "child_cancelled", 1));
+                REQUIRE(number_state(instance, "parent_cancelled", 0));
+                REQUIRE(flow_host_status(lifetime_requests[0]) == FLOW_HOST_CANCELLED);
+                REQUIRE(execution_request_owner(lifetime_requests[0]) == NULL);
+                REQUIRE(flow_host_status(lifetime_requests[1]) == FLOW_HOST_PENDING);
+                REQUIRE(ecs_component_cell_alive(lifetime_cells[0]));
+                REQUIRE(lifetime_remove());
+                REQUIRE(execution_program_update(program, 0.3, 0, 1000) == FLOW_OK);
+                REQUIRE(number_state(instance, "parent_cancelled", 1));
+                REQUIRE(number_state(instance, "child_cancelled", 1));
+                REQUIRE(lifetime_requests_cancelled(2));
+            }
+            REQUIRE(
+                number_state(instance, "parent_done", 0) &&
+                number_state(instance, "child_done", 0)
+            );
+            REQUIRE(execution_instance_pending(instance) == 0);
+            REQUIRE(execution_program_memory_usage(program).activation_bytes == 0);
+        }
+    }
+    return true;
+}
+/* A parent that finishes keeps its result and leaves its children running:
+ * removing its component afterwards cancels only the child that depends on
+ * that component itself, and an unrelated child finishes. */
+TEST_CASE(program_completed_bound_parent_leaves_only_dependent_children_bound)
+{
+    const char
+        *source = "L :: behavior { worker: task(f64); started: f64 = 0; "
+                  "got: f64 = 0; "
+                  "cancelled: f64 = 0; child_done: f64 = 0; "
+                  "dependent_done: f64 = 0; "
+                  "Child :: () -> () { await Pending(); child_done += 1; } "
+                  "ExtraBound :: () -> () { await Pending(); dependent_done += "
+                  "1; } "
+                  "Bound :: () -> f64 { yield; Child(); ExtraBound(); yield; "
+                  "return 7; } "
+                  "Watch :: () -> () { result := await worker; "
+                  "if result is f64 value { got += value; } "
+                  "if result is Cancelled { cancelled += 1; } } "
+                  "on Impulse :: () { if started == 0 { worker = Bound(); "
+                  "started = 1; } Watch(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(lifetime_compile(source, backends[b]));
+        lifetime_bind(world, positioned(2, false));
+        lifetime_child_targets[0] = lifetime_cells[0];
+        lifetime_child_target_count = 1;
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+        REQUIRE(lifetime_request_count == 2);
+        REQUIRE(execution_program_update(program, 0.15, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "got", 7));
+        REQUIRE(flow_host_status(lifetime_requests[0]) == FLOW_HOST_PENDING);
+        REQUIRE(flow_host_status(lifetime_requests[1]) == FLOW_HOST_PENDING);
+        REQUIRE(lifetime_remove());
+        REQUIRE(execution_program_update(program, 0.2, 0, 1000) == FLOW_OK);
+        REQUIRE(flow_host_status(lifetime_requests[0]) == FLOW_HOST_PENDING);
+        REQUIRE(flow_host_status(lifetime_requests[1]) == FLOW_HOST_CANCELLED);
+        REQUIRE(flow_host_complete(lifetime_requests[0], -1, (pin_value){ 0 }));
+        REQUIRE(execution_program_update(program, 0.3, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "child_done", 1));
+        REQUIRE(number_state(instance, "dependent_done", 0));
+        REQUIRE(lifetime_dispatch(instance, 0.4) == FLOW_OK);
+        REQUIRE(number_state(instance, "got", 14) && number_state(instance, "cancelled", 0));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* Authored tasks depend on the components their pointer arguments root at
+ * when the task may dereference them, on any path and through synchronous
+ * callees, including scoped parameters such as Poison's, which reach the
+ * lent target through references. Holding, comparing or handing a pointer to
+ * another task does not. */
+TEST_CASE(program_task_infers_component_dependencies)
+{
+    static const char *const starts[] = {
+        "worker = Poison(row.p);",       "worker = Poison(row.p);",
+        "worker = Later(row.p, false);", "worker = Holds(row.p, row.v);",
+        "worker = Holds(row.p, row.v);", "worker = Spawns(row.p);",
+    };
+    /* Component each scenario removes during the first wait, or zero. */
+    static const uint64_t removed[] = { 501, 0, 501, 501, 502, 501 };
+    static const double cancelled[] = { 1, 0, 1, 0, 1, 0 };
+    static const double done[] = { 0, 1, 0, 1, 0, 1 };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int scenario = 0; scenario < 6; scenario++) {
+            char source[2048];
+            snprintf(
+                source,
+                sizeof source,
+                "L :: behavior { worker: task; done: f64 = 0; "
+                "cancelled: f64 = 0; child: f64 = 0; "
+                "Poison :: (p: ^Position) -> () { p.x -= 1; await Delay(2); "
+                "done += 1; } "
+                "Nudge :: (p: ^Position) -> () { p.x += 1; } "
+                "Later :: (p: ^Position, go: bool) -> () { await Delay(2); "
+                "done += 1; if go { Nudge(p); } } "
+                "Holds :: (p: ^Position, v: ^Velocity) -> () { v.x += 1; "
+                "await Delay(2); if p == p { done += 1; } } "
+                "Child :: (p: ^Position) -> () { await Delay(1); p.x += 1; "
+                "child += 1; } "
+                "Spawns :: (p: ^Position) -> () { Child(p); await Delay(2); "
+                "done += 1; } "
+                "Watch :: () -> () { result := await worker; "
+                "if result is Cancelled { cancelled += 1; } } "
+                "on Impulse :: () { for row in query(p: ^Position, v: "
+                "^Velocity) { "
+                "%s Watch(); } } }",
+                starts[scenario]
+            );
+            prepare();
+            lifetime_inferred = true;
+            REQUIRE(lifetime_compile(source, backends[b]));
+            ecs_entity target = positioned(2, true);
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+            if (removed[scenario]) {
+                REQUIRE(ecs_world_record_remove(world, target, removed[scenario], 0) == ECS_OK);
+                REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+            }
+            REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "cancelled", cancelled[scenario]));
+            if (removed[scenario] == 501) {
+                /* A later add is a different target and revives nothing. */
+                program_position replacement = { .x = 10 };
+                REQUIRE(ecs_world_record_add(world, target, 501, &replacement, 0) == ECS_OK);
+                REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+            }
+            REQUIRE(execution_program_update(program, 2.1, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "done", done[scenario]));
+            REQUIRE(number_state(instance, "cancelled", cancelled[scenario]));
+            /* The child that dereferences the removed target stops alone. */
+            REQUIRE(number_state(instance, "child", 0));
+            /* An awaiter can wake on the update after its task finishes. */
+            REQUIRE(execution_program_update(program, 2.2, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instance) == 0);
+        }
+    }
+    return true;
+}
+TEST_CASE(program_bound_task_resources_detach_in_each_destruction_order)
+{
+    const char
+        *source = "L :: behavior { worker: task; done: f64 = 0; "
+                  "Child :: () -> () { await Pending(); done += 1; } "
+                  "Bound :: () -> () { Child(); await Pending(); done += 10; } "
+                  "on Impulse :: () { worker = Bound(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int order = 0; order < 4; order++) {
+            prepare();
+            REQUIRE(lifetime_compile(source, backends[b]));
+            lifetime_bind(world, positioned(2, false));
+            ecs_entity owner = ecs_world_create_entity(world);
+            execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+            REQUIRE(instance && lifetime_dispatch(instance, 0) == FLOW_OK);
+            REQUIRE(lifetime_request_count == 2);
+            if (order == 0) {
+                execution_program_detach(program, ecs_entity_to_u64(owner));
+            } else if (order == 1) {
+                execution_program_free(program);
+                program = NULL;
+            } else if (order == 2) {
+                ecs_world_free(world);
+                world = NULL;
+                REQUIRE(!ecs_component_cell_alive(lifetime_cells[0]));
+                execution_program_free(program);
+                program = NULL;
+            } else {
+                REQUIRE(ecs_world_destroy_entity(world, lifetime_target) == ECS_OK);
+                REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+                REQUIRE(number_state(instance, "done", 0));
+            }
+            REQUIRE(lifetime_requests_cancelled(2));
+            /* A second teardown must not touch the detached host-owned handles. */
+            execution_program_free(program);
+            program = NULL;
+            REQUIRE(lifetime_requests_cancelled(2));
+        }
+    }
+    return true;
+}
 TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
 {
     const char *
@@ -5088,6 +5865,59 @@ TEST_CASE(program_task_results_keep_nested_task_handles_alive)
     return true;
 }
 
+TEST_CASE(program_query_staging_roots_keep_completed_tasks_alive)
+{
+    const char *source = "Held :: behavior { work: task;"
+                         "Work :: () -> (value: f64) { yield; return 7; }"
+                         "on Impulse :: () { work = Work(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        for (int staging = 0; staging < 3; staging++) {
+            prepare();
+            REQUIRE(compile(source, backends[backend]));
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            const pin_value arguments[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+            REQUIRE(execution_instance_dispatch(instance, 11, arguments, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            pin_value handle = *execution_instance_state(instance, state_id("work"));
+            REQUIRE(handle.type == PIN_TASK && handle.u64);
+            pin_query query = { .kind = PIN_QUERY_ROW, .values = &handle, .count = 1 };
+            pin_value row = { .type = PIN_QUERY, .ptr = &query };
+            if (staging == 0) {
+                instance->query_row = row;
+            } else if (staging == 1) {
+                apush(program->query_values, row);
+            } else {
+                apush(program->system_values, row);
+            }
+            /* Isolate task reachability from payload collection: these row
+             * fields are already retained by the caller of the task scan. */
+            execution_activation deferred = { 0 };
+            instance->running = &deferred;
+            int status = execution_instance_set_state(
+                instance,
+                state_id("work"),
+                (pin_value){ .type = PIN_TASK }
+            );
+            instance->running = NULL;
+            REQUIRE(status == FLOW_OK);
+            program_tasks_collect(program);
+            execution_memory_usage memory = execution_program_memory_usage(program);
+            REQUIRE(memory.retained_tasks == 1 && memory.task_result_bytes > 0);
+            instance->query_row = (pin_value){ 0 };
+            asetlen(program->query_values, 0);
+            asetlen(program->system_values, 0);
+            program_tasks_collect(program);
+            memory = execution_program_memory_usage(program);
+            REQUIRE(memory.retained_tasks == 0 && memory.task_result_bytes == 0);
+        }
+    }
+    return true;
+}
+
 static bool program_prepared_type(void *, uint64_t id, execution_prepared_type *out)
 {
     const script_catalog_type *type = script_catalog_type_by_id(&catalog, id);
@@ -5239,7 +6069,7 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
           "" },
         /* System-retained bindings belong to the registration, not a row's
          * activation, and cannot own tasks. */
-        { "S :: system(p: Position) { worker: retain task }", "System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals" },
+        { "S :: system(p: ^Position) { worker: retain task }", "System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals" },
         /* An unawaited action continues before its result exists. */
         { "B :: behavior { n: f64 = 0; on Impulse :: () { x := "
           "make_thing(); n = x } }",
@@ -11151,7 +11981,7 @@ TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
             snprintf(
                 source,
                 sizeof source,
-                "Ordered :: system(p:Position,v:Velocity) { "
+                "Ordered :: system(p:^Position,v:^Velocity) { "
                 "resumed:retain f64=0; event_clock:retain f64=0; "
                 "queued_value:retain f64=0; finished:retain f64=0; "
                 "on Impulse :: (amount: f64, enabled: bool) { "
@@ -11223,6 +12053,17 @@ TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
                 REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_OK);
                 status = execution_program_update(program, 30, 7, 1000);
             }
+            if (status != FLOW_OK) {
+                const execution_program_failure *failure = execution_program_error(program);
+                fprintf(
+                    stderr,
+                    "ordered system backend=%d mode=%d status=%d error=%s\n",
+                    backend,
+                    mode,
+                    status,
+                    failure ? failure->message : "none"
+                );
+            }
             REQUIRE(status == FLOW_OK);
             REQUIRE(number_state(instance, "resumed", .5));
             REQUIRE(number_state(instance, "event_clock", .5));
@@ -11251,13 +12092,24 @@ TEST_CASE(program_reduction_query_rows_count_filtered_candidates)
             ((program_velocity *)ecs_component_data(world, entities[i], 502))->x = i - 1;
         }
         REQUIRE(
-            compile_module("Count :: system( p:Position,v:Velocity) where v.x>0 { reduce p.x+=v.x; }", backends[backend])
+            compile_module("Count :: system( p:^Position,v:^Velocity , if v.x>0) { reduce p.x+=v.x; }", backends[backend])
         );
         program = execution_program_new(module, world, NULL);
         REQUIRE(program);
         REQUIRE(execution_program_prepare_system(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(execution_program_memory_usage(program).query_rows == 3);
-        REQUIRE(execution_program_run_system(program) == FLOW_OK);
+        int status = execution_program_run_system(program);
+        if (status != FLOW_OK) {
+            const execution_program_failure *failure = execution_program_error(program);
+            fprintf(
+                stderr,
+                "count rows backend=%d status=%d error=%s\n",
+                backend,
+                status,
+                failure ? failure->message : "none"
+            );
+        }
+        REQUIRE(status == FLOW_OK);
         REQUIRE(execution_program_memory_usage(program).query_rows == 3);
         REQUIRE(execution_program_finish_system(program) == FLOW_OK);
         REQUIRE(execution_program_memory_usage(program).query_rows == 3);
@@ -11611,7 +12463,7 @@ TEST_CASE(program_suspended_union_reads_keep_pointer_targets)
  * the cell is still there when the system resumes. */
 TEST_CASE(program_paused_reducing_systems_keep_pointer_targets)
 {
-    const char *source = "Held :: system(p: Position, v: Velocity) { "
+    const char *source = "Held :: system(p: ^Position, v: ^Velocity) { "
                          "kept: retain number = 0; finished: retain f64 = 0; "
                          "ps: ^number[] = []; if true { x := 3.0; ps = [&x]; } "
                          "reduce p.x += v.x; finished += 1; kept = ps[0]^; }";
@@ -12063,6 +12915,7 @@ void test_language_program()
     RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);
     RUN_TEST_CASE(program_systems_name_their_step);
     RUN_TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects);
+    RUN_TEST_CASE(program_query_projected_component_pointers_keep_serial_effects);
     RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);
     RUN_TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors);
     RUN_TEST_CASE(program_query_required_path_keeps_one_instance_per_root);
@@ -12103,6 +12956,17 @@ void test_language_program()
     RUN_TEST_CASE(program_retrigger_evaluates_each_duration_once);
     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
+    RUN_TEST_CASE(program_bound_task_checks_admission_before_its_body);
+    RUN_TEST_CASE(program_effect_free_bound_task_uses_the_owning_program_world);
+    RUN_TEST_CASE(program_bound_task_cancels_pending_children_and_preserves_unbound_pointer_users);
+    RUN_TEST_CASE(program_bound_task_does_not_consume_ready_external_results_after_removal);
+    RUN_TEST_CASE(program_bound_task_stops_when_an_inline_outcome_invalidates_its_target);
+    RUN_TEST_CASE(program_failing_inline_outcome_detaches_its_completed_request);
+    RUN_TEST_CASE(program_bound_task_cannot_succeed_after_its_last_expression_removes_the_target);
+    RUN_TEST_CASE(program_bound_child_keeps_its_own_targets_and_follows_parent_cancellation);
+    RUN_TEST_CASE(program_completed_bound_parent_leaves_only_dependent_children_bound);
+    RUN_TEST_CASE(program_bound_task_resources_detach_in_each_destruction_order);
+    RUN_TEST_CASE(program_task_infers_component_dependencies);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
     RUN_TEST_CASE(program_task_cancelling_itself_stops_at_once);
     RUN_TEST_CASE(program_task_owns_tasks_started_by_its_continuations);
@@ -12121,6 +12985,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_collection_indexes_handles_across_many_owners);
     RUN_TEST_CASE(program_task_collection_follows_long_pointer_chains);
     RUN_TEST_CASE(program_task_results_keep_nested_task_handles_alive);
+    RUN_TEST_CASE(program_query_staging_roots_keep_completed_tasks_alive);
     RUN_TEST_CASE(program_prepared_tasks_preserve_cancellation_union_and_deadlines);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_many_tasks_collect_in_linear_mark_work);

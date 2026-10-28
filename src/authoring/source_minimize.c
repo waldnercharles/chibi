@@ -97,9 +97,15 @@ static bool same_symbol(const pair *p, int i, int j)
     bool parameter = x->kind == SCRIPT_PARAMETER;
     return x->kind == y->kind && same_type(x->type, y->type) &&
            x->capability == y->capability &&
-           (parameter || x->function == y->function) &&
-           x->writable == y->writable && x->disabled == y->disabled &&
-           x->outcome == y->outcome && same_text(x->name, y->name);
+           (parameter || x->function == y->function) && x->writable == y->writable &&
+           x->disabled == y->disabled && x->outcome == y->outcome &&
+           x->source_relationship == y->source_relationship &&
+           x->source_traversal == y->source_traversal &&
+           x->source_variable == y->source_variable &&
+           x->query_description == y->query_description &&
+           x->query_field == y->query_field &&
+           same_type(x->component_type, y->component_type) &&
+           same_text(x->name, y->name);
 }
 /* Arguments evaluate in source order, so a rewrite must keep their order as
  * well as their parameters. */
@@ -478,13 +484,57 @@ static bool same_query(const pair *p, int i, int j)
         return i == j;
     }
     const script_query *x = &a->queries[i], *y = &b->queries[j];
-    if (x->kind != y->kind || x->component != y->component ||
-        x->child_count != y->child_count) {
+    if (x->kind != y->kind || x->required != y->required ||
+        x->description != y->description || x->component != y->component ||
+        x->source_relationship != y->source_relationship ||
+        x->source_traversal != y->source_traversal ||
+        x->source_variable != y->source_variable ||
+        x->target_variable != y->target_variable || x->child_count != y->child_count) {
+        return false;
+    }
+    if (x->kind == SCRIPT_QUERY_VALUE && !same_expression(p, x->value, y->value)) {
         return false;
     }
     for (int c = 0; c < x->child_count; c++) {
         if (!same_query(p, x->children[c], y->children[c])) {
             return false;
+        }
+    }
+    return true;
+}
+static bool same_query_descriptions(const pair *p)
+{
+    if (p->a->description_count != p->b->description_count ||
+        p->a->system_description != p->b->system_description) {
+        return false;
+    }
+    for (int i = 0; i < p->a->description_count; i++) {
+        const script_query_description *x = &p->a->descriptions[i],
+                                       *y = &p->b->descriptions[i];
+        if (x->system != y->system || x->query_variable_count != y->query_variable_count ||
+            !same_type(x->row_type, y->row_type) || !same_query(p, x->query, y->query) ||
+            acount(x->symbols) != acount(y->symbols) ||
+            acount(x->captures) != acount(y->captures) ||
+            acount(x->stages) != acount(y->stages)) {
+            return false;
+        }
+        for (int j = 0; j < acount(x->symbols); j++) {
+            if (!same_symbol(p, x->symbols[j], y->symbols[j])) {
+                return false;
+            }
+        }
+        for (int j = 0; j < acount(x->captures); j++) {
+            if (!same_symbol(p, x->captures[j], y->captures[j])) {
+                return false;
+            }
+        }
+        for (int j = 0; j < acount(x->stages); j++) {
+            const script_query_stage *a = &x->stages[j], *b = &y->stages[j];
+            if (!same_symbol(p, a->symbol, b->symbol) ||
+                (a->symbol < 0 ? !same_query(p, a->expression, b->expression)
+                               : !same_expression(p, a->expression, b->expression))) {
+                return false;
+            }
         }
     }
     return true;
@@ -500,7 +550,8 @@ static bool same_program(const pair *p)
         a->kind != b->kind || a->owner_type != b->owner_type ||
         !same_text(a->name, b->name) || a->function_count != b->function_count ||
         a->binding_count != b->binding_count || !same_query(p, a->query, b->query) ||
-        !same_symbol(p, a->owner_symbol, b->owner_symbol) || !same_declarations(p)) {
+        !same_symbol(p, a->owner_symbol, b->owner_symbol) ||
+        !same_declarations(p) || !same_query_descriptions(p)) {
         return false;
     }
     for (int i = 0; i < a->function_count; i++) {

@@ -192,22 +192,28 @@ TEST_CASE(language_handlers_name_payload_fields)
     REQUIRE(original->diagnostic_count == 0);
     return true;
 }
-/* A system names its step's payload fields after its query clauses. */
-TEST_CASE(language_systems_name_their_step)
+/* Systems always receive dt and reject the former event/query clauses. */
+TEST_CASE(language_systems_use_flat_queries_and_implicit_step)
 {
-    parse("Motion :: system(p: Position) where p.x > 0 on Tick :: (dt: s) { p.x += dt }");
+    parse("Motion :: system(p: ^Position, if p.x > 0) { p.x += dt }");
     REQUIRE(original->diagnostic_count == 0);
     TSNode system = ts_node_named_child(ts_tree_root_node(original->tree), 0);
-    REQUIRE(!strcmp(ts_node_type(system), "system"));
-    REQUIRE(
-        node_text(field(system, "event"), "Tick") &&
-        node_text(field(system, "binding"), "::")
-    );
-    TSNode parameter = ts_node_named_child(field(system, "payload"), 0);
-    REQUIRE(
-        node_text(field(parameter, "name"), "dt") &&
-        node_text(field(parameter, "type"), "s")
-    );
+    REQUIRE(!strcmp(ts_node_type(field(system, "parameters")), "query_list"));
+    REQUIRE(ts_node_is_null(field(system, "event")));
+    static const char *const removed[] = {
+        "Motion :: system(p: Position) on Tick :: (dt: s) {}",
+        "Motion :: system(p: Position) without Frozen {}",
+        "Motion :: system(p: Position) where p.x > 0 {}",
+        "Motion :: system(p: Position) join target in self.Targets {}",
+        "Demo :: behavior { query components(); }",
+        "Motion :: system(p: Position split self) {}",
+        "Demo :: behavior { on Tick :: () { rows := query(p: Position split "
+        "self); } }",
+    };
+    for (size_t i = 0; i < sizeof removed / sizeof *removed; i++) {
+        parse(removed[i]);
+        REQUIRE(original->diagnostic_count > 0);
+    }
     return true;
 }
 TEST_CASE(language_retained_binding_syntax)
@@ -360,10 +366,13 @@ TEST_CASE(language_keywords_are_contextual_data_member_names)
 {
     parse(
         "Use :: library { Identity :: (value: int) -> int { return value; } "
+        "join :: () {} without :: () {} where :: () {} "
+        "Names :: () { join(); without(); where(); } "
         "Run :: () { component := 1; from := 2; split := 3; join := 4; "
-        "unordered := 5; not := 6; struct := 7; "
+        "unordered := 5; not := 6; struct := 7; without := 8; where := 9; "
         "Identity(component); Identity(from); Identity(split); Identity(join); "
-        "Identity(unordered); Identity(not); Identity(struct); } }"
+        "Identity(unordered); Identity(not); Identity(struct); "
+        "Identity(without); Identity(where); } }"
     );
     REQUIRE(!original->diagnostic_count);
     cleanup();
@@ -472,10 +481,9 @@ TEST_CASE(language_callable_types_entries_and_results)
 TEST_CASE(language_system_queries_and_control_flow)
 {
     parse(
-        "Motion :: system(position: Transform, velocity: Velocity, damping: "
-        "Igniter?) "
-        "without Collider, Body on Tick :: (dt: number s) {\n"
-        "query components();\n"
+        "Motion :: system(position: ^Transform, velocity: Velocity, damping: "
+        "^Igniter?, if !self.Collider && !self.Body) {\n"
+        "matches := query(component: Transform);\n"
         "position += velocity * dt;\n"
         "if damping { damping.heat = 0; } else if dt > 0 { position = "
         "velocity; }\n"
@@ -492,9 +500,9 @@ TEST_CASE(language_system_queries_and_control_flow)
     REQUIRE(original->diagnostic_count == 0);
     TSNode system = ts_node_named_child(ts_tree_root_node(original->tree), 0);
     REQUIRE(!strcmp(ts_node_type(system), "system"));
-    REQUIRE(!ts_node_is_null(field(system, "without")));
+    REQUIRE(ts_node_named_child_count(field(system, "parameters")) == 4);
     TSNode body = field(system, "body");
-    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 0)), "query_declaration"));
+    REQUIRE(!strcmp(ts_node_type(field(ts_node_named_child(body, 0), "value")), "query_expression"));
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 4)), "for_statement"));
     return true;
 }
@@ -585,16 +593,15 @@ TEST_CASE(language_definitions_unions_and_type_patterns)
 TEST_CASE(language_query_header_and_cancel_deadline)
 {
     parse(
-        "Home :: system(position: Transform, aim: Targets.Transform, "
-        "parent: Velocity? from ancestor(ChildOf) "
-        ") where position and (aim or not parent) {\n"
+        "Home :: system(position: Transform, aim: Transform from Targets, "
+        "parent: Velocity? from ancestor(ChildOf), "
+        "if position and (aim or not parent)) {\n"
         "on Tick :: () { charge := Charge(); cancel charge after 1.5 }\n"
         "}"
     );
     REQUIRE(original->diagnostic_count == 0);
     TSNode system = ts_node_named_child(ts_tree_root_node(original->tree), 0);
-    REQUIRE(!ts_node_is_null(field(system, "where")));
-    REQUIRE(ts_node_named_child_count(field(system, "parameters")) == 3);
+    REQUIRE(ts_node_named_child_count(field(system, "parameters")) == 4);
     TSNode handler = ts_node_named_child(field(system, "body"), 0);
     TSNode cancel = ts_node_named_child(field(handler, "body"), 1);
     REQUIRE(node_text(field(cancel, "duration"), "1.5"));
@@ -604,18 +611,54 @@ TEST_CASE(language_query_header_and_cancel_deadline)
 TEST_CASE(language_query_generators_preserve_authored_order)
 {
     parse(
-        "Track :: system(p: Position ) join target in self.Targets "
-        "join next in target.Targets join aim: Position? from next "
-        "where aim and aim.x > p.x and changed(p) {}"
+        "Track :: system(p: Position, target: entity in self.Targets, "
+        "next in target.Targets, aim: ^Position? from next, "
+        "if aim and aim.x > p.x and changed(p), "
+        "amount := p.x * 2, total: int = amount + 1,) {}"
     );
     REQUIRE(original->diagnostic_count == 0);
     TSNode system = ts_node_named_child(ts_tree_root_node(original->tree), 0);
-    TSNode first = field(ts_node_named_child(system, 2), "generator");
-    TSNode second = field(ts_node_named_child(system, 3), "generator");
+    TSNode list = field(system, "parameters");
+    REQUIRE(ts_node_named_child_count(list) == 7);
+    TSNode first = ts_node_named_child(list, 1);
+    TSNode second = ts_node_named_child(list, 2);
+    REQUIRE(!strcmp(ts_node_type(first), "query_generator"));
     REQUIRE(node_text(field(first, "name"), "target"));
+    REQUIRE(node_text(field(first, "type"), "entity"));
     REQUIRE(node_text(field(first, "source"), "self.Targets"));
     REQUIRE(node_text(field(second, "name"), "next"));
+    REQUIRE(ts_node_is_null(field(second, "type")));
     REQUIRE(node_text(field(second, "source"), "target.Targets"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(list, 3)), "parameter"));
+    REQUIRE(
+        node_text(field(ts_node_named_child(list, 4), "condition"), "aim and aim.x > p.x and changed(p)")
+    );
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(list, 5)), "query_binding"));
+    REQUIRE(ts_node_is_null(field(ts_node_named_child(list, 5), "type")));
+    REQUIRE(node_text(field(ts_node_named_child(list, 6), "type"), "int"));
+    return true;
+}
+
+TEST_CASE(language_query_expressions_share_system_terms)
+{
+    parse(
+        "Demo :: behavior { on Tick :: () { "
+        "matches := query(damage: Damage, target in self.Targets, "
+        "health: ^Health from target, if health.value > 0, "
+        "amount := damage.amount,); for row in matches { "
+        "row.health.value -= row.amount; } } }"
+    );
+    REQUIRE(!original->diagnostic_count);
+    TSNode root = ts_tree_root_node(original->tree);
+    TSNode query = find_node(
+        root,
+        "query_expression",
+        "query(damage: Damage, target in self.Targets, "
+        "health: ^Health from target, if health.value > 0, "
+        "amount := damage.amount,)"
+    );
+    REQUIRE(!ts_node_is_null(query));
+    REQUIRE(ts_node_named_child_count(field(query, "parameters")) == 5);
     return true;
 }
 
@@ -924,7 +967,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_managed_pointer_syntax_preserves_xor);
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
     RUN_TEST_CASE(language_handlers_name_payload_fields);
-    RUN_TEST_CASE(language_systems_name_their_step);
+    RUN_TEST_CASE(language_systems_use_flat_queries_and_implicit_step);
     RUN_TEST_CASE(language_retained_binding_syntax);
     RUN_TEST_CASE(language_unified_declarations_and_generic_map_shapes);
     RUN_TEST_CASE(language_authored_asset_declarations);
@@ -938,6 +981,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_definitions_unions_and_type_patterns);
     RUN_TEST_CASE(language_query_header_and_cancel_deadline);
     RUN_TEST_CASE(language_query_generators_preserve_authored_order);
+    RUN_TEST_CASE(language_query_expressions_share_system_terms);
     RUN_TEST_CASE(language_obsolete_declaration_tokens_rejected);
     RUN_TEST_CASE(language_ref_arguments_are_not_syntax);
     RUN_TEST_CASE(language_expressions_precedence_and_continuation);

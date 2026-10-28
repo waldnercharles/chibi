@@ -3,6 +3,7 @@
 #include "execution/component.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
+#include "execution/integer_report.h"
 #include "execution/intrinsics.h"
 #include "execution/module_effects.h"
 #include "execution/module_internal.h"
@@ -52,6 +53,7 @@ size_t execution_module_storage_bytes(const execution_module *m)
     VECTOR(states);
     VECTOR(functions);
     VECTOR(queries);
+    VECTOR(descriptions);
     VECTOR(bindings);
     VECTOR(actions);
     VECTOR(diagnostics);
@@ -81,6 +83,13 @@ size_t execution_module_storage_bytes(const execution_module *m)
         add_storage(&bytes, (size_t)b->read_count, sizeof *b->reads);
         add_storage(&bytes, (size_t)b->write_count, sizeof *b->writes);
         vector_storage(&bytes, b->fields, sizeof *b->fields);
+    }
+    for (int i = 0; i < p->description_count; i++) {
+        add_storage(
+            &bytes,
+            1,
+            behavior_function_storage_bytes(p->descriptions[i].evaluate)
+        );
     }
     for (int i = 0; i < p->query_count; i++) {
         if (p->queries[i].predicate) {
@@ -153,6 +162,10 @@ static void destroy_plan(execution_module_plan *m)
     afree(m->functions);
     afree(m->bindings);
     afree(m->queries);
+    for (int i = 0; i < acount(m->descriptions); i++) {
+        behavior_function_free(m->descriptions[i].evaluate);
+    }
+    afree(m->descriptions);
     afree(m->actions);
     afree(m->diagnostics);
     afree(m->services);
@@ -190,9 +203,12 @@ static bool query_valid(
     unsigned *bound,
     bool generators,
     unsigned depth,
-    int *steps
+    int *steps,
+    int row_root,
+    bool row_context
 )
 {
+    row_context |= index == row_root;
     if (index < 0 || index >= m->query_count || seen[index] == 1 ||
         depth > 64 || --*steps < 0) {
         return false;
@@ -204,6 +220,9 @@ static bool query_valid(
         q->source_variable < 0 || q->source_variable > m->query_variable_count ||
         q->target_variable < 0 || q->target_variable > m->query_variable_count ||
         !(*bound & (1u << q->source_variable))) {
+        return false;
+    }
+    if (q->required && q->kind != EXECUTION_QUERY_HAS) {
         return false;
     }
     bool leaf = q->kind == EXECUTION_QUERY_HAS ||
@@ -228,7 +247,13 @@ static bool query_valid(
         }
         *bound |= 1u << q->target_variable;
     }
-    if (q->kind == EXECUTION_QUERY_VALUE) {
+    if (q->kind == EXECUTION_QUERY_VALUE && q->child_count) {
+        return false;
+    }
+    if (q->kind == EXECUTION_QUERY_VALUE && !q->predicate && !row_context) {
+        return false;
+    }
+    if (q->kind == EXECUTION_QUERY_VALUE && q->predicate) {
         const behavior_function *f = q->predicate;
         if (q->child_count || !f || !f->frozen || f->argument_count ||
             f->variable_count != m->state_count || f->result_count != 1 ||
@@ -242,12 +267,33 @@ static bool query_valid(
         return false;
     }
     for (int i = 0; i < q->child_count; i++) {
-        if (!query_valid(m, q->children[i], seen, bound, generators && q->kind == EXECUTION_QUERY_ALL, depth + 1, steps)) {
+        if (!query_valid(
+                m,
+                q->children[i],
+                seen,
+                bound,
+                generators && q->kind == EXECUTION_QUERY_ALL,
+                depth + 1,
+                steps,
+                row_root,
+                row_context
+            )) {
             return false;
         }
     }
     seen[index] = 2;
     return true;
+}
+static void query_reachable(const execution_module_plan *m, int index, bool *seen)
+{
+    if (seen[index]) {
+        return;
+    }
+    seen[index] = true;
+    const execution_module_query *term = &m->queries[index];
+    for (int i = 0; i < term->child_count; i++) {
+        query_reachable(m, term->children[i], seen);
+    }
 }
 static bool query_filter_valid(const execution_module_plan *m, int index, unsigned char *seen)
 {
@@ -570,9 +616,24 @@ static bool state_function_valid(const execution_module_plan *m, const behavior_
     }
     for (int i = 0; i < acount(f->host_calls); i++) {
         const behavior_function_host_call *host = &f->host_calls[i];
-        uint64_t id = execution_intrinsic_id(host->call);
-        unsigned operation = (unsigned)(id & 255);
-        if (!id || operation < EXECUTION_INTRINSIC_STATE_DEMAND ||
+        const node_host_call *canonical = execution_intrinsic_resolve(host->capability_id);
+        const node_host_call *actual = host->call;
+        bool intrinsic = canonical &&
+                         host->capability_abi ==
+                             execution_intrinsic_abi(host->capability_id) &&
+                         actual->invoke == canonical->invoke &&
+                         actual->value == canonical->value &&
+                         actual->context == canonical->context &&
+                         actual->action == canonical->action &&
+                         actual->service == canonical->service &&
+                         actual->missing_service == canonical->missing_service &&
+                         actual->optional_service == canonical->optional_service &&
+                         actual->variadic == canonical->variadic &&
+                         actual->reusable == canonical->reusable;
+        execution_intrinsic operation = intrinsic
+                                          ? execution_intrinsic_kind(host->capability_id)
+                                          : 0;
+        if (!intrinsic || operation < EXECUTION_INTRINSIC_STATE_DEMAND ||
             operation > EXECUTION_INTRINSIC_RETRIGGER_ACTION) {
             continue;
         }
@@ -707,6 +768,7 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
     if (m->state_count != acount(m->states) ||
         m->function_count != acount(m->functions) ||
         m->query_count != acount(m->queries) ||
+        m->description_count != acount(m->descriptions) ||
         m->binding_count != acount(m->bindings) ||
         m->action_count != acount(m->actions) || m->import_count != acount(m->imports) ||
         m->diagnostic_count != acount(m->diagnostics) ||
@@ -815,8 +877,8 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
     if (m->query_filter < 0 || m->query_filter > m->query_count ||
         m->query_variable_count < 0 ||
         m->query_variable_count > ECS_QUERY_VARS || m->query < -1 ||
-        (m->query < 0 &&
-         (m->query_count || m->query_variable_count || m->query_filter))) {
+        (m->query < 0 && (m->query_variable_count || m->query_filter)) ||
+        m->system_description < 0 || m->system_description > m->description_count) {
         snprintf(error, size, "query variable schema is invalid");
         return FLOW_ERR_COMPILE;
     }
@@ -824,10 +886,13 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
         unsigned char *seen = xcalloc((size_t)(m->query_count + 1), 1);
         unsigned bound = 1;
         int steps = 200000;
-        bool valid = query_valid(m, m->query, seen, &bound, true, 0, &steps) &&
+        int row_root = m->system_description
+                         ? m->descriptions[m->system_description - 1].query
+                         : -1;
+        bool valid = query_valid(m, m->query, seen, &bound, true, 0, &steps, row_root, false) &&
                      bound == (1u << (m->query_variable_count + 1)) - 1;
         for (int i = 0; i < m->query_count; i++) {
-            valid &= seen[i] == 2;
+            valid &= seen[i] == 2 || m->description_count;
         }
         if (valid && m->query_filter) {
             int matches = 0;
@@ -847,6 +912,74 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             snprintf(error, size, "query has invalid structure, variable bindings, or an impure predicate");
             return FLOW_ERR_COMPILE;
         }
+    }
+    for (int i = 0; i < m->description_count; i++) {
+        execution_module_query_description *q = &m->descriptions[i];
+        const behavior_function *f = q->evaluate;
+        if (q->query < 0 || q->query >= m->query_count || q->query_variable_count < 0 ||
+            q->query_variable_count > ECS_QUERY_VARS || q->row_type.type != PIN_QUERY ||
+            q->row_type.container != PIN_CONTAINER_SINGLE || q->row_type.ptr ||
+            !q->row_type.type_name || !q->row_type.type_name[0] || !f || !f->frozen ||
+            f->result_count < 1 || f->result_defaults[0].type != PIN_BOOL ||
+            f->result_defaults[0].container != PIN_CONTAINER_SINGLE ||
+            !execution_query_evaluator_valid(f, (1u << (q->query_variable_count + 1)) - 1)) {
+            snprintf(error, size, "query description has an invalid row evaluator");
+            return FLOW_ERR_COMPILE;
+        }
+        unsigned char *seen = xcalloc((size_t)m->query_count + 1, 1);
+        unsigned bound = 1;
+        int steps = 200000;
+        execution_module_plan schema = *m;
+        schema.query_variable_count = q->query_variable_count;
+        bool valid = query_valid(&schema, q->query, seen, &bound, true, 0, &steps, q->query, false) &&
+                     bound == (1u << (q->query_variable_count + 1)) - 1;
+        free(seen);
+        bool contained = true;
+        if (i == m->system_description - 1) {
+            execution_module_plan path = *m;
+            path.query_filter = q->query + 1;
+            int matches = 0, scope_steps = 200000;
+            contained = query_filter_path(&path, m->query, true, &matches, &scope_steps) &&
+                        matches == 1;
+        }
+        if (!valid || (i == m->system_description - 1 &&
+                       (f->argument_count || !contained ||
+                        q->query_variable_count != m->query_variable_count))) {
+            snprintf(error, size, "query description has invalid variable bindings");
+            return FLOW_ERR_COMPILE;
+        }
+        if (!decoded) {
+            pin_value retained;
+            if (pin_value_snapshot_to_arena(&m->storage, &retained, &q->row_type)) {
+                snprintf(error, size, "query row type cannot be retained");
+                return FLOW_ERR_COMPILE;
+            }
+            q->row_type = retained;
+        }
+        if (execution_integer_reports_enabled()) {
+            behavior_function_report_integers(q->evaluate);
+        }
+        behavior_function_prepare_borrows(q->evaluate);
+        if (backend != BEHAVIOR_BYTECODE && !behavior_function_compile(q->evaluate)) {
+            snprintf(error, size, "query row evaluator emission failed");
+            return FLOW_ERR_COMPILE;
+        }
+    }
+    bool *reachable = xcalloc((size_t)m->query_count + 1, sizeof *reachable);
+    if (m->query >= 0) {
+        query_reachable(m, m->query, reachable);
+    }
+    for (int i = 0; i < m->description_count; i++) {
+        query_reachable(m, m->descriptions[i].query, reachable);
+    }
+    bool all_reachable = true;
+    for (int i = 0; i < m->query_count; i++) {
+        all_reachable &= reachable[i];
+    }
+    free(reachable);
+    if (!all_reachable) {
+        snprintf(error, size, "query term is not reachable from a verified description");
+        return FLOW_ERR_COMPILE;
     }
     execution_module_plan_report_integers(m);
     for (int i = 0; i < m->query_count; i++) {
@@ -1059,6 +1192,11 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
         }
     }
     const behavior_function **seen = NULL;
+    for (int i = 0; i < m->description_count; i++) {
+        if (!function_requirements(m, m->descriptions[i].evaluate, &seen, decoded)) {
+            goto services_missing;
+        }
+    }
     for (int i = 0; i < m->query_count; i++) {
         if (m->queries[i].predicate &&
             !function_requirements(m, m->queries[i].predicate, &seen, decoded)) {
@@ -1085,7 +1223,7 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             }
         }
     }
-    if (m->query >= 0 || m->binding_count) {
+    if (m->query >= 0 || m->description_count || m->binding_count) {
         if (!require_service(m, "ecs.world", decoded)) {
             goto services_missing;
         }

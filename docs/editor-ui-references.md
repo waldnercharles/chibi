@@ -298,6 +298,42 @@ icons, or descriptions, and `kit_choice` for simple named options.
 - Popups, menus and tooltips a slot opens live in the kit's layer, as elsewhere.
 - Focus follows IMGUIContainer's: a click on authored chrome leaves the keyboard to the editor (`kit_release_focus`), while a field in a slot keeps it, as an IMGUI text field does.
 
+### Embedded document lifecycle
+
+The shared engine interfaces are [`ui/rml.h`](../src/ui/rml.h) and
+[`ui/iframe.h`](../src/ui/iframe.h); Studio's kit creates and owns its documents.
+Preserve these contracts when changing document creation or settling:
+
+- Creating an empty document must not update unrelated data models; their dirty
+  bindings still update in the ordinary Context update. Preserve stylesheets,
+  body classes, listeners, identity and visibility, and set its source URL before
+  attachment and plugin notification so relative resources resolve correctly.
+- Fitted documents grow and shrink in the same frame, including when a later
+  document dirties an earlier holder. Refresh skips only `OnUpdate`, preserving
+  animation, style, scroll, layout and other callbacks; the ordinary Context
+  update still invokes `OnUpdate` once. Retain full updates when boxes or heights
+  change, and preserve pre/Context/post settling and its four-pass bound.
+- Resolve stable attachment identities and observers after callbacks that can
+  detach or replace documents. This does not establish arbitrary callback
+  safety for every holder traversal.
+
+Regression coverage must preserve three distinct cases:
+
+| Case | Required assertions |
+| --- | --- |
+| Bound document replacement | Repeated whole-document replacement retains the surviving model and updates conditionals/lists; retired observers expire, live-document counts return to baseline, exact label reads stay one or two, topology reads do not accumulate, and unmount/destruction leave no bound reads. Require zero new RmlUi warnings. |
+| Layout refresh | Synthetic animation time advances opacity through completion and resolves geometry without extra parent/child `OnUpdate` calls; the normal Context update invokes each callback exactly once. |
+| Removal during settling | A callback removes both visited and unvisited attachments without skipping a survivor; callback counts, survivor geometry, later resize and teardown remain correct. |
+
+These are ownership and behavior assertions, not wall-clock thresholds,
+performance loops, sleeps or rendering work. Setup and teardown must run even
+after an assertion fails, and failures must reach the focused and aggregate exit
+status. In `chibi-studio`, `tests/held/engine_oracles/test/editor/`
+retains `kit_empty_documents.c`, `iframe_bindings.c` and `kit_documents.c`, but
+that package has no executable target. Those retained sources are not current
+runnable coverage of all three contracts; historical measurements do not close
+that coverage gap or establish current integration acceptance.
+
 ### Unity UI Builder and UMG Designer
 
 - Text stays the source of truth: every designer change is a `text_edit` of the document through `ui_source`, one undo step shared with the Text Editor. A scrub or a picker session joins one step.

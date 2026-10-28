@@ -784,6 +784,12 @@ Independent review is clear. Native/material/project/language aggregates and
 complete Linux, Windows, browser and relocated public SDK builds are unrun
 locally for this slice. Those broader routes remain separate retirement gates.
 
+CI follow-up: cold recovery/native construction stays inside the reflection
+build root, under `host` and `native`. The initial sibling host directory made
+the SDK source identity dirty despite successful construction. The regression
+runs the actual Make route in a committed fixture and checks the real package
+source identity through cold/warm builds; authored edits must still change it.
+
 Compiler-tools packaging slice, 2026-10-22: `tools/toolchain/SDK.chibi`
 installs graph-built private hosts and their complete compiler/core/bootstrap,
 authored build programs, graph packages and matching dependency notices into a

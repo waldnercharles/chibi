@@ -333,6 +333,109 @@ TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions)
     return true;
 }
 
+TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity)
+{
+    char source[1024], original[1024], filename[1024], packager[1024];
+    path(source, directory, "source identity");
+    assert(!mkdir(source, 0700));
+    path(original, tool_root(), ".gitignore");
+    path(filename, source, ".gitignore");
+    const char *copy[] = { "cp", original, filename, NULL };
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    path(original, tool_root(), "Makefile");
+    path(filename, source, "Makefile");
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    path(filename, source, "tools");
+    assert(!mkdir(filename, 0700));
+    path(filename, source, "tools/quiet.sh");
+    tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
+    path(filename, source, "tools/configure.sh");
+    tool_write(
+        filename,
+        "#!/bin/sh\nset -eu\n"
+        "test \"$1\" = sdk-native\n"
+        "mkdir -p \"$2\"\n"
+        "printf 'generated configuration\\n' > \"$2/CMakeCache.txt\"\n"
+    );
+    path(filename, source, "bin");
+    assert(!mkdir(filename, 0700));
+    path(filename, source, "bin/cmake");
+    tool_write(
+        filename,
+        "#!/bin/sh\nset -eu\n"
+        "test \"$1\" = --build\n"
+        "mkdir -p \"$2\"\n"
+        "cp host-template \"$2/chibi-build-host\"\n"
+        "chmod 700 \"$2/chibi-build-host\"\n"
+    );
+    assert(!chmod(filename, 0700));
+    path(filename, source, "host-template");
+    tool_write(
+        filename,
+        "#!/bin/sh\nset -eu\n"
+        "if [ \"$1\" = --protocol-version ]; then echo 13; exit 0; fi\n"
+        "while [ $# -gt 0 ]; do\n"
+        " if [ \"$1\" = --build ]; then\n"
+        "  mkdir -p \"$2\"\n"
+        "  printf 'generated reflection tool\\n' > \"$2/reflect\"\n"
+        "  exit 0\n fi\n shift\ndone\nexit 1\n"
+    );
+    path(filename, source, "Authored.chibi");
+    tool_write(filename, "package fixture\n");
+    path(packager, tool_root(), "tools/package_sdk.py");
+    const char *script =
+        "import importlib.util, os, pathlib, subprocess, sys\n"
+        "root = pathlib.Path(sys.argv[2])\n"
+        "def git(*args):\n"
+        "    subprocess.run(['git', *args], cwd=root, check=True, "
+        "stdout=subprocess.DEVNULL)\n"
+        "git('-c', 'init.defaultBranch=main', 'init', '-q')\n"
+        "git('config', 'core.excludesFile', '/dev/null')\n"
+        "git('config', 'core.hooksPath', '/dev/null')\n"
+        "git('add', '--all')\n"
+        "git('-c', 'user.name=Fixture', '-c', "
+        "'user.email=fixture@example.invalid',\n"
+        "    '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture')\n"
+        "spec = importlib.util.spec_from_file_location('chibi_package_sdk', "
+        "sys.argv[1])\n"
+        "packager = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(packager)\n"
+        "packager.ROOT = root\n"
+        "before = packager.source_identity()\n"
+        "assert not before['dirty'], 'source fixture is not clean'\n"
+        "environment = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + "
+        "os.environ['PATH'])\n"
+        "for options in ([], ['SDK_REFLECT_BUILD_DIR=.chibi/reflection "
+        "build']):\n"
+        "    for attempt in range(2):\n"
+        "        subprocess.run(['make', 'sdk-reflect-build', 'QUIET=sh "
+        "tools/quiet.sh',\n"
+        "                        'BUILD_HOST=missing-host', "
+        "'NATIVE_TOOLCHAIN_FLAGS=', 'JOBS=2', *options],\n"
+        "                       cwd=root, env=environment, check=True)\n"
+        "        generated = packager.source_identity()\n"
+        "        assert not generated['dirty'], 'reflection build dirtied SDK "
+        "source identity'\n"
+        "        assert generated['snapshot_sha256'] == "
+        "before['snapshot_sha256'], 'reflection build changed SDK source "
+        "snapshot'\n"
+        "(root / 'Authored.chibi').write_text('package edited\\n')\n"
+        "edited = packager.source_identity()\n"
+        "assert edited['dirty'], 'authored source changes must remain "
+        "visible'\n"
+        "assert edited['snapshot_sha256'] != before['snapshot_sha256'], "
+        "'authored source changes must change the snapshot'\n";
+    const char *argv[] = { "python3", "-B", "-c", script, packager, source, NULL };
+    int status = tool_run(argv, source, log_path);
+    if (status) {
+        char *log = tool_read(log_path);
+        fprintf(stderr, "SDK source identity: %s\n", log ? log : "");
+        free(log);
+    }
+    REQUIRE(!status);
+    return true;
+}
+
 TEST_CASE(sdk_consumers_receive_one_exact_reflection_path)
 {
     char source[1024], canonical[1024], filename[1024], original[1024],
@@ -536,23 +639,23 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     path(filename, source, "configure-arguments");
     REQUIRE(file_equals(
         filename,
-        "sdk-native\nreflection build-host\n-DCMAKE_C_COMPILER=/fixture/cc\n"
+        "sdk-native\nreflection build/host\n-DCMAKE_C_COMPILER=/fixture/cc\n"
         "-DCMAKE_CXX_COMPILER=/fixture/c++\n-DCMAKE_BUILD_TYPE=Release\n"
         "-DCHIBI_SDK_BUILD_COMPILER=ON\n-DCHIBI_SDK_BUILD_NATIVE=OFF\n"
         "-DCHIBI_SDK_BUILD_DESKTOP=OFF\n"
     ));
     path(filename, source, "build-arguments");
     REQUIRE(
-        file_equals(filename, "--build\nreflection build-host\n--target\nchibi-build-host\n--parallel\n3\n")
+        file_equals(filename, "--build\nreflection build/host\n--target\nchibi-build-host\n--parallel\n3\n")
     );
     path(filename, source, "graph-arguments");
     REQUIRE(file_equals(filename, expected));
     path(filename, source, "graph-program");
-    REQUIRE(file_equals(filename, "reflection build-host/chibi-build-host\n"));
+    REQUIRE(file_equals(filename, "reflection build/host/chibi-build-host\n"));
     tool_write(calls, "");
     REQUIRE(tool_run(args, source, log_path) == 0);
     REQUIRE(file_equals(calls, "graph\n"));
-    REQUIRE(file_equals(filename, "reflection build-host/chibi-build-host\n"));
+    REQUIRE(file_equals(filename, "reflection build/host/chibi-build-host\n"));
 
     path(filename, source, "fixture-host");
     tool_write(filename, host);
@@ -563,8 +666,8 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     REQUIRE(tool_run(args, source, log_path) == 0);
     REQUIRE(file_equals(calls, "graph\n"));
     path(filename, source, "graph-program");
-    REQUIRE(file_equals(filename, "reflection build-host/chibi-build-host\n"));
-    path(filename, source, "reflection build-host/chibi-build-host.old");
+    REQUIRE(file_equals(filename, "reflection build/host/chibi-build-host\n"));
+    path(filename, source, "reflection build/host/chibi-build-host.old");
     tool_write(filename, "");
     tool_write(calls, "");
     REQUIRE(tool_run(args, source, log_path) == 0);
@@ -605,6 +708,7 @@ void test_tool_package()
     RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);
     RUN_TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions);
+    RUN_TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity);
     RUN_TEST_CASE(sdk_consumers_receive_one_exact_reflection_path);
     RUN_TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host);
     tool_remove_tree(directory);

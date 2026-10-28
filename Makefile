@@ -174,7 +174,7 @@ ifneq ($(filter Linux Darwin,$(shell uname -s)),)
 sdk-reflect-build:
 	@host="$(BUILD_HOST)"; \
 	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 13 ]; then \
-		host="$(SDK_REFLECT_BUILD_DIR)-host/chibi-build-host"; \
+		host="$(SDK_REFLECT_BUILD_DIR)/host/chibi-build-host"; \
 		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 13 ]; then \
 			$(MAKE) sdk-reflect-bootstrap || exit $$?; \
 		fi; \
@@ -185,17 +185,17 @@ sdk-reflect-build:
 # this with the first-host bootstrap replacement, not with reflection policy.
 .PHONY: sdk-reflect-bootstrap
 sdk-reflect-bootstrap:
-	@$(QUIET) configure-sdk-reflect-host -- sh tools/configure.sh sdk-native "$(SDK_REFLECT_BUILD_DIR)-host" $(NATIVE_TOOLCHAIN_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF
-	@$(QUIET) build-sdk-reflect-host -- cmake --build "$(SDK_REFLECT_BUILD_DIR)-host" --target chibi-build-host --parallel $(JOBS)
+	@$(QUIET) configure-sdk-reflect-host -- sh tools/configure.sh sdk-native "$(SDK_REFLECT_BUILD_DIR)/host" $(NATIVE_TOOLCHAIN_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF
+	@$(QUIET) build-sdk-reflect-host -- cmake --build "$(SDK_REFLECT_BUILD_DIR)/host" --target chibi-build-host --parallel $(JOBS)
 else
 # Windows retains native construction until its build host can run processes.
 # A separate root-project tree also accepts existing standalone reflect caches.
 sdk-reflect-build:
-	@$(MAKE) build GRAPH_BUILD= BUILD_DIR="$(SDK_REFLECT_BUILD_DIR)-native" BUILD_TARGET=reflect BUILD_HOST_TARGET= LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
+	@$(MAKE) build GRAPH_BUILD= BUILD_DIR="$(SDK_REFLECT_BUILD_DIR)/native" BUILD_TARGET=reflect BUILD_HOST_TARGET= LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
 	@mkdir -p "$(SDK_REFLECT_BUILD_DIR)"
-	@if [ -f "$(SDK_REFLECT_BUILD_DIR)-native/reflect.exe" ]; then \
-		cp "$(SDK_REFLECT_BUILD_DIR)-native/reflect.exe" "$(SDK_REFLECT_BUILD_DIR)/reflect.exe"; \
-	else cp "$(SDK_REFLECT_BUILD_DIR)-native/reflect" "$(SDK_REFLECT_BUILD_DIR)/reflect"; fi
+	@if [ -f "$(SDK_REFLECT_BUILD_DIR)/native/reflect.exe" ]; then \
+		cp "$(SDK_REFLECT_BUILD_DIR)/native/reflect.exe" "$(SDK_REFLECT_BUILD_DIR)/reflect.exe"; \
+	else cp "$(SDK_REFLECT_BUILD_DIR)/native/reflect" "$(SDK_REFLECT_BUILD_DIR)/reflect"; fi
 endif
 
 sdk-build: sdk-reflect-build

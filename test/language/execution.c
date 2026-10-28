@@ -3,6 +3,7 @@
 #include "execution/function_builder.h"
 #include "execution/integer_report.h"
 #include "execution/intrinsics.h"
+#include "execution/jit_internal.h"
 #include "execution/log.h"
 #include "execution/managed.h"
 #include "execution/module_effects.h"
@@ -3849,9 +3850,64 @@ TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles)
     REQUIRE(pointer_root.type == PIN_FLOW && !pointer_root.ptr);
     return true;
 }
+TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries)
+{
+    behavior_function f = { 0 };
+    asetlen(f.slots, 8);
+    asetlen(f.instructions, 7);
+    asetlen(f.runtime_map, 8);
+    memset(f.runtime_map, 0, 8 * sizeof *f.runtime_map);
+    f.instructions[0] = (behavior_function_instruction){ .op = BF_CONSTANT };
+    f.instructions[1] = (behavior_function_instruction){ .op = BF_ADD,
+                                                         .left = 0,
+                                                         .right = 0 };
+    f.instructions[2] = (behavior_function_instruction){ .op = BF_SELECT,
+                                                         .left = 1,
+                                                         .right = 2,
+                                                         .target = 3 };
+    f.instructions[3] = (behavior_function_instruction){ .op = BF_FMA,
+                                                         .left = 2,
+                                                         .right = 2,
+                                                         .target = 4 };
+    f.instructions[4] = (behavior_function_instruction){ .op = BF_BRANCH,
+                                                         .left = 5,
+                                                         .target = 6 };
+    f.instructions[5] = (behavior_function_instruction){ .op = BF_JUMP, .target = 1 };
+    f.instructions[6] = (behavior_function_instruction){ .op = BF_CONSTANT };
+    int *uses;
+    bool *targets;
+    behavior_jit_usage(&f, &uses, &targets);
+    /* A repeated operand at one PC is one use; a second PC is not. Even
+     * instructions omitted by runtime_map participate in the original proof. */
+    const int expected[] = { 1, 2, -2, 2, 3, 4, -1, -1, -1 };
+    int observed[9];
+    memcpy(observed, uses, sizeof observed);
+    bool entries[8];
+    memcpy(entries, targets, sizeof entries);
+    free(uses);
+    free(targets);
+    f.instructions[6] = (behavior_function_instruction){ .op = BF_NEG, .left = 0 };
+    behavior_jit_usage(&f, &uses, &targets);
+    int repeated = uses[0];
+    free(uses);
+    free(targets);
+    afree(f.slots);
+    afree(f.instructions);
+    afree(f.runtime_map);
+    for (int i = 0; i < 9; i++) {
+        REQUIRE(observed[i] == expected[i]);
+    }
+    for (int pc = 0; pc < 8; pc++) {
+        REQUIRE(entries[pc] == (pc == 1 || pc == 6));
+    }
+    REQUIRE(repeated == -2);
+    return true;
+}
+
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(execution_jit_usage_preserves_distinct_uses_and_control_entries);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
     RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);

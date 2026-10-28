@@ -108,7 +108,7 @@ type_catalog_pack type_catalog_pack_at(int index)
 static behavior_function_builder *builder;
 static ecs_world *pointer_world;
 static execution_program *pointer_program;
-static behavior_function *function, *callee;
+static behavior_function *function, *callee, *reentered;
 static behavior_function_context context;
 static behavior_function_activation activation;
 static arena storage, managed;
@@ -171,8 +171,9 @@ static void cleanup()
     }
     behavior_function_free(function);
     behavior_function_free(callee);
+    behavior_function_free(reentered);
     builder = NULL;
-    function = callee = NULL;
+    function = callee = reentered = NULL;
     host_calls = 0;
 }
 
@@ -470,6 +471,154 @@ TEST_CASE(execution_runs_without_authored_calls_count_as_running)
         running_seen = -1;
         REQUIRE(run(NULL, 0, NULL, &output, backend == 1, 100) == FLOW_OK);
         REQUIRE(running_seen == 1 && invocation_heap.running_calls == 0 && output.d == 1);
+    }
+    return true;
+}
+
+static bool reentered_native;
+static size_t reentered_allocated;
+/* Runs `reentered`, which has authored calls, on the invocation heap from
+ * inside a native, as a host that calls back into script does. */
+static const char *reenter(void *, const pin_value *arguments, pin_value *results)
+{
+    behavior_function_activation inner_activation = { 0 };
+    bool resumable = behavior_function_resumable(reentered);
+    if (resumable) {
+        behavior_function_activation_init(reentered, &inner_activation);
+    }
+    arena inner_storage = { 0 };
+    pin_value result = { .type = PIN_I32 };
+    behavior_function_context inner = { .activation = resumable ? &inner_activation : NULL,
+                                        .results = &result,
+                                        .managed_heap = &invocation_heap,
+                                        .budget = 100 };
+    behavior_function_bind_storage(&inner, &inner_storage);
+    assert(behavior_function_bind(reentered, &inner, NULL, 0));
+    int status = behavior_function_run(reentered, &inner, reentered_native);
+    reentered_allocated = invocation_heap.storage.allocated;
+    behavior_function_release_host(&inner);
+    behavior_function_activation_free(&inner_activation);
+    arena_free(&inner_storage);
+    results[0].d = status == FLOW_OK ? result.i : -1;
+    /* The outer run's array, read after the nested run returns. */
+    const pin_array *held = arguments ? arguments[0].ptr : NULL;
+    for (int i = 0; held && i < held->count; i++) {
+        results[0].d += pin_array_get(held, i).i * (i + 1) * 100;
+    }
+    return NULL;
+}
+/* A run that a native reenters from a call-free run reaches a safepoint whose
+ * heap is due for collection, but the outer run's array lives only in its
+ * suspended C frame: the nested run leaves collection to the outer one, and
+ * the array survives. */
+TEST_CASE(execution_reentered_runs_keep_the_outer_runs_values)
+{
+    pin_value number = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, &number, 1, NULL, 0);
+    int seven = slot(PIN_I32);
+    emit((behavior_function_instruction){ .op = BF_CONSTANT,
+                                          .type = PIN_I32,
+                                          .output = seven,
+                                          .value = { .type = PIN_I32, .i = 7 } });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = seven });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    callee = function;
+    function = NULL;
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, &number, 1, NULL, 0);
+    int call = behavior_function_builder_call(builder, callee, NULL, 0, &number, 1);
+    int called = address_slot(), value = slot(PIN_I32);
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    emit((behavior_function_instruction){
+        .op = BF_HOST_SLOT,
+        .type = BF_POINTER_TYPE,
+        .output = called,
+        .left = behavior_function_builder_call_results(builder, call) });
+    emit((behavior_function_instruction){ .op = BF_READ,
+                                          .type = PIN_I32,
+                                          .output = value,
+                                          .left = called,
+                                          .offset = offsetof(pin_value, i) });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = value });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    reentered = function;
+    function = NULL;
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    pin_value shape = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
+    pin_value total = { .type = PIN_F64 };
+    behavior_function_builder_signature(builder, &shape, 1, &total, 1, NULL, 0);
+    const node_host_call host = { .invoke = reenter };
+    const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+    int capability = behavior_function_builder_host(builder, &host, &access, &shape, 1, &total, 1);
+    int held = address_slot(), header = address_slot(),
+        pointer = address_slot(), inner = slot(PIN_F64);
+    behavior_function_builder_root(builder, BEHAVIOR_BANK_SLOT, held, shape);
+    emit((behavior_function_instruction){ .op = BF_ARRAY,
+                                          .type = BF_POINTER_TYPE,
+                                          .target = BF_ARGUMENT,
+                                          .left = 0,
+                                          .output = held,
+                                          .value = shape });
+    emit((behavior_function_instruction){
+        .op = BF_HOST_SLOT,
+        .type = BF_POINTER_TYPE,
+        .left = behavior_function_builder_host_first(builder, capability),
+        .output = header });
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = BF_POINTER_TYPE,
+                                          .left = held,
+                                          .right = header,
+                                          .offset = offsetof(pin_value, ptr) });
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = capability,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){
+        .op = BF_HOST_SLOT,
+        .type = BF_POINTER_TYPE,
+        .output = pointer,
+        .left = behavior_function_builder_host_results(builder, capability) });
+    emit((behavior_function_instruction){ .op = BF_READ,
+                                          .type = PIN_F64,
+                                          .output = inner,
+                                          .left = pointer,
+                                          .offset = offsetof(pin_value, d) });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_F64, .left = inner });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(!function->calls && reentered->calls);
+    REQUIRE(behavior_function_compile(callee) && behavior_function_compile(reentered));
+    REQUIRE(behavior_function_compile(function));
+    static const int items[] = { 11, 12, 13 };
+    pin_value argument = shape;
+    argument.ptr = pin_array_allocate(&managed, PIN_I32, NULL, 3);
+    for (int i = 0; i < 3; i++) {
+        ((pin_array *)argument.ptr)->items[i] = (pin_value){ .type = PIN_I32,
+                                                             .i = items[i] };
+    }
+    for (int backend = 0; backend < 2; backend++) {
+        /* Alone, the reentered run collects the heap at its call. */
+        release_invocation();
+        behavior_managed_heap_init(&invocation_heap);
+        invocation_heap.call_collection_bytes = 1;
+        REQUIRE(pin_array_allocate(&invocation_heap.storage, PIN_I32, NULL, 64));
+        reentered_native = backend == 1;
+        pin_value alone = { 0 };
+        reenter(NULL, NULL, &alone);
+        REQUIRE(alone.d == 7 && !invocation_heap.storage.allocated && !reentered_allocated);
+        /* Inside the outer run, the same heap is due but nothing collects. */
+        release_invocation();
+        behavior_managed_heap_init(&invocation_heap);
+        invocation_heap.call_collection_bytes = 1;
+        pin_value output = total;
+        int status = invoke(&argument, 1, NULL, &output, backend == 1, 100, &invocation_heap);
+        REQUIRE(status == FLOW_OK && reentered_allocated);
+        REQUIRE(output.d == 7 + 100 * (11 + 2 * 12 + 3 * 13));
     }
     return true;
 }
@@ -7077,6 +7226,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_intrinsics_build_in_result_storage);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);
     RUN_TEST_CASE(execution_runs_without_authored_calls_count_as_running);
+    RUN_TEST_CASE(execution_reentered_runs_keep_the_outer_runs_values);
     RUN_TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume);
     RUN_TEST_CASE(execution_costs_verify_intrinsics_and_follow_recursive_calls);
     RUN_TEST_CASE(execution_costs_include_managed_scalar_result_and_state_escape);

@@ -414,7 +414,7 @@ QueryPointers :: (types: TypeDecl[], members: TypeMember[]) -> TypeDecl[] {
         index := native.first;
         while (index < native.first + native.count) {
             field := members[index];
-            declared = AddPointer(declared, {storage: field.storage, container: field.container, record: field.record}, false, 0);
+            EnsurePointer(&declared, {storage: field.storage, container: field.container, record: field.record}, false, 0);
             index += 1;
         }
     }
@@ -515,7 +515,8 @@ QueryType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], 
             index += 1;
         }
     }
-    return ReadType(forest, text, types, names, 0, node);
+    table := types;
+    return ReadType(forest, text, &table, names, 0, node);
 }
 // Type query expressions through the ordinary body emitter. It performs no
 // execution; its inferred result follows exactly the same operators, calls,
@@ -538,11 +539,12 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         return {storage: StateNumberStorage(forest, text, node), container: 0, record: -1};
     }
     expression: Callable = {name: "", package: document, document: document, node: node, first: 0, count: 0,
-                            result: 0, result_container: 0, result_record: -1, results: 0};
+                            result: 0, result_container: 0, result_record: -1, results: 0, waits: false};
     functions := append(callables, expression);
     expressions := ops;
     expressions.debug = false;
-    switch EmitBody(forest, text, document, functions, params, types, members, [], natives, ports, [], [], [], [], names,
+    table := types;
+    switch EmitBody(forest, text, document, functions, params, &table, members, [], natives, ports, [], [], [], [], names,
                     "", SolidOffsets(text), 0, 0, length(functions) - 1, [], [], [], BodyContext.Unknown, [],
                     expressions, target, queries) {
         case .Inferred(value):
@@ -561,7 +563,7 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int,
 // QueryScope reconstructs types, not runtime locations. Actual captures use
 // the emitter's live names when the description is created.
 QueryScopeName :: (forest: snapshot.SnapshotNode[], text: string, node: int, value: ValueType) -> Name {
-    return {name: Text(forest, text, node), place: LocalPlace, index: 0, storage: value.storage,
+    return {owned: false, name: Text(forest, text, node), place: LocalPlace, index: 0, storage: value.storage,
             container: value.container, record: value.record, writable: false, node: node};
 }
 // A positive payload pattern is visible in its matching body and in the
@@ -1205,7 +1207,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     }
     callable: Callable = {name: format_text("__query_evaluate_{}", numbered), package: document, document: document,
                           node: node, first: param_first, count: length(captures), result: 0,
-                          result_container: 0, result_record: -1, results: length(fields) + 1};
+                          result_container: 0, result_record: -1, results: length(fields) + 1, waits: false};
     callables.append(callable);
     described: QuerySpec = {node: node, evaluator: evaluator, row: row, description: descriptor, variables: variables,
                             first_capture: param_first, capture_count: length(captures)};
@@ -1273,7 +1275,7 @@ QueryCallStep :: (intrinsic: int, arguments: Value[], initial: Cell[], result: V
         }
         index += 1;
     }
-    host: Host = {owned_arguments: false, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(initial),
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(initial),
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     storage := SlotStorage(result.storage, result.container, target);

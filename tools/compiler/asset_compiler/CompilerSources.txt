@@ -4,6 +4,8 @@ package_compiler/Steps.chibi
 package_compiler/Maps.chibi
 package_compiler/References.chibi
 package_compiler/Pointers.chibi
+package_compiler/Tasks.chibi
+package_compiler/TaskResults.chibi
 package_compiler/Tree.chibi
 package_compiler/Number.chibi
 package_compiler/Optional.chibi

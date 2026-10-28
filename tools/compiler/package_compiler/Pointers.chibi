@@ -6,7 +6,7 @@ import strings "core:strings"
 
 PointerStorage: int : 19;
 PointerDecl: int : 6;
-ManagedPlace: int : 11;
+ManagedPlace: int : 16;
 PointerMakeIntrinsic: int : 46;
 PointerReadIntrinsic: int : 47;
 PointerWriteIntrinsic: int : 48;
@@ -169,7 +169,7 @@ PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, ta
                          at.slot + 1, node));
     cells: Cell[] = [PointerCell(pointer.record), TypedCell(element.storage, element.container, element.record),
                      TypedCell(element.storage, element.container, element.record)];
-    host: Host = {owned_arguments: false, intrinsic: PointerReadIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerReadIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
                   result_count: 1, written: false};
     roots: Root[] = [];
     if (Pointer(element.storage, element.container)) {
@@ -307,7 +307,7 @@ ManagedBoxStep :: (types: TypeDecl[], members: TypeMember[], initial: Value, nam
     cells: Cell[] = [context,
                      TypedCell(initial.storage, initial.container, initial.record),
                      TypedCell(initial.storage, initial.container, initial.record), PointerCell(pointer)];
-    host: Host = {owned_arguments: false, intrinsic: PointerMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
                   result_count: 1, written: false};
     binding: Name = {owned: false, name: name, place: ManagedPlace, index: at.cell + 3, storage: initial.storage,
                      container: initial.container, record: initial.record, writable: true, node: declaration};
@@ -348,7 +348,7 @@ PointerWriteStep :: (types: TypeDecl[], pointer: Value, value: Value, popped: in
     slots.extend([AddressSlot(target), AddressSlot(target)]);
     cells: Cell[] = [PointerCell(pointer.record), TypedCell(stored.storage, stored.container, stored.record),
                      TypedCell(BoolStorage, 0, -1)];
-    host: Host = {owned_arguments: false, intrinsic: PointerWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
                   result_count: 1, written: false};
     return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], popped, NoValue(), NoValue(), []);
 }
@@ -368,7 +368,7 @@ PointerReferenceStep :: (pointer: Value, ops: Ops, target: Target, at: Bases,
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(target.pointer_storage, at.cell + 1, ops, target, at.slot + 1, node));
     cells: Cell[] = [PointerCell(pointer.record), ReferenceCell(target)];
-    host: Host = {owned_arguments: false, intrinsic: PointerReferenceIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerReferenceIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
                   result_count: 1, written: true};
     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells,
                         [host], [], [], [], [], 1, Typed(at.slot + 2, ReferenceStorage, 0, -1), NoValue(), []);
@@ -412,7 +412,7 @@ PointerFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
     code := CellWrite(PointerStorage, base.slot, at.cell, ops, target, at.slot, node);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(PointerStorage, at.cell + 5, ops, target, at.slot + 1, node));
-    host: Host = {owned_arguments: false, intrinsic: PointerFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 5,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 5,
                   result_count: 1, written: false};
     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), {storage: PointerStorage, kind: ValueKind}],
                         [], cells, [host], [], [], [], [], popped,
@@ -753,7 +753,8 @@ PointerProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int
         pending = slice(pending, 0, length(pending) - 1);
         node := forest[at];
         if (node.start >= start && node.end <= finish) {
-            if (node.kind == "call_expression") {
+            if (node.kind == "call_expression" || node.kind == "await_expression" ||
+                node.kind == "yield_statement") {
                 return true;
             }
             if (node.kind == "assignment") {
@@ -869,7 +870,10 @@ PointerPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name,
             }
             truth := consequence >= 0 && forest[walked_child].start >= forest[consequence].start &&
                      forest[walked_child].end <= forest[consequence].end;
-            if (PointerGuard(forest, text, condition, binding.name, truth) &&
+            alternative := Field(forest, parent, "alternative");
+            false_branch := alternative >= 0 && forest[walked_child].start >= forest[alternative].start &&
+                            forest[walked_child].end <= forest[alternative].end;
+            if ((truth || false_branch) && PointerGuard(forest, text, condition, binding.name, truth) &&
                 (binding.node < 0 || forest[binding.node].start < forest[condition].start)) {
                 return !PointerProofChanged(forest, text, parent, forest[condition].end, forest[node].start,
                                             binding.name, aliased);

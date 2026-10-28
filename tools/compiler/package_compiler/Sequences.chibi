@@ -78,7 +78,7 @@ SequenceCallStep :: (arguments: Value[], intrinsic: int, result: Value, tag: u64
     }
     output := at.cell + length(cells);
     cells.append(MovedCell(result));
-    hosts: Host[] = [{owned_arguments: false, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: output,
+    hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: output,
                       result_count: 1, written: false}];
     // An index outside the sequence is an argument failure, as stage zero
     // reports it.
@@ -579,7 +579,7 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         code := CellWrite(target.pointer_storage, base.slot, at.cell, ops, target, at.slot, node);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
         code.extend(CellRead(target.pointer_storage, at.cell + 4, ops, target, at.slot + 1, node));
-        hosts: Host[] = [{owned_arguments: false, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell,
+        hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell,
                           result_first: at.cell + 4, result_count: 1, written: false}];
         result := Typed(at.slot + 2, part.storage, part.container, part.record);
         result.place = true;
@@ -631,7 +631,7 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         code.extend(CellWrite(index.storage, index.slot, at.cell + 2, ops, target, at.slot + 1, node));
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
         code.extend(CellRead(target.pointer_storage, output, ops, target, at.slot + 2, node));
-        hosts: Host[] = [{owned_arguments: false, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: output,
+        hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: output,
                           result_count: 1, written: false}];
         result := Typed(at.slot + 3, element.storage, element.container, element.record);
         result.place = true;
@@ -1013,7 +1013,7 @@ SequenceComponentPlace :: (types: TypeDecl[], component: int, entity: int, poppe
     code.extend(CellRead(target.pointer_storage, at.cell + 9, ops, target, at.slot + 4, node));
     slots := extend(OwnerSlots(target), [AddressSlot(target), DescriptorSlot(target)]);
     cells := MakeCells(target, component, ComponentFacts(types[component]));
-    hosts: Host[] = [{owned_arguments: false, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: at.cell,
+    hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: at.cell,
                       result_first: at.cell + 9, result_count: 1, written: true}];
     result := Typed(at.slot + 5, StructStorage, 0, component);
     result.place = true;

@@ -6514,11 +6514,6 @@ static bool in_place_map(lower *l, const script_statement *s)
         (script_type){ .storage = PIN_BOOL },
         s->range
     );
-    /* The debugger watches the removal's result, as it watches an in-place
-     * array append's. */
-    int result = expression_value(l, rhs->left);
-    value_root(l, BEHAVIOR_BANK_SLOT, result, rhs->type);
-    debug_watch(l, s->second, result, rhs->type, true, 0);
     return true;
 }
 static void assign(lower *l, const script_statement *s)

@@ -155,6 +155,10 @@ struct behavior_function
     /* No result reaches what the function's arguments or state reach, as
      * execution_prepare_argument_sharing proves with its verdict. */
     bool fresh_results;
+    /* Arguments a task started on this definition depends on, one bit per
+     * argument (the last bit stands for the rest); derived like sharing. */
+    uint64_t task_dependencies;
+    bool task_dependencies_ready;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;

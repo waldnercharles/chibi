@@ -312,6 +312,7 @@ static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const target
         { "results_offset", (int)offsetof(behavior_function_context, results) },
         { "delta_seconds_offset",
           (int)offsetof(behavior_function_context, delta_seconds) },
+        { "error_status_offset", (int)offsetof(behavior_function_context, error_status) },
         { "type_offset", (int)offsetof(pin_value, type) },
         { "container_offset", (int)offsetof(pin_value, container) },
         { "name_offset", (int)offsetof(pin_value, type_name) },

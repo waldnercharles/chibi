@@ -72,7 +72,7 @@ static const char *const CORPUS[] = { "project:prepared_writer",
 enum
 {
     CORPUS_COUNT = sizeof CORPUS / sizeof *CORPUS,
-    TABLES = 23,
+    TABLES = 28,
     BUDGET = 200000000,
     BYTECODE_MODULE_LIMIT = 512 * 1024
 };
@@ -562,12 +562,12 @@ static bool function(model *m, const behavior_function *f)
         put_bool(&call, "task", v->task);
         apush(m->calls, call);
     }
-    span(m, base + 17, first, acount(f->calls));
+    span(m, base + 22, first, acount(f->calls));
     int *definitions = NULL;
     for (int i = 0; i < acount(f->definitions); i++) {
         apush(definitions, reference(m, f->definitions[i]));
     }
-    span(m, base + 18, ints(m, definitions, acount(definitions)), acount(definitions));
+    span(m, base + 23, ints(m, definitions, acount(definitions)), acount(definitions));
     afree(definitions);
     first = acount(m->components);
     for (int i = 0; i < acount(f->components); i++) {
@@ -576,18 +576,18 @@ static bool function(model *m, const behavior_function *f)
         put_bool(&component, "binding", f->components[i].binding);
         apush(m->components, component);
     }
-    span(m, base + 19, first, acount(f->components));
+    span(m, base + 24, first, acount(f->components));
     int *writes = NULL;
     for (int i = 0; i < acount(f->component_writes); i++) {
         apush(writes, wide(m, f->component_writes[i]));
     }
-    span(m, base + 20, ints(m, writes, acount(writes)), acount(writes));
+    span(m, base + 25, ints(m, writes, acount(writes)), acount(writes));
     afree(writes);
     first = acount(m->points);
     for (int i = 0; i < acount(f->source_points); i++) {
         point(m, &f->source_points[i]);
     }
-    span(m, base + 21, first, acount(f->source_points));
+    span(m, base + 26, first, acount(f->source_points));
     first = acount(m->watches);
     for (int i = 0; i < acount(f->source_watches); i++) {
         const behavior_source_watch *v = &f->source_watches[i];
@@ -599,7 +599,7 @@ static bool function(model *m, const behavior_function *f)
         put_bool(&watch, "reference", v->reference);
         apush(m->watches, watch);
     }
-    span(m, base + 22, first, acount(f->source_watches));
+    span(m, base + 27, first, acount(f->source_watches));
     apush(m->functions, row);
     return true;
 }
@@ -822,6 +822,7 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         rows(m, "ResultLayout", PIN_STRUCT, m->results),
         rows(m, "Data", PIN_STRUCT, m->data),
         rows(m, "Host", PIN_STRUCT, m->hosts),
+        rows(m, "Command", PIN_STRUCT, NULL),
         rows(m, "Call", PIN_STRUCT, m->calls),
         rows(m, "Reference", PIN_STRUCT, m->references),
         rows(m, "Component", PIN_STRUCT, m->components),
@@ -943,7 +944,7 @@ static bool writes_like_native(int b, const execution_module *module, const char
         );
         size_t at = bytes ? first_difference(expected, length, bytes) : length;
         for (size_t i = at > 24 ? at - 24 : 0;
-             i < at + 24 && i < length && i < (size_t)bytes->count;
+             bytes && i < at + 24 && i < length && i < (size_t)bytes->count;
              i++) {
             fprintf(stderr, " %02x/%02x", expected[i], pin_array_get(bytes, i).u8);
         }

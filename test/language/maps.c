@@ -230,8 +230,8 @@ TEST_CASE(maps_index_finds_every_key_in_insertion_order)
     return true;
 }
 /* `m[k] = v` and `delete m[k]` on a local update it in place, so a
- * few thousand stores stay within a small budget; a copy keeps its values,
- * and the debugger still watches a removal's result. */
+ * few thousand stores stay within a small budget, and a copy keeps its
+ * values. */
 TEST_CASE(maps_local_updates_in_place)
 {
     const char *simple = "Maps :: behavior { result: int = 0; on Run :: () { "
@@ -252,8 +252,7 @@ TEST_CASE(maps_local_updates_in_place)
     }
     for (int b = 0; b < 2; b++) {
         REQUIRE(compile(simple, backends[b]));
-        bool stores = false, deletes = false, watched = false;
-        int removal = (int)(strstr(simple, "squares.delete(i)") - simple);
+        bool stores = false, deletes = false;
         for (int f = 0; f < execution_module_function_count(module); f++) {
             const behavior_function *body = execution_module_function_at(module, f)
                                                 .body;
@@ -262,13 +261,8 @@ TEST_CASE(maps_local_updates_in_place)
                 stores |= id == execution_intrinsic_id(&EXECUTION_reference_write_call);
                 deletes |= id == execution_intrinsic_id(&EXECUTION_map_delete_place_call);
             }
-            for (int w = 0; body && w < acount(body->source_watches); w++) {
-                watched |= body->source_watches[w].origin.start == removal &&
-                           body->source_watches[w].output;
-            }
         }
-        /* The debugger still watches the removal's result. */
-        REQUIRE(stores && deletes && watched);
+        REQUIRE(stores && deletes);
         execution_instance *instance = attach();
         REQUIRE(instance);
         REQUIRE(execution_instance_dispatch(instance, event.id, NULL, 0, 0, 0, 2000000) == FLOW_OK);

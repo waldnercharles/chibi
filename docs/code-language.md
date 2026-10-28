@@ -998,6 +998,31 @@ Task handles belong to the entity or system registration that started them.
 Removing that owner stops its tasks. Dropping the last handle does not cancel
 a running task.
 
+A task also depends on each component its pointer arguments refer to when the
+task may dereference that argument, directly or through a function it calls
+and waits for. The dependency lasts until the task finishes, even after its
+last access. Removing the component cancels the task and its children at the
+next safe point, before its next continuation runs, even if the remaining code
+would have skipped the access. Effects that already ran stay. A later add is a
+different component and does not revive the task.
+
+```chibi
+Effects :: behavior {
+    Poison :: (health: ^Health) {
+        health.current -= 1
+        await delay(2)
+        play_sound(Sound: "poisoned") // Cancelled if Health was removed.
+    }
+}
+```
+
+Holding, comparing or returning a pointer does not add a dependency, and
+neither does passing it to another task: that task takes its own. A child
+does not take its parent's dependencies. Cancelling a running parent cancels
+its children, but a parent that finishes leaves them running, each depending
+only on its own components. A pointer the task reads back from state, a record
+or another pointer is not tracked yet.
+
 ## Units
 
 Numeric parameters and results can declare dimensions. The compiler checks

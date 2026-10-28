@@ -6,10 +6,10 @@ import writer "project:prepared_writer"
 
 // An optional sequence is physically a union. Its synthetic declaration keeps
 // the success type, so an empty sequence remains distinct from an absent one.
-OptionalDecl: int : 7;
+OptionalDecl: int : 12;
 // A nested sequence descriptor. Its ID is a collection identity, not a
 // nominal record identity; value_* describes its immediate element type.
-CollectionDecl: int : 8;
+CollectionDecl: int : 13;
 
 SequenceNominal :: (types: TypeDecl[], value: ValueType) -> u64 {
     if (value.record < 0) {
@@ -349,7 +349,7 @@ OptionalUnwrapStep :: (types: TypeDecl[], value: Value, popped: int, ops: Ops, t
     put := Instruction(ops.write, UnionStorage, 0, value.slot, at.slot, 0, node);
     put.offset = target.payload_offset;
     code.append(put);
-    host: Host = {owned_arguments: false, intrinsic: UnionGetIntrinsic, linked: -1, first: at.cell,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: UnionGetIntrinsic, linked: -1, first: at.cell,
                   result_first: at.cell + 4, result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + 1, at.cell + 4, 0, 0, node));
@@ -376,14 +376,14 @@ PayloadPlaceStep :: (types: TypeDecl[], place: Value, element: ValueType, ops: O
     code := CellWrite(target.pointer_storage, place.slot, at.cell, ops, target, at.slot, node);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(target.pointer_storage, at.cell + 4, ops, target, at.slot + 1, node));
-    hosts: Host[] = [{owned_arguments: false, intrinsic: ReferenceUnionIntrinsic, linked: -1, first: at.cell,
+    hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceUnionIntrinsic, linked: -1, first: at.cell,
                       result_first: at.cell + 4, result_count: 1, written: false}];
     result := Typed(at.slot + 2, element.storage, element.container, element.record);
     result.place = true;
     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells, hosts,
                         [], [], [], [], 0, result, NoValue(), []);
 }
-NarrowedPlace: int : 12;
+NarrowedPlace: int : 17;
 NarrowedOriginalPhase: int : 50;
 NarrowedReadPhase: int : 51;
 // The place of the payload of the optional place `step` gives.

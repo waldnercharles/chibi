@@ -45,9 +45,9 @@ QueryIteratorStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
         QueryCell(QueryStorage, row_type, 0),
     ];
     hosts: Host[] = [
-        {owned_arguments: false, intrinsic: QueryBeginIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+        {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: QueryBeginIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
          result_count: 1, written: false},
-        {owned_arguments: false, intrinsic: QueryNextIntrinsic, linked: -1, first: at.cell + 3, result_first: at.cell + 5,
+        {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: QueryNextIntrinsic, linked: -1, first: at.cell + 3, result_first: at.cell + 5,
          result_count: 2, written: false},
     ];
 
@@ -93,7 +93,7 @@ QueryIteratorStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     roots: Root[] = [];
     code.append(Instruction(ops.save, QueryStorage, 0, row, 0, at.local + 1, node));
     code.append(SymbolCode(ops, name_node, node));
-    bound: Name[] = [{name: name, place: LocalPlace, index: at.local + 1, storage: QueryStorage,
+    bound: Name[] = [{owned: false, name: name, place: LocalPlace, index: at.local + 1, storage: QueryStorage,
                       container: 0, record: row_type, writable: false, node: name_node}];
     next: Work[] = [Visit(Field(forest, item.node, "body")), Resume(item.node, QueryIteratorEndPhase, 0, 0)];
     return Step.Emitted(code, slots, locals, cells, hosts, roots, [], bound, next, 0, NoValue(), NoValue(),
@@ -117,7 +117,7 @@ QueryIteratorEndStep :: (cursor_local: int, ops: Ops, target: Target, at: Bases,
     code.extend(CellWrite(target.pointer_storage, at.slot, at.cell, ops, target, at.slot + 1, node));
     code.append(Instruction(ops.local, target.pointer_storage, at.slot + 2, cursor_local, 0, 0, node));
     code.extend(CellWrite(target.pointer_storage, at.slot + 2, at.cell + 1, ops, target, at.slot + 3, node));
-    host: Host = {owned_arguments: false, intrinsic: QueryEndIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: QueryEndIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], 0, NoValue(), NoValue(), []);

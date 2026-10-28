@@ -85,7 +85,7 @@ MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDe
         index += 2;
     }
     cells.append(MapCell(map));
-    host: Host = {owned_arguments: false, intrinsic: MapMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     slots.extend([address, address]);
@@ -146,7 +146,7 @@ MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[
         code.extend(CellWrite(SlotStorage(item.storage, item.container, target), at.slot + 2, at.cell + 2, ops, target, at.slot + 3, node));
     }
     cells.append(ItemCell(types, map.record));
-    host: Host = {owned_arguments: false, intrinsic: MapGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     read := length(slots);
@@ -318,7 +318,7 @@ MapUpdateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
     if (store) {
         intrinsic = MapStoreIntrinsic;
     }
-    host: Host = {owned_arguments: false, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.append(SymbolCode(ops, binding.node, node));
@@ -389,7 +389,7 @@ MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     code := extend(CellWrite(target.pointer_storage, held.slot, at.cell, ops, target, at.slot, node),
                    CellWrite(SlotStorage(sought.storage, 0, target), sought.slot, at.cell + 1, ops, target,
                              at.slot + 1, node));
-    host: Host = {owned_arguments: false, intrinsic: MapHasIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapHasIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
                   written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(BoolStorage, at.cell + 2, ops, target, at.slot + 2, node));
@@ -469,7 +469,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     leave := at.pc + length(code);
     code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
     cells := MapItemCells(types, held.record, false);
-    hosts: Host[] = [{owned_arguments: false, intrinsic: MapItemIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
+    hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapItemIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
                       result_count: 1, written: false}];
     value := at.slot + length(slots) + 3;
     slots.extend([address, address, address,
@@ -488,7 +488,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
         slots.append(address);
         code.extend(CellWrite(target.pointer_storage, value, at.cell + 4, ops, target, at.slot + length(slots) - 1,
                               node));
-        snapshot: Host = {owned_arguments: false, intrinsic: ValueCopyIntrinsic, linked: -1, first: at.cell + 4, result_first: at.cell + 5,
+        snapshot: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ValueCopyIntrinsic, linked: -1, first: at.cell + 4, result_first: at.cell + 5,
                           result_count: 1, written: false};
         hosts.append(snapshot);
         code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 1, node));
@@ -508,7 +508,7 @@ MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
     if (key_node >= 0) {
         first := at.cell + length(cells);
         cells.extend(MapItemCells(types, held.record, true));
-        key_host: Host = {owned_arguments: false, intrinsic: MapItemIntrinsic, linked: -1, first: first, result_first: first + 3,
+        key_host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapItemIntrinsic, linked: -1, first: first, result_first: first + 3,
                           result_count: 1, written: false};
         hosts.append(key_host);
         slots.extend([address, address, address, ValueLocal(map.key)]);

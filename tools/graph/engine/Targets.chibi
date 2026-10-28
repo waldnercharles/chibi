@@ -3721,6 +3721,8 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_POINTERS_BYTES=bytes:tools/compiler/package_compiler/Pointers.chibi",
             "CHIBI_PACKAGE_COMPILER_SCALAR_BYTES=bytes:tools/compiler/package_compiler/Scalar.chibi",
             "CHIBI_PACKAGE_COMPILER_SEQUENCES_BYTES=bytes:tools/compiler/package_compiler/Sequences.chibi",
+            "CHIBI_PACKAGE_COMPILER_TASKS_BYTES=bytes:tools/compiler/package_compiler/Tasks.chibi",
+            "CHIBI_PACKAGE_COMPILER_TASKRESULTS_BYTES=bytes:tools/compiler/package_compiler/TaskResults.chibi",
             "CHIBI_PACKAGE_COMPILER_STEPS_BYTES=bytes:tools/compiler/package_compiler/Steps.chibi",
             "CHIBI_PACKAGE_COMPILER_TREE_BYTES=bytes:tools/compiler/package_compiler/Tree.chibi",
             "CHIBI_PACKAGE_GRAPH_BYTES=bytes:tools/compiler/package_graph/Graph.chibi",

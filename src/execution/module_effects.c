@@ -3312,6 +3312,324 @@ void execution_prepare_argument_sharing(behavior_function *root)
     free(fill);
 }
 
+/* Task dependencies follow argument values through one definition. Weak
+ * masks hold what a slot, cell or local may carry at any point; within one
+ * straight-line block, a value defined there replaces them, since banks and
+ * slots are reused. A dereference on any path counts, so removal cancels a
+ * task before a continuation that would have skipped it. A value stored where
+ * the flow cannot place it may come back from any read it cannot place. */
+enum
+{
+    DEPEND_NO_CELL = -1,
+    DEPEND_ANY_CELL = -2
+};
+typedef struct
+{
+    uint64_t *weak, *now;
+    int *block; /* Where `now` was defined. */
+} depend_values;
+typedef struct
+{
+    const behavior_function *f;
+    depend_values slots, cells;
+    uint64_t *locals;
+    int *addressed, *addressed_now, *addressed_block; /* A cell or an enum above. */
+    int block; /* The current block, numbered from 1; 0 in the weak passes. */
+    uint64_t memory, accessed;
+    bool changed;
+} depend_flow;
+
+static void depend_join(depend_flow *s, uint64_t *mask, uint64_t value)
+{
+    if ((*mask | value) != *mask) {
+        *mask |= value;
+        s->changed = true;
+    }
+}
+static depend_values depend_values_new(int count)
+{
+    return (depend_values){ .weak = xcalloc((size_t)count + 1, sizeof(uint64_t)),
+                            .now = xcalloc((size_t)count + 1, sizeof(uint64_t)),
+                            .block = xcalloc((size_t)count + 1, sizeof(int)) };
+}
+static void depend_values_free(depend_values v)
+{
+    free(v.weak);
+    free(v.now);
+    free(v.block);
+}
+static uint64_t depend_get(const depend_flow *s, const depend_values *v, int index)
+{
+    return s->block && v->block[index] == s->block ? v->now[index] : v->weak[index];
+}
+/* `replace` drops what the value held before this block's first write. */
+static void depend_set(depend_flow *s, depend_values *v, int index, uint64_t value, bool replace)
+{
+    depend_join(s, &v->weak[index], value);
+    if (!s->block) {
+        return;
+    }
+    if (v->block[index] != s->block) {
+        v->now[index] = replace ? 0 : v->weak[index];
+        v->block[index] = s->block;
+    }
+    v->now[index] |= value;
+}
+static int depend_address_of(const depend_flow *s, int slot)
+{
+    return s->block && s->addressed_block[slot] == s->block ? s->addressed_now[slot]
+                                                            : s->addressed[slot];
+}
+static void depend_address(depend_flow *s, int slot, int cell)
+{
+    int old = s->addressed[slot];
+    int merged = old == DEPEND_NO_CELL || old == cell ? cell : DEPEND_ANY_CELL;
+    if (merged != old) {
+        s->addressed[slot] = merged;
+        s->changed = true;
+    }
+    if (s->block) {
+        s->addressed_now[slot] = cell;
+        s->addressed_block[slot] = s->block;
+    }
+}
+static uint64_t depend_load(const depend_flow *s, int address)
+{
+    int cell = depend_address_of(s, address);
+    uint64_t value = depend_get(s, &s->slots, address) | s->memory;
+    for (int c = 0; cell == DEPEND_ANY_CELL && c < acount(s->f->data_values); c++) {
+        value |= depend_get(s, &s->cells, c);
+    }
+    return cell >= 0 ? value | depend_get(s, &s->cells, cell) : value;
+}
+static void depend_store(depend_flow *s, const behavior_function_instruction *i)
+{
+    int cell = depend_address_of(s, i->right);
+    uint64_t value = depend_get(s, &s->slots, i->left);
+    if (cell >= 0) {
+        /* Writing the payload word replaces the pointer a cell held. */
+        bool payload = i->offset == offsetof(pin_value, d) &&
+                       behavior_scalar_size(i->type) >= sizeof(void *);
+        depend_set(s, &s->cells, cell, value, payload);
+        return;
+    }
+    depend_join(s, &s->memory, value);
+    for (int c = 0; cell == DEPEND_ANY_CELL && c < acount(s->f->data_values); c++) {
+        depend_set(s, &s->cells, c, value, false);
+    }
+}
+static void depend_access(depend_flow *s, uint64_t value)
+{
+    if (s->block) {
+        depend_join(s, &s->accessed, value);
+    }
+}
+static void depend_host(depend_flow *s, const behavior_function_host_call *host)
+{
+    uint64_t inputs = 0;
+    for (int cell = host->first; cell < host->result_first; cell++) {
+        inputs |= depend_get(s, &s->cells, cell);
+    }
+    switch (execution_intrinsic_kind(host->capability_id)) {
+        case EXECUTION_INTRINSIC_POINTER_WRITE:
+        case EXECUTION_INTRINSIC_REFERENCE_WRITE:
+        case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
+            depend_join(s, &s->memory, inputs);
+            depend_access(s, depend_get(s, &s->cells, host->first));
+            break;
+        /* A scoped parameter reaches its lent target through references. */
+        case EXECUTION_INTRINSIC_POINTER_READ:
+        case EXECUTION_INTRINSIC_POINTER_FIELD:
+        case EXECUTION_INTRINSIC_POINTER_REFERENCE:
+        case EXECUTION_INTRINSIC_REFERENCE_READ:
+        case EXECUTION_INTRINSIC_REFERENCE_FIELD:
+            depend_access(s, depend_get(s, &s->cells, host->first));
+            break;
+        /* Comparing values keeps neither. */
+        case EXECUTION_INTRINSIC_VALUE_EQUAL: inputs = 0; break;
+        default: depend_join(s, &s->memory, inputs); break;
+    }
+    for (int k = 0; k < host->result_count; k++) {
+        depend_set(s, &s->cells, host->result_first + k, inputs, true);
+    }
+}
+/* A synchronous callee's dereference is this definition's. A task started
+ * with the pointer takes its own dependency instead. */
+static void depend_invoke(depend_flow *s, const behavior_function_invocation *call)
+{
+    uint64_t arguments = 0;
+    for (int k = 0; k < call->count; k++) {
+        uint64_t argument = depend_get(s, &s->cells, call->first + k);
+        arguments |= argument;
+        if (!call->task &&
+            (call->function->task_dependencies & execution_task_argument_bit(k))) {
+            depend_access(s, argument);
+        }
+    }
+    if (!call->task) {
+        depend_join(s, &s->memory, arguments);
+    }
+    for (int k = 0; k < call->result_count; k++) {
+        depend_set(s, &s->cells, call->result_first + k, call->task ? 0 : arguments, true);
+    }
+}
+static void depend_operands(depend_flow *s, const behavior_function_instruction *i)
+{
+    int operands[3] = { -1, -1, -1 };
+    if (behavior_function_left_slot(i->op)) {
+        operands[0] = i->left;
+    }
+    if (behavior_function_right_slot(i->op)) {
+        operands[1] = i->right;
+    }
+    if (behavior_function_third_slot(i->op)) {
+        operands[2] = i->target;
+    }
+    uint64_t value = 0;
+    bool address = false;
+    for (int k = 0; k < 3; k++) {
+        if (operands[k] >= 0) {
+            value |= depend_get(s, &s->slots, operands[k]);
+            address |= depend_address_of(s, operands[k]) != DEPEND_NO_CELL;
+        }
+    }
+    depend_set(s, &s->slots, i->output, value, true);
+    if (!address) {
+        return;
+    }
+    /* A selected cell address keeps its cell; one computed from a cell's
+     * address may point into any cell. */
+    int selected = depend_address_of(s, i->right);
+    bool same = i->op == BF_SELECT && selected == depend_address_of(s, i->target);
+    depend_address(s, i->output, same ? selected : DEPEND_ANY_CELL);
+}
+static void depend_instruction(depend_flow *s, const behavior_function_instruction *i)
+{
+    const behavior_function *f = s->f;
+    int out = i->output;
+    switch (i->op) {
+        case BF_ARGUMENT:
+            depend_set(s, &s->slots, out, execution_task_argument_bit(i->left), true);
+            return;
+        case BF_CONTEXT: {
+            /* Fields other than the exit and outcome words may reach any
+             * argument or cell. */
+            bool control = i->target == 1 ||
+                           i->offset == offsetof(behavior_function_context, results);
+            depend_set(s, &s->slots, out, control ? 0 : UINT64_MAX, true);
+            if (!control) {
+                depend_address(s, out, DEPEND_ANY_CELL);
+            }
+            return;
+        }
+        case BF_HOST_SLOT:
+            depend_set(s, &s->slots, out, 0, true);
+            depend_address(s, out, i->target ? DEPEND_ANY_CELL : i->left);
+            return;
+        case BF_LOCAL:
+            depend_set(s, &s->slots, out, s->locals[i->left], true);
+            return;
+        case BF_SAVE:
+            depend_join(s, &s->locals[i->target], depend_get(s, &s->slots, i->left));
+            return;
+        case BF_LOAD:
+        case BF_READ:
+            depend_set(s, &s->slots, out, depend_load(s, i->left), true);
+            return;
+        case BF_WRITE: depend_store(s, i); return;
+        case BF_HOST_CALL: depend_host(s, &f->host_calls[i->target]); return;
+        case BF_INVOKE: depend_invoke(s, &f->calls[i->left]); return;
+        default: break;
+    }
+    if (out >= 0 && out < acount(f->slots)) {
+        depend_operands(s, i);
+    }
+}
+/* Blocks start at jump targets and after jumps; resumed continuations
+ * restore the values their block had, so they need no boundary. */
+static bool *depend_leaders(const behavior_function *f)
+{
+    int count = acount(f->instructions);
+    bool *leaders = xcalloc((size_t)count + 1, sizeof *leaders);
+    leaders[0] = true;
+    for (int pc = 0; pc < count; pc++) {
+        int targets[2], n = behavior_function_successors(f, pc, targets);
+        for (int k = 0; k < n; k++) {
+            if (targets[k] != pc + 1) {
+                leaders[targets[k]] = true;
+                leaders[pc + 1] = true;
+            }
+        }
+    }
+    return leaders;
+}
+static uint64_t depend_local(const behavior_function *f)
+{
+    int slots = acount(f->slots), cells = acount(f->data_values),
+        count = acount(f->instructions);
+    depend_flow s = { .f = f,
+                      .slots = depend_values_new(slots),
+                      .cells = depend_values_new(cells) };
+    s.locals = xcalloc((size_t)acount(f->locals) + 1, sizeof *s.locals);
+    s.addressed = xmalloc(((size_t)slots + 1) * sizeof *s.addressed);
+    s.addressed_now = xcalloc((size_t)slots + 1, sizeof *s.addressed_now);
+    s.addressed_block = xcalloc((size_t)slots + 1, sizeof *s.addressed_block);
+    for (int slot = 0; slot <= slots; slot++) {
+        s.addressed[slot] = DEPEND_NO_CELL;
+    }
+    /* Weak masks and addresses only grow, so the passes end. */
+    do {
+        s.changed = false;
+        for (int pc = 0; pc < count; pc++) {
+            depend_instruction(&s, &f->instructions[pc]);
+        }
+    } while (s.changed);
+    bool *leaders = depend_leaders(f);
+    for (int pc = 0; pc < count; pc++) {
+        s.block += leaders[pc];
+        depend_instruction(&s, &f->instructions[pc]);
+    }
+    free(leaders);
+    depend_values_free(s.slots);
+    depend_values_free(s.cells);
+    free(s.locals);
+    free(s.addressed);
+    free(s.addressed_now);
+    free(s.addressed_block);
+    return s.accessed;
+}
+void execution_prepare_task_dependencies(behavior_function *root)
+{
+    if (!root || root->task_dependencies_ready) {
+        return;
+    }
+    /* Reachable definitions not yet settled start empty and grow together
+     * until no callee's dependencies change a caller's. */
+    behavior_function **pending = NULL;
+    root->task_dependencies_ready = true;
+    apush(pending, root);
+    for (int at = 0; at < acount(pending); at++) {
+        for (int i = 0; i < acount(pending[at]->calls); i++) {
+            behavior_function
+                *callee = (behavior_function *)pending[at]->calls[i].function;
+            if (!callee->task_dependencies_ready) {
+                callee->task_dependencies_ready = true;
+                apush(pending, callee);
+            }
+        }
+    }
+    bool changed;
+    do {
+        changed = false;
+        for (int at = 0; at < acount(pending); at++) {
+            uint64_t dependencies = depend_local(pending[at]);
+            changed |= dependencies != pending[at]->task_dependencies;
+            pending[at]->task_dependencies = dependencies;
+        }
+    } while (changed);
+    afree(pending);
+}
+
 bool execution_query_predicate_valid(const behavior_function *function, unsigned bound)
 {
     return query_evaluator_valid(function, bound, false);

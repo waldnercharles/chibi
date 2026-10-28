@@ -16,7 +16,12 @@ enum
 struct prepared_record_cache
 {
     size_t name_bytes, validation_work, hash_work;
-    arena *owner;
+    union
+    {
+        arena *owner;
+        /* A canonical or function-owned alias proved within this write only. */
+        const pin_record *validated_alias;
+    };
     const pin_record *owned;
     /* The type at this position in name order, and in id order. */
     int by_name, by_id;
@@ -60,10 +65,14 @@ static size_t validation_work(prepared_context *c, int count, size_t names)
     }
     return ((size_t)count + 8) * (names + (size_t)count + 1);
 }
-static size_t validate(prepared_context *c, const pin_record *record)
+static size_t validate(prepared_context *c, const pin_record *record, bool current)
 {
-    if (!record || !record->type.fields || record->type.field_count <= 0 ||
+    if (!record || record->bytes < sizeof *record ||
+        record->type.fields != (const type_field *)(record + 1) ||
+        record->type.field_count <= 0 ||
         (size_t)record->type.field_count > EXECUTION_WIRE_MAX_RECORDS ||
+        (size_t)record->type.field_count >
+            (record->bytes - sizeof *record) / sizeof(type_field) ||
         !work(c, (size_t)record->type.field_count)) {
         if (!c->wire.error) {
             c->wire.error = "invalid prepared authored layout";
@@ -93,9 +102,11 @@ static size_t validate(prepared_context *c, const pin_record *record)
         }
     }
     size_t cost = validation_work(c, record->type.field_count, names);
-    if (!cost || !work(c, cost) || !pin_record_valid(record)) {
+    if (!cost || !work(c, cost) ||
+        !(current ? pin_record_fields_current(record) : pin_record_valid(record))) {
         if (!c->wire.error) {
-            c->wire.error = "invalid prepared authored layout";
+            c->wire.error = "prepared authored nested layout is retired or "
+                            "incompatible";
         }
         return 0;
     }
@@ -169,12 +180,7 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         return;
     }
     if (!w->reading) {
-        if (!pin_record_fields_current(v->record)) {
-            w->error = "prepared authored nested layout is retired or "
-                       "incompatible";
-            return;
-        }
-        cache->validation_work = validate(c, v->record);
+        cache->validation_work = validate(c, v->record, true);
         if (w->error) {
             return;
         }
@@ -248,7 +254,20 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
                                       .text_descriptor = text_descriptor };
         }
     }
-    if (w->error || !w->reading) {
+    if (w->error) {
+        return;
+    }
+    if (!w->reading) {
+        cache->hash_work = 8 * (names + (size_t)count + 1);
+        for (int i = 0; i < count; i++) {
+            if (v->record->type.fields[i].type == PIN_STRUCT) {
+                cache->hash_work = cache->validation_work;
+                break;
+            }
+        }
+        if (work(c, sizeof cache->validated_alias)) {
+            cache->validated_alias = v->record;
+        }
         return;
     }
     size_t bytes = sizeof(pin_record) + (size_t)count * sizeof(type_field);
@@ -405,6 +424,46 @@ static int requirement(prepared_context *c, const pin_value *v)
     }
     return -1;
 }
+/* Descriptors and the source module remain immutable for a write. Decoded
+ * functions own aliases of their module's layout, so validate each new alias
+ * before retaining its proof. Repeated headers still pay a nonzero charge. */
+static bool matches_record(
+    prepared_context *c,
+    int index,
+    const pin_record *record,
+    bool current,
+    const char *message
+)
+{
+    struct prepared_record_cache *cache = &c->records[index];
+    if (!work(c, cache->hash_work)) {
+        return false;
+    }
+    if (record == cache->validated_alias) {
+        /* Native children can retire between headers even when the authored
+         * descriptor is immutable. Their full check retains its full charge. */
+        if (current && cache->hash_work == cache->validation_work &&
+            !pin_record_fields_current(record)) {
+            c->wire.error = "prepared authored nested layout is retired or "
+                            "incompatible";
+            return false;
+        }
+        return true;
+    }
+    validate(c, record, current);
+    if (c->wire.error) {
+        return false;
+    }
+    if (!pin_record_same(c->plan->types[index].record, record)) {
+        c->wire.error = message;
+        return false;
+    }
+    if (!work(c, sizeof cache->validated_alias)) {
+        return false;
+    }
+    cache->validated_alias = record;
+    return true;
+}
 static const pin_record *resolve(execution_wire *w, void *user, const pin_value *v, bool authored)
 {
     prepared_context *c = user;
@@ -448,22 +507,17 @@ static const pin_record *resolve(execution_wire *w, void *user, const pin_value 
         return v->record;
     }
     if (!w->reading) {
-        if (v->record) {
-            validate(c, v->record);
-            if (w->error) {
-                return NULL;
-            }
-            if (!pin_record_same(type->record, v->record)) {
-                w->error = "prepared authored value layout differs";
-                return NULL;
-            }
+        /* Only the outer value's retained schema exempts its native children
+         * from catalog freshness. The backing array keeps its separate
+         * structural and identity checks. */
+        if (v->record &&
+            !matches_record(c, index, v->record, !v->schema, "prepared authored value layout differs")) {
+            return NULL;
         }
         if (v->container != PIN_CONTAINER_SINGLE && v->ptr) {
             const pin_array *array = v->ptr;
-            if (array->record) {
-                validate(c, array->record);
-            }
-            if (w->error) {
+            if (array->record &&
+                !matches_record(c, index, array->record, false, "prepared authored/native collection identity differs")) {
                 return NULL;
             }
             if (!pin_record_same(array->record, v->record)) {

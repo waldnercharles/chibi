@@ -288,9 +288,10 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `make build` uses this program when its private host reports protocol version 12
+Elsewhere `make build` uses this program when its private host reports protocol version 13
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
-`Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
+the compiler bootstrap or `Build.chibi` needs a prepared format, capability or
+syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
 natives under `build.`, version 5 runs programs as packages that may import
 `core:`, version 6 has the array methods and the natives `append` and
@@ -300,6 +301,9 @@ arguments. Version 8 uses the validated Chibi compiler generation to compile
 build programs and adds the separate compiler source/core options above.
 Version 9 runs prepared format 21, which that compiler now writes, so an older
 host that cannot load the code it compiled is rebuilt.
+Version 13 loads the collections-as-values compiler bootstrap with prepared
+format 26. Protocol-12 hosts must take first-host recovery before loading that
+bootstrap, even when an existing build directory contains an executable host.
 `--protocol-version` reports the version without loading compiler inputs or
 starting a build. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
@@ -987,6 +991,7 @@ has no Linux/Windows packaging, full SDK, browser or Studio acceptance claim.
 
 The standalone SDK program adds `build.reserve_directory` and
 `build.publish_directory`. These private bindings reserve one fresh directory
-and publish without replacement on macOS and Linux. Normal `Build.chibi` is
-unchanged, so its protocol gate remains version 12. Use the matching newly built
-host to run `SDK.chibi`.
+and publish without replacement on macOS and Linux. These bindings do not change
+normal `Build.chibi` admission; its protocol gate follows the compiler bootstrap
+and build-program requirements above. Use the matching newly built host to run
+`SDK.chibi`.

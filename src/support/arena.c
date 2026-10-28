@@ -59,6 +59,8 @@ static _Thread_local uint64_t block_allocations, collect_marks;
 /* A class's first slab is small, so arenas holding a few values stay small,
  * and each later one doubles up to ARENA_SLAB_BYTES. */
 #define ARENA_FIRST_SLAB_BYTES ((size_t)1024)
+/* Copies a table holds before it first grows. */
+#define ARENA_FIRST_COPIES 16
 struct arena_slabs
 {
     arena_slab **slabs;               /* By address. */
@@ -384,29 +386,43 @@ static void sweep_slabs(arena *a, bool everything)
 }
 static void forget_copy(arena *a)
 {
-    memset(a->copies, 0, sizeof a->copies);
-    a->next_copy = 0;
+    if (a->copy_count) {
+        memset(a->copies, 0, a->copy_capacity * sizeof *a->copies);
+        a->copy_count = 0;
+    }
+}
+/* The slot that holds source, or the empty slot where it goes. */
+static arena_copy *copy_slot(const arena *a, const void *source)
+{
+    uint64_t hash = (uint64_t)(uintptr_t)source * UINT64_C(0x9e3779b97f4a7c15);
+    size_t i = (size_t)(hash >> 32) & (a->copy_capacity - 1);
+    while (a->copies[i].source && a->copies[i].source != source) {
+        i = (i + 1) & (a->copy_capacity - 1);
+    }
+    return &a->copies[i];
 }
 const void *arena_copy_find(const arena *a, const void *source)
 {
-    for (int i = 0; source && i < ARENA_COPY_CACHE; i++) {
-        if (a->copies[i].source == source) {
-            return a->copies[i].copy;
-        }
-    }
-    return NULL;
+    return source && a->copy_count ? copy_slot(a, source)->copy : NULL;
 }
 void arena_copy_remember(arena *a, const void *source, const void *copy)
 {
-    /* A stale copy of source, which its caller rejected, gives way first. */
-    for (int i = 0; i < ARENA_COPY_CACHE; i++) {
-        if (a->copies[i].source == source) {
-            a->copies[i].copy = copy;
-            return;
+    if ((a->copy_count + 1) * 2 > a->copy_capacity) {
+        arena_copy *old = a->copies;
+        size_t capacity = a->copy_capacity;
+        a->copy_capacity = capacity ? capacity * 2 : ARENA_FIRST_COPIES;
+        a->copies = xcalloc(a->copy_capacity, sizeof *a->copies);
+        for (size_t i = 0; i < capacity; i++) {
+            if (old[i].source) {
+                *copy_slot(a, old[i].source) = old[i];
+            }
         }
+        free(old);
     }
-    a->copies[a->next_copy] = (arena_copy){ source, copy };
-    a->next_copy = (a->next_copy + 1) % ARENA_COPY_CACHE;
+    /* A stale copy of source, which its caller rejected, gives way. */
+    arena_copy *slot = copy_slot(a, source);
+    a->copy_count += !slot->source;
+    *slot = (arena_copy){ source, copy };
 }
 void arena_reset(arena *a)
 {
@@ -499,6 +515,7 @@ void arena_free(arena *a)
         free(a->slabs);
     }
     free(a->resources);
+    free(a->copies);
     arena_block *block = a->first;
     while (block) {
         arena_block *next = block->next;
@@ -692,6 +709,7 @@ size_t arena_storage_bytes(const arena *a)
     }
     return bytes + a->retained_bytes + a->external +
            a->resource_capacity * sizeof *a->resources +
+           a->copy_capacity * sizeof *a->copies +
            a->cleanup_count * sizeof(arena_cleanup);
 }
 void *arena_alloc_bounded(arena *a, size_t size, size_t budget)

@@ -314,6 +314,7 @@ static invocation_frame *frame_new(
         .commands = frame->context.commands,
         .command_arguments = frame->context.command_arguments,
         .command_results = frame->context.command_results,
+        .collection_owners = frame->context.collection_owners,
         .services = parent->services,
         .budget = parent->budget,
         .call_depth = depth,

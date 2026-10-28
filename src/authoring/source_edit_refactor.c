@@ -72,7 +72,14 @@ static bool type_text(
         return source_refactor_fail(error, size, "Refactor requires a concrete declared value type");
     }
     if (reference) {
-        source_refactor_append(text, "ref ");
+        bool compound = type.container != PIN_CONTAINER_SINGLE ||
+                        (type.flags & SCRIPT_TYPE_OPTIONAL);
+        source_refactor_append(text, compound ? "^(" : "^");
+        if (!type_text(catalog, type, false, text, error, size, depth + 1)) {
+            return false;
+        }
+        source_refactor_append(text, compound ? ")" : "");
+        return true;
     }
     if (type.container == PIN_CONTAINER_MAP || type.container == PIN_CONTAINER_ARRAY) {
         bool map = type.container == PIN_CONTAINER_MAP;
@@ -317,8 +324,20 @@ static bool extract(
         }
         for (int j = 0; j < acount(inputs); j++) {
             if (inputs[j] == expression->symbol) {
+                /* A captured location becomes a pointer the body reads through;
+                 * a pointer parameter's uses already spell their own `^`. */
+                const script_symbol *symbol = &a->symbols[inputs[j]];
+                bool pointer = symbol->writable &&
+                               !(symbol->type.flags & SCRIPT_TYPE_REFERENCE);
                 char parameter[64];
-                snprintf(parameter, sizeof parameter, "refactor_input_%d_%d", input_namespace, j);
+                snprintf(
+                    parameter,
+                    sizeof parameter,
+                    "refactor_input_%d_%d%s",
+                    input_namespace,
+                    j,
+                    pointer ? "^" : ""
+                );
                 apush(
                     capture_edits,
                     ((text_edit){ expression->range.start - range.start,
@@ -382,9 +401,9 @@ static bool extract(
             break;
         }
         const script_symbol *symbol = &a->symbols[inputs[i]];
-        bool reference = symbol->writable ||
-                         (symbol->type.flags & SCRIPT_TYPE_REFERENCE);
-        source_refactor_append(&call, "%s%s%s", i ? ", " : "", reference ? "ref " : "", input);
+        bool address = symbol->writable &&
+                       !(symbol->type.flags & SCRIPT_TYPE_REFERENCE);
+        source_refactor_append(&call, "%s%s%s", i ? ", " : "", address ? "&" : "", input);
         free(input);
     }
     source_refactor_append(&call, ");\n");

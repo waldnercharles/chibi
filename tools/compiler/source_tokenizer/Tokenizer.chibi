@@ -179,7 +179,7 @@ pub KindNames :: () -> string[] {
             "switch", "is", "not", "and", "or", "where", "macro", "entry", "exit",
             "query", "join", "if", "else", "while", "for", "in", "case", "sequence",
             "branch", "return", "reduce", "unordered", "goto", "break", "continue",
-            "await", "yield", "cancel", "true", "false", "nil", "null", "plain", "ref",
+            "await", "yield", "cancel", "true", "false", "nil", "null", "plain",
             "service", "setting", "wildcard", "from", "split", "component",
             "prototype", "relationship", "pub", "delete", "..<"];
 }

@@ -310,9 +310,6 @@ Modifiers :: (reading: Reading, tree: Tree, node: int) -> Reading {
                             child := nodes[node].first_child;
                             while (child >= 0) {
                                 token := Text(tree, child);
-                                if (token == "ref") {
-                                    flags = flags | 4;
-                                }
                                 if (token == "?") {
                                     flags = flags | 2;
                                 }
@@ -670,6 +667,30 @@ WithUnit :: (reading: Reading, tree: Tree, node: int, scope: int, document: int)
             }
     }
 }
+// What a measured `^T u` stores: units measure the pointee.
+MeasuredValue :: (environment: Environment, tree: Tree, base: int, scope: int, document: int,
+                  value: named.Value) -> named.Value {
+    switch value {
+        case .Typed(storage, container, flags, nominal, parameter):
+            if (storage != 19 || container != 0) {
+                return value;
+            }
+    }
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, source):
+            child := nodes[base].first_child;
+            while (child >= 0) {
+                if (Kind(tree, child, "pointer_type")) {
+                    switch Type(environment, tree, Field(tree, child, "target"), scope, document) {
+                        case .Read(target, has_unit, unit, updated, diagnostics, uses, publications, collection):
+                            return target;
+                    }
+                }
+                child = nodes[child].next_sibling;
+            }
+    }
+    return value;
+}
 pub Signature :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
     if (Kind(tree, node, "unit")) {
         return WithUnit(Empty(environment, named.Builtin("number")), tree, node, scope, document);
@@ -680,7 +701,7 @@ pub Signature :: (environment: Environment, tree: Tree, node: int, scope: int, d
         switch reading {
             case .Read(value, has_unit, unit, updated, diagnostics, uses, publications, collection):
                 all_diagnostics := diagnostics;
-                if (!Numeric(value)) {
+                if (!Numeric(MeasuredValue(environment, tree, Field(tree, node, "base"), scope, document, value))) {
                     all_diagnostics.append(Diagnostic(tree, node, document, "A measured signature requires a numeric storage type"));
                 }
                 return Reading.Read(value, has_unit, unit, updated, all_diagnostics, uses, publications, collection);

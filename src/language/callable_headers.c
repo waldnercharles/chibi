@@ -251,6 +251,197 @@ static void set_unit(headers *h, int symbol, const char *unit)
     h->symbols[symbol].unit = own(h->storage, unit);
     h->changes[symbol] |= SCRIPT_CALLABLE_UNIT;
 }
+/* A pointer parameter whose callers' addresses never outlive the call: one
+ * that is `^T`, not nullable, and whose body only dereferences it, reads
+ * its target's members or passes it on to another such parameter. It
+ * aliases the caller's location, so it can also accept an engine-owned
+ * address; any other use makes it an ordinary managed pointer. */
+enum
+{
+    SCOPED_POINTER_DEPTH = 64
+};
+typedef struct
+{
+    uint32_t declaration, parameter;
+} scoped_pointer_visit;
+/* Whether two nodes have the same spelling. */
+static bool same_text(const char *source, TSNode a, TSNode b)
+{
+    uint32_t length = ts_node_end_byte(a) - ts_node_start_byte(a);
+    return !ts_node_is_null(a) && !ts_node_is_null(b) &&
+           length == ts_node_end_byte(b) - ts_node_start_byte(b) &&
+           !memcmp(source + ts_node_start_byte(a), source + ts_node_start_byte(b), length);
+}
+/* The `^T`, possibly measured, that a parameter annotation spells, or a
+ * null node when it adds `?`, `[]` or a trait. */
+static TSNode pointer_annotation(TSNode type)
+{
+    if (is(type, "measured_type")) {
+        type = field(type, "base");
+    }
+    if (!is(type, "type") || named_count(type) != 1 ||
+        !is(ts_node_named_child(type, 0), "pointer_type")) {
+        return (TSNode){ 0 };
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(type); i++) {
+        if (!ts_node_is_named(ts_node_child(type, i))) {
+            return (TSNode){ 0 };
+        }
+    }
+    return ts_node_named_child(type, 0);
+}
+static bool callable_declaration(TSNode node)
+{
+    return is(node, "function_declaration") || is(node, "macro_declaration");
+}
+/* The declaration a plain call names: the nearest callable declared in a
+ * block around the call, nested in its caller or beside it. */
+static TSNode visible_callable(const char *source, TSNode call)
+{
+    TSNode callee = field(call, "function");
+    for (TSNode scope = ts_node_parent(call);
+         is(callee, "identifier") && !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        for (uint32_t i = 0; i < named_count(scope); i++) {
+            TSNode each = ts_node_named_child(scope, i);
+            if (callable_declaration(each) &&
+                same_text(source, callee, field(each, "name"))) {
+                return each;
+            }
+        }
+    }
+    return (TSNode){ 0 };
+}
+static bool scoped_pointer(
+    const char *source,
+    TSNode declaration,
+    uint32_t index,
+    scoped_pointer_visit *stack,
+    int depth
+);
+/* Whether `argument`, a use of the parameter, is passed to a scoped pointer
+ * parameter of a callable the call can see. */
+static bool scoped_forward(const char *source, TSNode argument, scoped_pointer_visit *stack, int depth)
+{
+    TSNode list = ts_node_parent(argument), label = { 0 };
+    while (is(list, "parenthesized_expression")) {
+        argument = list;
+        list = ts_node_parent(list);
+    }
+    if (is(list, "named_argument") ||
+        (is(list, "typed_argument") && ts_node_eq(field(list, "value"), argument))) {
+        label = field(list, "name");
+        argument = list;
+        list = ts_node_parent(list);
+    }
+    TSNode call = ts_node_parent(list);
+    if (!is(list, "argument_list") || !is(call, "call_expression")) {
+        return false;
+    }
+    TSNode callee = visible_callable(source, call);
+    TSNode parameters = field(callee, "parameters");
+    for (uint32_t i = 0, position = 0; i < named_count(list); i++) {
+        TSNode current = ts_node_named_child(list, i);
+        if (!ts_node_eq(current, argument)) {
+            position += !ts_node_is_extra(current) &&
+                        !is(current, "named_argument") &&
+                        !is(current, "typed_argument");
+            continue;
+        }
+        for (uint32_t j = 0, slot = 0; j < named_count(parameters); j++) {
+            TSNode parameter = ts_node_named_child(parameters, j);
+            if (ts_node_is_extra(parameter)) {
+                continue;
+            }
+            bool match = ts_node_is_null(label)
+                           ? slot++ == position
+                           : same_text(source, label, field(parameter, "name"));
+            if (match) {
+                return !ts_node_is_null(pointer_annotation(field(parameter, "type"))) &&
+                       scoped_pointer(source, callee, j, stack, depth);
+            }
+        }
+        return false;
+    }
+    return false;
+}
+/* Whether `node` spells a name in `parent` rather than reading a value. */
+static bool name_position(TSNode parent, TSNode node)
+{
+    return is(parent, "argument_name") || is(parent, "type_name") ||
+           ts_node_eq(field(parent, "name"), node) ||
+           ts_node_eq(field(parent, "member"), node) ||
+           (is(parent, "for_statement") && ts_node_eq(field(parent, "key"), node));
+}
+static bool binding_form(TSNode node)
+{
+    return is(node, "local_declaration") || is(node, "for_statement") ||
+           is(node, "query_generator");
+}
+/* Whether every use of `name` in `node` keeps its address inside the call. */
+static bool scoped_uses(const char *source, TSNode node, TSNode name, scoped_pointer_visit *stack, int depth)
+{
+    if (callable_declaration(node)) {
+        return true; /* Nested callables cannot see enclosing locals. */
+    }
+    if (!is(node, "identifier") || !same_text(source, node, name)) {
+        for (uint32_t i = 0; i < named_count(node); i++) {
+            if (!scoped_uses(source, ts_node_named_child(node, i), name, stack, depth)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    TSNode parent = ts_node_parent(node);
+    if (name_position(parent, node)) {
+        return !binding_form(parent); /* Shadowing keeps the analysis simple. */
+    }
+    if (!is(parent, "dereference_expression") && !is(parent, "member_expression")) {
+        return scoped_forward(source, node, stack, depth);
+    }
+    TSNode place = parent;
+    while (is(ts_node_parent(place), "dereference_expression") ||
+           is(ts_node_parent(place), "parenthesized_expression") ||
+           (is(ts_node_parent(place), "member_expression") &&
+            ts_node_eq(field(ts_node_parent(place), "object"), place))) {
+        place = ts_node_parent(place);
+    }
+    TSNode outer = ts_node_parent(place);
+    return !is(outer, "address_expression") ||
+           scoped_forward(source, outer, stack, depth);
+}
+static bool scoped_pointer(
+    const char *source,
+    TSNode declaration,
+    uint32_t index,
+    scoped_pointer_visit *stack,
+    int depth
+)
+{
+    uint32_t start = ts_node_start_byte(declaration);
+    for (int i = 0; i < depth; i++) {
+        if (stack[i].declaration == start && stack[i].parameter == index) {
+            return true; /* Recursion keeps whatever the other uses decide. */
+        }
+    }
+    if (depth == SCOPED_POINTER_DEPTH) {
+        return false;
+    }
+    stack[depth] = (scoped_pointer_visit){ start, index };
+    TSNode parameter = ts_node_named_child(field(declaration, "parameters"), index);
+    TSNode name = field(parameter, "name");
+    return scoped_uses(source, field(declaration, "body"), name, stack, depth + 1);
+}
+TSNode script_scoped_pointer_target(const char *source, TSNode declaration, uint32_t index)
+{
+    scoped_pointer_visit stack[SCOPED_POINTER_DEPTH];
+    TSNode parameter = ts_node_named_child(field(declaration, "parameters"), index);
+    TSNode pointer = pointer_annotation(field(parameter, "type"));
+    return !ts_node_is_null(pointer) &&
+                   scoped_pointer(source, declaration, index, stack, 0)
+             ? field(pointer, "target")
+             : (TSNode){ 0 };
+}
 static void parameters(headers *h, TSNode node, bool results)
 {
     int function = h->context.function;
@@ -273,6 +464,14 @@ static void parameters(headers *h, TSNode node, bool results)
         }
         script_signature_reading read = annotation(h, field(parameter, "type"), true);
         script_type type = read.type;
+        if (!results &&
+            !ts_node_is_null(
+                script_scoped_pointer_target(h->source, ts_node_parent(node), i)
+            )) {
+            synchronize(h);
+            type = script_catalog_pointee_type(&h->catalog, type);
+            type.flags |= SCRIPT_TYPE_REFERENCE;
+        }
         if (type.flags & SCRIPT_TYPE_UNTYPED) {
             diagnostic(h, parameter, "Callable parameters and results require a type");
             type = (script_type){ .flags = SCRIPT_TYPE_ERROR };

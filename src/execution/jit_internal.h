@@ -69,6 +69,8 @@ typedef struct
     struct sljit_label *system_loop;
     struct sljit_jump **system_exits;
     bool countdown, inspected, scoped, system_registers;
+    const int *single_uses;
+    const bool *branch_targets;
 } behavior_machine;
 void behavior_jit_system_enter(behavior_machine *machine);
 void behavior_jit_system_begin(behavior_machine *machine);
@@ -118,6 +120,7 @@ void behavior_jit_alias_variables(const behavior_function *f, int *registers, co
 void behavior_jit_load_variables(const behavior_machine *m);
 void behavior_jit_flush_variables(const behavior_machine *m);
 void behavior_jit_coalesce_saves(const behavior_function *f, int *registers, const int *locals);
+void behavior_jit_usage(const behavior_function *f, int **uses, bool **targets);
 int behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
 int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
 void behavior_jit_failure(

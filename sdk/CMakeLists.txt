@@ -309,6 +309,8 @@ target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
 # Authored core collection sources are explicit snapshot inputs for SDK users.
 install(FILES "${CHIBI_SDK_ROOT}/packages/core/strings/Strings.chibi"
     DESTINATION share/chibi/core/strings)
+install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/math/"
+    DESTINATION share/chibi/core/math FILES_MATCHING PATTERN "*.chibi")
 # chibi doc's site generator is authored package source the SDK compiles.
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/markdown/Markdown.chibi" DESTINATION share/chibi/docs/markdown)
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/site/Site.chibi" DESTINATION share/chibi/docs/site)

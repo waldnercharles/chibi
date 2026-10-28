@@ -1249,12 +1249,13 @@ static bool managed_scan_found(const unsigned *arrays)
 {
     return arrays && (*arrays & MANAGED_SCAN_FIRST) && *arrays != MANAGED_SCAN_FIRST;
 }
-/* A single value that is neither an aggregate nor a pointer reaches no other
- * value, so ownership scans and traces need no work list for it. */
+/* A single value that is neither an aggregate, a pointer nor a query reaches
+ * no other value, so ownership scans and traces need no work list for it. */
 static bool managed_leaf(const pin_value *value)
 {
-    return value->container == PIN_CONTAINER_SINGLE && value->type != PIN_STRUCT &&
-           value->type != PIN_UNION && value->type != PIN_POINTER;
+    return value->container == PIN_CONTAINER_SINGLE &&
+           value->type != PIN_STRUCT && value->type != PIN_UNION &&
+           value->type != PIN_POINTER && value->type != PIN_QUERY;
 }
 /* Shape restrictions belong to newly retained values. An existing managed
  * array already passed retention validation; all heap-family edges still need

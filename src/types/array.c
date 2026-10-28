@@ -82,14 +82,11 @@ static void trace_backing(const void *data, const void *shape, arena_marker mark
     const pin_array *array = &((const array_anchor *)data)->backing->payload;
     mark(user, array->type_name);
     mark(user, array->record);
+    mark(user, array->schema);
     mark(user, array->buckets);
-    pin_value shape_value = { .type = array->element_type,
-                              .type_name = array->type_name,
-                              .record = array->record };
-    bool managed = !array->stride || array->element_type == PIN_POINTER ||
-                   (array->element_type == PIN_STRUCT &&
-                    !type_is_plain(pin_value_type(&shape_value)));
-    for (int i = 0; managed && i < array->count; i++) {
+    /* A shared backing reaches what an unshared payload's items reach. */
+    bool reach = pin_array_items_reach(array);
+    for (int i = 0; reach && i < array->count; i++) {
         pin_value item = pin_array_get(array, i);
         pin_value_trace(&item, mark, user);
     }

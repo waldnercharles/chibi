@@ -197,10 +197,19 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
 
 int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool compiled)
 {
-    if (f->calls || (ctx->activation && ctx->activation->calls)) {
-        return behavior_function_run_calls(f, ctx, compiled);
+    /* Every invocation counts, so a run a native reenters from one without
+     * authored calls is nested and leaves collection to the outer run. */
+    behavior_managed_heap *heap = ctx->managed_heap;
+    if (heap) {
+        heap->running_calls++;
     }
-    return behavior_function_run_once(f, ctx, compiled);
+    int result = f->calls || (ctx->activation && ctx->activation->calls)
+                   ? behavior_function_run_calls(f, ctx, compiled)
+                   : behavior_function_run_once(f, ctx, compiled);
+    if (heap) {
+        heap->running_calls--;
+    }
+    return result;
 }
 const char *behavior_function_failure_text(behavior_function_failure failure)
 {

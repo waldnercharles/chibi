@@ -31,6 +31,7 @@
 #include "types/catalog.h"
 #include "types/copy.h"
 #include "types/pointer.h"
+#include "types/query.h"
 #include "types/record.h"
 #include "types/schema.h"
 #include "types/text.h"
@@ -425,6 +426,50 @@ TEST_CASE(execution_branches_state_and_host_calls)
         argument.d = 2;
         REQUIRE(run(&argument, 1, &variable, &output, backend == 1, 100) == FLOW_OK);
         REQUIRE(variable.d == 15 && output.d == 30 && host_calls == 2);
+    }
+    return true;
+}
+
+static int running_seen;
+static const char *observe_running(void *, const pin_value *, pin_value *results)
+{
+    running_seen = invocation_heap.running_calls;
+    results[0].d = 1;
+    return NULL;
+}
+/* A run with no authored calls still counts as running, so a run a native
+ * reenters from it is nested and cannot collect the outer run's values. */
+TEST_CASE(execution_runs_without_authored_calls_count_as_running)
+{
+    builder = behavior_function_builder_new();
+    pin_value result = { .type = PIN_F64 };
+    behavior_function_builder_signature(builder, NULL, 0, &result, 1, NULL, 0);
+    const node_host_call host = { .invoke = observe_running };
+    const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+    int capability = behavior_function_builder_host(builder, &host, &access, NULL, 0, &result, 1);
+    int pointer = address_slot(), value = slot(PIN_F64);
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = capability,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){
+        .op = BF_HOST_SLOT,
+        .type = BF_POINTER_TYPE,
+        .output = pointer,
+        .left = behavior_function_builder_host_results(builder, capability) });
+    emit((behavior_function_instruction){ .op = BF_READ,
+                                          .type = PIN_F64,
+                                          .output = value,
+                                          .left = pointer,
+                                          .offset = offsetof(pin_value, d) });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_F64, .left = value });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function) && !function->calls);
+    for (int backend = 0; backend < 2; backend++) {
+        pin_value output = result;
+        running_seen = -1;
+        REQUIRE(run(NULL, 0, NULL, &output, backend == 1, 100) == FLOW_OK);
+        REQUIRE(running_seen == 1 && invocation_heap.running_calls == 0 && output.d == 1);
     }
     return true;
 }
@@ -4301,6 +4346,26 @@ TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation)
     REQUIRE(output.type == PIN_POINTER && !output.ptr);
     return true;
 }
+/* A query one heap owns is refused as another heap's root, which keeps
+ * no root. */
+TEST_CASE(execution_query_owners_reject_foreign_heaps_without_mutation)
+{
+    behavior_managed_heap_init(&pointer_heap);
+    behavior_managed_heap_init(&secondary_pointer_heap);
+    pin_query *query = arena_alloc(&pointer_heap.storage, sizeof *query);
+    *query = (pin_query){ .kind = PIN_QUERY_DESCRIPTION,
+                          .storage = &pointer_heap.storage };
+    pin_value value = { .type = PIN_QUERY, .type_name = "fixture.query", .ptr = query };
+    const char *error = behavior_managed_heap_root(&secondary_pointer_heap, &value);
+    REQUIRE(error && !strcmp(error, "Queries cannot cross heap owners"));
+    REQUIRE(value.ptr == query && !acount(secondary_pointer_heap.roots));
+    REQUIRE(
+        !behavior_managed_heap_root(&pointer_heap, &value) &&
+        acount(pointer_heap.roots) == 1
+    );
+    behavior_managed_heap_unroot(&pointer_heap, &value);
+    return true;
+}
 /* Three cyclic cells and one final scalar cell. Four quiescent collections,
  * one registered-header reassignment, then heap destruction; no unbounded walks. */
 TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles)
@@ -6998,6 +7063,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_lent_records_copy_nothing);
     RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_pointer_owners_reject_foreign_cells_without_mutation);
+    RUN_TEST_CASE(execution_query_owners_reject_foreign_heaps_without_mutation);
     RUN_TEST_CASE(execution_managed_scan_checks_nested_layouts);
     RUN_TEST_CASE(execution_pointer_fields_require_the_full_base_layout);
     RUN_TEST_CASE(execution_pointer_comparisons_use_location_identity);
@@ -7010,6 +7076,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
     RUN_TEST_CASE(execution_intrinsics_build_in_result_storage);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);
+    RUN_TEST_CASE(execution_runs_without_authored_calls_count_as_running);
     RUN_TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume);
     RUN_TEST_CASE(execution_costs_verify_intrinsics_and_follow_recursive_calls);
     RUN_TEST_CASE(execution_costs_include_managed_scalar_result_and_state_escape);

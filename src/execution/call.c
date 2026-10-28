@@ -559,7 +559,11 @@ static void copy_failure(behavior_function_context *root, const behavior_functio
     }
 }
 
-static int run_calls(const behavior_function *function, behavior_function_context *root, bool compiled)
+int behavior_function_run_calls(
+    const behavior_function *function,
+    behavior_function_context *root,
+    bool compiled
+)
 {
     assert(root->activation && root->activation->values);
     struct behavior_function_calls *calls = root->activation->calls;
@@ -660,22 +664,6 @@ static int run_calls(const behavior_function *function, behavior_function_contex
         }
         return settle_calls(calls, result);
     }
-}
-int behavior_function_run_calls(
-    const behavior_function *function,
-    behavior_function_context *root,
-    bool compiled
-)
-{
-    behavior_managed_heap *heap = root->managed_heap;
-    if (heap) {
-        heap->running_calls++;
-    }
-    int result = run_calls(function, root, compiled);
-    if (heap) {
-        heap->running_calls--;
-    }
-    return result;
 }
 
 static void trace_value(const pin_value *value, behavior_value_kind kind, arena_marker mark, void *user)

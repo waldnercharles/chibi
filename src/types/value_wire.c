@@ -877,13 +877,14 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
         return;
     }
     /* A header without a payload persists only its type, which the reader
-     * links by name and layout; a payload needs its native layout current. */
-    if (!w->reading && v->ptr && v->record && v->record->native &&
+     * links by name and layout; a payload needs its native layout current,
+     * unless a schema carries the native layouts the catalog may retire. */
+    if (!w->reading && v->ptr && v->record && v->record->native && !v->schema &&
         !pin_record_native_current(v->record)) {
         fail(w, "Native record type is retired or its layout is incompatible");
         return;
     }
-    if (!w->reading && v->record && !v->record->native &&
+    if (!w->reading && v->record && !v->record->native && !v->schema &&
         !pin_record_fields_current(v->record)) {
         fail(w, "Authored record nested native layout is retired or incompatible");
         return;

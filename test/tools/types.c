@@ -1748,6 +1748,33 @@ TEST_CASE(types_queries_preserve_identity_and_managed_edges)
     REQUIRE(pin_value_managed_boundary_error(&holder));
     return true;
 }
+/* A query an array holds stays live while only the array's shared
+ * backing reaches it. */
+TEST_CASE(types_shared_backings_keep_their_queries)
+{
+    arena_init_collectable(&cow_heap);
+    pin_query *query = arena_alloc(&cow_heap, sizeof *query);
+    *query = (pin_query){ .kind = PIN_QUERY_DESCRIPTION, .storage = &cow_heap };
+    pin_value item = { .type = PIN_QUERY, .type_name = "Query.Damage", .ptr = query };
+    pin_array boxed = { .element_type = PIN_QUERY,
+                        .type_name = item.type_name,
+                        .items = &item,
+                        .count = 1,
+                        .capacity = 1 };
+    pin_array *packed = pin_array_snapshot_to_arena(&cow_heap, &boxed);
+    REQUIRE(packed && packed->stride == sizeof(void *));
+    REQUIRE(!pin_array_manage(&cow_heap, packed));
+    REQUIRE(!pin_array_make_unique(&cow_heap, packed) && packed->backing);
+    pin_value root = { .type = PIN_QUERY,
+                       .container = PIN_CONTAINER_ARRAY,
+                       .type_name = packed->type_name,
+                       .ptr = packed };
+    cow_collect(&root, 1);
+    REQUIRE(arena_contains(&cow_heap, query));
+    pin_value kept = pin_array_get(packed, 0);
+    REQUIRE(kept.ptr == query && ((pin_query *)kept.ptr)->kind == PIN_QUERY_DESCRIPTION);
+    return true;
+}
 TEST_CASE(types_query_persistence_accepts_only_nil)
 {
     pin_value value = { .type = PIN_QUERY, .type_name = "Query.Damage" };
@@ -2105,7 +2132,8 @@ TEST_CASE(types_authored_wrappers_retain_native_children)
     source_document = av_doc_new();
     for (int i = 0; i < 3; i++) {
         REQUIRE(values[i].record && values[i].schema && pin_value_record_current(&values[i]));
-        REQUIRE(!pin_record_current(values[i].record));
+        /* The copy's record carries its native child's layout too. */
+        REQUIRE(values[i].record->frozen && pin_record_current(values[i].record));
         pin_value nested;
         REQUIRE(
             !pin_read_field(&copies, values[i].ptr, &values[i].record->type.fields[0], &nested)
@@ -2152,6 +2180,7 @@ void test_tool_types()
     RUN_TEST_CASE(types_authored_wrappers_retain_native_children);
     RUN_TEST_CASE(types_owned_native_schemas_survive_catalog_and_source_retirement);
     RUN_TEST_CASE(types_queries_preserve_identity_and_managed_edges);
+    RUN_TEST_CASE(types_shared_backings_keep_their_queries);
     RUN_TEST_CASE(types_query_persistence_accepts_only_nil);
     RUN_TEST_CASE(types_nested_pointer_records_require_owned_layout_support);
     RUN_TEST_CASE(types_document_array_collection_retains_split_payloads);

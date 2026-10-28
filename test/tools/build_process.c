@@ -2006,7 +2006,7 @@ TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth)
     static const char *sources[] = {
         "package storage\nBuild :: () -> int { for (i in 0..<64) { "
         "build.read_file(\"primitive-storage\"); } return 0; }",
-        "package storage\nBuild :: () -> int { for (i in 0..<300) { "
+        "package storage\nBuild :: () -> int { for (i in 0..<600) { "
         "build.read_file(\"primitive-storage\"); } return 0; }",
     };
     for (int i = 0; i < 2; i++) {

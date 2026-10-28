@@ -531,15 +531,15 @@ TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements)
     const char *probe[] = { host_path, "--protocol-version", NULL };
     REQUIRE(!tool_run(probe, root, log));
     char *text = tool_read(log);
-    bool current = text && !strcmp(text, "12\n");
+    bool current = text && !strcmp(text, "13\n");
     free(text);
     REQUIRE(current);
     /* A nonzero probe result, as produced by the M1 CLI, must be distinguishable
-     * from an invocation error after a successful version-12 selection. */
+     * from an invocation error after a successful version-13 selection. */
     const char *invalid[] = { host_path, "--protocol-version", "extra", NULL };
     REQUIRE(tool_run(invalid, root, log) != 0);
     text = tool_read(log);
-    bool rejected = text && strstr(text, "usage:") && strcmp(text, "12\n");
+    bool rejected = text && strstr(text, "usage:") && strcmp(text, "13\n");
     free(text);
     REQUIRE(rejected);
     return true;

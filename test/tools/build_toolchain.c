@@ -609,6 +609,9 @@ TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
     reset_fixture("CLI tail", 0);
     char log[1024];
     path(log, root, "cli.log");
+    /* Test the CLI argument boundary without compiling the whole toolchain
+     * under its five-second operation deadline. The cases above exercise
+     * Build.chibi directly on both backends. */
     const char *arguments[] = {
         host_path,
         "--compiler",
@@ -618,7 +621,7 @@ TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
         "--root",
         root,
         "--source",
-        program_path,
+        CHIBI_SOURCE_ROOT "/test/language/BuildCLITail.chibi",
         "--entry",
         "Build",
         "--timeout-ms",

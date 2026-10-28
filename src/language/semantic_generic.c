@@ -61,8 +61,10 @@ static bool generic(analyzer *a, TSNode node)
     }
     TSNode parameters = script_analyzer_field(node, "parameters");
     for (uint32_t i = 0; i < script_analyzer_named_count(parameters); i++) {
-        if (!ts_node_is_null(
-                script_analyzer_field(ts_node_named_child(parameters, i), "comptime")
+        TSNode parameter = ts_node_named_child(parameters, i);
+        if (!ts_node_is_null(script_analyzer_field(parameter, "comptime")) ||
+            !ts_node_is_null(
+                script_callable_type_node(script_analyzer_field(parameter, "type"))
             )) {
             return true;
         }
@@ -79,6 +81,45 @@ bool script_analyzer_generic_declare(analyzer *a, TSNode node)
     free(name);
     if (template_symbol(a, symbol) >= 0) {
         return true;
+    }
+    TSNode parameters = script_analyzer_field(node, "parameters");
+    for (uint32_t i = 0; i < script_analyzer_named_count(parameters); i++) {
+        TSNode parameter = ts_node_named_child(parameters, i);
+        TSNode annotation = script_analyzer_field(parameter, "type");
+        TSNode callable = script_callable_type_node(annotation);
+        if (ts_node_is_null(callable)) {
+            continue;
+        }
+        if (!script_callable_type_annotation(annotation)) {
+            script_analyzer_diagnostic(a, annotation, "Callable parameters cannot be optional, stored in containers or used through pointers");
+        }
+        TSNode inputs = script_analyzer_field(callable, "parameters");
+        for (uint32_t p = 0; p < script_analyzer_named_count(inputs); p++) {
+            TSNode input = ts_node_named_child(inputs, p);
+            if (ts_node_is_extra(input)) {
+                continue;
+            }
+            if (ts_node_is_null(script_analyzer_field(input, "type")) ||
+                !ts_node_is_null(script_analyzer_field(input, "value")) ||
+                !ts_node_is_null(script_analyzer_field(input, "source")) ||
+                !ts_node_is_null(script_analyzer_field(input, "comptime"))) {
+                script_analyzer_diagnostic(a, input, "Callable signatures require typed parameters without defaults or source bindings");
+            }
+        }
+        TSNode results = script_analyzer_field(callable, "results");
+        int count = 0;
+        if (script_analyzer_is(results, "parameter_list")) {
+            for (uint32_t r = 0; r < script_analyzer_named_count(results); r++) {
+                count += !ts_node_is_extra(ts_node_named_child(results, r));
+            }
+        }
+        if (count > 1) {
+            script_analyzer_diagnostic(a, results, "Callable parameters currently support at most one result");
+        }
+        if (!ts_node_is_null(script_analyzer_field(parameter, "value")) ||
+            !ts_node_is_null(script_analyzer_field(parameter, "source"))) {
+            script_analyzer_diagnostic(a, parameter, "Callable parameters take no default value or source binding");
+        }
     }
     symbol = script_analyzer_symbol_new(
         a,
@@ -131,6 +172,29 @@ static script_type concrete(script_type type)
     }
     return type;
 }
+static bool outer_optional(analyzer *a, TSNode type)
+{
+    if (script_analyzer_is(type, "parenthesized_type")) {
+        return outer_optional(a, script_analyzer_field(type, "type"));
+    }
+    for (uint32_t i = script_analyzer_child_count(type); i > 0; i--) {
+        TSNode child = ts_node_child(type, i - 1);
+        if (ts_node_is_extra(child)) {
+            continue;
+        }
+        return script_analyzer_text_is(a, child, "?") ||
+               (script_analyzer_is(child, "parenthesized_type") &&
+                outer_optional(a, child));
+    }
+    return false;
+}
+static script_type binding_type(script_type actual, bool optional)
+{
+    if (optional) {
+        actual.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+    }
+    return actual;
+}
 static uint64_t compile_bits(pin_value value)
 {
     if (value.type == PIN_F32) {
@@ -147,8 +211,11 @@ static uint64_t compile_bits(pin_value value)
 }
 static bool equal_value(compile_value x, compile_value y)
 {
-    if (x.is_type != y.is_type) {
+    if (x.is_type != y.is_type || x.is_callable != y.is_callable) {
         return false;
+    }
+    if (x.is_callable) {
+        return x.callable == y.callable;
     }
     if (x.is_type) {
         return script_type_equal(x.type, y.type);
@@ -219,7 +286,10 @@ static uint64_t binding_id(uint64_t definition, compile_binding *bindings, bool 
         hash = mix(hash, script_catalog_id("argument", bindings[i].name));
         compile_value value = bindings[i].value;
         hash = mix(hash, value.is_type);
-        if (value.is_type) {
+        if (value.is_callable) {
+            hash = mix(hash, script_catalog_id("callable-binding", ""));
+            hash = mix(hash, value.callable);
+        } else if (value.is_type) {
             hash = mix(hash, script_type_tag(value.type));
         } else {
             hash = mix(hash, value.value.type);
@@ -279,6 +349,28 @@ static void install(analyzer *a, TSNode node, compile_binding *bindings)
                 }
             }
         }
+        if (value.is_callable) {
+            int alias = script_analyzer_result_new(
+                a,
+                node,
+                bindings[i].name,
+                (script_type){ .storage = PIN_FLOW }
+            );
+            script_symbol *symbol = &a->out->symbols[alias];
+            symbol->kind = SCRIPT_FUNCTION;
+            symbol->callable_binding = true;
+            symbol->id = symbol->capability = value.callable;
+            symbol->writable = false;
+            symbol->function = -1;
+            for (int j = 0; j < acount(a->out->functions); j++) {
+                int declared = a->out->functions[j].symbol;
+                if (declared >= 0 && a->out->symbols[declared].id == value.callable) {
+                    symbol->function = j;
+                    break;
+                }
+            }
+            continue;
+        }
         /* The aliases live in their own instantiation scope. */
         int symbol = script_analyzer_result_new(
             a,
@@ -303,6 +395,142 @@ static void install(analyzer *a, TSNode node, compile_binding *bindings)
             );
         }
     }
+}
+/* A callable parameter is a compile-time binding to one exact signature. */
+bool script_analyzer_callable_argument(
+    analyzer *a,
+    TSNode value,
+    TSNode signature,
+    compile_binding *bindings,
+    int definition_scope,
+    compile_value *out
+)
+{
+    int function = -1;
+    uint64_t id = 0;
+    const script_catalog_capability *capability = NULL;
+    if (script_analyzer_is(value, "lambda_expression")) {
+        function = script_analyzer_lambda(a, value);
+        if (function >= 0) {
+            id = a->out->symbols[a->out->functions[function].symbol].id;
+        }
+    } else if (script_analyzer_is(value, "identifier") || script_analyzer_is(value, "member_expression")) {
+        char *name = script_analyzer_qualified_name(a, value);
+        int symbol = script_analyzer_import_namespace(a, value, name)
+                       ? script_analyzer_package_function(a, value, name)
+                       : script_analyzer_callable_symbol(a, name);
+        if (symbol >= 0) {
+            function = a->out->symbols[symbol].function;
+            id = a->out->symbols[symbol].capability;
+        }
+        if (!id) {
+            int index = script_analyzer_find_capability(a, value, name, SCRIPT_CAPABILITY_FUNCTION);
+            if (index >= 0) {
+                capability = &a->catalog->capabilities[index];
+                id = capability->id;
+            }
+        } else if (function < 0) {
+            capability = script_catalog_capability_by_id(a->catalog, id);
+        }
+        if (symbol >= 0 && function < 0 && !capability) {
+            script_analyzer_diagnostic(a, value, "Pass a concrete function; generic callbacks need concrete parameters");
+            id = 0;
+        }
+        if (id) {
+            script_analyzer_use(a, value, symbol, SCRIPT_CALL, id);
+        }
+        free(name);
+    }
+    if (!id) {
+        script_analyzer_diagnostic(a, value, "Callable argument requires a named function or capture-free inline function");
+        return false;
+    }
+    if (function >= 0 &&
+        (a->out->functions[function].kind != SCRIPT_FUNCTION_AUTHORED ||
+         a->out->symbols[a->out->functions[function].symbol].kind != SCRIPT_FUNCTION)) {
+        script_analyzer_diagnostic(a, value, "Callable arguments require ordinary functions");
+        return false;
+    }
+    int previous_scope = a->scope;
+    a->scope = definition_scope;
+    a->scope = script_analyzer_scope_new(a, signature);
+    install(a, signature, bindings);
+    bool valid = true;
+    for (int result = 0; result < 2; result++) {
+        TSNode list = script_analyzer_field(signature, result ? "results" : "parameters");
+        bool single = result && !ts_node_is_null(list) &&
+                      !script_analyzer_is(list, "parameter_list");
+        int expected = single ? 1 : (int)script_analyzer_named_count(list);
+        int actual = function >= 0
+                       ? acount(
+                             result ? a->out->functions[function].results
+                                    : a->out->functions[function].parameters
+                         )
+                   : result ? capability->result_count
+                            : capability->parameter_count;
+        int ordinal = 0;
+        for (int i = 0; i < expected; i++) {
+            TSNode parameter = single ? list
+                                      : ts_node_named_child(list, (uint32_t)i);
+            if (ts_node_is_extra(parameter)) {
+                continue;
+            }
+            TSNode type_node = single ? parameter
+                                      : script_analyzer_field(parameter, "type");
+            script_type wanted = script_analyzer_type_node(a, type_node);
+            if (ordinal < actual) {
+                script_type
+                    supplied = function >= 0
+                                 ? a->out
+                                       ->symbols[(
+                                           result ? a->out->functions[function].results
+                                                  : a->out->functions[function].parameters
+                                       )[ordinal]]
+                                       .type
+                                 : (result ? capability->results
+                                           : capability->parameters)[ordinal]
+                                       .type;
+                /* Scoped ^T inputs use a reference to T internally. The
+                 * callable contract compares their source pointer types. */
+                if (!result && (supplied.flags & SCRIPT_TYPE_REFERENCE)) {
+                    supplied.flags &= ~SCRIPT_TYPE_REFERENCE;
+                    supplied = script_analyzer_pointer_type(a, supplied);
+                }
+                if (!script_type_equal(wanted, supplied)) {
+                    script_analyzer_diagnostic(
+                        a,
+                        value,
+                        "Callable %s %d has a different type from its "
+                        "parameter signature",
+                        result ? "result" : "parameter",
+                        ordinal + 1
+                    );
+                    valid = false;
+                }
+            }
+            ordinal++;
+        }
+        if (ordinal != actual) {
+            script_analyzer_diagnostic(
+                a,
+                value,
+                "Callable signature requires %d %s, got %d",
+                ordinal,
+                result ? "results" : "parameters",
+                actual
+            );
+            valid = false;
+        }
+    }
+    a->scope = previous_scope;
+    unsigned effects = function >= 0 ? a->out->functions[function].effects
+                                     : capability->effects;
+    if (effects & SCRIPT_EFFECT_SUSPEND) {
+        script_analyzer_diagnostic(a, value, "Callable arguments must finish synchronously");
+        valid = false;
+    }
+    *out = (compile_value){ .is_callable = true, .callable = id };
+    return valid;
 }
 static TSNode parameter_at(TSNode parameters, int ordinal)
 {
@@ -423,6 +651,11 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
         TSNode type = ts_node_is_null(target)
                         ? script_analyzer_field(parameter, "type")
                         : target;
+        TSNode callable_type = script_callable_type_node(type);
+        if (!ts_node_is_null(callable_type)) {
+            values[i] = -2;
+            continue;
+        }
         TSNode type_binder = binder(type);
         char *name = script_analyzer_name_copy(
             a,
@@ -460,6 +693,7 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
                           : script_analyzer_scoped_argument(a, value, expected);
             script_type actual = concrete(script_analyzer_expr_type(a, values[i]));
             if (!ts_node_is_null(type_binder) || previous >= 0) {
+                actual = binding_type(actual, outer_optional(a, type));
                 if (script_analyzer_token_present(a, type, "[") ||
                     script_analyzer_token_present(a, type, "[]")) {
                     bool view = script_analyzer_token_present(a, type, "view");
@@ -479,6 +713,64 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
             }
         }
         free(name);
+    }
+    for (uint32_t p = 0; p < script_analyzer_named_count(parameters); p++) {
+        TSNode parameter = ts_node_named_child(parameters, p);
+        if (ts_node_is_null(
+                script_callable_type_node(script_analyzer_field(parameter, "type"))
+            )) {
+            continue;
+        }
+        int matches = 0, position = 0;
+        for (int i = 0; i < count; i++) {
+            TSNode argument = ts_node_named_child(arguments, (uint32_t)i);
+            if (ts_node_is_extra(argument)) {
+                continue;
+            }
+            TSNode label = script_analyzer_field(argument, "name");
+            TSNode selected = ts_node_is_null(label)
+                                ? parameter_at(parameters, position++)
+                                : parameter_named(a, parameters, label);
+            matches += ts_node_eq(parameter, selected);
+        }
+        if (matches != 1) {
+            char *name = script_analyzer_name_copy(a, script_analyzer_field(parameter, "name"));
+            script_analyzer_diagnostic(a, call, "Pass callable argument '%s' exactly once", name);
+            free(name);
+            valid = false;
+        }
+    }
+    ordinal = 0;
+    for (int i = 0; i < count; i++) {
+        TSNode argument = ts_node_named_child(arguments, (uint32_t)i);
+        if (ts_node_is_extra(argument)) {
+            continue;
+        }
+        TSNode label = script_analyzer_field(argument, "name");
+        TSNode parameter = ts_node_is_null(label)
+                             ? parameter_at(parameters, ordinal++)
+                             : parameter_named(a, parameters, label);
+        TSNode signature = script_callable_type_node(
+            script_analyzer_field(parameter, "type")
+        );
+        if (ts_node_is_null(signature)) {
+            continue;
+        }
+        TSNode value = ts_node_is_null(label)
+                         ? argument
+                         : script_analyzer_call_argument(argument);
+        compile_value callable = { 0 };
+        char *parameter_name = script_analyzer_name_copy(a, script_analyzer_field(parameter, "name"));
+        bool ok = script_analyzer_callable_argument(
+            a,
+            value,
+            signature,
+            bindings,
+            definition.scope,
+            &callable
+        );
+        valid &= ok && bind(a, value, &bindings, parameter_name, callable);
+        free(parameter_name);
     }
     asort(bindings, by_name);
     if (!valid) {
@@ -504,6 +796,92 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
     return instantiate(a, index, bindings);
 }
 
+int script_analyzer_callable_parameter_index(analyzer *a, int symbol, const char *name)
+{
+    if (symbol < 0 || !a->out->symbols[symbol].callable_binding) {
+        return -2;
+    }
+    const script_symbol alias = a->out->symbols[symbol];
+    for (int i = 0; i < acount(a->instances); i++) {
+        const generic_instance instance = a->instances[i];
+        if (instance.function < 0 ||
+            a->out->scopes[a->out->functions[instance.function].scope].parent !=
+                alias.scope) {
+            continue;
+        }
+        TSNode parameters = script_analyzer_field(
+            a->templates[instance.template].node,
+            "parameters"
+        );
+        for (uint32_t p = 0; p < script_analyzer_named_count(parameters); p++) {
+            TSNode parameter = ts_node_named_child(parameters, p);
+            if (!script_analyzer_text_is(
+                    a,
+                    script_analyzer_field(parameter, "name"),
+                    alias.name
+                )) {
+                continue;
+            }
+            TSNode signature = script_callable_type_node(
+                script_analyzer_field(parameter, "type")
+            );
+            TSNode inputs = script_analyzer_field(signature, "parameters");
+            int ordinal = 0;
+            for (uint32_t n = 0; n < script_analyzer_named_count(inputs); n++) {
+                TSNode input = ts_node_named_child(inputs, n);
+                if (ts_node_is_extra(input)) {
+                    continue;
+                }
+                if (script_analyzer_text_is(a, script_analyzer_field(input, "name"), name)) {
+                    return ordinal;
+                }
+                ordinal++;
+            }
+            return -1;
+        }
+    }
+    return -2;
+}
+/* Effects become final only after the whole call graph has been analyzed. */
+void script_analyzer_generic_check_callables(analyzer *a)
+{
+    for (int i = 0; i < acount(a->instances); i++) {
+        const generic_instance *instance = &a->instances[i];
+        if (instance->function < 0) {
+            continue;
+        }
+        bool callable = false;
+        bool suspended = false;
+        for (int b = 0; b < acount(instance->bindings); b++) {
+            compile_value binding = instance->bindings[b].value;
+            callable |= binding.is_callable;
+            if (!binding.is_callable) {
+                continue;
+            }
+            const script_catalog_capability *
+                capability = script_catalog_capability_by_id(a->catalog, binding.callable);
+            suspended |= capability && (capability->effects & SCRIPT_EFFECT_SUSPEND);
+            for (int f = 0; f < acount(a->out->functions); f++) {
+                int symbol = a->out->functions[f].symbol;
+                if (symbol >= 0 && a->out->symbols[symbol].id == binding.callable) {
+                    suspended |= (a->out->functions[f].effects &
+                                  SCRIPT_EFFECT_SUSPEND) != 0;
+                }
+            }
+        }
+        if (suspended) {
+            script_analyzer_diagnostic(a, a->templates[instance->template].node, "Callable arguments must finish synchronously");
+        }
+        if (callable && (a->out->functions[instance->function].effects &
+                         SCRIPT_EFFECT_SUSPEND)) {
+            script_analyzer_diagnostic(
+                a,
+                a->templates[instance->template].node,
+                "Functions with callable parameters must finish synchronously"
+            );
+        }
+    }
+}
 bool script_analyzer_generic_member(analyzer *a, script_type type, const char *name, compile_value *out)
 {
     for (int i = 0; i < acount(a->instances); i++) {
@@ -957,7 +1335,9 @@ void script_analyzer_generic_export(analyzer *a, TSNode node, int symbol)
         TSNode type_node = ts_node_is_null(target)
                              ? script_analyzer_field(parameter, "type")
                              : target;
-        TSNode type_binder = binder(type_node);
+        TSNode callable_node = script_callable_type_node(type_node);
+        TSNode type_binder = ts_node_is_null(callable_node) ? binder(type_node)
+                                                            : (TSNode){ 0 };
         TSNode name_node = ts_node_is_null(type_binder)
                              ? script_analyzer_field(type_node, "name")
                              : script_analyzer_field(type_binder, "name");
@@ -982,12 +1362,18 @@ void script_analyzer_generic_export(analyzer *a, TSNode node, int symbol)
         if (!ts_node_is_null(target)) {
             type.flags |= SCRIPT_TYPE_REFERENCE;
         }
+        if (outer_optional(a, type_node)) {
+            type.flags |= SCRIPT_TYPE_OPTIONAL;
+        }
         if (script_analyzer_token_present(a, type_node, "[") ||
             script_analyzer_token_present(a, type_node, "[]")) {
             type.container = script_analyzer_token_present(a, type_node, "view")
                                ? PIN_CONTAINER_VIEW
                                : PIN_CONTAINER_ARRAY;
         }
+        char *callable_text = ts_node_is_null(callable_node)
+                                ? NULL
+                                : script_analyzer_text_copy(a, callable_node);
         apush(
             parameters,
             ((script_template_parameter){
@@ -997,8 +1383,10 @@ void script_analyzer_generic_export(analyzer *a, TSNode node, int symbol)
                 .type_value = type_value,
                 .comptime = record ||
                             !ts_node_is_null(script_analyzer_field(parameter, "comptime")),
-                .binds_type = !ts_node_is_null(type_binder) })
+                .binds_type = !ts_node_is_null(type_binder),
+                .callable_type = callable_text ? own(a, callable_text) : NULL })
         );
+        free(callable_text);
         free(name);
         free(spelling);
     }
@@ -1036,7 +1424,7 @@ static compile_binding *copy_bindings(analyzer *a, const script_compile_binding 
     compile_binding *bindings = NULL;
     for (int i = 0; i < count; i++) {
         compile_binding copy = { xstrdup(source[i].name), source[i].value };
-        if (!copy.value.is_type) {
+        if (!copy.value.is_type && !copy.value.is_callable) {
             pin_value value;
             int error = pin_value_capture_to_arena(
                 &a->out->constants,
@@ -1061,7 +1449,7 @@ static const script_compile_binding *own_bindings(analyzer *a, compile_binding *
     for (int i = 0; i < count; i++) {
         owned[i] = source[i];
         owned[i].name = (char *)own(a, source[i].name);
-        if (!owned[i].value.is_type) {
+        if (!owned[i].value.is_type && !owned[i].value.is_callable) {
             pin_value value;
             int error = pin_value_capture_to_arena(
                 &a->out->constants,
@@ -1075,8 +1463,11 @@ static const script_compile_binding *own_bindings(analyzer *a, compile_binding *
     }
     return owned;
 }
-static const script_catalog_template *import_template(analyzer *a, const char *name)
+static const script_catalog_template *import_template(analyzer *a, TSNode node, const char *name)
 {
+    if (a->document_count) {
+        return script_analyzer_package_template(a, node, name);
+    }
     for (int i = 0; i < a->catalog->template_count; i++) {
         const script_catalog_template *t = &a->catalog->templates[i];
         if (!strcmp(t->name, name) && strcmp(t->owner, a->out->identity)) {
@@ -1200,6 +1591,7 @@ static const script_catalog_specialization *import_request(
                 valid = false;
                 continue;
             }
+            actual = binding_type(actual, parameter->type.flags & SCRIPT_TYPE_OPTIONAL);
             if (parameter->type.container == PIN_CONTAINER_ARRAY ||
                 parameter->type.container == PIN_CONTAINER_VIEW) {
                 if (actual.container != parameter->type.container) {
@@ -1305,7 +1697,7 @@ bool script_analyzer_generic_import_call(
     int **arguments
 )
 {
-    const script_catalog_template *t = import_template(a, name);
+    const script_catalog_template *t = import_template(a, call, name);
     if (!t || !t->generic || t->kind != SCRIPT_TEMPLATE_FUNCTION) {
         return false;
     }
@@ -1336,7 +1728,7 @@ bool script_analyzer_generic_import_compile(
 )
 {
     char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
-    const script_catalog_template *t = import_template(a, name);
+    const script_catalog_template *t = import_template(a, call, name);
     free(name);
     if (!t) {
         return false;

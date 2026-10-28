@@ -1,0 +1,60 @@
+{
+  "frozen_source_base": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+  "feature_patch_sha256": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+  "configure": [
+    "cmake",
+    "-S",
+    "test/language",
+    "-B",
+    ".chibi/asset-release",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DCHIBI_ENABLE_SANITIZERS=OFF"
+  ],
+  "build": [
+    "cmake",
+    "--build",
+    ".chibi/asset-release",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4"
+  ],
+  "exit_code": 2,
+  "wall_seconds_including_build": 282.903,
+  "phase": "asset generator serialized facade request, then invoked facade compiler",
+  "error": "compiler invocation cancelled or timed out; build process timeout",
+  "limit": "existing Release asset generator/compiler invocation240000ms unchanged",
+  "temporary_artifact_sha256": "5e06b70409a10a047172c804446ef68e2f687e6fd1f7ba34d284b5639eab9f6d",
+  "snapshot_testinfra": "asset optionON; fixture-only initializer warning demotion remains; not stock/final publication proof",
+  "log": "validation-snapshot/.chibi/asset-build.log",
+  "files": [
+    {
+      "path": "validation-snapshot/.chibi/asset-release/sdk/generated/assets/compiler.chibip",
+      "bytes": 21842899,
+      "sha256": "5e06b70409a10a047172c804446ef68e2f687e6fd1f7ba34d284b5639eab9f6d"
+    },
+    {
+      "path": "validation-snapshot/.chibi/asset-release/sdk/generated/assets/input.json",
+      "bytes": 1563340,
+      "sha256": "72e1a78784ad49aaa0ba3784453a27a6159d0f8aa7f512a78adf327ae6bb8ba3"
+    },
+    {
+      "path": "validation-snapshot/.chibi/asset-release/sdk/generated/assets/native_target.json",
+      "bytes": 12034,
+      "sha256": "da01568aa036f6307fe67a4f274ab253d91f00ebf6d080db85e2428383167767"
+    }
+  ],
+  "hosts": [
+    {
+      "path": "validation-snapshot/.chibi/asset-release/sdk/chibi-build-host",
+      "sha256": "937140c82c772c9397b83b188808ab28d7acfa208c46d1ab16c469f70b304f83"
+    },
+    {
+      "path": "validation-snapshot/.chibi/asset-release/sdk/chibi-compiler-host",
+      "sha256": "dbeeb59b5ea68956bbe40c649effdae626b9a3b25d7190042f98c8ef95852c5c"
+    }
+  ],
+  "resource_context": "Shared14-core host had other long compiler/sanitizer producers; phase/source/artifact evidence is valid, but causal performance attribution is not isolated. Further broad producer needs coordinator slot."
+}

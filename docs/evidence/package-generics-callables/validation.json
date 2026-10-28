@@ -1,0 +1,427 @@
+{
+  "date": "2026-10-28",
+  "repository": "waldnercharles/chibi",
+  "workspace": "source-checkout",
+  "branch": "codex/generics-callables-integration-20261028",
+  "current_base": "3e2b28dc19fb21961ae06fe99aeb5a8dede35bf0",
+  "state": "Source-only draft review checkpoint; source unchanged from reviewed5c5 patch. Not merge-ready. Current commit/publication gates unresolved; historical validation retained.",
+  "pull_request": null,
+  "scope": [
+    "exported package function templates with definition-site lookup and retained environments",
+    "synchronous nonescaping named and capture-free inline callable inputs, zero or one result",
+    "native/authored compiler parity; pointer inputs compared by source type without changing actual lowering; shared scalar facts"
+  ],
+  "source_patch": {
+    "path": "source-checkout/.chibi/forwardport-source.patch",
+    "sha256": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+    "files": 51
+  },
+  "accepted_796_boundary": {
+    "before": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+    "after": "3e2b28dc19fb21961ae06fe99aeb5a8dede35bf0",
+    "method": "fast-forward with staged feature; seven disjoint accepted files; feature patch remained byte-identical",
+    "current_protocol": 13,
+    "current_strict_host_and_source_catalog_build": "passed .chibi/build-3e-protocol.log",
+    "proof_limit": "Frozen language/bootstrap/source proofs remain attributed to7c6; not relabeled current clean3e or final publication proof."
+  },
+  "frozen_validation": {
+    "workspace": "validation-snapshot",
+    "base": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+    "actual_revision": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62-dirty",
+    "source_manifest": "source-checkout/.chibi/forwardport-validation-source.json",
+    "manifest_sha256": "d068fd86ecb2a89527f8849f6d8451f574dd9b0b011216882592266fc3ffdfb8",
+    "files": 3461,
+    "only_post_freeze_source_changes": [
+      "tools/compiler/bootstrap/bootstrap.json",
+      "tools/compiler/bootstrap/compiler.chibip"
+    ],
+    "testinfra_patch": "source-checkout/.chibi/forwardport-local-testinfra.patch",
+    "testinfra_sha256": "85b91f621bb37ae3e8f19118a8f4cf0faf6bbe865fc832134c304bf863f2b6f5",
+    "testinfra_scope": "Four fixture files only: defaultON asset-host test toggle OFF only for standalone seed construction, byte-identical adjacent string and initializer repairs; test_language-only missing-field-initializers warning demotion. Production targets strict, empty CMAKE_C_FLAGS for Release. Not stock/full/default publication proof."
+  },
+  "review": [
+    "Native ownership/capture/view and grammar forwardport independently reviewed, no remaining findings.",
+    "Authored mutable type tables, nested descriptors, ownership/lending, label scheduling and canonical IDs independently reviewed.",
+    "Found managed-pointer parity gap and invalid no-template inline argument route; fixes plus positive/negative regressions independently rereviewed, no remaining findings.",
+    "ScopedTargets count invalidation audited against append-only signatures; no performance fastpath change (already present).",
+    "Snapshot-only fixture deltas independently verified exact input/init equivalence; later hashes change only fixture line offsets."
+  ],
+  "current_focused_proof": [
+    {
+      "name": "stage-one importing packages: bytecode compiler",
+      "log": "validation-snapshot/.chibi/final4-package-compiler-chibi-imports.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 2,
+      "failed": 0,
+      "total": 2,
+      "assertions": 17552,
+      "case_seconds_sum": 55.002844
+    },
+    {
+      "name": "stage-one importing packages: compiled compiler",
+      "log": "validation-snapshot/.chibi/final4-package-compiler-chibi-imports-compiled.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 2,
+      "failed": 0,
+      "total": 2,
+      "assertions": 16540,
+      "case_seconds_sum": 34.49479
+    },
+    {
+      "name": "compiler self-bootstrap fixed point",
+      "log": "validation-snapshot/.chibi/final5-bootstrap.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 1,
+      "failed": 0,
+      "total": 1,
+      "assertions": 32682,
+      "case_seconds_sum": 609.801834
+    },
+    {
+      "name": "scalar facts and LLVM IR",
+      "log": "validation-snapshot/.chibi/final5-package-compiler-chibi-scalar.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 4,
+      "failed": 0,
+      "total": 4,
+      "assertions": 49151,
+      "case_seconds_sum": 37.489266
+    },
+    {
+      "name": "compiler argument sharing",
+      "log": "validation-snapshot/.chibi/final5-package-compiler-chibi-sharing.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 1,
+      "failed": 0,
+      "total": 1,
+      "assertions": 181,
+      "case_seconds_sum": 18.774957
+    },
+    {
+      "name": "exact compiler/facade inventory and packaging bounds",
+      "log": "validation-snapshot/.chibi/final5-asset-packaging-chibi.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 4,
+      "failed": 0,
+      "total": 4,
+      "assertions": 24890,
+      "case_seconds_sum": 4.509155
+    }
+  ],
+  "current_sanitizer_proof": [
+    {
+      "name": "ASan/UBSan package-imports",
+      "log": "validation-snapshot/.chibi/asan-package-imports.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 29,
+      "failed": 0,
+      "total": 29,
+      "assertions": 2559,
+      "case_seconds_sum": 0.263842
+    },
+    {
+      "name": "ASan/UBSan query-program",
+      "log": "validation-snapshot/.chibi/asan-query-program.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 95,
+      "failed": 0,
+      "total": 95,
+      "assertions": 13258,
+      "case_seconds_sum": 0.511335
+    },
+    {
+      "name": "ASan/UBSan syntax",
+      "log": "validation-snapshot/.chibi/asan-syntax.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 27,
+      "failed": 0,
+      "total": 27,
+      "assertions": 320,
+      "case_seconds_sum": 0.008676
+    }
+  ],
+  "earlier_variant_proof": [
+    {
+      "name": "query interactions",
+      "log": "validation-snapshot/.chibi/final3-package-compiler-chibi-queries.log",
+      "variant": "11d01e62a20f3d6574c3712954948e4c19f477c25c80c6f00f980815218d475d",
+      "passed": 13,
+      "failed": 0,
+      "total": 13,
+      "assertions": 130448,
+      "case_seconds_sum": 317.808512
+    },
+    {
+      "name": "Markdown docs",
+      "log": "validation-snapshot/.chibi/final3-docs-markdown.log",
+      "variant": "11d01e62a20f3d6574c3712954948e4c19f477c25c80c6f00f980815218d475d",
+      "passed": 14,
+      "failed": 0,
+      "total": 14,
+      "assertions": 1778,
+      "case_seconds_sum": 1.702845
+    },
+    {
+      "name": "compiler fixture",
+      "log": "validation-snapshot/.chibi/final3-compiler-fixture.log",
+      "variant": "11d01e62a20f3d6574c3712954948e4c19f477c25c80c6f00f980815218d475d",
+      "passed": 9,
+      "failed": 0,
+      "total": 9,
+      "assertions": 414,
+      "case_seconds_sum": 2.092188
+    },
+    {
+      "name": "text formatting",
+      "log": "validation-snapshot/.chibi/final3-text-format.log",
+      "variant": "11d01e62a20f3d6574c3712954948e4c19f477c25c80c6f00f980815218d475d",
+      "passed": 2,
+      "failed": 0,
+      "total": 2,
+      "assertions": 16,
+      "case_seconds_sum": 0.000169
+    },
+    {
+      "name": "authored core190 tests across six routes",
+      "log": "validation-snapshot/.chibi/final-package-core.log",
+      "variant": "9f8b65397c583e85845a172a2e38b0f6f8e6e539e48bd3ae833edd78c5581102",
+      "passed": 6,
+      "failed": 0,
+      "total": 6,
+      "assertions": 14768,
+      "case_seconds_sum": 51.795008
+    }
+  ],
+  "sanitizer_boundary": {
+    "events": "validation-snapshot/.chibi/asan-events.json",
+    "build_log": "validation-snapshot/.chibi/asan-build.log",
+    "build_seconds": 185.499,
+    "configured_project_C_commands": 516,
+    "all_configured_project_C_commands_have_address_undefined_flags": true,
+    "compile_commands_sha256": "f33233e264e50c494463166783d7446d113971f6d1c8488f3a27cc0eeacf11f2",
+    "boundary": "Driver and linked project C instrumented; vendor archives and generated JIT code not claimed instrumented. Native151 selected cases passed; no full sanitizer compiler/platform/material suite claim."
+  },
+  "bootstrap": {
+    "canonical_log": "validation-snapshot/.chibi/final5-bootstrap.log",
+    "wall_seconds": 614.103,
+    "artifact_directory": "validation-snapshot/.chibi/local-artifact",
+    "metadata_sha256": "1d833bbc9998f02bafd8ea5f9a4c4ee64822230fe0ca225365c8e46d1153d970",
+    "version": 8,
+    "minimum": 6,
+    "revision": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62-dirty",
+    "source_hashes_match": 28,
+    "closure": {
+      "file": "compiler.chibip",
+      "bytes": 21842899,
+      "sha256": "5e06b70409a10a047172c804446ef68e2f687e6fd1f7ba34d284b5639eab9f6d"
+    },
+    "writer_recovery_events": "validation-snapshot/.chibi/final5-artifact-events.json",
+    "writer_seconds": 104.138,
+    "recovery_seconds": 123.584,
+    "provenance": "Experimental local dirty-source artifact only; no clean-source/shared artifact publication. Two files copied byte-for-byte only into frozen validation snapshot for assetON attempt.",
+    "wall_seconds_boundary": "614.103 seconds is outer Python wrapper time; canonical test-policy command reports613.906 seconds; case609.801834 seconds.",
+    "test_policy_command_seconds": 613.906
+  },
+  "unresolved_package_admission": {
+    "candidate": {
+      "name": "package tests; plain-array parallel admission requirement",
+      "log": "validation-snapshot/.chibi/final4-package-tests.log",
+      "variant": "5c5eb656994de4e6b40a49092d480d69ca6c985af0b5820f1f162da974625887",
+      "passed": 5,
+      "failed": 1,
+      "total": 6,
+      "assertions": 277,
+      "case_seconds_sum": 0.211732
+    },
+    "baseline_manifest": "source-checkout/.chibi/baseline-7c/.chibi/baseline-evidence/manifest.json",
+    "baseline_manifest_sha256": "1d0e1a74ce4391a9525e6a97dff52315cd0cd759c85f0b937cc4c29cc8011cc0",
+    "baseline_program": "@test Plain::(){ values:int[]=[1]; assert(length(values)==1); return; }",
+    "observed": "BYTECODE and SLJIT source_pure1/effects0/hosts_pure0/parallel0, execution passed; intendedparallel assertion fails. Three production file hashes match accepted7c.",
+    "owner": "Coordinator assigned792 source-only prerequisite to /root/stdlib_parallel_audit in .worktrees/array-argument-effects/chibi.",
+    "constraint": "language_values is representation, not argument-only read proof. No host-pure exemption or runtime-policy change. Keep plain arrays parallel expectation and actualview serial control."
+  },
+  "unresolved_asset_enabled_build": {
+    "receipt": "validation-snapshot/.chibi/final5-asset-failure.json",
+    "receipt_sha256": "d4fd5ca69f5247af984c1c7ac8fbe24276e8d980b035e9e9808345ec428eb678",
+    "exit_code": 2,
+    "total_build_seconds": 282.903,
+    "failure": "Facade compiler invocation and outer asset generation timed out at existing Release240000ms after request serialization; not old layout-work guard.",
+    "input_json_sha256": "72e1a78784ad49aaa0ba3784453a27a6159d0f8aa7f512a78adf327ae6bb8ba3",
+    "constraint": "No limit increase or unchanged retry; request/compiler/host/log preserved for separately owned compiler performance/prerequisite work. No baselineperformance or extraction-success inference.",
+    "resource_context": "Shared-host concurrent producer load was not isolated. Coordinator requires a producer slot before a comparable rerun; no causal feature-only inference."
+  },
+  "authoritative_bootstrap": {
+    "unchanged": true,
+    "closure_sha256": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a",
+    "metadata_sha256": "812635d0e2c0c5336071dda2394b881dfcd1ed8aef17999d92511a506f5d2485"
+  },
+  "pending_integration": [
+    "Common fixture and bounded EmitBody extraction prerequisites, then790 reachable preparation, then795 library slot, as coordinator ordered.",
+    "784/foundation hooks and final capability ABI/bootstrap/runtime seeds/SDK publication remain separately coordinated.",
+    "792 effects/native capability and deep view-read contract not overlaid; need fresh accepted combination proof.",
+    "Final exact clean then-current main source/artifact and default asset/installed SDK/Graph/CI validation before publication.",
+    "Preserve lexical document.identity through future native hooks, source graph indices/needed[] through reachability and repeated specialization; remap optional/fallible call facts only in admitted combined integration.",
+    "Generic Work phases80-82, places40-44, storage-40/-41 preserved. Optional78/math72-77/type-kind reservations remain distinct domains."
+  ],
+  "not_run": [
+    "passing final stock/default asset-enabled build",
+    "installed SDK or normal Graph acceptance for final combined candidate",
+    "full make test-native/test-materials/test-projects/test-language-all/test-tools and platform matrix",
+    "material/GPU or native machine-code execution of new scalar helper",
+    "new combined char/results/math/records/reachability proof; final ordered clean-source seed"
+  ],
+  "deferred": [
+    "captured or escaping callable values",
+    "stored/returned/container/field callable values and unknown host forwarding",
+    "multi-result callback signatures",
+    "legacy CompileBehaviors mixed source/package import route",
+    "general stage-one compiletime strings/type-function execution"
+  ],
+  "original_frozen_feature": {
+    "workspace": "pre-694-checkpoint",
+    "base": "286f69ddf8e118b099bdb50aa17767f24079e011",
+    "patch_sha256": "835361561400109d34dcd81f8bb9ef81b08923bb1d10ec3c71f8c4594a546cb5",
+    "receipt_sha256": "16817fca8087d9ff5b0365cb143d2a2b166086b49c717bf962be6ce8e4989b4d",
+    "state": "Unchanged and original proof attribution preserved; pre694ABI/256Mi failures remain historical."
+  },
+  "scratch_retained": [
+    "Original frozen worktree, snapshots and receipts",
+    "Current validation source/Release hosts/seed/local artifact and failed assetON request/hosts for coordinator performance diagnosis",
+    "Read-only accepted7c baseline probe/driver shared with792 owner",
+    "ASAN logs/commands/events retained; sanitizer build binaries cleaned after passing",
+    "Current3e strict host/native build for next source boundary"
+  ],
+  "local_producer_scheduling": {
+    "state": "All current task heavy producers finished; no further broad producer started.",
+    "coordination": "Request coordinator producer slot before another full self-build, complete asset generation or sanitizer compiler matrix. Focused checks/source review remain parallel.",
+    "attribution": "Other chats reported contemporaneous accepted-main asset timeouts on this shared14-core host. Current asset timeout is measured failure evidence; no isolated feature-performance or concurrency-causality claim.",
+    "policy": "Resource scheduling only; no global test-duration ceiling or timing admission policy."
+  },
+  "evidence_version": 1,
+  "local_receipt_sha256": "80cd04d5d348004f6702dbe919bc516a118ff6959b2d1b295768bc7e0ec3617c",
+  "source_file_blobs": {
+    "docs/code-language.md": "caab2fafdb59a7522fdbe8108a9ed4b077ff0b22",
+    "docs/language-friction.md": "fe69b5e85051be9fb6d6bbc29fcc18a8a77b269b",
+    "docs/package-compiler.md": "35e5ae87f04359f448b1eabcc8a4e0380c78b9be",
+    "docs/package-library-plan.md": "d7c3e498b90dc4061780118be15e61f9e24f22e1",
+    "src/authoring/source_catalog.c": "e2854d3c18024ed6ccd317fee6dcc288cf842aa7",
+    "src/authoring/source_catalog_snapshot.c": "fb384f870e9728ef81ec1e51c3887fbc5e68068b",
+    "src/authoring/source_package_exports.c": "9b2fed268633848785ee095cf515009f40fb11df",
+    "src/authoring/source_package_exports.h": "595c611e8b625fd0ab17020acdc4c96c81e5fac6",
+    "src/authoring/source_package_prepare.c": "25acbaa11bd3565acce190db679400f94c7f2c77",
+    "src/capabilities/catalog.h": "d83927d1794819c47a037833c052ed60ed1c294a",
+    "src/capabilities/catalog_snapshot.c": "89a60c6db87cac093f0db465eadf4476237b550a",
+    "src/capabilities/catalog_values.c": "f6ec3ea03d5f72b6f434d53bf3b63b02c8a9645a",
+    "src/language/callable_headers.c": "cb8a867cec947f3f01b2a9b9b54cd370f6ca33c4",
+    "src/language/callable_headers.h": "dfc455ad42085ac9b8a09d3f172ed5b36f752240",
+    "src/language/grammar.js": "7ec8dbaa9d6f6ef5caba3c07f2dcb287f3b6f388",
+    "src/language/semantic.c": "671ac79732c8f1cebd222e23c20a0541fbf51867",
+    "src/language/semantic.h": "89127885e95e8f7fdf70b8adc3bb1ba461008dea",
+    "src/language/semantic_calls.c": "eb7714fb79f3ccd0b197bd73cdc2558e3ddf5aae",
+    "src/language/semantic_comptime.c": "819fa8279d1b520ca260937f1e9be414c55240b1",
+    "src/language/semantic_context.c": "bef594374ce295e13c03f13717d6a802e8938fee",
+    "src/language/semantic_declaration.c": "aea3255d508b2e32ce5653593cb3151fe67f6208",
+    "src/language/semantic_effects.c": "f9a579dfc45d3d8c02d84cb692dc9a0256522c44",
+    "src/language/semantic_expression.c": "42f5448fcf45cda1d28a9f70ac49e43f145e3a2f",
+    "src/language/semantic_generic.c": "9369d58eae3a566fc23dfc763205b3e83766adaa",
+    "src/language/semantic_internal.h": "a19f527250ab7753f733297e19c7cfec1eec2fb5",
+    "src/language/semantic_package.c": "4658e51f88665ce4d093cb49e8b5dd15e9560ed4",
+    "src/language/semantic_statement.c": "eb257e47755fc01d0dd7fcff6176fed50cfb46ff",
+    "src/language/signature_reader.c": "79c42168a3408a8051ff3627566d52d950bdeff7",
+    "src/language/src/grammar.json": "a2b6222bfcf94b4cc05c63101b0d76884ba07310",
+    "src/language/src/node-types.json": "ff8cc818cb050a0a37d36d1f6a057a99fefa82ac",
+    "src/language/src/parser.c": "25c4591740e573f0b1b2e331aea20936618de5a7",
+    "test/language/asset_packaging_chibi.c": "dedbee774eb7deffeba3a2bb7781a1b1bea9f68b",
+    "test/language/generic.c": "7b5143b001f8050842b477e197e05e1af759fff1",
+    "test/language/package_compiler_chibi.c": "da77faefe3bd97dbebee77808c9a45f35a25dfdd",
+    "test/language/package_compiler_chibi.cmake": "ed9ab8300fbea6d124e0b0a9471794753b9a5b2a",
+    "test/language/package_compiler_chibi_source.h.in": "5f06d56913f595913a456c57713228c4c0744ae2",
+    "test/language/package_imports.c": "cc461b018deb96c7d2852e8425aa3a79bd21e1cd",
+    "test/language/package_tests.c": "4122f04b8931a131fa478a3c56d36636d24a0303",
+    "test/language/syntax.c": "910c446e86b3ded954d5f5d4f663b4bf7b4c1d47",
+    "test/scalar_facts/cases/Cases.chibi": "cae36b823821c156892f7bac0a84089f0a98ebe4",
+    "tools/compiler/asset_compiler/CompilerSources.txt": "f23a9d24e28019ce918e3011b2c607a29b6b35d6",
+    "tools/compiler/bootstrap.kdl": "f8a63629e2145733e9e146146c9988e3dcc2c9f7",
+    "tools/compiler/package_compiler/Behavior.chibi": "ecbdc3ae027f66eb0ea40c2fa1226ebdeef80601",
+    "tools/compiler/package_compiler/Body.chibi": "4a7c19d2c559fc204daeafcde806885a6fbf8a60",
+    "tools/compiler/package_compiler/Compile.chibi": "9105b677c7e658d87784795599818e44f93901cb",
+    "tools/compiler/package_compiler/Generics.chibi": "28820216f979e2d9118029747be091e09497b20b",
+    "tools/compiler/package_compiler/Queries.chibi": "f0e6ef2f48e600468e231ec59b273ffb7ef86f72",
+    "tools/compiler/package_compiler/References.chibi": "51f7a054b1580525154b08a411986f50955b3e32",
+    "tools/compiler/package_compiler/Scalar.chibi": "db7d4938bcf2e325d4ff894480e20d343a087d92",
+    "tools/compiler/package_compiler/Steps.chibi": "3f3ca519a8534887746162327f0a1dbf71806a05",
+    "tools/graph/engine/Targets.chibi": "145f6e9d84f6fd28d9dd6420d1e319db4ca95caf"
+  },
+  "saved_logs": [
+    {
+      "path": "self-bootstrap.log",
+      "raw_sha256": "9fd30315e93b7cfd72787b7eadae75036de91dbfa2d3ae1302156d0c74fdaf9a",
+      "saved_sha256": "9fd30315e93b7cfd72787b7eadae75036de91dbfa2d3ae1302156d0c74fdaf9a",
+      "path_normalization": false,
+      "trailing_whitespace_normalization": false
+    },
+    {
+      "path": "artifact-writer.log",
+      "raw_sha256": "ac1d9090b18568ab9b86c23261580be217f237c2723f2a65c1d6984257c9c9ca",
+      "saved_sha256": "968d90c6a073fdf7b1afef04167700079f7ea742a9adc38300c706f073f120a0",
+      "path_normalization": true,
+      "trailing_whitespace_normalization": false
+    },
+    {
+      "path": "artifact-recovery.log",
+      "raw_sha256": "1b872ed0c9a2d6394367ecccbd07f1fc7a3212358cf4625e331baf546bfb7e50",
+      "saved_sha256": "1b872ed0c9a2d6394367ecccbd07f1fc7a3212358cf4625e331baf546bfb7e50",
+      "path_normalization": false,
+      "trailing_whitespace_normalization": false
+    },
+    {
+      "path": "imports-bytecode-compiler.log",
+      "raw_sha256": "62465612aa564f0150596106ce1dd95a8e491ddd76f32d90e903565b738b454b",
+      "saved_sha256": "62465612aa564f0150596106ce1dd95a8e491ddd76f32d90e903565b738b454b",
+      "path_normalization": false,
+      "trailing_whitespace_normalization": false
+    },
+    {
+      "path": "imports-compiled-compiler.log",
+      "raw_sha256": "bd4e58adc00bb7e0fc7c195612a4c4b1d3895815380ac0d8535643c03490c9ea",
+      "saved_sha256": "bd4e58adc00bb7e0fc7c195612a4c4b1d3895815380ac0d8535643c03490c9ea",
+      "path_normalization": false,
+      "trailing_whitespace_normalization": false
+    },
+    {
+      "path": "asan-imports.log",
+      "raw_sha256": "afbf23a13975519f3e4134b906973ba6e185edadda97d59bea5cbd202aa321e6",
+      "saved_sha256": "afbf23a13975519f3e4134b906973ba6e185edadda97d59bea5cbd202aa321e6",
+      "path_normalization": false,
+      "trailing_whitespace_normalization": false
+    },
+    {
+      "path": "asan-query.log",
+      "raw_sha256": "bc5418266c1ff2e40a31b3432c7f9eb18a276564b4de42d033e2d893643dd2df",
+      "saved_sha256": "bc5418266c1ff2e40a31b3432c7f9eb18a276564b4de42d033e2d893643dd2df",
+      "path_normalization": false,
+      "trailing_whitespace_normalization": false
+    },
+    {
+      "path": "asan-syntax.log",
+      "raw_sha256": "259ca90685d4ee4777b04495c8bc71b386c6026578d21f1cbd67439043dd66bf",
+      "saved_sha256": "259ca90685d4ee4777b04495c8bc71b386c6026578d21f1cbd67439043dd66bf",
+      "path_normalization": false,
+      "trailing_whitespace_normalization": false
+    },
+    {
+      "path": "package-tests-admission.log",
+      "raw_sha256": "e0e8c173d9893fca08a76295ebe20db49f1e598f6567df7537403049103aea51",
+      "saved_sha256": "267510f2486ccf90ef258bbad9854095fca927897c2d6917e20cfdf314ca5df2",
+      "path_normalization": true,
+      "trailing_whitespace_normalization": true
+    },
+    {
+      "path": "baseline-admission.log",
+      "raw_sha256": "a018e82c3fd51c9a6777f079fe5934dfe2fc8db04703dbfead9d89211c1b52e7",
+      "saved_sha256": "a1759462bc26857c81f263ac374252c002df2fc8325fb7c1fadf00d616f7957e",
+      "path_normalization": true,
+      "trailing_whitespace_normalization": true
+    }
+  ]
+}

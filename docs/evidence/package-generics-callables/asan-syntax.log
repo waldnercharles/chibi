@@ -1,0 +1,84 @@
+Running: language_managed_pointer_syntax_preserves_xor (OK) (0.000367 secs)
+Running: language_declarations_actions_and_bindings (OK) (0.000141 secs)
+Running: language_handlers_name_payload_fields (OK) (0.000297 secs)
+syntax 1:34: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:20: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:47: Unexpected syntax
+Running: language_systems_use_flat_queries_and_implicit_step (OK) (0.000352 secs)
+syntax 1:17: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:58: Expected )
+syntax 1:20: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:68: Unexpected syntax
+Running: language_retained_binding_syntax (OK) (0.000041 secs)
+Running: language_unified_declarations_and_generic_map_shapes (OK) (0.000171 secs)
+Running: language_authored_asset_declarations (OK) (0.000050 secs)
+Running: language_obsolete_symbol_spellings_rejected (OK) (0.001028 secs)
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:1: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:58: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:36: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:18: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:39: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:26: Unexpected syntax
+Running: language_retained_bindings_reject_prefixes_and_value_types (OK) (0.000347 secs)
+syntax 1:33: Unexpected syntax
+syntax 1:44: Expected )
+syntax 1:32: Unexpected syntax
+syntax 1:19: Unexpected syntax
+syntax 1:26: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:32: Expected identifier
+syntax 1:40: Unexpected syntax
+syntax 1:33: Unexpected syntax
+syntax 1:31: Unexpected syntax
+syntax 1:36: Unexpected syntax
+Running: language_keywords_are_contextual_data_member_names (OK) (0.000195 secs)
+Running: language_not_callable_and_unary_spellings_disambiguate (OK) (0.000095 secs)
+Running: language_callable_types_entries_and_results (OK) (0.000156 secs)
+Running: language_callable_arguments_keep_declarations_and_expression_boundaries (OK) (0.000119 secs)
+Running: language_callable_arguments_preserve_view_and_range_syntax (OK) (0.000077 secs)
+Running: language_callable_arguments_format_without_changing_boundaries (OK) (0.003474 secs)
+Running: language_system_queries_and_control_flow (OK) (0.000137 secs)
+Running: language_nested_typed_records_and_explicit_labels (OK) (0.000194 secs)
+Running: language_definitions_unions_and_type_patterns (OK) (0.000108 secs)
+Running: language_query_header_and_cancel_deadline (OK) (0.000047 secs)
+Running: language_query_generators_preserve_authored_order (OK) (0.000054 secs)
+Running: language_query_expressions_share_system_terms (OK) (0.000051 secs)
+Running: language_obsolete_declaration_tokens_rejected (OK) (0.000158 secs)
+syntax 1:18: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:47: Unexpected syntax
+syntax 1:67: Unexpected syntax
+Running: language_ref_arguments_are_not_syntax (OK) (0.000336 secs)
+syntax 1:32: Unexpected syntax
+syntax 1:35: Unexpected syntax
+syntax 1:44: Unexpected syntax
+syntax 1:45: Unexpected syntax
+Running: language_expressions_precedence_and_continuation (OK) (0.000192 secs)
+Running: language_invalid_source_has_positioned_diagnostics (OK) (0.000320 secs)
+Running: language_incremental_snapshot_matches_fresh (OK) (0.000082 secs)
+Running: language_incremental_errors_match_fresh (OK) (0.000087 secs)
+===============================================================
+Summary: Passed: 27 Failed: 0 Total: 27 Suites: 0 Asserts: 320

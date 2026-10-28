@@ -1,0 +1,9 @@
+(FAILED: validation-snapshot/test/language/package_tests.c (572): tests[i + 2].parallel)
+Running: package_tests_find_the_project_tests_in_order (OK) (0.029394 secs)
+Running: package_tests_report_where_each_failure_stopped (OK) (0.056545 secs)
+Running: package_tests_keep_results_and_failures_in_discovery_order (OK) (0.060537 secs)
+Running: package_tests_run_generic_algorithms_with_callable_arguments
+Running: package_tests_infer_serial_effects_across_calls_and_imports (OK) (0.020423 secs)
+Running: package_tests_allocate_managed_pointers (OK) (0.044833 secs)
+===============================================================
+Summary: Passed: 5 Failed: 1 Total: 6 Suites: 0 Asserts: 277

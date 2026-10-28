@@ -1,0 +1,14 @@
+BASELINE Plain backend=BYTECODE source_pure=1 source_effects=0 hosts_pure=0 parallel=0 executed=1
+BASELINE Plain backend=SLJIT source_pure=1 source_effects=0 hosts_pure=0 parallel=0 executed=1
+(FAILED: source-checkout/.chibi/baseline-7c/test/language/package_tests.c (660): parallel[0] && parallel[1])
+Running: package_tests_plain_owned_array_parallel_baseline
+Running: package_tests_find_the_project_tests_in_order (OK) (0.027502 secs)
+Running: package_tests_report_where_each_failure_stopped (OK) (0.082266 secs)
+Running: package_tests_keep_results_and_failures_in_discovery_order (OK) (0.056820 secs)
+Running: package_tests_infer_serial_effects_across_calls_and_imports (OK) (0.027936 secs)
+Running: package_tests_allocate_managed_pointers (OK) (0.047406 secs)
+===============================================================
+Summary: Passed: 5 Failed: 1 Total: 6 Suites: 0 Asserts: 288
+real 0.99
+user 0.18
+sys 0.01

@@ -1,0 +1,160 @@
+Running: query_system_shares_snapshot_with_guard_and_body (OK) (0.009433 secs)
+Running: query_nested_native_collections_bind_and_capture (OK) (0.005439 secs)
+Running: query_empty_systems_require_attached_instances (OK) (0.000704 secs)
+Running: query_values_capture_and_restart_iteration (OK) (0.002180 secs)
+Running: query_pure_helpers_can_mutate_their_own_collections (OK) (0.001992 secs)
+Running: query_guards_skip_later_computations (OK) (0.001152 secs)
+Running: query_value_bindings_and_headers_are_readonly (OK) (0.001700 secs)
+Running: query_optional_row_fields_narrow_in_body (OK) (0.002775 secs)
+Running: query_snapshots_observe_reduction_components (OK) (0.000438 secs)
+Running: query_pointer_aliases_preserve_reduction_targets (OK) (0.001127 secs)
+Running: query_pure_helper_failure_preserves_error (OK) (0.007677 secs)
+Running: query_nested_descriptions_capture_at_construction (OK) (0.002619 secs)
+Running: query_captures_existing_pointers_and_projects_component_fields (OK) (0.002477 secs)
+Running: query_returned_snapshots_survive_and_removed_references_fail (OK) (0.011959 secs)
+Running: query_scheduled_rows_survive_payload_collection (OK) (0.005539 secs)
+Running: query_migration_preserves_live_bindings_and_step_reads (OK) (0.000813 secs)
+Running: query_migration_keeps_comments_literals_and_empty_roots (OK) (0.000226 secs)
+Running: query_migration_is_idempotent_and_refuses_unsafe_sources (OK) (0.000429 secs)
+Running: query_migration_expands_compact_providers_and_preserves_imports (OK) (0.000760 secs)
+Running: query_migration_dereferences_whole_values_without_capturing_shadows (OK) (0.000510 secs)
+Running: query_migration_visits_nested_provider_queries (OK) (0.000533 secs)
+Running: query_migration_keeps_outer_reads_in_local_initializers (OK) (0.000266 secs)
+Running: query_migration_stages_project_sources_atomically (OK) (0.002472 secs)
+Running: program_descriptor_field_observers_compare_all_bytes (OK) (0.000355 secs)
+Running: program_reduction_updates_preserve_clock_and_event_order (OK) (0.011961 secs)
+Running: program_reduction_query_rows_count_filtered_candidates (OK) (0.001444 secs)
+Running: program_query_sources_resolve_current_targets_and_nearest_ancestors (OK) (0.005524 secs)
+Running: program_query_required_path_keeps_one_instance_per_root (OK) (0.001680 secs)
+Running: program_query_joins_filter_targets_and_refresh_across_suspension (OK) (0.004870 secs)
+Running: program_query_optional_joins_preserve_missing_target_exclusions (OK) (0.002038 secs)
+Running: program_relationship_loops_stream_targets_explicitly (OK) (0.003128 secs)
+Running: program_query_chained_variables_filter_values_and_keep_event_tuples (OK) (0.008790 secs)
+Running: program_query_rows_keep_locals_and_cancel_removed_tuple (OK) (0.002147 secs)
+Running: program_query_changed_preserves_busy_published_writes (OK) (0.002754 secs)
+Running: program_query_admission_is_frozen_before_row_writes (OK) (0.001147 secs)
+Running: program_query_value_filters_preserve_short_circuit_failure_order (OK) (0.002620 secs)
+Running: program_query_predicates_reuse_bounded_scratch_and_fresh_values (OK) (0.005290 secs)
+Running: program_query_predicates_call_bound_natives (OK) (0.001370 secs)
+Running: query_binding_direct_matches_host_values_and_failures (OK) (0.001779 secs)
+Running: query_binding_rejects_invalid_immediates_and_types (OK) (0.000092 secs)
+Running: query_binding_unused_load_preserves_branches_and_budget (OK) (0.000129 secs)
+Running: query_binding_preserves_live_integer_slots (OK) (0.000104 secs)
+Running: query_binding_prepared_roundtrip_preserves_errors_and_values (OK) (0.000225 secs)
+Running: query_binding_predicate_requires_bound_variables_transitively (OK) (0.000104 secs)
+Running: query_change_versions_saturate (OK) (0.000024 secs)
+Running: query_predicates_roundtrip_with_services_effects_and_preflight (OK) (0.000426 secs)
+Running: query_binding_publication_and_prepared_reader_reject_forged_bound_masks (OK) (0.000298 secs)
+Running: query_binding_authored_generators_share_evaluated_rows (OK) (0.000764 secs)
+Running: query_binding_order_is_checked_before_publication generic 1:125: Loop control requires a containing loop
+generic 1:125: Loop control requires a containing loop
+generic 1:52: Functions with callable parameters must finish synchronously
+generic 1:29: Callable parameters cannot be optional, stored in containers or used through pointers
+generic 1:29: Callable parameters cannot be optional, stored in containers or used through pointers
+generic 1:29: Callable parameters cannot be optional, stored in containers or used through pointers
+generic 1:37: Callable parameters currently support at most one result
+generic 1:32: Callable signatures require typed parameters without defaults or source bindings
+generic 1:62: Callable parameters take no default value or source binding
+generic 1:131: Missing argument 'a'
+generic 1:146: Callable arguments require ordinary functions
+generic 1:140: Unknown callable 'Apply'
+generic 1:146: Unknown value 'Value'
+generic 1:143: Pass callable argument 'f' exactly once
+generic 1:143: Unknown callable 'Apply'
+generic 1:143: Pass callable argument 'f' exactly once
+generic 1:143: Unknown callable 'Apply'
+generic 1:152: Unknown argument 'f'
+generic 1:155: Unknown value 'Id'
+generic 1:159: Unknown argument 'f'
+generic 1:162: Unknown value 'Id'
+generic 1:161: Callable arguments must finish synchronously
+generic 1:152: Unknown callable 'Apply'
+generic 1:161: Unknown value 'Wait'
+generic 1:150: Incompatible types: expected int, got task
+generic 1:52: Functions with callable parameters must finish synchronously
+generic 1:172: Nested functions require enclosing locals to be passed as parameters
+generic 1:84: Callable arguments can only be called or passed to another callable parameter
+generic 1:188: Callable result 1 has a different type from its parameter signature
+generic 1:179: Unknown callable 'Apply'
+generic 1:188: Unknown value 'Wrong'
+generic 1:44: Compile-time evaluation: Assertion failed: n is negative
+generic 1:44: Compile-time evaluation: Assertion failed: n >= 0
+generic 1:44: Compile-time evaluation: Assertion failed: negative
+generic 1:44: Compile-time evaluation: Assertion failed: n >= 0
+generic 1:92: Conflicting polymorphic argument 'T'
+generic 1:79: Unknown callable 'Same'
+generic 1:74: Compile-time evaluation: only constant values and types are available
+generic 1:54: Compile-time evaluation: bounded execution budget exceeded
+generic 1:78: Type specialization requires each constant parameter exactly once within the specialization budget
+generic 1:78: Compile-time evaluation: requires a terminating authored procedure and constant arguments
+generic 1:78: Type expression must construct a compile-time type
+generic 1:96: Struct literal needs an explicit record or reflected type
+generic 1:97: Unknown/ambiguous literal member 'value'
+generic 1:55: Compile-time evaluation: call depth exceeded
+generic 1:86: Unknown polymorphic argument
+generic 1:77: Unknown callable 'Identity'
+generic 1:86: Unknown argument 'missing'
+generic 1:54: Compile-time evaluation: a conversion argument may only be named wrap
+generic 1:91: Type expression must construct a compile-time type
+generic 1:54: Compile-time evaluation: a conversion argument may only be named wrap
+generic 1:91: Type expression must construct a compile-time type
+generic 1:51: Compile-time evaluation: wrap converts between integer types
+generic 1:90: Type expression must construct a compile-time type
+generic 1:43: Record fields require concrete nonoptional value layouts; collections and references are not supported
+generic 1:18: Constructed record requires supported fixed-layout fields
+generic 1:67: Compile-time evaluation: requires a terminating authored procedure and constant arguments
+generic 1:67: Type expression must construct a compile-time type
+generic 1:85: Struct literal needs an explicit record or reflected type
+generic 1:86: Unknown/ambiguous literal member 'items'
+(OK) (0.000267 secs)
+Running: query_predicate_purity_is_rechecked_after_native_linking (OK) (0.000172 secs)
+Running: query_predicate_purity_follows_each_outlined_callee (OK) (0.000179 secs)
+Running: query_predicate_context_cannot_be_recovered_through_bank_aliases (OK) (0.000068 secs)
+Running: maps_intrinsics_reject_incompatible_result_banks (OK) (0.000040 secs)
+Running: maps_preserve_value_copies_and_snapshot_insertion_order (OK) (0.003554 secs)
+Running: maps_index_finds_every_key_in_insertion_order (OK) (0.050174 secs)
+Running: maps_local_updates_in_place (OK) (0.163533 secs)
+Running: maps_infer_literals_and_compose_with_nested_maps_and_arrays (OK) (0.004467 secs)
+Running: maps_absent_keys_read_zero_values (OK) (0.004446 secs)
+Running: maps_absent_record_keys_read_defaults_or_report_missing_keys (OK) (0.002815 secs)
+Running: maps_and_optionals_coalesce_nil_to_fallbacks (OK) (0.005546 secs)
+Running: maps_reject_missing_context_and_incompatible_key_value_types (OK) (0.000863 secs)
+Running: maps_own_strings_compare_associations_and_reject_nonfinite_keys (OK) (0.000009 secs)
+Running: maps_wire_preserves_nested_types_and_rejects_truncated_payloads (OK) (0.000029 secs)
+Running: maps_wire_charges_the_index_to_the_storage_limit (OK) (0.000034 secs)
+Running: maps_source_literal_round_trips_typed_keys_and_values (OK) (0.000308 secs)
+Running: maps_retain_nested_task_results_until_the_last_handle_is_removed (OK) (0.002619 secs)
+Running: maps_inspection_owns_nested_snapshots_after_mutation_and_program_release (OK) (0.002182 secs)
+Running: iteration_array_items_and_indices_keep_snapshot (OK) (0.001270 secs)
+Running: iteration_unicode_strings_keep_scalar_values_and_snapshot (OK) (0.000931 secs)
+Running: iteration_reference_items_write_source_and_preserve_copied_alias (OK) (0.001776 secs)
+Running: iteration_reference_lifetimes_reject_invalidation_and_suspension (OK) (0.000613 secs)
+Running: iteration_unicode_intrinsics_reject_invalid_scalars (OK) (0.000004 secs)
+Running: iteration_cursor_provenance_rejects_forged_inputs (OK) (0.000026 secs)
+Running: iteration_cursor_survives_suspension (OK) (0.000629 secs)
+===============================================================
+Running: language_generic_suite
+---------------------------------------------------------------
+Running: generic_inline_functions_preserve_inferred_return_results_while_tables_grow (OK) (0.029491 secs)
+Running: generic_inline_functions_keep_caller_guards_and_own_loop_context (OK) (0.004872 secs)
+Running: generic_callable_arguments_cannot_be_queued_in_nested_tasks (OK) (0.000431 secs)
+Running: generic_callable_signatures_reject_stored_forms_and_hidden_defaults (OK) (0.001400 secs)
+Running: generic_callable_arguments_require_one_binding_and_synchronous_calls (OK) (0.001097 secs)
+Running: generic_callable_arguments_specialize_and_execute (OK) (0.003247 secs)
+Running: generic_callable_arguments_reject_captures_and_escape (OK) (0.001052 secs)
+Running: generic_argument_types_specialize_once_and_execute (OK) (0.001459 secs)
+Running: generic_constant_parameters_and_authored_compile_time_calls (OK) (0.002896 secs)
+Running: compile_time_calls_follow_runtime_semantics (OK) (0.003453 secs)
+Running: generic_explicit_casts_and_typed_locals_infer_the_same_type (OK) (0.000505 secs)
+Running: generic_array_binders_preserve_nested_collection_descriptors (OK) (0.000318 secs)
+Running: generic_reference_arguments_copy_unless_the_parameter_is_a_pointer (OK) (0.002611 secs)
+Running: generic_constructed_units_compute_return_types_without_stored_dimensions (OK) (0.005177 secs)
+Running: generic_compile_time_assert_fails_compilation (OK) (0.001752 secs)
+Running: generic_constraints_and_compile_time_execution_are_bounded (OK) (0.066214 secs)
+Running: generic_empty_record_bindings_specialize_once (OK) (0.000187 secs)
+Running: compile_time_calls_preserve_numeric_names_and_owned_strings (OK) (0.005584 secs)
+Running: generic_constructed_types_preserve_array_optional_and_reference_modifiers (OK) (0.008839 secs)
+Running: compile_time_string_alias_survives_analysis_destruction (OK) (0.000928 secs)
+Running: legacy_bounded_generic_aliases_migrate_but_unbound_require_binders (OK) (0.000985 secs)
+===============================================================
+Summary: Passed: 95 Failed: 0 Total: 95 Suites: 1 Asserts: 13258

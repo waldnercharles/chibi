@@ -1,0 +1,90 @@
+{
+  "base": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+  "head": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+  "detached": true,
+  "source": "package facts\n@test Plain :: () { values: int[] = [1]; assert(length(values) == 1); return; }\n",
+  "configure": [
+    "cmake",
+    "-S",
+    "test/language",
+    "-B",
+    ".chibi/build-language",
+    "-G",
+    "Ninja",
+    "-DCMAKE_BUILD_TYPE=Debug",
+    "-DCMAKE_C_FLAGS_DEBUG=-g -O1",
+    "-DCHIBI_TEST_ASSET_COMPILER_HOST=OFF",
+    "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+    "-DCHIBI_ENABLE_SANITIZERS=OFF"
+  ],
+  "build": [
+    "cmake",
+    "--build",
+    ".chibi/build-language",
+    "--target",
+    "test_language",
+    "-j",
+    "4"
+  ],
+  "fixture_delta": {
+    "test/language/CMakeLists.txt": "Default-ON snapshot-only asset-host test toggle, configured OFF; test_language-only -Wno-error=missing-field-initializers and -Wno-error=string-concatenation.",
+    "test/language/package_tests.c": "One temporary dispatcher case, public analysis/host proof diagnostics, both backend execution, unchanged intended parallel admission assertion."
+  },
+  "changed_baseline_files": {
+    "test/language/CMakeLists.txt": "b360e965f1cc915fe0c4da77ba5e4214b13b10d9a1fdc3b56c3ab5d49ed534ce",
+    "test/language/package_tests.c": "5f7d84796ec4f977cac20ab3dadbdf369553332f0f8a2fdd9610e242f27de3c8"
+  },
+  "production": {
+    "src/execution/module_effects.c": {
+      "working_sha256": "74d9b350e04de0b8b882afd1e8b3e030217f98433e259b946ad9509d32be2b12",
+      "accepted_base_sha256": "74d9b350e04de0b8b882afd1e8b3e030217f98433e259b946ad9509d32be2b12"
+    },
+    "src/runtime/arrays.c": {
+      "working_sha256": "76c2605cec92fe42de1291beca6fc04cb504319405dd92032f26d24a0433b8b6",
+      "accepted_base_sha256": "76c2605cec92fe42de1291beca6fc04cb504319405dd92032f26d24a0433b8b6"
+    },
+    "src/language/semantic_calls.c": {
+      "working_sha256": "3519209376431bf0292fcf7f6705ee506e1b6d9a2640021907a58421af366a76",
+      "accepted_base_sha256": "3519209376431bf0292fcf7f6705ee506e1b6d9a2640021907a58421af366a76"
+    }
+  },
+  "fixture_patch_sha256": "9925c510c90499649ef638aa84fa3a0ee834651d38e030b2ac4f2b36b920f967",
+  "result": {
+    "expected_failure_confirmed": true,
+    "dispatcher_exit_code": 1,
+    "existing_cases_passed": 5,
+    "probe_cases_failed": 1,
+    "assertions": 288,
+    "backends": [
+      {
+        "backend": "BYTECODE",
+        "source_pure": true,
+        "source_effects": 0,
+        "hosts_pure": false,
+        "parallel": false,
+        "executed": true
+      },
+      {
+        "backend": "SLJIT",
+        "source_pure": true,
+        "source_effects": 0,
+        "hosts_pure": false,
+        "parallel": false,
+        "executed": true
+      }
+    ]
+  },
+  "timing_seconds": {
+    "configure": 6.83,
+    "build_first_warning_failure": 50.38,
+    "build_resumed_success": 23.68,
+    "dispatcher": 0.99
+  },
+  "logs": {
+    "package-tests.log": "a018e82c3fd51c9a6777f079fe5934dfe2fc8db04703dbfead9d89211c1b52e7",
+    "configure.log": "9b9e80b376e5ae9d036e5978af2b06b01882a3f90b30c7d043f25324111f7f1d",
+    "build-2.log": "f554e2cf778186280c0f3ae439a763f59972a76d3fcdd17b079e13ff7c986a63",
+    "build.log": "513cda25ad2bfd79052608f1e45f61f323c119900bd3168754741bbc8fea5e47"
+  },
+  "binary_sha256": "f546f55074cb5cd3ea6c45779516ca8b4dde96a2cae21519184e6235bea9d5fe"
+}

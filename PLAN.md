@@ -753,6 +753,15 @@ separate gate; the native runtime itself is still an explicit prebuilt input.
 
 ### M6. Replace the internal build graph
 
+SDK version ownership, 2026-10-28: `sdk/VERSION` is the shared version authority.
+The graph identity no longer parses a CMake assignment; retained CMake SDK and
+consumer-version generation read the same file and track configuration changes.
+The value remains `0.1.0`. This does not replace SDK construction or installation.
+Local macOS validation passes the shared-authority/reconfiguration and existing
+resource/corpus identity cases, 3 cases and 20 assertions in 44.42 seconds outer
+wall time. CMake identity and package-version output are byte-identical before
+and after extraction. Independent review, clang-format 22 and diff checks pass.
+
 Linux native route: `GRAPH_BUILD=1` now selects the existing graph for the full
 products and tooling/language drivers. Linux link inventories follow the pinned
 archive; full compile/link, generated-header, corpus/resource and discovery

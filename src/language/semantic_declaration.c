@@ -647,8 +647,7 @@ static void query_parameters(analyzer *a, TSNode parameters_node, bool joined)
         }
         if (type.container != PIN_CONTAINER_SINGLE ||
             script_analyzer_token_present(a, type_node, "[") ||
-            script_analyzer_token_present(a, type_node, "[]") ||
-            script_analyzer_token_present(a, type_node, "ref")) {
+            script_analyzer_token_present(a, type_node, "[]")) {
             script_analyzer_diagnostic(a, parameter, "Query binding requires a single component type");
         }
         int symbol = script_analyzer_symbol_new(

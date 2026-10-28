@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Parses source with the frozen grammar of project `version` (23 to 32),
+/* Parses source with the frozen grammar of project `version` (23 to 36),
  * independently of the current language. Invalid source gets one
  * diagnostic. */
 script_syntax *chibi_migrate_parse(const char *, int version);

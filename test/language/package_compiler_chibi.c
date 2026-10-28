@@ -1158,12 +1158,12 @@ static const sample samples[] = {
                 "LaterShadow :: () -> int { p := Direct(7); q := p; "
                 "if true { p: Point = {x: 99, y: 1}; return q.point.x + "
                 "p.x; } return 0; }\n"
-                "Bump :: (p: ref Point) { p.x += 1; }\n"
-                "ByRef :: () -> int { p := Direct(7); Bump(ref p); return "
+                "Bump :: (p: ^Point) { p.x += 1; }\n"
+                "ByRef :: () -> int { p := Direct(7); Bump(&p); return "
                 "p.point.x; }\n"
                 "Counter :: () -> (value: int) { return 7; }\n"
-                "Increment :: (n: ref int) { n += 1; }\n"
-                "Boxed :: () -> int { n := Counter(); Increment(ref n); "
+                "Increment :: (n: ^int) { n^ += 1; }\n"
+                "Boxed :: () -> int { n := Counter(); Increment(&n); "
                 "return n.value; }\n"
                 "Use :: (n: int) -> int {\n"
                 "    p := Direct(n);\n"
@@ -1507,58 +1507,57 @@ static const sample samples[] = {
     { .name = "mixed compound reference assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
-                "Grow :: (a: ref int, b: u8) { a += b; }\n",
+                "Grow :: (a: ^int, b: u8) { a^ += b; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 2,
-      .column = 31 },
+      .column = 28 },
     { .name = "mixed compound reference field assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
                 "Note :: struct { count: int; }\n"
-                "Grow :: (n: ref Note, b: u8) { n.count += b; }\n",
+                "Grow :: (n: ^Note, b: u8) { n.count += b; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 32 },
+      .column = 29 },
     { .name = "mixed compound boxed local assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
-                "Touch :: (v: ref int) { v += 0; }\n"
-                "Grow :: (b: u8) -> int { a: int = 1; Touch(ref a); a += b; "
+                "Touch :: (v: ^int) { v^ += 0; }\n"
+                "Grow :: (b: u8) -> int { a: int = 1; Touch(&a); a += b; "
                 "return a; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 52 },
+      .column = 49 },
     { .name = "mixed compound boxed parameter assignment",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
-                "Touch :: (v: ref int) { v += 0; }\n"
-                "Grow :: (a: int, b: u8) -> int { Touch(ref a); a += b; "
-                "return "
-                "a; }\n",
+                "Touch :: (v: ^int) { v^ += 0; }\n"
+                "Grow :: (a: int, b: u8) -> int { Touch(&a); a += b; "
+                "return a; }\n",
       .message = "Mismatched integer types int and u8; convert one operand",
       .line = 3,
-      .column = 48 },
+      .column = 45 },
     { .name = "compound reference and boxed operands preserve effects",
       .debug_metadata = true,
       .group = COLLECTION_SAMPLES,
-      .source =
-          "package facts\n"
-          "Note :: struct { count: int; }\n"
-          "Touch :: (v: ref int) { v += 0; }\n"
-          "Bump :: (v: ref int, b: u8) { v += int(b); }\n"
-          "BumpField :: (n: ref Note, b: u8) { n.count += int(b); }\n"
-          "Source :: (calls: ref int) -> int { calls += 1; return 2; }\n"
-          "Ref :: () -> int { n: int = 1; Bump(ref n, u8(2)); return n; }\n"
-          "RefField :: () -> int { n: Note = {count: 1}; BumpField(ref n, "
-          "u8(2)); return n.count; }\n"
-          "Box :: () -> int { n: int = 1; Touch(ref n); n += int(u8(2)); "
-          "return n; }\n"
-          "BoxParam :: (n: int) -> int { Touch(ref n); n += 2; return n; }\n"
-          "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
-          "n.count += Source(ref calls); return n.count * 10 + calls; }\n"
-          "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
-          "return n; }\n"
-          "Clamp :: (v: int) -> u8 { return u8(v); }\n",
+      .source = "package facts\n"
+                "Note :: struct { count: int; }\n"
+                "Touch :: (v: ^int) { v^ += 0; }\n"
+                "Bump :: (v: ^int, b: u8) { v^ += int(b); }\n"
+                "BumpField :: (n: ^Note, b: u8) { n.count += int(b); }\n"
+                "Source :: (calls: ^int) -> int { calls^ += 1; return 2; }\n"
+                "Ref :: () -> int { n: int = 1; Bump(&n, u8(2)); return n; "
+                "}\n"
+                "RefField :: () -> int { n: Note = {count: 1}; BumpField(&n, "
+                "u8(2)); return n.count; }\n"
+                "Box :: () -> int { n: int = 1; Touch(&n); n += int(u8(2)); "
+                "return n; }\n"
+                "BoxParam :: (n: int) -> int { Touch(&n); n += 2; return n; }\n"
+                "Once :: () -> int { n: Note = {count: 1}; calls: int = 0; "
+                "n.count += Source(&calls); return n.count * 10 + calls; }\n"
+                "Bits :: (v: int) -> int { n: int = 6; n &= v; n |= 8; n ^= 1; "
+                "return n; }\n"
+                "Clamp :: (v: int) -> u8 { return u8(v); }\n",
       .calls = { { .function = "Ref", .arguments = "[]", .expected = "[3]" },
                  { .function = "RefField", .arguments = "[]", .expected = "[3]" },
                  { .function = "Box", .arguments = "[]", .expected = "[3]" },
@@ -1898,32 +1897,33 @@ static const sample samples[] = {
                    .expected = "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
     { .name = "references",
       .group = COLLECTION_SAMPLES,
-      .source =
-          "package facts\n"
-          "Point :: struct { x: int; y: int; }\n"
-          "Bump :: (v: ref int) { v += 1; }\n"
-          "Set :: (v: ref int, to: int) { v = to; }\n"
-          "Twice :: (v: ref int) { Bump(ref v); Bump(ref v); }\n"
-          "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
-          "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
-          "Grow :: (xs: ref int[]) { item: int = 7; xs = append(xs, item); }\n"
-          "Inc :: (k: int) -> int { Bump(ref k); return k; }\n"
-          "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(ref p.x); }\n"
-          "Count :: () -> int { c: int = 2; c += 3; Bump(ref c); c = c * 2; "
-          "return c; }\n"
-          "Run :: () -> int {\n"
-          "    n: int = 1;\n    Bump(ref n);\n    Twice(ref n);\n    Set(ref "
-          "n, n * "
-          "10);\n"
-          "    name: string = \"a\";\n    Rename(ref name);\n"
-          "    p: Point = {x: 1, y: 2};\n    Swap(ref p);\n    Bump(ref p.x);\n"
-          "    xs: int[] = [1];\n    Grow(ref xs);\n"
-          "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
-          "+ Inc(5) * 1000000;\n"
-          "    if (name == \"a!\") { total += 100000; }\n"
-          "    return total;\n}\n"
-          "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(ref p); "
-          "return p.x * 100 + p.y; }",
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Bump :: (v: ^int) { v^ += 1; }\n"
+                "Set :: (v: ^int, to: int) { v^ = to; }\n"
+                "Twice :: (v: ^int) { Bump(v); Bump(v); }\n"
+                "Rename :: (s: ^string) { s^ = format_text(\"{}!\", s^); }\n"
+                "Swap :: (p: ^Point) { p^ = {x: p.y, y: p.x}; }\n"
+                "Grow :: (xs: ^(int[])) { item: int = 7; xs^ = append(xs^, "
+                "item); "
+                "}\n"
+                "Inc :: (k: int) -> int { Bump(&k); return k; }\n"
+                "Nudge :: (p: ^Point) { p.x = 9; p.y += 5; Bump(&p.x); }\n"
+                "Count :: () -> int { c: int = 2; c += 3; Bump(&c); c = c * 2; "
+                "return c; }\n"
+                "Run :: () -> int {\n"
+                "    n: int = 1;\n    Bump(&n);\n    Twice(&n);\n    Set(&n, n "
+                "* "
+                "10);\n"
+                "    name: string = \"a\";\n    Rename(&name);\n"
+                "    p: Point = {x: 1, y: 2};\n    Swap(&p);\n    Bump(&p.x);\n"
+                "    xs: int[] = [1];\n    Grow(&xs);\n"
+                "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
+                "+ Inc(5) * 1000000;\n"
+                "    if (name == \"a!\") { total += 100000; }\n"
+                "    return total;\n}\n"
+                "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(&p); "
+                "return p.x * 100 + p.y; }",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[6121340]" },
                  { .function = "Inc", .arguments = "[1]", .expected = "[2]" },
                  { .function = "Count", .arguments = "[]", .expected = "[12]" },
@@ -1946,7 +1946,7 @@ static const sample samples[] = {
           "Point :: struct { x: int; y: int; }\n"
           "Holder :: struct { value: int; alias: ^int; }\n"
           "Link :: struct { value: int; next: ^Link?; }\n"
-          "Bump :: (value: ref int) { value += 1; }\n"
+          "Bump :: (value: ^int) { value^ += 1; }\n"
           "Make :: () -> ^Point { value: Point = {x: 3, y: 4}; return &value; "
           "}\n"
           "Scalar :: () -> ^int { value: int = 2; return &value; }\n"
@@ -1954,7 +1954,7 @@ static const sample samples[] = {
           "Parameter :: () -> int { value: int = 3; p := EscapeCopy(value); "
           "return value * 10 + p^; }\n"
           "Alias :: () -> int { value: int = 1; p: ^int = &value; q := p; "
-          "q^ = 7; Bump(ref p^); return value * 100 + p^ * 10 + q^; }\n"
+          "q^ = 7; Bump(p); return value * 100 + p^ * 10 + q^; }\n"
           "Escaped :: () -> int { p := Make(); p.x = 9; return p^.x * 10 + "
           "p.y; }\n"
           "Field :: () -> int { value: Point = {x: 2, y: 4}; p := &value; "
@@ -2101,81 +2101,81 @@ static const sample samples[] = {
     { .name = "imported references",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"
-                "Forward :: (value: ref int) { lib.Bump(ref value); }\n"
-                "Run :: () -> int { value: int = 4; Forward(ref value); "
-                "lib.Bump(ref value); return value; }",
-      .library = "package lib\npub Bump :: (value: ref int) { value += 3; }",
+                "Forward :: (value: ^int) { lib.Bump(value); }\n"
+                "Run :: () -> int { value: int = 4; Forward(&value); "
+                "lib.Bump(&value); return value; }",
+      .library = "package lib\npub Bump :: (value: ^int) { value^ += 3; }",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[10]" } } },
-    { .name = "reference marker missing",
+    /* A pointer to a pointer passed on dereferenced lends the target it
+     * holds, and an address of a parenthesized dereference escapes. */
+    { .name = "scoped pointer relays",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () "
+      .source = "package facts\n"
+                "Bump :: (v: ^int) { v^ += 1; }\n"
+                "Relay :: (p: ^^int) { Bump(p^); }\n"
+                "Keep :: (p: ^int) -> ^int { return &(p^); }\n"
+                "Relayed :: () -> int { x: int = 1; q := &x; Relay(&q); "
+                "return x; }\n"
+                "Kept :: () -> int { x: int = 1; k := Keep(&x); k^ = 5; "
+                "return x; }\n"
+                "Through :: (p: ^^int) -> int { p^^ = 5; return (p^)^ + 1; }\n"
+                "Thrown :: () -> int { x: int = 1; q := &x; return Through(&q) "
+                "* 10 + x; }\n"
+                "Copy :: (p: ^^int) -> int { q := p^; q^ += 1; return q^; }\n"
+                "Copied :: () -> int { x: int = 1; q := &x; return Copy(&q) * "
+                "10 + x; }\n"
+                "Wrapped :: (p: ^int) { Bump((p)); }\n"
+                "Unwrapped :: (p: ^^int) { Bump((p^)); }\n"
+                "Parenthesized :: () -> int { x: int = 1; Wrapped(&x); q := "
+                "&x; "
+                "Unwrapped(&q); return x; }\n",
+      .calls = { { .function = "Relayed", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Kept", .arguments = "[]", .expected = "[5]" },
+                 { .function = "Thrown", .arguments = "[]", .expected = "[65]" },
+                 { .function = "Copied", .arguments = "[]", .expected = "[22]" },
+                 { .function = "Parenthesized", .arguments = "[]", .expected = "[3]" } } },
+    /* A scoped `n^` keeps its own source span. */
+    { .name = "scoped pointer spans",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Read :: (n: ^int) -> int { return n^; }\n"
+                "Reading :: () -> int { x: int = 4; return Read(&x); }\n",
+      .calls = { { .function = "Reading", .arguments = "[]", .expected = "[4]" } } },
+    { .name = "pointer argument missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nBump :: (v: ^int) { v^ += 1; }\nRun :: () "
                 "{\n    n: int = 1;\n    Bump(n);\n}",
-      .message = "Reference parameter requires an explicit ref argument",
+      .message = "Pointer parameter requires &value or a pointer",
       .line = 5,
       .column = 10 },
-    { .name = "reference forwarded marker missing",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nForward :: "
-                "(v: ref int) {\n    Bump(v);\n}",
-      .message = "Reference parameter requires an explicit ref argument",
-      .line = 4,
-      .column = 10 },
-    { .name = "reference marker on value parameter",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\nRead :: (v: int) -> int { return v; }\nRun :: "
-                "() -> int {\n    n: int = 1;\n    return Read(ref n);\n}",
-      .message = "ref argument requires a reference parameter",
-      .line = 5,
-      .column = 17 },
-    { .name = "reference marker on conversion",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\nRun :: () -> i64 {\n    n: int = 1;\n    "
-                "return i64(ref n);\n}",
-      .message = "ref argument requires a reference parameter",
-      .line = 4,
-      .column = 16 },
-    { .name = "reference marker on native",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\nRun :: () -> string {\n    n: int = 1;\n    "
-                "return format_text(ref n);\n}",
-      .message = "ref argument requires a reference parameter",
-      .line = 4,
-      .column = 24 },
-    { .name = "reference marker on union constructor",
-      .group = COLLECTION_SAMPLES,
-      .source = "package facts\nU :: union { A(value: int) }\nRun :: () -> U "
-                "{\n    n: int = 1;\n    return U.A(ref n);\n}",
-      .message = "ref argument requires a reference parameter",
-      .line = 5,
-      .column = 16 },
-    { .name = "reference imported marker missing",
+    { .name = "pointer imported argument missing",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\nRun :: () {\n    "
                 "n: int = 1;\n    lib.Bump(n);\n}",
-      .library = "package lib\npub Bump :: (v: ref int) { v += 1; }",
-      .message = "Reference parameter requires an explicit ref argument",
+      .library = "package lib\npub Bump :: (v: ^int) { v^ += 1; }",
+      .message = "Pointer parameter requires &value or a pointer",
       .line = 5,
       .column = 14 },
-    { .name = "reference literal",
+    { .name = "pointer literal",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "Bump(ref 3); }",
-      .message = "Reference argument requires a writable value",
+      .source = "package facts\nBump :: (v: ^int) { v^ += 1; }\nRun :: () { "
+                "Bump(&3); }",
+      .message = "Pointer argument requires a writable location",
       .line = 3,
-      .column = 22 },
-    { .name = "reference default",
+      .column = 19 },
+    { .name = "pointer default",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\nBump :: (v: ref int = 1) { v += 1; }",
-      .message = "a reference parameter takes no default",
+      .source = "package facts\nBump :: (v: ^int = 1) { v^ += 1; }",
+      .message = "a scoped pointer parameter takes no default",
       .line = 2,
       .column = 10 },
-    { .name = "reference type",
+    { .name = "pointer type",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "n: i64 = 1; Bump(ref n); }",
-      .message = "reference argument differs from the parameter's type",
+      .source = "package facts\nBump :: (v: ^int) { v^ += 1; }\nRun :: () { "
+                "n: i64 = 1; Bump(&n); }",
+      .message = "pointer argument differs from the parameter's type",
       .line = 3,
-      .column = 34 },
+      .column = 31 },
     { .name = "unions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -2802,10 +2802,9 @@ static const sample samples[] = {
       .line = 2,
       .column = 39 },
     { .name = "reference for",
-      .source = "package facts\nOne :: (xs: int[]) -> int { for x: ref in xs { "
-                "} "
+      .source = "package facts\nOne :: (xs: int[]) -> int { for &x in xs { } "
                 "return 0; }",
-      .message = "for loops do not support `ref` yet",
+      .message = "`for &item` loops are not supported yet",
       .line = 2,
       .column = 29 },
     { .name = "descending range",
@@ -3039,8 +3038,8 @@ static const sample samples[] = {
       .column = 29 },
     { .name = "inferred numeric locals",
       .source = "package facts\n"
-                "Bump :: (x: ref int) { x += 1; }\n"
-                "ByReference :: () -> int { x := 0; Bump(ref x); return x; }\n"
+                "Bump :: (x: ^int) { x^ += 1; }\n"
+                "ByReference :: () -> int { x := 0; Bump(&x); return x; }\n"
                 "One :: () -> int { x := 5; return x; }\n"
                 "Index :: () -> int { x := 0; xs: int[] = [4, 7]; x += 1; "
                 "xs[x] = 9; return xs[x] + x; }\n"
@@ -8740,11 +8739,11 @@ TEST_CASE(package_compiler_preserves_receiver_before_writing_item)
         .name = "ordered Append receiver before WRITE item",
         .source = "package facts\n"
                   "Receiver :: () -> int[] { xs: int[] = [1]; "
-                  "xs = append(Array: xs, Item: WriteReceiver(ref xs)); return "
+                  "xs = append(Array: xs, Item: WriteReceiver(&xs)); return "
                   "xs; "
                   "}\n"
-                  "WriteReceiver :: (values: ref int[]) -> int { "
-                  "values = append(values, int(9)); return 7; }",
+                  "WriteReceiver :: (values: ^(int[])) -> int { "
+                  "values^ = append(values^, int(9)); return 7; }",
         .calls = { { .function = "Receiver", .arguments = "[]", .expected = "[[1,7]]" } }
     };
     REQUIRE(append_sample_alike(&s, true));
@@ -17857,16 +17856,14 @@ static const sample native_argument_samples[] = {
       .calls = { { "Run", "[]", "[\"bc\"]", NULL } } },
     { .name = "native arguments evaluate in source order",
       .source = "package facts\n"
-                "Number :: (order: ref int, digit: int, value: int) -> int "
-                "{ "
-                "order = order * 10 + digit; return value; }\n"
-                "Text :: (order: ref int) -> string { order = order * 10 + "
-                "2; "
+                "Number :: (order: ^int, digit: int, value: int) -> int { "
+                "order^ = order^ * 10 + digit; return value; }\n"
+                "Text :: (order: ^int) -> string { order^ = order^ * 10 + 2; "
                 "return \"abcd\"; }\n"
                 "Run :: () -> int {\n"
                 "  order: int = 0;\n"
-                "  sliced := text_slice(Count: Number(ref order, 3, 2), Value: "
-                "Text(ref order), Start: Number(ref order, 1, 1));\n"
+                "  sliced := text_slice(Count: Number(&order, 3, 2), Value: "
+                "Text(&order), Start: Number(&order, 1, 1));\n"
                 "  if (!text_equal(sliced, \"bc\")) { return -1; }\n"
                 "  return order;\n}",
       .calls = { { "Run", "[]", "[321]", NULL } } },

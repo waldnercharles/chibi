@@ -65,10 +65,11 @@ static const char
                 "g: int, h: int, i: int) -> int {\n"
                 "        return a + i;\n"
                 "    }\n"
-                "    Bump :: (value: ref int) -> int { value += 1; return "
-                "value; }\n"
-                "    Read :: (value: ^int) -> int { return value^; }\n"
-                "    UnusedRef :: (value: ref int) -> int { return 7; }\n"
+                "    Bump :: (value: ^int) -> int { value^ += 1; return "
+                "value^; }\n"
+                "    Read :: (value: ^int) -> int { held := value; return "
+                "held^; }\n"
+                "    UnusedRef :: (value: ^int) -> int { return 7; }\n"
                 "}\n";
 static const char PROBE[] = "Probe :: behavior {\n"
                             "    total: int = 1;\n"
@@ -441,7 +442,8 @@ TEST_CASE(native_calls_reject_mismatched_exports)
     const execution_native_export waits[] = { exported("Pause", INT_INT, 1, reward) };
     const execution_native_export twice[] = { EXPORTS[0], EXPORTS[1], EXPORTS[0] };
     const execution_native_export wide[] = { exported("Wide", INT9_INT, 9, reward) };
-    /* A reference or pointer parameter passes an address, not an int. */
+    /* A scoped pointer parameter (Bump) or a managed one (Read) passes an
+     * address, not an int. */
     const execution_native_export lent[] = { exported("Bump", INT_INT, 1, reward) };
     const execution_native_export pointed[] = { exported("Read", INT_INT, 1, reward) };
     const execution_native_manifest manifests[] = {

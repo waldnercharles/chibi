@@ -100,7 +100,7 @@ TEST_CASE(language_managed_pointer_syntax_preserves_xor)
     parse(
         "Demo :: behavior { a:^int[]; b:^int?; c:^(int[]); d:^(int?); "
         "on Tick :: () { p:=&value; x:=p^ + 1; y:=p ^ +q; z:=p ^ q; "
-        "a:=p^^; b:=p^.field; c:=p^[i]; d:=&p^; F(ref p^); "
+        "a:=p^^; b:=p^.field; c:=p^[i]; d:=&p^; F(p); "
         "last:=p^\nnext:=1; } }"
     );
     REQUIRE(original->diagnostic_count == 0);
@@ -125,7 +125,6 @@ TEST_CASE(language_managed_pointer_syntax_preserves_xor)
     REQUIRE(!ts_node_is_null(find_node(root, "member_expression", "p^.field")));
     REQUIRE(!ts_node_is_null(find_node(root, "index_expression", "p^[i]")));
     REQUIRE(!ts_node_is_null(find_node(root, "address_expression", "&p^")));
-    REQUIRE(!ts_node_is_null(find_node(root, "reference_argument", "ref p^")));
     return true;
 }
 
@@ -246,11 +245,11 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
         "items: Element[]; } Identity :: (value: $T) -> T => { return value; } "
         "Product :: (left: $L, right: $R) -> ProductType(L, R) { return left; "
         "} "
-        "Composed :: (value: ref Vector(number, 2)[]) -> Vector(number, 2)? { "
+        "Composed :: (value: ^(Vector(number, 2)[])) -> Vector(number, 2)? { "
         "return nil; } "
         "Use :: () { values: [string: int] = [\"Ada\": 1, key: 2, 3: 4]; "
         "for key, value in values { consume(key, value); } "
-        "for item: ref in items { item += 1; } "
+        "for item in items { consume(item); } "
         "delete values[key]; gone := key not in values; empty: [int: bool] = "
         "[:]; } }"
     );
@@ -272,9 +271,12 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
     TSNode composed = ts_node_named_child(body, 3);
     parameter = ts_node_named_child(field(composed, "parameters"), 0);
     TSNode composed_type = field(parameter, "type");
-    REQUIRE(node_text(field(composed_type, "trait"), "ref"));
-    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(composed_type, 0)), "type_application"));
-    REQUIRE(node_text(composed_type, "ref Vector(number, 2)[]"));
+    TSNode composed_pointer = ts_node_named_child(composed_type, 0);
+    REQUIRE(!strcmp(ts_node_type(composed_pointer), "pointer_type"));
+    REQUIRE(node_text(composed_type, "^(Vector(number, 2)[])"));
+    REQUIRE(!ts_node_is_null(
+        find_node(composed_pointer, "type_application", "Vector(number, 2)")
+    ));
     REQUIRE(node_text(field(composed, "results"), "Vector(number, 2)?"));
     TSNode use = ts_node_named_child(body, 4);
     TSNode statements = field(use, "body");
@@ -295,7 +297,6 @@ TEST_CASE(language_unified_declarations_and_generic_map_shapes)
     REQUIRE(node_text(field(loop, "key"), "key"));
     REQUIRE(node_text(field(loop, "name"), "value"));
     loop = ts_node_named_child(statements, 2);
-    REQUIRE(node_text(field(loop, "reference"), "ref"));
     REQUIRE(node_text(field(loop, "name"), "item"));
     return true;
 }
@@ -343,6 +344,7 @@ TEST_CASE(language_obsolete_symbol_spellings_rejected)
         "Old :: behavior { on Tick :: () { call(\"Value\": 0); } }",
         "Old :: library { return :: () {} }",
         "Old :: behavior { on Tick :: () { for ref item in items {} } }",
+        "Old :: behavior { on Tick :: () { for item: ref in items {} } }",
         "Old :: library { Run :: (value: struct<Position>) {} }",
         "Old :: library { Run :: (value: task<int>) {} }",
         "Old :: library { Run :: (value: array<int>) {} }",
@@ -437,13 +439,13 @@ TEST_CASE(language_callable_types_entries_and_results)
 {
     parse(
         "Helpers :: library {\n"
-        "Identity :: (source: ref int, item: $T = 1) "
+        "Identity :: (source: ^int, item: $T = 1) "
         "-> (Result: T) { return item }\n"
         "Apply :: (amount: int) -> () { entry Run { return(); } exit "
         "Done; }\n"
         "macro Route(key: name) -> (Success: bool) { return.Success(true); }\n"
         "converted := to_real(Value: int = 3);\n"
-        "chosen := Identity(source: ref int from state.count, "
+        "chosen := Identity(source: ^int from state.count, "
         "item: 2);\n"
         "}"
     );
@@ -617,11 +619,12 @@ TEST_CASE(language_query_generators_preserve_authored_order)
     return true;
 }
 
-TEST_CASE(language_ref_arguments_are_only_call_values)
+/* `ref` is an ordinary name; pointers replaced reference arguments. */
+TEST_CASE(language_ref_arguments_are_not_syntax)
 {
     static const char *invalid[] = {
-        "R :: library { F :: () { x := ref y; } }",
-        "R :: library { F :: () { return ref y; } }",
+        "R :: library { F :: () { G(ref y); } }",
+        "R :: library { F :: () { G(x: ref y); } }",
         "R :: library { F :: () { G(x: int from ref y = z); } }",
         "R :: library { F :: () { G(x: int split ref y = z); } }",
     };
@@ -936,7 +939,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_query_header_and_cancel_deadline);
     RUN_TEST_CASE(language_query_generators_preserve_authored_order);
     RUN_TEST_CASE(language_obsolete_declaration_tokens_rejected);
-    RUN_TEST_CASE(language_ref_arguments_are_only_call_values);
+    RUN_TEST_CASE(language_ref_arguments_are_not_syntax);
     RUN_TEST_CASE(language_expressions_precedence_and_continuation);
     RUN_TEST_CASE(language_invalid_source_has_positioned_diagnostics);
     RUN_TEST_CASE(language_incremental_snapshot_matches_fresh);

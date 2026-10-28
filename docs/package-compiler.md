@@ -98,7 +98,7 @@ import:
   `while`, `break`, `continue` and `return`; `for` over an `int` range,
   `first..last` or `first..<last`, and over an array, `for x in xs` or
   `for x, i in xs` with its index, each counting down with `for <`, as stage
-  zero counts them; `ref` loops reject;
+  zero counts them;
 - every integer arithmetic, bitwise and comparison operator on every integer
   type, unsigned ordering and division included, as stage zero computes
   them; negation only on the signed types. String equality, and `!`, `&&` and `||` with short-circuit evaluation;

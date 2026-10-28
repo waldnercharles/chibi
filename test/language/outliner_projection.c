@@ -496,13 +496,17 @@ static bool make_inputs(const request *r, bool changed)
             switch (a) {
                 case 0: v.u64 = IDS[n]; break;
                 case 1:
-                    descriptor = (pin_string){ producer_names[0][n],
-                                               (uint32_t)strlen(producer_names[0][n]) };
+                    descriptor = (pin_string){
+                        .bytes = producer_names[0][n],
+                        .length = (uint32_t)strlen(producer_names[0][n])
+                    };
                     v.text = &descriptor;
                     break;
                 case 2:
-                    descriptor = (pin_string){ producer_names[1][n],
-                                               (uint32_t)strlen(producer_names[1][n]) };
+                    descriptor = (pin_string){
+                        .bytes = producer_names[1][n],
+                        .length = (uint32_t)strlen(producer_names[1][n])
+                    };
                     v.text = &descriptor;
                     break;
                 case 3: v.i = PARENTS[n]; break;

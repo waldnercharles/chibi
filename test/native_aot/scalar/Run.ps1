@@ -39,9 +39,11 @@ function Entry([string]$symbol) {
     if ($hash.IsZero) { $hash = [System.Numerics.BigInteger]::One }
     return '0x' + ([uint64]$hash).ToString('x16')
 }
-# Batch only pure producers/checks; retain every raw-byte CLI crossing. The
-# 96-source matrix needs 466 children, not 970. Keep the same finite total and
-# never give a child more than 120 seconds or what remains.
+# Reuse the pinned host's existing 64-item limit. Batch only pure producers/checks;
+# retain every raw-byte CLI crossing. The 96-source matrix needs 406 children,
+# not 466. Keep the same finite total and never give a child more than
+# 120 seconds or what remains.
+$batchSize = 64
 function Host-Limit([double]$elapsed, [string]$name) {
     $total = 240000
     if ($elapsed -ge $total) {
@@ -143,7 +145,7 @@ function Scalar-Result($result) {
 # its own activation, arena and instruction budget. Join/split transport bytes,
 # never reserialize an owned producer envelope through a host JSON model.
 function Write-Batch([string]$path, [string[]]$files) {
-    if ($files.Count -lt 1 -or $files.Count -gt 8) { throw 'Invalid scalar batch size' }
+    if ($files.Count -lt 1 -or $files.Count -gt $batchSize) { throw 'Invalid scalar batch size' }
     $stream = [IO.File]::Open($path, [IO.FileMode]::CreateNew)
     try {
         $stream.WriteByte(91)
@@ -161,7 +163,7 @@ function Split-Batch($result, [string]$prefix, [int]$count) {
     $batchHash = Digest $result.Stdout
     $document = [System.Text.Json.JsonDocument]::Parse($utf8.GetString($bytes))
     try {
-        if ($count -lt 1 -or $count -gt 8 -or
+        if ($count -lt 1 -or $count -gt $batchSize -or
             $document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Array -or
             $document.RootElement.GetArrayLength() -ne $count) { throw 'Scalar batch result count differs' }
         $offset = 0
@@ -338,8 +340,8 @@ try {
     if ($sources.Count -le 0 -or $sources.Count -gt 96) { throw 'Authored source corpus exceeds its runner bound' }
     $evidence['case_count'] = $sources.Count
     $priorChecked = @{}
-    for ($first = 0; $first -lt $sources.Count; $first += 8) {
-        $count = [Math]::Min(8, $sources.Count - $first)
+    for ($first = 0; $first -lt $sources.Count; $first += $batchSize) {
+        $count = [Math]::Min($batchSize, $sources.Count - $first)
         $inputs = @()
         for ($item = 0; $item -lt $count; $item++) {
             $index = $first + $item
@@ -378,7 +380,7 @@ try {
             }
         }
         # Preserve original case/producer/consumer classification and raw output
-        # order. Up to seven later pure cases may already have been computed, but
+        # order. Up to 63 later pure cases may already have been computed, but
         # the first failing classification stops all later raw output/next batches.
         for ($item = 0; $item -lt $count; $item++) {
             $index = $first + $item

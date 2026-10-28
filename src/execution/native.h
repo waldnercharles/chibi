@@ -9,7 +9,7 @@
  * the library's module lets a program's synchronous calls of those functions
  * run the native entry instead of a VM frame. Tasks, inspected calls and
  * every unbound function stay in the VM. */
-#define EXECUTION_NATIVE_ABI 2u
+#define EXECUTION_NATIVE_ABI 3u
 /* The most parameters and results an entry takes: native_abi.ExportParameters,
  * and one result. The emitter exports no function with more. */
 #define EXECUTION_NATIVE_MAX_PARAMETERS 8

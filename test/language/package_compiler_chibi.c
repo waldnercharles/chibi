@@ -12031,7 +12031,7 @@ static bool native_libraries_export_words(int b)
         "i32 1, ptr @chibi_scalar.export.1 }"
     ));
     REQUIRE(
-        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 2, i32 2, ptr @chibi_scalar.exports }")
+        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 3, i32 2, ptr @chibi_scalar.exports }")
     );
     static const char malformed[] = "native library needs an identifier and a "
                                     "name and ID for each function";
@@ -12741,7 +12741,7 @@ static bool native_strings_emit(int b)
     REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
     REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
     REQUIRE(
-        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 2, i32 0, ptr @chibi_scalar.exports }")
+        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 3, i32 0, ptr @chibi_scalar.exports }")
     );
     static const native_code published[] = {
         { .op = NATIVE_CHECK },

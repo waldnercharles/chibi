@@ -122,7 +122,7 @@ pub TextType :: () -> string {
 // The version of the export manifest a library object holds, which the
 // runtime checks before binding it: EXECUTION_NATIVE_ABI in
 // src/execution/native.h.
-pub ExportAbi: int : 2;
+pub ExportAbi: int : 3;
 // The most parameters an entry of that ABI takes:
 // EXECUTION_NATIVE_MAX_PARAMETERS. A function with more stays callable only
 // inside its library.

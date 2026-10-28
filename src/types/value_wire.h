@@ -67,8 +67,10 @@ bool execution_wire_record(execution_wire *);
  * belongs to the reader's arena and is discarded with its generation. */
 void execution_wire_value(execution_wire *, pin_value *);
 /* Explicit execution-prepared variant. Each recursive value carries an authored
- * discriminator; resolve validates original writer headers or supplies an owned
- * reader layout. A missing authored layout is always an error, never fallback.
+ * discriminator; resolve owns validation of original authored writer layouts
+ * and their native dependencies, including any retained schema, or supplies an
+ * owned reader layout. It must reject invalid writer headers before encoding.
+ * A missing authored layout is always an error, never fallback.
  * Native callers keep the historical entry point/bytes above. */
 typedef const pin_record
     *(*execution_wire_resolver)(execution_wire *, void *, const pin_value *, bool authored);

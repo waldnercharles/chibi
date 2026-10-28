@@ -322,14 +322,15 @@ TEST_CASE(record_state_replacement)
         REQUIRE(compile(2, backends[b], &next));
         REQUIRE(row_id == initial_row && rows_id == initial_rows);
         REQUIRE(nominal == first_nominal && layout != first_layout);
-        REQUIRE(execution_program_replace(program, next, false) == FLOW_ERR_COMPILE);
-        REQUIRE(state(execution_program_instance(program, owner), "second", 1, 3));
-        REQUIRE(execution_program_replace(program, next, true) == FLOW_OK);
+        /* The row keeps its fields and takes the renamed one's default; the
+         * array's items have no defaults for it, so it restarts empty. */
+        REQUIRE(execution_program_replace(program, next, false) == FLOW_OK);
         execution_module_free(module);
         module = next;
         next = NULL;
         instance = execution_program_instance(program, owner);
-        REQUIRE(state(instance, "initial", 2, 0));
+        REQUIRE(row(execution_instance_state(instance, row_id), "second", 2));
+        REQUIRE(rows(execution_instance_state(instance, rows_id), 0, "second", 2));
         char third[] = "third";
         REQUIRE(dispatch(instance, backends[b], third, false));
         REQUIRE(state(instance, "third", 2, 3));

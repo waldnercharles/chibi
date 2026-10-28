@@ -15,7 +15,10 @@ $timer = [Diagnostics.Stopwatch]::StartNew()
 $evidence = [ordered]@{ format = 1; status = 'running'; platform = $Platform; compiler_sources = @(); sources = @(); runs = @(); batch_members = @(); cases = @() }
 
 function Digest([string]$path) {
-    return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $stream = [IO.File]::OpenRead($path)
+    try {
+        return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)).ToLowerInvariant()
+    } finally { $stream.Dispose() }
 }
 function Read-Node([string]$path) {
     return ,([System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText($path, $utf8)))
@@ -340,6 +343,9 @@ try {
     if ($sources.Count -le 0 -or $sources.Count -gt 96) { throw 'Authored source corpus exceeds its runner bound' }
     $evidence['case_count'] = $sources.Count
     $priorChecked = @{}
+    $collectEntry = Entry 'project:package_compiler:1:CollectScalar:callable'
+    $checkEntry = Entry 'project:scalar_regression:1:Check:callable'
+    $emitEntry = Entry 'project:scalar_regression:1:EmitBytes:callable'
     for ($first = 0; $first -lt $sources.Count; $first += $batchSize) {
         $count = [Math]::Min($batchSize, $sources.Count - $first)
         $inputs = @()
@@ -361,7 +367,7 @@ try {
         $checked = @{}
         foreach ($producerBackend in @('bytecode', 'sljit')) {
             $prefix = "$first-$producerBackend"
-            $producer = Invoke-Host "$prefix-produce-batch" $compiler (Entry 'project:package_compiler:1:CollectScalar:callable') $batchInput $producerBackend -Batch
+            $producer = Invoke-Host "$prefix-produce-batch" $compiler $collectEntry $batchInput $producerBackend -Batch
             $produced[$producerBackend] = @(Split-Batch $producer "$prefix-produce" $count)
             for ($item = 0; $item -lt $count; $item++) {
                 $returned = Read-Node $produced[$producerBackend][$item].Stdout
@@ -375,7 +381,7 @@ try {
                 # Producer stdout already is an array of invocation argument lists.
                 # Forward that entire buffer unchanged through the consumer batch.
                 $crossing = "$producerBackend-$consumerBackend"
-                $check = Invoke-Host "$first-$crossing-check-batch" $regression (Entry 'project:scalar_regression:1:Check:callable') $producer.Stdout $consumerBackend -Batch
+                $check = Invoke-Host "$first-$crossing-check-batch" $regression $checkEntry $producer.Stdout $consumerBackend -Batch
                 $checked[$crossing] = @(Split-Batch $check "$first-$crossing-check" $count)
             }
         }
@@ -394,7 +400,7 @@ try {
                     $classification = Scalar-Result $check
                     if ($classification -notin 0, 1) { throw "Authored source/consumer check failed at $name (batch item $item): $classification" }
                     $rawPath = Join-Path $output ($name + '.ll')
-                    $raw = Invoke-Host "$name-raw" $regression (Entry 'project:scalar_regression:1:EmitBytes:callable') $producer.Stdout $consumerBackend $rawPath
+                    $raw = Invoke-Host "$name-raw" $regression $emitEntry $producer.Stdout $consumerBackend $rawPath
                     $row = [ordered]@{ index = $index; producer = $producerBackend; consumer = $consumerBackend;
                         input_sha256 = (Digest $inputPath); envelope_sha256 = $envelopeHash; accepted = ($classification -eq 1);
                         producer_batch = $producer.Batch; producer_item = $producer.Item;
@@ -413,7 +419,7 @@ try {
                         if (!$priorChecked.ContainsKey($crossing)) {
                             [IO.File]::WriteAllText($rawPath, "prior complete IR`n", $utf8)
                             $priorHash = Digest $rawPath
-                            $prior = Invoke-Host "$name-prior" $regression (Entry 'project:scalar_regression:1:EmitBytes:callable') $producer.Stdout $consumerBackend $rawPath
+                            $prior = Invoke-Host "$name-prior" $regression $emitEntry $producer.Stdout $consumerBackend $rawPath
                             if ($prior.Exit -eq 0 -or $prior.Stderr.Trim() -ne 'the compiler entry returned no bytes' -or
                                 (Digest $rawPath) -ne $priorHash) { throw 'Rejected output damaged an existing file' }
                             Remove-Item -LiteralPath $rawPath

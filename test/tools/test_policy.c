@@ -1503,6 +1503,16 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
     REQUIRE(strstr(output, "scalar-transport runtime pwsh="));
     REQUIRE(strstr(output, " dotnet="));
     REQUIRE(strstr(output, " cpus="));
+    REQUIRE(
+        strstr(output, "digest-empty=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-binary=07357c2e935267e3b90071a4d9edef497ab0d9e0a8a87a78258a3a173574b10d\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-overwrite=91d6b1c484360131d3d95d4df0d4ad95377f04cdf2de124f6ff9cb7d8bb0d5e7\n")
+    );
+    REQUIRE(strstr(output, "digest-missing rejected\n"));
     REQUIRE(strstr(output, "singleton=1\nsingleton-identical=True\n"));
     REQUIRE(strstr(output, "full=64\nfull-identical=True\n"));
     REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-65 rejected\n"));

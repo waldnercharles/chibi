@@ -38,6 +38,7 @@ const char *behavior_managed_value_error(const pin_value *);
 /* storage must be the first arena member of an initialized managed heap. */
 const char *behavior_managed_storage_value_error(arena *storage, const pin_value *);
 const char *behavior_managed_storage_owner_error(arena *storage, const pin_value *);
+/* Clears the slot: its retained copy is left to the next collection. */
 void behavior_managed_heap_unroot(behavior_managed_heap *, pin_value *);
 void behavior_managed_heap_trace_value(const pin_value *, arena_marker, void *);
 void behavior_managed_heap_trace_roots(const behavior_managed_heap *, arena_marker, void *);

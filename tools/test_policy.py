@@ -92,12 +92,22 @@ TOOLS = {
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
     'published-docs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                        '--published-docs', str(ROOT / os.environ.get('CHIBI_COMPILE', 'build-release/sdk/chibi-compile'))],
+    # chibi build --native through a relocated copy of the build tree's SDK.
+    'native-build': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                     '--native-build', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
+    # W20's kernels through chibi build --native; needs CHIBI_LLVM_BIN.
+    'native-workload-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                                  '--native-workload-benchmark', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
     'chibi-cli-installed': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--chibi-cli-installed', str(ROOT / os.environ.get('CHIBI_INSTALLED_CLI', 'dist/sdk/bin/chibi'))],
     'native-aot-driver': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                           '--native-aot-driver', str(ROOT / 'tools/native_aot/Driver.chibi')],
     'build-process': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                       '--build-process',
+                      str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
+                      str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    'build-timings': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                      '--build-timings',
                       str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
                       str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-process-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
@@ -285,6 +295,7 @@ TOOLS = {
     'engine-clock': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--engine-clock'],
     'preview-layout': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--preview-layout'],
     'fields': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fields'],
+    'language-test-parallel': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--test-parallel'],
     'language-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--format', '--corpus',
                         str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
@@ -303,6 +314,7 @@ TOOLS = {
     'language-operations': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--operations'],
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
     'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
+    'language-native-calls': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--native-calls'],
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
     'language-numeric-exact-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--numeric-exact-core'],
@@ -385,6 +397,11 @@ TOOLS = {
     # and llvm-nm.
     'language-scalar-native': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-compiler-chibi-native'],
+    # W21's census summary; `make native-census` also writes its report.
+    'language-native-census': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--native-census'],
+    'language-native-census-flattening': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                          '--native-census-flattening'],
     'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                '--package-compiler-chibi-imports'],
     'language-package-compiler-chibi-imports-compiled': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
@@ -475,14 +492,14 @@ TOOLS = {
     'c-export-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--c-export-alias'],
 
 }
-for selector in ('activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark'):
+for selector in ('activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
                  '-imports', '-imports-compiled', '-behaviors',
@@ -538,10 +555,12 @@ GPU_TOOLS = (
 # Explicit tool requests still fail with the component's unavailable diagnostic.
 ASSET_COMPILER_HOST_PLATFORMS = ('linux', 'darwin')
 
+# Correctness aggregates never run timing/throughput benchmark selectors.
+# Keep performance workloads opt-in through the benchmarks group or tool.
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
-             'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
+             'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
+             'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
              'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
@@ -551,8 +570,8 @@ GROUPS = {
                'whole-integer', 'whole-conversion', 'whole-select', 'whole-math', 'owned-tick',
                'parallel-tick', 'source-native-features', 'source-native-numeric-queries',
                'source-native-material', 'source-presentation', 'system-schedule',
-               'source-systems', 'source-query-rows', 'source-reductions', 'source-reduction-benchmark', 'source-execution-benchmark', 'source-edit', 'new-asset', 'asset-refactor',
-               'shader-parameters-prepared', 'language-prepared', 'ecs-query-benchmark', 'scheduler-benchmark',
+               'source-systems', 'source-query-rows', 'source-reductions', 'source-edit', 'new-asset', 'asset-refactor',
+               'shader-parameters-prepared', 'language-prepared',
                'preview-components', 'graph-document', 'graph-presentation', 'graph-functions',
                'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',
                'png-encoding', 'project-document', 'prototype-documents', 'reference-index',
@@ -566,29 +585,29 @@ GROUPS = {
     # site and the launcher's commands.
     'projects': ['mesh-files', 'model-import', 'validate-project', 'prototype-expansion',
                  'controller', 'feature-coverage', 'render-fixture', 'material-bake', 'environment-authoring', 'terrain-checkpoint', 'terrain-storage-commands',
-                 'terrain-playable', 'published-docs', 'chibi-cli'],
+                 'terrain-playable', 'published-docs', 'chibi-cli', 'native-build'],
     # Independently reviewed fixed CPU workloads: cave<=2048x768, flow<=192x192,
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',
-                  'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
-                  'contact-benchmark'],
-    'language': ['execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
-                 'language-activation-benchmark', 'language-binding-benchmark', 'language-borrow-benchmark', 'language-incremental-benchmark',
+                  'material-simulation', 'material-ecs', 'material-render'],
+    'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
-                 'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
+                 'language-headless', 'language-format', 'language-package-tests', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',
                  'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',
-                 'language-migration34-generic-repro', 'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap'],
+                 'language-migration34-generic-repro', 'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap',
+                 'language-native-census-flattening'],
 }
 if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:
     GROUPS['language'].append('language-asset-compiler-host')
 
 GROUPS['render'] = [name for name in GPU_TOOLS if not name.startswith('studio-')
                     and (not name.endswith('-gles') or sys.platform.startswith('linux'))]
-# Native scalar execution runs on the one target the emitter admits, with
-# the LLVM tools it is given; otherwise the language group reports it unrun.
+# Native scalar execution runs on Linux x86-64, with the LLVM tools it is
+# given, and builds the bundle the other targets run (test/native_aot/targets);
+# otherwise the language group reports it unrun.
 UNRUN = {}
 if not (sys.platform.startswith('linux') and platform.machine() == 'x86_64'):
     UNRUN['language-scalar-native'] = 'it needs Linux x86-64'
@@ -602,17 +621,58 @@ GROUPS['benchmarks'] = [name for name in TOOLS if name.endswith('-benchmark') an
 
 # Only source-audited independent selectors may overlap. Missing entries are
 # exclusive barriers, not skipped coverage. See docs/test-parallel-resources.md.
+# Native C and authored test pools own their in-process budget: keep their
+# selectors (including compiler-fixture and package-compiler-chibi-scalar)
+# exclusive to avoid multiplying outer and inner worker budgets.
 PARALLEL_RESOURCES = {
     name: frozenset() for name in (
-        'language-package-compiler-chibi-scalar',
         'language-package-compiler-chibi-behaviors',
         'language-package-compiler-chibi-behaviors-rest',
+        'language-integer-semantics',
+        'language-integer-shift-counts',
+        'language-integer-shift-counts-authored',
         'language-asset-packaging-chibi',
         'language-asset-compiler-host',
         'compiler-bootstrap',
         'language-scalar-native',
     )
 }
+
+
+def language_shards(names, count=3):
+    """Balance isolated serial runners; weights never decide coverage.
+
+    Lifetimes rounded from Linux run 40423984810, not cross-platform promises.
+    Keep each lane in group order. Unmeasured/new selectors get weight one and
+    remain covered; the complete one-lane route is the rollback path.
+    """
+    if count not in (1, 2, 3):
+        raise ValueError('language shard count must be 1, 2 or 3')
+    if len(set(names)) != len(names):
+        raise ValueError('duplicate language selector')
+    weights = {
+        'language-asset-compiler-host': 309,
+        'language-scalar-native': 278,
+        'language-package-compiler-chibi-scalar': 235,
+        'language-package-compiler-chibi-behaviors-rest': 229,
+        'compiler-bootstrap': 177,
+        'language-package-compiler-chibi-behaviors': 116,
+        'language-integer-shift-counts-authored': 69,
+        'language-asset-packaging-chibi': 49,
+    }
+    loads, assignment = [0] * count, {}
+    for index in sorted(range(len(names)), key=lambda i: (-weights.get(names[i], 1), i)):
+        name = names[index]
+        lane = min(range(count), key=lambda lane: (loads[lane], lane))
+        assignment[name] = lane
+        loads[lane] += weights.get(name, 1)
+    return [[name for name in names if assignment[name] == lane] for lane in range(count)]
+
+
+def language_manifest(count=3):
+    return dict(version=1, platform=sys.platform, machine=platform.machine(),
+                selectors=GROUPS['language'], shards=language_shards(GROUPS['language'], count),
+                unrun=UNRUN)
 
 
 def tool_command(name):
@@ -1147,8 +1207,10 @@ def main():
     parser.add_argument('--timeout', type=float, help='Optional timeout in seconds for this command')
     parser.add_argument('--jobs', type=int, default=os.environ.get('CHIBI_TEST_JOBS'),
                         help='Group workers (automatic by default; 1 keeps serial execution)')
+    parser.add_argument('--shard', help='Isolated language runner INDEX/COUNT (1-based; serial only)')
     parser.add_argument('action', choices=['inventory', 'unit', 'short', 'tool', 'group',
-                                         'native', 'native-env', 'agent-env', '_supervise'])
+                                         'native', 'native-env', 'agent-env', '_supervise',
+                                         'shard-manifest'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments
@@ -1160,6 +1222,25 @@ def main():
             raise ValueError('jobs must be a positive integer')
     except ValueError as error:
         parser.error(str(error))
+    shard_names = None
+    if args.shard is not None:
+        try:
+            index, count = map(int, args.shard.split('/'))
+            if args.action != 'group' or arguments != ['language']:
+                raise ValueError('shards require group language')
+            if args.jobs not in (None, 1):
+                raise ValueError('isolated language shards require --jobs 1')
+            shards = language_shards(GROUPS['language'], count)
+            if not 1 <= index <= count:
+                raise ValueError('language shard index out of range')
+            shard_names = shards[index - 1]
+        except ValueError as error:
+            parser.error(str(error))
+    if args.action == 'shard-manifest':
+        if arguments:
+            parser.error('shard-manifest takes no arguments')
+        print(json.dumps(language_manifest(), sort_keys=True))
+        return 0
     if args.action == '_supervise':
         return supervise(json.loads(arguments[0]))
     if args.action == 'inventory':
@@ -1184,6 +1265,9 @@ def main():
         if arguments[0] == 'language':
             for name, reason in UNRUN.items():
                 print(f'{name} not run: {reason}')
+        if shard_names is not None:
+            diagnostic('shard', index=index, count=count, selectors=shard_names)
+            return run_group(shard_names, jobs=1, seconds=args.timeout)
         return run_group(GROUPS[arguments[0]], jobs=args.jobs, seconds=args.timeout)
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
@@ -1224,3 +1308,4 @@ if __name__ == '__main__':
     except (OSError, ValueError, RuntimeError) as error:
         print(f'FAIL: {error}', file=sys.stderr)
         sys.exit(2)
+

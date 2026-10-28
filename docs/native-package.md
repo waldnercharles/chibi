@@ -50,6 +50,18 @@ an explicit project root; browser Studio receives an explicit sample list throug
 `WEB_PROJECTS`. The extracted browser build and rendered product acceptance are
 tracked separately from package integrity and installed-consumer linking.
 
+## Native libraries
+
+A game can ship natively compiled libraries in `natives/` under its resource
+root. Each `<Library>.so` (`.dylib` on macOS, `.dll` on Windows) is compiled
+from a `<Library> :: library { ... }` source and exports its manifest as
+`chibi_natives_<Library>`. The player loads them before the first scene and
+binds each manifest to the library's module, so calls to its pure functions run
+natively; tasks, unbound functions and Studio stay in the VM. A library that
+does not load or bind stops the player with the reason. Web exports ship none.
+`chibi export --native` builds them on Linux x86-64 (see the toolchain guide);
+see W16 in `docs/native-llvm-ledger.md`.
+
 ## Window and icon
 
 An optional `application` block in `project.kdl` sets how the shipped game's

@@ -23,6 +23,8 @@ typedef struct
     uint64_t inspection_bytecode_fallbacks;
     /* Entries of definitions past the Wasm JIT's size budget. */
     uint64_t size_bytecode_fallbacks;
+    /* Synchronous calls that ran a bound native entry instead of a frame. */
+    uint64_t native_entries;
     bool overflow; /* Sticky saturation makes the sample inexact. */
 } behavior_run_counts;
 typedef struct behavior_run_scope
@@ -217,6 +219,8 @@ typedef struct
     uintptr_t steps;
     int pc, frame, source, stack;
     uint64_t node_id;
+    /* A root activation's borrowed native entries for its synchronous calls. */
+    const struct execution_natives *natives;
 } behavior_function_activation;
 typedef struct behavior_function_context
 {
@@ -497,6 +501,11 @@ bool behavior_function_batchable(const behavior_function *function);
 /* Immutable lowering proof. Other-entity reads must not overlap any component
  * written by another body in the same parallel span. */
 bool behavior_function_parallel(const behavior_function *function);
+/* Every external native in the frozen synchronous call closure has explicit
+ * pure, service-free access metadata. Unknown hosts and bounded-proof overflow
+ * return false. Built-in value intrinsics remain governed by source effects;
+ * this check alone does not prove that a function has no other side effects. */
+bool behavior_function_hosts_pure(const behavior_function *function);
 /* Static work estimate used to keep cheap loops below scheduling overhead. */
 int behavior_function_parallel_work(const behavior_function *function);
 /* Union of a host call's zero-based U32 input across the unobserved body.

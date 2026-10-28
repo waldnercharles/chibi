@@ -2,8 +2,10 @@
 
 ## Fast, targeted tests
 
-Use deterministic C pico_unit tests as the primary regression checks. Cover a
-specific behavior and its failure cases through the smallest public runtime
+Prefer authored Chibi `@test` regressions whenever they can preserve the same
+behavior and oracle. Their inferred purity supplies automatic parallelism; keep
+C/pico_unit for native internals, ABI, ownership and failure boundaries Chibi
+cannot express. Cover each behavior and failure case through the smallest
 interface that exercises it. Advance a synthetic clock for time-dependent
 behavior; assert values, ownership, geometry, callback counts and work counts
 rather than elapsed-time thresholds. Keep compilation separate from execution.
@@ -24,12 +26,77 @@ preparation owns a fresh source snapshot and native catalog; preparation is not
 cached across fixture lifetimes. Scalar producer/consumer lifetime tests retain
 their original preparation of both backends.
 
-`language-compiler-fixture` adds two fixed C cases: six single-backend
+`language-compiler-fixture` retains two native ownership cases: six single-backend
 preparations and one default dual-backend preparation of a one-function source,
 with eight calls at budget 100. It checks absent unrequested owners, independent
 snapshots, mutation of the original source, concurrent fixtures, detached text
 after teardown, changed source on re-preparation, and both execution backends.
-It adds no processes, timing loops, network, rendering or GPU work.
+Three native adapter cases additionally check selected and dual-backend authored
+execution, ordered failure reporting and continuation, missing tests, and invalid
+worker settings. They add no processes, timing loops, network, rendering or GPU work.
+
+### Authored emitter regressions
+
+The ordinary `language-package-compiler-chibi-scalar` selector discovers every
+`@test` in `test/native_aot/emitter_calls/*.chibi`. CMake embeds all matching
+files in `test_language`, including the same-run binary used by manual language
+shards; no runtime source staging, bootstrap manifest or seed changes are needed.
+The generic `compiler_fixture_tests` adapter runs each prepared owner on its
+matching bytecode/SLJIT backend and fails on empty discovery, unavailable backend
+or any failed test. Results remain in source order. `CHIBI_TEST_WORKERS=1..32`
+can bound the authored pool explicitly; absent means the normal automatic pool.
+Unknown or impure host closures remain serial barriers.
+
+The first eighteen authored tests preserve call definitions/argument order,
+eleven malformed call plans, exact float and NaN payload encodings, unordered
+comparison, saturating conversions and declaration uniqueness, and five rejected
+float/conversion plans. Thirteen record tests additionally preserve field layout,
+zero initialization, insert/extract and internal value calls, eight malformed
+instructions, exported-record rejection, and overrun/nested/wrapped field tables.
+All thirty-one inspect emitted LLVM text; they do not replace
+native machine-code execution, ABI binding, detached ownership or C harness
+anti-false-consensus checks. The scalar and compiler-fixture selectors remain
+outer-exclusive because they own an authored pool. Correctness cases are fixed,
+not performance benchmark loops.
+
+## CI profiles and release validation
+
+Ordinary pull requests and pushes to `main` use **Debug O1 without ASan/UBSan**
+on Linux and macOS. Symbols, assertions, frame pointers and native, material,
+project, language and tooling correctness selections remain enabled. Performance
+benchmarks are opt-in, not part of routine CI or correctness aggregates.
+This is a CI-only choice: local `make build` / `make test-build` retain their
+sanitizer defaults. The standalone tooling harness and Release helpers retain
+their existing roles.
+
+Native CI runs the existing test-policy groups sequentially after building and
+verifying the selected profile. It reuses the initial Release helpers rather than
+planning them again for project tests; macOS also reuses its initial Graph build.
+Linux retains a selected-profile `test-build` invocation so cold CMake recovery
+does not remove authored `Build.chibi` coverage (including sanitizer runs).
+Standalone `make test-*` targets still build their own prerequisites.
+
+The same `CI` workflow runs full **ASan + UBSan** coverage daily at **08:00 UTC**
+on the latest default-branch commit (GitHub may delay scheduled starts). To run
+it on demand, choose **Actions → CI → Run workflow**, select the candidate
+branch, and enable **sanitizers**. A manual run without that option uses the
+fast profile. Run titles identify `ASan + UBSan` versus `fast Debug O1`; native
+profile artifacts record the selected instrumentation and checked build evidence.
+The event and profile have separate concurrency keys, so a scheduled sanitizer
+run cannot cancel ordinary CI. Job/check names and 45-minute native timeouts
+are unchanged. Sanitizer-only defects can now be discovered after merge rather
+than blocking every PR; a scheduled workflow by itself does not automatically
+triage or fix failures.
+
+Before a major release, dispatch with **sanitizers enabled** on the exact release
+candidate; require both Linux and macOS native jobs and all existing functional
+checks to pass. Check the run's commit SHA and profile receipts, investigate any
+sanitizer failure, and rerun on the fixed candidate. A passing fast run is not
+a substitute for sanitizer evidence. Explicit holds and required repository checks
+still apply. Both profiles share `.github/native-profile.py` and the same test
+steps to prevent drift; macOS Graph and CMake use matching explicit O1 and
+frame-pointer settings. Graph frame pointers are a separate Debug-only opt-in
+(`BUILD_DEBUG_FRAME_POINTERS=on`); ordinary developer Debug/O1 behavior is unchanged.
 
 ## Run the checks
 
@@ -201,7 +268,13 @@ done.
   publishes the seeds as a commit-specific prerelease and commits the new pin in
   `tools/compiler/runtime.json` to that branch, then starts CI and the compiler
   self-build on the pin commit. Pull before pushing again. If the branch moved
-  after the seed run started, the pin step fails and the release stays unpinned.
+  after the seed run started, unrelated branch movement fails the pin step.
+  Rerunning the same workflow can resume its verified one-file pin commit and
+  dispatch only checks not already started on that exact pin. Existing published
+  seeds are reused only after verifying their tag target, source identity,
+  complete asset inventory, checksums and three-platform recovery evidence;
+  a mismatch fails without replacing published assets. Runs for the same source
+  SHA serialize across refs and do not cancel an active publication/pin.
 
 A dispatched run must build the head commit the event named. If the branch
 moved in between, the workflow cancels the run and fails, and the PR needs the
@@ -457,7 +530,7 @@ selector has a `wasm-` variant (`docs/package-compiler.md#hosts`). Add
 `WEB_THREADS=1` to build and test the worker configuration. Both compile the
 same C language dispatcher with Emscripten Release, embed its small language
 examples. Configuration and build time are separate. Node runs the Wasm,
-execution, program, headless, publication and scalar benchmark selectors. Chrome runs the same selectors
+execution, program, headless and publication correctness selectors. Chrome runs the same selectors
 except headless through `test_tools --wasm-browser`, with GPU use disabled and
 a 55-second internal process deadline. The fixture owns and removes its browser
 profile. `CHIBI_WASM_BENCHMARK_ONLY=1` selects only the fixed C benchmark for
@@ -466,8 +539,9 @@ baseline comparison.
 Chrome also runs `--row-array`, `--modules` and `--query-program` for packed
 numeric arrays, imported generic ownership, maps and iteration. These are fixed
 C workloads; module paths use a temporary MEMFS directory and source overlays.
-The packed loop has 64 elements and 16 trials per numeric width, representation
-and backend. The combined route retains its 55-second internal timeout. Its
+The packed correctness loop has 64 elements and two invocations (initial and
+warm reuse) per numeric width, representation and backend. Its 16 timing
+trials are opt-in as `language-packed-benchmark` or `wasm-packed-benchmark`. The combined route retains its 55-second internal timeout. Its
 expanded duration has not been measured.
 
 Wasm cases assert actual generated-entry calls, exact integer widths, arrays,
@@ -715,6 +789,16 @@ passes 6,404 assertions in 8.2 seconds. `--contact-benchmark` times the first
 and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
 overlapping, and passes 96 assertions in 1.4 seconds. Compare builds using the
 same C selectors and identical build flags, retaining their timing output.
+
+`--native-workload-benchmark LAUNCHER` builds the four kernels in
+`test/native_aot/workloads` with `chibi build --native` and the LLVM tools in
+`CHIBI_LLVM_BIN`, checks each program's status against the VM's, and prints the
+build time, peak memory, size and median run time at O0 and O2. Each build
+runs under a Linux subreaper, so a timeout, an interrupt or the launcher's exit
+kills every process the build started, including those in groups or sessions of
+their own; a fake-launcher case checks that no descendant survives. It runs on Linux x86-64, the one target the driver admits,
+and skips the builds without `CHIBI_LLVM_BIN`. `make benchmark` passes the Release launcher and
+`NATIVE_LLVM_BIN`. It takes about 70 seconds.
 
 `--asset-values` runs nine cases on KDL asset text and the native value tree:
 typed scalars at the 64-bit limits, slashdash, annotated arrays and source
@@ -1133,14 +1217,14 @@ The language follow-up adds these focused C checks:
   once initially, then five times for each of unchanged, body-edit and
   presentation-edit modes; it creates one disposable empty source directory.
   `tool scheduler-benchmark` compares identical registration and warm dispatch
-  of 12 systems over 128 passes per trial, plus owned-descriptor, dependency and
-  failure checks. These fixtures perform no child-process, engine-frame or GPU
+  of 12 systems over 128 passes per trial. Owned-descriptor, dependency and
+  failure checks run under `tool system-schedule`. These fixtures perform no child-process, engine-frame or GPU
   work. The four language selectors also have `wasm-` variants using the same
   C checks. Workload counts alone do not establish measured speedups.
-  The scheduler selector also covers unchanged owned descriptors, callback and
+  The `system-schedule` selector also covers unchanged owned descriptors, callback and
   effect replacement, failure retry and ordering, one recursive dispatch, and a
-  129-system oversized-cache fallback. There are eight fixed cases; cached
-  allocation assertions and retained scratch accounting complement timings.
+  129-system oversized-cache fallback. Cached allocation assertions and retained
+  scratch accounting are correctness checks, not throughput measurements.
 - `tool language-binding-schedule` and `tool wasm-binding-schedule` exercise five
   fixed binding-cache cases on both backends: module/owner generation changes,
   peer destruction, caller ordering, cycle rejection before writes, query-gate
@@ -1274,7 +1358,7 @@ The call-view/reduction follow-up adds bounded affected-contract checks:
 - Four additional scheduler cases use three synthetic registrations, a reverse
   inline executor and fixed failures/pauses to check ordered publication,
   prepare-after-commit, discard and resume without replay. They create no worker
-  threads and stay in `tool scheduler-benchmark`.
+  threads and run in `tool system-schedule`.
 - The component-setter source-presentation case also projects four tiny reduction
   spellings and checks receiver/value origins and reduction-mode cache identity.
 
@@ -1363,7 +1447,7 @@ formatter and root-state routes. Use `make test-list` to inspect the groups
 and standalone routes; registering a route alone does not add it to a group.
 
 The Chrome C driver also includes counted-row construction and Outliner
-projection among its ten selectors. It retains its internal 55-second timeout.
+projection among its nine correctness selectors. It retains its internal 55-second timeout.
 
 Exceeding an explicit timeout fails the run. The runner verifies cleanup
 discovery before test work. Portable process inspection allows five seconds for
@@ -1372,6 +1456,22 @@ discovery fails. The C runner cases cover delayed inspection, stuck-probe refusa
 descendant cleanup and sibling preservation. Linux subreaping contains escaped sessions;
 arbitrary already-detached descendants are not proven contained on macOS.
 Platform validation must report what actually ran.
+
+Routine CI and the `native`, `materials`, `language` and `wasm` correctness
+groups exclude benchmark selectors. Scheduler correctness cases run through
+`system-schedule`; runtime-attribution correctness cases remain in
+`language-runtime-attribution` (and its Wasm variant), while its repeated
+OFF/ON overhead comparison is opt-in as `language-runtime-attribution-benchmark`.
+The query-binding throughput case is opt-in as `language-query-binding-benchmark`.
+`language-scalarize` retains all scalar-read paths, fields, backends, inspection
+modes and cold/warm allocation/error-reset assertions with eight warm reads per
+combination; the five repeated timing trials are opt-in as
+`language-scalar-read-benchmark`. Packed array parity retains every numeric
+width/backend/representation with initial and warm execution; its 16-trial timing
+loop is opt-in as `language-packed-benchmark`. All four routes have `wasm-` variants.
+Compiler O0/O2 result comparisons, timeout/cleanup tests, allocation and
+instrumentation assertions, and passive test/build wall times remain enabled.
+The separately dispatched debug-optimization experiment remains manual.
 
 Use `make benchmark` for the mapped native C benchmarks or
 `python3 tools/test_policy.py tool <benchmark-name>` for one fixture. Each
@@ -1481,15 +1581,31 @@ reaches the rendered text. Each call stays under a 2,000,000-instruction budget.
 There is no filesystem, process, service or GPU work. This focused route is
 outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-package-tests` selects two fixed C
-cases for the shared runner behind `chibi test`. One preparation per backend has
+`python3 tools/test_policy.py tool language-package-tests` selects four portable C
+cases (plus a worker-pool case when that SDK target is available) for the
+shared runner behind `chibi test`. One preparation per backend has
 five files: the shipped `core:strings` source, a collection package with a test
 that must not be found, a package at the project root and a two-file project
 package, with nine tests. They cover discovery order, names and positions,
 passes, a failed `assert` reported inside its helper, an `assert` without a
 message reported by its condition, an out-of-range read, an exhausted
-100,000-instruction budget, a wait and a task start on bytecode and SLJIT. There is no filesystem, process, service or GPU work. This focused route
-is outside the language aggregate.
+100,000-instruction budget, a wait and a task start on bytecode and SLJIT. The
+runner cases compare serial and reverse-completion results, infer serial
+execution through direct/helper/imported random calls and opaque native
+callbacks, accept a recursive pure closure, and retain enclosing shared-budget
+and cancellation scopes. A bounded atomic rendezvous proves real overlapping
+invocations, private mutable array storage, thread-local numeric formatting and
+conversion, and join-before-exclusive execution. Two tests overlap even if the
+pool offers more workers. Both automatic and explicit two-worker requests run
+the check; a one-worker pass checks the serial override.
+No wall-time speed threshold is used. There is no filesystem, process, service
+or GPU work. This selector is included in the ordinary language aggregate as
+an exclusive barrier: it owns an inner pool and never overlaps selector workers.
+
+The end-user `chibi test` command automatically runs eligible authored tests on
+the existing bounded runtime thread pool, independently of repository selector
+processes and C case scheduling. `CHIBI_TEST_WORKERS=1` keeps it serial; see the
+[package testing guide](guide/testing.md#parallel-execution).
 
 `python3 tools/test_policy.py tool language-package-graph-chibi` reuses the
 existing 23 C graph cases for differential comparison with the authored compiler
@@ -3164,19 +3280,24 @@ status is asserted by this local validation.
 ## Selected runtime attribution: fixed workload
 
 `tool language-runtime-attribution` and `tool wasm-runtime-attribution` run the
-same six C/pico_unit cases through the existing language dispatcher. Each occurs
-once in its ordinary native-language or serial-Wasm group. This does not add a
-second copy to the separate native `test_tools` selector group.
+same six correctness C/pico_unit cases through the existing language dispatcher.
+Each occurs once in its ordinary native-language or serial-Wasm group. This does
+not add a second copy to the separate native `test_tools` selector group.
 
 The fixed envelope is 44 copy API operations, ten scoped copies/VM calls, three
 intern worlds with 32 unique edits and 32 repeats, four task owners with eight
-cycles and four boundaries each, six native/five Wasm backend attempts, and
-5,128 paired invocations. Tiny instruction/context budgets and the 512 KiB trial
-storage cap are unchanged. There are no new frames, GPU/browser/network workers
-or environment-controlled repetitions. Source review and exact artifact
-validation preceded measurement.
+cycles and four boundaries each, six native/five Wasm backend attempts, and eight
+untimed scalar/managed-array × bytecode/compiled × OFF/ON invocations. Those
+eight retain the combined backend/copy oracle, including four value-header moves
+and 14 text bytes for each observed managed-array snapshot. The repeated
+paired OFF/ON overhead case runs only through
+`tool language-runtime-attribution-benchmark` or its `wasm-` variant: 5,128
+invocations with the existing tiny instruction/context budgets and 512 KiB trial
+storage cap. Neither route adds frames, GPU/browser/network workers or
+environment-controlled repetitions.
 
-The six cases passed with 69,013 native assertions and 69,000 Wasm assertions.
+Before this correctness/benchmark split, the six cases passed with 69,013 native
+assertions and 69,000 Wasm assertions.
 The integrated complete language/Wasm groups, native-tools and installed
 compiler-free prepared consumer also passed. Exact source, build/SDK boundaries,
 raw timing samples, log hashes and limitations are in
@@ -3533,3 +3654,4 @@ base.
 See [the opt-in O0/O1 sanitizer comparison](debug-optimization-experiment.md) for
 matched build flags, correctness gates and wall-time measurements. CI defaults
 and sanitizer coverage remain unchanged.
+

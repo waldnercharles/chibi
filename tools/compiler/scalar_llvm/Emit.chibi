@@ -11,14 +11,6 @@ pub Result :: union {
     Rejected(rows: facts.Row[]) | Invalid(message: string) | Emitted(text: string)
 }
 
-// The most rows a module of the facts bounds holds: its source and document,
-// its records with their members and unions with their variants and payloads,
-// then per function its signature, parameters, statements with an if
-// statement's else and end, and operands. A switch arm's Case row counts as a
-// statement.
-MaxRows: int : 2 + facts.MaxRecords * (1 + facts.MaxVariants + facts.MaxMembers) +
-               facts.MaxFunctions * (1 + facts.MaxParameters + 3 * facts.MaxStatements + facts.MaxOperands);
-
 // The offset each source line starts at, for one-based line/column checks.
 LineStarts :: (text: string) -> int[] {
     starts: int[] = [0];
@@ -51,10 +43,11 @@ Unlocated :: (row: facts.Row) -> bool {
 Scalar :: (type: int) -> bool {
     return type >= facts.IntType && type <= facts.DoubleType;
 }
-// Whether `type` is a scalar or one of the module's records and unions, whose
-// Record and Union rows are at `records`.
+// Whether `type` is a scalar, a string or one of the module's records and
+// unions, whose Record and Union rows are at `records`.
 Valued :: (records: int[], type: int) -> bool {
-    return Scalar(type) || (type >= facts.RecordType && type - facts.RecordType < length(records));
+    return Scalar(type) || type == facts.StringType ||
+           (type >= facts.RecordType && type - facts.RecordType < length(records));
 }
 // The type of field `field` of record type `type`, or 0 when `type` is no
 // record of the module or has no such field.
@@ -135,14 +128,14 @@ Converts :: (from: int, to: int) -> bool {
     }
     return Integer(to) && Number(from);
 }
-// The backend's storage ordinal of a scalar type: the storages of int, bool,
-// i8, u8, i16, u16, u32, i64, u64, number and f64 in facts
-// type order. Record r is the backend's record r.
+// The backend's storage ordinal of a value type: the storages of int, bool,
+// i8, u8, i16, u16, u32, i64, u64, number, f64 and string in facts type
+// order. Record r is the backend's record r.
 NativeType :: (type: int) -> int {
     if (type >= facts.RecordType) {
         return native.RecordType + type - facts.RecordType;
     }
-    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
+    storages: int[] = [6, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, abi.TextStorage];
     return storages[type - facts.IntType];
 }
 // A rejection keeps exactly its source and one located diagnostic.
@@ -158,14 +151,13 @@ ValidRejection :: (rows: facts.Row[], starts: int[], size: int) -> string {
     return "";
 }
 // The row after the segment at `at`, a row of `kind` and its `count`
-// operands, when its count is within the bounds with `used` operands before
-// it; otherwise -1.
-Span :: (rows: facts.Row[], at: int, kind: int, used: int) -> int {
+// operands, when they lie within `rows`; otherwise -1.
+Span :: (rows: facts.Row[], at: int, kind: int) -> int {
     if (at >= length(rows) || rows[at].kind != kind) {
         return -1;
     }
     count := rows[at].count;
-    if (count < 1 || count > facts.MaxOperands - used || count > length(rows) - at - 1) {
+    if (count < 1 || count > length(rows) - at - 1) {
         return -1;
     }
     return at + count + 1;
@@ -186,22 +178,20 @@ Loop :: (kind: int) -> bool {
 }
 // The row after the declaration at `at`: a Record row and its members, or a
 // Union row and its variants, each with its members; -1 when a count is
-// outside the bounds or a union's variant row is missing.
+// empty or negative, runs past `rows`, or a union's variant row is missing.
+// Each count is compared with the rows that remain, so no sum wraps.
 After :: (rows: facts.Row[], at: int) -> int {
     count := rows[at].count;
-    if (rows[at].kind == facts.RecordRow) {
-        if (count < 1 || count > facts.MaxMembers) {
-            return -1;
-        }
-        return at + count + 1;
-    }
-    if (count < 1 || count > facts.MaxVariants) {
+    if (count < 1 || count > length(rows) - at - 1) {
         return -1;
+    }
+    if (rows[at].kind == facts.RecordRow) {
+        return at + count + 1;
     }
     next := at + 1;
     for (variant in 0..<count) {
         if (next >= length(rows) || rows[next].kind != facts.VariantRow || rows[next].count < 0 ||
-            rows[next].count > facts.MaxPayloads) {
+            rows[next].count > length(rows) - next - 1) {
             return -1;
         }
         next += rows[next].count + 1;
@@ -209,13 +199,12 @@ After :: (rows: facts.Row[], at: int) -> int {
     return next;
 }
 // The row index of each Record and Union row from row 2, up to the first row
-// that is neither or whose declaration's counts are outside the bounds, which
+// that is neither or whose declaration's counts are invalid, which
 // ValidRecords rejects.
 Records :: (rows: facts.Row[]) -> int[] {
     records: int[] = [];
     at: int = 2;
-    while (at < length(rows) && (rows[at].kind == facts.RecordRow || rows[at].kind == facts.UnionRow) &&
-           length(records) <= facts.MaxRecords) {
+    while (at < length(rows) && (rows[at].kind == facts.RecordRow || rows[at].kind == facts.UnionRow)) {
         records.append(at);
         at = After(rows, at);
         if (at < 0) {
@@ -231,13 +220,10 @@ Start :: (rows: facts.Row[], records: int[]) -> int {
     }
     return After(rows, records[length(records) - 1]);
 }
-// Each record has 1 to MaxMembers uniquely named scalar fields, each a Member
+// Each record has at least one uniquely named scalar field, each a Member
 // row within its declaration, each union is valid, and a function follows the
 // last; record and union names are unique too.
 ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) -> string {
-    if (length(records) > facts.MaxRecords) {
-        return format_text("scalar module declares more than {} records and unions", facts.MaxRecords);
-    }
     for (index in 0..<length(records)) {
         head := records[index];
         record := rows[head];
@@ -253,7 +239,7 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
             }
             continue;
         }
-        if (record.count < 1 || record.count > facts.MaxMembers || record.count >= length(rows) - head - 1 ||
+        if (record.count < 1 || record.count >= length(rows) - head - 1 ||
             record.name == "" || record.text != "" || record.type != 0 || record.value != 0 || record.literal != 0 ||
             !Located(record, starts, size)) {
             return "invalid scalar record row";
@@ -274,10 +260,10 @@ ValidRecords :: (rows: facts.Row[], records: int[], starts: int[], size: int) ->
     }
     return "";
 }
-// A union at `head` has 1 to MaxVariants uniquely named variants in order,
-// each a Variant row within its declaration with its uniquely named scalar
+// A union at `head` has at least one uniquely named variant, in order, each
+// a Variant row within its declaration with its uniquely named scalar
 // payloads, each a Member row within its variant numbered across the union,
-// at most MaxPayloads in all, and a function follows it.
+// and a function follows it.
 ValidUnion :: (rows: facts.Row[], head: int, starts: int[], size: int) -> string {
     declared := rows[head];
     beyond := After(rows, head);
@@ -316,13 +302,10 @@ ValidUnion :: (rows: facts.Row[], head: int, starts: int[], size: int) -> string
         }
         at += variant.count + 1;
     }
-    if (payloads > facts.MaxPayloads) {
-        return format_text("scalar union has more than {} payloads", facts.MaxPayloads);
-    }
     return "";
 }
 // The row index of each function from `start`, after checking the module's
-// row layout and every count against the facts bounds before it is used: each function's
+// row layout and every count before it is used: each function's
 // statements, with their operands, until the next function, each Else in an
 // open if statement before its End, each Case in an open switch before any
 // statement of the switch, each Break and Continue in an open loop, and every
@@ -333,13 +316,11 @@ Heads :: (rows: facts.Row[], start: int) -> int[] {
     at := start;
     while (at < length(rows)) {
         function := rows[at];
-        if (function.kind != facts.FunctionRow || function.count < 0 || function.count > facts.MaxParameters ||
-            length(heads) >= facts.MaxFunctions || at + function.count + 1 >= length(rows)) {
+        if (function.kind != facts.FunctionRow || function.count < 0 || function.count > length(rows) - at - 2) {
             return empty;
         }
         heads.append(at);
         at += function.count + 1;
-        used: int = 0;
         statements: int = 0;
         // Each open if statement's, switch's or loop's row kind, an if
         // statement's Else kind once its else has begun or a switch's Case
@@ -353,19 +334,15 @@ Heads :: (rows: facts.Row[], start: int) -> int[] {
                 if (top < 0 || (open[top] != facts.SwitchRow && open[top] != facts.CaseRow)) {
                     return empty;
                 }
-                if (statements >= facts.MaxStatements) {
-                    return empty;
-                }
                 statements += 1;
                 open[top] = kind;
                 next := at + 1;
                 if (rows[at].count != 0) {
-                    next = Span(rows, at, kind, used);
+                    next = Span(rows, at, kind);
                 }
                 if (next < 0) {
                     return empty;
                 }
-                used += rows[at].count;
                 at = next;
                 continue;
             }
@@ -388,21 +365,20 @@ Heads :: (rows: facts.Row[], start: int) -> int[] {
                 continue;
             }
             if (kind == facts.BreakRow || kind == facts.ContinueRow) {
-                if (rows[at].count != 0 || loops == 0 || statements >= facts.MaxStatements) {
+                if (rows[at].count != 0 || loops == 0) {
                     return empty;
                 }
                 statements += 1;
                 at += 1;
                 continue;
             }
-            if (!Statement(kind) || statements >= facts.MaxStatements) {
+            if (!Statement(kind)) {
                 return empty;
             }
-            next := Span(rows, at, kind, used);
+            next := Span(rows, at, kind);
             if (next < 0) {
                 return empty;
             }
-            used += rows[at].count;
             statements += 1;
             if (Opens(kind)) {
                 open.append(kind);
@@ -424,6 +400,20 @@ Last :: (rows: facts.Row[], heads: int[], function: int) -> int {
         return heads[function + 1];
     }
     return length(rows);
+}
+// The operands a Text row's operator consumes: its string, then its index,
+// or its start and count; 0 for no operator.
+TextOperands :: (operator: int) -> int {
+    if (operator == facts.TextLength) {
+        return 1;
+    }
+    if (operator == facts.TextByte) {
+        return 2;
+    }
+    if (operator == facts.TextSlice) {
+        return 3;
+    }
+    return 0;
 }
 Holds :: (values: int[], wanted: int) -> bool {
     for (value in values) {
@@ -466,7 +456,9 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             floor = depths[length(depths) - 1];
         }
         operand := rows[row];
-        if (operand.text != "" || !Valued(records, operand.type) || !Located(operand, starts, size) ||
+        // Only a string literal has text.
+        texted := operand.kind == facts.LiteralRow && operand.type == facts.StringType;
+        if ((!texted && operand.text != "") || !Valued(records, operand.type) || !Located(operand, starts, size) ||
             !Within(operand, scope) || (operand.kind != facts.LiteralRow && operand.literal != 0)) {
             return "invalid scalar operand row";
         }
@@ -482,11 +474,13 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             }
         } else if (operand.kind == facts.LogicalRow) {
             base := length(stack) - 1;
+            if (operand.count < 1 || operand.count > last - row - 1) {
+                return "scalar logic differs from its bool operands";
+            }
             end := row + operand.count + 1;
             if (operand.name != "" || operand.type != facts.BoolType ||
-                (operand.value != facts.LogicalAnd && operand.value != facts.LogicalOr) || operand.count < 1 ||
-                end > last || (length(ends) > 0 && end > ends[length(ends) - 1]) || base < floor ||
-                stack[base] != facts.BoolType) {
+                (operand.value != facts.LogicalAnd && operand.value != facts.LogicalOr) ||
+                (length(ends) > 0 && end > ends[length(ends) - 1]) || base < floor || stack[base] != facts.BoolType) {
                 return "scalar logic differs from its bool operands";
             }
             stack = slice(stack, 0, base);
@@ -498,7 +492,8 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
             if (operand.name != "" || operand.count != 2 || operand.type != facts.BoolType ||
                 operand.value < facts.Less || operand.value > facts.NotEqual || base < floor ||
                 (!Number(stack[base]) &&
-                 (stack[base] != facts.BoolType || operand.value < facts.Equal)) ||
+                 ((stack[base] != facts.BoolType && stack[base] != facts.StringType) ||
+                  operand.value < facts.Equal)) ||
                 stack[base + 1] != stack[base]) {
                 return "scalar comparison differs from its operands";
             }
@@ -592,6 +587,23 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 return "scalar payload read differs from its union";
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.TextRow) {
+            consumed := TextOperands(operand.value);
+            base := length(stack) - consumed;
+            output := facts.IntType;
+            if (operand.value == facts.TextSlice) {
+                output = facts.StringType;
+            }
+            if (operand.name != "" || consumed == 0 || operand.count != consumed || operand.type != output ||
+                base < floor || stack[base] != facts.StringType) {
+                return "scalar text read differs from its operands";
+            }
+            for (index in 1..<consumed) {
+                if (stack[base + index] != facts.IntType) {
+                    return "scalar text read differs from its operands";
+                }
+            }
+            stack = slice(stack, 0, base);
         } else {
             return "invalid scalar operand row";
         }
@@ -641,11 +653,12 @@ Operated :: (rows: facts.Row[], at: int) -> int {
 // statement's, switch's or loop's range. A variable is visible from its declaration to the end of the
 // statements it is declared among, a For row's only in its body, and the
 // body ends in a terminating statement.
-ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int) -> string {
+ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int, starts: int[], size: int,
+                  is_library: bool) -> string {
     head := heads[function];
     declaration := rows[head];
     if (declaration.name == "" || declaration.text != "" || !Valued(records, declaration.type) || declaration.value != 0 ||
-        declaration.literal != 0 || !Located(declaration, starts, size)) {
+        (declaration.literal != 0) != is_library || !Located(declaration, starts, size)) {
         return "invalid scalar function row";
     }
     variables: int[] = [];
@@ -782,7 +795,6 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             result = row.type;
         } else if (declares) {
             if (row.name == "" || !Valued(records, row.type) || row.value != length(variables) ||
-                length(variables) - declaration.count >= facts.MaxLocals ||
                 (ranged && (row.type != facts.IntType || row.literal < 0 ||
                             row.literal > i64(facts.RangeExclusive + facts.RangeReverse)))) {
                 return "invalid scalar local row";
@@ -824,11 +836,11 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
     }
     return "";
 }
-// This validates the bounded representation, not the truth of fabricated
+// This validates the representation, not the truth of fabricated
 // accepted rows. The caller must bind the actual trusted producer artifact,
 // source bytes and unchanged result envelope. No source parsing occurs here.
 pub Validate :: (rows: facts.Row[]) -> string {
-    if (length(rows) < 2 || length(rows) > MaxRows) {
+    if (length(rows) < 2) {
         return "scalar module row count is out of bounds";
     }
     source := rows[0];
@@ -838,18 +850,15 @@ pub Validate :: (rows: facts.Row[]) -> string {
     }
     size := strings.ByteLength(source.text);
     starts := LineStarts(source.text);
-    // A rejection may hold any source, including one past the bound.
     if (rows[1].kind == facts.RejectionRow) {
         return ValidRejection(rows, starts, size);
     }
-    if (size > facts.MaxSource) {
-        return format_text("scalar consumer source exceeds {} bytes", facts.MaxSource);
-    }
     document := rows[1];
     if (document.kind != facts.DocumentRow || document.type != 0 || document.value != 0 || document.count != 0 ||
-        document.literal != 0 || document.name == "" || document.text != "" || !Unlocated(document)) {
+        document.literal != 0 || document.name == "" || !Unlocated(document)) {
         return "noncanonical accepted scalar module";
     }
+    is_library := document.text != "";
     records := Records(rows);
     error := ValidRecords(rows, records, starts, size);
     if (error != "") {
@@ -860,11 +869,11 @@ pub Validate :: (rows: facts.Row[]) -> string {
         return "invalid scalar module layout";
     }
     first := rows[heads[0]];
-    if (first.count != 0 || first.type != facts.IntType) {
+    if (!is_library && (first.count != 0 || first.type != facts.IntType)) {
         return "scalar module entry must take no parameters and return int";
     }
     for (function in 0..<length(heads)) {
-        failure := ValidFunction(rows, records, heads, function, starts, size);
+        failure := ValidFunction(rows, records, heads, function, starts, size, is_library);
         if (failure != "") {
             return failure;
         }
@@ -956,8 +965,18 @@ Patched :: (code: native.Instruction[], at: int) -> native.Instruction[] {
 // row is its constant, an Update row an Insert and a Field row an Extract.
 // Each union is the backend's record of its tag, an int, then all its
 // payloads: a Make row inserts its tag and payloads into the zero constant,
-// and a Tag or Payload row extracts its field.
-pub Emit :: (rows: facts.Row[]) -> Result {
+// and a Tag or Payload row extracts its field. A string literal is a
+// constant of the module's text table, one entry per distinct text.
+pub EmitFor :: (target: abi.Target, rows: facts.Row[]) -> Result {
+    return Lower(target, rows, "", false);
+}
+// Emit with line tables: each instruction is at the position of the
+// statement row it lowers, the function's own row before its first, and the
+// source row names the file, which is in `directory`.
+pub EmitLines :: (rows: facts.Row[], directory: string) -> Result {
+    return Lower(abi.LinuxX64(), rows, directory, true);
+}
+Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool) -> Result {
     error := Validate(rows);
     if (error != "") {
         return Result.Invalid(error);
@@ -973,6 +992,11 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     arguments: int[] = [];
     records: native.Record[] = [];
     fields: int[] = [];
+    texts: string[] = [];
+    names: string[] = [];
+    ids: i64[] = [];
+    lines: int[] = [];
+    columns: int[] = [];
     declared := Records(rows);
     for (head in declared) {
         record: native.Record = {first: length(fields), count: 0};
@@ -992,12 +1016,16 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     for (function in 0..<length(heads)) {
         head := heads[function];
         declaration := rows[head];
+        ids.append(declaration.literal);
         result := NativeType(declaration.type);
         shape: native.Function = {result: result, first_parameter: length(parameters),
                                   parameters: declaration.count, first_slot: length(slots), slots: 0,
                                   first_local: length(locals), locals: 0, first_code: length(code), code: 0,
                                   first_argument: length(arguments), arguments: 0};
         body: native.Instruction[] = [Op(native.Check, 0, 0, 0, 0, 0)];
+        names.append(declaration.name);
+        line := declaration.line;
+        column := declaration.column;
         // Each variable's local, and the next slot and local.
         places: int[] = [];
         slot: int = 0;
@@ -1027,6 +1055,14 @@ pub Emit :: (rows: facts.Row[]) -> Result {
         last := Last(rows, heads, function);
         while (at < last) {
             row := rows[at];
+            while (length(lines) < length(code) + length(body)) {
+                lines.append(line);
+                columns.append(column);
+            }
+            if (row.line > 0) {
+                line = row.line;
+                column = row.column;
+            }
             top := length(frames) - 1;
             if (row.kind == facts.ElseRow) {
                 frame := frames[top];
@@ -1218,7 +1254,19 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                 }
                 item: native.Instruction = {op: native.Constant, type: type, output: slot, left: 0, right: 0,
                                             target: 0, literal: operand.literal};
-                if (operand.kind == facts.ReadRow) {
+                if (operand.kind == facts.LiteralRow && operand.type == facts.StringType) {
+                    // A repeated literal or default shares one entry.
+                    item.literal = i64(length(texts));
+                    for (index in 0..<length(texts)) {
+                        if (texts[index] == operand.text) {
+                            item.literal = i64(index);
+                            break;
+                        }
+                    }
+                    if (item.literal == i64(length(texts))) {
+                        texts.append(operand.text);
+                    }
+                } else if (operand.kind == facts.ReadRow) {
                     item = Op(native.Local, type, slot, places[operand.value], 0, 0);
                 } else if (operand.kind == facts.CompareRow) {
                     base := length(stack) - 2;
@@ -1279,6 +1327,21 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                     base := length(stack) - 2;
                     item = Op(native.Insert, type, slot, stack[base], stack[base + 1], 0);
                     item.literal = i64(operand.value);
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.TextRow) {
+                    base := length(stack) - operand.count;
+                    item = Op(native.TextLength, type, slot, stack[base], 0, 0);
+                    if (operand.value == facts.TextByte) {
+                        item = Op(native.TextByte, type, slot, stack[base], stack[base + 1], 0);
+                    }
+                    // A slice drops the bytes before its start, then takes its
+                    // count of those after it.
+                    if (operand.value == facts.TextSlice) {
+                        slots.append(type);
+                        body.append(Op(native.TextDrop, type, slot, stack[base], stack[base + 1], 0));
+                        item = Op(native.TextTake, type, slot + 1, slot, stack[base + 2], 0);
+                        slot += 1;
+                    }
                     stack = slice(stack, 0, base);
                 }
                 body.append(item);
@@ -1385,14 +1448,30 @@ pub Emit :: (rows: facts.Row[]) -> Result {
                 break;
             }
         }
+        while (length(lines) < length(code) + length(body)) {
+            lines.append(line);
+            columns.append(column);
+        }
         shape.slots = slot;
         shape.locals = local;
         shape.code = length(body);
         code.extend(body);
         functions.append(shape);
     }
-    switch native.Emit(abi.LinuxX64(), functions, parameters, slots, locals, code, arguments, records, fields, false,
-                       1) {
+    source: native.Source = {file: "", directory: ""};
+    if (debug) {
+        source = {file: rows[0].name, directory: directory};
+    }
+    // A library's Document row names it.
+    emitted: native.Result = native.Result.Rejected(-1, "");
+    if (rows[1].text == "") {
+        emitted = native.Emit(target, functions, parameters, slots, locals, code, arguments, records, fields, texts,
+                              source, names, lines, columns, false, 1);
+    } else {
+        emitted = native.EmitLibrary(target, rows[1].text, names, ids, functions, parameters, slots, locals,
+                                     code, arguments, records, fields, texts, 1);
+    }
+    switch emitted {
         case .Rejected(instruction, message):
             return Result.Invalid(message);
         case .Emitted(text):
@@ -1400,11 +1479,25 @@ pub Emit :: (rows: facts.Row[]) -> Result {
     }
 }
 
+// Emit and EmitBytes are the Linux x86-64 entries `chibi build` calls.
+pub Emit :: (rows: facts.Row[]) -> Result {
+    return EmitFor(abi.LinuxX64(), rows);
+}
+pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
+    return EmitBytesFor(abi.LinuxX64(), rows);
+}
+
 // Existing compiler-host --output-bytes rejects an empty result before file
 // publication. Emit retains typed diagnostics; this entry adds no host codec.
-pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
+pub EmitBytesFor :: (target: abi.Target, rows: facts.Row[]) -> u8[] {
+    return Bytes(EmitFor(target, rows));
+}
+pub EmitLinesBytes :: (rows: facts.Row[], directory: string) -> u8[] {
+    return Bytes(EmitLines(rows, directory));
+}
+Bytes :: (result: Result) -> u8[] {
     output: u8[] = [];
-    switch Emit(rows) {
+    switch result {
         case .Rejected(rejected):
             return output;
         case .Invalid(message):

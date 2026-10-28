@@ -12,8 +12,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: compiler-runtime-seed-${{ github.ref }}
-  cancel-in-progress: true
+  # Releases are named by source SHA, not ref. Different refs at the same
+  # source must not overwrite each other's draft or interrupt a pin/dispatch.
+  group: compiler-runtime-seed-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   recover:
@@ -329,9 +331,13 @@ jobs:
         run: |
           # A tag names one commit's seeds; never replace published assets. An
           # interrupted draft is resumed: assets upload before it is published.
-          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" = false ]; then
-            echo "::notice::$TAG is already published; pinning it as is."
-            exit 0
+          if gh release view "$TAG" --json isDraft --jq .isDraft > "$RUNNER_TEMP/draft"; then
+            if [ "$(cat "$RUNNER_TEMP/draft")" = false ]; then
+              echo "::notice::$TAG is already published; verifying it before reuse."
+              exit 0
+            fi
+            test "$(cat "$RUNNER_TEMP/draft")" = true
+            test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$GITHUB_SHA"
           fi
           cat > "$RUNNER_TEMP/notes.md" <<EOF
           Prepared$VERSION compiler runtime seeds built from \`$GITHUB_SHA\` and recovered on macOS ARM64, Linux x64 and Windows x64 in [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). All three recovered identical compiler bytes.
@@ -341,12 +347,86 @@ jobs:
           Commit-specific prerelease, not latest.
           EOF
           if ! gh release view "$TAG" > /dev/null 2>&1; then
+            # Distinguish absence from authentication, rate-limit or API failure.
+            gh api "repos/$GH_REPO/releases/tags/$TAG" > "$RUNNER_TEMP/release-state" 2> "$RUNNER_TEMP/release-error" && exit 1
+            grep -q '(HTTP 404)' "$RUNNER_TEMP/release-error"
             gh release create "$TAG" --draft --target "$GITHUB_SHA" --prerelease \
               --title "Prepared$VERSION runtime ${GITHUB_SHA:0:12}" --notes-file "$RUNNER_TEMP/notes.md"
           fi
           test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
           gh release upload "$TAG" "$RUNNER_TEMP"/release/* --clobber
+          # Do not publish stale extra assets left in an interrupted draft.
+          ls "$RUNNER_TEMP/release" | LC_ALL=C sort > "$RUNNER_TEMP/expected-assets"
+          gh release view "$TAG" --json assets --jq '.assets[].name' | LC_ALL=C sort > "$RUNNER_TEMP/draft-assets"
+          cmp "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/draft-assets"
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
           gh release edit "$TAG" --draft=false --prerelease --latest=false
+
+      - name: Verify published assets before pinning
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          test "$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)" = "$GITHUB_SHA"
+          gh release view "$TAG" --json isDraft,isPrerelease,tagName > "$RUNNER_TEMP/published.json"
+          mkdir "$RUNNER_TEMP/published"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/published"
+          SOURCE_TREE=$(git rev-parse 'HEAD^{tree}') python3 - <<'PY_VERIFY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          assets = root / 'published'
+          state = json.loads((root / 'published.json').read_text())
+          assert state == {'isDraft': False, 'isPrerelease': True, 'tagName': os.environ['TAG']}
+          expected = {p.name for p in (root / 'release').iterdir()}
+          assert {p.name for p in assets.iterdir()} == expected, 'release asset inventory differs'
+          checksums = {}
+          for line in (assets / 'SHA256SUMS').read_text().splitlines():
+              digest, name = line.split('  ', 1)
+              assert name in expected and name not in checksums, 'unknown or duplicate checksum'
+              assert len(digest) == 64 and all(c in '0123456789abcdef' for c in digest)
+              checksums[name] = digest
+          assert set(checksums) == expected - {'SHA256SUMS'}, 'incomplete checksums'
+          for name, digest in checksums.items():
+              assert hashlib.sha256((assets / name).read_bytes()).hexdigest() == digest, name
+          manifest = json.loads((assets / 'runtime.json').read_text())
+          assert manifest['format'] == 1
+          assert manifest['repository'] == os.environ['GITHUB_REPOSITORY']
+          assert manifest['tag'] == os.environ['TAG']
+          assert manifest['source_revision'] == os.environ['GITHUB_SHA']
+          assert manifest['source_tree'] == os.environ['SOURCE_TREE']
+          platforms = {'linux-x64': '', 'macos-arm64': '', 'windows-x64': '.exe'}
+          assert set(manifest['platforms']) == set(platforms)
+          closures = set()
+          for platform, suffix in platforms.items():
+              name = 'chibi-compiler-host-' + platform + suffix
+              pin = manifest['platforms'][platform]
+              assert pin == {'asset': name, 'sha256': checksums[name], 'bytes': (assets / name).stat().st_size}
+              evidence = json.loads((assets / ('seed-evidence-' + platform + '.json')).read_text())
+              assert evidence['revision'] == os.environ['GITHUB_SHA']
+              expected_runner = {'linux-x64': ('Linux', 'X64'), 'macos-arm64': ('macOS', 'ARM64'), 'windows-x64': ('Windows', 'X64')}[platform]
+              assert (evidence['runner_os'], evidence['runner_arch']) == expected_runner, 'wrong recovery platform'
+              assert evidence['runtime_sha256'] == checksums[name]
+              assert evidence['proof_exit_code'] == 0 and evidence['compiler_bytes'] > 0
+              assert len(evidence['compiler_sha256']) == 64 and all(c in '0123456789abcdef' for c in evidence['compiler_sha256'])
+              fresh = json.loads((root / 'release' / ('seed-evidence-' + platform + '.json')).read_text())
+              closure = (evidence['compiler_bytes'], evidence['compiler_sha256'])
+              assert closure == (fresh['compiler_bytes'], fresh['compiler_sha256']), 'published recovery differs from current recovery'
+              closures.add(closure)
+          assert len(closures) == 1, 'recovered compiler bytes differ'
+          # Source archives must still name the exact source and pinned dependencies.
+          for name in expected:
+              if name.startswith(('chibi-source-', 'sljit-', 'tree-sitter-')):
+                  assert (assets / name).read_bytes() == (root / 'release' / name).read_bytes(), name
+          PY_VERIFY
+      # Transfer only the manifest just verified, rather than downloading an
+      # unchecked replacement in the write/dispatch job.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-runtime-pin-${{ github.run_id }}
+          path: ${{ runner.temp }}/published/runtime.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 3
 
   pin:
     name: Pin the runtime seeds on the branch
@@ -365,29 +445,48 @@ jobs:
       # Only edits tools/compiler/runtime.json and pushes; runs nothing from
       # the branch.
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-runtime-pin-${{ github.run_id }}
+          path: ${{ runner.temp }}/verified-pin
       - name: Commit the pin onto the seeded commit
         run: |
+          pin="$RUNNER_TEMP/verified-pin/runtime.json"
           head=$(gh api "repos/$GH_REPO/git/ref/heads/$GITHUB_REF_NAME" --jq .object.sha)
           if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "::error::$GITHUB_REF_NAME moved from $GITHUB_SHA to $head after seeding; pin $TAG by hand or seed the new head."
-            exit 1
-          fi
-          gh release download "$TAG" --pattern runtime.json --output tools/compiler/runtime.json --clobber
-          if git diff --quiet; then
-            echo "::notice::tools/compiler/runtime.json already pins $TAG."
+            # Rerun may resume only our exact one-file pin commit, never other
+            # work pushed to the branch while the runtime was being built.
+            git fetch --no-tags origin "$head"
+            test "$(git show -s --format=%P "$head")" = "$GITHUB_SHA"
+            test "$(git diff-tree --no-commit-id --name-only -r "$head")" = tools/compiler/runtime.json
+            test -z "$(git diff-tree --no-commit-id --summary -r "$head")"
+            test "$(git show -s --format=%s "$head")" = "Pin the $TAG compiler runtime"
+            test "$(git show -s --format=%ae "$head")" = '41898282+github-actions[bot]@users.noreply.github.com'
+            test "$(git show -s --format=%b "$head")" = "Published from run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+            git show "$head:tools/compiler/runtime.json" | cmp - "$pin"
+            echo "PINNED=$head" >> "$GITHUB_ENV"
             exit 0
           fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -q -m "Pin the $TAG compiler runtime" \
-            -m "Published from run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID." tools/compiler/runtime.json
-          git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
+          cp "$pin" tools/compiler/runtime.json
+          if ! git diff --quiet -- tools/compiler/runtime.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -q -m "Pin the $TAG compiler runtime" \
+              -m "Published from run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID." tools/compiler/runtime.json
+            git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
+          fi
           echo "PINNED=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       # A push with this token starts no workflows, so start the PR's checks.
       - name: Start CI and the compiler self-build on the pin
         if: env.PINNED
         run: |
+          test "$(gh api "repos/$GH_REPO/git/ref/heads/$GITHUB_REF_NAME" --jq .object.sha)" = "$PINNED"
           for workflow in ci.yml compiler-recovery.yml; do
+            existing=$(gh api "repos/$GH_REPO/actions/workflows/$workflow/runs?head_sha=$PINNED&event=workflow_dispatch&per_page=1" --jq '.workflow_runs[0].id // empty')
+            if [ -n "$existing" ]; then
+              echo "::notice::$workflow already dispatched on $PINNED: run $existing"
+              continue
+            fi
             run=$(gh api -X POST "repos/$GH_REPO/actions/workflows/$workflow/dispatches" \
               -f ref="$GITHUB_REF_NAME" -F return_run_details=true --jq .workflow_run_id)
             sha=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .head_sha)

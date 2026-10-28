@@ -18,6 +18,7 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
         compiler_id: CompilerId(compiler),
         build_type: "Debug",
         debug_optimization: "",
+        debug_frame_pointers: false,
         architecture: "",
         sysroot: "",
         warnings: true,
@@ -27,7 +28,8 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
         libclang_library: "",
         clang_resource_include: "",
         third_party: "",
-        reflect: ""
+        reflect: "",
+        asset_generator_hosts: ""
     };
     if (name == "sanitizer") {
         profile.sanitizers = "address,undefined";

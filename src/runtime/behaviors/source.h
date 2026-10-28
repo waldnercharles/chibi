@@ -3,6 +3,7 @@
 
 #include "ecs/ecs.h"
 #include "execution/module.h"
+#include "execution/native.h"
 #include "runtime/event_catalog.h"
 
 typedef struct source_registry source_registry;
@@ -65,6 +66,18 @@ int source_publish(
     const source_publication *,
     int count,
     const service_binding *,
+    char *error,
+    size_t size
+);
+/* Binds each native library manifest to the registered module that defines
+ * its functions, and makes every registered program call the bound entries.
+ * Call once, after the last publication and before any attachment; the
+ * manifests outlive the registry. A manifest that no module defines, or that
+ * does not bind, fails with why and leaves the programs in the VM. */
+int source_bind_natives(
+    source_registry *,
+    const execution_native_manifest *const *,
+    int count,
     char *error,
     size_t size
 );

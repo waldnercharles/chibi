@@ -11,6 +11,7 @@
 #include "execution/inspection.h"
 #include "execution/integer_report.h"
 #include "execution/module.h"
+#include "execution/native.h"
 #include "execution/prepared.h"
 #include "execution/program_internal.h"
 #include "execution/status.h"
@@ -2100,6 +2101,67 @@ TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values)
         }
         memory = execution_program_memory_usage(program);
         REQUIRE(memory.query_cache_bytes > 0 && memory.query_cache_bytes <= 64 * 1024);
+    }
+    return true;
+}
+
+static int native_predicate_calls;
+static void native_above(const uint64_t *arguments, uint64_t *results)
+{
+    native_predicate_calls++;
+    double value;
+    memcpy(&value, &arguments[0], sizeof value);
+    results[0] = value > 0;
+}
+/* A query predicate's calls run the program's native entries. */
+TEST_CASE(program_query_predicates_call_bound_natives)
+{
+    static const uint8_t types[] = { EXECUTION_NATIVE_F64, EXECUTION_NATIVE_BOOL };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity owners[3] = { positioned(-1, false),
+                                 positioned(1, false),
+                                 positioned(3, false) };
+        REQUIRE(compile(
+            "Filter :: system(p: Position) where Above(p.x) { "
+            "Above :: (value: f64) -> bool { return value > 0; } p.y += 1; }",
+            backends[backend]
+        ));
+        execution_native_export above = { .name = "Above",
+                                          .types = types,
+                                          .parameter_count = 1,
+                                          .result_count = 1,
+                                          .entry = native_above };
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info info = execution_module_function_at(module, i);
+            int count;
+            const pin_value *arguments = info.kind == EXECUTION_FUNCTION_AUTHORED
+                                           ? behavior_function_arguments(info.body, &count)
+                                           : NULL;
+            above.id = arguments && count == 1 && arguments[0].type == PIN_F64
+                         ? info.id
+                         : above.id;
+        }
+        const execution_native_manifest manifest = { EXECUTION_NATIVE_ABI, 1, &above };
+        execution_natives *natives = execution_natives_new();
+        char error[256] = "";
+        REQUIRE(execution_natives_bind(natives, module, &manifest, error, sizeof error));
+        execution_program_set_natives(program, natives);
+        native_predicate_calls = 0;
+        behavior_run_scope scope = { 0 };
+        behavior_run_scope_begin(&scope);
+        int status = execution_program_step(program, 0, 0, 1000);
+        behavior_run_scope_end(&scope);
+        REQUIRE(status == FLOW_OK);
+        REQUIRE(native_predicate_calls == 3 && scope.counts.native_entries == 3);
+        for (int i = 0; i < 3; i++) {
+            const program_position *position = ecs_component_data_const(world, owners[i], 501);
+            REQUIRE(position->y == (i ? 1 : 0));
+        }
+        execution_program_free(program);
+        program = NULL;
+        execution_natives_free(natives);
     }
     return true;
 }
@@ -4921,6 +4983,78 @@ TEST_CASE(program_task_collection_indexes_handles_across_many_owners)
         REQUIRE(memory.task_slots == OWNERS);
         REQUIRE(memory.retained_tasks == OWNERS);
         REQUIRE(memory.task_result_bytes > 0);
+    }
+    return true;
+}
+
+static pin_pointer *managed_cell(arena *heap, pin_value value)
+{
+    pin_pointer *cell = arena_alloc(heap, sizeof *cell);
+    *cell = (pin_pointer){ .value = value, .storage = heap };
+    pin_arena_trace_pointer(heap, cell);
+    return cell;
+}
+/* A long chain of managed cells holds the only handle to a finished task, and
+ * a long ring of cells sits beside it. Authored records with pointer fields
+ * reach a task through the same pointer steps; cells that hold cells give the
+ * longest chain this catalog can state. Collection follows every link without
+ * native recursion, visits the ring once, and releases the task once the
+ * chain is unreachable. */
+TEST_CASE(program_task_collection_follows_long_pointer_chains)
+{
+    enum
+    {
+        LINKS = 200000
+    };
+    const char *source = "Keeper :: behavior { saved: ^task?; loop: ^task?; "
+                         "held: task; "
+                         "Work :: () -> (value: f64) { yield; return 7; } "
+                         "on Impulse :: () { held = Work(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 1);
+        uint64_t saved = state_id("saved"), loop = state_id("loop"),
+                 held = state_id("held");
+        const pin_value task = *execution_instance_state(instance, held);
+        REQUIRE(task.type == PIN_TASK && task.u64);
+        /* Each state write collects, so build each structure just before
+         * the write that roots it. */
+        arena *heap = &program->managed->storage;
+        pin_pointer *first = managed_cell(heap, (pin_value){ .type = PIN_POINTER });
+        pin_pointer *ring = first;
+        for (int i = 0; i < LINKS; i++) {
+            ring = managed_cell(heap, (pin_value){ .type = PIN_POINTER, .ptr = ring });
+        }
+        first->value.ptr = ring;
+        /* A state write frees the state's previous type name, so each write
+         * starts from a fresh read. */
+        pin_value root = *execution_instance_state(instance, loop);
+        root.ptr = ring;
+        REQUIRE(execution_instance_set_state(instance, loop, root) == FLOW_OK);
+        pin_pointer *chain = managed_cell(heap, task);
+        for (int i = 0; i < LINKS; i++) {
+            chain = managed_cell(heap, (pin_value){ .type = PIN_POINTER, .ptr = chain });
+        }
+        root = *execution_instance_state(instance, saved);
+        root.ptr = chain;
+        REQUIRE(execution_instance_set_state(instance, saved, root) == FLOW_OK);
+        REQUIRE(
+            execution_instance_set_state(instance, held, (pin_value){ .type = PIN_TASK }) == FLOW_OK
+        );
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 1);
+        root = *execution_instance_state(instance, saved);
+        root.ptr = NULL;
+        REQUIRE(execution_instance_set_state(instance, saved, root) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).retained_tasks == 0);
     }
     return true;
 }
@@ -11180,6 +11314,7 @@ void test_language_query_program()
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
     RUN_TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order);
     RUN_TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values);
+    RUN_TEST_CASE(program_query_predicates_call_bound_natives);
     pu_clear_setup();
 }
 
@@ -11270,6 +11405,147 @@ TEST_CASE(program_staged_replacement_pins_preserved_pointers)
         arena_alloc(&program->managed->storage, 4096);
         program_collect_payloads(program, NULL);
         REQUIRE(arena_contains(cell->storage, cell) && cell->value.i == 42);
+    }
+    return true;
+}
+/* One entity on bytecode: a pointer preserved beside a native record in a
+ * union is rooted alone while the replacement is staged, so the staging
+ * succeeds and the target survives the commit and a forced collection. */
+TEST_CASE(program_replacement_preserves_pointers_beside_inline_records)
+{
+    const char
+        *source = "Keeper :: behavior { Slot :: union { Empty | "
+                  "Full(position: Position, target: ^number) }; "
+                  "held: Slot = Slot.Empty; seen: number = 0; "
+                  "on Impulse :: (amount: f64, enabled: bool) { if enabled { "
+                  "x := 5.0; at: Position = {x: 1, y: 2}; "
+                  "held = Slot.Full(at, &x); } "
+                  "if !enabled { if held is .Full(position, target) { "
+                  "seen = target^; } } } }";
+    prepare();
+    REQUIRE(compile(source, BEHAVIOR_BYTECODE));
+    uint64_t entity = ecs_entity_to_u64(ecs_world_create_entity(world));
+    execution_instance *instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL, .b = true } };
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    other_program = execution_program_prepare_replace(program, module, false);
+    REQUIRE(other_program);
+    execution_program_commit_replace(program, other_program);
+    other_program = NULL;
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance);
+    arena_alloc(&program->managed->storage, 4096);
+    program_collect_payloads(program, NULL);
+    args[1].b = false;
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(instance, "seen", 5));
+    return true;
+}
+/* One entity on two backends. A handler suspends holding a union it read from
+ * state, then the state is overwritten. The local owns a copy of the union, so
+ * a forced collection still reaches its pointer, and a new cell allocated
+ * afterwards does not take its place. */
+TEST_CASE(program_suspended_union_reads_keep_pointer_targets)
+{
+    const char
+        *source = "Keeper :: behavior { Slot :: union { Empty | Full(p: "
+                  "^number) "
+                  "}; "
+                  "held: Slot = Slot.Empty; seen: number = 0; "
+                  "on Impulse :: (amount: f64, enabled: bool) { "
+                  "if amount == 0 { y := 3.0; held = Slot.Full(&y); } "
+                  "if amount == 1 { h := held; await Delay(1); "
+                  "if h is .Full(p) { seen = p^; } } "
+                  "if amount == 2 { held = Slot.Empty; } "
+                  "if amount == 3 { z := 7.0; held = Slot.Full(&z); } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        for (int step = 0; step < 4; step++) {
+            if (step == 3) {
+                arena_alloc(&program->managed->storage, 4096);
+                uint64_t marks = arena_collect_marks();
+                program_collect_payloads(program, NULL);
+                REQUIRE(arena_collect_marks() > marks);
+            }
+            args[0].d = step;
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(execution_instance_pending(instance) == 1);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 3));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+/* One moving entity on two backends. A reducing system pauses at a breakpoint
+ * while a local array holds the only pointer to a cell whose local went out of
+ * scope. The paused activation's slots and payload are listed by no
+ * collection, so a collection requested during the pause marks nothing, and
+ * the cell is still there when the system resumes. */
+TEST_CASE(program_paused_reducing_systems_keep_pointer_targets)
+{
+    const char *source = "Held :: system(p: Position, v: Velocity) { "
+                         "kept: retain number = 0; finished: retain f64 = 0; "
+                         "ps: ^number[] = []; if true { x := 3.0; ps = [&x]; } "
+                         "reduce p.x += v.x; finished += 1; kept = ps[0]^; }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        ecs_entity entity = positioned(0, true);
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_program_pump(program, 0, 0, 1000) == FLOW_OK);
+        execution_instance *instance = execution_program_instance(program, ecs_entity_to_u64(entity));
+        REQUIRE(instance);
+        debugger = execution_program_inspector(program);
+        REQUIRE(debugger);
+        uint64_t function = 0, point = 0;
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info info = execution_module_function_at(module, i);
+            if (info.kind == EXECUTION_FUNCTION_SYSTEM) {
+                function = info.id;
+            }
+        }
+        for (int i = 0; i < analysis->statement_count; i++) {
+            const script_statement *s = &analysis->statements[i];
+            if (s->kind == SCRIPT_STMT_ASSIGN && s->expression >= 0 &&
+                analysis->expressions[s->expression].symbol >= 0 &&
+                !strcmp(
+                    analysis
+                        ->symbols[analysis->expressions[s->expression].symbol]
+                        .name,
+                    "finished"
+                )) {
+                script_occurrences *occurrences = script_occurrences_new(analysis);
+                point = script_record_id(occurrences, SCRIPT_RECORD_STATEMENT, i);
+                script_occurrences_free(occurrences);
+            }
+        }
+        REQUIRE(function && point);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), function, point, true)
+        );
+        REQUIRE(execution_program_update(program, 1, .5, 1000) == FLOW_PAUSED_RESULT);
+        arena_alloc(&program->managed->storage, 4096);
+        uint64_t marks = arena_collect_marks();
+        program_collect_payloads(program, NULL);
+        REQUIRE(arena_collect_marks() == marks);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), function, point, false)
+        );
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, .5, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "finished", 1));
+        REQUIRE(number_state(instance, "kept", 3));
     }
     return true;
 }
@@ -11478,6 +11754,9 @@ void test_language_program()
     RUN_TEST_CASE(program_borrowing_kernel_results_survive_collection);
     RUN_TEST_CASE(program_detached_event_batches_keep_managed_arguments);
     RUN_TEST_CASE(program_staged_replacement_pins_preserved_pointers);
+    RUN_TEST_CASE(program_replacement_preserves_pointers_beside_inline_records);
+    RUN_TEST_CASE(program_suspended_union_reads_keep_pointer_targets);
+    RUN_TEST_CASE(program_paused_reducing_systems_keep_pointer_targets);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
     RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
@@ -11510,6 +11789,7 @@ void test_language_program()
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
     RUN_TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order);
     RUN_TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values);
+    RUN_TEST_CASE(program_query_predicates_call_bound_natives);
     RUN_TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected);
     RUN_TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace);
     RUN_TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned);
@@ -11553,6 +11833,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_result_snapshot_outlives_the_last_handle);
     RUN_TEST_CASE(program_task_await_shares_large_payload);
     RUN_TEST_CASE(program_task_collection_indexes_handles_across_many_owners);
+    RUN_TEST_CASE(program_task_collection_follows_long_pointer_chains);
     RUN_TEST_CASE(program_task_results_keep_nested_task_handles_alive);
     RUN_TEST_CASE(program_prepared_tasks_preserve_cancellation_union_and_deadlines);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);

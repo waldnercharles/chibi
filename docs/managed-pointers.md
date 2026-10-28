@@ -126,6 +126,25 @@ compiler-generated destructors and reference updates throughout the program.
 Reusing Chibi's existing tracing collector avoids adding that second ownership
 system. Reference: [Nim ORC source at the inspected revision](https://github.com/nim-lang/Nim/blob/2b9e94433dd9c3e8e138f8bc6fb52060d54c436a/lib/system/orc.nim).
 
+## Known limitations
+
+The independent runtime review of #695 left these for follow-up work:
+
+- **Pointee layouts across hot reload.** Matching preserved state compares the
+  pointer header, not the pointee's layout. If a replacement changes a record
+  that preserved cells hold (for example, a field added to `Actor` while
+  `saved: ^Actor` is kept), those cells keep the old layout. Reads through them
+  then fail with "Reference read differs from its declared result" until a
+  restart. Nothing reads freed or misaligned memory. The fix is to compare the
+  layouts reachable through pointers when state is matched.
+- **Retired heaps.** Each committed replacement keeps the previous heap in the
+  family until the program is destroyed, even once it holds no live cell.
+  Collection and ownership checks grow linearly with the number of reloads.
+- **Elements through a pointer to an array.** `p^[i]` reads and `p^[i] = v`
+  writes copy the whole cell value, and an address-taken array local leaves the
+  in-place array path. Loops over large `^(T[])` targets are quadratic until
+  writes go into the cell in place and reads copy only the item.
+
 ## Verification ledger
 
 Passed on macOS arm64 in this checkout, using the existing pico-unit dispatchers:
@@ -184,6 +203,31 @@ which supersedes the macOS artifact figures above:
   `make test-recovery`. Isolated recovery from `git archive HEAD` sources with
   an empty environment reproduced all 14,224,585 artifact bytes and SHA-256
   `faf6bf0a28025ede5782350022ba9c12807697244f6a583813f88d0e405ef4e5`.
+
+Independent source review of the runtime contracts on d650e456e covered three
+areas: cell and projection construction and mutation, heap adoption and
+teardown, and VM/JIT frames, roots and references. It fixed six defects, each
+with a case:
+
+- Entity event payloads refuse pointers before queuing (`record_services`).
+- A staged replacement roots each preserved pointer rather than the state
+  value holding it, so state that keeps a pointer beside a native record
+  reloads (`program_replacement_preserves_pointers_beside_inline_records`).
+- Build entries and site generators run with their own managed heap
+  (`private_programs_allocate_managed_pointers`, run by the build-process
+  group).
+- No collection runs while a reducing system is paused, because the paused
+  activations are listed by no collection
+  (`program_paused_reducing_systems_keep_pointer_targets`).
+- Packed arrays trace items only for authored records, whose layout travels
+  with the array (`types_collection_traces_packed_arrays_of_unknown_native_types`).
+- Unrooting clears the host slot (`execution`).
+
+JIT pointer equality now stores its `bool` result as one byte, as string
+equality does. Every reader already loaded one byte, so no case can fail
+before this change. A suspended union read from state was reported as unrooted,
+but a local owns a copy of the union it reads;
+`program_suspended_union_reads_keep_pointer_targets` pins that.
 
 Prepared ABI is 23; bootstrap capability version is 6,
 while minimum remains 2 because the compiler sources do not use pointer syntax.

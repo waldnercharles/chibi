@@ -499,7 +499,9 @@ typedef struct
 {
     task_root *index;
     execution_task **pending;
-    const pin_pointer **pointers;
+    pin_value *values; /* Reached values whose contents are not yet marked. */
+    const pin_pointer **pointers; /* Visited pointer roots, open-addressed. */
+    size_t pointer_capacity, pointer_count;
     uint64_t lookup_steps;
 } task_roots;
 static int compare_roots(const void *left, const void *right)
@@ -508,7 +510,6 @@ static int compare_roots(const void *left, const void *right)
     uint64_t b = ((const task_root *)right)->handle;
     return (a > b) - (a < b);
 }
-static void mark_value(void *, const pin_value *);
 static void mark_task(task_roots *roots, uint64_t handle)
 {
     if (!handle) {
@@ -537,7 +538,39 @@ static void mark_task(task_roots *roots, uint64_t handle)
         }
     }
 }
-static void mark_fields(task_roots *roots, const type_desc *type, const void *data)
+static size_t pointer_slot(const task_roots *roots, const pin_pointer *pointer)
+{
+    uint64_t hash = (uint64_t)(uintptr_t)pointer * 0x9e3779b97f4a7c15ull;
+    size_t i = (size_t)(hash >> 32) & (roots->pointer_capacity - 1);
+    while (roots->pointers[i] && roots->pointers[i] != pointer) {
+        i = (i + 1) & (roots->pointer_capacity - 1);
+    }
+    return i;
+}
+/* Keeps the table at most half full, so long pointer chains stay linear. */
+static bool first_visit(task_roots *roots, const pin_pointer *pointer)
+{
+    if (2 * (roots->pointer_count + 1) > roots->pointer_capacity) {
+        const pin_pointer **old = roots->pointers;
+        size_t old_capacity = roots->pointer_capacity;
+        roots->pointer_capacity = old_capacity ? old_capacity * 2 : 64;
+        roots->pointers = xcalloc(roots->pointer_capacity, sizeof *roots->pointers);
+        for (size_t i = 0; i < old_capacity; i++) {
+            if (old[i]) {
+                roots->pointers[pointer_slot(roots, old[i])] = old[i];
+            }
+        }
+        free(old);
+    }
+    size_t i = pointer_slot(roots, pointer);
+    if (roots->pointers[i]) {
+        return false;
+    }
+    roots->pointers[i] = pointer;
+    roots->pointer_count++;
+    return true;
+}
+static void push_fields(task_roots *roots, const type_desc *type, const void *data)
 {
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
@@ -552,12 +585,12 @@ static void mark_fields(task_roots *roots, const type_desc *type, const void *da
         } else {
             continue;
         }
-        mark_value(roots, &value);
+        apush(roots->values, value);
     }
 }
-static void mark_value(void *user, const pin_value *value)
+/* Marks one value's own task handle and queues the values it reaches. */
+static void mark_one(task_roots *roots, const pin_value *value)
 {
-    task_roots *roots = user;
     if (value->type == PIN_POINTER && value->container == PIN_CONTAINER_SINGLE) {
         const pin_pointer *pointer = value->ptr;
         if (!pointer) {
@@ -566,20 +599,16 @@ static void mark_value(void *user, const pin_value *value)
         while (pointer->base) {
             pointer = pointer->base;
         }
-        for (int i = 0; i < acount(roots->pointers); i++) {
-            if (roots->pointers[i] == pointer) {
-                return;
-            }
+        if (first_visit(roots, pointer)) {
+            apush(roots->values, pointer->value);
         }
-        apush(roots->pointers, pointer);
-        mark_value(roots, &pointer->value);
         return;
     }
     if (value->container == PIN_CONTAINER_MAP) {
         const pin_map *map = value->ptr;
         for (int i = 0; map && i < map->count; i++) {
-            mark_value(roots, &map->entries[i].key);
-            mark_value(roots, &map->entries[i].value);
+            apush(roots->values, map->entries[i].key);
+            apush(roots->values, map->entries[i].value);
         }
         return;
     }
@@ -595,12 +624,8 @@ static void mark_value(void *user, const pin_value *value)
             return;
         }
         for (int i = 0; array && i < array->count; i++) {
-            pin_value item = pin_array_get(array, i);
-            mark_value(roots, &item);
+            apush(roots->values, pin_array_get(array, i));
         }
-        return;
-    }
-    if (value->type != PIN_TASK && value->type != PIN_UNION && value->type != PIN_STRUCT) {
         return;
     }
     switch (value->type) {
@@ -608,7 +633,7 @@ static void mark_value(void *user, const pin_value *value)
         case PIN_UNION: {
             const pin_union *un = value->ptr;
             for (int i = 0; un && i < un->count; i++) {
-                mark_value(roots, &un->values[i]);
+                apush(roots->values, un->values[i]);
             }
             break;
         }
@@ -616,10 +641,21 @@ static void mark_value(void *user, const pin_value *value)
             if (value->ptr) {
                 const type_desc *type = pin_value_type(value);
                 assert(type);
-                mark_fields(roots, type, value->ptr);
+                push_fields(roots, type, value->ptr);
             }
             break;
         default: break;
+    }
+}
+/* A worklist, not recursion, so a long valid pointer chain cannot exhaust the
+ * native stack. */
+static void mark_value(void *user, const pin_value *value)
+{
+    task_roots *roots = user;
+    mark_one(roots, value);
+    while (acount(roots->values)) {
+        pin_value next = apop(roots->values);
+        mark_one(roots, &next);
     }
 }
 static void mark_activation(task_roots *roots, execution_activation *a)
@@ -714,7 +750,8 @@ void program_tasks_collect(execution_program *p)
     }
     p->task_lookup_steps = roots.lookup_steps;
     afree(roots.pending);
-    afree(roots.pointers);
+    afree(roots.values);
+    free(roots.pointers);
     afree(roots.index);
 }
 

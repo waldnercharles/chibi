@@ -57,12 +57,11 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
 }
 bool pin_array_items_reach(const pin_array *array)
 {
-    pin_value shape = { .type = array->element_type,
-                        .type_name = array->type_name,
-                        .record = array->record };
+    /* Only authored records hold pointers, and their layouts travel with the
+     * array; native layouts may leave the catalog while a payload holds them. */
     return !array->stride || array->element_type == PIN_POINTER ||
-           (array->element_type == PIN_STRUCT &&
-            !type_is_plain(pin_value_type(&shape)));
+           (array->element_type == PIN_STRUCT && array->record &&
+            !type_is_plain(&array->record->type));
 }
 static void trace_struct(const void *data, const void *shape, arena_marker mark, void *user)
 {

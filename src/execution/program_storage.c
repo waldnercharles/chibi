@@ -73,7 +73,10 @@ static void add_totals(payload_totals *totals, const execution_activation *a)
 }
 static void scope_totals(const execution_program *p, payload_totals *totals)
 {
-    totals->running |= p->running != NULL;
+    /* A system paused under reductions keeps its activations, whose slots
+     * and payloads no collection lists, until the system finishes. */
+    totals->running |= p->running != NULL ||
+                       (p->system_prepared && p->system_status == FLOW_PAUSED_RESULT);
     for (int i = 0; i < acount(p->instances); i++) {
         const execution_instance *instance = p->instances[i];
         for (int j = 0; j < acount(instance->activations); j++) {
@@ -171,18 +174,6 @@ static void managed_scope_roots(const execution_program *p, arena_collection *co
             for (int k = 0; k < task->result_count; k++) {
                 managed_value(collection, &task->results[k]);
             }
-        }
-        for (int j = 0; j < acount(instance->system_activations); j++) {
-            const execution_activation *a = instance->system_activations[j];
-            if (a) {
-                behavior_function_trace_values(a->function, &a->context, arena_collect_mark, collection);
-            }
-        }
-    }
-    for (int i = 0; i < acount(p->system_activations); i++) {
-        const execution_activation *a = p->system_activations[i];
-        if (a) {
-            behavior_function_trace_values(a->function, &a->context, arena_collect_mark, collection);
         }
     }
 }

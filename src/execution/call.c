@@ -2,6 +2,7 @@
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "execution/managed.h"
+#include "execution/native.h"
 #include "execution/runner.h"
 #include "execution/service.h"
 #include "execution/status.h"
@@ -498,6 +499,25 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
     return FLOW_OK;
 }
 
+/* The native entry that runs `call` in place of a frame: one bound to its
+ * callee when the call would pass its arguments directly, with nothing
+ * inspecting it. A task and an inspected call keep their VM frame. */
+static const execution_native_export *native_call(
+    const behavior_function_context *root,
+    const behavior_function *function,
+    const behavior_function_context *context,
+    const behavior_function_invocation *call
+)
+{
+    const execution_natives *natives = root->activation->natives;
+    const execution_native_export *native = natives
+                                              ? execution_natives_find(natives, call->function)
+                                              : NULL;
+    return native && !behavior_function_inspection_required(function, context) &&
+                   program_call_views_allowed(context)
+             ? native
+             : NULL;
+}
 static void copy_failure(behavior_function_context *root, const behavior_function_context *context)
 {
     root->error_message = context->error_message;
@@ -553,6 +573,22 @@ static int run_calls(const behavior_function *function, behavior_function_contex
                 }
                 root->wake_time = context->wake_time;
                 return settle_calls(calls, result);
+            }
+            const execution_native_export *native = native_call(root, active, context, call);
+            if (native) {
+                pin_value *values = context->data->values;
+                execution_native_call(
+                    native,
+                    call->function,
+                    &values[call->first],
+                    call->count,
+                    &values[call->result_first],
+                    call->result_count
+                );
+                /* A frame's callee without outcomes returns none. */
+                context->returned_outcome = 0;
+                behavior_run_record(EXECUTION_RUN_NATIVE);
+                continue;
             }
             invocation_frame *frame = frame_new(calls, active, context);
             if (!frame) {

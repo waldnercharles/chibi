@@ -222,6 +222,25 @@ static inline bool behavior_function_inspection_required(
     behavior_function_op op = f->instructions[ctx->activation->pc - 1].op;
     return op == BF_POINT || op == BF_SOURCE_POINT;
 }
+/* The value a frame's Argument instruction reads for parameter `p`: the
+ * passed argument of the declared type, a `number` or `f64` converted to the
+ * other, or else the declared default. */
+static inline pin_value behavior_function_argument(const pin_value *arguments, int count, int p, pin_value declared)
+{
+    if (p >= count) {
+        return declared;
+    }
+    pin_value arg = arguments[p];
+    if (arg.type == declared.type) {
+        return arg;
+    }
+    if (arg.type == PIN_F32 && declared.type == PIN_F64) {
+        declared.d = (double)arg.f;
+    } else if (arg.type == PIN_F64 && declared.type == PIN_F32) {
+        declared.f = (float)arg.d;
+    }
+    return declared;
+}
 void behavior_function_calls_free(struct behavior_function_calls *calls);
 void behavior_function_calls_reset(struct behavior_function_calls *calls);
 size_t behavior_function_calls_storage_bytes(const struct behavior_function_calls *calls);

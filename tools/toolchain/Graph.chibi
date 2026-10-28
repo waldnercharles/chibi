@@ -13,8 +13,10 @@ import strings "core:strings"
 //   --compiler PATH --cxx-compiler PATH --compiler-id ID --build-type TYPE
 //   --architecture ARCH --sysroot DIR --warnings on|off --sanitizers LIST
 //   --debug-compilation-dir DIR --debug-optimization 0|1 (Debug only)
+//   --debug-frame-pointers on|off (Debug only, default off)
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --clang-resource-include DIR --third-party DIR --reflect PATH
+//   --asset-generator-hosts DIR
 // The explicit profile performs no toolchain discovery; every required tool
 // and platform option must be provided. It can write commands without native
 // compilers or discovery tools installed.
@@ -87,7 +89,12 @@ Selected :: (arguments: string[], target: string) -> bool {
 }
 
 Libraries :: () -> int {
-    arguments := build.arguments();
+    return LibrariesWithArguments(build.arguments());
+}
+
+// Keep argument evaluation independent so bounded verification cases can share
+// compilation without sharing a profile or a build result.
+LibrariesWithArguments :: (arguments: string[]) -> int {
     targets := engine.Targets();
     if (!TargetsValid(arguments, targets)) {
         return 2;
@@ -100,9 +107,9 @@ Libraries :: () -> int {
     discover := profile_name != "explicit";
     found: engine.Profile = {
         compiler: "", cxx_compiler: "", compiler_id: "", build_type: "Release",
-        debug_optimization: "", architecture: "", sysroot: "", warnings: true, sanitizers: "",
+        debug_optimization: "", debug_frame_pointers: false, architecture: "", sysroot: "", warnings: true, sanitizers: "",
         debug_compilation_dir: "", libclang_include: "", libclang_library: "",
-        clang_resource_include: "", third_party: "", reflect: ""
+        clang_resource_include: "", third_party: "", reflect: "", asset_generator_hosts: ""
     };
     if (discover) {
         found = engine.Discover(profile_name, build.root(), build_dir);
@@ -136,6 +143,7 @@ Libraries :: () -> int {
         compiler_id: compiler_id,
         build_type: Option(arguments, "--build-type", found.build_type),
         debug_optimization: Option(arguments, "--debug-optimization", ""),
+        debug_frame_pointers: Option(arguments, "--debug-frame-pointers", "off") == "on",
         architecture: Option(arguments, "--architecture", found.architecture),
         sysroot: Option(arguments, "--sysroot", found.sysroot),
         warnings: Option(arguments, "--warnings", warnings) == "on",
@@ -146,7 +154,8 @@ Libraries :: () -> int {
         clang_resource_include: Option(arguments, "--clang-resource-include", resource_include),
         // The archive for the profile as overridden.
         third_party: Option(arguments, "--third-party", third_party),
-        reflect: Option(arguments, "--reflect", "")
+        reflect: Option(arguments, "--reflect", ""),
+        asset_generator_hosts: Option(arguments, "--asset-generator-hosts", "")
     };
     // Reject an omitted value too: Option alone falls back at end-of-argv.
     for (i in 0..<length(arguments)) {
@@ -155,6 +164,18 @@ Libraries :: () -> int {
              (arguments[i + 1] != "0" && arguments[i + 1] != "1") ||
              profile.build_type != "Debug")) {
             build.report("graph: --debug-optimization requires 0 or 1 and build type Debug");
+            return 2;
+        }
+        if (arguments[i] == "--debug-frame-pointers" &&
+            (i + 1 == length(arguments) ||
+             (arguments[i + 1] != "on" && arguments[i + 1] != "off") ||
+             profile.build_type != "Debug")) {
+            build.report("graph: --debug-frame-pointers requires on or off and build type Debug");
+            return 2;
+        }
+        if (arguments[i] == "--asset-generator-hosts" &&
+            (i + 1 == length(arguments) || !strings.HasPrefix(arguments[i + 1], "/"))) {
+            build.report("graph: --asset-generator-hosts requires an absolute directory");
             return 2;
         }
     }

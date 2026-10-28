@@ -3,7 +3,7 @@ package llvm_native
 import abi "project:native_abi"
 import strings "core:strings"
 
-// A deliberately bounded, runtime-free scalar backend. This is not the
+// A runtime-free scalar backend. This is not the
 // prepared/pin_value ABI: arguments and results are native LLVM values.
 // Slots and locals are private stack storage, never observable pointers.
 pub Instruction :: struct {
@@ -42,7 +42,15 @@ pub Record :: struct {
     count: int;
 }
 pub RecordType: int : 32;
+// The source file of a module's line tables and its directory. An empty file
+// emits no debug information, and the module is the same text as without it.
+pub Source :: struct {
+    file: string;
+    directory: string;
+}
 
+// output = literal: a scalar's value or encoding, a record's zero, or a
+// string's text, texts[literal] of the module's text table.
 pub Constant: int : 0;
 pub Argument: int : 1;
 pub Local: int : 2;
@@ -86,16 +94,18 @@ pub Insert: int : 30;
 // output = field `literal` of the left slot's record, whose type is right;
 // type is the field's type.
 pub Extract: int : 31;
-
-// Module bounds: these are plan bounds, not a source-language acceptance claim.
-MaxFunctions: int : 32;
-MaxParameters: int : 8;
-MaxSlots: int : 256;
-MaxLocals: int : 128;
-MaxCode: int : 1024;
-MaxArguments: int : 256;
-MaxRecords: int : 16;
-MaxFields: int : 16;
+// output = the byte count of the left slot's string, an int.
+pub TextLength: int : 32;
+// output = the byte of the left slot's string at the right slot's int index,
+// 0 to 255, or -1 outside the string, an int.
+pub TextByte: int : 33;
+// output = the left slot's string without its first bytes, as many as the
+// right slot's int, clamped to the string.
+pub TextDrop: int : 34;
+// output = the first bytes of the left slot's string, as many as the right
+// slot's int, clamped to the string. Both slices are views of the string's
+// bytes.
+pub TextTake: int : 35;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -142,16 +152,19 @@ Fits :: (literal: i64, type: int) -> bool {
     return literal >= 0 - half && literal < half;
 }
 ReadsRight :: (op: int) -> bool {
-    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert;
+    return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op >= TextByte;
 }
-// Whether `type` is a scalar or one of the module's records.
+// Whether `type` is a scalar, a string or one of the module's records.
 Valued :: (records: Record[], type: int) -> bool {
-    return abi.ScalarType(type) != "" || Index(type - RecordType, length(records));
+    return abi.ScalarType(type) != "" || type == abi.TextStorage || Index(type - RecordType, length(records));
 }
-// The LLVM type of a scalar or record type the module holds.
+// The LLVM type of a scalar, string or record type the module holds.
 TypeName :: (type: int) -> string {
     if (type >= RecordType) {
         return format_text("%record{}", type - RecordType);
+    }
+    if (type == abi.TextStorage) {
+        return abi.TextType();
     }
     return abi.ScalarType(type);
 }
@@ -167,15 +180,12 @@ FieldType :: (records: Record[], fields: int[], type: int, field: i64) -> int {
     }
     return fields[record.first + int(field)];
 }
-// Records partition the field table in order, each with 1 to MaxFields
-// scalar fields.
+// Records partition the field table in order, each with at least one scalar
+// field.
 RecordLayout :: (records: Record[], fields: int[]) -> bool {
-    if (length(records) > MaxRecords) {
-        return false;
-    }
     first: int = 0;
     for (record in records) {
-        if (record.first != first || record.count < 1 || record.count > MaxFields) {
+        if (record.first != first || record.count < 1 || record.count > length(fields) - first) {
             return false;
         }
         first += record.count;
@@ -191,9 +201,12 @@ RecordLayout :: (records: Record[], fields: int[]) -> bool {
     return true;
 }
 // Whether the backend computes `op` in `type`: every operation on integers,
-// IEEE arithmetic other than remainders and every comparison on floats, and
-// equality and negation on bool.
+// IEEE arithmetic other than remainders and every comparison on floats,
+// equality and negation on bool, and equality on strings.
 Computes :: (op: int, type: int) -> bool {
+    if (type == abi.TextStorage) {
+        return op == Eq || op == Ne;
+    }
     if (Integer(type)) {
         return true;
     }
@@ -265,22 +278,22 @@ Codes :: (code: Instruction[], first: int, count: int) -> Instruction[] {
     }
     return part;
 }
-Bounded :: (count: int, limit: int) -> bool {
-    return count >= 0 && count <= limit;
-}
 // Functions partition every table in order, so no range overlaps another or
-// leaves a row unowned. Each count is bounded before it is summed.
+// leaves a row unowned. Each count is checked before it is summed.
 Layout :: (functions: Function[], parameters: int[], slots: int[], locals: int[], code: Instruction[],
            arguments: int[]) -> bool {
-    if (length(functions) < 1 || length(functions) > MaxFunctions) {
+    if (length(functions) < 1) {
         return false;
     }
     at: Function = {result: 0, first_parameter: 0, parameters: 0, first_slot: 0, slots: 0, first_local: 0,
                     locals: 0, first_code: 0, code: 0, first_argument: 0, arguments: 0};
     for (item in functions) {
-        if (!Bounded(item.parameters, MaxParameters) || !Bounded(item.slots, MaxSlots) ||
-            !Bounded(item.locals, MaxLocals) || item.code < 1 || item.code > MaxCode ||
-            !Bounded(item.arguments, MaxArguments) || item.first_parameter != at.first_parameter ||
+        // Each count is checked against what remains of its table, so no
+        // sum wraps.
+        if (item.parameters < 0 || item.slots < 0 || item.locals < 0 || item.code < 1 || item.arguments < 0 ||
+            item.parameters > length(parameters) - at.first_parameter || item.slots > length(slots) - at.first_slot ||
+            item.locals > length(locals) - at.first_local || item.code > length(code) - at.first_code ||
+            item.arguments > length(arguments) - at.first_argument || item.first_parameter != at.first_parameter ||
             item.first_slot != at.first_slot || item.first_local != at.first_local ||
             item.first_code != at.first_code || item.first_argument != at.first_argument) {
             return false;
@@ -315,7 +328,7 @@ CallValid :: (functions: Function[], parameters: int[], slots: int[], arguments:
 }
 Validate :: (functions: Function[], function: int, module_parameters: int[], module_slots: int[],
              module_locals: int[], module_code: Instruction[], module_arguments: int[], records: Record[],
-             fields: int[], main: bool) -> Result {
+             fields: int[], texts: string[], mode: int) -> Result {
     shape := functions[function];
     parameters := Part(module_parameters, shape.first_parameter, shape.parameters);
     slots := Part(module_slots, shape.first_slot, shape.slots);
@@ -323,15 +336,15 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     code := Codes(module_code, shape.first_code, shape.code);
     arguments := Part(module_arguments, shape.first_argument, shape.arguments);
     result := shape.result;
-    // The exported entry takes and returns scalars: no foreign aggregate ABI
-    // is promised.
-    exported := function == 0;
-    if (!Valued(records, result) || (exported && result >= RecordType) ||
-        (main && exported && (length(parameters) != 0 || result != 6))) {
+    // The exported entry takes and returns scalars: no foreign aggregate or
+    // string ABI is promised.
+    exported := function == 0 && mode != NoEntry;
+    if (!Valued(records, result) || (exported && abi.ScalarType(result) == "") ||
+        (mode == MainEntry && exported && (length(parameters) != 0 || result != 6))) {
         return Result.Rejected(-1, "unsupported native scalar signature or table size");
     }
     for (type in parameters) {
-        if (!Valued(records, type) || (exported && type >= RecordType)) {
+        if (!Valued(records, type) || (exported && abi.ScalarType(type) == "")) {
             return Result.Rejected(-1, "unsupported native scalar parameter");
         }
     }
@@ -353,7 +366,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > Extract) {
+        if (item.op < Constant || item.op > TextTake) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -366,9 +379,12 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
             }
             definitions[item.output] = pc;
         }
-        // A record's only constant is its zero.
-        if (item.op == Constant && ((item.type < RecordType && !Fits(item.literal, item.type)) ||
-                                    (item.type >= RecordType && item.literal != 0))) {
+        // A record's only constant is its zero, and a string's is a text of
+        // the table.
+        if (item.op == Constant && ((abi.ScalarType(item.type) != "" && !Fits(item.literal, item.type)) ||
+                                    (item.type >= RecordType && item.literal != 0) ||
+                                    (item.type == abi.TextStorage &&
+                                     (item.literal < 0 || item.literal >= i64(length(texts)))))) {
             return Result.Rejected(base + pc, "native constant is outside its type");
         }
         if (item.op == Argument && !Typed(parameters, item.left, item.type)) {
@@ -407,6 +423,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
                 return Result.Rejected(base + pc, "native field read differs from its record");
             }
         }
+        if (item.op >= TextLength && !TextValid(slots, item)) {
+            return Result.Rejected(base + pc, "native text read differs from its operands");
+        }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
         }
@@ -440,6 +459,16 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         pc += 1;
     }
     return Result.Emitted("");
+}
+// Whether a text instruction reads a string and an int, or only a string for
+// TextLength, to give its type: an int, or for a slice a string.
+TextValid :: (slots: int[], item: Instruction) -> bool {
+    output := abi.TextStorage;
+    if (item.op <= TextByte) {
+        output = abi.IntStorage;
+    }
+    return item.type == output && Typed(slots, item.left, abi.TextStorage) &&
+           (item.op == TextLength || Typed(slots, item.right, abi.IntStorage));
 }
 Operation :: (op: int, type: int) -> string {
     if (abi.Floating(type)) {
@@ -631,9 +660,9 @@ Encoded :: (literal: i64, type: int, name: string) -> string {
     return format_text("  %{} = bitcast i64 {} to double\n", name, literal);
 }
 // The zero a slot, local or result starts as, which is also a record's
-// constant.
+// constant. A string's is empty text.
 Zero :: (type: int) -> string {
-    if (type >= RecordType) {
+    if (type >= RecordType || type == abi.TextStorage) {
         return "zeroinitializer";
     }
     if (abi.Floating(type)) {
@@ -649,10 +678,14 @@ Spelled :: (literal: i64, type: int) -> i64 {
     }
     return literal - (i64(1) << u32(bits));
 }
-EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[]) -> string {
+EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], fields: int[], texts: string[]) -> string {
     out := format_text("p{}:\n", pc);
     type := TypeName(item.type);
-    if (item.op == Constant && item.type >= RecordType) {
+    if (item.op == Constant && item.type == abi.TextStorage) {
+        literal := int(item.literal);
+        text := format_text("{ ptr @{}, i32 {} }", TextSymbol(literal), strings.ByteLength(texts[literal]));
+        out = format_text("{}{}", out, Store(text, item.type, "s", item.output));
+    } else if (item.op == Constant && item.type >= RecordType) {
         out = format_text("{}{}", out, Store(Zero(item.type), item.type, "s", item.output));
     } else if (item.op == Constant && abi.Floating(item.type)) {
         out = format_text("{}{}", out, Encoded(item.literal, item.type, format_text("v{}", pc)));
@@ -698,6 +731,21 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.right, "s", item.left));
         out = format_text("{}  %v{} = extractvalue {} %a{}, {}\n", out, pc, TypeName(item.right), pc, item.literal);
         out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    } else if (item.op >= TextLength) {
+        out = format_text("{}{}", out, TextRead(item, pc));
+    } else if (item.type == abi.TextStorage) {
+        // Strings are equal when their bytes are; != negates that.
+        out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
+        out = format_text("{}{}", out, Load(format_text("b{}", pc), item.type, "s", item.right));
+        name := format_text("v{}", pc);
+        if (item.op == Ne) {
+            name = format_text("e{}", pc);
+        }
+        out = format_text("{}  %{} = call i1 @chibi_scalar.text_equal({} %a{}, {} %b{})\n", out, name, type, pc, type, pc);
+        if (item.op == Ne) {
+            out = format_text("{}  %v{} = xor i1 %e{}, true\n", out, pc, pc);
+        }
+        out = format_text("{}{}", out, Store(format_text("%v{}", pc), 1, "s", item.output));
     } else {
         out = format_text("{}{}", out, Load(format_text("a{}", pc), item.type, "s", item.left));
         if (Unary(item.op)) {
@@ -724,20 +772,66 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     return format_text("{}{}", out, format_text("  br label %p{}\n", pc + 1));
 }
 
-// The entry, function 0, is `chibi_scalar`, or `main` for a zero-argument
-// int entry; every other function is internal to the module.
-Symbol :: (function: int, main: bool) -> string {
-    if (function == 0 && main) {
+// A string's byte count, a byte or a slice. A byte is read only inside the
+// string, and a slice clamps its count to the string's bytes, so neither
+// reads nor points past them.
+TextRead :: (item: Instruction, pc: int) -> string {
+    text := abi.TextType();
+    out := Load(format_text("a{}", pc), abi.TextStorage, "s", item.left);
+    out = format_text("{}  %length{} = extractvalue {} %a{}, 1\n", out, pc, text, pc);
+    if (item.op == TextLength) {
+        return format_text("{}{}", out, Store(format_text("%length{}", pc), item.type, "s", item.output));
+    }
+    out = format_text("{}{}", out, Load(format_text("b{}", pc), abi.IntStorage, "s", item.right));
+    if (item.op == TextByte) {
+        // A negative index is outside too, read unsigned.
+        out = format_text("{}  %inside{} = icmp ult i32 %b{}, %length{}\n  br i1 %inside{}, label %read{}, label %byte{}\n",
+                          out, pc, pc, pc, pc, pc, pc);
+        out = format_text("{}read{}:\n  %bytes{} = extractvalue {} %a{}, 0\n  %offset{} = zext i32 %b{} to i64\n", out, pc,
+                          pc, text, pc, pc, pc);
+        out = format_text("{}  %at{} = getelementptr inbounds i8, ptr %bytes{}, i64 %offset{}\n", out, pc, pc, pc);
+        out = format_text("{}  %loaded{} = load i8, ptr %at{}\n  %wide{} = zext i8 %loaded{} to i32\n  br label %byte{}\n",
+                          out, pc, pc, pc, pc, pc);
+        out = format_text("{}byte{}:\n  %v{} = phi i32 [ %wide{}, %read{} ], [ -1, %p{} ]\n", out, pc, pc, pc, pc, pc);
+        return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    }
+    // The count, clamped to 0 through the byte count.
+    out = format_text("{}  %negative{} = icmp slt i32 %b{}, 0\n  %low{} = select i1 %negative{}, i32 0, i32 %b{}\n", out,
+                      pc, pc, pc, pc, pc);
+    out = format_text("{}  %over{} = icmp ugt i32 %low{}, %length{}\n  %n{} = select i1 %over{}, i32 %length{}, i32 %low{}\n",
+                      out, pc, pc, pc, pc, pc, pc, pc);
+    if (item.op == TextTake) {
+        out = format_text("{}  %v{} = insertvalue {} %a{}, i32 %n{}, 1\n", out, pc, text, pc, pc);
+        return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    }
+    out = format_text("{}  %bytes{} = extractvalue {} %a{}, 0\n  %offset{} = zext i32 %n{} to i64\n", out, pc, text, pc,
+                      pc, pc);
+    out = format_text("{}  %start{} = getelementptr inbounds i8, ptr %bytes{}, i64 %offset{}\n", out, pc, pc, pc);
+    out = format_text("{}  %rest{} = sub i32 %length{}, %n{}\n", out, pc, pc, pc);
+    out = format_text("{}  %moved{} = insertvalue {} %a{}, ptr %start{}, 0\n", out, pc, text, pc, pc);
+    out = format_text("{}  %v{} = insertvalue {} %moved{}, i32 %rest{}, 1\n", out, pc, text, pc, pc);
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+}
+
+// How a module exports function 0: as `chibi_scalar`, as `main` for a
+// zero-argument int entry, or not at all, as a library, which exports only
+// its manifest.
+ScalarEntry: int : 0;
+MainEntry: int : 1;
+NoEntry: int : 2;
+// The entry's symbol, or an internal function's.
+Symbol :: (function: int, mode: int) -> string {
+    if (function == 0 && mode == MainEntry) {
         return "main";
     }
-    if (function == 0) {
+    if (function == 0 && mode == ScalarEntry) {
         return "chibi_scalar";
     }
     return format_text("chibi_scalar.{}", function);
 }
 // Arguments load in call order, so evaluation order stays visible at O0.
 CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
-                    main: bool) -> string {
+                    mode: int) -> string {
     callee := functions[item.left];
     out := format_text("p{}:\n", pc);
     list := "";
@@ -749,20 +843,20 @@ CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], 
         }
         list = format_text("{}{} %c{}_{}", list, TypeName(type), pc, index);
     }
-    out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, TypeName(item.type), Symbol(item.left, main), list);
+    out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, TypeName(item.type), Symbol(item.left, mode), list);
     out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
     return format_text("{}  br label %p{}\n", out, pc + 1);
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
-                 code: Instruction[], arguments: int[], records: Record[], fields: int[], main: bool,
-                 step_budget: int) -> string {
+                 code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
+                 mode: int, step_budget: int) -> string {
     shape := functions[function];
     result := shape.result;
     linkage := "";
-    if (function != 0) {
+    if (function != 0 || mode == NoEntry) {
         linkage = "internal ";
     }
-    out := format_text("define {}{} @{}(", linkage, TypeName(result), Symbol(function, main));
+    out := format_text("define {}{} @{}(", linkage, TypeName(result), Symbol(function, mode));
     for (index in 0..<shape.parameters) {
         if (index > 0) {
             out = format_text("{}, ", out);
@@ -786,14 +880,65 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
         if (item.op == Call) {
-            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, main));
+            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, mode));
         } else {
-            out = format_text("{}{}", out, EmitInstruction(item, pc, result, records, fields));
+            out = format_text("{}{}", out, EmitInstruction(item, pc, result, records, fields, texts));
         }
     }
     return format_text("{}trap:\n  call void @llvm.trap()\n  unreachable\n}\n", out);
 }
 
+// The symbol of text `index` of the module's table.
+TextSymbol :: (index: int) -> string {
+    return format_text("chibi_scalar.text.{}", index);
+}
+// `text` as the bytes of an LLVM c"" string: printable ASCII but `"` and `\`
+// as itself, and every other byte as two hex digits after a `\`. Each run of
+// bytes kept as themselves is one slice.
+Escaped :: (text: string) -> string {
+    digits := "0123456789ABCDEF";
+    parts: string[] = [];
+    bytes := strings.Bytes(text);
+    start := 0;
+    for (index in 0..<length(bytes)) {
+        value := bytes[index];
+        if (value < 32 || value >= 127 || value == 34 || value == 92) {
+            parts.append(strings.Slice(text, start, index - start));
+            parts.append(format_text("\\{}{}", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)));
+            start = index + 1;
+        }
+    }
+    parts.append(strings.Slice(text, start, length(bytes) - start));
+    return strings.Join(parts, "");
+}
+// Whether `code` compares strings.
+Compares :: (code: Instruction[]) -> bool {
+    for (item in code) {
+        if (item.type == abi.TextStorage && (item.op == Eq || item.op == Ne)) {
+            return true;
+        }
+    }
+    return false;
+}
+// Whether two strings hold the same bytes, as the runtime compares them:
+// their lengths, then each byte in turn. It reads no byte of an empty string,
+// so the zero string's missing bytes are never read.
+TextEqual :: () -> string {
+    text := abi.TextType();
+    out := format_text("define internal i1 @chibi_scalar.text_equal({} %a, {} %b) #0 {\nentry:\n", text, text);
+    out = format_text("{}  %a.bytes = extractvalue {} %a, 0\n  %a.length = extractvalue {} %a, 1\n", out, text, text);
+    out = format_text("{}  %b.bytes = extractvalue {} %b, 0\n  %b.length = extractvalue {} %b, 1\n", out, text, text);
+    out = format_text("{}  %same = icmp eq i32 %a.length, %b.length\n  br i1 %same, label %head, label %differ\n", out);
+    out = format_text("{}head:\n  %index = phi i32 [ 0, %entry ], [ %next, %byte ]\n", out);
+    out = format_text("{}  %done = icmp eq i32 %index, %a.length\n  br i1 %done, label %equal, label %byte\n", out);
+    out = format_text("{}byte:\n  %offset = zext i32 %index to i64\n", out);
+    out = format_text("{}  %a.at = getelementptr inbounds i8, ptr %a.bytes, i64 %offset\n", out);
+    out = format_text("{}  %b.at = getelementptr inbounds i8, ptr %b.bytes, i64 %offset\n", out);
+    out = format_text("{}  %a.byte = load i8, ptr %a.at\n  %b.byte = load i8, ptr %b.at\n", out);
+    out = format_text("{}  %next = add i32 %index, 1\n  %matches = icmp eq i8 %a.byte, %b.byte\n", out);
+    out = format_text("{}  br i1 %matches, label %head, label %differ\nequal:\n  ret i1 true\n", out);
+    return format_text("{}differ:\n  ret i1 false\n}\n", out);
+}
 // The saturating conversion intrinsics `code` calls, each declared once.
 Declarations :: (code: Instruction[]) -> string {
     out := "";
@@ -809,9 +954,9 @@ Declarations :: (code: Instruction[]) -> string {
     }
     return out;
 }
-pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
-             code: Instruction[], arguments: int[], records: Record[], fields: int[], main: bool,
-             step_budget: int) -> Result {
+Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+           code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[], source: Source,
+           names: string[], lines: int[], columns: int[], mode: int, step_budget: int) -> Result {
     if (step_budget <= 0) {
         return Result.Rejected(-1, "native CHECK budget must be positive");
     }
@@ -824,8 +969,15 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
     if (!RecordLayout(records, fields)) {
         return Result.Rejected(-1, "native records differ from their field table");
     }
+    if (source.file != "" && abi.DebugFormat(target) == "") {
+        return Result.Rejected(-1, "native line tables are Linux x86-64 only");
+    }
+    if (source.file != "" && !Placed(names, lines, columns, length(functions), length(code))) {
+        return Result.Rejected(-1, "native line table differs from its module");
+    }
     for (function in 0..<length(functions)) {
-        switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, main) {
+        switch Validate(functions, function, parameters, slots, locals, code, arguments, records, fields, texts,
+                        mode) {
             case .Rejected(instruction, message):
                 return Result.Rejected(instruction, message);
             case .Emitted(text):
@@ -846,13 +998,291 @@ pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots
         }
         out = format_text("{}%record{} = type { {} }\n", out, index, types);
     }
+    for (index in 0..<length(texts)) {
+        out = format_text("{}@{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n", out, TextSymbol(index),
+                          strings.ByteLength(texts[index]) + 1, Escaped(texts[index]));
+    }
     out = format_text("{}declare void @llvm.trap()\n{}", out, Declarations(code));
+    debug := source.file != "";
+    compares := Compares(code);
     for (function in 0..<length(functions)) {
-        out = format_text("{}\n{}", out, EmitFunction(functions, function, parameters, slots, locals, code,
-                                                      arguments, records, fields, main, step_budget));
+        text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
+                             texts, mode, step_budget);
+        if (debug) {
+            text = Located(text, Subprogram(function), Location(length(functions), compares,
+                                                                functions[function].first_code));
+        }
+        out = format_text("{}\n{}", out, text);
+    }
+    if (compares) {
+        text := TextEqual();
+        if (debug) {
+            text = Located(text, Subprogram(length(functions)), Location(length(functions), true, length(code)));
+        }
+        out = format_text("{}\n{}", out, text);
     }
     // Recursion is unchecked, as Rust's is: each function probes every page
     // of its frame, so running out of stack faults in the guard page below
     // it, which the host reports as a stack overflow.
-    return Result.Emitted(format_text("{}\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n", out));
+    out = strings.Join([out, "\nattributes #0 = { ", abi.StackProbe(target), " }\n"], "");
+    if (debug) {
+        out = format_text("{}\n{}", out, Metadata(target, functions, source, names, lines, columns, mode, compares));
+    }
+    return Result.Emitted(out);
+}
+
+// Whether line tables name every function and place every instruction.
+Placed :: (names: string[], lines: int[], columns: int[], functions: int, code: int) -> bool {
+    if (length(names) != functions || length(lines) != code || length(columns) != code) {
+        return false;
+    }
+    for (name in names) {
+        if (name == "") {
+            return false;
+        }
+    }
+    for (index in 0..<code) {
+        if (lines[index] < 0 || columns[index] < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+// Debug metadata numbers: the compile unit and its file, the two module flags,
+// the one subroutine type and its empty tuple, a subprogram for each function
+// then the string comparison helper, and a location for each code
+// instruction then the helper's.
+FirstSubprogram: int : 6;
+Subprogram :: (function: int) -> int {
+    return FirstSubprogram + function;
+}
+Location :: (functions: int, compares: bool, instruction: int) -> int {
+    first := Subprogram(functions);
+    if (compares) {
+        first += 1;
+    }
+    return first + instruction;
+}
+// One function's IR with each instruction at its source position. The
+// function is in its subprogram; label p<pc> starts code instruction pc's
+// position, and the entry and trap blocks are at its first instruction's. A
+// helper without p labels is wholly at `first`.
+Located :: (text: string, scope: int, first: int) -> string {
+    out: string[] = [];
+    at := first;
+    pc := 0;
+    for (line in strings.Split(text, "\n")) {
+        placed := line;
+        if (strings.HasPrefix(line, "define ")) {
+            placed = strings.Join([strings.TrimSuffix(line, " {"), format_text(" !dbg !{} ", scope), "{"], "");
+        } else if (strings.HasPrefix(line, "p") && strings.HasSuffix(line, ":")) {
+            at = first + pc;
+            pc += 1;
+        } else if (line == "trap:") {
+            at = first;
+        } else if (strings.HasPrefix(line, "  ")) {
+            placed = format_text("{}, !dbg !{}", line, at);
+        }
+        out.append(placed);
+    }
+    return strings.Join(out, "\n");
+}
+// The line tables' metadata. DWARF names no Chibi language, so the unit is
+// C99's, as Odin's is; only line tables are emitted, as rustc's
+// line-tables-only does, so the subroutine type lists no types. The exported
+// entry is external and every other function local to the unit; the string
+// comparison helper is artificial, at line 0.
+Metadata :: (target: abi.Target, functions: Function[], source: Source, names: string[], lines: int[], columns: int[],
+             mode: int, compares: bool) -> string {
+    out := "!llvm.dbg.cu = !{!0}\n!llvm.module.flags = !{!2, !3}\n";
+    out = format_text("{}!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: \"chibi\", isOptimized: false, runtimeVersion: 0, emissionKind: LineTablesOnly)\n",
+                      out);
+    out = format_text("{}!1 = !DIFile(filename: \"{}\", directory: \"{}\")\n!2 = {}\n", out, Escaped(source.file),
+                      Escaped(source.directory), abi.DebugFormat(target));
+    out = strings.Join([out, "!3 = !{i32 2, !\"Debug Info Version\", i32 3}\n!4 = !DISubroutineType(types: !5)\n",
+                        "!5 = !{}\n"], "");
+    for (function in 0..<length(functions)) {
+        line := lines[functions[function].first_code];
+        flags := "DISPFlagDefinition";
+        if (function != 0 || mode == NoEntry) {
+            flags = "DISPFlagLocalToUnit | DISPFlagDefinition";
+        }
+        out = format_text("{}!{} = distinct !DISubprogram(name: \"{}\", linkageName: \"{}\", scope: !1, file: !1, line: {}, type: !4, scopeLine: {}, spFlags: {}, unit: !0)\n",
+                          out, Subprogram(function), Escaped(names[function]), Symbol(function, mode), line, line,
+                          flags);
+    }
+    if (compares) {
+        out = format_text("{}!{} = distinct !DISubprogram(name: \"chibi_scalar.text_equal\", scope: !1, file: !1, line: 0, type: !4, scopeLine: 0, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition, unit: !0)\n",
+                          out, Subprogram(length(functions)));
+    }
+    for (function in 0..<length(functions)) {
+        shape := functions[function];
+        for (pc in shape.first_code..<shape.first_code + shape.code) {
+            out = format_text("{}!{} = !DILocation(line: {}, column: {}, scope: !{})\n", out,
+                              Location(length(functions), compares, pc), lines[pc], columns[pc],
+                              Subprogram(function));
+        }
+    }
+    if (compares) {
+        code := 0;
+        for (shape in functions) {
+            code += shape.code;
+        }
+        out = format_text("{}!{} = !DILocation(line: 0, scope: !{})\n", out, Location(length(functions), true, code),
+                          Subprogram(length(functions)));
+    }
+    return out;
+}
+pub Emit :: (target: abi.Target, functions: Function[], parameters: int[], slots: int[], locals: int[],
+             code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
+             source: Source, names: string[], lines: int[], columns: int[], main: bool, step_budget: int) -> Result {
+    mode := ScalarEntry;
+    if (main) {
+        mode = MainEntry;
+    }
+    return Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source, names,
+                  lines, columns, mode, step_budget);
+}
+
+// Whether `name` can end a C symbol: an ASCII letter or `_`, then letters,
+// digits and `_`.
+Identifier :: (name: string) -> bool {
+    bytes := strings.Bytes(name);
+    for (index in 0..<length(bytes)) {
+        value := bytes[index];
+        letter := (value >= 65 && value <= 90) || (value >= 97 && value <= 122) || value == 95;
+        if (!letter && (index == 0 || value < 48 || value > 57)) {
+            return false;
+        }
+    }
+    return length(bytes) > 0;
+}
+// The manifest types of a function's parameters, then its result, or none
+// when a word cannot carry one of them, such as a string or a record, or the
+// entry ABI takes fewer parameters.
+ExportTypes :: (shape: Function, parameters: int[]) -> int[] {
+    types: int[] = [];
+    if (shape.parameters > abi.ExportParameters) {
+        return types;
+    }
+    for (index in 0..<shape.parameters) {
+        types.append(abi.ExportType(parameters[shape.first_parameter + index]));
+    }
+    types.append(abi.ExportType(shape.result));
+    for (type in types) {
+        if (type == 0) {
+            return [];
+        }
+    }
+    return types;
+}
+// `word`, an i64, as a value `name` of storage `type`.
+FromWord :: (name: string, word: string, type: int) -> string {
+    if (type == abi.FloatStorage) {
+        return format_text("  %{}.bits = trunc i64 {} to i32\n  %{} = bitcast i32 %{}.bits to float\n", name, word,
+                           name, name);
+    }
+    if (type == abi.DoubleStorage) {
+        return format_text("  %{} = bitcast i64 {} to double\n", name, word);
+    }
+    if (abi.IntegerBits(type) == 64) {
+        return format_text("  %{} = add i64 {}, 0\n", name, word);
+    }
+    return format_text("  %{} = trunc i64 {} to {}\n", name, word, abi.ScalarType(type));
+}
+// The value `value` of storage `type` as an i64 `name`: an integer sign- or
+// zero-extended, a bool as 0 or 1, and a float or double as its bits.
+ToWord :: (name: string, value: string, type: int) -> string {
+    if (type == abi.FloatStorage) {
+        return format_text("  %{}.bits = bitcast float {} to i32\n  %{} = zext i32 %{}.bits to i64\n", name, value,
+                           name, name);
+    }
+    if (type == abi.DoubleStorage) {
+        return format_text("  %{} = bitcast double {} to i64\n", name, value);
+    }
+    if (abi.IntegerBits(type) == 64) {
+        return format_text("  %{} = add i64 {}, 0\n", name, value);
+    }
+    extend := "sext";
+    if (type == abi.BoolStorage || abi.Unsigned(type)) {
+        extend = "zext";
+    }
+    return format_text("  %{} = {} {} {} to i64\n", name, extend, abi.ScalarType(type), value);
+}
+// Function `function`'s export entry, which reads its arguments from words
+// and writes its result as one.
+ExportEntry :: (functions: Function[], function: int, parameters: int[]) -> string {
+    shape := functions[function];
+    out := format_text("define internal void @chibi_scalar.export.{}(ptr %in, ptr %out) #0 {\nentry:\n", function);
+    list := "";
+    for (index in 0..<shape.parameters) {
+        type := parameters[shape.first_parameter + index];
+        out = format_text("{}  %w{}.at = getelementptr inbounds i64, ptr %in, i64 {}\n", out, index, index);
+        out = format_text("{}  %w{} = load i64, ptr %w{}.at\n", out, index, index);
+        out = format_text("{}{}", out, FromWord(format_text("a{}", index), format_text("%w{}", index), type));
+        if (index > 0) {
+            list = format_text("{}, ", list);
+        }
+        list = format_text("{}{} %a{}", list, TypeName(type), index);
+    }
+    out = format_text("{}  %r = call {} @{}({})\n", out, TypeName(shape.result), Symbol(function, NoEntry), list);
+    out = format_text("{}{}", out, ToWord("word", "%r", shape.result));
+    return format_text("{}  store i64 %word, ptr %out\n  ret void\n}\n", out);
+}
+// A library module: each function is internal, and the one symbol it exports
+// is its manifest, `chibi_natives_<library>`, a constant execution_native_manifest
+// (src/execution/native.h) listing an entry for each function whose
+// parameters and result words carry, under its name and stable ID.
+pub EmitLibrary :: (target: abi.Target, name: string, names: string[], ids: i64[], functions: Function[],
+                    parameters: int[], slots: int[], locals: int[], code: Instruction[], arguments: int[],
+                    records: Record[], fields: int[], texts: string[], step_budget: int) -> Result {
+    // The export ABI is checked only on Linux x86-64 so far.
+    if (!abi.Same(target, abi.LinuxX64())) {
+        return Result.Rejected(-1, "native libraries are Linux x86-64 only");
+    }
+    if (!Identifier(name) || length(names) != length(functions) || length(ids) != length(functions)) {
+        return Result.Rejected(-1, "native library needs an identifier and a name and ID for each function");
+    }
+    for (index in 0..<length(names)) {
+        for (other in 0..<index) {
+            if (names[other] == names[index] || ids[other] == ids[index]) {
+                return Result.Rejected(-1, "native library names each function once");
+            }
+        }
+    }
+    out := "";
+    // A library has no line tables yet.
+    source: Source = {file: "", directory: ""};
+    no_positions: int[] = [];
+    switch Module(target, functions, parameters, slots, locals, code, arguments, records, fields, texts, source,
+                  names, no_positions, no_positions, NoEntry, step_budget) {
+        case .Rejected(instruction, message):
+            return Result.Rejected(instruction, message);
+        case .Emitted(text):
+            out = text;
+    }
+    out = format_text("{}\n%chibi.export = type { ptr, i64, ptr, i32, i32, ptr }\n", out);
+    out = format_text("{}%chibi.manifest = type { i32, i32, ptr }\n", out);
+    exports: string[] = [];
+    for (function in 0..<length(functions)) {
+        types := ExportTypes(functions[function], parameters);
+        if (length(types) == 0) {
+            continue;
+        }
+        out = format_text("{}@chibi_scalar.export.name.{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n",
+                          out, function, strings.ByteLength(names[function]) + 1, Escaped(names[function]));
+        listed: string[] = [];
+        for (type in types) {
+            listed.append(format_text("i8 {}", type));
+        }
+        out = format_text("{}@chibi_scalar.export.types.{} = private unnamed_addr constant [{} x i8] [{}]\n", out,
+                          function, length(types), strings.Join(listed, ", "));
+        out = format_text("{}\n{}", out, ExportEntry(functions, function, parameters));
+        exports.append(format_text("%chibi.export { ptr @chibi_scalar.export.name.{}, i64 {}, ptr @chibi_scalar.export.types.{}, i32 {}, i32 1, ptr @chibi_scalar.export.{} }",
+                                   function, ids[function], function, functions[function].parameters, function));
+    }
+    out = format_text("{}\n@chibi_scalar.exports = private constant [{} x %chibi.export] [{}]\n", out,
+                      length(exports), strings.Join(exports, ", "));
+    return Result.Emitted(format_text("{}@chibi_natives_{} = constant %chibi.manifest { i32 {}, i32 {}, ptr @chibi_scalar.exports }\n",
+                                      out, name, abi.ExportAbi, length(exports)));
 }

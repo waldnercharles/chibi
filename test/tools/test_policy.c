@@ -67,9 +67,217 @@ static const char driver_setup
          "if mode == 'no-reader':\n"
          "    policy.enable_subreaper = lambda: True\n"
          "    policy.process_children = unavailable\n";
+static const char driver_shards
+    [] = "if sys.argv[2] == 'shards-manifest':\n"
+         "    names = list(policy.GROUPS['language'])\n"
+         "    if 'language-scalar-native' not in names: "
+         "names.append('language-scalar-native')\n"
+         "    names.append('future-unmeasured-selector')\n"
+         "    for native in (True, False):\n"
+         "        selected = [n for n in names if native or n != "
+         "'language-scalar-native']\n"
+         "        for count in (1, 2, 3):\n"
+         "            shards = policy.language_shards(selected, count)\n"
+         "            flat = sum(shards, [])\n"
+         "            print(len(shards) == count, len(flat) == len(selected),\n"
+         "                  len(set(flat)) == len(flat), set(flat) == "
+         "set(selected),\n"
+         "                  shards == policy.language_shards(selected, "
+         "count),\n"
+         "                  all(lane == [n for n in selected if n in lane] for "
+         "lane in shards),\n"
+         "                  count != 1 or shards == [selected],\n"
+         "                  flat.count('future-unmeasured-selector') == 1)\n"
+         "    for names, count in ((['a', 'a'], 3), (['a'], 0), (['a'], 4)):\n"
+         "        try: policy.language_shards(names, count)\n"
+         "        except ValueError: print('rejected')\n"
+         "        else: print('accepted')\n"
+         "    sys.exit(0)\n"
+         "if sys.argv[2] == 'shards-cli':\n"
+         "    arguments = json.loads(sys.argv[5])\n"
+         "    policy.GROUPS['language'] = ['alpha', 'beta', 'gamma', 'delta']\n"
+         "    def record(names, jobs=None, seconds=None):\n"
+         "        print('RUN', ' '.join(names), jobs, seconds)\n"
+         "        return 17\n"
+         "    policy.run_group = record\n"
+         "    sys.argv = ['test_policy.py', *arguments]\n"
+         "    sys.exit(policy.main())\n";
+
+static const char driver_shard_profile[] =
+    "if sys.argv[2] == 'shard-ci-profile':\n"
+    "    import runpy, tempfile\n"
+    "    source = "
+    "Path('.github/workflows/"
+    "language-shards-platform.yml').read_text().splitlines()\n"
+    "    steps, name = {}, None\n"
+    "    for line in source:\n"
+    "        if line.startswith('      - name: '):\n"
+    "            name = line.split('- name: ', 1)[1]\n"
+    "            steps[name] = []\n"
+    "        elif name is not None:\n"
+    "            steps[name].append(line.strip())\n"
+    "    select = steps.get('Select full sanitizer profile', [])\n"
+    "    build = steps.get('Build the sanitized drivers once', [])\n"
+    "    verify = steps.get('Verify native profile evidence', [])\n"
+    "    generation = steps.get('Build Release generation and macOS planning "
+    "hosts', [])\n"
+    "    helper = Path('.github/native-profile.py')\n"
+    "    expected = runpy.run_path(str(helper))['settings']('ON')\n"
+    "    with tempfile.TemporaryDirectory(dir=sys.argv[4]) as directory:\n"
+    "        output = Path(directory) / 'environment'\n"
+    "        env = dict(os.environ, CHIBI_CI_SANITIZERS='ON', "
+    "GITHUB_ENV=str(output))\n"
+    "        subprocess.run([sys.executable, str(helper)], env=env, "
+    "check=True, stdout=subprocess.DEVNULL)\n"
+    "        actual = dict(line.split('=', 1) for line in "
+    "output.read_text().splitlines())\n"
+    "    command = 'make build BUILD_TARGET=\\'test_tools test_language "
+    "chibi-compiler-host\\' ASSET_GENERATOR_HOSTS=build-release/sdk "
+    "LIBCLANG_ROOT=\"$LLVM\" 2>&1 | tee \"$RUNNER_TEMP/native-build.log\"'\n"
+    "    generation_command = 'make build-release "
+    "BUILD_TARGET=\\'chibi-build-host chibi-compiler-host\\' "
+    "LIBCLANG_ROOT=\"$LLVM\"'\n"
+    "    sequence = ['Select full sanitizer profile', 'Build Release "
+    "generation and macOS planning hosts', 'Build the sanitized drivers once', "
+    "'Verify native profile evidence', 'Stage exact-source runtime closure and "
+    "selector manifest']\n"
+    "    print(\"  CHIBI_CI_SANITIZERS: 'ON'\" in source,\n"
+    "          'run: python3 .github/native-profile.py' in select,\n"
+    "          actual == expected and actual['BUILD_PROFILE'] == 'sanitizer',\n"
+    "          command in build and \"VERBOSE: '1'\" in build,\n"
+    "          'shell: bash' in build and 'set -o pipefail' in build,\n"
+    "          'run: python3 .github/verify-native-profile.py' in verify,\n"
+    "          [list(steps).index(name) for name in sequence] == "
+    "sorted(list(steps).index(name) for name in sequence) and "
+    "generation_command in generation and 'if [ \"$RUNNER_OS\" = macOS ]; "
+    "then' in generation and 'echo "
+    "\"BUILD_HOST=$PWD/build-release/sdk/chibi-build-host\" >> "
+    "\"$GITHUB_ENV\"' in generation,\n"
+    "          sum(line.strip().startswith('make build ') for line in source) "
+    "== 1 and not any(line.startswith('if:') for line in select + build + "
+    "verify))\n"
+    "    print('native group fixture remains covered')\n"
+    "    sys.exit(0)\n";
+
+static const char *const driver_artifact[] = {
+    "if sys.argv[2] == 'artifact-cli':\n    import language_test_artifact as "
+    "artifact\n    sys.argv = ['language_test_artifact.py', "
+    "*json.loads(sys.argv[5])]\n    artifact.main()\n    sys.exit(0)\nif "
+    "sys.argv[2] == 'artifact':\n    import tempfile, shutil\n    import "
+    "language_test_artifact as artifact\n    case = sys.argv[5]\n    with "
+    "tempfile.TemporaryDirectory(prefix='artifact-', dir=sys.argv[4]) as "
+    "temporary:\n        base = Path(temporary).resolve()\n        root = base "
+    "/ 'source'\n        root.mkdir()\n        artifact.ROOT = root\n        "
+    "def git(*args):\n            subprocess.run(['git', *args], cwd=root, "
+    "check=True,\n                           stdout=subprocess.DEVNULL, "
+    "stderr=subprocess.DEVNULL)\n        git('init')\n        (root / "
+    "'source.chibi').write_text('source\\n')\n        git('add', "
+    "'source.chibi')\n        git('-c', 'user.name=Fixture', '-c', "
+    "'user.email=fixture@example.invalid',\n            '-c', "
+    "'commit.gpgsign=false', 'commit', '-m', 'fixture')\n        resource = "
+    "base / 'resource'\n        (resource / 'lib').mkdir(parents=True)\n       "
+    " runtime = resource / 'lib/libclang_rt.asan.so'\n        "
+    "runtime.write_text('runtime')\n        compiler = base / 'clang'\n        "
+    "compiler.write_text('#!/bin/sh\\nif [ \"$1\" = --print-resource-dir ]; "
+    "then echo \"' +\n                            str(resource) + '\"; else "
+    "echo fixture-clang; fi\\n')\n        compiler.chmod(0o755)\n        "
+    "os.environ['CC'] = str(compiler)\n        for name in artifact.FILES:\n   "
+    "         file = root / name\n            file.parent.mkdir(parents=True, "
+    "exist_ok=True)\n            file.write_text(str(root / 'source.chibi') + "
+    "'\\n' if name.endswith('corpus.txt')\n                            else "
+    "'fixture executable\\n')\n            file.chmod(0o644 if "
+    "name.endswith('corpus.txt') else 0o755)\n        stage = base / 'stage'\n "
+    "       artifact.pack(stage)\n        binary = stage / artifact.FILES[0]\n "
+    "       metadata_file = stage / 'manifest.json'\n        metadata = "
+    "json.loads(metadata_file.read_text())\n        if "
+    "case.startswith('archive-'):\n            import tarfile, io\n            "
+    "archive = base / 'runtime.tar'\n            destination = base / "
+    "'unpacked'\n            if case == 'archive-corrupt': "
+    "binary.write_text('bad hash')\n            if case == "
+    "'archive-identity':\n                metadata['commit'] = 'wrong'\n       "
+    "         metadata_file.write_text(json.dumps(metadata))\n            with "
+    "tarfile.open(archive, 'w') as package:\n                for index, name "
+    "in enumerate((*artifact.FILES, 'manifest.json')):\n                    "
+    "file = stage / name\n                    info = package.gettarinfo(file, "
+    "arcname=name)\n                    if index == 0:\n                       "
+    " if case == 'archive-traversal': info.name = '../escape'\n                "
+    "        elif case == 'archive-absolute': info.name = '/tmp/escape'\n",
+    "                        elif case == 'archive-symlink': info.type = "
+    "tarfile.SYMTYPE\n                        elif case == 'archive-hardlink': "
+    "info.type = tarfile.LNKTYPE\n                        elif case == "
+    "'archive-special': info.type = tarfile.FIFOTYPE\n                        "
+    "elif case == 'archive-directory': info.type = tarfile.DIRTYPE\n           "
+    "             elif case == 'archive-mode': info.mode = 0o4755\n            "
+    "            if info.issym() or info.islnk(): info.linkname = str(root / "
+    "'source.chibi')\n                    with file.open('rb') as content: "
+    "package.addfile(info, content if info.isfile() else None)\n               "
+    " if case == 'archive-duplicate':\n                    package.add(stage / "
+    "artifact.FILES[0], arcname=artifact.FILES[0], recursive=False)\n          "
+    "      if case == 'archive-extra':\n                    package.add(stage "
+    "/ artifact.FILES[0], arcname='extra', recursive=False)\n            if "
+    "case == 'archive-truncated': "
+    "archive.write_bytes(archive.read_bytes()[:300])\n            try: "
+    "artifact.unpack(archive, destination)\n            except (OSError, "
+    "ValueError, KeyError, TypeError, tarfile.TarError):\n                "
+    "print('rejected', not destination.exists(),\n                      (root "
+    "/ 'source.chibi').read_text() == 'source\\n')\n                "
+    "sys.exit(2)\n            print('unpacked', all((destination / "
+    "name).read_bytes() == (stage / name).read_bytes()\n                       "
+    "           for name in artifact.FILES))\n            sys.exit(0)\n        "
+    "if case == 'roundtrip':\n            artifact.verify(stage)\n            "
+    "shutil.rmtree(root / 'build')\n            artifact.restore(stage)\n      "
+    "      print(all((root / name).read_bytes() == (stage / "
+    "name).read_bytes()\n                      for name in artifact.FILES))\n  "
+    "          print(all((root / name).stat().st_mode == (stage / "
+    "name).stat().st_mode\n                      for name in "
+    "artifact.FILES))\n            sys.exit(0)\n        if case == 'hash': "
+    "binary.write_text('damaged')\n        elif case == 'mode': "
+    "binary.chmod(0o644)\n        elif case == 'missing': binary.unlink()\n    "
+    "    elif case == 'extra': (stage / 'extra').write_text('extra')\n        "
+    "elif case == 'extra-directory': (stage / 'extra').mkdir()\n        elif "
+    "case == 'symlink':\n            binary.unlink()\n            "
+    "binary.symlink_to(root / artifact.FILES[0])\n        elif case == "
+    "'special':\n            binary.unlink()\n            os.mkfifo(binary)\n  "
+    "      elif case == 'runtime': runtime.write_text('different runtime')\n   "
+    "     elif case == 'dirty': (root / 'source.chibi').write_text('dirty')\n  "
+    "      elif case == 'corpus':\n            file = stage / "
+    "'build/test/language/corpus.txt'\n            file.write_text(str(root / "
+    "'../outside.chibi') + '\\n')\n",
+    "            metadata['files']['build/test/language/corpus.txt']['sha256'] "
+    "= artifact.digest(file)\n            "
+    "metadata_file.write_text(json.dumps(metadata))\n        elif case == "
+    "'destination-symlink':\n            destination = root / "
+    "artifact.FILES[0]\n            destination.unlink()\n            "
+    "destination.symlink_to(root / 'source.chibi')\n        elif case in "
+    "('source_root', 'commit', 'run', 'language_manifest', 'machine', "
+    "'compiler'):\n            metadata[case] = 'different identity'\n         "
+    "   metadata_file.write_text(json.dumps(metadata))\n        try:\n         "
+    "   artifact.restore(stage)\n        except (OSError, ValueError, "
+    "KeyError, TypeError, subprocess.CalledProcessError):\n            "
+    "print('rejected')\n            print((root / 'source.chibi').read_text() "
+    "== ('dirty' if case == 'dirty' else 'source\\n'))\n            "
+    "sys.exit(2)\n        print('accepted')\n        sys.exit(0)\n",
+};
+
 static const char driver_routes
     [] = "if sys.argv[2] == 'asset-host-platforms':\n"
          "    print(' '.join(policy.ASSET_COMPILER_HOST_PLATFORMS))\n"
+         "    sys.exit(0)\n"
+         "if sys.argv[2] == 'wasm-benchmark-routes':\n"
+         "    print(' '.join(n for n in policy.GROUPS['wasm']\n"
+         "                   if n.endswith('-benchmark')))\n"
+         "    for name in sorted(policy.TOOLS):\n"
+         "        if name.startswith('wasm-') and "
+         "name.endswith('-benchmark'):\n"
+         "            print(name, policy.tool_command(name)[-1])\n"
+         "    sys.exit(0)\n"
+         "if sys.argv[2] == 'inner-pool-route':\n"
+         "    name = sys.argv[5]\n"
+         "    print(int(name in policy.PARALLEL_RESOURCES),\n"
+         "          policy.GROUPS['language'].count(name))\n"
+         "    if name == 'language-package-compiler-chibi-scalar':\n"
+         "        command = policy.tool_command(name)\n"
+         "        print(len(command), Path(command[0]).name, *command[1:])\n"
          "    sys.exit(0)\n"
          "if sys.argv[2] == 'bootstrap-route':\n"
          "    command = policy.tool_command('compiler-bootstrap')\n"
@@ -105,8 +313,23 @@ static const char driver_routes
          "policy.GROUPS['language'].count('language-outliner-projection'),\n"
          "          policy.GROUPS['wasm'].count('wasm-outliner-projection'))\n"
          "    sys.exit(0)\n";
-/* Execute the workflow's group commands through the real Makefile, recording
- * only its build/test boundaries. No engine build is needed for this check. */
+/* Exercise real audited metadata with bounded native rendezvous workers. */
+static const char driver_integer_parallel
+    [] = "if sys.argv[2] == 'integer-parallel':\n"
+         "    root = str(Path(sys.argv[4]) / 'parallel')\n"
+         "    Path(root).mkdir(exist_ok=True)\n"
+         "    names = [sys.argv[5], 'language-asset-packaging-chibi']\n"
+         "    for name, alias in zip(names, ('first', 'second')):\n"
+         "        print(name, policy.PARALLEL_RESOURCES.get(name),\n"
+         "              policy.GROUPS['language'].count(name), flush=True)\n"
+         "        policy.TOOLS[name] = [sys.argv[3], 'parallel', root,\n"
+         "                              alias, 'barrier']\n"
+         "    print('migration-exclusive', "
+         "'language-migration34-generic-repro'\n"
+         "          not in policy.PARALLEL_RESOURCES, flush=True)\n"
+         "    sys.exit(policy.run_group(names, jobs=2))\n";
+/* Standalone developer targets still build their prerequisites and stop on
+ * failure. Record build/test boundaries without an engine build. */
 static const char driver_ci
     [] = "if sys.argv[2] == 'ci-groups':\n"
          "    import shlex\n"
@@ -125,18 +348,9 @@ static const char driver_ci
          "os.environ['PATH'],\n"
          "               CI_TRACE=str(trace), CI_FAIL=sys.argv[5], "
          "MAKEFLAGS='', MFLAGS='')\n"
-         "    jobs = {'native': [], 'native-macos': []}\n"
-         "    job = None\n"
-         "    for line in "
-         "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
-         "        if line.startswith('  ') and not line.startswith('   '):\n"
-         "            job = line.strip().removesuffix(':')\n"
-         "        command = line.strip().removeprefix('run: ')\n"
-         "        if job in jobs and command.startswith('make ') and any(\n"
-         "            target in shlex.split(command) for target in\n"
-         "            ('test-native', 'test-materials', 'test-projects', "
-         "'test-language-all')):\n"
-         "            jobs[job].append(command)\n"
+         "    commands = ['make -j1 test-native test-materials test-projects "
+         "test-language-all']\n"
+         "    jobs = dict(native=commands, macos=commands)\n"
          "    for commands in jobs.values():\n"
          "        trace.write_text('')\n"
          "        status = 0\n"
@@ -151,11 +365,125 @@ static const char driver_ci
          "        print(trace.read_text(), end='')\n"
          "    python.unlink()\n"
          "    sys.exit(0)\n";
+/* Execute actual CI shell blocks with build/driver boundaries replaced. */
+static const char driver_ci_ready_setup[] =
+    "if sys.argv[2] == 'ci-ready-groups':\n"
+    "    root = Path(sys.argv[4]) / 'ready'\n"
+    "    root.mkdir(exist_ok=True)\n"
+    "    trace = root / 'trace'\n"
+    "    request = sys.argv[5]\n"
+    "    binaries = ['build/test/tools/test_tools', "
+    "'build/test/language/test_language',\n"
+    "                'build-release/bin/chibi_ctl', "
+    "'build-release/sdk/chibi',\n"
+    "                'build-release/sdk/chibi-compile']\n"
+    "    for binary in binaries:\n"
+    "        path = root / binary\n"
+    "        path.parent.mkdir(parents=True, exist_ok=True)\n"
+    "        path.write_text('#!/bin/sh\\nexit 99\\n')\n"
+    "        path.chmod(0o700)\n"
+    "    if request.startswith('missing:'):\n"
+    "        (root / binaries[int(request.split(':')[1])]).unlink()\n"
+    "    recorder = root / 'record'\n"
+    "    recorder.write_text('#!/bin/sh\\nset -e\\n'\n"
+    "        'case \"$1\" in\\n'\n"
+    "        'test-build) test \"$2\" = "
+    "ASSET_GENERATOR_HOSTS=build-release/sdk; '\n"
+    "        'test \"$3\" = LIBCLANG_ROOT=/usr/lib/llvm-18; step=build;;\\n'\n"
+    "        'tools/test_policy.py) test \"$2\" = group; step=$3; '\n"
+    "        'test \"$CHIBI_TOOLS_BUILD_DIR\" = build/test/tools; '\n"
+    "        'test \"$CHIBI_LANGUAGE_BUILD_DIR\" = build/test/language; '\n"
+    "        'if [ \"$step\" = projects ]; then test \"$CHIBI_CTL\" = "
+    "build-release/bin/chibi_ctl; '\n"
+    "        'test \"$CHIBI_CLI\" = build-release/sdk/chibi; '\n"
+    "        'test \"$CHIBI_COMPILE\" = build-release/sdk/chibi-compile; '\n"
+    "        'else test -z \"${CHIBI_CTL-}${CHIBI_CLI-}${CHIBI_COMPILE-}\"; "
+    "fi; '\n"
+    "        'if [ \"$step\" = language ] || [ \"$step\" = projects ]; then "
+    "test \"$CHIBI_LLVM_BIN\" = "
+    "\"$CI_LLVM\"; fi; '\n"
+    "        'if [ \"$step\" = language ] || [ \"$step\" = projects ]; "
+    "then test \"${CHIBI_NATIVE_BUNDLE-}\" = \"$CI_BUNDLE\"; fi;;\\n'\n"
+    "        '*) exit 99;;\\nesac\\n'\n"
+    "        'printf \"%s\\\\n\" \"$step\" >> \"$CI_TRACE\"\\n'\n"
+    "        '[ \"$step\" != \"$CI_FAIL\" ]\\n')\n"
+    "    recorder.chmod(0o700)\n"
+    "    for command in ['python3', 'make']:\n"
+    "        path = root / command\n"
+    "        path.unlink(missing_ok=True)\n"
+    "        path.symlink_to(recorder)\n";
+static const char driver_ci_ready_run
+    [] = "    jobs = {'native': [], 'native-macos': []}\n"
+         "    bundles = {}\n"
+         "    job, selected, capture = None, False, False\n"
+         "    built, verified, released = set(), set(), set()\n"
+         "    for line in "
+         "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
+         "        if line.startswith('  ') and not line.startswith('   '):\n"
+         "            job = line.strip().removesuffix(':')\n"
+         "        if job not in jobs:\n"
+         "            continue\n"
+         "        command = line.strip().removeprefix('run: ')\n"
+         "        if command.startswith('make build-release BUILD_TARGET='):\n"
+         "            released.add(job)\n"
+         "        if command.startswith('make build BUILD_TARGET='):\n"
+         "            built.add(job)\n"
+         "        if command == 'python3 .github/verify-native-profile.py':\n"
+         "            if job not in built:\n"
+         "                raise RuntimeError('profile verification must follow "
+         "the build')\n"
+         "            verified.add(job)\n"
+         "        if line.startswith('      - name:'):\n"
+         "            selected = line.strip() == '- name: Native, material, "
+         "project and language selectors'\n"
+         "            capture = False\n"
+         "            if selected and (job not in released or job not in "
+         "verified):\n"
+         "                raise RuntimeError('tests require Release helpers "
+         "and profile-verified drivers')\n"
+         "        bundle = '          CHIBI_NATIVE_BUNDLE: '\n"
+         "        if selected and not capture and line.startswith(bundle):\n"
+         "            bundles[job] = line.removeprefix(bundle)\n"
+         "        if selected and line == '        run: |':\n"
+         "            capture = True\n"
+         "        elif capture and line.startswith('          '):\n"
+         "            jobs[job].append(line[10:])\n"
+         "        elif capture:\n"
+         "            capture = False\n"
+         "    for job, commands in jobs.items():\n"
+         "        trace.write_text('')\n"
+         "        env = dict(os.environ, PATH=str(root) + os.pathsep + "
+         "os.environ['PATH'],\n"
+         "                   CI_TRACE=str(trace), CI_FAIL=request,\n"
+         "                   CI_LLVM='/usr/lib/llvm-18/bin' if job == 'native' "
+         "else '',\n"
+         "                   CI_BUNDLE=str(root / job / 'native-bundle') if "
+         "job "
+         "== 'native' else '')\n"
+         "        env.pop('CHIBI_NATIVE_BUNDLE', None)\n"
+         "        if job in bundles:\n"
+         "            env['CHIBI_NATIVE_BUNDLE'] = bundles[job].replace("
+         "'${{ runner.temp }}', str(root / job))\n"
+         "        result = subprocess.run(['bash', '-e', '-c', "
+         "'\\n'.join(commands)],\n"
+         "                                cwd=root, env=env, "
+         "stdout=subprocess.DEVNULL,\n"
+         "                                stderr=subprocess.DEVNULL)\n"
+         "        print('status=' + str(result.returncode))\n"
+         "        print(trace.read_text(), end='')\n"
+         "    sys.exit(0)\n";
+
 /* Record the initial workflow builds through the real Makefile on both routes. */
 static const char driver_ci_build
     [] = "if sys.argv[2] == 'ci-initial-build':\n"
          "    import shlex\n"
          "    root = Path(sys.argv[4])\n"
+         "    sanitizer, request = sys.argv[5].split(':', 1)\n"
+         "    if request == 'alias':\n"
+         "        alias = root / 'logical-root'\n"
+         "        alias.unlink(missing_ok=True)\n"
+         "        alias.symlink_to(root, target_is_directory=True)\n"
+         "        root = alias\n"
          "    trace = root / 'ci-build-trace'\n"
          "    recorder = root / 'ci-build-record.py'\n"
          "    recorder.write_text('import json, os, sys\\n'\n"
@@ -164,8 +492,8 @@ static const char driver_ci_build
          "        'sys.exit(1 if sys.argv[1] == os.environ[\"CI_FAIL\"] else "
          "0)\\n')\n"
          "    host = root / 'ci-build-host'\n"
-         "    cold = sys.argv[5].startswith('cold:')\n"
-         "    failure = sys.argv[5].removeprefix('cold:')\n"
+         "    cold = request.startswith('cold:')\n"
+         "    failure = request.removeprefix('cold:')\n"
          "    if cold:\n"
          "        host.unlink(missing_ok=True)\n"
          "    else:\n"
@@ -176,125 +504,214 @@ static const char driver_ci_build
          "    env = dict(os.environ, CI_TRACE=str(trace), CI_FAIL=failure, "
          "MAKEFLAGS='', MFLAGS='')\n"
          "    jobs = {'native': [], 'native-macos': []}\n"
+         "    configured = set()\n"
+         "    pipefail = set()\n"
+         "    profile_file = root / 'ci-profile-env'\n"
+         "    profile_file.write_text('')\n"
+         "    subprocess.run([sys.executable, '.github/native-profile.py'], "
+         "check=True,\n"
+         "        env=dict(env, CHIBI_CI_SANITIZERS=sanitizer, "
+         "GITHUB_ENV=str(profile_file)),\n"
+         "        stdout=subprocess.DEVNULL)\n"
+         "    profile = dict(line.split('=', 1) for line in "
+         "profile_file.read_text().splitlines())\n"
+         "    env.update(profile)\n";
+static const char driver_ci_build_workflow
+    [] = "    release = {}\n"
+         "    release_first = {}\n"
          "    job = None\n"
          "    for line in "
          "Path('.github/workflows/ci.yml').read_text().splitlines():\n"
          "        if line.startswith('  ') and not line.startswith('   '):\n"
          "            job = line.strip().removesuffix(':')\n"
          "        command = line.strip().removeprefix('run: ')\n"
+         "        if job in jobs and command == 'python3 "
+         ".github/native-profile.py':\n"
+         "            configured.add(job)\n"
+         "        if job in jobs and command == 'set -o pipefail':\n"
+         "            pipefail.add(job)\n"
          "        if job in jobs and command.startswith('make '):\n"
          "            words = shlex.split(command)\n"
-         "            if words[1] in ('test-build', 'build'): "
-         "jobs[job].append(words)\n"
-         "    for job, commands in jobs.items():\n"
-         "        trace.write_text('')\n"
-         "        status = 0\n"
-         "        for command in commands:\n"
-         "            result = subprocess.run([command[0], '-C', str(root),\n"
-         "                *command[1:], 'BUILD_HOST=' + str(host),\n"
-         "                'QUIET=' + sys.executable + ' ' + str(recorder), "
-         "'JOBS=2',\n"
-         "                'GRAPH_BUILD=' + ('Darwin' if job == 'native-macos' "
-         "else '')],\n"
-         "                env=env, stdout=subprocess.DEVNULL, "
-         "stderr=subprocess.DEVNULL)\n"
-         "            status = result.returncode\n"
-         "            if status: break\n"
-         "        print(job, 'failed' if status else 'continued')\n"
-         "        for line in trace.read_text().splitlines():\n"
-         "            arguments = json.loads(line)\n"
-         "            step = arguments[0]\n"
-         "            print(step)\n"
-         "            if step == 'graph':\n"
-         "                print('targets=' + ','.join(arguments[i + 1] for i, "
-         "arg in enumerate(arguments) if arg == '--target'))\n"
-         "                print('profile=' + "
-         "arguments[arguments.index('--profile') + 1])\n"
-         "                print('jobs=' + arguments[arguments.index('--jobs') "
-         "+ 1])\n"
-         "            if step == 'configure-native':\n"
-         "                print('flags=' + ','.join(arg for arg in arguments "
-         "if arg.startswith(('-DCMAKE_BUILD_TYPE=', "
-         "'-DCHIBI_ENABLE_SANITIZERS=', '-DCHIBI_SANITIZERS='))))\n"
-         "            if step == 'build':\n"
-         "                print('targets=' + "
-         "','.join(arguments[arguments.index('--target') + "
-         "1:arguments.index('--parallel')]))\n"
-         "                print('jobs=' + "
-         "arguments[arguments.index('--parallel') + 1])\n"
-         "            if step == 'native-toolchain':\n"
-         "                print('targets=' + ','.join(arguments[i + 1] for i, "
-         "arg in enumerate(arguments) if arg == '--target'))\n"
-         "                print('flags=' + ','.join(arg for arg in arguments "
-         "if arg.startswith(('-DCMAKE_BUILD_TYPE=', "
-         "'-DCHIBI_ENABLE_SANITIZERS=', '-DCHIBI_SANITIZERS='))))\n"
-         "                print('jobs=' + arguments[arguments.index('--jobs') "
-         "+ 1])\n"
-         "    sys.exit(0)\n";
+         "            if words[1] == 'build-release':\n"
+         "                release[job] = next((w.split('=', 1)[1] for w in "
+         "words if w.startswith('BUILD_TARGET=')), '')\n"
+         "                release_first[job] = not jobs[job]\n"
+         "            if words[1] == 'build':\n"
+         "                if words[-4:] != ['2>&1', '|', 'tee', "
+         "'$RUNNER_TEMP/native-build.log']:\n"
+         "                    raise RuntimeError('initial build must retain "
+         "its evidence pipeline')\n"
+         "                jobs[job].append(words[:-4])\n"
+         "    if configured != set(jobs) or pipefail != set(jobs):\n"
+         "        raise RuntimeError('native CI jobs must select their shared "
+         "profile')\n";
+static const char driver_ci_build_run[] =
+    "    for job, commands in jobs.items():\n"
+    "        print('release-first=' + str(release_first.get(job, False)))\n"
+    "        print('release-targets=' + release.get(job, ''))\n"
+    "        if failure == 'o0':\n"
+    "            commands = [c + ['SANITIZER_CMAKE_FLAGS=' +\n"
+    "                profile['SANITIZER_CMAKE_FLAGS'].replace('-O1', '-O0'),\n"
+    "                'BUILD_DEBUG_OPTIMIZATION=0'] for c in commands]\n"
+    "        trace.write_text('')\n"
+    "        status = 0\n"
+    "        for command in commands:\n"
+    "            arguments = [command[0], '-C', str(root),\n"
+    "                *command[1:], 'BUILD_HOST=' + str(host),\n"
+    "                'QUIET=' + sys.executable + ' ' + str(recorder), "
+    "'JOBS=2',\n"
+    "                'GRAPH_BUILD=' + ('Darwin' if job == 'native-macos' else "
+    "'')]\n"
+    "            pipeline = shlex.join(arguments) + ' 2>&1 | tee ' + "
+    "shlex.quote(str(root / 'build.log'))\n"
+    "            result = subprocess.run(['bash', '-o', 'pipefail', '-c', "
+    "pipeline],\n"
+    "                env=env, stdout=subprocess.DEVNULL, "
+    "stderr=subprocess.DEVNULL)\n"
+    "            status = result.returncode\n"
+    "            if status: break\n"
+    "        print(job, 'failed' if status else 'continued')\n"
+    "        for line in trace.read_text().splitlines():\n"
+    "            arguments = json.loads(line)\n"
+    "            step = arguments[0]\n"
+    "            print(step)\n"
+    "            if step in ('graph', 'native-toolchain', "
+    "'configure-native'):\n"
+    "                generator = next((a.split('=', 1)[1] for a in arguments "
+    "if a.startswith('-DCHIBI_ASSET_GENERATOR_HOSTS=')), '')\n"
+    "                if '--asset-generator-hosts' in arguments:\n"
+    "                    generator = "
+    "arguments[arguments.index('--asset-generator-hosts') + 1]\n"
+    "                if generator and not Path(generator).is_absolute():\n"
+    "                    raise ValueError('generator hosts must be absolute')\n"
+    "                print('generators=' + "
+    "(str(Path(generator).resolve().relative_to(root.resolve())) if generator "
+    "else ''))\n"
+    "            if step == 'graph':\n"
+    "                print('targets=' + ','.join(arguments[i + 1] for i, arg "
+    "in enumerate(arguments) if arg == '--target'))\n"
+    "                print('profile=' + arguments[arguments.index('--profile') "
+    "+ 1])\n"
+    "                print('optimization=' + "
+    "arguments[arguments.index('--debug-optimization') + 1])\n"
+    "                print('frames=' + "
+    "(arguments[arguments.index('--debug-frame-pointers') + 1]\n"
+    "                    if '--debug-frame-pointers' in arguments else "
+    "'off'))\n"
+    "                print('jobs=' + arguments[arguments.index('--jobs') + "
+    "1])\n"
+    "            if step == 'configure-native':\n"
+    "                print('flags=' + ','.join(arg for arg in arguments if "
+    "arg.startswith(('-DCMAKE_BUILD_TYPE=', '-DCHIBI_ENABLE_SANITIZERS=', "
+    "'-DCHIBI_SANITIZERS=', '-DCMAKE_C_FLAGS_DEBUG=', "
+    "'-DCMAKE_CXX_FLAGS_DEBUG=', '-DCMAKE_OBJC_FLAGS_DEBUG='))))\n"
+    "            if step == 'build':\n"
+    "                print('targets=' + "
+    "','.join(arguments[arguments.index('--target') + "
+    "1:arguments.index('--parallel')]))\n"
+    "                print('jobs=' + arguments[arguments.index('--parallel') + "
+    "1])\n"
+    "            if step == 'native-toolchain':\n"
+    "                print('targets=' + ','.join(arguments[i + 1] for i, arg "
+    "in enumerate(arguments) if arg == '--target'))\n"
+    "                print('flags=' + ','.join(arg for arg in arguments if "
+    "arg.startswith(('-DCMAKE_BUILD_TYPE=', '-DCHIBI_ENABLE_SANITIZERS=', "
+    "'-DCHIBI_SANITIZERS=', '-DCMAKE_C_FLAGS_DEBUG=', "
+    "'-DCMAKE_CXX_FLAGS_DEBUG=', '-DCMAKE_OBJC_FLAGS_DEBUG='))))\n"
+    "                print('jobs=' + arguments[arguments.index('--jobs') + "
+    "1])\n"
+    "    sys.exit(0)\n";
 /* Inject only the expensive workload; exercise the experiment's real CLI
  * handlers and policy supervisor over the existing native worker. */
-static const char driver_experiment
-    [] = "if sys.argv[2].startswith('experiment-'):\n"
-         "    import debug_optimization_experiment as experiment\n"
-         "    action, worker, root = sys.argv[2:5]\n"
-         "    if action == 'experiment-flags':\n"
-         "        options = json.loads(sys.argv[5])\n"
-         "        experiment.flags(**options)\n"
-         "        sys.exit(0)\n"
-         "    if action == 'experiment-build-output':\n"
-         "        command = experiment.build_command(Path(root))\n"
-         "        print(json.dumps(command), flush=True)\n"
-         "        native = command[command.index('--') + 1:] if '--' in "
-         "command else []\n"
-         "        if sys.argv[5] == 'unsynchronized': native = []\n"
-         "        for name in ('a', 'b'):\n"
-         "            Path(root, name + '-ready').unlink(missing_ok=True)\n"
-         "        result = subprocess.run(['make', '-f', root + '/output.mk',\n"
-         "            '-j4', *native], cwd=root, stdout=subprocess.PIPE,\n"
-         "            stderr=subprocess.STDOUT, text=True, timeout=5)\n"
-         "        print('status', result.returncode)\n"
-         "        print('intact', sum(line in ('a' * 12000, 'b' * 12000)\n"
-         "            for line in result.stdout.splitlines()))\n"
-         "        sys.exit(0)\n"
-         "    if action == 'experiment-verify':\n"
-         "        experiment.verify(Path(root) / 'build', Path(root), 1)\n"
-         "        sys.exit(0)\n"
-         "    if action == 'experiment-inner':\n"
-         "        signal.signal(signal.SIGTERM, signal.SIG_DFL)\n"
-         "        signal.signal(signal.SIGINT, signal.SIG_DFL)\n"
-         "        def workload():\n"
-         "            detached = '1' if sys.platform == 'linux' else '0'\n"
-         "            orphan = '1' if sys.argv[5] == 'error' else '0'\n"
-         "            deadline = time.monotonic() + (.3 if sys.argv[5] == "
-         "'timeout' else 4)\n"
-         "            experiment.run_phase(Path(root), deadline, sys.argv[5],\n"
-         "                [worker, 'descendant', root, detached, orphan], "
-         "dict(os.environ))\n"
-         "            if orphan == '1':\n"
-         "                experiment.run_phase(Path(root), deadline, "
-         "'error-failure',\n"
-         "                    [worker, 'exit', '7'], dict(os.environ))\n"
-         "        experiment.main = workload\n"
-         "        sys.exit(experiment.cli())\n"
-         "    child = subprocess.Popen([sys.executable, __file__, "
-         "sys.argv[1],\n"
-         "        'experiment-inner', worker, root, sys.argv[5]])\n"
-         "    try:\n"
-         "        if sys.argv[5] == 'cancel':\n"
-         "            deadline = time.monotonic() + 4\n"
-         "            while not os.path.exists(root + '/started'):\n"
-         "                if child.poll() is not None or time.monotonic() >= "
-         "deadline:\n"
-         "                    raise RuntimeError('experiment worker did not "
-         "start')\n"
-         "                time.sleep(.001)\n"
-         "            child.send_signal(signal.SIGTERM)\n"
-         "        status = child.wait(timeout=4)\n"
-         "        subprocess.run([worker, 'cleanup-probe', root], check=True)\n"
-         "        sys.exit(status)\n"
-         "    finally:\n"
-         "        if child.poll() is None: child.terminate()\n"
-         "        child.wait(timeout=4)\n";
+static const char driver_experiment[] =
+    "if sys.argv[2].startswith('experiment-'):\n"
+    "    import debug_optimization_experiment as experiment\n"
+    "    action, worker, root = sys.argv[2:5]\n"
+    "    if action == 'experiment-flags':\n"
+    "        options = json.loads(sys.argv[5])\n"
+    "        experiment.flags(**options)\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-plan':\n"
+    "        options = json.loads(sys.argv[5])\n"
+    "        print(json.dumps(experiment.arms(**options)))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-mutate':\n"
+    "        mode = sys.argv[5]\n"
+    "        db = Path(root) / 'build/compile_commands.json'\n"
+    "        if mode == 'extra-ndebug':\n"
+    "            rows = json.loads(db.read_text())\n"
+    "            rows.append(dict(file='/extra.c', command=rows[0]['command'] "
+    "+ ' -DNDEBUG'))\n"
+    "            db.write_text(json.dumps(rows))\n"
+    "        if mode == 'link-sanitizer':\n"
+    "            log = Path(root) / 'o1-build.log'\n"
+    "            log.write_text(log.read_text() + '/usr/bin/clang-18 -g -O1 "
+    "-fno-omit-frame-pointer -o broken a.o\\n')\n"
+    "        if mode == 'missing-links':\n"
+    "            log = Path(root) / 'o1-build.log'\n"
+    "            log.write_text('\\n'.join(line for line in "
+    "log.read_text().splitlines() if ' -c ' in line))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-configure':\n"
+    "        options = json.loads(sys.argv[5])\n"
+    "        print(json.dumps(experiment.configure_command(Path(root), "
+    "**options)))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-build-output':\n"
+    "        command = experiment.build_command(Path(root))\n"
+    "        print(json.dumps(command), flush=True)\n"
+    "        native = command[command.index('--') + 1:] if '--' in "
+    "command else []\n"
+    "        if sys.argv[5] == 'unsynchronized': native = []\n"
+    "        for name in ('a', 'b'):\n"
+    "            Path(root, name + '-ready').unlink(missing_ok=True)\n"
+    "        result = subprocess.run(['make', '-f', root + '/output.mk',\n"
+    "            '-j4', *native], cwd=root, stdout=subprocess.PIPE,\n"
+    "            stderr=subprocess.STDOUT, text=True, timeout=5)\n"
+    "        print('status', result.returncode)\n"
+    "        print('intact', sum(line in ('a' * 12000, 'b' * 12000)\n"
+    "            for line in result.stdout.splitlines()))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-verify':\n"
+    "        options = json.loads(sys.argv[5]) if len(sys.argv) > 5 else {}\n"
+    "        experiment.verify(Path(root) / 'build', Path(root), **options)\n"
+    "        sys.exit(0)\n"
+    "    if action == 'experiment-inner':\n"
+    "        signal.signal(signal.SIGTERM, signal.SIG_DFL)\n"
+    "        signal.signal(signal.SIGINT, signal.SIG_DFL)\n"
+    "        def workload():\n"
+    "            detached = '1' if sys.platform == 'linux' else '0'\n"
+    "            orphan = '1' if sys.argv[5] == 'error' else '0'\n"
+    "            deadline = time.monotonic() + (.3 if sys.argv[5] == "
+    "'timeout' else 4)\n"
+    "            experiment.run_phase(Path(root), deadline, sys.argv[5],\n"
+    "                [worker, 'descendant', root, detached, orphan], "
+    "dict(os.environ))\n"
+    "            if orphan == '1':\n"
+    "                experiment.run_phase(Path(root), deadline, "
+    "'error-failure',\n"
+    "                    [worker, 'exit', '7'], dict(os.environ))\n"
+    "        experiment.main = workload\n"
+    "        sys.exit(experiment.cli())\n"
+    "    child = subprocess.Popen([sys.executable, __file__, "
+    "sys.argv[1],\n"
+    "        'experiment-inner', worker, root, sys.argv[5]])\n"
+    "    try:\n"
+    "        if sys.argv[5] == 'cancel':\n"
+    "            deadline = time.monotonic() + 4\n"
+    "            while not os.path.exists(root + '/started'):\n"
+    "                if child.poll() is not None or time.monotonic() >= "
+    "deadline:\n"
+    "                    raise RuntimeError('experiment worker did not "
+    "start')\n"
+    "                time.sleep(.001)\n"
+    "            child.send_signal(signal.SIGTERM)\n"
+    "        status = child.wait(timeout=4)\n"
+    "        subprocess.run([worker, 'cleanup-probe', root], check=True)\n"
+    "        sys.exit(status)\n"
+    "    finally:\n"
+    "        if child.poll() is None: child.terminate()\n"
+    "        child.wait(timeout=4)\n";
 /* Keep each concatenated literal below ISO C's 4095-byte minimum limit.
  * Writing these chunks in order preserves the generated Python byte-for-byte. */
 static const char *const driver_parallel[] = {
@@ -342,6 +759,25 @@ static const char *const driver_parallel[] = {
     "    if action.startswith('parallel-language'):\n"
     "        names = list(policy.GROUPS['language'])\n"
     "        modes = ['mark'] * len(names)\n"
+    /* This whole-manifest check exercises real scheduler admission, leaf workers,
+     * and ordered output. Dedicated tests below cover supervisor containment.
+     * Re-importing this fixture in one supervisor per no-descendant mark worker
+     * adds startup work unrelated to manifest identity (49 launches today). */
+    "    leaf_launches = []\n"
+    "    if action == 'parallel-language':\n"
+    "        original_popen = policy.subprocess.Popen\n"
+    "        def leaf_popen(command, *args, **kwargs):\n"
+    "            if len(command) == 4 and command[:3] == [sys.executable, "
+    "str(Path(policy.__file__).resolve()), '_supervise']:\n"
+    "                commands = json.loads(command[3])\n"
+    "                if len(commands) == 1 and len(commands[0]) == 5 and "
+    "commands[0][:3] == "
+    "[worker, 'parallel', root] and commands[0][3] in names and "
+    "commands[0][-1] == 'mark':\n"
+    "                    command = commands[0]\n"
+    "                    leaf_launches.append(command[3])\n"
+    "            return original_popen(command, *args, **kwargs)\n"
+    "        policy.subprocess.Popen = leaf_popen\n"
     "    if action == 'parallel-default':\n"
     "        jobs = None\n"
     "        policy.os.sched_getaffinity = lambda pid: {0, 1}\n"
@@ -519,7 +955,10 @@ static const char *const driver_parallel[] = {
     "            Path(root, 'sibling-release').touch()\n"
     "            sibling.wait(timeout=6)\n"
     "        sys.exit(result)\n"
-    "    sys.exit(policy.run_group(names, jobs=jobs))\n"
+    "    result = policy.run_group(names, jobs=jobs)\n"
+    "    if action == 'parallel-language':\n"
+    "        print('leaf-launches', len(leaf_launches))\n"
+    "    sys.exit(result)\n"
 };
 
 static const char driver_source[] =
@@ -607,6 +1046,248 @@ static const char driver_source[] =
     "    print(error, file=sys.stderr)\n"
     "    sys.exit(2)\n";
 
+static const char *driver_seed[] = {
+    "if sys.argv[2] == 'seed-workflow':\n"
+    "    import hashlib, shutil\n"
+    "    root = Path(sys.argv[4]) / 'seed'\n"
+    "    shutil.rmtree(root, ignore_errors=True)\n"
+    "    root.mkdir()\n"
+    "    workflow = "
+    "Path('.github/workflows/compiler-runtime-seed.yml').read_text()\n"
+    "    def block(name):\n"
+    "        section = workflow.split('      - name: ' + name + '\\n', "
+    "1)[1].split('\\n      - ', 1)[0]\n"
+    "        return '\\n'.join(line[10:] for line in section.split('        "
+    "run: |\\n', 1)[1].splitlines() if line.startswith('          '))\n"
+    "    case = sys.argv[5]\n"
+    "    sha, tree = 'a' * 40, 'b' * 40\n"
+    "    tag = 'compiler-runtime-prepared22-' + sha\n"
+    "    env = dict(os.environ, RUNNER_TEMP=str(root), GITHUB_SHA=sha, "
+    "SOURCE_TREE=tree,\n"
+    "               GITHUB_REPOSITORY='fixture/repo', GH_REPO='fixture/repo', "
+    "TAG=tag,\n"
+    "               GITHUB_SERVER_URL='https://github.com', "
+    "GITHUB_RUN_ID='123', GITHUB_REF_NAME='candidate')\n"
+    "    if case.startswith('release:'):\n"
+    "        assets = root / 'published'\n"
+    "        assets.mkdir()\n"
+    "        manifest = dict(format=1, repository='fixture/repo', tag=tag, "
+    "source_revision=sha, source_tree=tree, platforms={})\n"
+    "        (root / "
+    "'published.json').write_text(json.dumps(dict(isDraft=False, "
+    "isPrerelease=True, tagName=tag)))\n"
+    "        for platform, suffix in [('linux-x64', ''), ('macos-arm64', ''), "
+    "('windows-x64', '.exe')]:\n"
+    "            name = 'chibi-compiler-host-' + platform + suffix\n"
+    "            data = ('seed-' + platform).encode()\n"
+    "            digest = hashlib.sha256(data).hexdigest()\n"
+    "            (assets / name).write_bytes(data)\n"
+    "            manifest['platforms'][platform] = dict(asset=name, "
+    "sha256=digest, bytes=len(data))\n"
+    "            runner_os, runner_arch = {'linux-x64': ('Linux', 'X64'), "
+    "'macos-arm64': ('macOS', 'ARM64'), 'windows-x64': ('Windows', "
+    "'X64')}[platform]\n",
+    "            evidence = dict(revision=sha, runtime_sha256=digest, "
+    "compiler_bytes=7, compiler_sha256='c' * 64, proof_exit_code=0, "
+    "runner_os=runner_os, runner_arch=runner_arch)\n"
+    "            (assets / ('seed-evidence-' + platform + "
+    "'.json')).write_text(json.dumps(evidence))\n"
+    "            (assets / ('native-imports-' + platform + "
+    "'.txt')).write_text('imports')\n"
+    "        (assets / ('chibi-source-' + sha[:12] + "
+    "'.tar.gz')).write_bytes(b'source')\n"
+    "        (assets / "
+    "'chibi-runtime-notices.tar.gz').write_bytes(b'notices')\n"
+    "        (assets / 'runtime.json').write_text(json.dumps(manifest))\n"
+    "        def sums():\n"
+    "            (assets / "
+    "'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest("
+    ") + '  ' + p.name + '\\n' for p in sorted(assets.iterdir()) if p.name != "
+    "'SHA256SUMS'))\n"
+    "        sums()\n"
+    "        shutil.copytree(assets, root / 'release')\n"
+    "        change = case.split(':', 1)[1]\n"
+    "        if change in ('repository', 'tag', 'source_revision', "
+    "'source_tree', 'format'):\n"
+    "            manifest[change] = 'wrong'\n"
+    "            (assets / 'runtime.json').write_text(json.dumps(manifest))\n"
+    "            sums()\n"
+    "        elif change == 'draft':\n"
+    "            (root / "
+    "'published.json').write_text(json.dumps(dict(isDraft=True, "
+    "isPrerelease=True, tagName=tag)))\n"
+    "        elif change == 'asset':\n"
+    "            (assets / "
+    "'chibi-compiler-host-linux-x64').write_bytes(b'corrupt')\n"
+    "        elif change == 'missing':\n"
+    "            (assets / 'native-imports-linux-x64.txt').unlink()\n"
+    "        elif change == 'extra':\n"
+    "            (assets / 'unexpected').write_text('extra')\n"
+    "            sums()\n"
+    "        elif change == 'duplicate':\n"
+    "            with (assets / 'SHA256SUMS').open('a') as f:\n"
+    "                f.write((assets / "
+    "'SHA256SUMS').read_text().splitlines()[0] + '\\n')\n"
+    "        elif change in ('evidence', 'closure'):\n",
+    "            path = assets / 'seed-evidence-linux-x64.json'\n"
+    "            evidence = json.loads(path.read_text())\n"
+    "            evidence['runtime_sha256' if change == 'evidence' else "
+    "'compiler_sha256'] = 'd' * 64\n"
+    "            path.write_text(json.dumps(evidence))\n"
+    "            sums()\n"
+    "        elif change == 'platform':\n"
+    "            path = assets / 'seed-evidence-macos-arm64.json'\n"
+    "            evidence = json.loads(path.read_text())\n"
+    "            evidence['runner_os'], evidence['runner_arch'] = 'Linux', "
+    "'X64'\n"
+    "            path.write_text(json.dumps(evidence))\n"
+    "            sums()\n"
+    "        elif change == 'all-closures':\n"
+    "            for path in assets.glob('seed-evidence-*.json'):\n"
+    "                evidence = json.loads(path.read_text())\n"
+    "                evidence['compiler_sha256'] = 'd' * 64\n"
+    "                path.write_text(json.dumps(evidence))\n"
+    "            sums()\n"
+    "        elif change == 'source':\n"
+    "            (assets / ('chibi-source-' + sha[:12] + "
+    "'.tar.gz')).write_bytes(b'other-source')\n"
+    "            sums()\n"
+    "        elif change == 'pin-size':\n"
+    "            manifest['platforms']['linux-x64']['bytes'] += 1\n"
+    "            (assets / 'runtime.json').write_text(json.dumps(manifest))\n"
+    "            sums()\n"
+    "        code = block('Verify published assets before "
+    "pinning').split(\"<<'PY_VERIFY'\\n\", 1)[1].split('\\nPY_VERIFY', 1)[0]\n"
+    "        sys.exit(subprocess.run([sys.executable, '-c', code], "
+    "env=env).returncode)\n"
+    "    if case.startswith('publish:'):\n"
+    "        (root / 'release').mkdir()\n"
+    "        (root / 'release/fixture').write_text('asset')\n"
+    "        fake = root / 'bin'\n"
+    "        fake.mkdir()\n"
+    "        env.update(PATH=str(fake) + os.pathsep + os.environ['PATH'], "
+    "FIXTURE_ROOT=str(root), FIXTURE_CASE=case, VERSION='22')\n"
+    "        (fake / 'gh').write_text('#!' + sys.executable + '\\n' + "
+    "\"\"\"import os, sys\n"
+    "from pathlib import Path\n",
+    "root = Path(os.environ['FIXTURE_ROOT'])\n"
+    "a = sys.argv[1:]\n"
+    "case = os.environ['FIXTURE_CASE']\n"
+    "with (root / 'gh.log').open('a') as f: f.write(' '.join(a) + '\\\\n')\n"
+    "if a[:2] == ['release', 'view']:\n"
+    " if case == 'publish:api-error' or (case == 'publish:fresh' and not (root "
+    "/ 'created').exists()): sys.exit(1)\n"
+    " if 'assets' in a: print('extra' if case == 'publish:extra-draft' else "
+    "'fixture')\n"
+    " elif 'targetCommitish' in a: print('wrong' if case == "
+    "'publish:wrong-target' else os.environ['GITHUB_SHA'])\n"
+    " else: print('false' if case == 'publish:published' else 'true')\n"
+    "elif a[0] == 'api' and '/commits/' in a[1]:\n"
+    " print('wrong' if case == 'publish:wrong-target' else "
+    "os.environ['GITHUB_SHA'])\n"
+    "elif a[0] == 'api' and '/releases/tags/' in a[1]:\n"
+    " print('Not Found (HTTP 404)' if case == 'publish:fresh' else 'Forbidden "
+    "(HTTP 403)', file=sys.stderr)\n"
+    " sys.exit(1)\n"
+    "elif a[:2] == ['release', 'create']: (root / "
+    "'created').write_text('draft')\n"
+    "elif a[:2] in (['release', 'upload'], ['release', 'edit']): pass\n"
+    "else: sys.exit(99)\n"
+    "\"\"\")\n"
+    "        (fake / 'gh').chmod(0o700)\n"
+    "        result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', "
+    "block('Publish the prerelease')], env=env)\n"
+    "        print((root / 'gh.log').read_text())\n"
+    "        sys.exit(result.returncode)\n"
+    "    # Local-only Git source and remote. gh is a recording fake, never "
+    "networked.\n"
+    "    bare, repo = root / 'remote', root / 'repo'\n"
+    "    subprocess.run(['git', 'init', '--bare', '-q', str(bare)], "
+    "check=True)\n"
+    "    subprocess.run(['git', 'clone', '-q', str(bare), str(repo)], "
+    "check=True)\n"
+    "    def git(*args):\n"
+    "        return subprocess.check_output(['git', '-C', str(repo), *args], "
+    "text=True).strip()\n"
+    "    git('config', 'user.name', 'Fixture')\n"
+    "    git('config', 'user.email', 'fixture@example.invalid')\n"
+    "    (repo / 'tools/compiler').mkdir(parents=True)\n",
+    "    (repo / 'tools/compiler/runtime.json').write_text('old\\n')\n"
+    "    git('add', '.')\n"
+    "    git('commit', '-qm', 'source')\n"
+    "    git('branch', '-M', 'candidate')\n"
+    "    git('push', '-q', 'origin', 'candidate')\n"
+    "    sha = git('rev-parse', 'HEAD')\n"
+    "    tag = 'compiler-runtime-prepared22-' + sha\n"
+    "    env.update(GITHUB_SHA=sha, TAG=tag, GITHUB_ENV=str(root / 'env'))\n"
+    "    (root / 'verified-pin').mkdir()\n"
+    "    (root / 'verified-pin/runtime.json').write_text('verified pin\\n')\n"
+    "    fake = root / 'bin'\n"
+    "    fake.mkdir()\n"
+    "    env.update(PATH=str(fake) + os.pathsep + os.environ['PATH'], "
+    "FIXTURE_ROOT=str(root), FIXTURE_REMOTE=str(bare), FIXTURE_CASE=case)\n"
+    "    (fake / 'gh').write_text('#!' + sys.executable + '\\n' + '''import "
+    "json, os, subprocess, sys\n"
+    "from pathlib import Path\n"
+    "root = Path(os.environ['FIXTURE_ROOT'])\n"
+    "a = sys.argv[1:]\n"
+    "with (root / 'gh.log').open('a') as f: f.write(json.dumps(a) + '\\\\n')\n"
+    "if a[0] == 'api' and '/git/ref/heads/' in a[1]:\n"
+    " print(subprocess.check_output(['git', '--git-dir=' + "
+    "os.environ['FIXTURE_REMOTE'], 'rev-parse', 'refs/heads/candidate'], "
+    "text=True).strip())\n"
+    "elif a[0] == 'api' and '/runs?' in a[1]:\n"
+    " if 'ci.yml/' in a[1] and os.environ['FIXTURE_CASE'] == 'pin:resume': "
+    "print('10')\n"
+    "elif a[:3] == ['api', '-X', 'POST']:\n"
+    " print('11')\n"
+    "elif a[0] == 'api' and '/actions/runs/' in a[1]:\n"
+    " print(os.environ['PINNED'])\n"
+    "else: sys.exit(99)\n"
+    "''')\n"
+    "    (fake / 'gh').chmod(0o700)\n"
+    "    pin_command = block('Commit the pin onto the seeded commit')\n"
+    "    first = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', "
+    "pin_command], cwd=repo, env=env)\n"
+    "    if first.returncode: sys.exit(first.returncode)\n"
+    "    pinned = git('rev-parse', 'HEAD')\n"
+    "    # A restarted job checks out original GITHUB_SHA, as Actions does.\n"
+    "    if case == 'pin:unrelated':\n"
+    "        (repo / 'other').write_text('change')\n",
+    "        git('add', '.')\n"
+    "        git('commit', '-qm', 'unrelated')\n"
+    "        git('push', '-q', 'origin', 'candidate')\n"
+    "    elif case == 'pin:wrong-bytes':\n"
+    "        (repo / 'tools/compiler/runtime.json').write_text('different "
+    "pin')\n"
+    "        git('add', '.')\n"
+    "        git('commit', '--amend', '--no-edit', '-q')\n"
+    "        git('push', '-q', '--force', 'origin', 'candidate')\n"
+    "    elif case == 'pin:mode':\n"
+    "        (repo / 'tools/compiler/runtime.json').chmod(0o755)\n"
+    "        git('add', '.')\n"
+    "        git('commit', '--amend', '--no-edit', '-q')\n"
+    "        git('push', '-q', '--force', 'origin', 'candidate')\n"
+    "    elif case == 'pin:other-run':\n"
+    "        env['GITHUB_RUN_ID'] = '456'\n"
+    "    git('checkout', '-q', '--detach', sha)\n"
+    "    (root / 'env').write_text('')\n"
+    "    result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', "
+    "pin_command], cwd=repo, env=env)\n"
+    "    if result.returncode: sys.exit(result.returncode)\n"
+    "    env.update(dict(line.split('=', 1) for line in (root / "
+    "'env').read_text().splitlines()))\n"
+    "    result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', "
+    "block('Start CI and the compiler self-build on the pin')], cwd=repo, "
+    "env=env)\n"
+    "    print('pinned=' + str(env.get('PINNED') == pinned))\n"
+    "    calls = [json.loads(line) for line in (root / "
+    "'gh.log').read_text().splitlines()]\n"
+    "    print('dispatches=' + str(sum(a[:3] == ['api', '-X', 'POST'] for a in "
+    "calls)))\n"
+    "    sys.exit(result.returncode)\n"
+};
+
 static void path(char *output, const char *name)
 {
     int length = snprintf(output, PATH_MAX, "%s/%s", directory, name);
@@ -653,6 +1334,45 @@ static int run(const char *action, const char *argument)
     return tool_run(args, tool_root(), logpath);
 }
 
+static const char driver_scalar_batch[] =
+    "if sys.argv[2] == 'scalar-batch':\n"
+    "    import shutil\n"
+    "    source = "
+    "Path('test/native_aot/scalar/Run.ps1').read_text(encoding='utf-8')\n"
+    "    root = Path(sys.argv[4])\n"
+    "    pwsh = shutil.which('pwsh')\n"
+    "    if not pwsh:\n"
+    "        print('PowerShell transport fixture unrun: pwsh unavailable')\n"
+    "        sys.exit(0)\n"
+    "    helpers = source.split('function Digest', 1)[1].split(\"\\ntry {\\n   "
+    " $suffix\", 1)[0]\n"
+    "    loop = source.split('    $priorChecked = @{}', 1)[1].split('    if "
+    "($priorChecked.Count -ne 4)', 1)[0]\n"
+    "    (root / 'loop.ps1').write_text('$priorChecked = @{}\\n' + loop, "
+    "encoding='utf-8')\n"
+    "    script = root / 'scalar-fixture.ps1'\n"
+    "    fixture = "
+    "Path('test/native_aot/scalar/"
+    "TransportFixture.ps1').read_text(encoding='utf-8')\n"
+    "    script.write_text('function Digest' + helpers + '\\n' + fixture, "
+    "encoding='utf-8')\n"
+    "    subprocess.run([pwsh, '-NoProfile', '-File', str(script), str(root)], "
+    "check=True)\n"
+    "    for i in range(3):\n"
+    "        print('member:' + (root / "
+    "f'member-{i}.stdout').read_bytes().hex())\n"
+    "    members = json.loads((root / "
+    "'members.json').read_text(encoding='utf-8-sig'))\n"
+    "    original = fixture.split(\"$text = '\", 1)[1].split(\"'\\n\", "
+    "1)[0].encode()\n"
+    "    # Print evidence-derived byte ranges; C asserts exact member "
+    "identity.\n"
+    "    for member in members:\n"
+    "        print('range:' + "
+    "original[member['offset']:member['offset']+member['bytes']].hex())\n"
+    "    print('joined:' + (root / 'joined.json').read_bytes().hex())\n"
+    "    sys.exit(0)\n";
+
 static void reset_markers()
 {
     const char *names[] = { "started",         "escaped",
@@ -681,6 +1401,63 @@ static int benchmark(const char *const arguments[])
         argv[count++] = *arguments++;
     }
     return tool_run(argv, tool_root(), logpath);
+}
+
+TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
+{
+    REQUIRE(run("scalar-batch", NULL) == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output);
+    /* Normalize fixture log line endings only, never the hex-encoded bytes. */
+    char *read = output, *write = output;
+    while (*read) {
+        if (*read != '\r' || read[1] != '\n') {
+            *write++ = *read;
+        }
+        read++;
+    }
+    *write = 0;
+
+    if (strstr(output, "PowerShell transport fixture unrun")) {
+        fprintf(stderr, "%s", output);
+        free(output);
+        REQUIRE(!getenv("GITHUB_ACTIONS"));
+        return true;
+    }
+    REQUIRE(strstr(output, "singleton=1\nsingleton-identical=True\n"));
+    REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-9 rejected\n"));
+    REQUIRE(
+        strstr(output, "empty rejected\nnine rejected\njson rejected\njson rejected\njson rejected\nutf8 rejected\n")
+    );
+    REQUIRE(
+        strstr(output, "Compiler invocation 16-sljit-produce-batch failed: compiler batch item 2: compiler argument count mismatch\n")
+    );
+    REQUIRE(
+        strstr(output, "Authored source/consumer check failed at 1-sljit-bytecode (batch item 1): -5\n")
+    );
+    REQUIRE(
+        strstr(output, "published=0-bytecode-bytecode-raw,0-bytecode-sljit-raw,0-sljit-bytecode-raw,0-sljit-sljit-raw,1-bytecode-bytecode-raw,1-bytecode-sljit-raw\ncrossings=6\nnext-batch=False\n")
+    );
+    REQUIRE(!strstr(output, "bad counters accepted"));
+    REQUIRE(strstr(output, "bytecode counters accepted\nbytecode counters rejected\n"));
+    REQUIRE(strstr(output, "sljit counters accepted\nsljit counters rejected\n"));
+    const char *members[] = { ("5b207b2274657874223a22e298835c5c6e5c5c5c225b5d2"
+                               "22c2276616c7565223a3138"
+                               "3434363734343037333730393535313631357d205d"),
+                              "5b747275652c31652d33305d",
+                              "5b5d" };
+    for (int i = 0; i < 3; i++) {
+        char expected[512];
+        snprintf(expected, sizeof expected, "member:%s\n", members[i]);
+        REQUIRE(strstr(output, expected));
+        snprintf(expected, sizeof expected, "range:%s\n", members[i]);
+        REQUIRE(strstr(output, expected));
+    }
+    char joined[1024];
+    snprintf(joined, sizeof joined, "joined:5b%s2c%s2c%s5d\n", members[0], members[1], members[2]);
+    REQUIRE(strstr(output, joined));
+    free(output);
+    return true;
 }
 
 TEST_CASE(benchmark_runner_timeout_is_optional)
@@ -795,6 +1572,7 @@ TEST_CASE(asset_language_cases_are_in_the_actual_ci_group)
     REQUIRE(run_group("language") == 0);
     char *output = tool_read(commands);
     REQUIRE(output);
+    REQUIRE(!strstr(output, "benchmark"));
     const char *selectors[] = { "--execution-scope\n",
                                 "--asset-packaging-chibi\n",
                                 "--asset-compiler-host\n",
@@ -849,14 +1627,15 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                     "--render-fixture\n--material-bake\n--environment-"
                     "authoring\n"
                     "--terrain-checkpoint\n--terrain-storage-commands\n"
-                    "--terrain-playable\n--published-docs\n--chibi-cli\n";
+                    "--terrain-playable\n--published-docs\n--chibi-cli\n"
+                    "--native-build\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);
     REQUIRE(!unlink(commands));
     REQUIRE(run_group("native") == 0);
     output = tool_read(commands);
-    bool separate = output && *output;
+    bool separate = output && *output && !strstr(output, "benchmark");
     const char *selectors[] = { "--mesh-files\n",
                                 "--model-import\n",
                                 "--validate-project\n",
@@ -869,12 +1648,112 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                                 "--terrain-checkpoint\n",
                                 "--terrain-storage-commands\n",
                                 "--published-docs\n",
-                                "--chibi-cli\n" };
+                                "--chibi-cli\n",
+                                "--native-build\n" };
     for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
         separate = !strstr(output, selectors[i]);
     }
     free(output);
     REQUIRE(separate);
+    REQUIRE(!unlink(commands));
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        REQUIRE(!unlink(child));
+    }
+    return true;
+}
+
+/* Native and language dispatch are checked above. Exercise the material
+ * group through the same production supervisor rather than a duplicate list. */
+TEST_CASE(material_group_does_not_run_benchmarks)
+{
+    char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
+    path(commands, "correctness-commands");
+    int length = snprintf(source, sizeof source, "#!/bin/sh\nprintf '%%s\\n' \"$1\" >> '%s'\n", commands);
+    REQUIRE(length > 0 && length < (int)sizeof source);
+    const char *drivers[] = { "test_tools", "test_language" };
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        tool_write(child, source);
+        REQUIRE(!chmod(child, 0700));
+    }
+    REQUIRE(run_group("materials") == 0);
+    char *output = tool_read(commands);
+    REQUIRE(output && *output);
+    REQUIRE(!strstr(output, "benchmark"));
+    const char *correctness[] = {
+        "--material-destruction\n", "--material-fluids\n",
+        "--material-mpm\n",         "--material-thermal\n",
+        "--material-simulation\n",  "--material-ecs\n",
+        "--material-render\n"
+    };
+    for (int i = 0; i < (int)(sizeof correctness / sizeof *correctness); i++) {
+        REQUIRE(strstr(output, correctness[i]));
+    }
+    free(output);
+    REQUIRE(!unlink(commands));
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        REQUIRE(!unlink(child));
+    }
+    return true;
+}
+
+TEST_CASE(benchmark_routes_remain_explicit)
+{
+    char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
+    path(commands, "benchmark-commands");
+    int length = snprintf(source, sizeof source, "#!/bin/sh\nprintf '%%s\\n' \"$1\" >> '%s'\n", commands);
+    REQUIRE(length > 0 && length < (int)sizeof source);
+    const char *drivers[] = { "test_tools", "test_language" };
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        tool_write(child, source);
+        REQUIRE(!chmod(child, 0700));
+    }
+    REQUIRE(run_group("benchmarks") == 0);
+    char *output = tool_read(commands);
+    REQUIRE(output && *output);
+    const char *selectors[] = { "--ecs-query-benchmark\n",
+                                "--source-reduction-benchmark\n",
+                                "--source-execution-benchmark\n",
+                                "--native-workload-benchmark\n",
+                                "--material-benchmark\n",
+                                "--contact-benchmark\n",
+                                "--script-benchmark\n",
+                                "--scheduler-benchmark\n",
+                                "--activation-benchmark\n",
+                                "--binding-benchmark\n",
+                                "--borrow-benchmark\n",
+                                "--incremental-benchmark\n",
+                                "--runtime-attribution-benchmark\n",
+                                "--query-binding-benchmark\n",
+                                "--scalar-read-benchmark\n",
+                                "--packed-benchmark\n" };
+    for (int i = 0; i < (int)(sizeof selectors / sizeof *selectors); i++) {
+        const char *found = strstr(output, selectors[i]);
+        REQUIRE(found && !strstr(found + strlen(selectors[i]), selectors[i]));
+    }
+    free(output);
+    REQUIRE(run("wasm-benchmark-routes", NULL) == 0);
+    output = tool_read(logpath);
+    REQUIRE(
+        output && !strcmp(
+                      output,
+                      "\n"
+                      "wasm-activation-benchmark --activation-benchmark\n"
+                      "wasm-binding-benchmark --binding-benchmark\n"
+                      "wasm-borrow-benchmark --borrow-benchmark\n"
+                      "wasm-incremental-benchmark --incremental-benchmark\n"
+                      "wasm-packed-benchmark --packed-benchmark\n"
+                      "wasm-query-binding-benchmark --query-binding-benchmark\n"
+                      "wasm-runtime-attribution-benchmark "
+                      "--runtime-attribution-benchmark\n"
+                      "wasm-scalar-read-benchmark --scalar-read-benchmark\n"
+                      "wasm-script-benchmark --script-benchmark\n"
+                  )
+    );
+    free(output);
     REQUIRE(!unlink(commands));
     for (int i = 0; i < 2; i++) {
         path(child, drivers[i]);
@@ -892,6 +1771,164 @@ TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects)
     free(output);
     REQUIRE(exact);
     REQUIRE(row_groups);
+    return true;
+}
+
+TEST_CASE(language_shard_producer_selects_verified_full_sanitizer_profile)
+{
+    REQUIRE(run("shard-ci-profile", NULL) == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(
+        output && !strcmp(
+                      output,
+                      "True True True True True True True True\n"
+                      "native group fixture remains covered\n"
+                  )
+    );
+    free(output);
+    return true;
+}
+
+TEST_CASE(language_shards_keep_exact_manifest_and_serial_fallback)
+{
+    REQUIRE(run("shards-manifest", NULL) == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output);
+    const char *row = output;
+    const char *expected = "True True True True True True True True\n";
+    for (int i = 0; i < 6; i++) {
+        REQUIRE(!strncmp(row, expected, strlen(expected)));
+        row += strlen(expected);
+    }
+    REQUIRE(!strcmp(row, "rejected\nrejected\nrejected\n"));
+    free(output);
+    return true;
+}
+
+TEST_CASE(language_shard_cli_is_serial_and_propagates_failure)
+{
+    const char *arguments[] = {
+        "[\"--timeout\",\"3\",\"--shard\",\"1/3\",\"group\",\"language\"]",
+        "[\"--shard\",\"2/3\",\"--jobs\",\"1\",\"group\",\"language\"]",
+        "[\"--shard\",\"3/3\",\"group\",\"language\"]",
+        "[\"--shard\",\"1/1\",\"group\",\"language\"]",
+    };
+    const char *expected[] = { "RUN alpha delta 1 3.0\n",
+                               "RUN beta 1 None\n",
+                               "RUN gamma 1 None\n",
+                               "RUN alpha beta gamma delta 1 None\n" };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(run("shards-cli", arguments[i]) == 17);
+        char *output = tool_read(logpath);
+        REQUIRE(output && strstr(output, expected[i]));
+        free(output);
+    }
+    return true;
+}
+
+TEST_CASE(language_shard_cli_rejects_invalid_requests_before_work)
+{
+    const char *arguments[] = {
+        "[\"--shard\",\"0/3\",\"group\",\"language\"]",
+        "[\"--shard\",\"4/3\",\"group\",\"language\"]",
+        "[\"--shard\",\"1/4\",\"group\",\"language\"]",
+        "[\"--shard\",\"1/0\",\"group\",\"language\"]",
+        "[\"--shard\",\"1\",\"group\",\"language\"]",
+        "[\"--shard\",\"a/b\",\"group\",\"language\"]",
+        "[\"--shard\",\"1/3\",\"group\",\"native\"]",
+        "[\"--shard\",\"1/3\",\"tool\",\"language\"]",
+        "[\"--shard\",\"1/3\",\"--jobs\",\"2\",\"group\",\"language\"]",
+        "[\"--shard\",\"1/3\",\"shard-manifest\"]",
+        "[\"shard-manifest\",\"unexpected\"]",
+    };
+    for (int i = 0; i < (int)(sizeof arguments / sizeof *arguments); i++) {
+        REQUIRE(run("shards-cli", arguments[i]) == 2);
+        char *output = tool_read(logpath);
+        REQUIRE(output && !strstr(output, "RUN "));
+        free(output);
+    }
+    return true;
+}
+
+TEST_CASE(language_artifact_roundtrip_keeps_runtime_files_and_modes)
+{
+    REQUIRE(run("artifact", "roundtrip") == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output && !strcmp(output, "True\nTrue\n"));
+    free(output);
+    return true;
+}
+
+TEST_CASE(language_artifact_rejects_corrupt_and_unsafe_files)
+{
+    const char *cases[] = { "hash",
+                            "mode",
+                            "missing",
+                            "extra",
+                            "extra-directory",
+                            "symlink",
+                            "special",
+                            "corpus",
+                            "destination-symlink" };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        REQUIRE(run("artifact", cases[i]) == 2);
+        char *output = tool_read(logpath);
+        REQUIRE(output && !strcmp(output, "rejected\nTrue\n"));
+        free(output);
+    }
+    return true;
+}
+
+TEST_CASE(language_artifact_requires_exact_source_toolchain_and_manifest)
+{
+    const char *cases[] = { "source_root",       "commit",  "run",
+                            "language_manifest", "machine", "compiler",
+                            "runtime",           "dirty" };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        REQUIRE(run("artifact", cases[i]) == 2);
+        char *output = tool_read(logpath);
+        REQUIRE(output && !strcmp(output, "rejected\nTrue\n"));
+        free(output);
+    }
+    return true;
+}
+
+TEST_CASE(language_artifact_archive_validates_before_writing)
+{
+    REQUIRE(run("artifact", "archive-valid") == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output && !strcmp(output, "unpacked True\n"));
+    free(output);
+    const char *cases[] = { "archive-duplicate", "archive-extra",
+                            "archive-traversal", "archive-absolute",
+                            "archive-symlink",   "archive-hardlink",
+                            "archive-special",   "archive-directory",
+                            "archive-mode",      "archive-corrupt",
+                            "archive-identity",  "archive-truncated" };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        REQUIRE(run("artifact", cases[i]) == 2);
+        output = tool_read(logpath);
+        REQUIRE(output && !strcmp(output, "rejected True True\n"));
+        free(output);
+    }
+    return true;
+}
+
+TEST_CASE(language_artifact_cli_requires_exact_argument_counts)
+{
+    const char *arguments[] = {
+        "[\"unpack\",\"archive.tar\"]",
+        "[\"pack\",\"stage\",\"extra\"]",
+        "[\"verify\",\"stage\",\"extra\"]",
+        "[\"restore\",\"stage\",\"extra\"]",
+        "[\"unpack\",\"archive.tar\",\"stage\",\"extra\"]",
+    };
+    for (int i = 0; i < (int)(sizeof arguments / sizeof *arguments); i++) {
+        REQUIRE(run("artifact-cli", arguments[i]) == 2);
+        char *output = tool_read(logpath);
+        REQUIRE(output && strstr(output, "usage:") && !strstr(output, "verified file inventory"));
+        free(output);
+    }
     return true;
 }
 
@@ -917,24 +1954,96 @@ TEST_CASE(ci_groups_share_one_build_and_stop_on_failure)
     return true;
 }
 
-TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
+TEST_CASE(ci_build_timings_use_ready_drivers_and_bounded_selector)
+{
+    char *workflow = tool_read(CHIBI_SOURCE_ROOT "/.github/workflows/ci.yml");
+    REQUIRE(workflow);
+    const char
+        *step = "      - name: Build timing host regressions (ready drivers)\n"
+                "        env:\n"
+                "          CHIBI_TOOLS_BUILD_DIR: build/test/tools\n"
+                "          CHIBI_BUILD_HOST: "
+                "build-release/sdk/chibi-build-host\n"
+                "        run: python3 tools/test_policy.py --timeout 180 tool "
+                "build-timings\n";
+    const char *first = strstr(workflow, step);
+    REQUIRE(first);
+    const char *second = strstr(first + strlen(step), step);
+    REQUIRE(second && !strstr(second + strlen(step), step));
+    free(workflow);
+    char *policy = tool_read(CHIBI_SOURCE_ROOT "/tools/test_policy.py");
+    REQUIRE(policy);
+    REQUIRE(strstr(policy, "'build-timings':") && strstr(policy, "'--build-timings'"));
+    free(policy);
+    return true;
+}
+
+TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage)
+{
+    const char *steps[] = { "build", "native", "materials", "projects", "language" };
+    for (int fail = -1; fail < 5; fail++) {
+        REQUIRE(run("ci-ready-groups", fail < 0 ? "-" : steps[fail]) == 0);
+        char expected[512] = "";
+        for (int job = 0; job < 2; job++) {
+            bool failed = fail >= 0 && (job == 0 || fail != 0);
+            strcat(expected, failed ? "status=1\n" : "status=0\n");
+            for (int i = job; i <= (failed ? fail : 4); i++) {
+                strcat(expected, steps[i]);
+                strcat(expected, "\n");
+            }
+        }
+        char *output = tool_read(logpath);
+        bool exact = output && !strcmp(output, expected);
+        free(output);
+        REQUIRE(exact);
+    }
+    for (int missing = 0; missing < 5; missing++) {
+        char request[32];
+        snprintf(request, sizeof request, "missing:%d", missing);
+        REQUIRE(run("ci-ready-groups", request) == 0);
+        char *output = tool_read(logpath);
+        bool exact = output && !strcmp(output, "status=1\nbuild\nstatus=1\n");
+        free(output);
+        REQUIRE(exact);
+    }
+    return true;
+}
+
+static bool ci_initial_build_profile(bool instrumented)
 {
     const char *targets = "targets=chibi,chibi-compile,chibi-player,chibi_ctl,"
                           "test_tools,test_language";
-    const char *flags = "flags=-DCMAKE_BUILD_TYPE=Debug,-DCHIBI_ENABLE_"
-                        "SANITIZERS=ON,-DCHIBI_SANITIZERS=address,undefined\n";
+    const char *profile = instrumented ? "sanitizer" : "debug";
+    const char *sanitizer = instrumented ? "ON" : "OFF";
+    const char *debug = instrumented ? "-g -O1" : "-g -O1 -fno-omit-frame-pointer";
+    char flags[512];
+    snprintf(
+        flags,
+        sizeof flags,
+        "flags=-DCMAKE_BUILD_TYPE=Debug,-DCHIBI_ENABLE_SANITIZERS=%s,"
+        "-DCHIBI_SANITIZERS=address,undefined,-DCMAKE_C_FLAGS_DEBUG=%s,"
+        "-DCMAKE_CXX_FLAGS_DEBUG=%s,-DCMAKE_OBJC_FLAGS_DEBUG=%s\n",
+        sanitizer,
+        debug,
+        debug,
+        debug
+    );
     const char *failures[] = { "-",           "native-toolchain",
                                "third-party", "graph",
                                "cold:-",      "cold:configure-native",
                                "cold:build",  "cold:third-party",
                                "cold:graph" };
     for (int fail = 0; fail < 9; fail++) {
-        REQUIRE(run("ci-initial-build", failures[fail]) == 0);
+        char argument[64];
+        snprintf(argument, sizeof argument, "%s:%s", sanitizer, failures[fail]);
+        REQUIRE(run("ci-initial-build", argument) == 0);
         bool cold = fail >= 4;
-        char expected[2048] = "";
+        char expected[3072] = "release-first=True\n"
+                              "release-targets=chibi_ctl chibi "
+                              "chibi-build-host chibi-compiler-host\n";
         strcat(expected, fail == 1 || fail == 5 || fail == 6 ? "native failed\n" : "native continued\n");
         if (cold) {
-            strcat(expected, "configure-native\n");
+            strcat(expected, "configure-native\ngenerators=build-release/sdk\n");
             strcat(expected, flags);
             if (fail != 5) {
                 strcat(expected, "build\n");
@@ -942,15 +2051,20 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
                 strcat(expected, ",chibi-build-host\njobs=2\n");
             }
         } else {
-            strcat(expected, "native-toolchain\n");
+            strcat(expected, "native-toolchain\ngenerators=build-release/sdk\n");
             strcat(expected, targets);
             strcat(expected, "\n");
             strcat(expected, flags);
             strcat(expected, "jobs=2\n");
         }
+        strcat(
+            expected,
+            "release-first=True\n"
+            "release-targets=chibi_ctl chibi chibi-compiler-host\n"
+        );
         strcat(expected, fail == 2 || fail == 3 || fail >= 5 ? "native-macos failed\n" : "native-macos continued\n");
         if (cold) {
-            strcat(expected, "configure-native\n");
+            strcat(expected, "configure-native\ngenerators=\n");
             strcat(expected, flags);
             if (fail != 5) {
                 strcat(expected, "build\ntargets=chibi-build-host\njobs=2\n");
@@ -959,9 +2073,13 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
         if (fail != 5 && fail != 6) {
             strcat(expected, "third-party\n");
             if (fail != 2 && fail != 7) {
-                strcat(expected, "graph\n");
+                strcat(expected, "graph\ngenerators=build-release/sdk\n");
                 strcat(expected, targets);
-                strcat(expected, ",chibi-build-host\nprofile=sanitizer\njobs=2\n");
+                strcat(expected, ",chibi-build-host\nprofile=");
+                strcat(expected, profile);
+                strcat(expected, "\noptimization=1\nframes=");
+                strcat(expected, instrumented ? "off" : "on");
+                strcat(expected, "\njobs=2\n");
             }
         }
         char *output = tool_read(logpath);
@@ -969,6 +2087,82 @@ TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
         free(output);
         REQUIRE(exact);
     }
+    return true;
+}
+
+TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures)
+{
+    REQUIRE(ci_initial_build_profile(false));
+    REQUIRE(ci_initial_build_profile(true));
+    return true;
+}
+
+TEST_CASE(ci_generator_hosts_resolve_symlink_root)
+{
+    const char *profiles[] = { "OFF", "ON" };
+    for (int i = 0; i < 2; i++) {
+        char argument[32];
+        snprintf(argument, sizeof argument, "%s:-", profiles[i]);
+        REQUIRE(run("ci-initial-build", argument) == 0);
+        char *physical = tool_read(logpath);
+        REQUIRE(physical);
+        snprintf(argument, sizeof argument, "%s:alias", profiles[i]);
+        int status = run("ci-initial-build", argument);
+        char *logical = tool_read(logpath);
+        bool equal = status == 0 && logical && !strcmp(physical, logical);
+        free(physical);
+        free(logical);
+        REQUIRE(equal);
+    }
+    return true;
+}
+
+TEST_CASE(ci_linux_optimization_preserves_explicit_o0)
+{
+    const char *profiles[] = { "OFF:o0", "ON:o0" };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(run("ci-initial-build", profiles[i]) == 0);
+        char *output = tool_read(logpath);
+        REQUIRE(output);
+        const char *debug = i ? "-g -O0" : "-g -O0 -fno-omit-frame-pointer";
+        char flags[256];
+        snprintf(flags, sizeof flags, "-DCMAKE_C_FLAGS_DEBUG=%s,-DCMAKE_CXX_FLAGS_DEBUG=%s,-DCMAKE_OBJC_FLAGS_DEBUG=%s\n", debug, debug, debug);
+        bool correct = strstr(output, flags) && !strstr(output, "-O1") &&
+                       strstr(output, i ? "profile=sanitizer\n" : "profile=debug\n") &&
+                       strstr(output, i ? "optimization=0\nframes=off\n" : "optimization=0\nframes=on\n") &&
+                       !strstr(output, " failed\n");
+        free(output);
+        REQUIRE(correct);
+    }
+    return true;
+}
+
+TEST_CASE(ci_main_push_finishes_before_newest_pending_run)
+{
+    char workflow[PATH_MAX];
+    snprintf(workflow, sizeof workflow, "%s/.github/workflows/ci.yml", tool_root());
+    char *text = tool_read(workflow);
+    REQUIRE(text);
+    char *block = strstr(text, "\nconcurrency:\n");
+    char *end = block ? strstr(block, "\nenv:\n") : NULL;
+    bool scoped = block && end;
+    if (end) {
+        *end = '\0';
+    }
+    const char
+        *group = "  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ "
+                 "github.event_name }}-${{ (github.event_name == 'schedule' || "
+                 "inputs.sanitizers == true) && 'sanitizer' || 'fast' }}\n";
+    const char
+        *cancel = "  cancel-in-progress: ${{ github.event_name != 'push' || "
+                  "github.ref != 'refs/heads/main' }}\n";
+    bool isolated = scoped && strstr(block, group);
+    bool main_finishes = scoped && strstr(block, cancel);
+    bool single_pending = scoped && !strstr(block, "queue:");
+    free(text);
+    REQUIRE(isolated);
+    REQUIRE(main_finishes);
+    REQUIRE(single_pending);
     return true;
 }
 
@@ -1542,6 +2736,53 @@ TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work)
     return true;
 }
 
+/* Inner pools own their CPU budget. Outer admission must remain exclusive,
+ * without removing the selector or replacing its real command. */
+TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered)
+{
+    const struct
+    {
+        const char *name, *expected;
+    } cases[] = {
+        { "language", "0 1\n" },
+        { "language-format", "0 1\n" },
+        /* A focused alias: the format selector already runs its three cases. */
+        { "language-root-state", "0 0\n" },
+        { "language-test-parallel", "0 1\n" },
+        { "language-package-tests", "0 1\n" },
+        { "language-compiler-fixture", "0 1\n" },
+        { "language-package-compiler-chibi-scalar",
+          "0 1\n2 test_language --package-compiler-chibi-scalar\n" }
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        REQUIRE(run("inner-pool-route", cases[i].name) == 0);
+        char *output = tool_read(logpath);
+        bool exclusive = output && !strcmp(output, cases[i].expected);
+        free(output);
+        REQUIRE(exclusive);
+    }
+    return true;
+}
+
+TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work)
+{
+    const char *names[] = { "language-integer-semantics",
+                            "language-integer-shift-counts",
+                            "language-integer-shift-counts-authored" };
+    for (int i = 0; i < 3; i++) {
+        reset_parallel();
+        REQUIRE(run("integer-parallel", names[i]) == 0);
+        REQUIRE(exists("parallel/first-overlapped") && exists("parallel/second-overlapped"));
+        char *output = tool_read(logpath);
+        REQUIRE(output && strstr(output, names[i]));
+        REQUIRE(strstr(output, "frozenset() 1\n"));
+        REQUIRE(strstr(output, "migration-exclusive True\n"));
+        free(output);
+    }
+    reset_parallel();
+    return true;
+}
+
 TEST_CASE(parallel_language_manifest_matches_serial_exactly)
 {
     reset_parallel();
@@ -1578,6 +2819,9 @@ TEST_CASE(parallel_language_manifest_matches_serial_exactly)
         record++;
     }
     REQUIRE(records == count);
+    char expected[64];
+    snprintf(expected, sizeof expected, "leaf-launches %d\n", count);
+    REQUIRE(strstr(parallel, expected));
     free(metrics);
     free(serial);
     free(parallel);
@@ -1800,7 +3044,7 @@ TEST_CASE(debug_experiment_flags)
     return true;
 }
 
-static void experiment_evidence(bool complete, bool exported, bool database)
+static void experiment_evidence(bool complete, bool exported, bool database, int level, bool sanitizers)
 {
     char name[PATH_MAX];
     path(name, "build/test/tools/testing/include");
@@ -1818,13 +3062,21 @@ static void experiment_evidence(bool complete, bool exported, bool database)
                               "src/ui/rml.cpp" };
     path(name, "build/compile_commands.json");
     FILE *db = fopen(name, "w");
-    path(name, "o1-build.log");
+    char build_log[64];
+    snprintf(build_log, sizeof build_log, "o%d-build.log", level);
+    path(name, build_log);
     FILE *log = fopen(name, "w");
     assert(db && log);
     fprintf(db, "[");
     for (int i = 0; i < 5; i++) {
-        const char *flags = "-g -O1 -fsanitize=address,undefined "
-                            "-fno-omit-frame-pointer -UNDEBUG";
+        char flags[160];
+        snprintf(
+            flags,
+            sizeof flags,
+            "-g -O%d %s -fno-omit-frame-pointer -UNDEBUG",
+            level,
+            sanitizers ? "-fsanitize=address,undefined" : ""
+        );
         if (database || i < 4) {
             fprintf(
                 db,
@@ -1849,11 +3101,25 @@ static void experiment_evidence(bool complete, bool exported, bool database)
         }
     }
     fprintf(db, "]\n");
+    fprintf(
+        log,
+        "/usr/bin/clang-18 -g -O%d %s -fno-omit-frame-pointer -o test_tools "
+        "a.o\n",
+        level,
+        sanitizers ? "-fsanitize=address,undefined" : ""
+    );
     assert(!fclose(db) && !fclose(log));
     path(name, "build/test/tools/testing/include/export_compiler.h");
     FILE *header = fopen(name, "w");
     assert(header);
-    fprintf(header, "\"/usr/bin/clang-18\",\n\"-g\",\n\"-O1\",\n\"-fsanitize=address,undefined\",\n\"-fno-omit-frame-pointer\",\n%s", exported ? "\"-UNDEBUG\",\n" : "");
+    fprintf(
+        header,
+        "\"/usr/bin/"
+        "clang-18\",\n\"-g\",\n\"-O%d\",\n%s\"-fno-omit-frame-pointer\",\n%s",
+        level,
+        sanitizers ? "\"-fsanitize=address,undefined\",\n" : "",
+        exported ? "\"-UNDEBUG\",\n" : ""
+    );
     assert(!fclose(header));
     path(name, "build/CMakeCache.txt");
     tool_write(name, "CHIBI_THIRD_PARTY_DIR:INTERNAL=/same/archive\n");
@@ -1895,16 +3161,99 @@ TEST_CASE(debug_experiment_parallel_build_output)
     return true;
 }
 
+TEST_CASE(debug_experiment_manual_workflow)
+{
+    char name[PATH_MAX];
+    snprintf(name, sizeof name, "%s/.github/workflows/debug-optimization-experiment.yml", tool_root());
+    char *workflow = tool_read(name);
+    REQUIRE(workflow);
+    REQUIRE(strstr(workflow, "workflow_dispatch:"));
+    REQUIRE(!strstr(workflow, "pull_request:") && !strstr(workflow, "push:"));
+    REQUIRE(strstr(workflow, "type: choice"));
+    REQUIRE(strstr(workflow, "default: optimization"));
+    REQUIRE(
+        strstr(workflow, "fromJSON(inputs.comparison == 'instrumentation' && '[\"on\"]' || '[\"on\",\"off\"]')")
+    );
+    REQUIRE(strstr(workflow, "fail-fast: false"));
+    REQUIRE(strstr(workflow, "timeout-minutes: 45"));
+    REQUIRE(strstr(workflow, "ref: ${{ inputs.sha }}"));
+    REQUIRE(strstr(workflow, "--sanitizers \"$EXPERIMENT_SANITIZERS\""));
+    REQUIRE(strstr(workflow, "name: debug-${{ inputs.comparison }}-${{ matrix.sanitizers }}-"));
+    REQUIRE(strstr(workflow, "if: always()"));
+    REQUIRE(!strstr(workflow, "actions/cache"));
+    free(workflow);
+    return true;
+}
+
 TEST_CASE(debug_experiment_compilation_evidence)
 {
-    experiment_evidence(true, true, true);
-    REQUIRE(run("experiment-verify", NULL) == 0);
-    experiment_evidence(false, true, true);
-    REQUIRE(run("experiment-verify", NULL) != 0);
-    experiment_evidence(true, false, true);
-    REQUIRE(run("experiment-verify", NULL) != 0);
-    experiment_evidence(true, true, false);
-    REQUIRE(run("experiment-verify", NULL) != 0);
+    for (int level = 1; level <= 2; level++) {
+        for (int sanitizers = 0; sanitizers <= 1; sanitizers++) {
+            char options[100];
+            snprintf(
+                options,
+                sizeof options,
+                "{\"level\":%d,\"sanitizers\":%s}",
+                level,
+                sanitizers ? "true" : "false"
+            );
+            experiment_evidence(true, true, true, level, sanitizers);
+            REQUIRE(run("experiment-verify", options) == 0);
+            experiment_evidence(false, true, true, level, sanitizers);
+            REQUIRE(run("experiment-verify", options) != 0);
+            experiment_evidence(true, false, true, level, sanitizers);
+            REQUIRE(run("experiment-verify", options) != 0);
+            experiment_evidence(true, true, false, level, sanitizers);
+            REQUIRE(run("experiment-verify", options) != 0);
+            experiment_evidence(true, true, true, level, !sanitizers);
+            REQUIRE(run("experiment-verify", options) != 0);
+            REQUIRE(run("experiment-configure", options) == 0);
+            char *output = tool_read(logpath);
+            REQUIRE(output);
+            REQUIRE(
+                strstr(output, sanitizers ? "-DCHIBI_ENABLE_SANITIZERS=ON" : "-DCHIBI_ENABLE_SANITIZERS=OFF")
+            );
+            char debug[100];
+            snprintf(debug, sizeof debug, "-DCMAKE_C_FLAGS_DEBUG=-g -O%d -fno-omit-frame-pointer", level);
+            REQUIRE(strstr(output, debug));
+            REQUIRE(strstr(output, "-DCMAKE_BUILD_TYPE=Debug"));
+            REQUIRE(strstr(output, "-DCHIBI_ENABLE_CCACHE=OFF"));
+            free(output);
+        }
+    }
+    return true;
+}
+
+TEST_CASE(debug_experiment_instrumentation_plan)
+{
+    REQUIRE(
+        run("experiment-plan",
+            "{\"comparison\":\"instrumentation\",\"sanitizers\":true}") == 0
+    );
+    char *output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "[[\"o1-on\", 1, true], [\"o1-off\", 1, false]]"));
+    free(output);
+    REQUIRE(run("experiment-plan", "{\"comparison\":\"optimization\",\"sanitizers\":false}") == 0);
+    output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "[[\"o1\", 1, false], [\"o2\", 2, false]]"));
+    free(output);
+    const char *mutations[] = { "extra-ndebug", "link-sanitizer", "missing-links" };
+    for (int i = 0; i < 3; i++) {
+        experiment_evidence(true, true, true, 1, true);
+        REQUIRE(run("experiment-mutate", mutations[i]) == 0);
+        REQUIRE(run("experiment-verify", "{\"level\":1,\"sanitizers\":true}") != 0);
+    }
+    experiment_evidence(true, true, true, 1, true);
+    char source[PATH_MAX], target[PATH_MAX];
+    path(source, "o1-build.log");
+    path(target, "o1-on-build.log");
+    REQUIRE(rename(source, target) == 0);
+    REQUIRE(
+        run("experiment-verify",
+            "{\"level\":1,\"sanitizers\":true,\"label\":\"o1-on\"}") == 0
+    );
+    REQUIRE(exists("o1-on-verified-argv.json"));
+    REQUIRE(exists("o1-on-CMakeCache.txt"));
     return true;
 }
 
@@ -1937,6 +3286,108 @@ TEST_CASE(debug_experiment_cancellation_and_failure_clean_up)
     return true;
 }
 
+TEST_CASE(web_publish_uses_private_https_dependencies)
+{
+    char filename[PATH_MAX];
+    snprintf(filename, sizeof filename, "%s/.github/workflows/publish.yml", tool_root());
+    char *workflow = tool_read(filename);
+    REQUIRE(workflow);
+    REQUIRE(strstr(workflow, "      - '.github/install-ubuntu-dependencies.py'\n"));
+    REQUIRE(strstr(
+        workflow,
+        "      - name: Install build dependencies\n"
+        "        if: steps.release.outputs.complete != 'true'\n"
+        "        run: |\n"
+        "          python3 .github/install-ubuntu-dependencies.py "
+        "--no-install-recommends \\\n"
+        "            ninja-build ccache clang-18 clang-tools-18 "
+        "libclang-18-dev libclang-rt-18-dev \\\n"
+        "            libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev "
+        "libxi-dev libxrandr-dev \\\n"
+        "            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev "
+        "libasound2-dev libpulse-dev\n"
+        "          pip install 'cmake==4.2.3'\n"
+    ));
+    REQUIRE(!strstr(workflow, "apt-get"));
+    free(workflow);
+    return true;
+}
+
+TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets)
+{
+    char filename[PATH_MAX];
+    snprintf(filename, sizeof filename, "%s/.github/workflows/compiler-runtime-seed.yml", tool_root());
+    char *workflow = tool_read(filename);
+    REQUIRE(workflow);
+    REQUIRE(
+        strstr(workflow, "group: compiler-runtime-seed-${{ github.sha }}\n  cancel-in-progress: false")
+    );
+    REQUIRE(!strstr(workflow, "compiler-runtime-seed-${{ github.ref }}"));
+    const char *verify = strstr(workflow, "- name: Verify published assets before pinning");
+    const char *transfer = strstr(workflow, "path: ${{ runner.temp }}/published/runtime.json");
+    const char *pin = strstr(workflow, "- name: Commit the pin onto the seeded commit");
+    REQUIRE(verify && transfer && pin && verify < transfer && transfer < pin);
+    REQUIRE(strstr(workflow, "name: verified-runtime-pin-${{ github.run_id }}\n"));
+    REQUIRE(!strstr(workflow, "gh release download \"$TAG\" --pattern runtime.json"));
+    free(workflow);
+    REQUIRE(run("seed-workflow", "publish:published") == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output && !strstr(output, "release upload") && !strstr(output, "release edit"));
+    free(output);
+    REQUIRE(run("seed-workflow", "publish:draft") == 0);
+    output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "release upload") && strstr(output, "release edit"));
+    free(output);
+    REQUIRE(run("seed-workflow", "publish:wrong-target") != 0);
+    REQUIRE(run("seed-workflow", "publish:api-error") != 0);
+    output = tool_read(logpath);
+    REQUIRE(
+        output && !strstr(output, "release create") &&
+        !strstr(output, "release upload") && !strstr(output, "release edit")
+    );
+    free(output);
+    REQUIRE(run("seed-workflow", "publish:fresh") == 0);
+    output = tool_read(logpath);
+    REQUIRE(output);
+    const char *create = strstr(output, "release create");
+    const char *upload = strstr(output, "release upload");
+    const char *edit = strstr(output, "release edit");
+    REQUIRE(create && upload && edit && create < upload && upload < edit);
+    free(output);
+    REQUIRE(run("seed-workflow", "publish:extra-draft") != 0);
+    return true;
+}
+
+TEST_CASE(runtime_seed_reuse_checks_published_provenance)
+{
+    REQUIRE(run("seed-workflow", "release:valid") == 0);
+    const char *invalid[] = { "repository",  "tag",      "source_revision",
+                              "source_tree", "format",   "draft",
+                              "asset",       "missing",  "extra",
+                              "duplicate",   "evidence", "closure",
+                              "source",      "pin-size", "all-closures",
+                              "platform" };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "release:%s", invalid[i]);
+        REQUIRE(run("seed-workflow", name) != 0);
+    }
+    return true;
+}
+
+TEST_CASE(runtime_seed_pin_resumes_only_its_own_commit)
+{
+    REQUIRE(run("seed-workflow", "pin:resume") == 0);
+    char *output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "pinned=True") && strstr(output, "dispatches=1"));
+    free(output);
+    REQUIRE(run("seed-workflow", "pin:unrelated") != 0);
+    REQUIRE(run("seed-workflow", "pin:wrong-bytes") != 0);
+    REQUIRE(run("seed-workflow", "pin:other-run") != 0);
+    REQUIRE(run("seed-workflow", "pin:mode") != 0);
+    return true;
+}
+
 static void set_up()
 {
     strcpy(directory, "/tmp/chibi-policy-XXXXXX");
@@ -1946,13 +3397,27 @@ static void set_up()
     FILE *script = fopen(driver, "wb");
     assert(script);
     assert(fputs(driver_imports, script) >= 0);
+    assert(fputs(driver_scalar_batch, script) >= 0);
     assert(fputs(driver_setup, script) >= 0);
     assert(fputs(driver_routes, script) >= 0);
+    assert(fputs(driver_shards, script) >= 0);
+    assert(fputs(driver_shard_profile, script) >= 0);
+    for (size_t i = 0; i < sizeof driver_artifact / sizeof *driver_artifact; i++) {
+        assert(fputs(driver_artifact[i], script) >= 0);
+    }
+    assert(fputs(driver_integer_parallel, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
+    assert(fputs(driver_ci_ready_setup, script) >= 0);
+    assert(fputs(driver_ci_ready_run, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
+    assert(fputs(driver_ci_build_workflow, script) >= 0);
+    assert(fputs(driver_ci_build_run, script) >= 0);
     assert(fputs(driver_experiment, script) >= 0);
     for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
         assert(fputs(driver_parallel[i], script) >= 0);
+    }
+    for (size_t i = 0; i < sizeof driver_seed / sizeof *driver_seed; i++) {
+        assert(fputs(driver_seed[i], script) >= 0);
     }
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
@@ -1961,16 +3426,39 @@ static void set_up()
 void test_tool_test_policy()
 {
     set_up();
+    RUN_TEST_CASE(web_publish_uses_private_https_dependencies);
+    RUN_TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order);
+    RUN_TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets);
+    RUN_TEST_CASE(runtime_seed_reuse_checks_published_provenance);
+    RUN_TEST_CASE(runtime_seed_pin_resumes_only_its_own_commit);
     RUN_TEST_CASE(debug_experiment_flags);
+    RUN_TEST_CASE(debug_experiment_manual_workflow);
+    RUN_TEST_CASE(debug_experiment_instrumentation_plan);
     RUN_TEST_CASE(debug_experiment_parallel_build_output);
     RUN_TEST_CASE(debug_experiment_compilation_evidence);
     RUN_TEST_CASE(debug_experiment_cancellation_and_failure_clean_up);
     RUN_TEST_CASE(asset_language_cases_are_in_the_actual_ci_group);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
+    RUN_TEST_CASE(material_group_does_not_run_benchmarks);
+    RUN_TEST_CASE(benchmark_routes_remain_explicit);
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
+    RUN_TEST_CASE(language_shard_producer_selects_verified_full_sanitizer_profile);
+    RUN_TEST_CASE(language_shards_keep_exact_manifest_and_serial_fallback);
+    RUN_TEST_CASE(language_shard_cli_is_serial_and_propagates_failure);
+    RUN_TEST_CASE(language_shard_cli_rejects_invalid_requests_before_work);
+    RUN_TEST_CASE(language_artifact_roundtrip_keeps_runtime_files_and_modes);
+    RUN_TEST_CASE(language_artifact_rejects_corrupt_and_unsafe_files);
+    RUN_TEST_CASE(language_artifact_requires_exact_source_toolchain_and_manifest);
+    RUN_TEST_CASE(language_artifact_archive_validates_before_writing);
+    RUN_TEST_CASE(language_artifact_cli_requires_exact_argument_counts);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
+    RUN_TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage);
+    RUN_TEST_CASE(ci_build_timings_use_ready_drivers_and_bounded_selector);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
+    RUN_TEST_CASE(ci_generator_hosts_resolve_symlink_root);
+    RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);
+    RUN_TEST_CASE(ci_main_push_finishes_before_newest_pending_run);
     RUN_TEST_CASE(ci_preserves_failed_macos_graph_stage_log);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
@@ -1987,6 +3475,8 @@ void test_tool_test_policy()
     RUN_TEST_CASE(parallel_group_serializes_conflicts_and_unknowns);
     RUN_TEST_CASE(parallel_group_preserves_manifest_and_failure);
     RUN_TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work);
+    RUN_TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered);
+    RUN_TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work);
     RUN_TEST_CASE(parallel_language_manifest_matches_serial_exactly);
     RUN_TEST_CASE(parallel_admission_bounds_cpu_and_available_memory);
     RUN_TEST_CASE(parallel_serial_escape_uses_real_cli_and_environment);

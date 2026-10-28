@@ -6,6 +6,7 @@
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/build_host_internal.h"
+#include "host/build_timing.h"
 #include "host/build_values.h"
 #include "host/process.h"
 #include "runtime/arrays_definition.h"
@@ -56,6 +57,7 @@ static const char *const environment_names[] = {
     "SDKROOT",
     "DEVELOPER_DIR",
     "CHIBI_BUILD_WORKER",
+    "CHIBI_BUILD_TIMINGS",
     "CC",
     "CXX",
     "CFLAGS",
@@ -316,6 +318,7 @@ static const char *run_step(void *service, const pin_value *arguments, pin_value
                                  .capacity = BUILD_STEP_OUTPUT_CAPACITY };
     chibi_process_output err = { .data = host->last_stderr,
                                  .capacity = BUILD_STEP_OUTPUT_CAPACITY };
+    double started = host->options->timings ? chibi_build_now() : 0;
     chibi_process_capture_result child = chibi_process_capture(
         program,
         (const char *const *)argv,
@@ -326,6 +329,17 @@ static const char *run_step(void *service, const pin_value *arguments, pin_value
         &out,
         &err
     );
+    if (host->options->timings) {
+        build_timing_write(
+            host->options->timings,
+            build_timing_category(argv, reported),
+            host->result->steps,
+            started,
+            chibi_build_now(),
+            child.status,
+            child.error
+        );
+    }
     free_argv(argv, program);
     finish_output(host, &out, &err, reported);
     results[0].i = child.status;
@@ -367,6 +381,12 @@ const char *build_host_start(void *service, const pin_value *arguments, pin_valu
                                    .capacity = BUILD_STEP_OUTPUT_CAPACITY };
     *err = (chibi_process_output){ .data = xmalloc(BUILD_STEP_OUTPUT_CAPACITY),
                                    .capacity = BUILD_STEP_OUTPUT_CAPACITY };
+    if (host->options->timings) {
+        host->job_started[slot] = chibi_build_now();
+        host->job_observed[slot] = 0;
+        host->job_categories[slot] = build_timing_category(argv, true);
+        host->job_steps[slot] = host->result->steps;
+    }
     chibi_process_capture_result started = chibi_process_begin(
         &host->jobs[slot],
         program,
@@ -380,6 +400,15 @@ const char *build_host_start(void *service, const pin_value *arguments, pin_valu
     );
     free_argv(argv, program);
     if (started.error != CHIBI_PROCESS_OK) {
+        build_timing_write(
+            host->options->timings,
+            host->job_categories[slot],
+            host->job_steps[slot],
+            host->job_started[slot],
+            host->options->timings ? chibi_build_now() : 0,
+            started.status,
+            started.error
+        );
         free(out->data);
         free(err->data);
         return process_failure(started.error);
@@ -410,8 +439,26 @@ const char *build_host_wait(void *service, const pin_value *arguments, pin_value
             host->deadline,
             host->options->cancelled
         );
+        if (host->options->timings) {
+            double observed = chibi_build_now();
+            for (int i = 0; i < BUILD_MAX_JOBS; i++) {
+                if (host->job_handles[i] && !host->job_observed[i] &&
+                    !chibi_process_running(&host->jobs[i])) {
+                    host->job_observed[i] = observed;
+                }
+            }
+        }
     }
     chibi_process_capture_result child = chibi_process_end(job);
+    build_timing_write(
+        host->options->timings,
+        host->job_categories[slot],
+        host->job_steps[slot],
+        host->job_started[slot],
+        host->job_observed[slot],
+        child.status,
+        child.error
+    );
     chibi_process_output *out = &host->job_outputs[slot][0],
                          *err = &host->job_outputs[slot][1];
     /* The step's own buffers become the last output. */
@@ -431,7 +478,20 @@ void build_host_stop_jobs(build_host *host)
         if (!host->job_handles[slot]) {
             continue;
         }
-        chibi_process_end(&host->jobs[slot]);
+        chibi_process_capture_result child = chibi_process_end(&host->jobs[slot]);
+        if (host->options->timings) {
+            double observed = host->job_observed[slot] ? host->job_observed[slot]
+                                                       : chibi_build_now();
+            build_timing_write(
+                host->options->timings,
+                "abandoned",
+                host->job_steps[slot],
+                host->job_started[slot],
+                observed,
+                child.status,
+                child.error
+            );
+        }
         free(host->job_outputs[slot][0].data);
         free(host->job_outputs[slot][1].data);
         host->job_handles[slot] = 0;
@@ -700,6 +760,8 @@ static int refuse_task(behavior_function_context *context, int)
 bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *result)
 {
     *result = (chibi_build_result){ 0 };
+    double started = options && options->timings ? chibi_build_now() : 0;
+    double executing = 0;
     if (!options || !options->root || !options->source_path || !options->source_text ||
         !options->entry || !options->entry[0] || options->argument_count < 0 ||
         options->argument_count > BUILD_MAX_ARGUMENTS || options->collection_count < 0 ||
@@ -768,10 +830,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     const char *observed = NULL;
     behavior_function_context context = { 0 };
     behavior_function_activation activation = { 0 };
+    behavior_managed_heap managed = { 0 };
     arena storage = { 0 };
-    behavior_managed_heap managed;
-    behavior_managed_heap_init(&managed);
-    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     service_binding *services = NULL;
     bool success = false;
     size_t argument_bytes = 0;
@@ -859,6 +919,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         behavior_function_activation_init(entry, &activation);
     }
     pin_value value = { .type = PIN_I32 };
+    behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     context = (behavior_function_context){ .managed_heap = &managed,
                                            .activation = resumable ? &activation : NULL,
                                            .results = &value,
@@ -876,6 +938,10 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     }
     if (options->prepared) {
         options->prepared();
+    }
+    if (options->timings) {
+        executing = chibi_build_now();
+        build_timing_write(options->timings, "prepare", 0, started, executing, 0, 0);
     }
     behavior_run_scope scope = { 0 };
     behavior_run_scope_begin(&scope);
@@ -897,13 +963,24 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     }
 done:
     build_host_stop_jobs(&host);
+    if (options->timings) {
+        build_timing_write(
+            options->timings,
+            executing ? "execute" : "prepare",
+            0,
+            executing ? executing : started,
+            chibi_build_now(),
+            result->value,
+            success ? 0 : 1
+        );
+    }
     if (failure) {
         diagnose(result, failure);
     }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
-    arena_free(&storage);
     behavior_managed_heap_free(&managed);
+    arena_free(&storage);
     afree(services);
     if (packages) {
         package_collection_free(packages);

@@ -1,7 +1,9 @@
 #include "execution/backend.h"
 #include "host/native_default.h"
+#include "host/native_libraries.h"
 #include "host/player_clock.h"
 #include "host/player_url.h"
+#include "host/stack_overflow.h"
 #include "platform/cute.h"
 #include "render/device_controls.h"
 #include "render/scene3d.h"
@@ -60,6 +62,7 @@ typedef struct
 } desktop_player;
 #define BUNDLE_ARTIFACT "game.chibip"
 #define BUNDLE_ENGINE "engine"
+#define BUNDLE_NATIVES "natives"
 #define BUNDLE_MOUNT "/chibi-game"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
@@ -603,6 +606,7 @@ int main(int argc, char **argv)
     char error[1024] = { 0 };
     player_application application = { 0 };
     native_capabilities *native = NULL;
+    native_libraries *natives = NULL;
     if (!artifact) {
         fprintf(stderr, "A prepared project artifact is required; use --help.\n");
         result = 2;
@@ -629,6 +633,22 @@ int main(int argc, char **argv)
     if (!native) {
         fprintf(stderr, "%s\n", error);
         goto release;
+    }
+    /* The game's native libraries live in natives/ under its resource root. */
+    const execution_native_manifest *const *manifests = NULL;
+    int native_count = 0;
+    if (root) {
+        char *natives_dir = join(root, BUNDLE_NATIVES);
+        natives = native_libraries_open(natives_dir, error, sizeof error);
+        free(natives_dir);
+        if (!natives) {
+            fprintf(stderr, "%s\n", error);
+            goto release;
+        }
+        manifests = native_libraries_manifests(natives, &native_count);
+    }
+    if (native_count) {
+        stack_overflow_init();
     }
     CF_Result made = cf_make_app(
         application.title ? application.title : "Chibi Player",
@@ -671,6 +691,8 @@ int main(int argc, char **argv)
     host.linker = native_capabilities_prepared_linker(&host.context);
     player_host loader = { .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
                            .linker = &host.linker,
+                           .natives = manifests,
+                           .native_count = native_count,
                            .log = { log_message, NULL },
                            .resources = render_prepared_resources(root) };
     host.player = player_open(artifact, &loader, backend, error, sizeof error);
@@ -763,6 +785,7 @@ finish:
     render_images_clear();
     cf_destroy_app();
 release:
+    native_libraries_close(natives);
     native_capabilities_free(native);
     player_application_free(&application);
     free(engine_dir);

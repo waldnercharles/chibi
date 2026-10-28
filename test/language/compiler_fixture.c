@@ -1,10 +1,17 @@
 #include "compiler_fixture.h"
 
+#include "authoring/package_tests.h"
 #include "backend.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "runtime/arrays_definition.h"
+#include "runtime/core_definition.h"
+#include "runtime/tasks.h"
+#ifdef CHIBI_PACKAGE_TEST_POOL
+#include "runtime/task_pool.h"
+#endif
 #include "runtime/text_definition.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
@@ -13,6 +20,7 @@
 #include "types/union.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -247,6 +255,108 @@ bool compiler_fixture_prepare_backends(
         }
     }
     return true;
+}
+/* Shares the authored runner's worker override, not the outer C case pool's.
+ * Keep invalid settings fatal even on platforms without a native pool. */
+static bool test_workers(int *workers)
+{
+    *workers = 0;
+    const char *setting = getenv("CHIBI_TEST_WORKERS");
+    if (!setting) {
+        return true;
+    }
+    char *end;
+    errno = 0;
+    long value = strtol(setting, &end, 10);
+    if (!*setting || strspn(setting, "0123456789") != strlen(setting) || *end ||
+        errno || value < 1 || value > TASK_WORKER_MAX) {
+        fprintf(pu_errors(), "CHIBI_TEST_WORKERS must be an integer from 1 to %d\n", TASK_WORKER_MAX);
+        return false;
+    }
+    *workers = (int)value;
+    return true;
+}
+bool compiler_fixture_tests(const compiler_fixture *fixture)
+{
+    int workers;
+    if (!test_workers(&workers)) {
+        return false;
+    }
+    const task_system *tasks = NULL;
+#ifdef CHIBI_PACKAGE_TEST_POOL
+    task_pool *pool = task_pool_acquire_workers(workers);
+    tasks = task_pool_tasks(pool);
+#else
+    (void)workers;
+#endif
+    bool found = false, passed = true;
+    for (int b = 0; b < 2; b++) {
+        if (!fixture->owners[b]) {
+            continue;
+        }
+        const char *backend = behavior_backend_name(backends[b]);
+        if (!behavior_backend_available(backends[b])) {
+            fprintf(pu_errors(), "%s: authored test backend is unavailable\n", backend);
+            passed = false;
+            continue;
+        }
+        package_test *tests = package_tests_find(fixture->owners[b]);
+        int count = acount(tests);
+        if (!count) {
+            fprintf(pu_errors(), "%s: no authored tests found\n", backend);
+            passed = false;
+            afree(tests);
+            continue;
+        }
+        found = true;
+        package_test_result *results = xcalloc((size_t)count, sizeof *results);
+#ifdef CHIBI_PACKAGE_TEST_POOL
+        task_pool_begin(pool, count > 1);
+#endif
+        package_tests_run(tests, count, backends[b], PACKAGE_TEST_BUDGET, tasks, results);
+#ifdef CHIBI_PACKAGE_TEST_POOL
+        task_pool_end(pool);
+#endif
+        int failed = 0;
+        for (int i = 0; i < count; i++) {
+            fprintf(
+                pu_output(),
+                "%s %s.%s (%s)\n",
+                results[i].passed ? "PASS" : "FAIL",
+                tests[i].package,
+                tests[i].name,
+                backend
+            );
+            if (results[i].passed) {
+                continue;
+            }
+            failed++;
+            const package_test_failure *failure = &results[i].failure;
+            if (failure->path) {
+                fprintf(
+                    pu_output(),
+                    "  %s:%d:%d: %s\n",
+                    failure->path,
+                    failure->line,
+                    failure->column,
+                    failure->message
+                );
+            } else {
+                fprintf(pu_output(), "  %s\n", failure->message);
+            }
+        }
+        fprintf(pu_output(), "%s: %d tests, %d failed\n", backend, count, failed);
+        passed &= !failed;
+        free(results);
+        afree(tests);
+    }
+#ifdef CHIBI_PACKAGE_TEST_POOL
+    task_pool_release(pool);
+#endif
+    if (!found) {
+        fprintf(pu_errors(), "Compiler fixture contains no authored tests\n");
+    }
+    return found && passed;
 }
 const pin_record *compiler_fixture_record(
     const compiler_fixture *fixture,
@@ -547,11 +657,132 @@ TEST_CASE(compiler_fixture_default_keeps_both_backends)
     }
     return true;
 }
+/* Capture deliberate authored failures without changing the enclosing case's
+ * pico result or leaking expected FAIL reports into its normal output. */
+static const compiler_fixture *captured_fixture;
+static bool run_captured_tests()
+{
+    return compiler_fixture_tests(captured_fixture);
+}
+static bool fixture_test_report(const compiler_fixture *fixture, bool passed, const char *expected)
+{
+    FILE *output = tmpfile();
+    REQUIRE(output);
+    pu_test_context context = { .quiet = true, .output = output, .errors = output };
+    captured_fixture = fixture;
+    pu_run_test_context(&context, "authored adapter", run_captured_tests);
+    captured_fixture = NULL;
+    rewind(output);
+    char text[2048];
+    size_t count = fread(text, 1, sizeof text - 1, output);
+    text[count] = 0;
+    bool valid = !ferror(output) && feof(output) && !strcmp(text, expected) &&
+                 context.passed == (unsigned)passed &&
+                 context.failed == (unsigned)!passed;
+    if (!valid) {
+        fprintf(pu_errors(), "authored adapter report: %s", text);
+    }
+    fclose(output);
+    return valid;
+}
+TEST_CASE(compiler_fixture_runs_authored_tests_on_selected_backends)
+{
+    const char source[] = "package fixture\n"
+                          "@test First :: () { assert(true, \"first\"); }\n"
+                          "@test Second :: () { assert(true, \"second\"); }\n";
+    source_package_input file = { "fixture/Tests.chibi", source, sizeof source - 1 };
+    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
+    compiler_fixture *fixture = &prepared_fixtures[0];
+    char expected[512];
+    for (unsigned selected = 1; selected <= COMPILER_FIXTURE_BOTH; selected++) {
+        REQUIRE(compiler_fixture_prepare_backends(fixture, selected, &file, 1, core, 1));
+        expected[0] = 0;
+        for (int b = 0; b < 2; b++) {
+            if (!(selected & (1u << b))) {
+                continue;
+            }
+            const char *backend = behavior_backend_name(backends[b]);
+            size_t used = strlen(expected);
+            snprintf(
+                expected + used,
+                sizeof expected - used,
+                "PASS fixture.First (%s)\nPASS fixture.Second (%s)\n%s: 2 "
+                "tests, 0 failed\n",
+                backend,
+                backend,
+                backend
+            );
+        }
+        REQUIRE(fixture_test_report(fixture, true, expected));
+        compiler_fixture_free(fixture);
+    }
+    return true;
+}
+TEST_CASE(compiler_fixture_rejects_missing_and_failed_authored_tests)
+{
+    compiler_fixture *fixture = &prepared_fixtures[0];
+    REQUIRE(fixture_test_report(fixture, false, "Compiler fixture contains no authored tests\n"));
+    const char
+        empty[] = "package fixture\npub Value :: () -> int { return 1; }\n";
+    source_package_input file = { "fixture/Tests.chibi", empty, sizeof empty - 1 };
+    REQUIRE(
+        compiler_fixture_prepare_backends(fixture, COMPILER_FIXTURE_BYTECODE, &file, 1, NULL, 0)
+    );
+    REQUIRE(
+        fixture_test_report(fixture, false, "BYTECODE: no authored tests found\nCompiler fixture contains no authored tests\n")
+    );
+    compiler_fixture_free(fixture);
+    const char source[] = "package fixture\n"
+                          "@test First :: () { assert(false, \"deliberate "
+                          "failure\"); }\n"
+                          "@test Second :: () { assert(true); }\n";
+    file = (source_package_input){ "fixture/Tests.chibi", source, sizeof source - 1 };
+    const native_definition_pack core[] = { CORE_DEFINITION_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(fixture, &file, 1, core, 1));
+    char expected[1024];
+    snprintf(
+        expected,
+        sizeof expected,
+        "FAIL fixture.First (BYTECODE)\n  /compiler/fixture/Tests.chibi:2:21: "
+        "Assertion "
+        "failed: deliberate failure\n"
+        "PASS fixture.Second (BYTECODE)\nBYTECODE: 2 tests, 1 failed\n"
+        "FAIL fixture.First (%s)\n  /compiler/fixture/Tests.chibi:2:21: "
+        "Assertion "
+        "failed: deliberate failure\n"
+        "PASS fixture.Second (%s)\n%s: 2 tests, 1 failed\n",
+        behavior_backend_name(backends[1]),
+        behavior_backend_name(backends[1]),
+        behavior_backend_name(backends[1])
+    );
+    REQUIRE(fixture_test_report(fixture, false, expected));
+    return true;
+}
+TEST_CASE(compiler_fixture_rejects_invalid_authored_worker_settings)
+{
+    const char *setting = getenv("CHIBI_TEST_WORKERS");
+    char *saved = setting ? xstrdup(setting) : NULL;
+    const char *invalid[] = { "",   "0",  "33", "-1",
+                              "+2", " 2", "2x", "9999999999999999999999999999" };
+    bool valid = true;
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        valid &= !setenv("CHIBI_TEST_WORKERS", invalid[i], 1);
+        valid &= fixture_test_report(&prepared_fixtures[0], false, "CHIBI_TEST_WORKERS must be an integer from 1 to 32\n");
+    }
+    valid &= saved ? !setenv("CHIBI_TEST_WORKERS", saved, 1)
+                   : !unsetenv("CHIBI_TEST_WORKERS");
+    free(saved);
+    REQUIRE(valid);
+    return true;
+}
 void test_language_compiler_fixture()
 {
     pu_setup(NULL, preparation_cleanup);
     RUN_TEST_CASE(compiler_fixture_prepares_only_selected_backend);
     RUN_TEST_CASE(compiler_fixture_default_keeps_both_backends);
+    RUN_TEST_CASE(compiler_fixture_runs_authored_tests_on_selected_backends);
+    RUN_TEST_CASE(compiler_fixture_rejects_missing_and_failed_authored_tests);
+    RUN_TEST_CASE(compiler_fixture_rejects_invalid_authored_worker_settings);
     pu_clear_setup();
 }
 bool compiler_fixture_nodes(TSNode root, compiler_fixture_node *nodes, int capacity, int depth_cap, int *count)
@@ -686,5 +917,109 @@ bool compiler_fixture_pack_nodes(
                                .container = PIN_CONTAINER_ARRAY,
                                .ptr = names };
     }
+    return true;
+}
+/* A zeroed row of `identity`'s record `name`. */
+static pin_value record_row(
+    const compiler_fixture *fixture,
+    int backend,
+    const char *identity,
+    const char *name,
+    arena *input
+)
+{
+    const pin_record *shape = compiler_fixture_record(fixture, backend, identity, name, input);
+    assert(shape);
+    pin_value row = { .type = PIN_STRUCT,
+                      .ptr = arena_alloc(input, shape->type.size),
+                      .record = shape,
+                      .type_name = shape->type.name };
+    memset(row.ptr, 0, shape->type.size);
+    return row;
+}
+static pin_value rows(arena *input, const pin_value *items, int count, pin_type type)
+{
+    const pin_record *shape = count && type == PIN_STRUCT ? items[0].record : NULL;
+    pin_array *
+        array = pin_array_snapshot_allocate(input, type, shape ? shape->type.name : NULL, count);
+    array->record = shape;
+    for (int i = 0; i < count; i++) {
+        array->items[i] = items[i];
+    }
+    return (pin_value){ .type = type,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = array,
+                        .record = shape,
+                        .type_name = shape ? shape->type.name : NULL };
+}
+/* A port's storage as Compile takes it: a generic port's type is the one its
+ * call infers (0), a wildcard takes each argument's own type (-2), and -1 is
+ * a type the compiler cannot pass. */
+static int port_storage(script_type type)
+{
+    unsigned inferred = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC;
+    if (type.flags & SCRIPT_TYPE_UNTYPED) {
+        if (type.flags & ~inferred) {
+            return -1;
+        }
+        return type.flags & SCRIPT_TYPE_GENERIC ? 0 : -2;
+    }
+    return type.flags || type.nominal || type.storage == PIN_FLOW ? -1
+                                                                  : (int)type.storage;
+}
+bool compiler_fixture_natives(
+    const compiler_fixture *fixture,
+    int backend,
+    const char *identity,
+    const script_catalog *catalog,
+    arena *input,
+    pin_value out[3],
+    pin_value *effects
+)
+{
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL, *masks = NULL;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
+            c->flow.kind != SCRIPT_FLOW_ACCESS_NONE || c->outcome_count ||
+            (c->effects & SCRIPT_EFFECT_SUSPEND)) {
+            continue;
+        }
+        pin_value function = record_row(fixture, backend, identity, "Native", input);
+        REQUIRE(put(input, &function, "name", text(input, c->name)));
+        REQUIRE(put(input, &function, "first", integer(acount(ports))));
+        REQUIRE(put(input, &function, "parameters", integer(c->parameter_count)));
+        REQUIRE(put(input, &function, "results", integer(c->result_count)));
+        REQUIRE(put(input, &function, "variadic", boolean(c->variadic || c->variadic_optional)));
+        apush(functions, function);
+        apush(masks, integer((int)c->effects));
+        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
+            const script_catalog_parameter *declared = j < c->parameter_count
+                                                         ? &c->parameters[j]
+                                                         : &c->results[j - c->parameter_count];
+            pin_value port = record_row(fixture, backend, identity, "Port", input);
+            REQUIRE(
+                put(input, &port, "name", text(input, declared->name ? declared->name : ""))
+            );
+            REQUIRE(put(input, &port, "storage", integer(port_storage(declared->type))));
+            REQUIRE(put(input, &port, "container", integer((int)declared->type.container)));
+            REQUIRE(put(input, &port, "c_string", boolean(declared->c_string)));
+            apush(ports, port);
+        }
+        apush(identities, ((pin_value){ .type = PIN_U64, .u64 = c->id }));
+        apush(
+            identities,
+            ((pin_value){ .type = PIN_U64,
+                          .u64 = script_catalog_capability_abi(catalog, c) })
+        );
+    }
+    out[0] = rows(input, functions, acount(functions), PIN_STRUCT);
+    out[1] = rows(input, ports, acount(ports), PIN_STRUCT);
+    out[2] = rows(input, identities, acount(identities), PIN_U64);
+    *effects = rows(input, masks, acount(masks), PIN_I32);
+    afree(functions);
+    afree(ports);
+    afree(identities);
+    afree(masks);
     return true;
 }

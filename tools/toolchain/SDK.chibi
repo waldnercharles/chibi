@@ -164,6 +164,7 @@ Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
         Join(["libexec/chibi/chibi-compiler-host=", build_dir, "/sdk/chibi-compiler-host"]),
         Join(["share/chibi/compiler=", build_dir, "/share/chibi/compiler"]),
         Join(["share/chibi/core=", build_dir, "/share/chibi/core"]),
+        Join(["share/chibi/tools/native_aot=", build_dir, "/share/chibi/tools/native_aot"]),
         Join(["share/chibi/tools/toolchain/Build.chibi=", root, "/tools/toolchain/Build.chibi"]),
         Join(["share/chibi/tools/toolchain/Graph.chibi=", root, "/tools/toolchain/Graph.chibi"]),
         Join(["share/chibi/tools/toolchain/SDK.chibi=", root, "/tools/toolchain/SDK.chibi"]),

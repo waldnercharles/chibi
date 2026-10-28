@@ -11,11 +11,11 @@ to find each suite's entry point and platform requirements.
 | --- | --- |
 | `make test`, `make test-short` | Six pure C execution-policy cases. These cases do not cover the external process contracts. |
 | `make test-tools` | Retained C tooling/process integrations, including package/configure, room service, publication, supervisor and planner contracts. |
-| Native, materials, projects and language groups | The selectors listed in `tools/test_policy.py` under `GROUPS`. Report the selected groups and their configurations. |
+| Native, materials, projects and language groups | Correctness selectors listed in `tools/test_policy.py` under `GROUPS`, excluding benchmarks. Report the selected groups and their configurations. |
 | Full native and render suites | Use their current owning entry points and required runtime/backend configuration. Earlier short-group passes do not establish full-suite coverage. |
 | Editor checkpoint and host/generation checks | Retained native process, state-file and workspace recovery assertions. Compilation alone does not establish that these assertions ran. Studio checks belong to `chibi-studio`. |
 | Compiler parity and backend checks | Distinguish source preparation, bytecode, SLJIT, generated C, Wasm and no-SLJIT behavior. Smoke compilation does not prove execution parity. |
-| Benchmarks and controller profiles/captures | Report the workload, resource settings and measured result. A benchmark is not a replacement for a correctness check. |
+| Benchmarks and controller profiles/captures | Opt-in only, not routine CI. Use `make benchmark` or an explicit benchmark selector; report workload, resource settings and measured result. A benchmark is not a replacement for a correctness check. |
 | GPU and multi-goal validation | Preserve the selected backend, device, sanitizer and workload requirements. Report unavailable capabilities and checks that were not run. |
 
 Retired Python/Node suites, cloud tooling, MCP script checks and old script
@@ -57,3 +57,4 @@ Required server checks, PR/ticket holds and explicit approval requirements remai
 binding. Local evidence is sufficient when CI is disabled unless actual server
 rules require CI. Report missing evidence directly; do not substitute a narrower
 check for the contract that needs validation.
+

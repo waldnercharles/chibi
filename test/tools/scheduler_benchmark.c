@@ -145,7 +145,7 @@ TEST_CASE(scheduler_benchmark_warm_dispatch)
 {
     return measure(false);
 }
-TEST_CASE(scheduler_benchmark_replacement_preserves_owned_snapshots)
+TEST_CASE(scheduler_replacement_preserves_owned_snapshots)
 {
     uint64_t writes = 11, reads = 12;
     schedule_desc a = descriptor("A", 0), b = descriptor("B", 1);
@@ -738,7 +738,13 @@ void test_tool_scheduler_benchmark()
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(scheduler_benchmark_identical_registration);
     RUN_TEST_CASE(scheduler_benchmark_warm_dispatch);
-    RUN_TEST_CASE(scheduler_benchmark_replacement_preserves_owned_snapshots);
+    pu_clear_setup();
+}
+
+void test_tool_scheduler()
+{
+    pu_setup(setup, cleanup);
+    RUN_TEST_CASE(scheduler_replacement_preserves_owned_snapshots);
     RUN_TEST_CASE(scheduler_unchanged_descriptors_and_small_batches_allocate_nothing);
     RUN_TEST_CASE(scheduler_effect_and_order_changes_rebuild_dependencies);
     RUN_TEST_CASE(scheduler_callback_changes_and_retries_keep_failure_order);

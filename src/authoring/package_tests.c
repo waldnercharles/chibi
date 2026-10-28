@@ -1,9 +1,9 @@
 #include "authoring/package_tests.h"
 
 #include "execution/function.h"
-#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
+#include "runtime/tasks.h"
 #include "support/arena.h"
 #include "support/array.h"
 
@@ -50,8 +50,11 @@ static void add_tests(package_test **tests, const authoring_package *package)
                               analysis->documents[at->document].path,
                               at->line,
                               at->column,
-                              body(package->module, symbol->id) };
+                              body(package->module, symbol->id),
+                              analysis->functions[i].pure &&
+                                  !analysis->functions[i].effects };
         assert(test.body);
+        test.parallel = test.parallel && behavior_function_hosts_pure(test.body);
         apush(*tests, test);
     }
 }
@@ -123,6 +126,7 @@ bool package_test_run(
     if (resumable) {
         behavior_function_activation_init(test->body, &activation);
     }
+    /* Each run owns its heap, so parallel tests never share one. */
     behavior_managed_heap managed;
     behavior_managed_heap_init(&managed);
     behavior_function_context context = { .managed_heap = &managed,
@@ -152,7 +156,58 @@ bool package_test_run(
     }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
-    arena_free(&storage);
     behavior_managed_heap_free(&managed);
+    arena_free(&storage);
     return passed;
+}
+
+typedef struct
+{
+    const package_test *tests;
+    package_test_result *results;
+    behavior_backend backend;
+    uintptr_t budget;
+} test_span;
+
+static void run_span(int first, int end, uint32_t, void *user)
+{
+    test_span *span = user;
+    for (int i = first; i < end; i++) {
+        package_test_result *result = &span->results[i];
+        result->passed = package_test_run(
+            &span->tests[i],
+            span->backend,
+            span->budget,
+            &result->failure
+        );
+    }
+}
+
+void package_tests_run(
+    const package_test *tests,
+    int count,
+    behavior_backend backend,
+    uintptr_t budget,
+    const task_system *tasks,
+    package_test_result *results
+)
+{
+    assert(count >= 0 && (!count || (tests && results)));
+    if (behavior_execution_scope_active()) {
+        tasks = NULL;
+    }
+    for (int first = 0; first < count;) {
+        int end = first + 1;
+        while (tests[first].parallel && end < count && tests[end].parallel) {
+            end++;
+        }
+        test_span span = { tests + first, results + first, backend, budget };
+        if (tasks && tasks->workers > 1 && end - first > 1) {
+            void *task = tasks->enqueue(run_span, end - first, 1, &span, tasks->user);
+            tasks->finish(task, tasks->user);
+        } else {
+            run_span(0, end - first, 0, &span);
+        }
+        first = end;
+    }
 }

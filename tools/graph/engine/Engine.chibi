@@ -18,6 +18,7 @@ pub Profile :: struct {
     build_type: string;
     // Empty preserves Debug defaults; 0 or 1 is an opt-in experiment.
     debug_optimization: string;
+    debug_frame_pointers: bool;
     architecture: string;
     sysroot: string;
     warnings: bool;
@@ -37,6 +38,10 @@ pub Profile :: struct {
     // A reflect program to run instead of the one the graph builds, as a
     // cross build's CHIBI_REFLECT_EXECUTABLE names one; empty to build it.
     reflect: string;
+    // Another build's sdk directory whose chibi-build-host and
+    // chibi-compiler-host generate the asset compiler, as
+    // CHIBI_ASSET_GENERATOR_HOSTS names one; empty to run this build's.
+    asset_generator_hosts: string;
 }
 
 // The builtin headers of the clang that a libclang belongs to, as
@@ -292,8 +297,13 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
             for (substitution in Substitutions(target)) {
                 placeholder := Join(["@", build.before(substitution, "="), "@"]);
                 if (build.before(template, placeholder) != template) {
-                    text = build.replace(text, placeholder,
-                                         Substitute(source_root, build_dir, profile, build.after(substitution, "=")));
+                    value := build.after(substitution, "=");
+                    replacement := Substitute(source_root, build_dir, profile, value);
+                    kind := build.before(value, ":");
+                    if ((kind == "test-sources" || kind == "test-inputs") && replacement == "") {
+                        return false;
+                    }
+                    text = build.replace(text, placeholder, replacement);
                 }
             }
         }
@@ -508,12 +518,57 @@ Configured :: (target: string) -> string[] {
     return headers;
 }
 
+// A test package's direct source files, in CMake glob order. Directories
+// named .chibi and nested packages are not members of this package.
+TestSources :: (directory: string) -> string[] {
+    names: string[] = [];
+    for (name in build.list_directory(directory)) {
+        if (strings.HasSuffix(name, ".chibi") &&
+            build.file_kind(Join([directory, "/", name])) != "directory") {
+            names.append(name);
+        }
+    }
+    return Sorted(names);
+}
+// PREFIX:PACKAGE:DIR declares each source's byte array or its package input,
+// exactly as package_compiler_chibi.cmake configures the shared template.
+TestSubstitution :: (source_root: string, value: string) -> string {
+    kind := build.before(value, ":");
+    rest := build.after(value, ":");
+    prefix := build.before(rest, ":");
+    rest = build.after(rest, ":");
+    identity := build.before(rest, ":");
+    directory := Join([source_root, "/", build.after(rest, ":")]);
+    names := TestSources(directory);
+    if (length(names) == 0) {
+        build.report(Join(["graph: authored test package is empty: ", directory]));
+        return "";
+    }
+    lines: string[] = [];
+    for (index in 0..<length(names)) {
+        symbol := format_text("{}_{}", prefix, index);
+        if (kind == "test-sources") {
+            lines.append(Join(["static const char ", symbol, "[] = { ",
+                               build.byte_list(Join([directory, "/", names[index]])), " 0 };\n"]));
+        } else {
+            lines.append(Join(["    PACKAGE_COMPILER_SOURCE(\"", identity, "/", names[index],
+                               "\", ", symbol, "), \\\n"]));
+        }
+    }
+    return build.join(lines, "");
+}
+
 // A substitution's value: `bytes:PATH` as the C initializer CMake writes from
 // file(READ ... HEX), `cstring:PATH` as the lines of a C string literal, or
 // `compiler:ARGUMENT` as an escaped initializer line for each of the
 // profile's C compiler, its C flags and ARGUMENT, if any, as
-// test/tools/CMakeLists.txt writes them.
+// test/tools/CMakeLists.txt writes them. Test package substitutions take
+// `test-sources:PREFIX:PACKAGE:DIR` or `test-inputs:PREFIX:PACKAGE:DIR`.
 Substitute :: (source_root: string, build_dir: string, profile: Profile, value: string) -> string {
+    kind := build.before(value, ":");
+    if (kind == "test-sources" || kind == "test-inputs") {
+        return TestSubstitution(source_root, value);
+    }
     if (build.before(value, ":") == "compiler") {
         arguments := [profile.compiler];
         arguments.extend(DebugDirectoryFlags(profile, build_dir));
@@ -540,11 +595,10 @@ Substitute :: (source_root: string, build_dir: string, profile: Profile, value: 
     return build.replace(text, "\n", "\\n\"\n\"");
 }
 
-// Builds the host tools first, then runs the authored asset generator with
-// them. Debug and sanitized hosts compile the asset compiler two to twelve
-// times slower than Release ones, so those profiles build Release hosts in a
-// folder of their own, as sdk/asset_compiler_host.cmake does. Sibling outputs are
-// tracked inputs so deleting one regenerates the resource.
+// Builds the existing host tools first, then runs the authored asset generator
+// with them, or with the profile's asset_generator_hosts: the resource is the
+// same whichever build's hosts generate it. Sibling outputs are tracked
+// inputs so deleting one regenerates the resource.
 AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string) -> int {
     prerequisites: string[] = [];
     for (target in Targets()) {
@@ -553,25 +607,30 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
             prerequisites.append(target);
         }
     }
-    hosts := folder;
-    hosts_profile := profile;
-    if (profile.build_type != "Release" || profile.sanitizers != "") {
-        hosts = Join([folder, "/sdk/release-hosts"]);
-        hosts_profile.build_type = "Release";
-        hosts_profile.sanitizers = "";
-        hosts_profile.third_party = ThirdParty(root, profile.compiler_id, "");
-    }
-    compiled := Build(tools, hosts_profile, root, hosts, prerequisites);
+    compiled := Build(tools, profile, root, folder, prerequisites);
     if (compiled < 0) {
         return -1;
     }
     output := Join([folder, "/sdk/generated/assets"]);
-    command := [Executable(hosts, "chibi-build-host"), "--compiler", "tools/compiler",
+    timeout := "240000";
+    if (profile.sanitizers != "") {
+        timeout = "600000";
+    }
+    build_host := Executable(folder, "chibi-build-host");
+    compiler_host := Executable(folder, "chibi-compiler-host");
+    if (profile.asset_generator_hosts != "") {
+        build_host = Join([profile.asset_generator_hosts, "/chibi-build-host"]);
+        compiler_host = Join([profile.asset_generator_hosts, "/chibi-compiler-host"]);
+    }
+    command := [build_host, "--compiler", "tools/compiler",
                 "--compiler-core", "packages/core", "--root", root,
                 "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
-                "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", "240000", "--",
-                Executable(hosts, "chibi-compiler-host"), output];
-    inputs := [Executable(hosts, "chibi-build-host"), Executable(hosts, "chibi-compiler-host")];
+                "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", timeout, "--",
+                compiler_host, output];
+    if (profile.sanitizers != "") {
+        command.append("--compiler-timeout-ms=600000");
+    }
+    inputs := [build_host, compiler_host];
     for (directory in ["tools/compiler", "packages/core", "packages/game", "tools/graph/asset_compiler"]) {
         inputs.extend(ChibiSources(Join([root, "/", directory])));
     }
@@ -773,7 +832,7 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
 SourceFlags :: (source_root: string, build_dir: string, target: string, file: string, profile: Profile,
                 target_flags: string[]) -> string[] {
     language := Language(file);
-    flags := slice(target_flags, 0, length(target_flags));
+    flags := target_flags;
     if (length(SourceIncludes(target, file)) > 0 || length(SourceDefines(target, file)) > 0 || language != "c") {
         flags = CompileFlags(source_root, build_dir, target, profile, file, language);
     }
@@ -805,10 +864,14 @@ DebugDirectoryFlags :: (profile: Profile, build_dir: string) -> string[] {
 BuildTypeFlags :: (profile: Profile) -> string[] {
     build_type := profile.build_type;
     if (build_type == "Debug") {
+        flags := ["-g"];
         if (profile.debug_optimization != "") {
-            return ["-g", Join(["-O", profile.debug_optimization])];
+            flags.append(Join(["-O", profile.debug_optimization]));
         }
-        return ["-g"];
+        if (profile.debug_frame_pointers && profile.sanitizers == "") {
+            flags.append("-fno-omit-frame-pointer");
+        }
+        return flags;
     }
     if (build_type == "Release") {
         return ["-O3", "-DNDEBUG"];
@@ -935,7 +998,7 @@ Add :: (names: string[], name: string) -> string[] {
             return names;
         }
     }
-    added := slice(names, 0, length(names));
+    added := names;
     added.append(name);
     return added;
 }

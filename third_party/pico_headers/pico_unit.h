@@ -1,6 +1,8 @@
 /* Vendored from https://github.com/empyreanx/pico_headers (MIT/Unlicense, single header).
  * Upstream commit 421521d673ecc3648c6252d8ec9e2fd5da065445 (main, 2026-08-20).
  * License text at the end of this file; used under zlib terms.
+ * Chibi changes: quiet output and isolated C11/C++11 test contexts for the native
+ * test runner. Scheduling remains outside this header.
  */
 
 /**
@@ -14,7 +16,7 @@
     Features:
     ---------
 
-    * Written in C99 and compatible with C++
+    * Chibi's isolated context extension requires C11 or C++11
     * Single-header for easy integration into any build system
     * Tiny memory and code footprint
     * Simple and minimalistic API
@@ -31,7 +33,7 @@
     --------
 
     This library is a minimal unit testing framework. It should compile and run
-    on just about any platform with a standard C99 compiler.
+    on platforms with a standard C11 or C++11 compiler in this Chibi fork.
 
     Writing tests is simple: 1) Use the TEST_CASE macro and define the test using
     using REQUIRE to test boolean expressions; 2) Run the test inside the
@@ -70,6 +72,7 @@
 
 #include <stdbool.h> /* bool, true, false */
 #include <stddef.h>  /* NULL */
+#include <stdio.h>   /* FILE */
 #include <string.h>  /* strcmp */
 
 #ifdef __cplusplus
@@ -186,6 +189,29 @@ extern "C"
     typedef bool (*pu_test_fn)(void);
     typedef void (*pu_suite_fn)(void);
 
+    /* A case owns its assertions, hooks and diagnostics. The caller captures
+     * this on the controlling thread, runs it on one worker, then merges it
+     * only after that worker has finished. Streams are borrowed. */
+    typedef void (*pu_dispatch_fn)(const char *name, pu_test_fn test, void *user);
+    typedef struct
+    {
+        unsigned asserts, passed, failed, suites;
+        bool colors, time, quiet;
+        double (*seconds)(void);
+        pu_setup_fn setup, teardown;
+        FILE *output, *errors;
+        pu_dispatch_fn dispatch;
+        void *dispatch_user;
+    } pu_test_context;
+
+    pu_test_context pu_capture_context(void);
+    void pu_run_test_context(pu_test_context *context, const char *name, pu_test_fn test);
+    void pu_merge_context(const pu_test_context *context);
+    void pu_set_dispatch(pu_dispatch_fn dispatch, void *user);
+    void pu_set_clock(double (*seconds)(void));
+    FILE *pu_output(void);
+    FILE *pu_errors(void);
+
     /**
      * @brief Used internally
      */
@@ -229,20 +255,76 @@ extern "C"
 #define TERM_COLOR_BOLD "[1m"
 #define TERM_COLOR_RESET "[0m"
 
-static unsigned pu_num_asserts = 0;
-static unsigned pu_num_passed = 0;
-static unsigned pu_num_failed = 0;
-static unsigned pu_num_suites = 0;
-static bool pu_colors = false;
-static bool pu_time = false;
-static bool pu_quiet = false;
+static pu_test_context pu_root_context;
+#ifdef __cplusplus
+#define PU_THREAD_LOCAL thread_local
+#else
+#define PU_THREAD_LOCAL _Thread_local
+#endif
+static PU_THREAD_LOCAL pu_test_context *pu_active_context;
+#undef PU_THREAD_LOCAL
 
-static pu_setup_fn pu_setup_fp = NULL;
-static pu_setup_fn pu_teardown_fp = NULL;
+static pu_test_context *pu_context(void)
+{
+    return pu_active_context ? pu_active_context : &pu_root_context;
+}
+
+#define pu_num_asserts (pu_context()->asserts)
+#define pu_num_passed (pu_context()->passed)
+#define pu_num_failed (pu_context()->failed)
+#define pu_num_suites (pu_context()->suites)
+#define pu_colors (pu_context()->colors)
+#define pu_time (pu_context()->time)
+#define pu_quiet (pu_context()->quiet)
+#define pu_setup_fp (pu_context()->setup)
+#define pu_teardown_fp (pu_context()->teardown)
+
+FILE *pu_output(void) { return pu_context()->output ? pu_context()->output : stdout; }
+FILE *pu_errors(void) { return pu_context()->errors ? pu_context()->errors : stderr; }
+
+pu_test_context pu_capture_context(void)
+{
+    pu_test_context context = *pu_context();
+    context.asserts = context.passed = context.failed = context.suites = 0;
+    context.dispatch = NULL;
+    context.dispatch_user = NULL;
+    return context;
+}
+
+void pu_run_test_context(pu_test_context *context, const char *name, pu_test_fn test)
+{
+    pu_test_context *previous = pu_active_context;
+    pu_active_context = context;
+    pu_run_test(name, test);
+    pu_active_context = previous;
+}
+
+void pu_merge_context(const pu_test_context *context)
+{
+    pu_num_asserts += context->asserts;
+    pu_num_passed += context->passed;
+    pu_num_failed += context->failed;
+    pu_num_suites += context->suites;
+}
+
+void pu_set_dispatch(pu_dispatch_fn dispatch, void *user)
+{
+    pu_context()->dispatch = dispatch;
+    pu_context()->dispatch_user = user;
+}
+
+void pu_set_clock(double (*seconds)(void)) { pu_context()->seconds = seconds; }
+
+#ifndef PICO_UNIT_NO_CLOCK
+static double pu_seconds(void)
+{
+    return pu_context()->seconds ? pu_context()->seconds() : (double)clock() / CLOCKS_PER_SEC;
+}
+#endif
 
 #define pu_quiet_printf(...)                                                   \
     do {                                                                       \
-        if (!pu_quiet) { printf(__VA_ARGS__); }                                \
+        if (!pu_quiet) { fprintf(pu_output(), __VA_ARGS__); }                     \
     } while (0)
 
 void pu_setup(pu_setup_fn fp_setup, pu_setup_fn fp_teardown)
@@ -275,7 +357,7 @@ bool pu_require(bool passed, const char *const expr, const char *const file, int
 
     if (pu_colors) {
         fprintf(
-            stderr,
+            pu_errors(),
             "(%c%sFAILED%c%s: %s (%d): %s)\n",
             TERM_COLOR_CODE,
             TERM_COLOR_RED,
@@ -286,15 +368,15 @@ bool pu_require(bool passed, const char *const expr, const char *const file, int
             expr
         );
     } else {
-        fprintf(stderr, "(FAILED: %s (%d): %s)\n", file, line, expr);
+        fprintf(pu_errors(), "(FAILED: %s (%d): %s)\n", file, line, expr);
     }
 
     if (fmt) {
         va_list args;
         va_start(args, fmt);
-        fprintf(stderr, "  note: ");
-        vfprintf(stderr, fmt, args);
-        fprintf(stderr, "\n");
+        fprintf(pu_errors(), "  note: ");
+        vfprintf(pu_errors(), fmt, args);
+        fprintf(pu_errors(), "\n");
         va_end(args);
     }
 
@@ -303,16 +385,20 @@ bool pu_require(bool passed, const char *const expr, const char *const file, int
 
 void pu_run_test(const char *const name, pu_test_fn test_fp)
 {
+    if (pu_context()->dispatch) {
+        pu_context()->dispatch(name, test_fp, pu_context()->dispatch_user);
+        return;
+    }
     if (NULL != pu_setup_fp) { pu_setup_fp(); }
 
     pu_quiet_printf("Running: %s ", name);
 
 #ifndef PICO_UNIT_NO_CLOCK
 
-    clock_t start_time = 0;
-    clock_t end_time = 0;
+    double start_time = 0;
+    double end_time = 0;
 
-    if (pu_time) { start_time = clock(); }
+    if (pu_time) { start_time = pu_seconds(); }
 
 #endif // PICO_UNIT_NO_CLOCK
 
@@ -328,7 +414,7 @@ void pu_run_test(const char *const name, pu_test_fn test_fp)
 
 #ifndef PICO_UNIT_NO_CLOCK
 
-    if (pu_time) { end_time = clock(); }
+    if (pu_time) { end_time = pu_seconds(); }
 
 #endif // PICO_UNIT_NO_CLOCK
 
@@ -341,7 +427,7 @@ void pu_run_test(const char *const name, pu_test_fn test_fp)
 #ifndef PICO_UNIT_NO_CLOCK
 
     if (pu_time) {
-        pu_quiet_printf(" (%f secs)", (double)(end_time - start_time) / CLOCKS_PER_SEC);
+        pu_quiet_printf(" (%f secs)", end_time - start_time);
     }
 
 #endif // PICO_UNIT_NO_CLOCK

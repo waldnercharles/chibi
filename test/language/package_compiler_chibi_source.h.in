@@ -28,6 +28,7 @@ static const char SCALAR_LLVM_SOURCE[] = { @CHIBI_SCALAR_LLVM_BYTES@ 0 };
 static const char LLVM_NATIVE_SOURCE[] = { @CHIBI_LLVM_NATIVE_BYTES@ 0 };
 static const char NATIVE_ABI_SOURCE[] = { @CHIBI_NATIVE_ABI_BYTES@ 0 };
 static const char SCALAR_CASES_SOURCE[] = { @CHIBI_SCALAR_CASES_BYTES@ 0 };
+@CHIBI_EMITTER_TEST_SOURCES@
 
 #define PACKAGE_COMPILER_SOURCE(PATH, VALUE) { PATH, VALUE, sizeof VALUE - 1 }
 #define PACKAGE_COMPILER_SOURCE_INPUTS \
@@ -66,5 +67,9 @@ static const char SCALAR_CASES_SOURCE[] = { @CHIBI_SCALAR_CASES_BYTES@ 0 };
     PACKAGE_COMPILER_SOURCE("/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE), \
     PACKAGE_COMPILER_SOURCE("scalar_facts/Facts.chibi", SCALAR_FACTS_SOURCE), \
     PACKAGE_COMPILER_SOURCE("scalar_cases/Cases.chibi", SCALAR_CASES_SOURCE)
+
+/* Every source file of the test-only authored emitter package. */
+#define EMITTER_TEST_SOURCE_INPUTS \
+@CHIBI_EMITTER_TEST_INPUTS@
 
 #endif

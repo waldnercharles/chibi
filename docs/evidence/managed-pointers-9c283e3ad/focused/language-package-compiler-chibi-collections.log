@@ -1,7 +1,0 @@
-$ CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py tool language-package-compiler-chibi-collections
-revision 9c283e3ad6fbbcff36471eb8b311eb1953a0a0ea 0 modified
-Running: package_compiler_builds_runnable_collection_packages (OK) (120.875924 secs)
-===============================================================
-Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 6412
-Test command wall time: 122.605s; includes in-test fixture setup; external configuration/build excluded.
-exit 0

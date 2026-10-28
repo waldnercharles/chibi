@@ -1,35 +1,23 @@
 # Native source-built authored asset service. No checked asset bootstrap is used.
 set(asset_output "${CMAKE_CURRENT_BINARY_DIR}/generated/assets")
-# Debug hosts compile the asset compiler two times slower than Release ones and
-# sanitized hosts twelve times, so those builds run the generator with Release
-# hosts built beside them.
-if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CHIBI_ENABLE_SANITIZERS)
-    set(asset_build_host $<TARGET_FILE:chibi-build-host>)
-    set(asset_compiler_host $<TARGET_FILE:chibi-compiler-host>)
-    set(asset_hosts chibi-build-host chibi-compiler-host)
-else()
-    include(ExternalProject)
-    set(release_hosts "${CMAKE_CURRENT_BINARY_DIR}/release-hosts")
-    set(asset_build_host "${release_hosts}/chibi-build-host")
-    set(asset_compiler_host "${release_hosts}/chibi-compiler-host")
-    set(release_host_settings -DCMAKE_BUILD_TYPE:STRING=Release
-        -DCMAKE_C_COMPILER:FILEPATH=${CMAKE_C_COMPILER}
-        -DCHIBI_SDK_BUILD_NATIVE:BOOL=OFF -DCHIBI_SDK_BUILD_DESKTOP:BOOL=OFF)
-    foreach(setting CMAKE_C_COMPILER_LAUNCHER CMAKE_OSX_SYSROOT CMAKE_OSX_ARCHITECTURES
-            CHIBI_THIRD_PARTY_CACHE)
-        if(${setting})
-            list(APPEND release_host_settings "-D${setting}:STRING=${${setting}}")
-        endif()
-    endforeach()
-    ExternalProject_Add(chibi_release_hosts
-        SOURCE_DIR "${CHIBI_SDK_ROOT}/sdk"
-        BINARY_DIR "${release_hosts}"
-        CMAKE_CACHE_ARGS ${release_host_settings}
-        BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --target chibi-build-host chibi-compiler-host
-        BUILD_ALWAYS ON
-        BUILD_BYPRODUCTS "${asset_build_host}" "${asset_compiler_host}"
-        INSTALL_COMMAND "")
-    set(asset_hosts chibi_release_hosts "${asset_build_host}" "${asset_compiler_host}")
+set(asset_generator_timeout 240000)
+set(asset_compiler_timeout_arguments "")
+if(CHIBI_ENABLE_SANITIZERS)
+    set(asset_generator_timeout 600000)
+    list(APPEND asset_compiler_timeout_arguments --compiler-timeout-ms=600000)
+endif()
+# Another build's sdk directory whose hosts generate the resource instead of
+# this build's, such as a Release build's for a sanitized one: the resource is
+# the same whichever build's hosts generate it.
+set(CHIBI_ASSET_GENERATOR_HOSTS "" CACHE PATH
+    "Directory with the chibi-build-host and chibi-compiler-host that generate the asset compiler")
+set(asset_build_host $<TARGET_FILE:chibi-build-host>)
+set(asset_compiler_host $<TARGET_FILE:chibi-compiler-host>)
+set(asset_hosts chibi-build-host chibi-compiler-host)
+if(CHIBI_ASSET_GENERATOR_HOSTS)
+    set(asset_build_host "${CHIBI_ASSET_GENERATOR_HOSTS}/chibi-build-host${CMAKE_EXECUTABLE_SUFFIX}")
+    set(asset_compiler_host "${CHIBI_ASSET_GENERATOR_HOSTS}/chibi-compiler-host${CMAKE_EXECUTABLE_SUFFIX}")
+    set(asset_hosts "${asset_build_host}" "${asset_compiler_host}")
 endif()
 file(GLOB_RECURSE asset_sources CONFIGURE_DEPENDS
     "${CHIBI_SDK_ROOT}/tools/compiler/*.chibi"
@@ -44,8 +32,8 @@ add_custom_command(
     COMMAND "${asset_build_host}"
         --compiler tools/compiler --compiler-core packages/core --root "${CHIBI_SDK_ROOT}"
         --source tools/toolchain/AssetCompiler.chibi --core packages/core
-        --collection asset_generator=tools/graph/asset_compiler --entry Build --timeout-ms 240000 --
-        "${asset_compiler_host}" "${asset_output}"
+        --collection asset_generator=tools/graph/asset_compiler --entry Build --timeout-ms ${asset_generator_timeout} --
+        "${asset_compiler_host}" "${asset_output}" ${asset_compiler_timeout_arguments}
     COMMAND "${CMAKE_COMMAND}" -DROOT=${CHIBI_SDK_ROOT} -DRESOURCE=${asset_output}
         -P "${CHIBI_SDK_ROOT}/cmake/verify_source_snapshot.cmake"
     WORKING_DIRECTORY "${CHIBI_SDK_ROOT}"

@@ -390,6 +390,28 @@ TEST_CASE(types_collection_follows_values_across_arenas)
     return true;
 }
 
+/* A packed native-struct array whose type has left the catalog: tracing keeps
+ * the array and its data without resolving an element layout. */
+TEST_CASE(types_collection_traces_packed_arrays_of_unknown_native_types)
+{
+    arena storage;
+    arena_init_collectable(&storage);
+    pin_array *array = pin_array_snapshot_allocate(&storage, PIN_STRUCT, "test.trace.missing", 0);
+    array->count = array->capacity = 2;
+    array->items = NULL;
+    array->stride = 8;
+    array->data = arena_alloc(&storage, 2 * array->stride);
+    memset(array->data, 0, 2 * array->stride);
+    arena *arenas[] = { &storage };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 1);
+    arena_collect_mark(&collection, array);
+    arena_collect_end(&collection);
+    REQUIRE(arena_contains(&storage, array) && arena_contains(&storage, array->data));
+    arena_free(&storage);
+    return true;
+}
+
 TEST_CASE(types_union_snapshots_and_heap_copies_own_nested_values)
 {
     arena producer = { 0 };
@@ -1694,6 +1716,7 @@ void test_tool_types()
     RUN_TEST_CASE(types_nested_reflection_reads_writes_and_checks_layout);
     RUN_TEST_CASE(types_array_snapshot_owns_strings_and_names);
     RUN_TEST_CASE(types_collection_follows_values_across_arenas);
+    RUN_TEST_CASE(types_collection_traces_packed_arrays_of_unknown_native_types);
     RUN_TEST_CASE(types_union_snapshots_and_heap_copies_own_nested_values);
     RUN_TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays);
     RUN_TEST_CASE(types_plain_struct_array_codecs_preserve_inline_values_and_nulls);

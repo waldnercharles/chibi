@@ -123,6 +123,9 @@ void behavior_run_record(execution_run_event event)
         case EXECUTION_RUN_SIZE_BYTECODE_FALLBACK:
             increment(counts, &counts->size_bytecode_fallbacks);
             return;
+        case EXECUTION_RUN_NATIVE:
+            increment(counts, &counts->native_entries);
+            return;
     }
     assert(false);
 }

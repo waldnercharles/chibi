@@ -1539,6 +1539,8 @@ void behavior_managed_heap_unroot(behavior_managed_heap *heap, pin_value *value)
     for (behavior_managed_heap *scope = heap; scope; scope = scope->previous) {
         for (int i = 0; i < acount(scope->roots); i++) {
             if (scope->roots[i] == value) {
+                /* The retained copy is garbage once unregistered. */
+                *value = (pin_value){ 0 };
                 adel(scope->roots, i);
                 return;
             }

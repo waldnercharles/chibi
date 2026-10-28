@@ -1,7 +1,11 @@
+#if !defined(__EMSCRIPTEN__)
+#define pu_run_test tool_pico_run_test
+#endif
 #define PICO_UNIT_IMPLEMENTATION
 #include "test/tools/fixture.h"
 #include "test/tools/graph_dispatch.h"
 #include "third_party/pico_headers/pico_unit.h"
+#undef pu_run_test
 
 #include <stdio.h>
 #include <string.h>
@@ -43,6 +47,8 @@ void test_tool_record_c_export();
 void test_tool_package();
 void test_tool_chibi_cli(const char *binary);
 void test_tool_chibi_cli_installed(const char *binary);
+void test_native_build(const char *binary);
+void test_native_workload_benchmark(const char *binary);
 void test_tool_chibi_cli_export(const char *binary);
 #ifdef CHIBI_TEST_PUBLISHED_DOCS
 void test_tool_published_docs(const char *binary);
@@ -57,6 +63,7 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 void test_native_aot_driver(const char *source);
 void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
+void test_tool_build_timings(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
 void test_build_graph(const char *host, const char *cmake_build);
 void test_build_graph_support(const char *host, const char *cmake_build);
@@ -182,6 +189,7 @@ void test_source_reductions();
 void test_source_reduction_benchmark();
 void test_source_execution_benchmark();
 void test_tool_scheduler_benchmark();
+void test_tool_scheduler();
 void test_code_system_runtime();
 void test_code_query_rows();
 void test_source_edit();
@@ -544,8 +552,20 @@ bool test_model_import_active()
 }
 #endif
 
+void test_tool_case_timings(const char *self);
+int tool_case_timing_probe(const char *mode);
+
 int main(int argc, char **argv)
 {
+    if (argc == 3 && !strcmp(argv[1], "--case-timing-probe")) {
+        return tool_case_timing_probe(argv[2]);
+    }
+    if (argc == 2 && !strcmp(argv[1], "--case-timings")) {
+        tool_init();
+        test_tool_case_timings(argv[0]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc == 3 && !strcmp(argv[1], "--native-aot-driver")) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
@@ -654,12 +674,15 @@ int main(int argc, char **argv)
 #endif
     }
     if (argc == 4 && (!strcmp(argv[1], "--build-process") ||
-                      !strcmp(argv[1], "--build-process-files"))) {
+                      !strcmp(argv[1], "--build-process-files") ||
+                      !strcmp(argv[1], "--build-timings"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
         if (!strcmp(argv[1], "--build-process-files")) {
             test_tool_build_process_files(argv[2], argv[3]);
+        } else if (!strcmp(argv[1], "--build-timings")) {
+            test_tool_build_timings(argv[2], argv[3]);
         } else {
             test_tool_build_process(argv[2], argv[3]);
         }
@@ -681,6 +704,20 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_chibi_cli_export(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--native-build")) {
+        tool_init();
+        pu_display_time(true);
+        test_native_build(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--native-workload-benchmark")) {
+        tool_init();
+        pu_display_time(true);
+        test_native_workload_benchmark(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
@@ -1384,6 +1421,7 @@ int main(int argc, char **argv)
             test_source_edit();
         } else if (system_schedule) {
             test_system_schedule();
+            test_tool_scheduler();
         } else if (source_reductions) {
             test_source_reductions();
         } else if (source_reduction_benchmark) {

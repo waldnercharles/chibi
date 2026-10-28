@@ -41,6 +41,7 @@ struct source_registry
     source_profile *profiles;
     uint64_t profile_dropped;
     source_staging *staging;
+    execution_natives *natives; /* NULL until source_bind_natives */
 };
 void source_profile_bind(source_registry *);
 

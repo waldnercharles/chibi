@@ -5,6 +5,7 @@
 #include "execution/function.h"
 
 #include <signal.h>
+#include <stdio.h>
 
 /* Raise with the Makefile's `build` gate whenever tools/toolchain/Build.chibi
  * needs a capability or syntax that an older host lacks. */
@@ -47,6 +48,8 @@ typedef struct
     /* Optional caller lifecycle hook, after compilation and binding but before
      * authored execution or build children. Not called on preparation failure. */
     void (*prepared)();
+    /* Optional private TSV timing sink, borrowed. NULL skips trace IO/clocks. */
+    FILE *timings;
 } chibi_build_options;
 
 typedef struct

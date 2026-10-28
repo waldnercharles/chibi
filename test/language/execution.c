@@ -3979,13 +3979,15 @@ TEST_CASE(execution_managed_heap_preserves_roots_and_reclaims_cycles)
     REQUIRE(next.ptr == pointer_root.ptr);
     behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
     REQUIRE(arena_contains(&pointer_heap.storage, other.ptr));
+    void *unrooted = pointer_root.ptr;
     behavior_managed_heap_unroot(&pointer_heap, &pointer_root);
     pointer_root_registered = false;
+    REQUIRE(!pointer_root.ptr && !pointer_root.type);
     behavior_managed_heap_collect(&pointer_heap, NULL, NULL);
     size_t bytes, capacity;
     arena_usage(&pointer_heap.storage, &bytes, &capacity);
     REQUIRE(bytes == 0);
-    REQUIRE(!arena_contains(&pointer_heap.storage, pointer_root.ptr));
+    REQUIRE(!arena_contains(&pointer_heap.storage, unrooted));
     REQUIRE(!arena_contains(&pointer_heap.storage, other.ptr));
     make[1] = (pin_value){ .type = PIN_I32 };
     make[2] = (pin_value){ .type = PIN_I32, .i = 17 };

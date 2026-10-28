@@ -13,8 +13,8 @@
 
 const char *pin_value_to_string(const pin_value *v)
 {
-    static char ring[PIN_FMT_RING][PIN_FMT_CAP];
-    static int slot;
+    static _Thread_local char ring[PIN_FMT_RING][PIN_FMT_CAP];
+    static _Thread_local int slot;
     char *buf = ring[slot];
     slot = (slot + 1) % PIN_FMT_RING;
 

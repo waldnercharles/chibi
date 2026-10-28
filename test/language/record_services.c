@@ -1,5 +1,6 @@
 #include "ecs/ecs.h"
 #include "execution/function.h"
+#include "execution/status.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/ui.h"
@@ -324,6 +325,16 @@ TEST_CASE(record_globals_atomic_rejections)
     for (int i = 0; i < 3; i++) {
         REQUIRE(entities_set_global_value(globals, "rejected", &rejected[i]) == -1);
         REQUIRE(unchanged_rows());
+    }
+    /* Queued event payloads outlive every managed heap, so a pointer, or a
+     * union or record carrying one, is refused before anything is queued. */
+    const pin_value payloads[] = { pointer, variant, rejected[2] };
+    for (int i = 0; i < 3; i++) {
+        execution_arguments inputs = { .values = &payloads[i], .count = 1 };
+        REQUIRE(
+            entities_request_event(globals, ecs_entity_from_u64(1), "Hit", inputs) == FLOW_ERR_ARGUMENT
+        );
+        REQUIRE(entities_pending_events(globals) == 0);
     }
     return true;
 }

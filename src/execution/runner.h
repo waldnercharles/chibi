@@ -12,6 +12,7 @@ typedef enum
     EXECUTION_RUN_INSPECTED_WASM,
     EXECUTION_RUN_INSPECTION_BYTECODE_FALLBACK,
     EXECUTION_RUN_SIZE_BYTECODE_FALLBACK,
+    EXECUTION_RUN_NATIVE,
 } execution_run_event;
 /* Private recording hook at actual backend entry sites only. */
 void behavior_run_record(execution_run_event event);

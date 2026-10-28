@@ -12,6 +12,7 @@ import sys
 import urllib.request
 
 REPOSITORY = 'waldnercharles/chibi'
+STUDIO_REPOSITORY = 'waldnercharles/chibi-studio'
 STUDIO_MANIFEST = 'https://waldnercharles.github.io/chibi-studio/studio.json'
 ENGINE = re.compile(r'engine-([0-9a-f]{40})\Z')
 SHA = re.compile(r'[0-9a-f]{40}\Z')
@@ -31,11 +32,11 @@ def utc_now():
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
-def api(path, pages=False, optional=False):
+def api(path, pages=False, optional=False, repository=REPOSITORY):
     command = ['gh', 'api', '--method', 'GET']
     if pages:
         command += ['--paginate', '--slurp']
-    result = subprocess.run(command + [f'repos/{REPOSITORY}/{path}'],
+    result = subprocess.run(command + [f'repos/{repository}/{path}'],
                             text=True, capture_output=True, check=False, timeout=120)
     if result.returncode:
         if optional and '(HTTP 404)' in result.stderr:
@@ -49,15 +50,19 @@ def api(path, pages=False, optional=False):
     return [item for page in value for item in page]
 
 
-def pull_heads():
-    return sorted([{'number': p['number'], 'head': p['head']['sha'], 'base': p['base']['sha']}
-                   for p in api('pulls?state=open&per_page=100', pages=True)],
+def pull_heads(repository=REPOSITORY):
+    return sorted([{'number': p['number'], 'head': p['head']['sha'], 'base': p['base']['sha'],
+                    **({'allow_pin': (p['head'].get('repo') or {}).get('full_name') == repository}
+                       if repository == STUDIO_REPOSITORY else {})}
+                   for p in api('pulls?state=open&per_page=100', pages=True, repository=repository)],
                   key=lambda p: p['number'])
 
 
 def collect():
     main = api('branches/main')['commit']['sha']
     prs = pull_heads()
+    studio_main = api('branches/main', repository=STUDIO_REPOSITORY)['commit']['sha']
+    studio_prs = pull_heads(STUDIO_REPOSITORY)
     pins, absent = [], []
     for revision in sorted({main, *(p['head'] for p in prs)}):
         if not SHA.fullmatch(revision):
@@ -80,7 +85,29 @@ def collect():
                 tags = {line.split('\t')[2] for line in text.splitlines()
                         if line and not line.startswith('#')}
             pins += [{'tag': tag, 'source': source} for tag in sorted(tags)]
+    # Protect the intended production SDK before deployment, as well as explicit
+    # SDK choices in open Studio work. A 404 is recorded for pre-transition trees.
+    for revision in sorted({studio_main, *(p['head'] for p in studio_prs)}):
+        if not SHA.fullmatch(revision):
+            raise ValueError('invalid Studio source revision')
+        paths = ['.github/engine-release']
+        if revision in {p['head'] for p in studio_prs if p['allow_pin']}:
+            paths.append('.github/engine-ref')
+        for path in paths:
+            source = f'{STUDIO_REPOSITORY}@{revision}:{path}'
+            data = api(f'contents/{path}?ref={revision}', optional=True, repository=STUDIO_REPOSITORY)
+            if data is None:
+                absent.append(source)
+                continue
+            if data['encoding'] != 'base64':
+                raise ValueError(f'unexpected contents encoding: {source}')
+            engine = base64.b64decode(data['content']).decode('utf-8').strip()
+            if not SHA.fullmatch(engine):
+                raise ValueError('invalid Studio engine pin: ' + source)
+            pins.append({'tag': 'engine-' + engine, 'source': source,
+                         'release_required': path == '.github/engine-release'})
     result = {'format': 1, 'repository': REPOSITORY, 'main': main, 'prs': prs,
+              'studio': {'main': studio_main, 'prs': studio_prs},
               'pins': pins, 'absent_pin_files': absent, 'blockers': [],
               'releases': api('releases?per_page=100', pages=True),
               'tags': api('git/matching-refs/tags', pages=True)}
@@ -96,6 +123,9 @@ def collect():
         result['blockers'].append('Cannot verify the live Studio manifest; do not delete candidates.')
     if main != api('branches/main')['commit']['sha'] or prs != pull_heads():
         result['blockers'].append('Main or open PR heads changed during collection; collect again.')
+    if (studio_main != api('branches/main', repository=STUDIO_REPOSITORY)['commit']['sha']
+            or studio_prs != pull_heads(STUDIO_REPOSITORY)):
+        result['blockers'].append('Studio main or open PR heads changed during collection; collect again.')
     result['observed_at'] = utc_now()
     return result
 
@@ -127,6 +157,8 @@ def plan(snapshot, policy, now):
     by_tag = {r['tag_name']: r for r in releases}
     refs = {t['ref'].removeprefix('refs/tags/'): t['object'] for t in tags}
     blockers = list(snapshot['blockers'])
+    if 'studio' not in snapshot:
+        blockers.append('Studio source pins were not inventoried; collect again.')
     age = (now - timestamp(snapshot['observed_at'])).total_seconds()
     if not 0 <= age <= 3600:
         blockers.append('Inventory is future-dated or older than one hour; collect again.')
@@ -141,8 +173,12 @@ def plan(snapshot, policy, now):
             protect('engine-' + pr[side], f'open PR #{pr["number"]} {side}')
     for pin in snapshot['pins']:
         protect(pin['tag'], 'dependency pin ' + pin['source'])
-        if pin['tag'] not in by_tag:
+        required = pin.get('release_required', True)
+        if pin['tag'] not in by_tag and required:
             blockers.append('Pinned release is missing: ' + pin['tag'])
+        elif (pin['tag'] in by_tag and required and ENGINE.fullmatch(pin['tag'])
+              and not complete(by_tag[pin['tag']])):
+            blockers.append('Pinned engine release is incomplete: ' + pin['tag'])
     for tag in policy['protected_tags']:
         if not isinstance(tag, str) or not tag:
             raise ValueError('protected_tags must contain nonempty tag names')

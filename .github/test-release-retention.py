@@ -38,6 +38,7 @@ def release(n, tag=None):
 def snapshot(releases=None):
     releases = releases or [release(n) for n in range(1, 7)]
     return {'format': 1, 'repository': retention.REPOSITORY, 'main': sha(999), 'prs': [],
+            'studio': {'main': sha(100), 'prs': []},
             'pins': [], 'absent_pin_files': [], 'blockers': [], 'observed_at': OBSERVED,
             'releases': releases, 'tags': [{'ref': 'refs/tags/' + r['tag_name'],
                                           'object': {'type': 'commit', 'sha': r['tag_name'].removeprefix('engine-')}}
@@ -189,13 +190,15 @@ class RetentionTests(unittest.TestCase):
         data = snapshot()
         calls = []
 
-        def api(path, pages=False, optional=False):
-            calls.append(path)
+        def api(path, pages=False, optional=False, repository=retention.REPOSITORY):
+            calls.append((repository, path))
             if path == 'branches/main':
                 return {'commit': {'sha': data['main']}}
             if path.startswith('pulls?'):
                 return []
             if path.startswith('contents/'):
+                if repository == retention.STUDIO_REPOSITORY:
+                    return None
                 text = json.dumps({'repository': retention.REPOSITORY, 'tag': 'runtime-pin'})
                 if 'archives.tsv' in path:
                     text = '# repository waldnercharles/chibi\nlinux-x64\trelease\tarchive-pin\tabc\n'
@@ -212,8 +215,65 @@ class RetentionTests(unittest.TestCase):
         self.assertEqual({p['tag'] for p in result['pins']}, {'runtime-pin', 'archive-pin'})
         self.assertIsNone(result['deployment'])
         self.assertTrue(result['blockers'])
-        self.assertEqual(calls.count('branches/main'), 2)
-        self.assertEqual(calls.count('pulls?state=open&per_page=100'), 2)
+        for repository in (retention.REPOSITORY, retention.STUDIO_REPOSITORY):
+            self.assertEqual(calls.count((repository, 'branches/main')), 2)
+            self.assertEqual(calls.count((repository, 'pulls?state=open&per_page=100')), 2)
+
+    def test_intended_studio_pin_is_held_before_deployment(self):
+        data = snapshot()
+        data['pins'] = [{'tag': 'engine-' + sha(1), 'source': 'chibi-studio@main:.github/engine-release'}]
+        result = self.plan(data)
+        self.assertNotIn('engine-' + sha(1), [r['tag'] for r in result['candidates']])
+        self.assertTrue(result['ready_for_review'])
+        data['releases'][0]['assets'].pop()
+        self.assertFalse(self.plan(data)['ready_for_review'])
+        del data['studio']
+        self.assertFalse(self.plan(data)['ready_for_review'])
+
+    def test_collector_reads_studio_main_and_pr_pins_and_rechecks_them(self):
+        studio_main, studio_head = sha(100), sha(101)
+        reads = []
+
+        def api(path, pages=False, optional=False, repository=retention.REPOSITORY):
+            if path == 'branches/main':
+                return {'commit': {'sha': studio_main if repository == retention.STUDIO_REPOSITORY else sha(999)}}
+            if path.startswith('pulls?'):
+                return ([{'number': 8, 'head': {'sha': studio_head, 'repo': {'full_name': repository}},
+                          'base': {'sha': studio_main}}]
+                        if repository == retention.STUDIO_REPOSITORY else [])
+            if path.startswith('contents/'):
+                if repository != retention.STUDIO_REPOSITORY:
+                    return None
+                reads.append(path)
+                pin = sha(1) if 'engine-release' in path else sha(2)
+                return {'encoding': 'base64', 'content': base64.b64encode((pin + '\n').encode()).decode()}
+            return []
+
+        with patch.object(retention, 'api', side_effect=api), \
+                patch.object(retention.urllib.request, 'urlopen', side_effect=OSError('offline')):
+            result = retention.collect()
+        self.assertEqual({p['tag'] for p in result['pins']}, {'engine-' + sha(1), 'engine-' + sha(2)})
+        self.assertEqual({p['tag']: p['release_required'] for p in result['pins']},
+                         {'engine-' + sha(1): True, 'engine-' + sha(2): False})
+        self.assertEqual(reads, [f'contents/.github/engine-release?ref={studio_main}',
+                                 f'contents/.github/engine-release?ref={studio_head}',
+                                 f'contents/.github/engine-ref?ref={studio_head}'])
+
+    def test_unreleased_source_pair_does_not_require_a_release(self):
+        data = snapshot()
+        data['pins'] = [{'tag': 'engine-' + sha(77), 'source': 'Studio PR .github/engine-ref',
+                         'release_required': False}]
+        self.assertTrue(self.plan(data)['ready_for_review'])
+        data['pins'][0]['tag'] = 'engine-' + sha(1)
+        self.assertNotIn('engine-' + sha(1), [r['tag'] for r in self.plan(data)['candidates']])
+
+    def test_only_same_repository_studio_prs_allow_engine_ref(self):
+        prs = [{'number': n, 'head': {'sha': sha(n), 'repo': repo}, 'base': {'sha': sha(99)}}
+               for n, repo in enumerate(({'full_name': retention.STUDIO_REPOSITORY},
+                                         {'full_name': 'someone/fork'}, None), 1)]
+        with patch.object(retention, 'api', return_value=prs):
+            self.assertEqual([p['allow_pin'] for p in retention.pull_heads(retention.STUDIO_REPOSITORY)],
+                             [True, False, False])
 
     def test_snapshot_fingerprint_changes_with_asset_inventory(self):
         data = snapshot()

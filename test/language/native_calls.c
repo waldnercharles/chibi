@@ -1,5 +1,6 @@
 #include "native_calls.h"
 
+#include "authoring/native_bindings.h"
 #include "authoring/source_collection.h"
 #include "backend.h"
 #include "execution/function_builder.h"
@@ -7,7 +8,11 @@
 #include "execution/native.h"
 #include "execution/status.h"
 #include "runtime/behaviors/source.h"
+#include "runtime/native_definitions.h"
+#include "runtime/text_definition.h"
+#include "runtime/text_format.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -32,7 +37,8 @@ static const script_catalog_capability tick = { .id = 10,
                                                 .parameter_count = 1,
                                                 .completion_outcome = -1 };
 static const script_catalog catalog = { .capabilities = &tick, .capability_count = 1 };
-static const script_lower_bindings bindings = { .generation = 1 };
+/* Tick and the text natives, which Label calls. */
+static native_capabilities *natives_catalog;
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
 
 /* The functions the Probe calls, which native code can compile. */
@@ -45,7 +51,9 @@ static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BA
     "-> f64 {\n"                                                               \
     "        if (b) { return f64(a) + f64(c) + f64(d) + f64(e) + f * g; }\n"   \
     "        return g - f64(a);\n"                                             \
-    "    }\n"
+    "    }\n"                                                                  \
+    "    Label :: (x: number) -> int { return "                                \
+    "text_byte_length(format_text(\"{} cells\", x)); }\n"
 const char NATIVE_CALLS_LIBRARY
     [] = "Native :: library {\n" PURE_FUNCTIONS NATIVE_CALLS_WIDE "}\n";
 /* With functions that wait, exceed the entry's parameter bound or take a
@@ -68,6 +76,7 @@ static const char PROBE[] = "Probe :: behavior {\n"
                             "    flag: bool = false;\n"
                             "    small: u8 = 0;\n"
                             "    wide: f64 = 0;\n"
+                            "    label: int = 0;\n"
                             "    on Tick :: (cells: number) {\n"
                             "        total = Native.Reward(total);\n"
                             "        total = Native.Reward(total, -3);\n"
@@ -75,6 +84,7 @@ static const char PROBE[] = "Probe :: behavior {\n"
                             "        small = Native.Wrap(small);\n"
                             "        wide = Native.Mix(total, flag, small, "
                             "i64(total), u64(7), cells, f64(cells));\n"
+                            "        label = Native.Label(cells);\n"
                             "    }\n"
                             "}\n";
 
@@ -104,29 +114,40 @@ static uint64_t f64_bits(double value)
 /* Each entry computes what its library function does, as native code
  * compiled from it would, and counts its calls. */
 static int calls;
-static void reward(const uint64_t *arguments, uint64_t *results)
+static void reward(execution_native_context *, const uint64_t *arguments, uint64_t *results)
 {
     calls++;
     uint32_t points = (uint32_t)arguments[0], bonus = (uint32_t)arguments[1];
     results[0] = (uint64_t)(int64_t)(int32_t)(points * 2 + bonus);
 }
-static void positive(const uint64_t *arguments, uint64_t *results)
+static void positive(execution_native_context *, const uint64_t *arguments, uint64_t *results)
 {
     calls++;
     results[0] = number_word(arguments[0]) > 0;
 }
-static void wrap(const uint64_t *arguments, uint64_t *results)
+static void wrap(execution_native_context *, const uint64_t *arguments, uint64_t *results)
 {
     calls++;
     results[0] = (uint8_t)(arguments[0] + 200);
 }
-static void mix(const uint64_t *arguments, uint64_t *results)
+static void mix(execution_native_context *, const uint64_t *arguments, uint64_t *results)
 {
     calls++;
     double a = int_word(arguments[0]), g = f64_word(arguments[6]);
     double sum = a + (double)(uint8_t)arguments[2] + (double)(int64_t)arguments[3] +
                  (double)arguments[4] + (double)number_word(arguments[5]) * g;
     results[0] = f64_bits(arguments[1] ? sum : g - a);
+}
+static void label(execution_native_context *context, const uint64_t *arguments, uint64_t *results)
+{
+    calls++;
+    const execution_native_value values[] = {
+        { EXECUTION_NATIVE_TEXT, 8, 0, "{} cells" },
+        { EXECUTION_NATIVE_NUMBER, 0, arguments[0], NULL },
+    };
+    pin_string text;
+    context->format_text(context, values, 2, &text);
+    results[0] = text.length;
 }
 static const uint8_t REWARD[] = { EXECUTION_NATIVE_INT,
                                   EXECUTION_NATIVE_INT,
@@ -137,6 +158,7 @@ static const uint8_t MIX[] = { EXECUTION_NATIVE_INT, EXECUTION_NATIVE_BOOL,
                                EXECUTION_NATIVE_U8,  EXECUTION_NATIVE_I64,
                                EXECUTION_NATIVE_U64, EXECUTION_NATIVE_NUMBER,
                                EXECUTION_NATIVE_F64, EXECUTION_NATIVE_F64 };
+static const uint8_t LABEL[] = { EXECUTION_NATIVE_NUMBER, EXECUTION_NATIVE_INT };
 /* A library function's stable ID, as its prepared module records it. */
 static uint64_t function_id(const char *name)
 {
@@ -150,12 +172,13 @@ static execution_native_export exported(const char *name, const uint8_t *types, 
                                       types, parameters,
                                       1,     entry };
 }
-static execution_native_export EXPORTS[4];
-static const execution_native_manifest MANIFEST = { EXECUTION_NATIVE_ABI, 4, EXPORTS };
+#define RUNTIME ((execution_native_runtime){ NATIVE_FORMAT_TEXT_HOST.value })
+static execution_native_export EXPORTS[5];
+static const execution_native_manifest MANIFEST = { EXECUTION_NATIVE_ABI, 5, EXPORTS };
 /* The synchronous calls one Tick makes. */
 enum
 {
-    TICK_CALLS = 5,
+    TICK_CALLS = 6,
     TICKS = 4
 };
 
@@ -163,10 +186,16 @@ static void setup()
 {
     strcpy(root, "/tmp/chibi-native-calls-XXXXXX");
     assert(mkdtemp(root));
+    const native_capability_pack events = { .catalog = &catalog };
+    const native_definition_pack texts[] = { NATIVE_TEXT_DEFINITION_PACK };
+    char error[256];
+    natives_catalog = native_capabilities_from_definition_packs(&events, 1, texts, 1, error, sizeof error);
+    assert(natives_catalog);
     EXPORTS[0] = exported("Reward", REWARD, 2, reward);
     EXPORTS[1] = exported("Positive", POSITIVE, 1, positive);
     EXPORTS[2] = exported("Wrap", WRAP, 1, wrap);
     EXPORTS[3] = exported("Mix", MIX, 7, mix);
+    EXPORTS[4] = exported("Label", LABEL, 1, label);
 }
 static void clear()
 {
@@ -180,6 +209,8 @@ static void clear()
 static void cleanup()
 {
     clear();
+    native_capabilities_free(natives_catalog);
+    natives_catalog = NULL;
     rmdir(root);
 }
 static const authoring_source *source(const char *name)
@@ -199,8 +230,9 @@ static bool prepare_library(const char *text, behavior_backend backend)
     snprintf(probe, sizeof probe, "%s/behaviors/Probe.chibi", root);
     const source_catalog_edit edits[] = { { .path = library, .text = text },
                                           { .path = probe, .text = PROBE } };
+    script_lower_bindings bindings = authoring_native_bindings(natives_catalog);
     sources = authoring_sources_prepare_catalog(
-        source_catalog_replaced(root, &catalog, edits, 2),
+        source_catalog_replaced(root, native_capabilities_catalog(natives_catalog), edits, 2),
         &bindings,
         backend
     );
@@ -211,7 +243,7 @@ static bool prepare_library(const char *text, behavior_backend backend)
         }
     }
     REQUIRE(authoring_sources_valid(sources));
-    natives = execution_natives_new();
+    natives = execution_natives_new(RUNTIME);
     return true;
 }
 static bool prepare(behavior_backend backend)
@@ -236,16 +268,19 @@ typedef struct
     bool flag;
     uint8_t small;
     double wide;
+    int32_t label;
 } probe_states;
 static bool states(const execution_instance *instance, probe_states *out)
 {
     const pin_value *total = execution_instance_state(instance, state_id("total")),
                     *flag = execution_instance_state(instance, state_id("flag")),
                     *small = execution_instance_state(instance, state_id("small")),
-                    *wide = execution_instance_state(instance, state_id("wide"));
+                    *wide = execution_instance_state(instance, state_id("wide")),
+                    *label = execution_instance_state(instance, state_id("label"));
     REQUIRE(total && total->type == PIN_I32 && flag && flag->type == PIN_BOOL);
     REQUIRE(small && small->type == PIN_U8 && wide && wide->type == PIN_F64);
-    *out = (probe_states){ total->i, flag->b, small->u8, wide->d };
+    REQUIRE(label && label->type == PIN_I32);
+    *out = (probe_states){ total->i, flag->b, small->u8, wide->d, label->i };
     return true;
 }
 static const float CELLS[TICKS] = { 1.5f, -2.0f, 0.0f, 1e30f };
@@ -285,6 +320,7 @@ static bool same_states(const probe_states *a, const probe_states *b)
 {
     for (int i = 0; i < TICKS; i++) {
         REQUIRE(a[i].total == b[i].total && a[i].flag == b[i].flag && a[i].small == b[i].small);
+        REQUIRE(a[i].label == b[i].label);
         REQUIRE(f64_bits(a[i].wide) == f64_bits(b[i].wide));
     }
     return true;
@@ -339,6 +375,9 @@ TEST_CASE(native_calls_match_the_vm)
         REQUIRE(vm[0].total == 11 && vm[0].flag && vm[0].small == 200 && vm[0].wide == 231.25);
         REQUIRE(vm[1].total == 51 && !vm[1].flag && vm[1].small == 144 && vm[1].wide == -53);
         REQUIRE(!vm[2].flag && vm[3].flag);
+        /* Label formats each number as the VM does: "1.5 cells" to
+         * "1e+30 cells". */
+        REQUIRE(vm[0].label == 9 && vm[1].label == 8 && vm[2].label == 7 && vm[3].label == 11);
     }
     return true;
 }
@@ -420,7 +459,7 @@ TEST_CASE(native_calls_reject_mismatched_exports)
         { EXECUTION_NATIVE_ABI, 1, pointed },
     };
     static const char *const reasons[] = {
-        "native library ABI 2 differs from 1",
+        "native library ABI 3 differs from 2",
         "native export Positive has no pure function of its signature in the "
         "library",
         "native export Reward has no pure function of its signature in the "
@@ -503,11 +542,11 @@ TEST_CASE(native_calls_bind_each_function_once)
     for (int i = 0; i < execution_module_function_count(library); i++) {
         execution_module_function_info info = execution_module_function_at(library, i);
         const execution_native_export *native = execution_natives_find(natives, info.body);
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < MANIFEST.count; k++) {
             bound += EXPORTS[k].id == info.id && native == &EXPORTS[k];
         }
     }
-    REQUIRE(bound == 4);
+    REQUIRE(bound == MANIFEST.count);
     clear();
     return true;
 }
@@ -530,7 +569,7 @@ static bool registered(
         { .name = "Probe", .module = source("Probe")->module },
     };
     REQUIRE(source_publish(registry, entries, 2, NULL, error, sizeof error) == FLOW_OK);
-    int bound = source_bind_natives(registry, manifests, count, error, sizeof error);
+    int bound = source_bind_natives(registry, RUNTIME, manifests, count, error, sizeof error);
     if (reason ? bound == 0 || strcmp(error, reason) : bound != 0) {
         fprintf(stderr, "registry natives: %s\n", error);
     }
@@ -579,15 +618,79 @@ TEST_CASE(native_calls_bind_through_the_registry)
         calls = 0;
         REQUIRE(registered(missing, 2, "native export Absent has no source module", rejected));
         REQUIRE(registered(failing, 1, "native export Reward is exported twice", rejected));
-        REQUIRE(registered(other, 1, "native library ABI 2 differs from 1", rejected));
+        REQUIRE(registered(other, 1, "native library ABI 3 differs from 2", rejected));
         REQUIRE(!calls && same_states(vm, rejected));
         clear();
     }
     return true;
 }
 
+/* A context formats native values as the VM formats the pin_values they
+ * stand for: each scalar type from its word, and text, with an embedded NUL,
+ * from its bytes. What it gives lives in the frame's heap, which free
+ * releases. */
+TEST_CASE(native_calls_format_text_like_the_vm)
+{
+    static const char
+        FORMAT[] = "{} {} {} {} {} {} {} {} {} {} {:.2} [{:4}] {}";
+    float number = 2.5f;
+    uint32_t number_bits;
+    memcpy(&number_bits, &number, sizeof number_bits);
+    const execution_native_value values[] = {
+        { EXECUTION_NATIVE_TEXT, sizeof FORMAT - 1, 0, FORMAT },
+        { EXECUTION_NATIVE_INT, 0, (uint64_t)(int64_t)-7, NULL },
+        { EXECUTION_NATIVE_BOOL, 0, 1, NULL },
+        { EXECUTION_NATIVE_I8, 0, (uint64_t)(int64_t)-128, NULL },
+        { EXECUTION_NATIVE_U8, 0, 255, NULL },
+        { EXECUTION_NATIVE_I16, 0, (uint64_t)(int64_t)-300, NULL },
+        { EXECUTION_NATIVE_U16, 0, 65535, NULL },
+        { EXECUTION_NATIVE_U32, 0, UINT32_MAX, NULL },
+        { EXECUTION_NATIVE_I64, 0, (uint64_t)INT64_MIN, NULL },
+        { EXECUTION_NATIVE_U64, 0, UINT64_MAX, NULL },
+        { EXECUTION_NATIVE_NUMBER, 0, number_bits, NULL },
+        { EXECUTION_NATIVE_F64, 0, f64_bits(-0.125), NULL },
+        { EXECUTION_NATIVE_TEXT, 3, 0, "a\0b" },
+        { EXECUTION_NATIVE_TEXT, 0, 0, NULL },
+    };
+    enum
+    {
+        COUNT = sizeof values / sizeof *values
+    };
+    pin_string format = { FORMAT, sizeof FORMAT - 1 }, nul = { "a\0b", 3 },
+               empty = { 0 };
+    const pin_value inputs[COUNT] = {
+        { .type = PIN_STR, .text = &format },
+        { .type = PIN_I32, .i = -7 },
+        { .type = PIN_BOOL, .b = true },
+        { .type = PIN_I8, .i8 = -128 },
+        { .type = PIN_U8, .u8 = 255 },
+        { .type = PIN_I16, .i16 = -300 },
+        { .type = PIN_U16, .u16 = 65535 },
+        { .type = PIN_U32, .u = UINT32_MAX },
+        { .type = PIN_I64, .i64 = INT64_MIN },
+        { .type = PIN_U64, .u64 = UINT64_MAX },
+        { .type = PIN_F32, .f = 2.5f },
+        { .type = PIN_F64, .d = -0.125 },
+        { .type = PIN_STR, .text = &nul },
+        { .type = PIN_STR, .text = &empty },
+    };
+    arena storage = { 0 };
+    pin_string expected = pin_text(native_format_text(inputs, COUNT, &storage));
+    execution_native_frame frame;
+    execution_native_frame_init(&frame, RUNTIME);
+    pin_string text;
+    frame.context.format_text(&frame.context, values, COUNT, &text);
+    bool same = pin_text_equal(text, expected) &&
+                arena_contains(&frame.heap, text.bytes);
+    execution_native_frame_free(&frame);
+    arena_free(&storage);
+    REQUIRE(same && expected.length > sizeof FORMAT);
+    return true;
+}
+
 TEST_SUITE(native_calls)
 {
+    RUN_TEST_CASE(native_calls_format_text_like_the_vm);
     RUN_TEST_CASE(native_calls_match_the_vm);
     RUN_TEST_CASE(native_calls_leave_inspected_calls_in_the_vm);
     RUN_TEST_CASE(native_calls_reject_mismatched_exports);

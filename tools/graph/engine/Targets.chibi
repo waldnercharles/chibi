@@ -2481,7 +2481,7 @@ pub Includes :: (target: string) -> string[] {
             "public/engine", "public/behavior_runtime", "public/execution", "public/types",
             "public/execution_contract", "public/capabilities", "public/ecs", "public/tasks", "public/events",
             "public/entity_runtime", "public/native_types", "public/scene_runtime",
-            "public/native_capabilities", "public/scheduling", "public/physics_runtime",
+            "public/native_capabilities", "public/text_capabilities", "public/scheduling", "public/physics_runtime",
             "public/material_runtime", "public/field_catalog", "public/fields", "public/mesh_runtime",
             "public/task_pool_runtime", "public/physics3d_runtime", "public/visibility_runtime",
             "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",

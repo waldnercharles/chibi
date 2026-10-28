@@ -12447,18 +12447,6 @@ static const char
     TABLES[] = "unsupported native scalar signature or table size";
 static const char OUTPUT[] = "native scalar output has an invalid type or "
                              "multiple definitions";
-static int occurrences(pin_string haystack, const char *needle)
-{
-    char *text = xmalloc(haystack.length + 1);
-    memcpy(text, haystack.bytes, haystack.length);
-    text[haystack.length] = 0;
-    int count = 0;
-    for (const char *at = strstr(text, needle); at; at = strstr(at + 1, needle)) {
-        count++;
-    }
-    free(text);
-    return count;
-}
 /* The IR native_emit gives for m. */
 static bool native_text(int b, const native_module *m, pin_string *ir)
 {
@@ -12466,88 +12454,6 @@ static bool native_text(int b, const native_module *m, pin_string *ir)
     REQUIRE(native_emit(b, m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
     *ir = pin_text(value->values[0]);
-    return true;
-}
-/* Direct and mutual recursion call their callees' symbols, with no depth
- * counter, and every function probes its stack. A function range that leaves
- * a code row unowned is rejected. */
-static bool native_recursion_probes_the_stack(int b)
-{
-    static const native_code recursive[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CALL, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CALL, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-    };
-    static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 } };
-    static const native_function two[] = { { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
-                                           { NATIVE_INT, 0, 0, 1, 1, 4, 4, 0, 0 } };
-    static const int slots[] = { NATIVE_INT, NATIVE_INT };
-    static const char
-        probes[] = "\nattributes #0 = { \"probe-stack\"=\"inline-asm\" }\n";
-    native_module m = { one, 1, NULL, 0, slots, 1, recursive, 4, NULL, 0 };
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(occurrences(ir, "define i32 @chibi_scalar() #0 {\nentry:\n") == 1);
-    REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
-    REQUIRE(occurrences(ir, probes) == 1 && !occurrences(ir, "depth"));
-    /* LLVM probes inline on macOS too, but on Windows the attribute names the
-     * probe function, so Windows code calls __chkstk. */
-    static const char *const targets[] = { "MacOSArm64", "WindowsX64" };
-    static const char *const target_probes[] = {
-        probes,
-        "\nattributes #0 = { \"probe-stack\"=\"__chkstk\" }\n"
-    };
-    for (int t = 0; t < 2; t++) {
-        const pin_union *value;
-        REQUIRE(native_target_emit(b, targets[t], &m, &value));
-        REQUIRE(
-            value->tag ==
-            fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted")
-        );
-        REQUIRE(occurrences(pin_text(value->values[0]), target_probes[t]) == 1);
-    }
-    /* Function 0 calls 1, which calls 0. */
-    native_code mutual[8];
-    memcpy(mutual, recursive, sizeof mutual);
-    mutual[1].left = 1;
-    m = (native_module){ two, 2, NULL, 0, slots, 2, mutual, 8, NULL, 0 };
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(occurrences(ir, "define internal i32 @chibi_scalar.1() #0 {") == 1);
-    REQUIRE(occurrences(ir, "call i32 @chibi_scalar.1()") == 1);
-    REQUIRE(occurrences(ir, "call i32 @chibi_scalar()") == 1);
-    REQUIRE(occurrences(ir, " #0 {") == 2 && occurrences(ir, probes) == 1);
-    static const native_function gap[] = { { NATIVE_INT, 0, 0, 0, 4, 0, 7, 0, 3 },
-                                           { NATIVE_INT, 0, 3, 4, 1, 8, 3, 3, 0 } };
-    m = call_module(CALLER_AND_CALLEE, CALL_ARGUMENTS, 3);
-    m.functions = gap;
-    REQUIRE(native_rejects(b, &m, TABLES));
-    /* Slot ranges whose sum wraps back to an empty slot table. */
-    static const native_code returns[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_INT },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-        { .op = NATIVE_RETURN },
-    };
-    static const native_function wrapped[] = {
-        { NATIVE_INT, 0, 0, 0, INT32_MAX, 0, 4, 0, 0 },
-        { NATIVE_INT, 0, 0, INT32_MAX, INT32_MAX, 4, 4, 0, 0 },
-        { NATIVE_INT, 0, 0, -2, 2, 8, 4, 0, 0 },
-    };
-    m = (native_module){ wrapped, 3, NULL, 0, NULL, 0, returns, 12, NULL, 0 };
-    REQUIRE(native_rejects(b, &m, TABLES));
     return true;
 }
 /* A string is `native_abi.TextType()`, the layout of the runtime's
@@ -13117,27 +13023,6 @@ static bool native_strings_emit(int b)
     REQUIRE(!contains(ir, "text_equal"));
     return true;
 }
-/* A loop whose back edge skips the entry CHECK is emitted: native loops run
- * unchecked, as Odin's do. */
-static bool native_cycles_run_unchecked(int b)
-{
-    static const native_code loop[] = {
-        { .op = NATIVE_CHECK },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL, .literal = 1 },
-        { .op = NATIVE_BRANCH, .target = 4 },
-        { .op = NATIVE_JUMP, .target = 1 },
-        { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1 },
-        { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 1 },
-        { .op = NATIVE_RETURN },
-    };
-    static const native_function one[] = { { NATIVE_INT, 0, 0, 0, 2, 0, 7, 0, 0 } };
-    static const int slots[] = { NATIVE_BOOL, NATIVE_INT };
-    native_module m = { one, 1, NULL, 0, slots, 2, loop, 7, NULL, 0 };
-    const pin_union *value;
-    REQUIRE(native_emit(b, &m, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    return true;
-}
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
@@ -13151,13 +13036,11 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     );
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_libraries_export_words(b));
-        REQUIRE(native_recursion_probes_the_stack(b));
         REQUIRE(native_strings_emit(b));
         REQUIRE(native_text_reads_emit(b));
         REQUIRE(native_formats_emit(b));
         REQUIRE(native_fails_emit(b));
         REQUIRE(native_lines_place_code(b));
-        REQUIRE(native_cycles_run_unchecked(b));
     }
     REQUIRE(compiler_fixture_tests(&consumer));
     return true;

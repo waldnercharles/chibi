@@ -884,11 +884,6 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
         fail(w, "Native record type is retired or its layout is incompatible");
         return;
     }
-    if (!w->reading && v->record && !v->record->native && !v->schema &&
-        !pin_record_fields_current(v->record)) {
-        fail(w, "Authored record nested native layout is retired or incompatible");
-        return;
-    }
     if (!w->reading && v->record && !v->record->native && !c->resolve) {
         fail(w, "Authored record requires a prepared layout table");
     }
@@ -900,6 +895,8 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     }
     bool authored = !w->reading && v->record && !v->record->native;
     if (!w->reading && c->resolve) {
+        /* The owner validates authored layouts and native freshness (or a
+         * retained schema), with its own bounded per-write proof reuse. */
         c->resolve(w, c->user, v, authored);
     }
     if (w->error) {

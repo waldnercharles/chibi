@@ -4,7 +4,6 @@ name: Documentation site
 # without deploying unless explicitly requested. Existing Pages protections stay.
 on:
   pull_request:
-    branches: [main]
     paths:
       - ".github/workflows/docs.yml"
       - "docs/site.kdl"

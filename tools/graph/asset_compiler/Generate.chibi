@@ -205,6 +205,31 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
             }
         }
     }
+    // The checked older seed needs only the compiler's recorded core packages.
+    // Include their complete membership, but keep unrelated new core packages
+    // for the current compiler below, after it has acquired reachability rules.
+    recorded := length(paths);
+    bootstrap_index: int = 0;
+    while (bootstrap_index < recorded) {
+        path := paths[bootstrap_index];
+        if (strings.HasPrefix(path, "/sdk/core/")) {
+            prefix := strings.Slice(path, 0, strings.LastIndexByte(path, 47) + 1);
+            folder := Join([root, "/packages/core/", strings.Slice(prefix, 10, strings.ByteLength(prefix))]);
+            for (file in build.list_directory(folder)) {
+                member := Join([prefix, file]);
+                found := false;
+                for (item in paths) {
+                    found = found || item == member;
+                }
+                if (!found && strings.HasSuffix(file, ".chibi") && build.file_kind(Join([folder, file])) == "file") {
+                    paths.append(member);
+                }
+            }
+        }
+        bootstrap_index += 1;
+    }
+    bootstrap_paths := paths;
+    bootstrap_sources := Read(root, bootstrap_paths);
     for (relative in Sources(Join([root, "/packages/core"]))) {
         path := Join(["/sdk/core/", relative]);
         found := false;
@@ -217,8 +242,6 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
             paths.append(path);
         }
     }
-    bootstrap_paths := paths;
-    bootstrap_sources := Read(root, bootstrap_paths);
     for (directory in ["asset_compiler", "asset_source", "asset_packaging"]) {
         for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
             if (strings.HasSuffix(file, ".chibi")) {

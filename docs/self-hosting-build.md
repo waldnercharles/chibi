@@ -581,7 +581,7 @@ configures them: the launcher's `BUILD/share/chibi`, which `chibi version`,
 `chibi_ctl`'s `BUILD/controller_resources`. Their `engine.json` is the build
 identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 `sdk/artifact_formats.cmake` does: the SDK version from
-`sdk/CMakeLists.txt`, the project version from `src/assets/project.h`, the
+`sdk/VERSION`, the project version from `src/assets/project.h`, the
 platform, processors and backends, and each of `ArtifactFormats`' versions
 with the SHA-256 of the sources and headers that own it. A target's
 `SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below

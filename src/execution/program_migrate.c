@@ -5,20 +5,21 @@
 
 #include <string.h>
 
-/* Converts a plain number to a type it widens to implicitly, rounding once as
- * an assignment does. */
-static bool widen(pin_value value, pin_type type, pin_value *out)
+/* Converts a plain number to another numeric type, as T(value) does: a value
+ * outside an integer type's range saturates, and a floating one rounds toward
+ * zero. A reload keeps state even when its type loses precision. */
+static bool convert(pin_value value, pin_type type, pin_value *out)
 {
     if (value.type_name || !behavior_scalar_number(value.type) ||
-        !behavior_scalar_number(type) || !behavior_scalar_implicit(value.type, type)) {
+        !behavior_scalar_number(type)) {
         return false;
     }
     if (value.type == type) {
         *out = value;
         return true;
     }
-    if (value.type == PIN_F32) {
-        *out = (pin_value){ .type = PIN_F64, .d = value.f };
+    if (type == PIN_F32 && value.type == PIN_F64) {
+        *out = (pin_value){ .type = PIN_F32, .f = (float)value.d };
         return true;
     }
     if (type == PIN_F32) {
@@ -28,7 +29,11 @@ static bool widen(pin_value value, pin_type type, pin_value *out)
         *out = (pin_value){ .type = PIN_F32, .f = f };
         return true;
     }
-    behavior_scalar_cast(value, type, BEHAVIOR_CAST_EXACT, out);
+    if (value.type == PIN_F32 && type == PIN_F64) {
+        *out = (pin_value){ .type = PIN_F64, .d = value.f };
+        return true;
+    }
+    behavior_scalar_cast(value, type, BEHAVIOR_CAST_CLAMP, out);
     return true;
 }
 static const type_field *record_field(const pin_record *record, const char *name)
@@ -42,8 +47,8 @@ static const type_field *record_field(const pin_record *record, const char *name
 }
 /* Writes each field of to that from also declares into data. Nested record
  * fields have native layouts (pin_record_create), so they copy whole. A field
- * only to declares keeps data's value, which needs defaults: without them, as
- * for an item of an array, a new field cannot be migrated. */
+ * only to declares, or one whose value cannot convert, keeps data's value,
+ * which needs defaults: without them, as for an item of an array, it fails. */
 static bool migrate_fields(
     arena *storage,
     const pin_record *from,
@@ -68,8 +73,13 @@ static bool migrate_fields(
         }
         bool same = prior->type == field->type && prior->size == field->size &&
                     behavior_string_equal(prior->type_name, field->type_name);
-        if ((!same && !widen(value, field->type, &value)) ||
-            pin_write_field(storage, data, field, value)) {
+        if (!same && !convert(value, field->type, &value)) {
+            if (!defaults) {
+                return false;
+            }
+            continue;
+        }
+        if (pin_write_field(storage, data, field, value)) {
             return false;
         }
     }
@@ -136,5 +146,5 @@ bool program_migrate_value(arena *storage, pin_value old, pin_value shape, pin_v
         shape.record) {
         return migrate_record(storage, old, shape, out);
     }
-    return widen(old, shape.type, out);
+    return convert(old, shape.type, out);
 }

@@ -305,6 +305,19 @@ bool script_type_numeric(script_type type)
            !(type.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL |
                            SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK));
 }
+/* Integers widen to integers and to floating types, and f32 widens to f64.
+ * f64 becomes f32, and a floating value an integer, only through an explicit
+ * conversion. */
+bool script_numeric_implicit(pin_type from, pin_type to)
+{
+    if (to == PIN_F64) {
+        return true;
+    }
+    if (to == PIN_F32) {
+        return from != PIN_F64;
+    }
+    return from <= PIN_U64 && behavior_scalar_integer_widens(from, to);
+}
 bool script_type_assignable(script_type expected, script_type actual)
 {
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_ERROR) {
@@ -351,7 +364,7 @@ bool script_type_assignable(script_type expected, script_type actual)
             return script_type_char(actual) &&
                    (script_type_char(expected) || char_widens(expected.storage));
         }
-        return behavior_scalar_implicit(actual.storage, expected.storage);
+        return script_numeric_implicit(actual.storage, expected.storage);
     }
     if ((expected.storage == PIN_NAME || expected.storage == PIN_STR) &&
         (actual.storage == PIN_NAME || actual.storage == PIN_STR)) {

@@ -221,9 +221,9 @@ struct execution_program
 
 bool program_same_type(pin_value a, pin_value b);
 /* Converts old, a kept value whose type changed, to shape's type: records
- * match fields by name, and numbers widen implicitly. Shape's payload, when it
- * has one, supplies new fields. False when no automatic conversion exists; out
- * may borrow old and storage. */
+ * match fields by name, and numbers convert as T(value) does. Shape's payload,
+ * when it has one, supplies new fields and fields that cannot convert. False
+ * when no conversion exists; out may borrow old and storage. */
 bool program_migrate_value(arena *storage, pin_value old, pin_value shape, pin_value *out);
 /* Visited managed cells, open-addressed. Free slots when done. */
 typedef struct

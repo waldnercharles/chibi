@@ -1199,6 +1199,37 @@ static bool managed_seen_before(managed_seen *seen, pin_value value, bool restri
     seen->count++;
     return false;
 }
+/* A value a walk still has to visit, or the items of an array from `next`
+ * on. An array stays one entry, so a walk's stack grows with nesting depth,
+ * not with item counts. `flag` is the walk's own per-value bit. */
+typedef struct
+{
+    pin_value value;
+    const pin_array *items;
+    int next;
+    bool flag;
+} managed_work;
+static void managed_push_items(managed_work **stack, const pin_array *items, bool flag)
+{
+    if (items->count) {
+        apush(*stack, ((managed_work){ .items = items, .flag = flag }));
+    }
+}
+/* Pops the next value to visit. An array's item comes with `items` set. */
+static managed_work managed_pop(managed_work *stack)
+{
+    managed_work *top = &stack[acount(stack) - 1];
+    if (!top->items) {
+        return apop(stack);
+    }
+    managed_work item = { .value = pin_array_get(top->items, top->next),
+                          .items = top->items,
+                          .flag = top->flag };
+    if (++top->next == top->items->count) {
+        (void)apop(stack);
+    }
+    return item;
+}
 static bool managed_family_contains(const behavior_managed_heap *heap, const void *address)
 {
     for (const behavior_managed_heap *scope = heap; scope; scope = scope->previous) {
@@ -1257,6 +1288,13 @@ static bool managed_leaf(const pin_value *value)
            value->type != PIN_STRUCT && value->type != PIN_UNION &&
            value->type != PIN_POINTER && value->type != PIN_QUERY;
 }
+/* Packed scalar items reach no other value and have no layout to check. */
+static bool managed_items_reach(const pin_array *items)
+{
+    return !items->stride || items->element_type == PIN_STRUCT ||
+           items->element_type == PIN_UNION ||
+           items->element_type == PIN_POINTER || items->element_type == PIN_QUERY;
+}
 /* Shape restrictions belong to newly retained values. An existing managed
  * array already passed retention validation; all heap-family edges still need
  * checking when it crosses an execution boundary. */
@@ -1279,12 +1317,7 @@ static const char *managed_scan(
             return NULL;
         }
     }
-    typedef struct
-    {
-        pin_value value;
-        bool restricted;
-    } pending_value;
-    pending_value *pending = NULL;
+    managed_work *pending = NULL;
     managed_seen seen = { 0 };
     typedef struct
     {
@@ -1294,10 +1327,14 @@ static const char *managed_scan(
     checked_layout *checked = NULL;
     arena proof = { 0 };
     const char *error = NULL;
-    apush(pending, ((pending_value){ *root, restricted }));
+    apush(pending, ((managed_work){ .value = *root, .flag = restricted }));
+    /* Only a cycle reaches the root again, and its second visit stops the
+     * cycle, so the root needs no seen entry. */
+    bool first = true;
     while (acount(pending) && !error) {
-        pending_value current = apop(pending);
+        managed_work current = managed_pop(pending);
         pin_value value = current.value;
+        bool restricted_value = current.flag;
         bool dynamic = value.container == PIN_CONTAINER_ARRAY ||
                        value.container == PIN_CONTAINER_VIEW;
         const pin_array *array = dynamic ? value.ptr : NULL;
@@ -1337,11 +1374,12 @@ static const char *managed_scan(
         if (managed_scan_found(arrays)) {
             break;
         }
-        if (managed_seen_before(&seen, value, current.restricted)) {
+        if (!first && managed_seen_before(&seen, value, restricted_value)) {
             continue;
         }
+        first = false;
 #define PUSH_VALUE(v)                                                          \
-    apush(pending, ((pending_value){ (v), current.restricted }))
+    apush(pending, ((managed_work){ .value = (v), .flag = restricted_value }))
         if (arrays && value.type == PIN_POINTER &&
             value.container == PIN_CONTAINER_SINGLE && value.ptr) {
             *arrays |= 4u;
@@ -1383,7 +1421,7 @@ static const char *managed_scan(
                 error = "Managed value requires a resolved record layout";
                 break;
             }
-            if (current.restricted && !value.record && !value.schema) {
+            if (restricted_value && !value.record && !value.schema) {
                 const pin_record *frozen = NULL;
                 for (int i = 0; i < acount(checked); i++) {
                     if (checked[i].source == layout) {
@@ -1435,11 +1473,8 @@ static const char *managed_scan(
             }
         } else if (value.container != PIN_CONTAINER_SINGLE) {
             const pin_array *items = value.ptr;
-            if (items && !pin_array_view_valid(items)) {
-                continue;
-            }
-            for (int i = 0; items && i < items->count; i++) {
-                PUSH_VALUE(pin_array_get(items, i));
+            if (items && pin_array_view_valid(items) && managed_items_reach(items)) {
+                managed_push_items(&pending, items, restricted_value);
             }
         } else if (value.type == PIN_UNION) {
             const pin_union *sum = value.ptr;
@@ -1649,28 +1684,24 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
     }
     /* A record held inside an array or another record is reached only through
      * its holder, which is visited once, so only shareable values need the
-     * seen set. */
-    typedef struct
-    {
-        pin_value value;
-        bool held;
-    } pending_value;
-    pending_value *pending = NULL;
+     * seen set. `flag` marks a held record. */
+    managed_work *pending = NULL;
     managed_seen local = { 0 };
     managed_seen *seen = collection_seen ? collection_seen : &local;
-    apush(pending, ((pending_value){ *root, false }));
+    apush(pending, ((managed_work){ .value = *root }));
     while (acount(pending)) {
-        pending_value next = apop(pending);
+        managed_work next = managed_pop(pending);
         pin_value value = next.value;
-        if (!next.held && managed_seen_before(seen, value, false)) {
+        bool held = next.items ? value.type == PIN_STRUCT : next.flag;
+        if (!held && managed_seen_before(seen, value, false)) {
             continue;
         }
         pin_value_trace(&value, mark, user);
         if (value.container == PIN_CONTAINER_MAP) {
             const pin_map *map = value.ptr;
             for (int i = 0; map && i < map->count; i++) {
-                apush(pending, ((pending_value){ map->entries[i].key, false }));
-                apush(pending, ((pending_value){ map->entries[i].value, false }));
+                apush(pending, ((managed_work){ .value = map->entries[i].key }));
+                apush(pending, ((managed_work){ .value = map->entries[i].value }));
             }
         } else if (value.container != PIN_CONTAINER_SINGLE) {
             const pin_array *array = value.ptr;
@@ -1680,14 +1711,11 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                 (!array->pointer && !pin_array_items_reach(array))) {
                 continue;
             }
-            for (int i = 0; i < array->count; i++) {
-                pin_value item = pin_array_get(array, i);
-                apush(pending, ((pending_value){ item, item.type == PIN_STRUCT }));
-            }
+            managed_push_items(&pending, array, false);
         } else if (value.type == PIN_UNION) {
             const pin_union *sum = value.ptr;
             for (int i = 0; sum && i < sum->count; i++) {
-                apush(pending, ((pending_value){ sum->values[i], false }));
+                apush(pending, ((managed_work){ .value = sum->values[i] }));
             }
         } else if (value.type == PIN_STRUCT && value.ptr) {
             const type_desc *layout = pin_value_type(&value);
@@ -1708,7 +1736,7 @@ void behavior_managed_heap_trace_value(const pin_value *root, arena_marker mark,
                 } else {
                     continue;
                 }
-                apush(pending, ((pending_value){ member, field->type == PIN_STRUCT }));
+                apush(pending, ((managed_work){ .value = member, .flag = field->type == PIN_STRUCT }));
             }
         }
     }

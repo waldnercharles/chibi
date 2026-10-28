@@ -170,25 +170,29 @@ TEST_CASE(collectable_arena_packs_small_values_into_slabs)
     arena_free(&storage);
     return true;
 }
-/* An arena remembers its last ARENA_COPY_CACHE copies by source until a
- * reset, free or collection; a later copy replaces the oldest. */
-TEST_CASE(arena_remembers_last_copy_until_reset_or_collection)
+/* An arena remembers each source's latest copy until a reset, free or
+ * collection, however many sources it holds. */
+TEST_CASE(arena_remembers_copies_until_reset_or_collection)
 {
-    static int sources[ARENA_COPY_CACHE + 1];
+    enum
+    {
+        SOURCES = 100
+    };
+    static int sources[SOURCES];
     arena storage = { 0 };
-    void *copies[ARENA_COPY_CACHE + 1];
+    void *copies[SOURCES];
     REQUIRE(!arena_copy_find(&storage, &sources[0]));
-    for (int i = 0; i <= ARENA_COPY_CACHE; i++) {
+    for (int i = 0; i < SOURCES; i++) {
         REQUIRE(!arena_copy_find(&storage, &sources[i]));
         copies[i] = arena_alloc(&storage, 8);
         arena_copy_remember(&storage, &sources[i], copies[i]);
         REQUIRE(arena_copy_find(&storage, &sources[i]) == copies[i]);
-        REQUIRE(
-            arena_copy_find(&storage, &sources[0]) ==
-            (i < ARENA_COPY_CACHE ? copies[0] : NULL)
-        );
+        REQUIRE(arena_copy_find(&storage, &sources[0]) == copies[0]);
     }
-    REQUIRE(arena_copy_find(&storage, &sources[1]) == copies[1]);
+    void *replacement = arena_alloc(&storage, 8);
+    arena_copy_remember(&storage, &sources[1], replacement);
+    REQUIRE(arena_copy_find(&storage, &sources[1]) == replacement);
+    REQUIRE(arena_copy_find(&storage, &sources[SOURCES - 1]) == copies[SOURCES - 1]);
     arena_reset(&storage);
     REQUIRE(!arena_copy_find(&storage, &sources[1]));
     arena_copy_remember(&storage, &sources[0], arena_alloc(&storage, 8));
@@ -215,5 +219,5 @@ void test_arena()
     RUN_TEST_CASE(zero_arena_allocates_on_first_use);
     RUN_TEST_CASE(collectable_arena_finds_values_by_address);
     RUN_TEST_CASE(collectable_arena_packs_small_values_into_slabs);
-    RUN_TEST_CASE(arena_remembers_last_copy_until_reset_or_collection);
+    RUN_TEST_CASE(arena_remembers_copies_until_reset_or_collection);
 }

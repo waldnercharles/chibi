@@ -61,9 +61,11 @@ static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BA
     "        assert(x < limit, \"x stays below its limit\");\n"                \
     "        return x;\n"                                                      \
     "    }\n"                                                                  \
-    "    Checked :: (x: int) -> int { assert(x >= 0); return Below(x, 3) + "   \
-    "1; "                                                                      \
-    "}\n"
+    "    Checked :: (x: int) -> int {\n"                                       \
+    "        digits := text_byte_length(format_text(\"{}\", x));\n"            \
+    "        assert(x >= 0);\n"                                                \
+    "        return Below(x, digits + 2) + 1;\n"                               \
+    "    }\n"
 const char NATIVE_CALLS_LIBRARY
     [] = "Native :: library {\n" PURE_FUNCTIONS NATIVE_CALLS_WIDE "}\n";
 /* With functions that wait, exceed the entry's parameter bound or take a
@@ -97,9 +99,9 @@ static const char PROBE[] = "Probe :: behavior {\n"
                             "        label = Native.Label(cells);\n"
                             "    }\n"
                             "}\n";
-/* Counts each Tick through Checked, which fails once the count reaches 3,
- * in Below's assert, or at once in its own when a Tick's cells are
- * negative. */
+/* Counts each Tick through Checked, which formats the count first and fails
+ * once it reaches 3, in Below's assert, or at once in its own when a Tick's
+ * cells are negative. */
 static const char CHECKER[] = "Checker :: behavior {\n"
                               "    total: int = 0;\n"
                               "    on Tick :: (cells: number) {\n"
@@ -207,11 +209,17 @@ static void checked(execution_native_context *context, const uint64_t *arguments
 {
     calls++;
     int32_t x = int_word(arguments[0]);
+    const execution_native_value values[] = {
+        { EXECUTION_NATIVE_TEXT, 2, 0, "{}" },
+        { EXECUTION_NATIVE_INT, 0, arguments[0], NULL },
+    };
+    pin_string digits;
+    context->format_text(context, values, 2, &digits);
     if (x < 0) {
         context->failure = &checked_assert;
         return;
     }
-    if (x >= 3) {
+    if (x >= (int32_t)digits.length + 2) {
         context->failure = &below_assert;
         return;
     }
@@ -303,9 +311,9 @@ static bool prepare(behavior_backend backend)
 {
     return prepare_library(LIBRARY, backend);
 }
-static uint64_t state_id(const char *name)
+static uint64_t state_id(const char *behavior, const char *name)
 {
-    const authoring_source *s = source("Probe");
+    const authoring_source *s = source(behavior);
     for (int i = 0; i < s->analysis->symbol_count; i++) {
         const script_symbol *symbol = &s->analysis->symbols[i];
         if (symbol->kind == SCRIPT_STATE && !strcmp(symbol->name, name)) {
@@ -325,11 +333,12 @@ typedef struct
 } probe_states;
 static bool states(const execution_instance *instance, probe_states *out)
 {
-    const pin_value *total = execution_instance_state(instance, state_id("total")),
-                    *flag = execution_instance_state(instance, state_id("flag")),
-                    *small = execution_instance_state(instance, state_id("small")),
-                    *wide = execution_instance_state(instance, state_id("wide")),
-                    *label = execution_instance_state(instance, state_id("label"));
+    const pin_value
+        *total = execution_instance_state(instance, state_id("Probe", "total")),
+        *flag = execution_instance_state(instance, state_id("Probe", "flag")),
+        *small = execution_instance_state(instance, state_id("Probe", "small")),
+        *wide = execution_instance_state(instance, state_id("Probe", "wide")),
+        *label = execution_instance_state(instance, state_id("Probe", "label"));
     REQUIRE(total && total->type == PIN_I32 && flag && flag->type == PIN_BOOL);
     REQUIRE(small && small->type == PIN_U8 && wide && wide->type == PIN_F64);
     REQUIRE(label && label->type == PIN_I32);
@@ -380,12 +389,13 @@ static bool same_states(const probe_states *a, const probe_states *b)
 }
 
 /* The Checker's run, with the table's natives when `bound`, through `count`
- * Ticks of `cells`, the last of which fails: its status and the program's
- * failure, and the native entries the calls took. */
+ * Ticks of `cells`, the last of which fails: its status, the program's
+ * failure, the total it keeps and the native entries the calls took. */
 typedef struct
 {
     int status;
     execution_program_failure failure;
+    int32_t total;
     uint64_t entries;
 } checker_run;
 static bool run_checker(bool bound, const float *cells, int count, checker_run *out)
@@ -407,8 +417,9 @@ static bool run_checker(bool bound, const float *cells, int count, checker_run *
     }
     behavior_run_scope_end(&scope);
     const execution_program_failure *failure = execution_program_error(program);
-    REQUIRE(failure);
-    *out = (checker_run){ status, *failure, scope.counts.native_entries };
+    const pin_value *total = execution_instance_state(instance, state_id("Checker", "total"));
+    REQUIRE(failure && total && total->type == PIN_I32);
+    *out = (checker_run){ status, *failure, total->i, scope.counts.native_entries };
     execution_program_free(program);
     program = NULL;
     return true;
@@ -423,8 +434,10 @@ static bool same_failure(const execution_program_failure *a, const execution_pro
            !strcmp(a->message, b->message);
 }
 /* Whether a failed assert in native code fails the Checker as the VM's does:
- * the same status and failure, at the assert's source, with its message,
- * whether Below's fails in a call from Checked or Checked's own does. */
+ * the same status and failure, at the assert's source, with its message, and
+ * the same total kept, whether Below's fails in a call from Checked or
+ * Checked's own does. Each call formats before it asserts, and the counted
+ * run's calls succeed after the negative run's failure. */
 static bool fails_alike()
 {
     static const float counted[] = { 1, 1, 1, 1 }, negative[] = { -1 };
@@ -434,11 +447,11 @@ static bool fails_alike()
         int count;
         const char *call, *message;
     } runs[] = {
+        { negative, 1, "assert(x >= 0)", "Assertion failed: x >= 0" },
         { counted,
           4,
           "assert(x < limit, \"x stays below its limit\")",
           "Assertion failed: x stays below its limit" },
-        { negative, 1, "assert(x >= 0)", "Assertion failed: x >= 0" },
     };
     for (size_t i = 0; i < sizeof runs / sizeof *runs; i++) {
         checker_run vm, native;
@@ -472,7 +485,8 @@ static bool fails_alike()
             f->column == column
         );
         const execution_program_failure *g = &native.failure;
-        bool same = native.status == vm.status && same_failure(f, g);
+        bool same = native.status == vm.status && same_failure(f, g) &&
+                    native.total == vm.total;
         if (!same) {
             fprintf(
                 stderr,

@@ -5,9 +5,9 @@ import strings "core:strings"
 
 // A scalar backend. This is not the prepared/pin_value ABI: arguments and
 // results are native LLVM values. Slots and locals are private stack storage,
-// never observable pointers. A module that calls the runtime, through Format,
-// takes its context, native_abi.ContextType(), as every function's hidden
-// first parameter, as Odin's procedures take theirs.
+// never observable pointers. A module that calls the runtime, through Format
+// or Fail, takes its context, native_abi.ContextType(), as every function's
+// hidden first parameter, as Odin's procedures take theirs.
 pub Instruction :: struct {
     op: int;
     type: int;
@@ -113,6 +113,11 @@ pub TextTake: int : 35;
 // string format then numbers, bools and strings, as a call's are. The string
 // lives until the call from the VM returns.
 pub Format: int : 36;
+// Ends the call from the VM with the failure of the assert at source bytes
+// [left, right) of the function whose stable ID is `literal`: the context's
+// failure names it, a native_abi.FailureType() constant, and this function,
+// and each call it is in, returns its result's zero.
+pub Fail: int : 37;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -121,7 +126,7 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || (op >= Add && op <= Ne) || op >= Call;
+    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format);
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -246,7 +251,7 @@ Successors :: (code: Instruction[], pc: int) -> int[] {
     if (item.op == Jump || item.op == Branch) {
         next.append(item.target);
     }
-    if (item.op != Jump && item.op != Return && item.op != End) {
+    if (item.op != Jump && item.op != Return && item.op != End && item.op != Fail) {
         next.append(pc + 1);
     }
     return next;
@@ -393,7 +398,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > Format) {
+        if (item.op < Constant || item.op > Fail) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -459,13 +464,16 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
         }
+        if (item.op == Fail && (item.left < 0 || item.right < item.left)) {
+            return Result.Rejected(base + pc, "native failure names no source range");
+        }
         if ((item.op == Branch || item.op == Jump) && !Index(item.target, length(code))) {
             return Result.Rejected(base + pc, "native branch target is out of range");
         }
         if (item.op == Branch && !Typed(slots, item.left, 1)) {
             return Result.Rejected(base + pc, "native branch requires bool");
         }
-        if (pc + 1 == length(code) && item.op != Return && item.op != End && item.op != Jump) {
+        if (pc + 1 == length(code) && item.op != Return && item.op != End && item.op != Jump && item.op != Fail) {
             return Result.Rejected(base + pc, "native scalar code falls outside its body");
         }
         pc += 1;
@@ -860,9 +868,10 @@ Symbol :: (function: int, mode: int) -> string {
     return format_text("chibi_scalar.{}", function);
 }
 // Arguments load in call order, so evaluation order stays visible at O0. A
-// module that calls the runtime passes its context first.
+// module that calls the runtime passes its context first. After a call of a
+// function that can fail, the caller fails when the context names a failure.
 CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], item: Instruction, pc: int,
-                    mode: int, runtime: bool) -> string {
+                    mode: int, runtime: bool, checked: bool) -> string {
     callee := functions[item.left];
     out := format_text("p{}:\n", pc);
     listed: string[] = [];
@@ -877,11 +886,28 @@ CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], 
     list := strings.Join(listed, ", ");
     out = format_text("{}  %v{} = call {} @{}({})\n", out, pc, TypeName(item.type), Symbol(item.left, mode), list);
     out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
-    return format_text("{}  br label %p{}\n", out, pc + 1);
+    if (!checked) {
+        return format_text("{}  br label %p{}\n", out, pc + 1);
+    }
+    out = format_text("{}  %failure{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", out, pc,
+                      abi.ContextType());
+    out = format_text("{}  %failure{} = load ptr, ptr %failure{}.at\n", out, pc, pc);
+    out = format_text("{}  %failed{} = icmp ne ptr %failure{}, null\n", out, pc, pc);
+    return format_text("{}  br i1 %failed{}, label %failed, label %p{}\n", out, pc, pc + 1);
+}
+// Fail names its failure in the context, then the function fails.
+FailInstruction :: (function: int, pc: int) -> string {
+    out := format_text("p{}:\n  %fail{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", pc, pc,
+                       abi.ContextType());
+    return format_text("{}  store ptr @{}, ptr %fail{}.at\n  br label %failed\n", out, FailureSymbol(function, pc), pc);
+}
+// The constant that names the failure of instruction `pc` of `function`.
+FailureSymbol :: (function: int, pc: int) -> string {
+    return format_text("chibi_scalar.failure.{}.{}", function, pc);
 }
 EmitFunction :: (functions: Function[], function: int, parameters: int[], slots: int[], locals: int[],
                  code: Instruction[], arguments: int[], records: Record[], fields: int[], texts: string[],
-                 mode: int, step_budget: int, runtime: bool) -> string {
+                 mode: int, step_budget: int, runtime: bool, fallible: bool[]) -> string {
     shape := functions[function];
     result := shape.result;
     linkage := "";
@@ -922,12 +948,19 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
     for (pc in 0..<shape.code) {
         item := code[shape.first_code + pc];
         if (item.op == Call) {
-            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, mode, runtime));
+            out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, mode, runtime,
+                                                           fallible[item.left]));
+        } else if (item.op == Fail) {
+            out = format_text("{}{}", out, FailInstruction(function, pc));
         } else if (item.op == Format) {
             out = format_text("{}{}", out, FormatInstruction(Part(slots, shape.first_slot, shape.slots), own, item, pc));
         } else {
             out = format_text("{}{}", out, EmitInstruction(item, pc, result, records, fields, texts));
         }
+    }
+    // A function fails with its result's zero, which no caller reads.
+    if (fallible[function]) {
+        out = format_text("{}failed:\n  ret {} {}\n", out, TypeName(result), Zero(result));
     }
     return format_text("{}trap:\n  call void @llvm.trap()\n  unreachable\n}\n", out);
 }
@@ -970,11 +1003,48 @@ FormatInstruction :: (slots: int[], arguments: int[], item: Instruction, pc: int
 // Whether `code` calls the runtime.
 Runtime :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == Format) {
+        if (item.op == Format || item.op == Fail) {
             return true;
         }
     }
     return false;
+}
+// Whether each function can fail: it has a Fail, or calls a function that
+// can.
+Fallible :: (functions: Function[], code: Instruction[]) -> bool[] {
+    fallible: bool[] = [];
+    for (shape in functions) {
+        fallible.append(false);
+    }
+    changed := true;
+    while (changed) {
+        changed = false;
+        for (function in 0..<length(functions)) {
+            shape := functions[function];
+            for (item in Codes(code, shape.first_code, shape.code)) {
+                if (!fallible[function] && (item.op == Fail || (item.op == Call && fallible[item.left]))) {
+                    fallible[function] = true;
+                    changed = true;
+                }
+            }
+        }
+    }
+    return fallible;
+}
+// Each Fail's constant: its function's stable ID and its source range.
+Failures :: (functions: Function[], code: Instruction[]) -> string {
+    out := "";
+    for (function in 0..<length(functions)) {
+        shape := functions[function];
+        for (pc in 0..<shape.code) {
+            item := code[shape.first_code + pc];
+            if (item.op == Fail) {
+                out = format_text("{}@{} = private unnamed_addr constant {} { i64 {}, i32 {}, i32 {} }\n", out,
+                                  FailureSymbol(function, pc), abi.FailureType(), item.literal, item.left, item.right);
+            }
+        }
+    }
+    return out;
 }
 
 // The symbol of text `index` of the module's table.
@@ -1096,12 +1166,13 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         out = format_text("{}@{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n", out, TextSymbol(index),
                           strings.ByteLength(texts[index]) + 1, Escaped(texts[index]));
     }
-    out = format_text("{}declare void @llvm.trap()\n{}", out, Declarations(code));
+    out = format_text("{}{}declare void @llvm.trap()\n{}", out, Failures(functions, code), Declarations(code));
     debug := source.file != "";
     compares := Compares(code);
+    fallible := Fallible(functions, code);
     for (function in 0..<length(functions)) {
         text := EmitFunction(functions, function, parameters, slots, locals, code, arguments, records, fields,
-                             texts, mode, step_budget, runtime);
+                             texts, mode, step_budget, runtime, fallible);
         if (debug) {
             text = Located(text, Subprogram(function), Location(length(functions), compares,
                                                                 functions[function].first_code));

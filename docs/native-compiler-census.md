@@ -16,11 +16,11 @@ once that package lands.
 
 ## Summary
 
-Of 699 functions, 131 pass the producer, 71 of them without flattened imports or constants.
+Of 700 functions, 131 pass the producer, 71 of them without flattened imports or constants.
 
 | Package | First blocker | Functions |
 | --- | --- | ---: |
-| W7 | array parameters, results and natives | 490 |
+| W7 | array parameters, results and natives | 491 |
 | none | passes the producer | 131 |
 | W9 | strings and arrays in records and unions | 73 |
 | none yet | other forms; see each message | 5 |
@@ -29,13 +29,13 @@ Each first blocker by the producer's message:
 
 | Package | Rejection | Functions |
 | --- | --- | ---: |
-| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 486 |
+| W7 | scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result | 487 |
 | W7 | Unknown function 'length' | 4 |
 | W9 | scalar proof requires number and bool record fields | 49 |
 | W9 | scalar proof requires number and bool union payloads | 24 |
 | none yet | scalar proof requires known effect-free scalar execution | 5 |
 
-The census flattens two features, so neither is ever a first blocker: 369 functions name another package (W13), and 302 name a package constant (W12).
+The census flattens two features, so neither is ever a first blocker: 370 functions name another package (W13), and 302 name a package constant (W12).
 
 ## Functions
 
@@ -719,6 +719,7 @@ The census flattens two features, so neither is ever a first blocker: 369 functi
 | `package_compiler/Scalar.chibi` | `ScalarFieldAssigned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarAssigned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarPlanned` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
+| `package_compiler/Scalar.chibi` | `ScalarAsserted` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarFunction` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarNamedReturn` | W7 |  | W12, W13 | `forest: source_snapshot__SnapshotNode[]` |
 | `package_compiler/Scalar.chibi` | `ScalarClosing` | W7 |  | W13 | `forest: source_snapshot__SnapshotNode[]` |

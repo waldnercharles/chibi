@@ -531,8 +531,6 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "width", "integer", false, "Preview width, default 256, maximum 512." },
     { "height", "integer", false, "Preview height, default 256, maximum 512." },
     { "time", "number", false, "Deterministic preview simulation time." },
-    { "beat_phase", "number", false, "Material Beat Phase, 0 to 1; default 0." },
-    { "beat_pulse", "number", false, "Material Beat Pulse, 0 to 1; default 0." },
     { "influence", "array", false, "Material Surface Influence linear RGB at the preview center, fading out at radius 50; default none." },
     { "parameters", "object", false, "Shader Parameter overrides keyed by authored parameter name; scalar values or exact-width numeric arrays." },
     { "camera", "object", false, "Optional preview framing with center and span two-vectors." },
@@ -3231,6 +3229,7 @@ static const char *container_json_name(pin_container container)
         case PIN_CONTAINER_ARRAY: return "array";
         case PIN_CONTAINER_SET: return "set";
         case PIN_CONTAINER_MAP: return "map";
+        case PIN_CONTAINER_VIEW: return "view";
     }
     return "invalid";
 }

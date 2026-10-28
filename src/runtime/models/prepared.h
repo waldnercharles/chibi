@@ -1,7 +1,7 @@
 #ifndef CHIBI_MODEL_PREPARED_H
 #define CHIBI_MODEL_PREPARED_H
 #include "runtime/models/model_program.h"
-#define MODEL_PREPARED_VERSION UINT64_C(2)
+#define MODEL_PREPARED_VERSION UINT64_C(3)
 /* Field-wise canonical model program and compiled construction/shader snapshots.
  * Owned resource/material keys and parameter declarations are retained. Runtime
  * image callbacks are unset after decode; the resident host supplies them. */

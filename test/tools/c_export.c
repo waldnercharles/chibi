@@ -65,7 +65,8 @@ static const struct
     { PIN_I64, PIN_F64, BEHAVIOR_CAST_EXACT },
 };
 static const int query_variables[QUERY_FIXTURES] = { 1, ECS_QUERY_VARS };
-static const pin_string managed_text = { "managed", sizeof("managed") - 1 };
+static const pin_string managed_text = { .bytes = "managed",
+                                         .length = sizeof("managed") - 1 };
 static behavior_function *functions[FIXTURES];
 static behavior_function_builder *builder;
 static char directory[128];
@@ -1567,9 +1568,10 @@ static bool writes_exported_current_world_scalars()
 
 static const char binary_text_bytes[] = { 'A', 0, 'B', (char)0xff, 0 };
 static const char other_text_bytes[] = { 'A', 0, 'C', (char)0xff, 0 };
-static const pin_string binary_text = { binary_text_bytes,
-                                        sizeof binary_text_bytes - 1 };
-static const pin_string other_text = { other_text_bytes, sizeof other_text_bytes - 1 };
+static const pin_string binary_text = { .bytes = binary_text_bytes,
+                                        .length = sizeof binary_text_bytes - 1 };
+static const pin_string other_text = { .bytes = other_text_bytes,
+                                       .length = sizeof other_text_bytes - 1 };
 static bool binary_text_fixture()
 {
     pin_value argument = { .type = PIN_STR };

@@ -36,6 +36,16 @@ static const char *expression_name(source_projection *p, const script_expression
         case SCRIPT_EXPR_ADDRESS: return "Address";
         case SCRIPT_EXPR_DEREFERENCE: return "Dereference";
         case SCRIPT_EXPR_CALL: return "Call";
+        case SCRIPT_EXPR_ARRAY_MUTATE: return "Mutate Array";
+        case SCRIPT_EXPR_SEQUENCE:
+            switch (e->member) {
+                case SCRIPT_SEQUENCE_SLICE: return "Copy Slice";
+                case SCRIPT_SEQUENCE_VIEW: return "Sequence View";
+                case SCRIPT_SEQUENCE_CLONE: return "Clone Sequence";
+                case SCRIPT_SEQUENCE_LENGTH: return "Sequence Length";
+            }
+            assert(false);
+            return "Sequence";
         case SCRIPT_EXPR_MEMBER: return "Field";
         case SCRIPT_EXPR_COMPONENT: return "Component";
         case SCRIPT_EXPR_RELATION: return "Relationship targets";
@@ -76,6 +86,9 @@ const script_expression *source_view_tuple(source_projection *p, int index)
 }
 const char *source_view_result_name(source_projection *p, const script_expression *e, int field)
 {
+    if (e->kind == SCRIPT_EXPR_ARRAY_MUTATE) {
+        return "Success";
+    }
     const script_catalog_capability *capability = source_view_capability(p, e->capability);
     if (capability && field < capability->result_count) {
         return capability->results[field].name;
@@ -141,8 +154,8 @@ static const char *prefixed_name(source_projection *p, const char *prefix, const
 bool source_view_expression_action(source_projection *p, int index)
 {
     const script_expression *e = &p->analysis->expressions[index];
-    if (e->kind == SCRIPT_EXPR_JOIN || e->kind == SCRIPT_EXPR_CANCEL ||
-        e->kind == SCRIPT_EXPR_YIELD) {
+    if (e->kind == SCRIPT_EXPR_ARRAY_MUTATE || e->kind == SCRIPT_EXPR_JOIN ||
+        e->kind == SCRIPT_EXPR_CANCEL || e->kind == SCRIPT_EXPR_YIELD) {
         return true;
     }
     if (e->kind != SCRIPT_EXPR_CALL) {
@@ -159,7 +172,8 @@ static void formula_inputs(source_projection *p, int index, int **children, int 
         return;
     }
     const script_expression *e = &p->analysis->expressions[index];
-    if (e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_MEMBER ||
+    if (e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_SEQUENCE ||
+        e->kind == SCRIPT_EXPR_ARRAY_MUTATE || e->kind == SCRIPT_EXPR_MEMBER ||
         e->kind == SCRIPT_EXPR_COMPONENT) {
         apush(*children, index);
         apush(*arguments, -1);
@@ -203,7 +217,10 @@ node *source_view_expression(source_projection *p, int index)
     }
     /* Call right identifies an authored function, not an expression record. */
     bool receiver_argument = false;
-    for (int i = 0; e->kind == SCRIPT_EXPR_CALL && i < e->argument_count; i++) {
+    for (int i = 0;
+         (e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_ARRAY_MUTATE) &&
+         i < e->argument_count;
+         i++) {
         receiver_argument |= e->arguments[i].value == e->left;
     }
     bool namespace_receiver = e->kind == SCRIPT_EXPR_MEMBER && e->left >= 0 &&
@@ -213,7 +230,8 @@ node *source_view_expression(source_projection *p, int index)
         apush(children, e->left);
         apush(arguments, -1);
     }
-    if (!formula && e->right >= 0 && e->kind != SCRIPT_EXPR_CALL) {
+    if (!formula && e->right >= 0 && e->kind != SCRIPT_EXPR_CALL &&
+        e->kind != SCRIPT_EXPR_ARRAY_MUTATE) {
         apush(children, e->right);
         apush(arguments, -1);
     }
@@ -231,8 +249,14 @@ node *source_view_expression(source_projection *p, int index)
         const char *name = i == 0 ? "Value" : "Operand";
         script_type type = child->type;
         int arg = arguments[i];
-        if (arg >= 0 && capability && e->arguments[arg].parameter >= 0 &&
-            e->arguments[arg].parameter < capability->parameter_count) {
+        if (e->kind == SCRIPT_EXPR_SEQUENCE) {
+            name = children[i] == e->left  ? "Sequence"
+                 : children[i] == e->right ? "Start"
+                                           : "End";
+        } else if (
+            arg >= 0 && capability && e->arguments[arg].parameter >= 0 &&
+            e->arguments[arg].parameter < capability->parameter_count
+        ) {
             name = capability->parameters[e->arguments[arg].parameter].name;
             type = capability->parameters[e->arguments[arg].parameter].type;
         } else if (
@@ -320,10 +344,11 @@ node *source_view_expression(source_projection *p, int index)
         : e->kind == SCRIPT_EXPR_CALL && e->awaited
             ? prefixed_name(p, "Await", expression_name(p, e))
             : expression_name(p, e),
-        action || e->kind == SCRIPT_EXPR_CALL ? NODE_DISPLAY_FUNCTION
-        : e->kind == SCRIPT_EXPR_CONSTANT     ? NODE_DISPLAY_LITERAL
-        : e->kind == SCRIPT_EXPR_SYMBOL       ? NODE_DISPLAY_VARIABLE
-                                              : NODE_DISPLAY_PURE,
+        action || e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_SEQUENCE
+            ? NODE_DISPLAY_FUNCTION
+        : e->kind == SCRIPT_EXPR_CONSTANT ? NODE_DISPLAY_LITERAL
+        : e->kind == SCRIPT_EXPR_SYMBOL   ? NODE_DISPLAY_VARIABLE
+                                          : NODE_DISPLAY_PURE,
         inputs,
         outputs
     );

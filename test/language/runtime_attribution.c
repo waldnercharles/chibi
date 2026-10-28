@@ -4,6 +4,7 @@
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "execution/wasm_jit.h"
@@ -271,13 +272,15 @@ TEST_CASE(runtime_attribution_copy_sites)
         /* S2: null, empty, heap text, ordinary arena text, owning empty. */
         const char *texts[] = { NULL, "", "abc" };
         for (int i = 0; i < 3; i++) {
-            const pin_string borrowed = { texts[i] ? texts[i] : "",
-                                          texts[i] ? (uint32_t)strlen(texts[i]) : 0 };
+            const pin_string borrowed = { .bytes = texts[i] ? texts[i] : "",
+                                          .length = texts[i]
+                                                      ? (uint32_t)strlen(texts[i])
+                                                      : 0 };
             pin_value source = { .type = PIN_STR, .text = texts[i] ? &borrowed : NULL };
             copy_begin(enabled);
             REQUIRE(pin_value_copy(&fixture.heap[0], &source) == 0);
-            /* Owning copies materialize a terminator for both empty forms. */
-            REQUIRE(copy_end(1, i < 2 ? 1 : 4, 0, 0));
+            /* Empty text has no backing, so only nonempty text copies bytes. */
+            REQUIRE(copy_end(1, i < 2 ? 0 : 4, 0, 0));
             REQUIRE(pin_value_equal(&source, &fixture.heap[0]));
             pin_value_destroy(&fixture.heap[0]);
         }
@@ -291,7 +294,7 @@ TEST_CASE(runtime_attribution_copy_sites)
         text.text = &(const pin_string){ .bytes = "", .length = (uint32_t)strlen("") };
         copy_begin(enabled);
         REQUIRE(pin_value_snapshot_to_arena(&fixture.output, &result, &text) == 0);
-        REQUIRE(copy_end(1, 1, 0, 0));
+        REQUIRE(copy_end(1, 0, 0, 0));
         REQUIRE(pin_value_equal(&text, &result));
         /* S3: two distinct borrowed C arrays, three scalar elements each. */
         pin_value numbers[] = { scalar, scalar, scalar };
@@ -324,11 +327,12 @@ TEST_CASE(runtime_attribution_copy_sites)
                                    .ptr = &source_array };
         copy_begin(enabled);
         pin_array *cloned = pin_array_clone_to_arena(&fixture.output, &source_array);
-        REQUIRE(copy_end(3, 0, 5, 0));
+        /* A clone packs the three handles as the snapshot below does. */
+        REQUIRE(copy_buffer_end(0, 0, 5, 0, 3 * sizeof(uint64_t)));
         REQUIRE(cloned && pin_array_equal(cloned, &source_array));
         copy_begin(enabled);
         REQUIRE(pin_value_copy_to_arena(&fixture.output, &result, &array_value) == 0);
-        REQUIRE(copy_end(4, 0, 5, 0));
+        REQUIRE(copy_buffer_end(1, 0, 5, 0, 3 * sizeof(uint64_t)));
         REQUIRE(pin_value_equal(&result, &array_value));
         copy_begin(enabled);
         REQUIRE(pin_value_snapshot_to_arena(&fixture.output, &result, &array_value) == 0);
@@ -413,7 +417,8 @@ TEST_CASE(runtime_attribution_copy_sites)
         REQUIRE(!EXECUTION_reference_make_call.value(&fixture.input, arguments, 9, &reference));
         copy_begin(enabled);
         REQUIRE(!EXECUTION_reference_read_call.value(&fixture.output, &reference, 1, &result));
-        REQUIRE(copy_end(1, 8, 12, sizeof(ProbeRecord)));
+        /* The read carries its name in a record layout, not a nominal copy. */
+        REQUIRE(copy_end(1, 8, 0, sizeof(ProbeRecord)));
         ((ProbeRecord *)ecs_component_data(fixture.world[0], owner, component.id))
             ->inner.number = 99;
         REQUIRE(record_survives(&result));
@@ -449,17 +454,19 @@ TEST_CASE(runtime_attribution_copy_sites)
                               .ptr = &envelope };
         copy_begin(enabled);
         REQUIRE(pin_value_snapshot_to_arena(&fixture.output, &result, &record) == 0);
-        REQUIRE(copy_end(4, 4, 14, sizeof(ProbeEnvelope)));
+        /* The union already owns its text, so the snapshot shares its bytes. */
+        REQUIRE(copy_end(4, 0, 14, sizeof(ProbeEnvelope)));
         REQUIRE(pin_value_equal(&record, &result));
-        /* F1: fail before reading the invalid field, retain previous traffic. */
+        /* F1: the record layout is checked before its payload is read, so only
+         * the header and its name move before the failure. */
         BrokenRecord broken = { .text = "ok" };
         record = (pin_value){ .type = PIN_STRUCT,
                               .type_name = "BrokenRecord",
                               .ptr = &broken };
         copy_begin(enabled);
         REQUIRE(pin_value_snapshot_to_arena(&fixture.output, &result, &record) == -1);
-        REQUIRE(copy_end(1, 3, 13, sizeof(BrokenRecord)));
-        REQUIRE(fixture.operations == 22 && fixture.header_sum == (enabled ? 42 : 0));
+        REQUIRE(copy_end(1, 0, 13, 0));
+        REQUIRE(fixture.operations == 22 && fixture.header_sum == (enabled ? 36 : 0));
         arena_free(&fixture.input);
         arena_free(&fixture.output);
     }
@@ -955,6 +962,7 @@ static behavior_function *workload_function[2];
 static behavior_function_context workload_context[WORKLOAD_CALLS];
 static pin_value workload_result[WORKLOAD_CALLS];
 static arena workload_storage;
+static behavior_managed_heap workload_heap;
 static pin_copy_scope workload_copy_scope;
 static behavior_run_scope workload_run_scope;
 static pin_value workload_input_items[] = {
@@ -994,6 +1002,7 @@ static void workload_release_trial()
         workload_result[i] = (pin_value){ 0 };
     }
     arena_free(&workload_storage);
+    behavior_managed_heap_free(&workload_heap);
 }
 
 static void workload_cleanup()
@@ -1415,6 +1424,7 @@ static bool workload_prepare_trial(int managed, int count)
      * and host/result banks are prepared outside both clocks and scopes. */
     if (managed) {
         arena_init(&workload_storage, 64 * 1024);
+        behavior_managed_heap_init(&workload_heap);
     }
     for (int i = 0; i < count; i++) {
         workload_result[i] = workload_input[managed];
@@ -1423,7 +1433,8 @@ static bool workload_prepare_trial(int managed, int count)
             .arguments = &workload_input[managed],
             .argument_count = 1,
             .results = &workload_result[i],
-            .budget = WORKLOAD_BUDGET
+            .budget = WORKLOAD_BUDGET,
+            .managed_heap = managed ? &workload_heap : NULL
         };
         behavior_function_bind_storage(&workload_context[i], &workload_storage);
         REQUIRE(
@@ -1474,8 +1485,8 @@ static bool workload_check_results(int managed, int count)
         const pin_array *array = workload_result[i].ptr;
         REQUIRE(array && array != &workload_input_array);
         REQUIRE(array->count == 3 && array->element_type == PIN_STR && !array->type_name);
-        REQUIRE(arena_contains(&workload_storage, array));
-        REQUIRE(arena_contains(&workload_storage, array->items));
+        /* The heap owns the result's shell and its refcounted payload. */
+        REQUIRE(arena_contains(&workload_heap.storage, array) && array->backing);
         for (int j = 0; j < 3; j++) {
             REQUIRE(
                 pin_array_get(array, j).type == PIN_STR &&
@@ -1485,18 +1496,19 @@ static bool workload_check_results(int managed, int count)
                 pin_text(pin_array_get(array, j)).bytes !=
                 pin_text(workload_input_items[j]).bytes
             );
-            REQUIRE(arena_contains(
-                &workload_storage,
-                pin_text(pin_array_get(array, j)).bytes
-            ));
+            REQUIRE(
+                arena_contains(&workload_heap.storage, (pin_array_get(array, j)).text)
+            );
             REQUIRE(!strcmp(
                 pin_text(pin_array_get(array, j)).bytes,
                 pin_text(workload_input_items[j]).bytes
             ));
         }
     }
-    size_t used, capacity;
+    size_t used, capacity, heap_used;
     arena_usage(&workload_storage, &used, &capacity);
+    arena_usage(&workload_heap.storage, &heap_used, &capacity);
+    used += heap_used;
     REQUIRE(used <= WORKLOAD_OUTPUT_LIMIT);
     REQUIRE(managed ? used > 0 : used == 0);
     return true;
@@ -1510,7 +1522,9 @@ static bool workload_check_copy(int managed, int count, bool enabled)
         REQUIRE(workload_counts_empty(counts));
         return true;
     }
-    REQUIRE(counts.value_header_moves == (uint64_t)count * 4);
+    /* Importing the borrowed argument moves its four headers; the snapshot
+     * and the result each share the imported array with one more. */
+    REQUIRE(counts.value_header_moves == (uint64_t)count * 6);
     REQUIRE(counts.text_bytes == (uint64_t)count * 14);
     REQUIRE(!counts.nominal_bytes && !counts.record_bytes && !counts.value_buffer_bytes);
     return true;

@@ -256,19 +256,6 @@ static bool render(const Environment *environment)
     return render_at(environment, 0);
 }
 
-TEST_CASE(scene_draws_without_a_valid_rhythm_clock)
-{
-    add_box(0xffffffffu);
-    Rhythm rhythm = { 120, .18f };
-    add(COMPONENT_Rhythm.id, &rhythm);
-    add(COMPONENT_Rhythm.id, &rhythm);
-    Environment environment = environment_defaults();
-    REQUIRE(render(&environment));
-    REQUIRE(!render_scene3d_error(scene3d)[0]);
-    REQUIRE(top().colors.r > 0);
-    return true;
-}
-
 /* Points the renders through the scene's camera, as Play frames it. */
 static int look_through_camera()
 {
@@ -4888,7 +4875,6 @@ static void close_app()
 void test_render_scene3d(bool gles)
 {
     open_app(gles);
-    RUN_TEST_CASE(scene_draws_without_a_valid_rhythm_clock);
     RUN_TEST_CASE(cameras_look_along_their_transform3d);
     RUN_TEST_CASE(camera_field_of_view_and_clips_shape_the_projection);
     RUN_TEST_CASE(distant_small_scale_cameras_keep_their_view);

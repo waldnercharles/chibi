@@ -61,8 +61,7 @@ static bool plane(shader_bake_desc *d, shader_error *error)
     if (!finite_values(d->origin, 3) || !finite_values(d->axis_u, 3) ||
         !finite_values(d->axis_v, 3) || !finite_values(d->uv_origin, 2) ||
         !finite_values(d->uv_extent, 2) || !finite_values(d->context.normal, 3) ||
-        !finite_values(d->context.view_direction, 3) || !isfinite(d->context.time) ||
-        !isfinite(d->context.beat_phase) || !isfinite(d->context.beat_pulse)) {
+        !finite_values(d->context.view_direction, 3) || !isfinite(d->context.time)) {
         return fail(error, "Bake plane and sample settings must be finite");
     }
     double uu = dot(d->axis_u, d->axis_u), vv = dot(d->axis_v, d->axis_v);

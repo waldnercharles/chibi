@@ -464,15 +464,18 @@ TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
                    "@test\nImported :: () { assert(marks.Draw() >= 0); }\n"
                    "@test\nLogs :: () { print_string(\"quiet\"); }\n"
                    "@test\nLocal :: () { values: int[] = [1]; values[0] = 2; "
-                   "assert(values[0] == 2); }\n"
+                   "values.append(3); assert(values[0] == 2); }\n"
                    "Helper :: () -> bool { return opaque(); }\n"
                    "@test\nUnknown :: () { assert(opaque()); }\n"
                    "@test\nUnknownHelper :: () { assert(Helper()); }\n"
                    "@test\nUnknownImport :: () { assert(marks.Opaque()); }\n"
                    "Depth :: (n: int) -> int { if (n == 0) { return 0; } "
                    "return Depth(n - 1) + 1; }\n"
-                   "@test\nRecursive :: () { assert(Depth(3) == 3); }\n";
-    REQUIRE(prepare_text(BEHAVIOR_BYTECODE, source, 11));
+                   "@test\nRecursive :: () { assert(Depth(3) == 3); }\n"
+                   "Grow :: (values: ^(int[])) { values^.append(2); }\n"
+                   "@test\nThrough :: () { values: int[] = [1]; Grow(&values); "
+                   "assert(values[0] == 1); }\n";
+    REQUIRE(prepare_text(BEHAVIOR_BYTECODE, source, 12));
     REQUIRE(tests[0].parallel && tests[1].parallel);
     for (int i = 2; i < 6; i++) {
         REQUIRE(!tests[i].parallel);
@@ -482,6 +485,8 @@ TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
         REQUIRE(!tests[i].parallel);
     }
     REQUIRE(tests[10].parallel);
+    /* Appending through a pointer writes storage outside the function. */
+    REQUIRE(!tests[11].parallel);
     return true;
 }
 

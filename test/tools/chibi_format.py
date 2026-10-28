@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('repository_format', ROOT / 'tools/chibi_format.py')
@@ -270,6 +271,272 @@ class Enforcement(Fixture):
                 self.assertEqual(repo.staged(BINARY, repo.inventory(self.root)), 0)
         finally:
             repo.ROOT, repo.FORMAT_INPUTS = old_root, old_inputs
+
+    def staged_write(self):
+        with mock.patch.object(repo, 'ROOT', self.root), mock.patch.object(repo, 'FORMAT_INPUTS', ()), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return repo.staged(BINARY, repo.inventory(self.root), write=True)
+
+    def index_bytes(self):
+        return (self.root / '.git/index').read_bytes()
+
+    def test_staged_write_formats_full_index_without_staging_unrelated_edits(self):
+        sources = [self.source, self.write('compiler/deep/Spaced name.chibi', MESSY),
+                   self.write('tools/.hidden/Line\nbreak.chibi', MESSY)]
+        self.source.write_bytes(MESSY)
+        self.source.chmod(0o755)
+        unrelated = self.write('notes.txt', 'staged notes\n')
+        self.add()
+        unrelated.write_text('unstaged notes\n')
+        (self.root / '.git/index').chmod(0o600)
+        self.assertEqual(self.staged_write(), 0)
+        for source in sources:
+            self.assertEqual(source.read_bytes(), CANONICAL)
+            self.assertEqual(repo.git(self.root, 'show', ':' + source.relative_to(self.root).as_posix()), CANONICAL)
+        self.assertEqual(self.source.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(repo.inventory(self.root)['src/Example.chibi'], '100755')
+        self.assertEqual((self.root / '.git/index').stat().st_mode & 0o777, 0o600)
+        self.assertEqual(unrelated.read_text(), 'unstaged notes\n')
+        self.assertEqual(repo.git(self.root, 'show', ':notes.txt'), b'staged notes\n')
+        index = self.index_bytes()
+        self.assertEqual(self.staged_write(), 0)
+        self.assertEqual(self.index_bytes(), index)
+        self.assertFalse((self.root / '.git/index.lock').exists())
+
+    def test_staged_write_leaves_canonical_partial_file_and_config_alone(self):
+        self.write('.chibi-format', 'indent_width = 4\n')
+        self.add()
+        self.source.write_bytes(MESSY)
+        self.write('.chibi-format', 'indent_width = 2\n')
+        index = self.index_bytes()
+        self.assertEqual(self.staged_write(), 0)
+        self.assertEqual(self.source.read_bytes(), MESSY)
+        self.assertEqual(self.index_bytes(), index)
+        self.assertEqual((self.root / '.chibi-format').read_text(), 'indent_width = 2\n')
+
+    def test_staged_write_rejects_partial_rewrite_before_any_changes(self):
+        self.source.write_bytes(MESSY)
+        other = self.write('z/Partial.chibi', MESSY)
+        self.add()
+        partial = MESSY + b'// unstaged comment\n'
+        other.write_bytes(partial)
+        index = self.index_bytes()
+        with self.assertRaisesRegex(ValueError, 'unstaged changes'):
+            self.staged_write()
+        self.assertEqual(self.source.read_bytes(), MESSY)
+        self.assertEqual(other.read_bytes(), partial)
+        self.assertEqual(self.index_bytes(), index)
+
+    def test_staged_write_uses_staged_config_and_rejects_conflicting_discovery(self):
+        self.source.write_bytes(MESSY)
+        config = self.write('.chibi-format', 'indent_width = 2\nremove_optional_semicolons = true\n')
+        self.add()
+        self.assertEqual(self.staged_write(), 0)
+        self.assertIn(b'\n  return 1\n', self.source.read_bytes())
+        self.source.write_bytes(MESSY)
+        self.add()
+        for name in ('.chibi-format', 'src/.chibi-format'):
+            with self.subTest(name=name):
+                changed = self.write(name, 'use_tabs = true\n')
+                index = self.index_bytes()
+                with self.assertRaisesRegex(ValueError, 'configuration changes'):
+                    self.staged_write()
+                self.assertEqual(self.source.read_bytes(), MESSY)
+                self.assertEqual(self.index_bytes(), index)
+                changed.unlink()
+                config.write_text('indent_width = 2\nremove_optional_semicolons = true\n')
+
+    def test_staged_write_invalid_source_prevents_every_rewrite(self):
+        self.source.write_bytes(MESSY)
+        invalid = self.write('test/Invalid.chibi', 'Broken :: behavior {')
+        self.add()
+        index, before = self.index_bytes(), invalid.read_bytes()
+        self.assertEqual(self.staged_write(), 1)
+        self.assertEqual(self.source.read_bytes(), MESSY)
+        self.assertEqual(invalid.read_bytes(), before)
+        self.assertEqual(self.index_bytes(), index)
+
+    def test_staged_write_preserves_exact_and_generated_sources(self):
+        self.source.write_bytes(MESSY)
+        fixture = self.write('test/Invalid.chibi', 'Old historical syntax {')
+        self.write('test/owner.c', '// migration oracle\n')
+        generated = self.write('generated/Output.chibi', CANONICAL)
+        self.write('generator.py', 'from pathlib import Path\nassert Path("generated/Output.chibi").read_bytes() == ' + repr(CANONICAL) + '\n')
+        self.manifest(exact={'test/Invalid.chibi': {
+            'sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(),
+            'reason': 'frozen migration oracle', 'test': 'test/owner.c'}},
+            generated={'generated/Output.chibi': {'reason': 'generator-owned output', 'check': [sys.executable, 'generator.py']}})
+        self.add()
+        self.assertEqual(self.staged_write(), 0)
+        self.assertEqual(fixture.read_bytes(), b'Old historical syntax {')
+        self.assertEqual(generated.read_bytes(), CANONICAL)
+        self.source.write_bytes(MESSY)
+        generated.write_bytes(MESSY)
+        self.add()
+        index = self.index_bytes()
+        self.assertEqual(self.staged_write(), 1)
+        self.assertEqual(generated.read_bytes(), MESSY)
+        self.assertEqual(self.source.read_bytes(), MESSY)
+        self.assertEqual(self.index_bytes(), index)
+        generated.write_bytes(CANONICAL)
+        fixture.write_text('Changed historical syntax {')
+        self.add()
+        index = self.index_bytes()
+        self.assertEqual(self.staged_write(), 1)
+        self.assertEqual(fixture.read_bytes(), b'Changed historical syntax {')
+        self.assertEqual(self.source.read_bytes(), MESSY)
+        self.assertEqual(self.index_bytes(), index)
+
+    def test_staged_write_refuses_existing_index_lock(self):
+        self.source.write_bytes(MESSY)
+        self.add()
+        lock = self.write('.git/index.lock', 'another Git operation\n')
+        index = self.index_bytes()
+        with self.assertRaises(FileExistsError):
+            self.staged_write()
+        self.assertEqual(lock.read_text(), 'another Git operation\n')
+        self.assertEqual(self.source.read_bytes(), MESSY)
+        self.assertEqual(self.index_bytes(), index)
+
+    def test_staged_write_detects_index_race_before_worktree_writes(self):
+        self.source.write_bytes(MESSY)
+        self.add()
+        original_check = repo.check_tree
+        index = self.index_bytes()
+        def race(*args, **kwargs):
+            result = original_check(*args, **kwargs)
+            # Simulate a writer ignoring Git's lock without corrupting the index.
+            path = self.root / '.git/index'
+            timestamp = path.stat().st_mtime_ns + 1_000_000
+            os.utime(path, ns=(timestamp, timestamp))
+            return result
+        with mock.patch.object(repo, 'check_tree', side_effect=race):
+            with self.assertRaisesRegex(ValueError, 'index changed'):
+                self.staged_write()
+        self.assertEqual(self.source.read_bytes(), MESSY)
+        self.assertEqual(self.index_bytes(), index)
+        self.assertFalse((self.root / '.git/index.lock').exists())
+
+    def test_staged_write_detects_source_and_config_races_before_writes(self):
+        self.source.write_bytes(MESSY)
+        self.write('.chibi-format', 'indent_width = 4\n')
+        self.add()
+        original_run = subprocess.run
+        for name in ('src/Example.chibi', '.chibi-format'):
+            with self.subTest(name=name):
+                path = self.root / name
+                before, index = path.read_bytes(), self.index_bytes()
+                def race(command, *args, **kwargs):
+                    result = original_run(command, *args, **kwargs)
+                    if 'update-index' in command:
+                        path.write_bytes(before + b'// concurrent edit\n')
+                    return result
+                with mock.patch.object(repo.subprocess, 'run', side_effect=race):
+                    with self.assertRaisesRegex(ValueError, 'changed during formatting'):
+                        self.staged_write()
+                self.assertEqual(path.read_bytes(), before + b'// concurrent edit\n')
+                self.assertEqual(self.index_bytes(), index)
+                path.write_bytes(before)
+
+    def test_staged_write_rolls_back_own_replacements_on_late_failure(self):
+        self.source.write_bytes(MESSY)
+        other = self.write('z/Other.chibi', MESSY)
+        self.add()
+        index = self.index_bytes()
+        original_replace = Path.replace
+        def fail(path, target):
+            if target == other:
+                raise OSError('simulated replacement failure')
+            return original_replace(path, target)
+        with mock.patch.object(Path, 'replace', fail):
+            with self.assertRaisesRegex(OSError, 'simulated replacement failure'):
+                self.staged_write()
+        self.assertEqual(self.source.read_bytes(), MESSY)
+        self.assertEqual(other.read_bytes(), MESSY)
+        self.assertEqual(self.index_bytes(), index)
+        self.assertFalse(list(self.root.rglob('.chibi-format-*')))
+        self.assertFalse((self.root / '.git/index.lock').exists())
+
+    def test_staged_write_preserves_edit_racing_with_replacement(self):
+        self.source.write_bytes(MESSY)
+        other = self.write('z/Other.chibi', MESSY)
+        self.add()
+        index = self.index_bytes()
+        original_replace = Path.replace
+        concurrent = MESSY + b'// concurrent edit\n'
+        def race(path, target):
+            result = original_replace(path, target)
+            if target == self.source:
+                self.source.write_bytes(concurrent)
+            return result
+        with mock.patch.object(Path, 'replace', race):
+            with self.assertRaisesRegex(ValueError, 'source changed during formatting'):
+                self.staged_write()
+        self.assertEqual(self.source.read_bytes(), concurrent)
+        self.assertEqual(other.read_bytes(), MESSY)
+        self.assertEqual(self.index_bytes(), index)
+
+    def test_staged_write_rejects_symlinked_worktree_source_parent(self):
+        self.source.write_bytes(MESSY)
+        self.add()
+        index = self.index_bytes()
+        moved = self.root / 'external'
+        self.source.parent.rename(moved)
+        self.source.parent.symlink_to(moved, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'regular parent directories'):
+            self.staged_write()
+        self.assertEqual((moved / self.source.name).read_bytes(), MESSY)
+        self.assertEqual(self.index_bytes(), index)
+
+    def test_staged_write_respects_alternate_index(self):
+        self.source.write_bytes(MESSY)
+        self.add()
+        index = self.index_bytes()
+        alternate = self.write('.git/alternate-index', index)
+        with mock.patch.dict(os.environ, {'GIT_INDEX_FILE': str(alternate)}):
+            self.assertEqual(self.staged_write(), 0)
+            self.assertEqual(repo.git(self.root, 'show', ':src/Example.chibi'), CANONICAL)
+        self.assertEqual(self.source.read_bytes(), CANONICAL)
+        self.assertEqual(self.index_bytes(), index)
+        self.assertFalse((self.root / '.git/alternate-index.lock').exists())
+
+    def test_real_precommit_formats_normal_all_and_only_commits(self):
+        # The isolated repository reuses the real native formatter; no toolchain
+        # install or user hook configuration is needed by this process test.
+        driver = self.write('.git/format-driver.py',
+            'import importlib.util\nfrom pathlib import Path\n'
+            f'spec = importlib.util.spec_from_file_location("formatter", {str(ROOT / "tools/chibi_format.py")!r})\n'
+            'module = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(module)\n'
+            f'module.ROOT = Path({str(self.root)!r})\nmodule.FORMAT_INPUTS = ()\n'
+            f'module.formatter = lambda: Path({str(BINARY)!r})\nraise SystemExit(module.main())\n')
+        self.write('tools/chibi_format.py', driver.read_bytes())
+        hook = self.write('.git/hooks/pre-commit', (ROOT / '.githooks/pre-commit').read_bytes())
+        hook.chmod(0o755)
+        self.source.write_bytes(MESSY)
+        self.add()
+        def commit(*arguments):
+            result = subprocess.run(['git', '-C', str(self.root), '-c', 'core.hooksPath=.git/hooks',
+                                     '-c', 'user.name=Formatter Test', '-c', 'user.email=formatter@example.invalid',
+                                     '-c', 'commit.gpgsign=false',
+                                     'commit', '-q', '-m', 'Format fixture', *arguments], capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+        commit()
+        self.assertEqual(repo.git(self.root, 'show', 'HEAD:src/Example.chibi'), CANONICAL)
+        self.source.write_bytes(MESSY.replace(b'return 1', b'return 2'))
+        commit('-a')
+        self.assertEqual(repo.git(self.root, 'show', 'HEAD:src/Example.chibi'), CANONICAL.replace(b'return 1', b'return 2'))
+        self.write('notes.txt', 'unrelated staged content\n')
+        self.add()
+        self.source.write_bytes(MESSY.replace(b'return 1', b'return 3'))
+        commit('--only', '--', 'src/Example.chibi')
+        self.assertEqual(repo.git(self.root, 'show', 'HEAD:src/Example.chibi'), CANONICAL.replace(b'return 1', b'return 3'))
+        self.assertEqual(repo.git(self.root, 'show', ':notes.txt'), b'unrelated staged content\n')
+        self.assertNotIn(b'notes.txt', repo.git(self.root, 'ls-tree', '--name-only', 'HEAD'))
+        self.assertFalse(list((self.root / '.git').glob('*.lock')))
+
+    def test_opt_in_hook_selects_autoformat_not_read_only_check(self):
+        hook = (ROOT / '.githooks/pre-commit').read_text()
+        self.assertIn('chibi_format.py --staged-write', hook)
 
     def test_hook_install_is_opt_in_and_never_overwrites_custom_hook(self):
         script = ROOT / 'tools/install-hooks.sh'

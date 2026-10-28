@@ -323,9 +323,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
-        );
+        REQUIRE(pin_text(*value).bytes && arena_contains(storage, value->text));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL);

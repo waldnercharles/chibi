@@ -45,7 +45,7 @@ of folder conventions, including any explicitly tracked hidden source.
 
 File adapters reuse the SDK Windows filesystem shim for directory walking,
 canonical paths and atomic replacement; config ascent recognizes drive and UNC
-roots. The portable buffer/options API is unchanged. Local validation described
+roots. The buffer/options API remains platform-independent. Local validation described
 in the PR is Linux-only; Windows execution is not implied by source review.
 
 The SDK's `authoring_format_options_for_file` lets an editor resolve the same
@@ -89,23 +89,37 @@ third-party manifest. A missing prerequisite is an explicit failed check.
 The source-only workflow provisions that exact dependency with checkout, without
 package installation or a full native build.
 
-The opt-in hook checks the **complete staged Chibi snapshot**, including staged
-configs, without changing files or partial staging. If formatter implementation
-itself has unstaged edits, stage/stash them first: checking index sources with a
-different formatter would not establish the commit's policy. Existing C hook
+The opt-in hook formats the **complete staged Chibi snapshot**, including staged
+configs, and re-stages only necessary authored-source replacements. A file that
+needs rewriting but has unstaged changes is refused, never overwritten; already
+canonical partially staged files remain untouched. If formatter implementation
+itself has unstaged edits, stage/stash them first: formatting index sources with a
+different formatter would not establish the commit's policy. The separate
+`python3 tools/chibi_format.py --staged` command remains read-only. Existing C hook
 behavior is retained afterwards. Setup refuses a custom `core.hooksPath` or an
 existing `.git/hooks/pre-commit`; integrate the repository hook manually instead
-of overwriting personal hooks. It never changes global Git settings.
+of overwriting personal hooks. It never changes global Git settings, and configure
+does not install hooks. A clone alone does **not** activate hooks; local hooks can
+also be bypassed.
+Writes are atomic per file, not a crash-atomic multi-file transaction or a lock
+on external editors. Detected races abort and restore only unchanged formatter
+writes. Clean/smudge filters or CRLF conversion that make worktree bytes differ
+from staged bytes are conservatively refused when a rewrite is needed.
 
-Cloud agents must run `make check-format` on the exact candidate before publishing,
-even when using GitHub APIs or Git plumbing that never invoke a pre-commit hook.
-No editor or persistent machine setup is required. A clone alone does **not**
-activate hooks; local hooks can also be bypassed. GitHub's lightweight workflow
-checks every PR and every branch-push source head, coalescing overlapping runs
-for the same SHA. It cannot inspect every intermediate local commit before a
-push, or prevent an unformatted local commit. Required server checks/branch
-protections remain separately configured by repository maintainers; this change
-does not alter those settings or the full-engine workflow's trigger scope.
+## PR and push checks; automatic repair follow-up
+
+The lightweight `Chibi formatting` workflow checks every PR and branch-push
+source head, including cloud/API publication, coalescing overlapping runs for the
+same SHA. It is **read-only**: this checkpoint does not append automatic formatting
+commits to PR branches. Automatic server-side repair is separate follow-up work;
+the opt-in local hook does not fulfill that cloud/API requirement.
+
+No editor integration is needed for the shared command or CI check. Local hooks
+cannot intercept GitHub API publication, a clone does not install hooks, and CI
+checks source heads rather than every intermediate historical/local commit.
+Required server checks and branch protections remain separately configured by
+repository maintainers. This change neither reconfigures them nor expands the
+full-engine workflow to every branch push.
 
 ## Exact fixtures and generated sources
 
@@ -129,7 +143,7 @@ A formatter error in any authored file prevents a repository-wide write. The
 read-only staged check creates an isolated index snapshot; generated entries
 materialize the complete tracked snapshot so generator checks see the same
 committed inputs. Run filesystem/enforcement regressions with
-`python3 tools/test_policy.py tool chibi-format`; syntax/options/maps and semantic
+`python3 tools/test_policy.py tool chibi-format`. Syntax/options/maps and semantic
 minimizer separation remain in the existing `test_language --format` dispatcher.
 
 ## Relevant prior art

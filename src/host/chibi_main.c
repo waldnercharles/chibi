@@ -177,7 +177,7 @@ static int usage(const char *program)
         "       %s build [PROJECT]\n"
         "       %s build --native [-O0|-O2] [-g] [--target TRIPLE]\n"
         "                [--llvm DIR] [ROOT]\n"
-        "       %s check [PROJECT]\n"
+        "       %s check [PROJECT] [--explain-costs [--json]]\n"
         "       %s fmt [--check] [--config FILE] [PATH...]\n"
         "       %s test [ROOT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
@@ -208,6 +208,8 @@ static int usage(const char *program)
         "with the first unsupported form.\n"
         "check parses, resolves and validates the project as build does, but\n"
         "migrates and writes nothing; an older project fails until migrated.\n"
+        "--explain-costs reports inferred allocation, copy and retention\n"
+        "operations; --json writes that report as JSON.\n"
         "test runs each @test function of the packages below ROOT, the\n"
         "working directory without one, and fails when one fails. ROOT holds\n"
         "only package files.\n"
@@ -1266,9 +1268,28 @@ static int format_games(int argc, char **argv)
 static int check_game(int argc, char **argv)
 {
     const char *requested = NULL;
-    int status = project_argument(argc, argv, &requested);
-    if (status >= 0) {
-        return status;
+    bool explain = false, json = false;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            return usage(argv[0]);
+        }
+        if (!strcmp(argv[i], "--explain-costs") && !explain) {
+            explain = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--json") && !json) {
+            json = true;
+            continue;
+        }
+        if (argv[i][0] == '-' || requested) {
+            fprintf(stderr, "Invalid check option; use --help.\n");
+            return 2;
+        }
+        requested = argv[i];
+    }
+    if (json && !explain) {
+        fprintf(stderr, "--json requires --explain-costs; use --help.\n");
+        return 2;
     }
     chibi_project project = { 0 };
     if (!open_project(&project, requested, false)) {
@@ -1276,7 +1297,13 @@ static int check_game(int argc, char **argv)
     }
     char *bin = file_executable_dir();
     char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
-    char *args[] = { compiler, "--project-root", project.root, "--check", NULL };
+    char *args[] = { compiler,
+                     "--project-root",
+                     project.root,
+                     "--check",
+                     explain ? "--explain-costs" : NULL,
+                     json ? "--json" : NULL,
+                     NULL };
     int result = chibi_process_run(args);
     free(compiler);
     free(bin);

@@ -12,6 +12,9 @@ typedef struct
 } authoring_application;
 bool authoring_application_begin(authoring_application *, char *error, size_t size);
 void authoring_application_end(authoring_application *);
+/* Read-only project validation and static cost reporting on stdout. JSON
+ * output contains only the report; neither mode executes game functions. */
+int authoring_project_explain_costs(const char *project, const char *scene, bool json);
 /* Deployed offline compiler command. Uses the explicit shared application
  * capability composition and writes the artifact plus resource manifest. A
  * NULL output checks the project as it is: nothing is migrated or written. */

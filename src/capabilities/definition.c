@@ -42,7 +42,9 @@ static bool port(
     if (!source->name || !*source->name || source->kind < NATIVE_PARAMETER_DATA ||
         source->kind > NATIVE_PARAMETER_EXEC || source->generic_group < 0 ||
         source->storage < PIN_FLOW || source->storage > PIN_ENUM ||
-        source->container < PIN_CONTAINER_SINGLE || source->container > PIN_CONTAINER_MAP ||
+        source->container < PIN_CONTAINER_SINGLE ||
+        source->container > PIN_CONTAINER_VIEW ||
+        (source->container == PIN_CONTAINER_VIEW && source->default_value.ptr) ||
         source->reference_kind < SCRIPT_REFERENCE_NONE ||
         source->reference_kind > SCRIPT_REFERENCE_RELATIONSHIP) {
         return fail(error, size, definition->canonical_name, "Invalid port declaration");
@@ -319,6 +321,8 @@ static bool add_definition(
         .pure = source->pure,
         .variadic = source->variadic,
         .variadic_optional = source->variadic_optional,
+        .language_values = source->language_values,
+        .owned_result = source->owned_result,
         .numeric_aggregate = source->numeric_aggregate,
         .event_sender = source->event_sender
     };

@@ -2,6 +2,7 @@
 #include "backend.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "execution/wasm_jit.h"
@@ -182,6 +183,7 @@ static const request REQUESTS[] = {
 typedef struct
 {
     arena storage;
+    behavior_managed_heap heap;
     behavior_function_context context;
     behavior_function_activation activation;
     pin_value results[2];
@@ -298,6 +300,7 @@ static void clear_call(call *c)
 {
     release_call(c);
     arena_free(&c->storage);
+    behavior_managed_heap_free(&c->heap);
     *c = (call){ 0 };
 }
 static void retire_module()
@@ -493,13 +496,17 @@ static bool make_inputs(const request *r, bool changed)
             switch (a) {
                 case 0: v.u64 = IDS[n]; break;
                 case 1:
-                    descriptor = (pin_string){ producer_names[0][n],
-                                               (uint32_t)strlen(producer_names[0][n]) };
+                    descriptor = (pin_string){
+                        .bytes = producer_names[0][n],
+                        .length = (uint32_t)strlen(producer_names[0][n])
+                    };
                     v.text = &descriptor;
                     break;
                 case 2:
-                    descriptor = (pin_string){ producer_names[1][n],
-                                               (uint32_t)strlen(producer_names[1][n]) };
+                    descriptor = (pin_string){
+                        .bytes = producer_names[1][n],
+                        .length = (uint32_t)strlen(producer_names[1][n])
+                    };
                     v.text = &descriptor;
                     break;
                 case 3: v.i = PARENTS[n]; break;
@@ -510,11 +517,15 @@ static bool make_inputs(const request *r, bool changed)
                 case 8: v.i = VIEWS[n]; break;
             }
             REQUIRE(!pin_value_snapshot_to_arena(&inputs, &array->items[n], &v));
-            if (a == 1 || a == 2) {
+            /* Nonempty text is copied into the inputs; empty text has no
+             * backing. */
+            if ((a == 1 || a == 2) && pin_text(v).length) {
                 REQUIRE(
                     pin_text(array->items[n]).bytes != pin_text(v).bytes &&
-                    arena_contains(&inputs, pin_text(array->items[n]).bytes)
+                    arena_contains(&inputs, array->items[n].text)
                 );
+            } else if (a == 1 || a == 2) {
+                REQUIRE(!array->items[n].text);
             }
         }
         arguments[a] = (pin_value){ .type = types[a],
@@ -534,6 +545,12 @@ static bool make_inputs(const request *r, bool changed)
     return true;
 }
 /* Read-only oracle: invocation may borrow readonly inputs, never change them. */
+/* The inputs own nonempty text; empty text has no backing. */
+static bool input_text(const pin_value *value)
+{
+    return pin_text(*value).length ? arena_contains(&inputs, value->text)
+                                   : !value->text;
+}
 static bool check_inputs(const request *r, bool changed)
 {
     const pin_type types[] = { PIN_HANDLE, PIN_STR, PIN_STR,  PIN_I32, PIN_I32,
@@ -561,10 +578,7 @@ static bool check_inputs(const request *r, bool changed)
                     break;
                 case 1:
                 case 2:
-                    REQUIRE(
-                        pin_text(*item).bytes &&
-                        arena_contains(&inputs, pin_text(*item).bytes)
-                    );
+                    REQUIRE(input_text(item));
                     REQUIRE(!strcmp(
                         pin_text(*item).bytes,
                         a == 2 ? PROTOTYPES[n] : (changed ? CHANGED_NAMES[n] : NAMES[n])
@@ -586,8 +600,7 @@ static bool check_inputs(const request *r, bool changed)
     REQUIRE(arguments[11].type == PIN_BOOL && arguments[11].b == !r->readonly);
     REQUIRE(arguments[12].type == PIN_BOOL && arguments[12].b == !r->readonly);
     REQUIRE(
-        arguments[13].type == PIN_STR && pin_text(arguments[13]).bytes &&
-        arena_contains(&inputs, pin_text(arguments[13]).bytes) &&
+        arguments[13].type == PIN_STR && input_text(&arguments[13]) &&
         !strcmp(pin_text(arguments[13]).bytes, r->filter)
     );
     REQUIRE(arguments[14].type == PIN_I32 && arguments[14].i == r->first);
@@ -597,6 +610,7 @@ static bool check_inputs(const request *r, bool changed)
 static bool execute(call *c, behavior_backend backend, const request *r)
 {
     clear_call(c);
+    behavior_managed_heap_init(&c->heap);
     const behavior_function *f = body();
     memcpy(c->results, f->result_defaults, sizeof c->results);
     behavior_function_prepare_results(f, c->results, &c->storage);
@@ -604,7 +618,8 @@ static bool execute(call *c, behavior_backend backend, const request *r)
                                               .arguments = arguments,
                                               .argument_count = ARGUMENTS,
                                               .results = c->results,
-                                              .budget = 10000 };
+                                              .budget = 10000,
+                                              .managed_heap = &c->heap };
     behavior_function_bind_storage(&c->context, &c->storage);
     REQUIRE(behavior_function_bind(f, &c->context, NULL, 0));
     behavior_function_prepare_host(f, &c->context);
@@ -677,6 +692,8 @@ static bool execute(call *c, behavior_backend backend, const request *r)
     release_call(c);
     return true;
 }
+/* The call's managed heap owns its results; a nonempty array's payload is
+ * its refcounted backing. */
 static bool check(call *c, const request *r, bool changed)
 {
     const pin_value *value = &c->results[0];
@@ -684,20 +701,17 @@ static bool check(call *c, const request *r, bool changed)
     REQUIRE(value->type == PIN_STRUCT && value->container == PIN_CONTAINER_ARRAY);
     REQUIRE(record && pin_record_valid(record));
     REQUIRE(record->id == record_id && record->layout == record_layout);
-    REQUIRE(record->type.field_count == 12 && arena_contains(&c->storage, record));
+    REQUIRE(record->type.field_count == 12 && arena_contains(&c->heap.storage, record));
     REQUIRE(
         value->type_name == record->type.name &&
-        arena_contains(&c->storage, value->type_name)
+        arena_contains(&c->heap.storage, value->type_name)
     );
     REQUIRE(c->results[1].type == PIN_I32 && c->results[1].i == r->shown);
     const pin_array *array = value->ptr;
-    REQUIRE(array && arena_contains(&c->storage, array));
+    REQUIRE(array && arena_contains(&c->heap.storage, array));
     REQUIRE(array->element_type == PIN_STRUCT && pin_record_same(array->record, record));
     REQUIRE(array->type_name == record->type.name && array->count == r->row_count);
-    REQUIRE(
-        !array->count ||
-        arena_contains(&c->storage, array->stride ? array->data : (void *)array->items)
-    );
+    REQUIRE(!array->count || array->backing);
     for (int i = 0; i < array->count; i++) {
         int n = r->rows[i];
         pin_value element = pin_array_get(array, i);
@@ -707,7 +721,7 @@ static bool check(call *c, const request *r, bool changed)
             pin_record_same(row->record, record) &&
             row->type_name == record->type.name
         );
-        REQUIRE(row->ptr && arena_contains(&c->storage, row->ptr));
+        REQUIRE(row->ptr && arena_contains(&c->heap.storage, row->ptr));
         const char *text[] = { KEYS[n],
                                changed ? CHANGED_NAMES[n] : NAMES[n],
                                GLYPHS[n],
@@ -727,7 +741,10 @@ static bool check(call *c, const request *r, bool changed)
             REQUIRE(!pin_read_field(&inputs, row->ptr, f, &member));
             if (field < 5) {
                 REQUIRE(member.type == PIN_STR && pin_text(member).bytes);
-                REQUIRE(arena_contains(&c->storage, pin_text(member).bytes));
+                /* The row holds its own descriptor; a read shares its bytes. */
+                const pin_string *stored = *(const pin_string **)((char *)row->ptr +
+                                                                  f->offset);
+                REQUIRE(*text[field] ? arena_contains(&c->heap.storage, stored) : !stored);
                 REQUIRE(!strcmp(pin_text(member).bytes, text[field]));
             } else if (field < 7) {
                 REQUIRE(member.type == PIN_I32 && member.i == integers[field - 5]);
@@ -740,21 +757,9 @@ static bool check(call *c, const request *r, bool changed)
 }
 static void retire_inputs()
 {
-    /* Poison the actual owned invocation inputs, not only their earlier source. */
-    for (int a = 1; a <= 2; a++) {
-        pin_array *array = arguments[a].ptr;
-        for (int n = 0; array && n < array->count; n++) {
-            char *text = (char *)pin_text(array->items[n]).bytes;
-            memset(text, 'z', strlen(text));
-        }
-    }
-    if (pin_text(arguments[13]).bytes) {
-        memset(
-            (char *)pin_text(arguments[13]).bytes,
-            'z',
-            strlen(pin_text(arguments[13]).bytes)
-        );
-    }
+    /* Text is immutable and shared, so the inputs are freed rather than
+     * poisoned: the results keep their own references. The producer's names
+     * are poisoned, since the inputs copied them. */
     for (int a = 0; a < 2; a++) {
         for (int n = 0; n < ACTORS; n++) {
             if (producer_names[a][n]) {
@@ -775,7 +780,7 @@ TEST_CASE(outliner_projection_matches_all_fields_and_selected_windows)
         pin_value zero = { .type = PIN_HANDLE, .type_name = "ecs.entity" }, text;
         REQUIRE(!entity_decimal(&inputs, &zero, 1, &text));
         REQUIRE(text.type == PIN_STR && !strcmp(pin_text(text).bytes, "0"));
-        REQUIRE(arena_contains(&inputs, pin_text(text).bytes));
+        REQUIRE(arena_contains(&inputs, text.text));
         for (int i = 0; i < 12; i++) {
             REQUIRE(make_inputs(&REQUESTS[i], false));
             REQUIRE(execute(&calls[0], BACKENDS[b], &REQUESTS[i]));

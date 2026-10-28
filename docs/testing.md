@@ -31,9 +31,10 @@ preparations and one default dual-backend preparation of a one-function source,
 with eight calls at budget 100. It checks absent unrequested owners, independent
 snapshots, mutation of the original source, concurrent fixtures, detached text
 after teardown, changed source on re-preparation, and both execution backends.
-Three native adapter cases additionally check selected and dual-backend authored
-execution, ordered failure reporting and continuation, missing tests, and invalid
-worker settings. They add no processes, timing loops, network, rendering or GPU work.
+Native adapter cases additionally check selected and dual-backend authored
+execution, ordered failure reporting and continuation, missing tests, invalid
+worker settings, exact collection selection, custom budgets and replacement-module bodies. They add no
+processes, timing loops, network, rendering or GPU work.
 
 ### Authored emitter regressions
 
@@ -58,6 +59,27 @@ native machine-code execution, ABI binding, detached ownership or C harness
 anti-false-consensus checks. The scalar and compiler-fixture selectors remain
 outer-exclusive because they own an authored pool. Correctness cases are fixed,
 not performance benchmark loops.
+
+### Authored string and formatting regressions
+
+`language-package-core` discovers 174 fixed string behavior rows and sixteen
+formatting fallback rows in `test/core_strings/*.chibi`. It is included in the
+ordinary language group and remains outer-exclusive because the shared fixture
+owns its authored pool.
+
+Each row runs on independently prepared native BYTECODE and SLJIT owners.
+Each stage-one compiler backend compiles the same source closure, and the
+loaded output runs on both target backends through the same discovered test
+identities. Replacement bodies are resolved before invocation; native
+metadata and replacement effects both constrain parallel scheduling.
+Every complete string test keeps its 10,000-instruction bound; the formatting
+rows use that same fixture bound. CMake and Graph embed the same ordered
+sources, including installed SDK consumers. Neither source staging nor bootstrap
+seed changes are needed.
+
+The package README maps every migrated row and documents retained native
+boundaries and independent oracles. Native byte ownership, copy/read counters,
+metadata and binary/hash witnesses stay in C.
 
 ## CI profiles and release validation
 
@@ -284,7 +306,7 @@ merge with `main`.
 ## Feature coverage
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per
-area (2D and 3D physics, tilemaps, UI, particles, audio, save, rhythm,
+area (2D and 3D physics, tilemaps, UI, particles, audio, save,
 materials, input and entities). `test_tools --feature-coverage <project> <chibi_ctl>` compares the engine
 catalog (components, native functions and events) with what the project's
 scripts, prototypes and scenes use, prints each gap, and runs every scene for
@@ -346,8 +368,9 @@ These counts describe coverage and do not record a pass.
   Seven pointer cases cover owner isolation, complete base layouts, location
   identity, native-boundary rejection, malformed aggregate storage, effect
   restrictions and cycle collection.
-- `language-package-core`: seven cases and 386 calls, retaining the existing
-  10,000-instruction per-call budget.
+- `language-package-core`: five native boundary cases and 190 authored rows.
+  Each authored row runs through two native and four stage-one/backend paths
+  with a 10,000-instruction whole-test bound.
 - `language-record-document`: five cases, adding three tiny JSON roundtrips,
   four malformed byte tags and one rejected NUL name.
 - `language-record-prepared`: fourteen cases, including a four-byte wire roundtrip,
@@ -2402,7 +2425,7 @@ ABI check adds no source preparation, callback invocation or child process. Ther
 original source, ten JSON product, ten new direct and six new binary product
 calls. Backend entry counters can include nested calls; this total is not their
 sum. New echo calls permit <=10,000 instructions; the two loop calls permit 100.
-Binary input JSON is <=256 KiB, artifact <=32 KiB, stderr <=4 KiB and successful
+Binary input JSON is <=256 KiB, artifact <=64 KiB, stderr <=4 KiB and successful
 binary stdout empty. Each child retains its <=10-second timeout. There is no
 extra producer process, standalone probe, network, renderer or GPU work. The
 disposable directory and
@@ -2505,7 +2528,7 @@ exact argument forwarding.
 The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
 report, through links and shell-quoted `CC` words, and falls back to a stand-in
 `xcrun`. Another case uses the production Makefile to select recovery for a
-missing host, one that fails the protocol query and one that reports protocol 3,
+missing host, one that fails the protocol query and one that reports protocol 12,
 and authored orchestration for a compatible host, including paths with spaces;
 four outer and four recursive Make calls run marker recipes only. The process route also tests the private protocol query used by this
 transition. Python runs only the production input probes; no Python tests are

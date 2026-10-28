@@ -3,7 +3,7 @@ set(CHIBI_EXECUTION_SOURCES
     jit.c jit_component.c jit_host_call.c jit_integer.c jit_memory.c jit_registers.c
     jit_suspend.c jit_system.c jit_watch.c log.c machine.c module.c module_effects.c opt.c parallel.c
     native.c preparation_budget.c prepared.c prepared_function.c prepared_record.c program.c program_inspection.c program_activation.c
-    program_observers.c program_bindings.c program_commands.c program_locals.c program_storage.c program_preflight.c
+    program_migrate.c program_observers.c program_bindings.c program_commands.c program_locals.c program_storage.c program_preflight.c
     program_tasks.c range_opt.c reads.c request.c runner.c scalar_lowering_plan.c scalarize.c source_debug.c state.c storage.c suspend.c time.c vm.c
     update_jit.c wasm_emit.c wasm_jit.c)
 list(TRANSFORM CHIBI_EXECUTION_SOURCES PREPEND "${CHIBI_SDK_ROOT}/src/execution/")

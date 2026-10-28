@@ -22,6 +22,7 @@ typedef struct
     double min, max;     /* Numeric range; unbounded when equal. */
     bool range_contract; /* Clamp on owning writes; false means slider hint. */
     double range_default; /* NaN replacement, clamped too; zero when unspecified. */
+    const struct type_desc *layout; /* Frozen nested struct layout, when owned. */
 } type_field;
 
 typedef struct type_desc
@@ -30,7 +31,9 @@ typedef struct type_desc
     size_t size;
     const type_field *fields;
     int field_count;
-    const char *alias_of; /* optional underlying nominal type name */
+    const char *alias_of;          /* optional underlying nominal type name */
+    const struct type_desc *alias; /* Frozen alias target, when owned. */
+    const pin_record *carrier; /* Internal owned layout carrier, otherwise NULL. */
 } type_desc;
 
 /* Payload-free presence marker. Its one-byte backing is canonical zero. */
@@ -44,6 +47,12 @@ typedef struct
     void *user;
 } type_resolver;
 const type_desc *type_resolve(type_resolver, const char *name);
+/* Carried layouts take precedence over a potentially newer catalog. */
+const type_desc *type_field_type(const type_field *, type_resolver);
+const type_desc *type_alias_type(const type_desc *, type_resolver);
+/* An alias without fields of its own lays values out as its target does. A
+ * native alias declares its target's fields itself. */
+bool type_alias_layout(const type_desc *);
 
 typedef struct
 {
@@ -66,6 +75,10 @@ uint64_t type_layout_hash(const type_desc *type);
 uint64_t type_layout_hash_explicit(const type_desc *type, const type_desc *const *types, int count);
 /* Every field is inline and contains no managed string or container. */
 bool type_is_plain(const type_desc *type);
+/* Whether a record reaches other values: through a union or pointer field,
+ * its own or a nested record's. Its other fields hold only scalars and text.
+ * A layout that does not resolve may reach anything. */
+bool type_holds_references(const type_desc *type);
 bool type_value_is_finite(const type_desc *type, const void *value);
 /* The field's type as the language spells it: a scalar's language name,
  * otherwise its nominal name. */

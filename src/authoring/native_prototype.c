@@ -10,8 +10,6 @@ typedef union
     Appearance appearance;
     Camera camera;
     VisualTransform transform;
-    VisualMotion motion;
-    Rhythm rhythm;
     MeshParts parts;
     HRC2D hrc;
     ParticleEmitter emitter;
@@ -31,37 +29,7 @@ static bool contains(prototype_component *components, const char *name)
     return false;
 }
 
-static int motion_initial(const prototype *prototype, VisualMotion *motion)
-{
-    *motion = (VisualMotion){ .speed = 1, .reaction_duration = .32f, .reaction_age = .32f };
-    pin_value value;
-    const char *angles[] = { "pitch", "yaw", "roll" };
-    float *rotation[] = { &motion->rotation.x,
-                          &motion->rotation.y,
-                          &motion->rotation.z };
-    if (contains(prototype->components, "VisualTransform")) {
-        for (int i = 0; i < 3; i++) {
-            if (prototype_read_field(NULL, prototype, "VisualTransform", angles[i], &value)) {
-                return -1;
-            }
-            *rotation[i] = value.f;
-        }
-    }
-    if (contains(prototype->components, "Geometry3D")) {
-        if (prototype_read_field(NULL, prototype, "Geometry3D", "elevation", &value)) {
-            return -1;
-        }
-        motion->rest_elevation = value.f;
-    }
-    return 0;
-}
-
-static int initial_row(
-    const prototype *prototype,
-    const ecs_component_desc *desc,
-    native_initial *storage,
-    prototype_default *out
-)
+static void initial_row(const ecs_component_desc *desc, native_initial *storage, prototype_default *out)
 {
     *out = (prototype_default){ .component = desc->id };
     if (!strcmp(desc->name, "Appearance")) {
@@ -80,16 +48,6 @@ static int initial_row(
         storage->transform = (VisualTransform){ .scale = 1 };
         out->data = &storage->transform;
         out->size = sizeof storage->transform;
-    } else if (!strcmp(desc->name, "VisualMotion")) {
-        if (motion_initial(prototype, &storage->motion)) {
-            return -1;
-        }
-        out->data = &storage->motion;
-        out->size = sizeof storage->motion;
-    } else if (!strcmp(desc->name, "Rhythm")) {
-        storage->rhythm = (Rhythm){ .bpm = 120, .pulse_width = .18f };
-        out->data = &storage->rhythm;
-        out->size = sizeof storage->rhythm;
     } else if (!strcmp(desc->name, "MeshParts")) {
         storage->parts = (MeshParts){ .parts = "(array)-\n" };
         out->data = &storage->parts;
@@ -119,7 +77,6 @@ static int initial_row(
         out->data = &storage->spot;
         out->size = sizeof storage->spot;
     }
-    return 0;
 }
 
 int prototype_add_native_component(prototype *prototype, const ecs_component_desc *desc)
@@ -132,9 +89,7 @@ int prototype_add_native_component(prototype *prototype, const ecs_component_des
     }
     native_initial storage;
     prototype_default initial;
-    if (initial_row(prototype, desc, &storage, &initial)) {
-        return -1;
-    }
+    initial_row(desc, &storage, &initial);
     if (!initial.data) {
         return prototype_add_component(prototype, desc);
     }

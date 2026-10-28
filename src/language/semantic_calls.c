@@ -1265,6 +1265,9 @@ bool script_analyzer_array_changer(const script_catalog_capability *function)
 }
 static bool requires_pointer_value(const script_catalog *catalog, script_type type, int depth)
 {
+    if (type.container == PIN_CONTAINER_VIEW) {
+        return !(type.flags & SCRIPT_TYPE_OPTIONAL);
+    }
     if (type.container != PIN_CONTAINER_SINGLE || depth >= SCRIPT_MAX_DEPTH) {
         return false;
     }
@@ -1280,6 +1283,153 @@ static bool requires_pointer_value(const script_catalog *catalog, script_type ty
         }
     }
     return false;
+}
+/* Whether a value can hold a view: itself, or an element, key, field or union
+ * payload. A pointer stops the walk, since comparing one compares identity
+ * and reads nothing. Each named type is walked once: one already seen either
+ * held no view or is still being walked further up. */
+static bool holds_view(const script_catalog *catalog, script_type type, uint64_t **seen)
+{
+    if (type.container == PIN_CONTAINER_VIEW) {
+        return true;
+    }
+    if (type.container != PIN_CONTAINER_SINGLE) {
+        return (type.container == PIN_CONTAINER_MAP &&
+                holds_view(catalog, script_catalog_key_type(catalog, type), seen)) ||
+               holds_view(catalog, script_catalog_element_type(catalog, type), seen);
+    }
+    if (type.storage != PIN_STRUCT && type.storage != PIN_UNION) {
+        return false;
+    }
+    const script_catalog_type *record = script_catalog_type_by_id(catalog, type.nominal);
+    if (!record) {
+        return false;
+    }
+    for (int i = 0; i < acount(*seen); i++) {
+        if ((*seen)[i] == record->id) {
+            return false;
+        }
+    }
+    apush(*seen, record->id);
+    for (int i = 0; i < record->field_count; i++) {
+        if (holds_view(catalog, record->fields[i].type, seen)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < record->variant_count; i++) {
+        const script_catalog_variant *v = &record->variants[i];
+        if (!v->tagged && holds_view(catalog, v->type, seen)) {
+            return true;
+        }
+        for (int j = 0; j < v->field_count; j++) {
+            if (holds_view(catalog, v->fields[j].type, seen)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+static int sequence_expression(
+    analyzer *a,
+    TSNode node,
+    TSNode object,
+    TSNode bounds,
+    script_sequence_operation operation,
+    int receiver
+)
+{
+    script_expression result = { .kind = SCRIPT_EXPR_SEQUENCE,
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .member = operation };
+    result.left = receiver >= 0
+                    ? receiver
+                    : script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+    script_type receiver_type = script_analyzer_expr_type(a, result.left);
+    script_type pointee = receiver_type.storage == PIN_POINTER &&
+                                  receiver_type.container == PIN_CONTAINER_SINGLE
+                            ? script_catalog_pointee_type(a->catalog, receiver_type)
+                            : script_analyzer_bad_type();
+    bool pointer_view = operation == SCRIPT_SEQUENCE_VIEW &&
+                        pointee.container == PIN_CONTAINER_ARRAY;
+    for (int depth = 0;
+         !pointer_view && script_analyzer_is(node, "call_expression") &&
+         depth < SCRIPT_MAX_DEPTH &&
+         script_analyzer_expr_type(a, result.left).storage == PIN_POINTER &&
+         script_analyzer_expr_type(a, result.left).container == PIN_CONTAINER_SINGLE;
+         depth++) {
+        result.left = script_analyzer_dereference(a, object, result.left);
+    }
+    result.type = pointer_view ? pointee : script_analyzer_expr_type(a, result.left);
+    bool array = result.type.container == PIN_CONTAINER_ARRAY ||
+                 result.type.container == PIN_CONTAINER_VIEW;
+    /* A view reads its pointer's array; an owned array is the caller's value. */
+    bool through_view = result.type.container == PIN_CONTAINER_VIEW;
+    bool text = result.type.container == PIN_CONTAINER_SINGLE &&
+                result.type.storage == PIN_STR;
+    if (pointer_view && (receiver_type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        script_analyzer_diagnostic(a, object, "Narrow an optional pointer before creating an array view");
+    }
+    if (operation == SCRIPT_SEQUENCE_VIEW && array && !pointer_view) {
+        script_analyzer_diagnostic(a, object, "Mutable array views require a pointer to an array");
+    }
+    if ((!array && !text) || (result.type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        script_analyzer_diagnostic(a, object, "Sequence operation requires a nonoptional array, view or string");
+        result.type = script_analyzer_bad_type();
+    }
+    if (result.type.flags & SCRIPT_TYPE_LITERAL) {
+        result.type.flags &= ~SCRIPT_TYPE_LITERAL;
+        result.type.parameter = 0;
+    }
+    if (array) {
+        result.type.container = operation == SCRIPT_SEQUENCE_VIEW
+                                  ? PIN_CONTAINER_VIEW
+                                  : PIN_CONTAINER_ARRAY;
+    }
+    result.effects = script_analyzer_expr_effects(a, result.left);
+    if (through_view) {
+        result.effects |= SCRIPT_EFFECT_READ;
+    }
+    if (operation == SCRIPT_SEQUENCE_LENGTH) {
+        result.type = (script_type){ .storage = PIN_I32 };
+    }
+    if (operation == SCRIPT_SEQUENCE_SLICE || operation == SCRIPT_SEQUENCE_VIEW) {
+        script_type integer = { .storage = PIN_I32 };
+        TSNode start = script_analyzer_field(bounds, "start"),
+               end = script_analyzer_field(bounds, "end");
+        result.right = script_analyzer_expression(a, start, integer);
+        int last = script_analyzer_expression(a, end, integer);
+        script_analyzer_require(
+            a,
+            start,
+            integer,
+            script_analyzer_expr_type(a, result.right)
+        );
+        script_analyzer_require(a, end, integer, script_analyzer_expr_type(a, last));
+        apush(result.arguments, ((script_argument){ last, 0, 0, script_analyzer_range(a, end) }));
+        result.effects |= script_analyzer_expr_effects(a, result.right) |
+                          script_analyzer_expr_effects(a, last);
+        result.tag = script_type_tag(result.type);
+        result.type.flags |= SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL;
+    }
+    return script_analyzer_expr_add(a, result);
+}
+int script_analyzer_sequence(analyzer *a, TSNode node, TSNode object, TSNode bounds, script_sequence_operation operation)
+{
+    return sequence_expression(a, node, object, bounds, operation, -1);
+}
+static bool sequence_receiver(analyzer *a, script_type type)
+{
+    for (int depth = 0; depth < SCRIPT_MAX_DEPTH && type.storage == PIN_POINTER &&
+                        type.container == PIN_CONTAINER_SINGLE;
+         depth++) {
+        type = script_catalog_pointee_type(a->catalog, type);
+    }
+    return type.container == PIN_CONTAINER_ARRAY ||
+           type.container == PIN_CONTAINER_VIEW ||
+           (type.container == PIN_CONTAINER_SINGLE && type.storage == PIN_STR);
 }
 static bool migrated_self(const analyzer *a, const script_catalog_capability *capability)
 {
@@ -1320,6 +1470,18 @@ static int event_receiver(analyzer *a, TSNode target, const script_catalog_capab
     script_analyzer_require(a, object, type, script_analyzer_expr_type(a, receiver));
     return receiver;
 }
+/* An argument's own effects; an argument that can hold a view is also read
+ * through that view's pointer. */
+static unsigned argument_effects(const analyzer *a, int expression)
+{
+    unsigned effects = script_analyzer_expr_effects(a, expression);
+    uint64_t *seen = NULL;
+    if (holds_view(a->catalog, script_analyzer_expr_type(a, expression), &seen)) {
+        effects |= SCRIPT_EFFECT_READ;
+    }
+    afree(seen);
+    return effects;
+}
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
     bool emitting = script_analyzer_is(node, "emit_expression");
@@ -1349,12 +1511,83 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         );
     }
     bool imported = !emitting && script_analyzer_import_namespace(a, target, name);
+    int receiver = -1;
+    bool qualified = script_analyzer_callable_symbol(a, name) >= 0 ||
+                     script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION) !=
+                         -1 ||
+                     script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_ACTION) !=
+                         -1;
+    if (script_analyzer_is(target, "member_expression")) {
+        TSNode object = script_analyzer_field(target, "object");
+        int symbol = script_analyzer_is(object, "identifier")
+                       ? script_analyzer_lookup(a, object)
+                       : -1;
+        if (symbol >= 0 &&
+            !(a->out->symbols[symbol].type.flags & SCRIPT_TYPE_NAMESPACE)) {
+            qualified = false;
+        }
+    }
+    if (!emitting && !imported && !qualified &&
+        script_analyzer_is(target, "member_expression")) {
+        TSNode member = script_analyzer_field(target, "member");
+        char *method = script_analyzer_name_copy(a, member);
+        int count = script_analyzer_named_count(arguments);
+        TSNode argument = count ? ts_node_named_child(arguments, 0) : (TSNode){ 0 };
+        bool clone = !strcmp(method, "clone");
+        bool length = !strcmp(method, "length");
+        bool range = script_analyzer_is(argument, "range_expression");
+        bool view = !strcmp(method, "view");
+        bool slice = !strcmp(method, "slice");
+        free(method);
+        bool sequence = clone || length || view || (slice && range);
+        TSNode object = script_analyzer_field(target, "object");
+        if (sequence) {
+            receiver = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+            sequence = sequence_receiver(a, script_analyzer_expr_type(a, receiver));
+        }
+        if (sequence) {
+            bool single = clone || length;
+            if (count != (single ? 0 : 1) || (!single && !range)) {
+                script_analyzer_diagnostic(
+                    a,
+                    arguments,
+                    single ? "This sequence method takes no arguments"
+                           : "Range slicing requires one start..<end range"
+                );
+                free(name);
+                return script_analyzer_expr_add(
+                    a,
+                    (script_expression){ .kind = SCRIPT_EXPR_ERROR,
+                                         .type = script_analyzer_bad_type(),
+                                         .range = script_analyzer_range(a, node),
+                                         .left = -1,
+                                         .right = -1,
+                                         .symbol = -1 }
+                );
+            }
+            free(name);
+            return sequence_expression(
+                a,
+                node,
+                script_analyzer_field(target, "object"),
+                argument,
+                length  ? SCRIPT_SEQUENCE_LENGTH
+                : clone ? SCRIPT_SEQUENCE_CLONE
+                : view  ? SCRIPT_SEQUENCE_VIEW
+                        : SCRIPT_SEQUENCE_SLICE,
+                receiver
+            );
+        }
+    }
     int symbol = emitting ? -1
                : imported ? script_analyzer_package_function(a, target, name)
                           : script_analyzer_callable_symbol(a, name);
     const script_catalog_capability *capability = sender;
     int function_index = symbol >= 0 ? a->out->symbols[symbol].function : -1;
-    int receiver = sender ? event_receiver(a, target, sender) : -1, entry_index = -1;
+    int entry_index = -1;
+    if (sender) {
+        receiver = event_receiver(a, target, sender);
+    }
     int *resolved_arguments = NULL;
     int specialized = emitting
                         ? -1
@@ -1433,7 +1666,9 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 free(entry);
             }
             if (!capability && function_index < 0) {
-                receiver = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+                if (receiver < 0) {
+                    receiver = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+                }
                 for (int depth = 0;
                      depth < SCRIPT_MAX_DEPTH &&
                      script_analyzer_expr_type(a, receiver).storage == PIN_POINTER &&
@@ -1468,15 +1703,10 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 free(method);
             }
             if (!capability && function_index < 0 &&
-                script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_ARRAY) {
+                (script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_ARRAY ||
+                 script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_VIEW)) {
                 TSNode member = script_analyzer_field(target, "member");
                 capability = script_analyzer_array_method(a, member);
-                if (capability && script_analyzer_array_changer(capability) &&
-                    !ts_node_eq(a->changing, node)) {
-                    char *method = script_analyzer_name_copy(a, member);
-                    script_analyzer_diagnostic(a, target, "%s changes the array; call it as a statement on a name", method);
-                    free(method);
-                }
             }
         }
         /* Numeric type names always convert; other types yield to a
@@ -1573,6 +1803,12 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     if (migrated_self(a, capability)) {
         result.effects &= ~(unsigned)SCRIPT_EFFECT_INVOCATION_READ;
     }
+    /* A language-value native reads only its arguments: owned ones are the
+     * caller's values, and an argument that holds a view adds its own read
+     * below. */
+    if (capability && capability->language_values) {
+        result.effects &= ~(unsigned)SCRIPT_EFFECT_READ;
+    }
     if (capability && a->out->kind == SCRIPT_PROGRAM_LIBRARY &&
         (capability->id == script_catalog_id("capability", "Self") ||
          (capability->component && capability->component_entity < 0))) {
@@ -1590,6 +1826,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         );
         seen[0] = true;
         ordinal = 1;
+        result.effects |= argument_effects(a, receiver);
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
         TSNode argument = ts_node_named_child(arguments, i);
@@ -1643,6 +1880,33 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                          ? capability->parameters[parameter].type
                          : a->out->symbols[function->parameters[parameter]].type
                      : (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
+        /* A prior concrete array argument binds its generic element before
+         * analyzing later literals, including receiver.append({...}). */
+        if (capability && (type.flags & SCRIPT_TYPE_UNTYPED) && type.parameter) {
+            for (int j = 0; j < acount(result.arguments); j++) {
+                const script_argument *bound = &result.arguments[j];
+                if (bound->parameter < 0 || bound->parameter >= parameter_count ||
+                    capability->parameters[bound->parameter].type.parameter !=
+                        type.parameter) {
+                    continue;
+                }
+                script_type actual = script_analyzer_expr_type(a, bound->value);
+                if (actual.container != PIN_CONTAINER_ARRAY &&
+                    actual.container != PIN_CONTAINER_VIEW) {
+                    continue;
+                }
+                /* The parameter, not the argument, says whether it is a
+                 * reference: `ref xs` binds the element, not a ref element. */
+                unsigned reference = type.flags & SCRIPT_TYPE_REFERENCE;
+                if (type.container == PIN_CONTAINER_SINGLE) {
+                    type = script_catalog_element_type(a->catalog, actual);
+                } else if (type.container == PIN_CONTAINER_ARRAY) {
+                    type = actual;
+                }
+                type.flags = (type.flags & ~SCRIPT_TYPE_REFERENCE) | reference;
+                break;
+            }
+        }
         if (capability && capability->component_access == SCRIPT_COMPONENT_ACCESS_WRITE &&
             type.storage == PIN_STRUCT && !type.nominal) {
             const script_catalog_type *component = component_argument(a, capability, &result);
@@ -1727,6 +1991,11 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             }
             seen[parameter] = true;
             script_type actual = script_analyzer_expr_type(a, expression_index);
+            if (capability && (type.flags & SCRIPT_TYPE_UNTYPED) &&
+                type.container == PIN_CONTAINER_ARRAY &&
+                actual.container == PIN_CONTAINER_VIEW) {
+                type.container = PIN_CONTAINER_VIEW;
+            }
             if (requires_ref && actual.storage == PIN_POINTER &&
                 a->out->expressions[expression_index].kind == SCRIPT_EXPR_SYMBOL) {
                 int referenced = a->out->expressions[expression_index].symbol;
@@ -1755,7 +2024,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                     : 0,
                                 script_analyzer_range(a, argument) })
         );
-        result.effects |= script_analyzer_expr_effects(a, expression_index);
+        result.effects |= argument_effects(a, expression_index);
         function = function_index >= 0 ? &a->out->functions[function_index] : NULL;
     }
     for (int i = 0; i < parameter_count; i++) {
@@ -1820,7 +2089,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         }
         if (!seen[i] && capability && capability->parameters[i].has_default) {
             pin_value value = { 0 };
-            if (pin_value_snapshot_to_arena(
+            if (pin_value_capture_to_arena(
                     &a->out->constants,
                     &value,
                     &capability->parameters[i].default_value
@@ -1870,7 +2139,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             script_type element = script_catalog_element_type(a->catalog, array);
             if (array.container == PIN_CONTAINER_ARRAY &&
                 requires_pointer_value(a->catalog, element, 0)) {
-                script_analyzer_diagnostic(a, node, "Resizing this array requires an explicit non-null element value");
+                script_analyzer_diagnostic(a, node, "Resizing this array requires an explicit initialized element value");
             }
         }
     }
@@ -2036,6 +2305,43 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         apush(result.results, type);
     }
     result.result_count = acount(result.results);
+    if (receiver >= 0 && capability && script_analyzer_array_changer(capability)) {
+        /* The change is the call's whole effect; its value means nothing. */
+        if (!ts_node_eq(a->changing, node)) {
+            char *method = script_analyzer_name_copy(a, script_analyzer_field(target, "member"));
+            script_analyzer_diagnostic(a, target, "%s changes the array; call it as a statement on a name", method);
+            free(method);
+        }
+        if (!a->out->expressions[receiver].writable) {
+            script_analyzer_diagnostic(a, target, "Array mutation requires a writable receiver");
+        }
+        static const char *const methods[] = {
+            "append",  "add_unique",   "extend",      "set_array_elem",
+            "insert",  "remove_index", "remove_item", "clear",
+            "reverse", "swap",         "resize"
+        };
+        for (size_t i = 0; i < sizeof methods / sizeof *methods; i++) {
+            if (script_name_matches(capability->name, methods[i])) {
+                result.member = i + 1;
+                break;
+            }
+        }
+        if (script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_VIEW &&
+            result.member != 4 && result.member != 9 && result.member != 10) {
+            script_analyzer_diagnostic(a, target, "A fixed-position view cannot change its length");
+        }
+        result.kind = SCRIPT_EXPR_ARRAY_MUTATE;
+        result.type = script_analyzer_boolean_type();
+        afree(result.results);
+        result.results = NULL;
+        apush(result.results, result.type);
+        result.result_count = 1;
+        /* Changing a local array changes only the caller's value. */
+        if (script_analyzer_expr_type(a, receiver).container == PIN_CONTAINER_VIEW ||
+            script_analyzer_writes_external(a->out, receiver)) {
+            result.effects |= SCRIPT_EFFECT_WRITE;
+        }
+    }
     result.writable = (result.type.flags & SCRIPT_TYPE_REFERENCE) != 0;
     if (symbol >= 0) {
         script_analyzer_use(a, target, symbol, SCRIPT_CALL, result.capability);

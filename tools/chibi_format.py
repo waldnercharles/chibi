@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Check/format every tracked .chibi using the shared native formatter."""
 import argparse
+import contextlib
 import hashlib
 import importlib.util
 import json
 import os
+import stat
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
@@ -112,7 +114,7 @@ def generated_checks(root, entries, generated):
     return errors
 
 
-def check_tree(root, binary, entries, write=False):
+def check_tree(root, binary, entries, write=False, report=True):
     paths = sorted(path for path in entries if path.endswith('.chibi'))
     manifest = json.loads((root / MANIFEST).read_text())
     validate_manifest(manifest, paths)
@@ -176,14 +178,15 @@ def check_tree(root, binary, entries, write=False):
                         temporary.unlink(missing_ok=True)
     for message in errors:
         print('format: ' + message, file=sys.stderr)
-    for name in changed:
-        print(('formatted ' if write and not errors else 'not canonical: ') + name)
-    print(f'Checked {len(paths)} tracked .chibi files: {exact} exact-byte fixtures, '
-          f'{produced} generated, {len(changed)} formatting differences.')
+    if report:
+        for name in changed:
+            print(('formatted ' if write and not errors else 'not canonical: ') + name)
+        print(f'Checked {len(paths)} tracked .chibi files: {exact} exact-byte fixtures, '
+              f'{produced} generated, {len(changed)} formatting differences.')
     return 1 if errors or (changed and not write) else 0
 
 
-def staged(binary, entries):
+def staged_inputs(binary, entries):
     # The native formatter and orchestration must themselves be the staged
     # versions. Do not silently test index source using unstaged formatter code.
     checked_inputs = set(FORMAT_INPUTS)
@@ -202,6 +205,154 @@ def staged(binary, entries):
     for name in sorted(checked_inputs):
         if name not in entries or git(ROOT, 'show', ':' + name) != (ROOT / name).read_bytes():
             raise ValueError(f'{name}: stage/stash formatter changes before checking the index')
+
+
+def file_state(path):
+    """Identity and bytes, not Git's potentially stale stat cache."""
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError(f'{path}: staged formatting requires regular files')
+    identity = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+                             info.st_mtime_ns, info.st_ctime_ns)
+    data = path.read_bytes()
+    after = path.lstat()
+    if identity(before) != identity(after):
+        raise ValueError(f'{path}: changed while reading')
+    return identity(before), data
+
+
+def worktree_state(name):
+    path = ROOT / name
+    for parent in path.parents:
+        if parent == ROOT:
+            break
+        if parent.is_symlink() or not parent.is_dir():
+            raise ValueError(f'{name}: staged formatting requires regular parent directories')
+    return file_state(path)
+
+
+@contextlib.contextmanager
+def locked_index():
+    # Honors linked worktrees and GIT_INDEX_FILE (including git commit -a/-o).
+    path = Path(os.fsdecode(git(ROOT, 'rev-parse', '--git-path', 'index')).rstrip('\n'))
+    if not path.is_absolute():
+        path = ROOT / path
+    lock = path.with_name(path.name + '.lock')
+    descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    owner = os.fstat(descriptor)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            original = file_state(path)
+            if original is not None:
+                lock.chmod(stat.S_IMODE(original[0][2]))
+            yield path, lock, stream, original
+    finally:
+        try:
+            current = lock.lstat()
+            if (current.st_dev, current.st_ino) == (owner.st_dev, owner.st_ino):
+                lock.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def write_staged(snapshot, entries, originals, transaction):
+    outputs = {name: (before, (snapshot / name).read_bytes())
+               for name, before in originals.items() if (snapshot / name).read_bytes() != before}
+    index, lock, stream, original_index = transaction
+    if file_state(index) != original_index:
+        raise ValueError('index changed during formatting; retry')
+    if not outputs:
+        return []
+    states = {}
+    for name, (before, _) in outputs.items():
+        states[name] = worktree_state(name)
+        if states[name] is None or states[name][1] != before:
+            raise ValueError(f'{name}: needs formatting but has unstaged changes; stage or stash them')
+        # Refuse even an untracked/removed config that disagrees with the staged
+        # discovery path. Never format the worktree using an unstaged policy.
+        for parent in PurePosixPath(name).parents:
+            config = str(parent / '.chibi-format')
+            if config in states:
+                continue
+            states[config] = worktree_state(config)
+            expected = (snapshot / config).read_bytes() if config in entries else None
+            actual = states[config][1] if states[config] is not None else None
+            if actual != expected:
+                raise ValueError(f'{config}: stage or stash configuration changes before formatting the index')
+
+    def unchanged():
+        if file_state(index) != original_index:
+            raise ValueError('index changed during formatting; retry')
+        owner, current = os.fstat(stream.fileno()), lock.lstat()
+        if (current.st_dev, current.st_ino) != (owner.st_dev, owner.st_ino):
+            raise ValueError('index lock changed during formatting; retry')
+        for name, state in states.items():
+            if worktree_state(name) != state:
+                raise ValueError(f'{name}: source or config changed during formatting; retry')
+
+    # Prepare every blob, temporary source and replacement index before touching
+    # the live worktree. update-index targets a private copy, never git add.
+    temporary_sources = {}
+    replaced = []
+    temporary_index = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=index.parent, prefix='chibi-format-index-', delete=False) as temporary:
+            temporary_index = Path(temporary.name)
+            temporary.write(original_index[1])
+        updates = bytearray()
+        for name, (_, after) in outputs.items():
+            sha = subprocess.check_output(['git', '-C', str(ROOT), 'hash-object', '-w', '--stdin'], input=after).strip()
+            updates.extend(entries[name].encode() + b' ' + sha + b'\t' + os.fsencode(name) + b'\0')
+            path = ROOT / name
+            with tempfile.NamedTemporaryFile(dir=path.parent, prefix='.chibi-format-', delete=False) as temporary:
+                temporary_sources[name] = Path(temporary.name)
+                temporary.write(after)
+            temporary_sources[name].chmod(stat.S_IMODE(states[name][0][2]))
+        environment = dict(os.environ, GIT_INDEX_FILE=str(temporary_index))
+        subprocess.run(['git', '-C', str(ROOT), 'update-index', '-z', '--index-info'],
+                       input=updates, env=environment, check=True)
+        stream.write(temporary_index.read_bytes())
+        stream.flush()
+        os.fsync(stream.fileno())
+        unchanged()
+        for name in outputs:
+            unchanged()
+            temporary_sources[name].replace(ROOT / name)
+            replaced.append(name)
+            state = worktree_state(name)
+            if state is None or state[1] != outputs[name][1]:
+                raise ValueError(f'{name}: source changed during formatting; retry')
+            states[name] = state
+        unchanged()
+        # Closing first permits the same atomic rename on Windows.
+        stream.close()
+        lock.replace(index)
+    except BaseException:
+        # Do not undo somebody else's concurrent edit. A detected race/error
+        # leaves the original index intact; restore only our unchanged writes.
+        for name in reversed(replaced):
+            try:
+                if worktree_state(name) == states[name]:
+                    path = temporary_sources[name]
+                    path.write_bytes(outputs[name][0])
+                    path.chmod(stat.S_IMODE(states[name][0][2]))
+                    path.replace(ROOT / name)
+            except (OSError, ValueError):
+                pass  # A concurrent deletion/replacement must not be overwritten.
+        raise
+    finally:
+        for path in temporary_sources.values():
+            path.unlink(missing_ok=True)
+        if temporary_index is not None:
+            temporary_index.unlink(missing_ok=True)
+    return list(outputs)
+
+
+def staged_snapshot(binary, entries, transaction=None):
+    staged_inputs(binary, entries)
     with tempfile.TemporaryDirectory(prefix='chibi-format-index-') as directory:
         snapshot = Path(directory)
         (snapshot / '.git').write_text('formatter snapshot boundary\n')
@@ -215,7 +366,22 @@ def staged(binary, entries):
                 raise ValueError(f'{name}: staged formatter snapshot needs regular files')
             target.write_bytes(git(ROOT, 'show', ':' + name))
             target.chmod(0o755 if entries[name] == '100755' else 0o644)
-        return check_tree(snapshot, binary, entries)
+        originals = {name: (snapshot / name).read_bytes() for name in entries if name.endswith('.chibi')}
+        result = check_tree(snapshot, binary, entries, write=transaction is not None, report=transaction is None)
+        if transaction is not None and not result:
+            changed = write_staged(snapshot, entries, originals, transaction)
+            for name in changed:
+                print('formatted and staged ' + name)
+            print(f'Checked {len(originals)} tracked staged .chibi files; formatted {len(changed)}.')
+        return result
+
+
+def staged(binary, entries, write=False):
+    if not write:
+        return staged_snapshot(binary, entries)
+    with locked_index() as transaction:
+        # The inventory supplied by the caller may predate lock acquisition.
+        return staged_snapshot(binary, inventory(ROOT), transaction)
 
 
 def main():
@@ -224,11 +390,12 @@ def main():
     mode.add_argument('--check', action='store_true', help='read-only full working-tree check (default)')
     mode.add_argument('--write', action='store_true', help='format authored files, never generated or exact-byte fixtures')
     mode.add_argument('--staged', action='store_true', help='read-only full index check; never re-stage or overwrite files')
+    mode.add_argument('--staged-write', action='store_true', help='format and re-stage authored index files only when worktree/config changes are safe')
     args = parser.parse_args()
     try:
         entries = inventory(ROOT)
         binary = formatter()
-        return staged(binary, entries) if args.staged else check_tree(ROOT, binary, entries, write=args.write)
+        return staged(binary, entries, write=args.staged_write) if args.staged or args.staged_write else check_tree(ROOT, binary, entries, write=args.write)
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
         print(f'format: {error}', file=sys.stderr)
         return 1

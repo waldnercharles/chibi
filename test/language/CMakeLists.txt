@@ -30,6 +30,30 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_CORE_STRINGS_BYTES "${CHIBI_CORE_STRI
 configure_file(package_core_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/package_core_source.h" @ONLY)
 
+# Core string regression sources use the same discovery ordering as Graph.
+set(test_root "${CHIBI_LANGUAGE_TEST_ROOT}/test/core_strings")
+file(GLOB test_sources LIST_DIRECTORIES false CONFIGURE_DEPENDS "${test_root}/*.chibi")
+list(FILTER test_sources INCLUDE REGEX "\\.chibi$")
+if(NOT test_sources)
+    message(FATAL_ERROR "The authored core strings regression package is empty")
+endif()
+set(CHIBI_CORE_STRINGS_TEST_SOURCES "")
+set(CHIBI_CORE_STRINGS_TEST_INPUTS "")
+set(test_index 0)
+foreach(source IN LISTS test_sources)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
+    file(READ "${source}" source_hex HEX)
+    string(REGEX REPLACE "(..)" "0x\\1," source_bytes "${source_hex}")
+    get_filename_component(name "${source}" NAME)
+    string(APPEND CHIBI_CORE_STRINGS_TEST_SOURCES
+        "static const char CORE_STRINGS_TEST_SOURCE_${test_index}[] = { ${source_bytes} 0 };\n")
+    string(APPEND CHIBI_CORE_STRINGS_TEST_INPUTS
+        "    PACKAGE_COMPILER_SOURCE(\"core_strings/${name}\", CORE_STRINGS_TEST_SOURCE_${test_index}), \\\n")
+    math(EXPR test_index "${test_index} + 1")
+endforeach()
+configure_file(core_strings_tests_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/core_strings_tests_source.h" @ONLY)
+
 # The documentation site's Markdown renderer is authored package source too.
 set(docs_markdown_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/docs/markdown/Markdown.chibi")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${docs_markdown_source}")

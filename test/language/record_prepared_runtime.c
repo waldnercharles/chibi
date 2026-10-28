@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Fourteen fixed prepared cases. The largest validation fixture has 128 fields
+/* Sixteen fixed prepared cases. The largest validation fixture has 128 fields
  * and 256 shared headers, and the type lookup fixtures up to 512 types and 512
  * headers. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
@@ -36,6 +36,9 @@ static behavior_function_context context;
 static behavior_function_activation activation;
 static behavior_run_scope runs;
 static arena storage, escaped;
+/* Owns the collections runs return. A snapshot shares them rather than
+ * copying, so the heap lives as long as the escaped snapshots. */
+static behavior_managed_heap heap;
 static pin_value result, saved;
 static unsigned char *image, *input;
 static size_t image_size;
@@ -86,6 +89,7 @@ static void cleanup()
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     arena_free(&escaped);
+    behavior_managed_heap_free(&heap);
     free(image);
     free(input);
     free(writer.records);
@@ -174,12 +178,16 @@ static bool run(behavior_backend backend, const pin_value *args, int count)
             record = shape;
         }
     }
+    if (!heap.owner) {
+        behavior_managed_heap_init(&heap);
+    }
     result = function->result_defaults[0];
     behavior_function_prepare_results(function, &result, &storage);
     context = (behavior_function_context){ .activation = &activation,
                                            .arguments = args,
                                            .argument_count = count,
                                            .results = &result,
+                                           .managed_heap = &heap,
                                            .budget = 10000 };
     behavior_function_bind_storage(&context, &storage);
     REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -273,6 +281,7 @@ TEST_CASE(record_prepared_scalar_owners)
         REQUIRE(pin_record_valid(saved.record));
         REQUIRE(!strcmp(pin_text(member(&saved, 1)).bytes, "prepared-owner"));
         arena_free(&escaped);
+        behavior_managed_heap_free(&heap);
         saved = (pin_value){ 0 };
     }
     return true;
@@ -297,11 +306,17 @@ TEST_CASE(record_prepared_array_owners)
         for (int i = 0; i < 4; i++) {
             args[0].i = counts[i];
             REQUIRE(run(backends[b], args, 2));
-            REQUIRE(result.record && arena_contains(&storage, result.record));
+            /* A returned array is a managed value, so the call's heap owns
+             * its header. */
+            REQUIRE(
+                result.record && (arena_contains(&storage, result.record) ||
+                                  arena_contains(&heap.storage, result.record))
+            );
             REQUIRE(result.container == PIN_CONTAINER_ARRAY);
             const pin_array *a = result.ptr;
             if (counts[i] < 0) {
-                REQUIRE(!a);
+                /* Arrays are values: an absent one reads as empty. */
+                REQUIRE(!a || !a->count);
                 REQUIRE(!pin_value_snapshot_to_arena(&escaped, &null_copy, &result));
                 continue;
             }
@@ -316,9 +331,11 @@ TEST_CASE(record_prepared_array_owners)
         finish_call();
         execution_module_free(module);
         module = NULL;
-        REQUIRE(null_copy.record && !null_copy.ptr && pin_record_valid(null_copy.record));
+        REQUIRE(null_copy.record && pin_record_valid(null_copy.record));
+        REQUIRE(!null_copy.ptr || !((pin_array *)null_copy.ptr)->count);
         REQUIRE(pin_record_valid(saved.record) && ((pin_array *)saved.ptr)->count == 3);
         arena_free(&escaped);
+        behavior_managed_heap_free(&heap);
         saved = (pin_value){ 0 };
     }
     return true;
@@ -458,9 +475,16 @@ enum
     NAMED_TYPES = 256,
     NAMED_HEADERS = 256
 };
-/* A prepared image of a module requiring `types` one-field records, whose
- * `headers` values all have the last one's type. */
-static bool named_headers_image(int types, int headers)
+/* Which of a named type table's indexes its types are listed against. */
+enum
+{
+    NAMES_REVERSED = 1,
+    IDS_REVERSED = 2
+};
+/* A prepared image of a module requiring `types` one-field records, listed in
+ * name and id order except where `reversed` says, whose `headers` values all
+ * have the last one's type. */
+static bool named_headers_image(int types, int headers, unsigned reversed)
 {
     static const type_field shape[] = { { .name = "value", .type = PIN_I32 } };
     plan = execution_module_plan_new();
@@ -469,8 +493,10 @@ static bool named_headers_image(int types, int headers)
     const pin_record *record = NULL;
     for (int i = 0; i < types; i++) {
         char name[16];
-        snprintf(name, sizeof name, "Rows.T%04d", i);
-        record = pin_record_create(&producer, name, 100 + i, shape, 1);
+        int named = reversed & NAMES_REVERSED ? types - 1 - i : i;
+        int id = reversed & IDS_REVERSED ? types - 1 - i : i;
+        snprintf(name, sizeof name, "Rows.T%04d", named);
+        record = pin_record_create(&producer, name, 100 + id, shape, 1);
         REQUIRE(record);
         apush(
             plan->types,
@@ -537,9 +563,9 @@ static bool admits_layout_work(size_t layout_work, bool *admitted)
     return true;
 }
 /* The least layout work that decodes the image of `headers` named headers. */
-static bool least_layout_work(int types, int headers, size_t *least)
+static bool least_layout_work(int types, int headers, unsigned reversed, size_t *least)
 {
-    REQUIRE(named_headers_image(types, headers));
+    REQUIRE(named_headers_image(types, headers, reversed));
     size_t low = 1, high = EXECUTION_WIRE_MAX_BYTES;
     bool admitted;
     REQUIRE(admits_layout_work(high, &admitted) && admitted);
@@ -563,7 +589,7 @@ static bool header_layout_work(int types, int headers, size_t *each)
 {
     size_t least[2];
     for (int i = 0; i < 2; i++) {
-        REQUIRE(least_layout_work(types, headers << i, &least[i]));
+        REQUIRE(least_layout_work(types, headers << i, 0, &least[i]));
     }
     REQUIRE(least[1] > least[0]);
     *each = (least[1] - least[0]) / (size_t)headers;
@@ -582,6 +608,33 @@ TEST_CASE(record_prepared_finds_header_types_by_name)
     size_t name = strlen("Rows.T0000") + 2;
     REQUIRE(each < NAMED_TYPES * name / 4);
     REQUIRE(wider >= each + name);
+    return true;
+}
+/* Each type is checked for a repeated name or id by two searches of the
+ * types before it, not by a comparison with each. Comparing with each charges
+ * about NAMED_TYPES^2 / 2 names; half of that is the bound. */
+TEST_CASE(record_prepared_finds_repeated_types_by_search)
+{
+    size_t least;
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, 0, &least));
+    size_t name = strlen("Rows.T0000") + 1;
+    REQUIRE(least < NAMED_TYPES * (NAMED_TYPES - 1) / 2 * name / 2);
+    return true;
+}
+/* Making room for a type in the name and id indexes moves the indexes after
+ * its position, and the moves are charged. A table listed in reverse order of
+ * an index moves NAMED_TYPES * (NAMED_TYPES - 1) / 2 indexes in it; one in
+ * order moves none. Each index is charged its own moves. */
+TEST_CASE(record_prepared_charges_type_index_moves)
+{
+    size_t forward, names, ids, both;
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, 0, &forward));
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, NAMES_REVERSED, &names));
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, IDS_REVERSED, &ids));
+    REQUIRE(least_layout_work(NAMED_TYPES, 1, NAMES_REVERSED | IDS_REVERSED, &both));
+    size_t moves = NAMED_TYPES * (NAMED_TYPES - 1) / 2 * sizeof(int);
+    REQUIRE(names >= forward + moves && ids >= forward + moves);
+    REQUIRE(both >= forward + 2 * moves);
     return true;
 }
 /* Exercise the decoded verifier directly: ordinary builder ownership also
@@ -632,7 +685,7 @@ TEST_CASE(record_prepared_proof_keeps_each_header_check)
         } else if (mode == 1) {
             later->type = PIN_I32;
         } else if (mode == 2) {
-            later->container = (pin_container)(PIN_CONTAINER_MAP + 1);
+            later->container = (pin_container)(PIN_CONTAINER_VIEW + 1);
         } else {
             later->type_name = "Rows.Other";
         }
@@ -1407,6 +1460,8 @@ void test_language_record_prepared_runtime()
     RUN_TEST_CASE(record_prepared_array_owners);
     RUN_TEST_CASE(record_prepared_shared_headers_fit_default_work);
     RUN_TEST_CASE(record_prepared_finds_header_types_by_name);
+    RUN_TEST_CASE(record_prepared_finds_repeated_types_by_search);
+    RUN_TEST_CASE(record_prepared_charges_type_index_moves);
     RUN_TEST_CASE(record_prepared_proof_keeps_each_header_check);
     RUN_TEST_CASE(record_prepared_failed_proofs_do_not_survive_retry);
     RUN_TEST_CASE(record_prepared_proofs_do_not_outlive_native_catalog);

@@ -9,7 +9,7 @@ enum
     AUTOMATIC_TERMINATOR
 };
 
-void *tree_sitter_chibi_external_scanner_create()
+void *tree_sitter_chibi_external_scanner_create(void)
 {
     return NULL;
 }

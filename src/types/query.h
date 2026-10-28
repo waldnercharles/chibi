@@ -10,7 +10,7 @@ typedef enum
 
 /* Query descriptions capture values; rows keep their individually typed fields.
  * Both are identities in the owning program's managed heap. The allocation's
- * finalizer retains its immutable module generation independently of replacement. */
+ * cleanup retains its immutable module generation independently of replacement. */
 typedef struct pin_query
 {
     pin_query_kind kind;

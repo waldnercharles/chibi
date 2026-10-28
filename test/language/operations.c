@@ -123,6 +123,24 @@ TEST_CASE(operations_preserve_unknown_abi)
     }
     return true;
 }
+/* Taking language values or owning a result is part of a capability's ABI. */
+TEST_CASE(operations_value_ownership_changes_abi)
+{
+    const script_catalog catalog = { 0 };
+    const script_catalog_capability plain = { .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                              .completion_outcome = -1 };
+    script_catalog_capability values = plain, owned = plain;
+    values.language_values = true;
+    owned.owned_result = true;
+    uint64_t abi = script_catalog_capability_abi(&catalog, &plain);
+    REQUIRE(script_catalog_capability_abi(&catalog, &values) != abi);
+    REQUIRE(script_catalog_capability_abi(&catalog, &owned) != abi);
+    REQUIRE(
+        script_catalog_capability_abi(&catalog, &values) !=
+        script_catalog_capability_abi(&catalog, &owned)
+    );
+    return true;
+}
 TEST_CASE(operations_generate_checked_bindings_and_conservative_contracts)
 {
     REQUIRE(core());
@@ -613,6 +631,7 @@ void test_language_operations()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(operations_preserve_unknown_abi);
+    RUN_TEST_CASE(operations_value_ownership_changes_abi);
     RUN_TEST_CASE(operations_generate_checked_bindings_and_conservative_contracts);
     RUN_TEST_CASE(operations_reject_malformed_shared_declarations);
     RUN_TEST_CASE(operations_reject_raw_scalar_semantic_metadata);

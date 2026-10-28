@@ -431,6 +431,9 @@ static const node_host_call managed_call = { .value = managed_text };
 #define CAPTURE_WRITES 32
 #define CAPTURE_KEEP_UPDATES 40
 #define CAPTURE_STORAGE_LIMIT ((size_t)256 * 1024)
+/* A box holding short text: one arena block and the table that charges the
+ * shared text backing it retains. */
+#define SMALL_STORAGE_BYTES 1024
 static int capture_text_calls;
 static const char *capture_text(arena *storage, const pin_value *, int count, pin_value *out)
 {
@@ -2814,19 +2817,31 @@ static bool capture_measure(
     arena_usage(&box->storage, &used, &capacity);
     size_t backing = arena_storage_bytes(&box->storage);
     REQUIRE(used <= capacity && capacity <= backing && backing < CAPTURE_STORAGE_LIMIT);
-    /* A fresh owning snapshot is a bounded reference size for the current
-     * value, including nested array headers and strings, not the old versions. */
+    /* Text bytes live in shared immutable backing that each arena charges
+     * once, so the box holds its allocations and the backing they retain. */
+    used += box->storage.retained_bytes;
+    /* A fresh capture is a bounded reference size for the current value,
+     * including nested array headers and the text backing it retains, not the
+     * old versions. */
     arena current = { 0 };
     pin_value snapshot;
-    REQUIRE(!pin_value_snapshot_to_arena(&current, &snapshot, box->value));
+    REQUIRE(!pin_value_capture_to_arena(&current, &snapshot, box->value));
     size_t live, live_capacity;
     arena_usage(&current, &live, &live_capacity);
-    REQUIRE(live >= CAPTURE_TEXT_BYTES && live < 4 * CAPTURE_TEXT_BYTES);
+    live += current.retained_bytes;
+    REQUIRE(live >= CAPTURE_TEXT_BYTES && live < (array ? 6 : 4) * CAPTURE_TEXT_BYTES);
     pin_value captured = array ? pin_array_get(snapshot.ptr, 0) : snapshot;
     REQUIRE(capture_text_is(&captured, array ? writes ? writes + 1 : 0 : writes));
     arena_free(&current);
-    if (!attached) {
+    if (!attached && !array) {
         REQUIRE(used == live);
+    }
+    /* An array lives on the program's managed heap, which the box shares:
+     * the overwritten versions are collected, so the heap holds the current
+     * array and the few states that keep earlier ones, never all 32. */
+    if (array) {
+        REQUIRE(!used);
+        REQUIRE(execution_program_memory_usage(program).managed_bytes < 16 * CAPTURE_TEXT_BYTES);
     }
     execution_memory_usage memory = execution_program_memory_usage(program);
     printf(
@@ -3046,12 +3061,12 @@ TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink)
         REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
         REQUIRE(
             !strcmp(pin_text(*(box->value)).bytes, "small") &&
-            arena_storage_bytes(&box->storage) < 512
+            arena_storage_bytes(&box->storage) < SMALL_STORAGE_BYTES
         );
         REQUIRE(execution_program_update(program, 4, 0, 10000) == FLOW_OK);
         REQUIRE(
             !strcmp(pin_text(*(box->value)).bytes, "") &&
-            arena_storage_bytes(&box->storage) < 512
+            arena_storage_bytes(&box->storage) < SMALL_STORAGE_BYTES
         );
         REQUIRE(number_state(instance, "done", 1));
         REQUIRE(capture_text_is(&execution_inspector_watch_at(debugger, saved)->value, 0));
@@ -3091,7 +3106,7 @@ TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced)
         REQUIRE(execution_program_update(program, 2, 0, 10000) == FLOW_OK);
         REQUIRE(number_state(instance, "seen", 7));
         REQUIRE(((pin_array *)box->value->ptr)->count == 0);
-        REQUIRE(arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(arena_storage_bytes(&box->storage) < SMALL_STORAGE_BYTES);
         REQUIRE(execution_program_update(program, 3, 0, 10000) == FLOW_OK);
         REQUIRE(!capture_box(instance, &holders) && !holders);
         REQUIRE(!execution_instance_pending(instance));
@@ -3199,9 +3214,12 @@ TEST_CASE(program_completed_payloads_are_released_without_marking)
         REQUIRE(execution_instance_pending(instance) == 0);
         execution_memory_usage complete = execution_program_memory_usage(program);
         REQUIRE(complete.payload_bytes == 0 && complete.payload_capacity == 0);
-        /* The completed call owns no suspended work. Free its payloads
-         * directly instead of tracing values that will all be destroyed. */
-        REQUIRE(arena_collect_marks() == marks);
+        /* The completed call owns no suspended work, so its payloads are freed
+         * directly. Its dead arrays live on the managed heap, which collects
+         * at call boundaries inside the run: those collections trace the few
+         * live values, never the 512 dead arrays. */
+        REQUIRE(complete.managed_bytes == 0);
+        REQUIRE(arena_collect_marks() - marks < 16);
     }
     return true;
 }
@@ -3633,6 +3651,274 @@ TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates)
     }
     return true;
 }
+/* These calls use the real native arithmetic pack. A nominal char output
+ * must be checked before an assignment or a discarded result can escape. */
+static bool native_char_result(const char *expression, int scalar, bool fails, bool discard, bool integer, int expected)
+{
+    char statement[160], source[PROGRAM_SOURCE_CAPACITY];
+    snprintf(
+        statement,
+        sizeof statement,
+        discard   ? "unused := %s; code = letter;"
+        : integer ? "code = %s;"
+                  : "letter = %s; code = letter;",
+        expression
+    );
+    snprintf(
+        source,
+        sizeof source,
+        "NativeChars :: behavior { letter: char = char(%d); code: int = -1; "
+        "entered: int = 0; finished: int = 0; on Impulse :: (enabled: bool) { "
+        "entered = 1; %s finished = 1; } }",
+        scalar,
+        statement
+    );
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    bool passed = true;
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        int status = execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000);
+        bool same = int_state(instance, "entered", PIN_I32, 1);
+        if (fails) {
+            const execution_program_failure *failure = execution_program_error(program);
+            same &= status < 0 && failure && failure->kind == BEHAVIOR_FUNCTION_DATA &&
+                    !strcmp(failure->message, "Value does not fit in char") &&
+                    failure->start == (int)(strstr(source, expression) - source) &&
+                    int_state(instance, "letter", PIN_I32, scalar) &&
+                    int_state(instance, "code", PIN_I32, -1) &&
+                    int_state(instance, "finished", PIN_I32, 0);
+        } else {
+            same &= status == FLOW_OK &&
+                    int_state(instance, "code", PIN_I32, expected) &&
+                    int_state(instance, "letter", PIN_I32, integer ? scalar : expected) &&
+                    int_state(instance, "finished", PIN_I32, 1);
+        }
+        if (!same) {
+            const pin_value *letter = execution_instance_state(instance, state_id("letter"));
+            fprintf(
+                stderr,
+                "native char %s scalar %d backend %d: status %d letter %d\n",
+                expression,
+                scalar,
+                b,
+                status,
+                letter ? letter->i : 0
+            );
+        }
+        passed &= same;
+    }
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(program_native_char_results_reject_invalid_scalars)
+{
+    bool passed = native_char_result("negate(letter)", 65, true, false, false, 0);
+    passed &= native_char_result("negate(letter)", 65, true, true, false, 0);
+    passed &= native_char_result("negate(char(65))", 65, true, false, false, 0);
+    passed &= native_char_result("add(letter, letter)", 0x6C00, true, false, false, 0);
+    passed &= native_char_result("add(letter, letter)", 0x88000, true, false, false, 0);
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(program_native_char_results_preserve_valid_scalars_and_ints)
+{
+    REQUIRE(native_char_result("negate(letter)", 0, false, false, false, 0));
+    const int scalars[] = { 0, 0xD7FF, 0xE000, 0x10FFFF };
+    for (int i = 0; i < (int)(sizeof scalars / sizeof *scalars); i++) {
+        REQUIRE(native_char_result("abs(letter)", scalars[i], false, false, false, scalars[i]));
+    }
+    REQUIRE(native_char_result("negate(int(letter))", 65, false, false, true, -65));
+    return true;
+}
+/* A direct catalog preserves char's nominal identity, including a later
+ * tuple field that the caller may never read. These hosts deliberately model
+ * a native implementation violating its declared scalar output contract. */
+static int native_letter;
+static const char *fixed_char(arena *, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0);
+    *out = (pin_value){ .type = PIN_I32, .i = native_letter };
+    return NULL;
+}
+static const char *pair_char(void *, const pin_value *, pin_value *out)
+{
+    out[0].i = -1;
+    out[1].i = native_letter;
+    return NULL;
+}
+static const char *optional_char(arena *, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0);
+    *out = (pin_value){ .type = PIN_UNION };
+    return NULL;
+}
+static bool char_host(void *user, uint64_t id, script_lower_host *out)
+{
+    static const node_host_call fixed = { .value = fixed_char };
+    static const node_host_call pair = { .invoke = pair_char };
+    static const node_host_call optional = { .value = optional_char };
+    switch (id) {
+        case 9001: *out = (script_lower_host){ .call = &fixed }; return true;
+        case 9002: *out = (script_lower_host){ .call = &pair }; return true;
+        case 9003: *out = (script_lower_host){ .call = &optional }; return true;
+        default: return host(user, id, out);
+    }
+}
+static bool compile_char_catalog(const char *source, behavior_backend backend)
+{
+    script_catalog_parameter scalar = { .name = "letter", .type = script_char_type() };
+    script_catalog_parameter pair[] = {
+        { .name = "count", .type = { .storage = PIN_I32 } },
+        { .name = "letter", .type = script_char_type() },
+    };
+    script_catalog_parameter optional = scalar;
+    optional.type.flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL;
+    enum
+    {
+        COUNT = sizeof capabilities / sizeof *capabilities
+    };
+    script_catalog_capability caps[COUNT + 3];
+    memcpy(caps, capabilities, sizeof capabilities);
+    const script_catalog_parameter *results[] = { &scalar, pair, &optional };
+    const char *names[] = { "NativeChar", "NativePair", "NativeOptionalChar" };
+    for (int i = 0; i < 3; i++) {
+        caps[COUNT + i] = (script_catalog_capability){
+            .id = 9001 + i,
+            .name = names[i],
+            .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .results = results[i],
+            .result_count = i == 1 ? 2 : 1,
+            .completion_outcome = -1,
+            .effects = SCRIPT_EFFECT_HOST,
+        };
+    }
+    script_catalog active = catalog;
+    active.capabilities = caps;
+    active.capability_count = COUNT + 3;
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, &active);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "native char catalog semantic: %s\n",
+            analysis->diagnostics[i].message
+        );
+    }
+    REQUIRE(analysis->valid && !syntax->diagnostic_count);
+    const script_lower_bindings bindings = { .global = global, .host = char_host };
+    owned_plan = script_lower(analysis, &active, &bindings);
+    REQUIRE(owned_plan && owned_plan->valid);
+    char error[192];
+    module = execution_module_finish(&owned_plan, backend, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "native char catalog publication: %s\n", error);
+    }
+    REQUIRE(module && !owned_plan);
+    program = execution_program_new(module, world, NULL);
+    REQUIRE(program);
+    return true;
+}
+static bool fixed_native_char_result(const char *statement, int scalar, bool fails, int letter, int code)
+{
+    char source[PROGRAM_SOURCE_CAPACITY];
+    snprintf(
+        source,
+        sizeof source,
+        "NativeChars :: behavior { letter: char = 'A'; code: int = 17; "
+        "entered: int = 0; finished: int = 0; on Tick :: () { "
+        "entered = 1; %s finished = 1; } }",
+        statement
+    );
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    bool passed = true;
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        native_letter = scalar;
+        REQUIRE(compile_char_catalog(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        const pin_value dt = { .type = PIN_F64 };
+        int status = execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000);
+        bool same = int_state(instance, "entered", PIN_I32, 1);
+        if (fails) {
+            const execution_program_failure *failure = execution_program_error(program);
+            same &= status < 0 && failure && failure->kind == BEHAVIOR_FUNCTION_DATA &&
+                    !strcmp(failure->message, "Value does not fit in char") &&
+                    failure->start ==
+                        (int)(strstr(source + sizeof "NativeChars" - 1, "Native") - source);
+        } else {
+            same &= status == FLOW_OK;
+        }
+        same &= int_state(instance, "letter", PIN_I32, fails ? 65 : letter) &&
+                int_state(instance, "code", PIN_I32, fails ? 17 : code) &&
+                int_state(instance, "finished", PIN_I32, !fails);
+        if (!same) {
+            fprintf(
+                stderr,
+                "fixed native char %s scalar %d backend %d: status %d\n",
+                statement,
+                scalar,
+                b,
+                status
+            );
+        }
+        passed &= same;
+    }
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(program_fixed_native_char_outputs_are_checked_before_use)
+{
+    const char *statements[] = {
+        "letter = NativeChar();",
+        "letter = NativeChar().letter;",
+        "code = NativeChar();",
+        "values := NativePair(); code = values.count; letter = values.letter;",
+        "code = NativePair().count;",
+        "NativeChar();",
+        "NativePair();",
+    };
+    const int invalid[] = { -1, 0xD800, 0xDFFF, 0x110000 };
+    bool passed = true;
+    for (int i = 0; i < 7; i++) {
+        for (int j = 0; j < 4; j++) {
+            passed &= fixed_native_char_result(statements[i], invalid[j], true, 0, 0);
+        }
+    }
+    REQUIRE(passed);
+    return true;
+}
+TEST_CASE(program_fixed_native_char_outputs_preserve_valid_and_optional_values)
+{
+    const int scalars[] = { 0, 0xD7FF, 0xE000, 0x10FFFF };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(
+            fixed_native_char_result("letter = NativeChar();", scalars[i], false, scalars[i], 17)
+        );
+        REQUIRE(fixed_native_char_result(
+            "values := NativePair(); code = values.count; letter = "
+            "values.letter;",
+            scalars[i],
+            false,
+            scalars[i],
+            -1
+        ));
+    }
+    REQUIRE(fixed_native_char_result(
+        "value := NativeOptionalChar(); if value == nil { code = 7; }",
+        0,
+        false,
+        65,
+        7
+    ));
+    return true;
+}
 /* `..<` stops before its last bound and `for <` counts down, over ranges and
  * arrays alike; neither wraps at the int bounds or runs an empty range. */
 TEST_CASE(program_loops_count_half_open_and_in_reverse)
@@ -3718,8 +4004,8 @@ TEST_CASE(program_local_array_survives_collection_mid_build)
         /* 200 doubles fill a packed 256-item buffer; the outgrown 8- to
          * 128-item buffers would hold 248 more. */
         REQUIRE(arena_collect_marks() > marks);
-        REQUIRE(suspended.payload_bytes >= 256 * sizeof(double));
-        REQUIRE(suspended.payload_bytes < (256 + 248) * sizeof(double));
+        REQUIRE(suspended.managed_bytes >= 256 * sizeof(double));
+        REQUIRE(suspended.managed_bytes < (256 + 248) * sizeof(double));
         REQUIRE(execution_program_update(program, 1, 0, 1000000) == FLOW_OK);
         REQUIRE(number_state(instance, "total", 1000 + 199 + 399 + 400));
         REQUIRE(execution_instance_pending(instance) == 0);
@@ -5651,7 +5937,7 @@ TEST_CASE(program_task_result_snapshot_outlives_the_last_handle)
     return true;
 }
 
-TEST_CASE(program_task_await_copies_large_payload_once)
+TEST_CASE(program_task_await_shares_large_payload)
 {
     enum
     {
@@ -5711,13 +5997,11 @@ TEST_CASE(program_task_await_copies_large_payload_once)
             REQUIRE(execution_program_memory_usage(program).task_result_bytes == 0);
         }
         /* Compare the same completed-task delivery with two payload sizes.
-         * Control storage is size independent. One destination snapshot grows
-         * by one physical item buffer, not boxed value headers. A temporary
-         * owning union would double that work. */
-        uint64_t payload = physical[1] - physical[0];
-        REQUIRE(payload == (ITEMS - 1) * sizeof(double));
-        REQUIRE(requested[1] >= requested[0] + payload);
-        REQUIRE(requested[1] - requested[0] < payload + payload / 2);
+         * The packed state array grows by its items, but the destination
+         * shares the delivered array's backing, so delivery costs the same
+         * whatever the payload's size. */
+        REQUIRE(physical[1] - physical[0] == (ITEMS - 1) * sizeof(double));
+        REQUIRE(requested[1] == requested[0]);
     }
     return true;
 }
@@ -12148,7 +12432,7 @@ TEST_CASE(program_descriptor_field_observers_compare_all_bytes)
     const ecs_component_desc *component = ecs_world_component(world, declared.id);
     REQUIRE(component && component->layout_hash);
     ecs_entity entity = ecs_world_create_entity(world);
-    const pin_string initial = { "A\0B", 3 };
+    const pin_string initial = { .bytes = "A\0B", .length = 3 };
     const pin_string *initial_field = &initial;
     REQUIRE(ecs_world_record_add(world, entity, component->id, &initial_field, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
@@ -12250,7 +12534,7 @@ TEST_CASE(program_descriptor_field_observers_compare_all_bytes)
     REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
     const pin_value *seen = execution_instance_state(instance, 811);
     REQUIRE(seen && !pin_text(*seen).length);
-    const pin_string changed = { "A\0C", 3 };
+    const pin_string changed = { .bytes = "A\0C", .length = 3 };
     REQUIRE(
         ecs_component_write_field(
             world,
@@ -12753,11 +13037,11 @@ static bool replace_library(const char *source)
     return compile_module(source, BEHAVIOR_BYTECODE);
 }
 /* One library owner on bytecode. A reload that keeps Actor's layout preserves
- * a pointer to an Actor. One that adds a field is refused while kept state
- * reaches an old Actor: at preparation, or at commit when the running program
- * stores one in a kept cell after preparation. The program keeps its state
- * and module, and a restart applies the change. */
-TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts)
+ * a pointer to an Actor. One that adds a field still applies, and resets each
+ * state that reaches an old Actor: at preparation, or at commit when the
+ * running program stores one in a kept cell after preparation. Other state
+ * keeps its cells. */
+TEST_CASE(program_replacement_resets_state_reaching_changed_pointee_layouts)
 {
     const char
         *same = "Store :: library { Actor :: struct { hp: f64; } "
@@ -12810,21 +13094,22 @@ TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts)
     instance = execution_program_attach(program, entity);
     REQUIRE(instance && execution_instance_state(instance, saved)->ptr == target.ptr);
     REQUIRE(replace_library(added));
-    REQUIRE(execution_program_replace(program, module, false) == FLOW_ERR_COMPILE);
-    REQUIRE(execution_program_module(program) == prior_module);
-    REQUIRE(execution_instance_state(instance, saved)->ptr == target.ptr);
-    REQUIRE(execution_instance_set_state(instance, saved, absent) == FLOW_OK);
+    REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+    REQUIRE(execution_program_module(program) == module);
+    instance = execution_program_attach(program, entity);
+    REQUIRE(instance && !execution_instance_state(instance, saved)->ptr);
+    REQUIRE(execution_instance_state(instance, slot)->ptr == inner);
+    REQUIRE(execution_instance_state(instance, kept)->ptr == number.ptr);
+    REQUIRE(replace_library(added));
     other_program = execution_program_prepare_replace(program, module, false);
     REQUIRE(other_program);
     inner->value = target;
-    REQUIRE(execution_program_commit_replace(program, other_program) == FLOW_ERR_STATE);
+    execution_program_commit_replace(program, other_program);
     other_program = NULL;
-    REQUIRE(execution_program_module(program) == prior_module);
-    REQUIRE(execution_instance_state(instance, slot)->ptr == inner);
-    REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+    REQUIRE(execution_program_module(program) == module);
     instance = execution_program_attach(program, entity);
     REQUIRE(instance && !execution_instance_state(instance, slot)->ptr);
-    REQUIRE(!execution_instance_state(instance, kept)->ptr);
+    REQUIRE(execution_instance_state(instance, kept)->ptr == number.ptr);
     return true;
 }
 /* One entity on two backends. Items of an array behind a pointer, and of an
@@ -12893,7 +13178,7 @@ void test_language_program()
     RUN_TEST_CASE(program_paused_reducing_systems_keep_pointer_targets);
     RUN_TEST_CASE(program_public_ingress_rejects_foreign_managed_pointers);
     RUN_TEST_CASE(program_replacement_releases_empty_retired_heaps);
-    RUN_TEST_CASE(program_replacement_rejects_state_reaching_changed_pointee_layouts);
+    RUN_TEST_CASE(program_replacement_resets_state_reaching_changed_pointee_layouts);
     RUN_TEST_CASE(program_managed_array_items_copy_alone);
     RUN_TEST_CASE(program_descriptor_field_observers_compare_all_bytes);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
@@ -12945,6 +13230,10 @@ void test_language_program()
     RUN_TEST_CASE(program_loops_count_half_open_and_in_reverse);
     RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
+    RUN_TEST_CASE(program_native_char_results_reject_invalid_scalars);
+    RUN_TEST_CASE(program_native_char_results_preserve_valid_scalars_and_ints);
+    RUN_TEST_CASE(program_fixed_native_char_outputs_are_checked_before_use);
+    RUN_TEST_CASE(program_fixed_native_char_outputs_preserve_valid_and_optional_values);
     RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
     RUN_TEST_CASE(program_local_array_store_checks_its_range);
     RUN_TEST_CASE(program_array_methods_change_their_array);
@@ -12980,7 +13269,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_cancellation_is_distinct_from_zero_false_and_empty_text);
     RUN_TEST_CASE(program_task_waiters_receive_independent_success_snapshots);
     RUN_TEST_CASE(program_task_result_snapshot_outlives_the_last_handle);
-    RUN_TEST_CASE(program_task_await_copies_large_payload_once);
+    RUN_TEST_CASE(program_task_await_shares_large_payload);
     RUN_TEST_CASE(program_task_collection_indexes_handles_across_many_owners);
     RUN_TEST_CASE(program_task_collection_follows_long_pointer_chains);
     RUN_TEST_CASE(program_task_results_keep_nested_task_handles_alive);
@@ -13065,5 +13354,17 @@ void test_language_program()
     RUN_TEST_CASE(program_repeated_helpers_have_bounded_allocations);
     RUN_TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls);
     RUN_TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals);
+    pu_clear_setup();
+}
+
+void test_language_native_char_results()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
+    RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
+    RUN_TEST_CASE(program_native_char_results_reject_invalid_scalars);
+    RUN_TEST_CASE(program_native_char_results_preserve_valid_scalars_and_ints);
+    RUN_TEST_CASE(program_fixed_native_char_outputs_are_checked_before_use);
+    RUN_TEST_CASE(program_fixed_native_char_outputs_preserve_valid_and_optional_values);
     pu_clear_setup();
 }

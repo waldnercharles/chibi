@@ -1,0 +1,279 @@
+package core_strings
+
+import strings "core:strings"
+
+// Every fixed search row from package_core.c has its own test.
+@test
+SearchIndexFindsSuffix :: () {
+    assert(strings.Index("chicken", "ken") == 4);
+    return;
+}
+@test
+SearchIndexMissingSubstring :: () {
+    assert(strings.Index("chicken", "dmr") == -1);
+    return;
+}
+@test
+SearchIndexBothEmpty :: () {
+    assert(strings.Index("", "") == 0);
+    return;
+}
+@test
+SearchIndexEmptyNeedleAtStart :: () {
+    assert(strings.Index("abc", "") == 0);
+    return;
+}
+@test
+SearchIndexNonemptyNeedleInEmptyString :: () {
+    assert(strings.Index("", "a") == -1);
+    return;
+}
+@test
+SearchIndexFinalByte :: () {
+    assert(strings.Index("abc", "c") == 2);
+    return;
+}
+@test
+SearchIndexWholeString :: () {
+    assert(strings.Index("abc", "abc") == 0);
+    return;
+}
+@test
+SearchIndexSameLengthMismatch :: () {
+    assert(strings.Index("abc", "abd") == -1);
+    return;
+}
+@test
+SearchIndexNeedleLongerThanString :: () {
+    assert(strings.Index("ab", "abc") == -1);
+    return;
+}
+@test
+SearchIndexFindsAfterOverlappingPrefix :: () {
+    assert(strings.Index("aaab", "aab") == 1);
+    return;
+}
+@test
+SearchIndexReturnsFirstOccurrence :: () {
+    assert(strings.Index("abcxabc", "abc") == 0);
+    return;
+}
+@test
+SearchIndexReturnsByteOffsetInSentence :: () {
+    assert(strings.Index("the quick brown fox", "fox") == 16);
+    return;
+}
+@test
+SearchLastIndexReturnsLaterOccurrence :: () {
+    assert(strings.LastIndex("go gopher", "go") == 3);
+    return;
+}
+@test
+SearchLastIndexMissingSubstring :: () {
+    assert(strings.LastIndex("go gopher", "rodent") == -1);
+    return;
+}
+@test
+SearchLastIndexEmptyNeedleAtEnd :: () {
+    assert(strings.LastIndex("abc", "") == 3);
+    return;
+}
+@test
+SearchLastIndexBothEmpty :: () {
+    assert(strings.LastIndex("", "") == 0);
+    return;
+}
+@test
+SearchLastIndexIncludesOverlappingOccurrence :: () {
+    assert(strings.LastIndex("aaaa", "aa") == 2);
+    return;
+}
+@test
+SearchLastIndexRepeatedWholeSubstring :: () {
+    assert(strings.LastIndex("abcabc", "abc") == 3);
+    return;
+}
+@test
+SearchLastIndexMiddleSubstring :: () {
+    assert(strings.LastIndex("xabcxx", "abc") == 1);
+    return;
+}
+@test
+SearchLastIndexWholeString :: () {
+    assert(strings.LastIndex("abc", "abc") == 0);
+    return;
+}
+@test
+SearchLastIndexMiddleByte :: () {
+    assert(strings.LastIndex("abc", "b") == 1);
+    return;
+}
+@test
+SearchIndexByteFindsAscii :: () {
+    assert(strings.IndexByte("golang", 108) == 2);
+    return;
+}
+@test
+SearchIndexByteMissingAscii :: () {
+    assert(strings.IndexByte("golang", 122) == -1);
+    return;
+}
+@test
+SearchIndexByteEmptyString :: () {
+    assert(strings.IndexByte("", 97) == -1);
+    return;
+}
+@test
+SearchIndexByteFindsRawFF :: () {
+    value := format_text("a{}", RawByte(255));
+    assert(strings.ByteLength(value) == 2);
+    assert(strings.ByteAt(value, 0) == 97);
+    assert(strings.ByteAt(value, 1) == 255);
+    assert(strings.IndexByte(value, 255) == 1);
+    return;
+}
+@test
+SearchLastIndexByteReturnsFinalOccurrence :: () {
+    assert(strings.LastIndexByte("hello", 108) == 3);
+    return;
+}
+@test
+SearchLastIndexByteMissingAscii :: () {
+    assert(strings.LastIndexByte("hello", 122) == -1);
+    return;
+}
+@test
+SearchIndexAnyFindsFirstMember :: () {
+    assert(strings.IndexAny("golang", "xyzn") == 4);
+    return;
+}
+@test
+SearchIndexAnyEmptyCharacterSet :: () {
+    assert(strings.IndexAny("golang", "") == -1);
+    return;
+}
+@test
+SearchIndexAnyEmptyString :: () {
+    assert(strings.IndexAny("", "a") == -1);
+    return;
+}
+@test
+SearchLastIndexAnyFindsLastMember :: () {
+    assert(strings.LastIndexAny("go gopher", "go") == 4);
+    return;
+}
+@test
+SearchLastIndexAnyEmptyCharacterSet :: () {
+    assert(strings.LastIndexAny("go gopher", "") == -1);
+    return;
+}
+@test
+SearchLastIndexAnyMissingMembers :: () {
+    assert(strings.LastIndexAny("go gopher", "xyz") == -1);
+    return;
+}
+@test
+SearchCountRepeatedByte :: () {
+    assert(strings.Count("cheese", "e") == 3);
+    return;
+}
+@test
+SearchCountEmptyNeedleBetweenAndAroundBytes :: () {
+    assert(strings.Count("five", "") == 5);
+    return;
+}
+@test
+SearchCountBothEmpty :: () {
+    assert(strings.Count("", "") == 1);
+    return;
+}
+@test
+SearchCountExcludesOverlappingOccurrences :: () {
+    assert(strings.Count("aaaa", "aa") == 2);
+    return;
+}
+@test
+SearchCountRepeatedSubstring :: () {
+    assert(strings.Count("abcabc", "bc") == 2);
+    return;
+}
+@test
+SearchCountMissingSubstring :: () {
+    assert(strings.Count("abc", "d") == 0);
+    return;
+}
+@test
+SearchContainsPresentSubstring :: () {
+    assert(strings.Contains("seafood", "foo"));
+    return;
+}
+@test
+SearchContainsMissingSubstring :: () {
+    assert(!strings.Contains("seafood", "bar"));
+    return;
+}
+@test
+SearchContainsEmptyNeedle :: () {
+    assert(strings.Contains("seafood", ""));
+    return;
+}
+@test
+SearchContainsBothEmpty :: () {
+    assert(strings.Contains("", ""));
+    return;
+}
+@test
+SearchContainsAnyPresentMembers :: () {
+    assert(strings.ContainsAny("failure", "ui"));
+    return;
+}
+@test
+SearchContainsAnyEmptyCharacterSet :: () {
+    assert(!strings.ContainsAny("foo", ""));
+    return;
+}
+@test
+SearchContainsAnyBothEmpty :: () {
+    assert(!strings.ContainsAny("", ""));
+    return;
+}
+@test
+SearchHasPrefixPresent :: () {
+    assert(strings.HasPrefix("testing", "test"));
+    return;
+}
+@test
+SearchHasPrefixEmpty :: () {
+    assert(strings.HasPrefix("testing", ""));
+    return;
+}
+@test
+SearchHasPrefixLongerThanString :: () {
+    assert(!strings.HasPrefix("te", "test"));
+    return;
+}
+@test
+SearchHasPrefixRejectsInteriorSubstring :: () {
+    assert(!strings.HasPrefix("testing", "est"));
+    return;
+}
+@test
+SearchHasSuffixPresent :: () {
+    assert(strings.HasSuffix("todo.txt", ".txt"));
+    return;
+}
+@test
+SearchHasSuffixMissing :: () {
+    assert(!strings.HasSuffix("todo.doc", ".txt"));
+    return;
+}
+@test
+SearchHasSuffixBothEmpty :: () {
+    assert(strings.HasSuffix("", ""));
+    return;
+}
+@test
+SearchHasSuffixLongerThanString :: () {
+    assert(!strings.HasSuffix("t", "txt"));
+    return;
+}

@@ -105,11 +105,15 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
+      # Keep the temporary CMake oracle beside the Graph output. Only its
+      # reflection/generation prerequisites and build host are compiled.
+      - name: Build matching CMake graph reference
+        run: make graph-reference LIBCLANG_ROOT=/usr/lib/llvm-18
       # Run authored command generation on the Release helper; test_tools and
-      # the reference profile remain the selected Debug profile. No products are compiled.
+      # the reference profile remain the selected Debug profile.
       - name: Graph Debug optimization and command parity (commands only)
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
@@ -127,8 +131,8 @@ jobs:
           mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"
           make test-tools TOOLS_C_COMPILER=clang-18
           ./build-tools/test_tools --case-timings
-      # Release helpers are already built. Avoid their repeated planner entry;
-      # retain the selected-profile Build.chibi invocation for Linux coverage.
+      # Products, test drivers and Release helpers are already built and
+      # profile-verified. Do not re-enter their planner for the test groups.
       # Keep groups sequential: they share fixtures and build outputs.
       - name: Native, material, project and language selectors
         env:
@@ -139,9 +143,6 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Preserve Linux Build.chibi coverage through the selected-profile host,
-          # including sanitizer runs whose first cold build used CMake recovery.
-          make test-build ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           python3 tools/test_policy.py group native

@@ -5,10 +5,11 @@ then finished on `claude/project-thread-7x506x` on 2026-10-24 over the shared
 prepared limits of #688. The validation ledger below records what has actually
 passed.
 
-The query integration on `codex/query-iterators-20261022` extends this local
-implementation with retained component references and owned native schemas.
-The earlier validation ledger below records the pointer branch's checks;
-query integration needs its own validation evidence.
+The ledger below records the pointer branch's checks. Two later changes extend
+this implementation and record their own evidence: the query integration
+(`codex/query-iterators-20261022`) adds retained component references and owned
+native schemas, and collections as values (#694) records its build evidence and
+unrun coverage in [value sequences](value-sequences.md).
 
 ## Contract
 
@@ -17,18 +18,16 @@ reference to the same mutable value. Pointers to ordinary language values keep
 their targets alive, including after a function returns. Users do not select shared or unique
 ownership, write `move`, or break reference cycles manually.
 
-The owner subsequently approved shared dynamic-array objects in the sequence
-chat on 2026-10-22: aliases share contents and length; `a[1..<3]` and
+The owner revised the collection contract on 2026-10-22: ordinary arrays and
+maps are independent values with copy-on-write storage, including nested values.
+Pointer elements retain their target identities. `a[1..<3]` and
 `a.slice(1..<3)` copy the selected elements into independent outer storage.
-`a.view(1..<3)` explicitly retains the array plus a fixed range, growth
-preserves those views, and `view.clone()` copies outer array storage. Pointer
-and nested dynamic-array elements retain their target identities. Fixed arrays
-retain value semantics. That chat owns the collection migration, including
-the explicit views' shrink/removal rules. This
-branch preserves pointer identity through collection copies and traces pointer
-elements; it does not migrate collection assignment or resizing. A call that
-can change the caller's variable takes its address, `F(&value)`. Mutating
-shared collection elements follows the collection's reference semantics.
+Mutable views require an array pointer: `p := &a; v := p.view(1..<3)`. They
+retain that pointer and fixed indices, resolve its current pointee on every
+access, and can become invalid after shrink until the whole range fits again.
+Reassigning `a` changes what the view resolves. [Value
+sequences](value-sequences.md) records the collection implementation. A call
+that can change the caller's variable takes its address, `F(&value)`.
 
 ```chibi
 actor: Actor = {health: 100}
@@ -165,14 +164,17 @@ system. Reference: [Nim ORC source at the inspected revision](https://github.com
 ## Hot reload and cell storage
 
 - **Kept state.** A replacement keeps each state whose id the old module also
-  declares. When it cannot keep one as it is, because the state's own type
-  changed or because it reaches through a pointer an authored record whose
-  layout the new module changes, the replacement is refused: the running
-  program keeps its module and state, and a restart applies the change. Kept
+  declares, and a reload always applies. A state whose type changed is
+  converted (`program_migrate_value`): record fields match by name, new fields
+  and fields that cannot convert take the new initializer's values, removed
+  fields are dropped, numbers convert as `T(value)` does (saturating, and
+  rounding toward zero), and array items convert one by one. A state that
+  cannot be converted, or that reaches through a pointer an authored record
+  whose layout the new module changes, restarts from its initializer. Kept
   cells are shared with the running program until commit, so commit checks
-  them again and fails the same way. Adding a field to `Actor` therefore
-  refuses a reload while `saved: ^Actor?` points at an `Actor`
-  (`program_replacement_rejects_state_reaching_changed_pointee_layouts`).
+  them again. Adding a field to `Actor` therefore resets `saved: ^Actor?`
+  while it points at an old `Actor`, and other state keeps its values
+  (`program_replacement_resets_state_reaching_changed_pointee_layouts`).
 - **Retired heaps.** The program keeps one heap handle across replacements. A
   commit adopts the candidate's heap into that family, and every heap names
   the family's head as its owner. The commit, and each later collection,
@@ -191,9 +193,11 @@ system. Reference: [Nim ORC source at the inspected revision](https://github.com
   in-place writes, but each item read copies the array.
 - Appending to an address-taken array local (`xs.append(v)` after `&xs`)
   reads and replaces the whole cell.
-- A replacement never migrates kept state: a changed state type or pointee
-  layout is refused rather than converted. Rows that a system's query manages
-  still restart when the query's shape changes.
+- A replacement converts kept state values, but not cells: state reaching a
+  pointee whose layout changed restarts rather than having the cell
+  rewritten. Array items cannot take a new field's default, because prepared
+  modules carry no record defaults, so such an array restarts too. Rows that
+  a system's query manages still restart when the query's shape changes.
 
 ## Verification ledger
 

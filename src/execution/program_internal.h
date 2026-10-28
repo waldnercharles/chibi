@@ -30,6 +30,7 @@ typedef struct
 typedef struct
 {
     behavior_function_context *context;
+    execution_activation *owner;
     uint64_t action;
     pin_value *values;
     int count;
@@ -224,6 +225,11 @@ struct execution_program
 };
 
 bool program_same_type(pin_value a, pin_value b);
+/* Converts old, a kept value whose type changed, to shape's type: records
+ * match fields by name, and numbers convert as T(value) does. Shape's payload,
+ * when it has one, supplies new fields and fields that cannot convert. False
+ * when no conversion exists; out may borrow old and storage. */
+bool program_migrate_value(arena *storage, pin_value old, pin_value shape, pin_value *out);
 /* Visited managed cells, open-addressed. Free slots when done. */
 typedef struct
 {
@@ -321,6 +327,7 @@ bool program_capture_reference(
     const execution_module_capture *,
     pin_value *
 );
+int program_validate_values(execution_program *, const pin_value *, int count);
 void program_collect_payloads(execution_program *, execution_activation *extra);
 static inline bool program_wait_due(const command_wait *wait, double now)
 {

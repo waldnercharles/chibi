@@ -18,4 +18,4 @@ if [ -e "$hooks/pre-commit" ]; then
     exit 1
 fi
 git config --local core.hooksPath .githooks
-echo 'Enabled repository hooks locally. Cloud/API publishers must still run make check-format explicitly.'
+echo 'Enabled repository hooks locally. Chibi source formatting now runs before normal Git commits.'

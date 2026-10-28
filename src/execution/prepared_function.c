@@ -126,6 +126,7 @@ static void host(prepared_context *c, behavior_function_host_call *v)
     INT(v->first);
     INT(v->result_first);
     INT(v->result_count);
+    BOOL(v->owned_arguments);
     prepared_table(w, &v->outcome_count, sizeof *v->outcomes);
     if (w->reading && !w->error && v->outcome_count) {
         v->outcomes = execution_wire_allocate(
@@ -435,6 +436,7 @@ void prepared_function(prepared_context *c, behavior_function *f)
         INT(v->result_first);
         INT(v->result_count);
         BOOL(v->task);
+        BOOL(v->owned_arguments);
     });
     ARRAY(definitions, {
         const behavior_function *v = f->definitions[index];

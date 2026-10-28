@@ -462,8 +462,15 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
             if (!ts_node_is_null(type_binder) || previous >= 0) {
                 if (script_analyzer_token_present(a, type, "[") ||
                     script_analyzer_token_present(a, type, "[]")) {
-                    if (actual.container != PIN_CONTAINER_ARRAY) {
-                        script_analyzer_diagnostic(a, value, "Polymorphic array argument requires an array");
+                    bool view = script_analyzer_token_present(a, type, "view");
+                    pin_container container = view ? PIN_CONTAINER_VIEW
+                                                   : PIN_CONTAINER_ARRAY;
+                    if (actual.container != container) {
+                        script_analyzer_diagnostic(
+                            a,
+                            value,
+                            view ? "Polymorphic view argument requires a view" : "Polymorphic array argument requires an array"
+                        );
                         valid = false;
                     }
                     actual = script_catalog_element_type(a->catalog, actual);
@@ -977,7 +984,9 @@ void script_analyzer_generic_export(analyzer *a, TSNode node, int symbol)
         }
         if (script_analyzer_token_present(a, type_node, "[") ||
             script_analyzer_token_present(a, type_node, "[]")) {
-            type.container = PIN_CONTAINER_ARRAY;
+            type.container = script_analyzer_token_present(a, type_node, "view")
+                               ? PIN_CONTAINER_VIEW
+                               : PIN_CONTAINER_ARRAY;
         }
         apush(
             parameters,
@@ -1029,7 +1038,7 @@ static compile_binding *copy_bindings(analyzer *a, const script_compile_binding 
         compile_binding copy = { xstrdup(source[i].name), source[i].value };
         if (!copy.value.is_type) {
             pin_value value;
-            int error = pin_value_snapshot_to_arena(
+            int error = pin_value_capture_to_arena(
                 &a->out->constants,
                 &value,
                 &copy.value.value
@@ -1054,7 +1063,7 @@ static const script_compile_binding *own_bindings(analyzer *a, compile_binding *
         owned[i].name = (char *)own(a, source[i].name);
         if (!owned[i].value.is_type) {
             pin_value value;
-            int error = pin_value_snapshot_to_arena(
+            int error = pin_value_capture_to_arena(
                 &a->out->constants,
                 &value,
                 &owned[i].value.value
@@ -1191,10 +1200,17 @@ static const script_catalog_specialization *import_request(
                 valid = false;
                 continue;
             }
-            if (parameter->type.container == PIN_CONTAINER_ARRAY) {
-                if (actual.container != PIN_CONTAINER_ARRAY) {
+            if (parameter->type.container == PIN_CONTAINER_ARRAY ||
+                parameter->type.container == PIN_CONTAINER_VIEW) {
+                if (actual.container != parameter->type.container) {
                     valid = false;
-                    script_analyzer_diagnostic(a, value, "Polymorphic array argument requires an array");
+                    script_analyzer_diagnostic(
+                        a,
+                        value,
+                        parameter->type.container == PIN_CONTAINER_VIEW
+                            ? "Polymorphic view argument requires a view"
+                            : "Polymorphic array argument requires an array"
+                    );
                 } else {
                     actual = script_catalog_element_type(a->catalog, actual);
                 }

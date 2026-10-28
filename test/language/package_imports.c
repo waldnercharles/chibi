@@ -1,6 +1,7 @@
 #include "authoring/source_package_prepare.h"
 #include "capabilities/catalog.h"
 #include "capabilities/catalog_snapshot.h"
+#include "execution/managed.h"
 #include "execution/status.h"
 #include "support/arena.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -22,6 +23,7 @@ static authoring_packages *owners[MAX_OWNERS];
 static execution_module *retained;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap managed;
 static arena storage, metadata_storage;
 static pin_value argument, result;
 static int default_host_calls;
@@ -43,6 +45,7 @@ static void finish_call()
 {
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&managed);
     arena_free(&storage);
     context = (behavior_function_context){ 0 };
     activation = (behavior_function_activation){ 0 };
@@ -170,7 +173,10 @@ static bool call(execution_module *module, uint64_t id, behavior_backend backend
     }
     argument = (pin_value){ .type = PIN_I32, .i = value };
     result = (pin_value){ .type = PIN_I32, .i = -999 };
+    behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     context = (behavior_function_context){
+        .managed_heap = &managed,
         .activation = behavior_function_resumable(function) ? &activation : NULL,
         .arguments = &argument,
         .argument_count = 1,
@@ -664,10 +670,7 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
         owned->fields[1].has_default
     );
     REQUIRE(owned->fields[0].default_value.type == PIN_STR);
-    REQUIRE(arena_contains(
-        &metadata_storage,
-        pin_text(owned->fields[0].default_value).bytes
-    ));
+    REQUIRE(arena_contains(&metadata_storage, owned->fields[0].default_value.text));
     REQUIRE(!strcmp(pin_text(owned->fields[0].default_value).bytes, "owned label"));
     const pin_array *words = owned->fields[1].default_value.ptr;
     REQUIRE(words && arena_contains(&metadata_storage, words) && words->count == 2);
@@ -676,8 +679,8 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
         words->items[1].type == PIN_STR
     );
     REQUIRE(
-        arena_contains(&metadata_storage, pin_text(words->items[0]).bytes) &&
-        arena_contains(&metadata_storage, pin_text(words->items[1]).bytes)
+        arena_contains(&metadata_storage, words->items[0].text) &&
+        arena_contains(&metadata_storage, words->items[1].text)
     );
     REQUIRE(
         !strcmp(pin_text(words->items[0]).bytes, "first") &&

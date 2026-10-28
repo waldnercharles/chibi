@@ -53,6 +53,41 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     return QualifiedCallable(callables, natives, aliases, home, Text(forest, text, callee),
                              NativeCallName(forest, text, call));
 }
+// The name a place reads through its fields and elements, or "".
+RootName :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
+    at := node;
+    while (Is(forest, at, "parenthesized_expression") || Is(forest, at, "member_expression") ||
+           Is(forest, at, "index_expression")) {
+        if (Is(forest, at, "parenthesized_expression")) {
+            at = Field(forest, at, "expression");
+        } else {
+            at = Field(forest, at, "object");
+        }
+    }
+    if (!Is(forest, at, "identifier")) {
+        return "";
+    }
+    return Text(forest, text, at);
+}
+// Whether an `&` anywhere under `node` takes the address of local `name` or
+// a place inside it. The forest lists each subtree right after its root.
+ReferencesName :: (forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> bool {
+    at := node;
+    while (at < length(forest)) {
+        parent := at;
+        while (parent > node) {
+            parent = forest[parent].parent;
+        }
+        if (parent != node) {
+            return false;
+        }
+        if (Is(forest, at, "address_expression") && RootName(forest, text, Field(forest, at, "operand")) == name) {
+            return true;
+        }
+        at += 1;
+    }
+    return false;
+}
 // The `&x` arguments of scoped parameters in the body `node`. Each lends `x`
 // for the call rather than taking a managed address.
 ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
@@ -356,7 +391,7 @@ ReadThroughSlots :: (storage: int, container: int, target: Target) -> Slot[] {
     return [address, address, value];
 }
 ReadThroughHost :: (cell: int) -> Host {
-    return {command: 0, syntax_node: 0, intrinsic: ReferenceReadIntrinsic, linked: -1, first: cell, result_first: cell + 1, result_count: 1,
+    return {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceReadIntrinsic, linked: -1, first: cell, result_first: cell + 1, result_count: 1,
             written: false};
 }
 // The write of the value in slot `value` through the descriptor in slot
@@ -373,7 +408,7 @@ WriteThroughCells :: (storage: int, container: int, record: int, target: Target)
     return [ReferenceCell(target), TypedCell(storage, container, record), done];
 }
 WriteThroughHost :: (cell: int) -> Host {
-    return {command: 0, syntax_node: 0, intrinsic: ReferenceWriteIntrinsic, linked: -1, first: cell, result_first: cell + 2, result_count: 1,
+    return {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceWriteIntrinsic, linked: -1, first: cell, result_first: cell + 2, result_count: 1,
             written: false};
 }
 // A read of `binding`, a scoped parameter, through its descriptor, or a boxed
@@ -406,14 +441,14 @@ PlaceReadStep :: (binding: Name, ops: Ops, target: Target, at: Bases, node: snap
                         Typed(value, binding.storage, binding.container, binding.record), NoValue(), []);
 }
 // `x: T = v` for a number, bool, string or pointer local that a scoped
-// argument lends: its cell holds the value.
+// argument lends, or a union something writes: its cell holds the value.
 BoxStep :: (forest: snapshot.SnapshotNode[], text: string, local: Value, value: Value, item: Work, ops: Ops,
             target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     name := Field(forest, item.node, "name");
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     code := CellWrite(local.storage, value.slot, at.cell, ops, target, at.slot, node);
     code.append(SymbolCode(ops, name, node));
-    binding: Name = {name: Text(forest, text, name), place: BoxPlace, index: at.cell, storage: local.storage,
+    binding: Name = {owned: false, name: Text(forest, text, name), place: BoxPlace, index: at.cell, storage: local.storage,
                      container: 0, record: local.record, writable: true, node: name};
     return Step.Emitted(code, [address], [], [TypedCell(local.storage, 0, local.record)], [], [], [], [binding], [],
                         1, NoValue(), NoValue(), []);
@@ -428,7 +463,7 @@ BoxParameterStep :: (param: Param, index: int, ops: Ops, target: Target, at: Bas
     read.value_storage = param.storage;
     code: Code[] = [read];
     code.extend(CellWrite(param.storage, at.slot, at.cell, ops, target, at.slot + 1, node));
-    binding: Name = {name: param.name, place: BoxPlace, index: at.cell, storage: param.storage, container: 0,
+    binding: Name = {owned: false, name: param.name, place: BoxPlace, index: at.cell, storage: param.storage, container: 0,
                      record: param.record, writable: true, node: param.node};
     return Step.Emitted(code, [ValueLocal(param.storage), address], [], [TypedCell(param.storage, 0, param.record)],
                         [], [], [], [binding], [], 0, NoValue(), NoValue(), []);
@@ -540,7 +575,7 @@ MakeValueSlots :: (target: Target) -> Slot[] {
     return [address, address, address, address, address, DescriptorSlot(target)];
 }
 MakeValueHost :: (first: int) -> Host {
-    return {command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+    return {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
             written: true};
 }
 // The argument of a scoped parameter of the type item.storage,
@@ -668,7 +703,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
                         variant: -1, kind: ValueKind};
         element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
         cells.extend([ReferenceCell(target), TypedCell(storage, 0, -1), offset, element, ReferenceCell(target)]);
-        reach: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first, result_first: first + 4,
+        reach: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first, result_first: first + 4,
                        result_count: 1, written: false};
         hosts.append(reach);
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
@@ -706,7 +741,7 @@ ReferenceFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: 
                     kind: ValueKind};
     element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
     cells: Cell[] = [ReferenceCell(target), TypedCell(field.storage, 0, -1), offset, element, ReferenceCell(target)];
-    reach: Host = {command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
+    reach: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
                    result_count: 1, written: false};
     hosts: Host[] = [reach];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};

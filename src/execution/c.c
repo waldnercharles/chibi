@@ -128,12 +128,12 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
         reason
     );
     if (reason == BEHAVIOR_FUNCTION_COMMAND) {
-        fputs("return c->error_status;\n", out);
+        fputs("return behavior_function_finish_values(c,c->error_status,result_count);\n", out);
         return;
     }
     fprintf(
         out,
-        "return %d;\n",
+        "return behavior_function_finish_values(c,%d,result_count);\n",
         reason == BEHAVIOR_FUNCTION_ARGUMENT    ? FLOW_ERR_ARGUMENT
         : reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
         : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
@@ -361,6 +361,12 @@ static void activation_values(
         }
     }
 }
+static void host_results(FILE *out, const behavior_function_instruction *i)
+{
+    fprintf(out, "{c->error_message=behavior_function_host_results(c,%d);if(c->error_message){", i->target);
+    failure(out, i, i->left);
+    fputs("}}\n", out);
+}
 static void body(const behavior_function *f, FILE *out, char prefix, bool inspected)
 {
     behavior_function runtime;
@@ -382,11 +388,11 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             continue;
         }
         pin_string text = pin_text(value);
-        fprintf(out, "static const pin_string text%d={(const char*)\"", n);
+        fprintf(out, "static const pin_string text%d={.bytes=(const char*)\"", n);
         for (uint32_t byte = 0; byte < text.length; byte++) {
             fprintf(out, "\\%03o", (unsigned char)text.bytes[byte]);
         }
-        fprintf(out, "\",%u};\n", text.length);
+        fprintf(out, "\",.length=%u};\n", text.length);
     }
     for (int j = 0; j < acount(f->slots); j++) {
         fprintf(out, "%s v%d=0;\n", behavior_scalar_c_type(f->slots[j]), j);
@@ -486,7 +492,8 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     "activation->frame=%d;"
                     "c->activation->source=%d;c->activation->stack=%d;c->"
                     "activation->node_id=%lluULL;"
-                    "c->steps=%s;return %d;\n",
+                    "c->steps=%s;return "
+                    "behavior_function_finish_values(c,%d,result_count);\n",
                     pc + 1,
                     i->frame,
                     i->source,
@@ -539,11 +546,14 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             case BF_COPY_ARRAY:
                 fprintf(
                     out,
-                    "v%d=(uintptr_t)c->copy_array(c->value_storage,(const "
+                    "v%d=(uintptr_t)behavior_function_copy_array(c,(const "
                     "pin_array*)(uintptr_t)v%d);\n",
                     i->output,
                     i->left
                 );
+                fputs("if(c->error_message){", out);
+                failure(out, i, BEHAVIOR_FUNCTION_HOST_DATA);
+                fputs("}\n", out);
                 break;
             case BF_STATE_SELECT: {
                 const behavior_state_selection *s = &f->state_selections[i->target];
@@ -618,6 +628,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     );
                     failure(out, i, i->left);
                     fputs("}}\n", out);
+                    host_results(out, i);
                     break;
                 }
                 if (spec->call->context) {
@@ -635,6 +646,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     );
                     failure(out, i, i->left);
                     fputs("}}\n", out);
+                    host_results(out, i);
                     break;
                 }
                 if (spec->call->value) {
@@ -664,19 +676,14 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     }
                     fprintf(
                         out,
-                        "{c->error_message=c->data->calls[%d].value(c->%s,"
-                        "c->data->values+%d,%d,c->data->values+%d);if(c->error_"
+                        "{c->error_message=behavior_function_value_call(c,%d);"
+                        "if(c->error_"
                         "message){",
-                        i->target,
-                        execution_intrinsic_in_result(spec->capability_id)
-                            ? "result_storage"
-                            : "value_storage",
-                        spec->first,
-                        spec->result_first - spec->first,
-                        spec->result_first
+                        i->target
                     );
                     failure(out, i, i->left);
                     fputs("}}\n", out);
+                    host_results(out, i);
                     break;
                 }
                 fprintf(
@@ -691,6 +698,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 failure(out, i, i->left);
                 fputs("}}\n", out);
+                host_results(out, i);
                 break;
             }
             case BF_COMMAND_SERVICE:
@@ -1157,14 +1165,14 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 fprintf(out, "if(v%d) goto %c%d;\n", i->left, prefix, i->target);
                 break;
             case BF_END:
-                fprintf(out, "c->steps=steps+%du;return 0;\n", f->root_steps);
+                fprintf(out, "c->steps=steps+%du;return behavior_function_finish_values(c,0,result_count);\n", f->root_steps);
                 break;
             case BF_RETURN:
                 fprintf(
                     out,
                     "c->returned=1;c->returned_node_id=%lluULL;c->steps=steps+%"
                     "du;return "
-                    "0;\n",
+                    "behavior_function_finish_values(c,0,result_count);\n",
                     (unsigned long long)i->node_id,
                     f->root_steps
                 );
@@ -1296,7 +1304,8 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
     fprintf(
         out,
         "#include \"execution/scalar.h\"\n#include "
-        "\"execution/function.h\"\n#include \"types/pointer.h\"\n#include "
+        "\"execution/function.h\"\n#include \"execution/status.h\"\n#include "
+        "\"types/pointer.h\"\n#include "
         "\"execution/random.h\"\n#include \"execution/borrow.h\"\n#include "
         "\"execution/component_write.h\"\n#include "
         "<math.h>\n#include "
@@ -1309,6 +1318,8 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "_callee_%d", index);
     }
     fputs("(behavior_function_context *c) {\n", out);
+    fprintf(out, "const int result_count=%d;\n", acount(f->result_defaults));
+    fputs("c->error_message=behavior_function_value_arguments(c);if(c->error_message)return behavior_function_finish_values(c,FLOW_ERR_ARGUMENT,result_count);\n", out);
     if (f->fast) {
         fprintf(
             out,

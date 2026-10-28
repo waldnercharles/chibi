@@ -368,7 +368,7 @@ static bool plan_value(const pin_value *value, uint64_t tag, uint64_t value_tag,
 {
     REQUIRE(value->type == PIN_UNION && value->ptr);
     const pin_union *data = value->ptr;
-    REQUIRE(data->tag == tag && data->count == 13);
+    REQUIRE(data->tag == tag && data->count == 16);
     const pin_value *v = data->values;
     REQUIRE(
         type_value(&v[0], value_tag, expected->type) && v[1].type == PIN_BOOL &&
@@ -493,7 +493,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
+        REQUIRE(pin_text(*value).bytes && arena_contains(owner, value->text));
         return true;
     }
     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
@@ -1052,7 +1052,7 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
     REQUIRE(
         literal->is_literal && literal->literal.type == PIN_STR &&
         pin_text(literal->literal).bytes &&
-        arena_contains(&metadata_storage, pin_text(literal->literal).bytes) &&
+        arena_contains(&metadata_storage, literal->literal.text) &&
         !strcmp(pin_text(literal->literal).bytes, "owned literal")
     );
     REQUIRE(
@@ -1066,7 +1066,7 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
         field->name && arena_contains(&metadata_storage, field->name) &&
         !strcmp(field->name, "message") && field->has_default &&
         field->default_value.type == PIN_STR && pin_text(field->default_value).bytes &&
-        arena_contains(&metadata_storage, pin_text(field->default_value).bytes) &&
+        arena_contains(&metadata_storage, field->default_value.text) &&
         !strcmp(pin_text(field->default_value).bytes, "owned default")
     );
     return true;

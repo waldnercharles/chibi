@@ -1,8 +1,8 @@
 #!/bin/sh
-# Opt in with make install-hooks. Validate exact staged Chibi bytes without
-# changing partial staging; retain the existing C formatter afterwards.
+# Opt in with make install-hooks. Format exact staged Chibi bytes without
+# absorbing unstaged changes; retain the existing C formatter afterwards.
 set -eu
 root=$(git rev-parse --show-toplevel)
 cd "$root"
-[ ! -f tools/chibi_format.py ] || python3 tools/chibi_format.py --staged
+[ ! -f tools/chibi_format.py ] || python3 tools/chibi_format.py --staged-write
 [ ! -f tools/clang-format.sh ] || sh tools/clang-format.sh --staged

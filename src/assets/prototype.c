@@ -82,7 +82,7 @@ static void read_field(const void *base, const type_field *field, pin_value *out
         memcpy(&bytes, (const char *)base + field->offset, sizeof bytes);
         size_t length = bytes ? strlen(bytes) : 0;
         assert(length <= UINT32_MAX);
-        *text = (pin_string){ bytes ? bytes : "", (uint32_t)length };
+        *text = (pin_string){ .bytes = bytes ? bytes : "", .length = (uint32_t)length };
         *out = (pin_value){ .type = PIN_STR, .type_name = field->type_name, .text = text };
         return;
     }
@@ -419,7 +419,8 @@ static int parse_field(
         case PIN_STR: {
             result = !av_is_str(json);
             if (!result) {
-                text = (pin_string){ av_get_str(json), (uint32_t)av_get_len(json) };
+                text = (pin_string){ .bytes = av_get_str(json),
+                                     .length = (uint32_t)av_get_len(json) };
                 value.text = &text;
             }
             break;

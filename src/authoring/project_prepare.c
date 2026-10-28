@@ -308,6 +308,7 @@ void authoring_project_artifact_free(authoring_project_artifact *artifact)
     assert(artifact);
     free(artifact->data);
     free(artifact->manifest);
+    free(artifact->cost_report);
     *artifact = (authoring_project_artifact){ 0 };
 }
 /* The window shows the project name unless a title replaces it, so a name
@@ -502,7 +503,7 @@ static bool prepare(
 )
 {
     assert(options && artifact && (!size || error));
-    assert(!artifact->data && !artifact->manifest);
+    assert(!artifact->data && !artifact->manifest && !artifact->cost_report);
     *artifact = (authoring_project_artifact){ 0 };
     if (size) {
         error[0] = 0;
@@ -510,7 +511,10 @@ static bool prepare(
     if (!options->project || !options->native ||
         options->components.component_count < 0 ||
         (options->components.component_count && !options->components.components) ||
-        (options->modules & ~WORLD_MODULES_ALL)) {
+        (options->modules & ~WORLD_MODULES_ALL) ||
+        options->cost_report < AUTHORING_COST_REPORT_NONE ||
+        options->cost_report > AUTHORING_COST_REPORT_JSON ||
+        (supplied && options->cost_report)) {
         return fail(error, size, "Invalid project preparation options");
     }
     bool valid = false;
@@ -677,6 +681,17 @@ static bool prepare(
          !event_catalog_validate(events, definitions, acount(definitions), error, size))) {
         goto done;
     }
+    if (options->cost_report) {
+        artifact->cost_report = authoring_sources_cost_report(
+            sources,
+            options->cost_report == AUTHORING_COST_REPORT_JSON,
+            error,
+            size
+        );
+        if (!artifact->cost_report) {
+            goto done;
+        }
+    }
     /* The encoded package is linked independently of source/compiler storage. */
     const input_action *map = source_catalog_input(catalog);
     for (int i = 0; i < acount(map); i++) {
@@ -822,6 +837,10 @@ done:
     chibi_project_free(&project);
     authoring_mesh_unmount_content();
     clear_visuals();
+    if (!valid) {
+        free(artifact->cost_report);
+        artifact->cost_report = NULL;
+    }
     return valid;
 }
 bool authoring_project_prepare(

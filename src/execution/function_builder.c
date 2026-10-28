@@ -251,6 +251,16 @@ bool behavior_function_builder_host_identity(behavior_function_builder *b, int i
     b->function->host_calls[index].capability_abi = abi;
     return true;
 }
+void behavior_function_builder_host_owned_arguments(behavior_function_builder *b, int index)
+{
+    assert(index >= 0 && index < acount(b->function->host_calls));
+    b->function->host_calls[index].owned_arguments = true;
+}
+void behavior_function_builder_call_owned_arguments(behavior_function_builder *b, int index)
+{
+    assert(index >= 0 && index < acount(b->function->calls));
+    b->function->calls[index].owned_arguments = true;
+}
 static int compare_outcome(const void *a, const void *b)
 {
     uint64_t left = *(const uint64_t *)a, right = *(const uint64_t *)b;
@@ -358,9 +368,11 @@ int behavior_function_builder_call(
     }
     apush(
         f->calls,
-        ((
-            behavior_function_invocation
-        ){ callee, first, argument_count, result_first, result_count, false })
+        ((behavior_function_invocation){ .function = callee,
+                                         .first = first,
+                                         .count = argument_count,
+                                         .result_first = result_first,
+                                         .result_count = result_count })
     );
     return index;
 }
@@ -518,7 +530,7 @@ static bool scalar_type(pin_type type)
 static bool same_type(pin_value a, pin_value b)
 {
     return a.type == b.type && a.container == b.container &&
-           pin_record_same(a.record, b.record) &&
+           pin_value_layout_same(&a, &b) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }
@@ -537,7 +549,7 @@ static bool reflected_scalar_field(const type_desc *type, size_t offset, pin_typ
         return false;
     }
     if (type->alias_of) {
-        const type_desc *alias = type_catalog_find(type->alias_of);
+        const type_desc *alias = type_alias_type(type, (type_resolver){ 0 });
         return alias && reflected_scalar_field(alias, offset, value, depth + 1);
     }
     for (int i = 0; i < type->field_count; i++) {
@@ -549,7 +561,7 @@ static bool reflected_scalar_field(const type_desc *type, size_t offset, pin_typ
         }
         if (field->type == PIN_STRUCT && field->type_name && offset >= field->offset &&
             fits(offset - field->offset, behavior_scalar_size(value), field->size)) {
-            const type_desc *nested = type_catalog_find(field->type_name);
+            const type_desc *nested = type_field_type(field, (type_resolver){ 0 });
             if (nested &&
                 reflected_scalar_field(nested, offset - field->offset, value, depth + 1)) {
                 return true;
@@ -751,7 +763,11 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         case BF_STORE_HEADER:
         case BF_STORE_TYPE_NAME:
             CHECK(index_valid(i->target, f->variable_count), "invalid variable header destination");
-            CHECK(!f->variable_defaults[i->target].record, "native header opcode cannot replace an authored record");
+            CHECK(
+                !f->variable_defaults[i->target].record ||
+                    f->variable_defaults[i->target].record->native,
+                "native header opcode cannot replace an authored record"
+            );
             CHECK(SLOT(i->left, BF_POINTER_TYPE), "invalid header name type");
             CHECK(
                 i->op != BF_STORE_HEADER ||
@@ -766,7 +782,8 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         case BF_RESULT_ARRAY:
             CHECK(index_valid(i->target, f->result_count), "invalid result header destination");
             CHECK(
-                i->op == BF_RESULT_PRESENT || !f->result_defaults[i->target].record,
+                i->op == BF_RESULT_PRESENT || !f->result_defaults[i->target].record ||
+                    f->result_defaults[i->target].record->native,
                 "native result opcode cannot replace an authored record"
             );
             CHECK(SLOT(i->left, i->op == BF_RESULT_PRESENT ? PIN_BOOL : BF_POINTER_TYPE), "invalid result header source");
@@ -799,7 +816,12 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         case BF_HOST_CALL:
             CHECK(index_valid(i->target, acount(f->host_calls)), "invalid host capability");
             CHECK(!i->right, "runtime host flags are not canonical instructions");
-            CHECK(i->left == BEHAVIOR_FUNCTION_HOST_DATA || i->left == BEHAVIOR_FUNCTION_HOST_FLOW, "invalid host failure kind");
+            CHECK(
+                i->left == BEHAVIOR_FUNCTION_HOST_DATA ||
+                    i->left == BEHAVIOR_FUNCTION_HOST_FLOW ||
+                    i->left == BEHAVIOR_FUNCTION_ARGUMENT,
+                "invalid host failure kind"
+            );
             break;
         case BF_INVOKE:
             CHECK(index_valid(i->left, acount(f->calls)), "invalid function invocation");
@@ -1223,8 +1245,11 @@ static bool record_valid(record_validation *records, const pin_record *record)
 }
 static bool value_type_valid(record_validation *records, pin_value value)
 {
-    if (value.container < PIN_CONTAINER_SINGLE || value.container > PIN_CONTAINER_MAP ||
+    if (value.container < PIN_CONTAINER_SINGLE || value.container > PIN_CONTAINER_VIEW ||
         (!scalar_type(value.type) && value.type != PIN_STRUCT && value.type != PIN_UNION)) {
+        return false;
+    }
+    if (value.container == PIN_CONTAINER_VIEW && value.ptr) {
         return false;
     }
     if (value.record &&
@@ -1234,7 +1259,8 @@ static bool value_type_valid(record_validation *records, pin_value value)
     /* Nested collections carry each element's complete header, including its
      * record layout. The outer descriptor is not itself a scalar record. */
     if (!value.record &&
-        (value.container == PIN_CONTAINER_ARRAY || value.container == PIN_CONTAINER_SET) &&
+        (value.container == PIN_CONTAINER_ARRAY || value.container == PIN_CONTAINER_SET ||
+         value.container == PIN_CONTAINER_VIEW) &&
         value.type_name && !strncmp(value.type_name, "__collection_", 13)) {
         return true;
     }
@@ -1244,6 +1270,16 @@ static bool map_bank(pin_value value)
 {
     return value.type == PIN_UNION && value.container == PIN_CONTAINER_MAP &&
            !value.record && value.type_name;
+}
+static bool array_bank(record_validation *records, pin_value value)
+{
+    return (value.container == PIN_CONTAINER_ARRAY ||
+            value.container == PIN_CONTAINER_VIEW) &&
+           value_type_valid(records, value);
+}
+static bool sequence_bank(record_validation *records, pin_value value)
+{
+    return scalar_bank(value, PIN_STR) || array_bank(records, value);
 }
 /* Intrinsic callbacks consume physical value banks, not authored signatures.
  * Validate their ABI before a producer or decoded definition can execute them. */
@@ -1257,12 +1293,80 @@ static bool intrinsic_schema(
     if (!id) {
         return true;
     }
+    if (host->owned_arguments) {
+        return false;
+    }
     int count = host->result_first - host->first;
     const behavior_function_data_value *values = f->data_values + host->first;
     pin_value output = f->data_values[host->result_first].initial;
 #define INPUT(index, type) scalar_bank(values[index].initial, type)
 #define OUTPUT(type) scalar_bank(output, type)
     switch (execution_intrinsic_kind(id)) {
+        case EXECUTION_INTRINSIC_VALUE_COPY:
+            return count == 1 && value_type_valid(records, values[0].initial) &&
+                   same_type(values[0].initial, output);
+        case EXECUTION_INTRINSIC_VALUE_DROP:
+            return count == 1 && value_type_valid(records, values[0].initial) &&
+                   OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_REFERENCE_UNION:
+            return count == 4 && INPUT(0, BF_POINTER_TYPE) &&
+                   INPUT(1, PIN_U64) && INPUT(2, PIN_I32) &&
+                   value_type_valid(records, values[3].initial) &&
+                   OUTPUT(BF_POINTER_TYPE);
+        case EXECUTION_INTRINSIC_MAP_DELETE_PLACE:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   pin_map_key_supported(values[1].initial) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
+            if (count < 2 || count > 4 || !INPUT(0, BF_POINTER_TYPE) ||
+                !INPUT(1, PIN_I32) || !OUTPUT(PIN_BOOL) ||
+                (count == 4 && !INPUT(2, PIN_I32))) {
+                return false;
+            }
+            for (int i = 2; i < count; i++) {
+                if (!value_type_valid(records, values[i].initial)) {
+                    return false;
+                }
+            }
+            return true;
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+            return count == 4 && (INPUT(0, PIN_POINTER) || INPUT(0, PIN_STR)) &&
+                   INPUT(1, PIN_I32) && INPUT(2, PIN_I32) &&
+                   INPUT(3, PIN_U64) && OUTPUT(PIN_UNION);
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+            return count == 4 && sequence_bank(records, values[0].initial) &&
+                   INPUT(1, PIN_I32) && INPUT(2, PIN_I32) &&
+                   INPUT(3, PIN_U64) && OUTPUT(PIN_UNION);
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE: {
+            if (count != 1 || !sequence_bank(records, values[0].initial)) {
+                return false;
+            }
+            pin_value source = values[0].initial;
+            if (source.container != PIN_CONTAINER_SINGLE) {
+                source.container = PIN_CONTAINER_ARRAY;
+            }
+            return same_type(source, output);
+        }
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
+            return count == 1 && sequence_bank(records, values[0].initial) &&
+                   OUTPUT(PIN_I32);
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW: {
+            if (count != 2 || !sequence_bank(records, values[0].initial) ||
+                !INPUT(1, PIN_I32) || !value_type_valid(records, output)) {
+                return false;
+            }
+            pin_value source = values[0].initial;
+            if (source.container == PIN_CONTAINER_SINGLE) {
+                return OUTPUT(PIN_I32);
+            }
+            if (source.type_name && !strncmp(source.type_name, "__collection_", 13)) {
+                /* Nested/optional elements have complete dynamic headers;
+                 * the collection descriptor supplies their physical storage. */
+                return output.type == source.type;
+            }
+            source.container = PIN_CONTAINER_SINGLE;
+            return same_type(source, output);
+        }
         case EXECUTION_INTRINSIC_STRING_CURSOR:
             return count == 1 && INPUT(0, PIN_STR) && OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_STRING_BYTES:
@@ -1350,6 +1454,7 @@ static bool intrinsic_schema(
             return !values[3].initial.b || OUTPUT(PIN_UNION);
         case EXECUTION_INTRINSIC_CONSTRUCT:
             if (count < 1 || output.container == PIN_CONTAINER_MAP ||
+                output.container == PIN_CONTAINER_VIEW ||
                 !same_type(values[0].initial, output)) {
                 return false;
             }
@@ -1867,6 +1972,25 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
     int count = host->result_first - host->first;
     const behavior_function_data_value *values = f->data_values + host->first;
     behavior_value_kind result = f->data_values[host->result_first].kind;
+    switch (id) {
+        case EXECUTION_INTRINSIC_SEQUENCE_SLICE:
+        case EXECUTION_INTRINSIC_SEQUENCE_VIEW:
+        case EXECUTION_INTRINSIC_SEQUENCE_CLONE:
+        case EXECUTION_INTRINSIC_SEQUENCE_GET:
+        case EXECUTION_INTRINSIC_SEQUENCE_BORROW:
+        case EXECUTION_INTRINSIC_SEQUENCE_LENGTH:
+        case EXECUTION_INTRINSIC_VALUE_COPY:
+        case EXECUTION_INTRINSIC_VALUE_DROP:
+            /* These banks hold complete typed values. Raw addresses, logical
+             * references and cursors cannot masquerade as sequence payloads. */
+            for (int i = 0; i < count; i++) {
+                if (values[i].kind != BEHAVIOR_VALUE) {
+                    return false;
+                }
+            }
+            return result == BEHAVIOR_VALUE;
+        default: break;
+    }
     for (int i = 0; i < count; i++) {
         behavior_value_kind expected = BEHAVIOR_VALUE;
         if (i == 0) {
@@ -1882,6 +2006,9 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_REFERENCE_WRITE:
                 case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
                 case EXECUTION_INTRINSIC_LOCAL_RELEASE:
+                case EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE:
+                case EXECUTION_INTRINSIC_REFERENCE_UNION:
+                case EXECUTION_INTRINSIC_MAP_DELETE_PLACE:
                     expected = BEHAVIOR_REFERENCE;
                     break;
                 case EXECUTION_INTRINSIC_QUERY_TEST:
@@ -1932,6 +2059,7 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
         return result == BEHAVIOR_QUERY_CURSOR;
     }
     return result == (id == EXECUTION_INTRINSIC_POINTER_REFERENCE ||
+                              id == EXECUTION_INTRINSIC_REFERENCE_UNION ||
                               id == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
                               id == EXECUTION_INTRINSIC_REFERENCE_FIELD ||
                               id == EXECUTION_INTRINSIC_REFERENCE_KEY
@@ -2307,50 +2435,98 @@ static void define_slot(uint64_t *bits, int slot)
 {
     bits[slot / 64] &= ~(UINT64_C(1) << (slot % 64));
 }
-/* Union possibly undefined slots over all reachable predecessors. A branch
- * cannot expose a register before its first definition; locals have declared
- * defaults and live outside this scalar temporary bank. */
-static bool defined_operands(const behavior_function *f)
+/* Union possibly undefined slots over reachable predecessors. Only block
+ * entries need retained state; instructions within a block are checked in
+ * order. Locals have declared defaults outside this scalar temporary bank. */
+static bool defined_operands(const behavior_function *f, char *error, size_t size)
 {
     int count = acount(f->instructions), slots = acount(f->slots);
     size_t words = (size_t)slots / 64 + 1;
-    uint64_t *before = xcalloc((size_t)count * words, sizeof *before);
+    const size_t budget = 64u * 1024u * 1024u;
+    /* Bound the instruction-to-block map and worst-case block starts before
+     * allocating them, then include both in the complete working-storage cap. */
+    if ((size_t)count > (budget / sizeof(int) - 1) / 2) {
+        snprintf(error, size, "definition exceeds verifier storage budget");
+        return false;
+    }
+    int *block_at = xcalloc((size_t)count, sizeof *block_at);
+    int *starts = xmalloc(((size_t)count + 1) * sizeof *starts);
+    block_at[0] = 1;
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_op op = f->instructions[pc].op;
+        if (op != BF_BRANCH && op != BF_JUMP && op != BF_END &&
+            op != BF_RETURN && op != BF_FAIL) {
+            continue;
+        }
+        int targets[2], edges = behavior_function_successors(f, pc, targets);
+        for (int edge = 0; edge < edges; edge++) {
+            block_at[targets[edge]] = 1;
+        }
+        if (pc + 1 < count) {
+            block_at[pc + 1] = 1;
+        }
+    }
+    int blocks = 0;
+    for (int pc = 0; pc < count; pc++) {
+        if (block_at[pc]) {
+            starts[blocks++] = pc;
+        }
+        block_at[pc] = blocks - 1;
+    }
+    starts[blocks] = count;
+    size_t scratch = ((size_t)count * 2 + 1) * sizeof(int) +
+                     (size_t)blocks * (sizeof(int) + 2 * sizeof(bool)) +
+                     words * sizeof(uint64_t);
+    if (scratch > budget ||
+        (size_t)blocks > (budget - scratch) / sizeof(uint64_t) / words) {
+        snprintf(error, size, "definition exceeds verifier storage budget");
+        free(block_at);
+        free(starts);
+        return false;
+    }
+    uint64_t *before = xcalloc((size_t)blocks * words, sizeof *before);
     uint64_t *next = xmalloc(words * sizeof *next);
-    bool *reached = xcalloc((size_t)count, sizeof *reached);
-    bool *queued = xcalloc((size_t)count, sizeof *queued);
-    int *queue = xmalloc((size_t)count * sizeof *queue);
+    bool *reached = xcalloc((size_t)blocks, sizeof *reached);
+    bool *queued = xcalloc((size_t)blocks, sizeof *queued);
+    int *queue = xmalloc((size_t)blocks * sizeof *queue);
     for (int slot = 0; slot < slots; slot++) {
         before[slot / 64] |= UINT64_C(1) << (slot % 64);
     }
     reached[0] = queued[0] = true;
     queue[0] = 0;
-    int head = 0, tail = 1 % count, pending = 1;
+    int head = 0, tail = 1 % blocks, pending = 1;
     bool valid = true;
     while (pending) {
-        int pc = queue[head];
-        head = (head + 1) % count;
+        int block = queue[head];
+        head = (head + 1) % blocks;
         pending--;
-        queued[pc] = false;
-        const behavior_function_instruction *i = &f->instructions[pc];
-        const uint64_t *at = before + (size_t)pc * words;
-        bool right = behavior_function_right_slot(i->op);
-        if ((behavior_function_left_slot(i->op) && undefined_slot(at, i->left)) ||
-            (right && undefined_slot(at, i->right)) ||
-            (behavior_function_third_slot(i->op) && undefined_slot(at, i->target))) {
-            valid = false;
+        queued[block] = false;
+        memcpy(next, before + (size_t)block * words, words * sizeof *next);
+        for (int pc = starts[block]; pc < starts[block + 1]; pc++) {
+            const behavior_function_instruction *i = &f->instructions[pc];
+            if ((behavior_function_left_slot(i->op) && undefined_slot(next, i->left)) ||
+                (behavior_function_right_slot(i->op) && undefined_slot(next, i->right)) ||
+                (behavior_function_third_slot(i->op) &&
+                 undefined_slot(next, i->target))) {
+                snprintf(error, size, "instruction %d: scalar operand is not defined on every incoming path", pc);
+                valid = false;
+                break;
+            }
+            if (i->op < BF_STORE) {
+                define_slot(next, i->output);
+            }
+            if ((i->op == BF_DIV || i->op == BF_MOD) &&
+                behavior_scalar_integer(i->type) && i->target >= 0) {
+                define_slot(next, i->target);
+            }
+        }
+        if (!valid) {
             break;
         }
-        memcpy(next, at, words * sizeof *next);
-        if (i->op < BF_STORE) {
-            define_slot(next, i->output);
-        }
-        if ((i->op == BF_DIV || i->op == BF_MOD) &&
-            behavior_scalar_integer(i->type) && i->target >= 0) {
-            define_slot(next, i->target);
-        }
-        int targets[2], edges = behavior_function_successors(f, pc, targets);
+        int targets[2],
+            edges = behavior_function_successors(f, starts[block + 1] - 1, targets);
         for (int edge = 0; edge < edges; edge++) {
-            int target = targets[edge];
+            int target = block_at[targets[edge]];
             uint64_t *to = before + (size_t)target * words;
             bool changed = !reached[target];
             for (size_t word = 0; word < words; word++) {
@@ -2361,12 +2537,14 @@ static bool defined_operands(const behavior_function *f)
             reached[target] = true;
             if (changed && !queued[target]) {
                 queue[tail] = target;
-                tail = (tail + 1) % count;
+                tail = (tail + 1) % blocks;
                 queued[target] = true;
                 pending++;
             }
         }
     }
+    free(block_at);
+    free(starts);
     free(before);
     free(next);
     free(reached);
@@ -2525,19 +2703,7 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
             return NULL;
         }
     }
-    /* Decoded definitions use this same data-flow verifier. Bound its matrix
-     * before allocating instruction_count * slot_words, including overflow.
-     * The bound admits the package compiler's largest function, EmitBody;
-     * a decoded module's preparation reservation also counts this matrix
-     * against its decoded storage limit. */
-    size_t words = (size_t)acount(f->slots) / 64 + 1;
-    const size_t verifier_bytes = 256u * 1024u * 1024u;
-    if ((size_t)acount(f->instructions) > verifier_bytes / sizeof(uint64_t) / words) {
-        snprintf(error, size, "definition exceeds verifier storage budget");
-        return NULL;
-    }
-    if (!defined_operands(f)) {
-        snprintf(error, size, "scalar operand is not defined on every incoming path");
+    if (!defined_operands(f, error, size)) {
         return NULL;
     }
     if (!checked_control(f)) {

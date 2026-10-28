@@ -10,6 +10,5 @@ RenderFrameProbe :: behavior {
         beam.Geometry3D.height = part.Height
         beam.Geometry3D.depth = part.Depth
         beam.Geometry3D.elevation = self.Geometry3D.elevation + offset.Elevation
-        trigger_visual_reaction(vec3(0.3, 0, 0), 12.0)
     }
 }

@@ -346,10 +346,14 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_COPY_ARRAY: {
-            uintptr_t pointer = (uintptr_t)ctx->copy_array(
-                ctx->value_storage,
+            uintptr_t pointer = (uintptr_t)behavior_function_copy_array(
+                ctx,
                 (const pin_array *)(uintptr_t)behavior_scalar_bits(a)
             );
+            if (ctx->error_message) {
+                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
+                goto done;
+            }
             if (BF_POINTER_TYPE == PIN_U64) {
                 out->u64 = pointer;
             } else {
@@ -414,6 +418,9 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             if (call->action) {
                 ctx->error_message = behavior_function_host_action(ctx, i->target, i->node_id);
+                if (!ctx->error_message) {
+                    ctx->error_message = behavior_function_host_results(ctx, i->target);
+                }
                 if (ctx->error_message) {
                     result = fail(ctx, i, steps, parents, i->left);
                     goto done;
@@ -428,6 +435,9 @@ int execution_machine_step(execution_machine *m, int pc)
                     ctx->data->values + spec->first,
                     ctx->data->values + spec->result_first
                 );
+                if (!ctx->error_message) {
+                    ctx->error_message = behavior_function_host_results(ctx, i->target);
+                }
                 if (ctx->error_message) {
                     result = fail(ctx, i, steps, parents, i->left);
                     goto done;
@@ -437,19 +447,15 @@ int execution_machine_step(execution_machine *m, int pc)
             ctx->error_message = i->right == BF_HOST_BORROW_ARRAY
                                    ? behavior_function_borrow_snapshot(ctx, i->target)
                                : call->value
-                                   ? call->value(
-                                         execution_intrinsic_in_result(spec->capability_id)
-                                             ? ctx->result_storage
-                                             : ctx->value_storage,
-                                         ctx->data->values + spec->first,
-                                         spec->result_first - spec->first,
-                                         ctx->data->values + spec->result_first
-                                     )
+                                   ? behavior_function_value_call(ctx, i->target)
                                    : call->invoke(
                                          call->service,
                                          ctx->data->values + spec->first,
                                          ctx->data->values + spec->result_first
                                      );
+            if (!ctx->error_message) {
+                ctx->error_message = behavior_function_host_results(ctx, i->target);
+            }
             if (ctx->error_message) {
                 result = fail(ctx, i, steps, parents, i->left);
                 goto done;

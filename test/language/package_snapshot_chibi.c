@@ -257,8 +257,10 @@ static bool own(arena *storage, const pin_value *value, int depth)
         return true;
     }
     if (value->type == PIN_STR) {
+        /* Canonical empty text has no descriptor; present descriptors are owned here. */
         REQUIRE(
-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+            pin_text(*value).bytes &&
+            (!value->text || arena_contains(storage, value->text))
         );
         return true;
     }
@@ -973,7 +975,7 @@ static bool retained_results()
             const pin_value *check = &saved_check[b][kind];
             REQUIRE(
                 check->type == PIN_STR && pin_text(*check).bytes &&
-                arena_contains(&retained[b][kind], pin_text(*check).bytes) &&
+                arena_contains(&retained[b][kind], check->text) &&
                 !strcmp(pin_text(*check).bytes, saved_expected[kind])
             );
         }

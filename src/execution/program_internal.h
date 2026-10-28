@@ -30,6 +30,7 @@ typedef struct
 typedef struct
 {
     behavior_function_context *context;
+    execution_activation *owner;
     uint64_t action;
     pin_value *values;
     int count;
@@ -326,6 +327,7 @@ bool program_capture_reference(
     const execution_module_capture *,
     pin_value *
 );
+int program_validate_values(execution_program *, const pin_value *, int count);
 void program_collect_payloads(execution_program *, execution_activation *extra);
 static inline bool program_wait_due(const command_wait *wait, double now)
 {

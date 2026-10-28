@@ -38,6 +38,15 @@ script_catalog_type script_constructor_collection(
     script_type type = container == PIN_CONTAINER_MAP
                          ? (script_type){ .storage = PIN_UNION }
                          : value;
+    /* The descriptor retains the element's full type. Its optional wrapper is
+     * an element value, not an optional collection; boxed elements physically
+     * occupy union slots. */
+    if (container != PIN_CONTAINER_MAP && (value.flags & SCRIPT_TYPE_BOXED_OPTIONAL)) {
+        type = (script_type){ .storage = PIN_UNION,
+                              .flags = value.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_UNTYPED |
+                                                      SCRIPT_TYPE_GENERIC) };
+    }
+    type.flags &= ~SCRIPT_TYPE_OPTIONAL;
     type.container = container;
     type.collection = id;
     char text[64];
@@ -53,6 +62,31 @@ script_catalog_type script_constructor_collection(
                                   .container = container,
                                   .key_type = key,
                                   .element_type = value };
+}
+script_constructor_plan script_constructor_collection_plan(
+    arena *storage,
+    const script_constructor_facts *facts,
+    pin_container container,
+    script_type key,
+    script_type element,
+    size_t pointer_size
+)
+{
+    script_catalog_type definition = script_constructor_collection(storage, container, key, element, pointer_size);
+    script_constructor_plan plan = { .type = definition.type };
+    if (script_catalog_type_by_id(facts->catalog, definition.id)) {
+        return plan;
+    }
+    plan.publish = true;
+    plan.id = definition.id;
+    plan.name = definition.name;
+    plan.definition_type = definition.type;
+    plan.element_type = definition.element_type;
+    plan.collection_container = definition.container;
+    plan.key_type = definition.key_type;
+    plan.size = definition.size;
+    plan.internal = true;
+    return plan;
 }
 script_catalog_type script_constructor_pointer(arena *storage, script_type pointee, size_t pointer_size)
 {
@@ -280,6 +314,8 @@ bool script_constructor_materialize(
                                  .name = plan->name,
                                  .type = plan->definition_type,
                                  .element_type = plan->element_type,
+                                 .container = plan->collection_container,
+                                 .key_type = plan->key_type,
                                  .size = plan->size,
                                  .internal = plan->internal,
                                  .variants = variants,

@@ -8,6 +8,8 @@ package_compiler/Tasks.chibi
 package_compiler/TaskResults.chibi
 package_compiler/Tree.chibi
 package_compiler/Number.chibi
+package_compiler/Optional.chibi
+package_compiler/Sequences.chibi
 package_compiler/Queries.chibi
 package_compiler/QueryLoops.chibi
 package_compiler/Behavior.chibi

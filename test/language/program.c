@@ -431,6 +431,9 @@ static const node_host_call managed_call = { .value = managed_text };
 #define CAPTURE_WRITES 32
 #define CAPTURE_KEEP_UPDATES 40
 #define CAPTURE_STORAGE_LIMIT ((size_t)256 * 1024)
+/* A box holding short text: one arena block and the table that charges the
+ * shared text backing it retains. */
+#define SMALL_STORAGE_BYTES 1024
 static int capture_text_calls;
 static const char *capture_text(arena *storage, const pin_value *, int count, pin_value *out)
 {
@@ -2814,19 +2817,31 @@ static bool capture_measure(
     arena_usage(&box->storage, &used, &capacity);
     size_t backing = arena_storage_bytes(&box->storage);
     REQUIRE(used <= capacity && capacity <= backing && backing < CAPTURE_STORAGE_LIMIT);
-    /* A fresh owning snapshot is a bounded reference size for the current
-     * value, including nested array headers and strings, not the old versions. */
+    /* Text bytes live in shared immutable backing that each arena charges
+     * once, so the box holds its allocations and the backing they retain. */
+    used += box->storage.retained_bytes;
+    /* A fresh capture is a bounded reference size for the current value,
+     * including nested array headers and the text backing it retains, not the
+     * old versions. */
     arena current = { 0 };
     pin_value snapshot;
-    REQUIRE(!pin_value_snapshot_to_arena(&current, &snapshot, box->value));
+    REQUIRE(!pin_value_capture_to_arena(&current, &snapshot, box->value));
     size_t live, live_capacity;
     arena_usage(&current, &live, &live_capacity);
-    REQUIRE(live >= CAPTURE_TEXT_BYTES && live < 4 * CAPTURE_TEXT_BYTES);
+    live += current.retained_bytes;
+    REQUIRE(live >= CAPTURE_TEXT_BYTES && live < (array ? 6 : 4) * CAPTURE_TEXT_BYTES);
     pin_value captured = array ? pin_array_get(snapshot.ptr, 0) : snapshot;
     REQUIRE(capture_text_is(&captured, array ? writes ? writes + 1 : 0 : writes));
     arena_free(&current);
-    if (!attached) {
+    if (!attached && !array) {
         REQUIRE(used == live);
+    }
+    /* An array lives on the program's managed heap, which the box shares:
+     * the overwritten versions are collected, so the heap holds the current
+     * array and the few states that keep earlier ones, never all 32. */
+    if (array) {
+        REQUIRE(!used);
+        REQUIRE(execution_program_memory_usage(program).managed_bytes < 16 * CAPTURE_TEXT_BYTES);
     }
     execution_memory_usage memory = execution_program_memory_usage(program);
     printf(
@@ -3046,12 +3061,12 @@ TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink)
         REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
         REQUIRE(
             !strcmp(pin_text(*(box->value)).bytes, "small") &&
-            arena_storage_bytes(&box->storage) < 512
+            arena_storage_bytes(&box->storage) < SMALL_STORAGE_BYTES
         );
         REQUIRE(execution_program_update(program, 4, 0, 10000) == FLOW_OK);
         REQUIRE(
             !strcmp(pin_text(*(box->value)).bytes, "") &&
-            arena_storage_bytes(&box->storage) < 512
+            arena_storage_bytes(&box->storage) < SMALL_STORAGE_BYTES
         );
         REQUIRE(number_state(instance, "done", 1));
         REQUIRE(capture_text_is(&execution_inspector_watch_at(debugger, saved)->value, 0));
@@ -3091,7 +3106,7 @@ TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced)
         REQUIRE(execution_program_update(program, 2, 0, 10000) == FLOW_OK);
         REQUIRE(number_state(instance, "seen", 7));
         REQUIRE(((pin_array *)box->value->ptr)->count == 0);
-        REQUIRE(arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(arena_storage_bytes(&box->storage) < SMALL_STORAGE_BYTES);
         REQUIRE(execution_program_update(program, 3, 0, 10000) == FLOW_OK);
         REQUIRE(!capture_box(instance, &holders) && !holders);
         REQUIRE(!execution_instance_pending(instance));
@@ -3199,9 +3214,12 @@ TEST_CASE(program_completed_payloads_are_released_without_marking)
         REQUIRE(execution_instance_pending(instance) == 0);
         execution_memory_usage complete = execution_program_memory_usage(program);
         REQUIRE(complete.payload_bytes == 0 && complete.payload_capacity == 0);
-        /* The completed call owns no suspended work. Free its payloads
-         * directly instead of tracing values that will all be destroyed. */
-        REQUIRE(arena_collect_marks() == marks);
+        /* The completed call owns no suspended work, so its payloads are freed
+         * directly. Its dead arrays live on the managed heap, which collects
+         * at call boundaries inside the run: those collections trace the few
+         * live values, never the 512 dead arrays. */
+        REQUIRE(complete.managed_bytes == 0);
+        REQUIRE(arena_collect_marks() - marks < 16);
     }
     return true;
 }
@@ -3986,8 +4004,8 @@ TEST_CASE(program_local_array_survives_collection_mid_build)
         /* 200 doubles fill a packed 256-item buffer; the outgrown 8- to
          * 128-item buffers would hold 248 more. */
         REQUIRE(arena_collect_marks() > marks);
-        REQUIRE(suspended.payload_bytes >= 256 * sizeof(double));
-        REQUIRE(suspended.payload_bytes < (256 + 248) * sizeof(double));
+        REQUIRE(suspended.managed_bytes >= 256 * sizeof(double));
+        REQUIRE(suspended.managed_bytes < (256 + 248) * sizeof(double));
         REQUIRE(execution_program_update(program, 1, 0, 1000000) == FLOW_OK);
         REQUIRE(number_state(instance, "total", 1000 + 199 + 399 + 400));
         REQUIRE(execution_instance_pending(instance) == 0);
@@ -5919,7 +5937,7 @@ TEST_CASE(program_task_result_snapshot_outlives_the_last_handle)
     return true;
 }
 
-TEST_CASE(program_task_await_copies_large_payload_once)
+TEST_CASE(program_task_await_shares_large_payload)
 {
     enum
     {
@@ -5979,13 +5997,11 @@ TEST_CASE(program_task_await_copies_large_payload_once)
             REQUIRE(execution_program_memory_usage(program).task_result_bytes == 0);
         }
         /* Compare the same completed-task delivery with two payload sizes.
-         * Control storage is size independent. One destination snapshot grows
-         * by one physical item buffer, not boxed value headers. A temporary
-         * owning union would double that work. */
-        uint64_t payload = physical[1] - physical[0];
-        REQUIRE(payload == (ITEMS - 1) * sizeof(double));
-        REQUIRE(requested[1] >= requested[0] + payload);
-        REQUIRE(requested[1] - requested[0] < payload + payload / 2);
+         * The packed state array grows by its items, but the destination
+         * shares the delivered array's backing, so delivery costs the same
+         * whatever the payload's size. */
+        REQUIRE(physical[1] - physical[0] == (ITEMS - 1) * sizeof(double));
+        REQUIRE(requested[1] == requested[0]);
     }
     return true;
 }
@@ -13253,7 +13269,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_cancellation_is_distinct_from_zero_false_and_empty_text);
     RUN_TEST_CASE(program_task_waiters_receive_independent_success_snapshots);
     RUN_TEST_CASE(program_task_result_snapshot_outlives_the_last_handle);
-    RUN_TEST_CASE(program_task_await_copies_large_payload_once);
+    RUN_TEST_CASE(program_task_await_shares_large_payload);
     RUN_TEST_CASE(program_task_collection_indexes_handles_across_many_owners);
     RUN_TEST_CASE(program_task_collection_follows_long_pointer_chains);
     RUN_TEST_CASE(program_task_results_keep_nested_task_handles_alive);

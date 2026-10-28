@@ -2,7 +2,8 @@
 set(asset_output "${CMAKE_CURRENT_BINARY_DIR}/generated/assets")
 set(asset_generator_timeout 240000)
 set(asset_compiler_timeout_arguments "")
-if(CHIBI_ENABLE_SANITIZERS)
+# Unoptimized or sanitized hosts take minutes to compile the asset compiler.
+if(CHIBI_ENABLE_SANITIZERS OR NOT CMAKE_BUILD_TYPE STREQUAL "Release")
     set(asset_generator_timeout 600000)
     list(APPEND asset_compiler_timeout_arguments --compiler-timeout-ms=600000)
 endif()

@@ -342,7 +342,7 @@ static bool owns(arena *owner, const pin_value *value)
         return true;
     }
     if (value->type == PIN_STR) {
-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
+        REQUIRE(pin_text(*value).bytes && arena_contains(owner, value->text));
         return true;
     }
     if (value->type == PIN_STRUCT) {

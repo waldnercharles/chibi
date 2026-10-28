@@ -139,20 +139,56 @@ TEST_CASE(collectable_arena_finds_values_by_address)
     arena_free(&other);
     return true;
 }
-/* An arena remembers its last copy by source until a reset, free or
- * collection, and a later copy replaces it. */
+/* Small collectable values share slabs, which double from 1 KiB: a thousand of
+ * them take six backing allocations, start zeroed and aligned, and swept
+ * values' slots serve later allocations without another. */
+TEST_CASE(collectable_arena_packs_small_values_into_slabs)
+{
+    enum
+    {
+        COUNT = 1000,
+        SIZE = 24
+    };
+    arena storage;
+    arena_init_collectable(&storage);
+    unsigned char **values = NULL;
+    uint64_t blocks = arena_block_allocations();
+    for (int i = 0; i < COUNT; i++) {
+        unsigned char *value = arena_alloc(&storage, SIZE);
+        REQUIRE(aligned(value) && filled(value, SIZE, 0));
+        memset(value, 0xab, SIZE);
+        apush(values, value);
+    }
+    REQUIRE(arena_block_allocations() - blocks == 6);
+    collect_every(&storage, values, 2);
+    for (int i = 0; i < COUNT / 2; i++) {
+        unsigned char *value = arena_alloc(&storage, SIZE);
+        REQUIRE(filled(value, SIZE, 0) && !arena_contains(&storage, value + SIZE));
+    }
+    REQUIRE(arena_block_allocations() - blocks == 6);
+    afree(values);
+    arena_free(&storage);
+    return true;
+}
+/* An arena remembers its last ARENA_COPY_CACHE copies by source until a
+ * reset, free or collection; a later copy replaces the oldest. */
 TEST_CASE(arena_remembers_last_copy_until_reset_or_collection)
 {
-    static int sources[2];
+    static int sources[ARENA_COPY_CACHE + 1];
     arena storage = { 0 };
-    void *copy = arena_alloc(&storage, 8), *later = arena_alloc(&storage, 8);
+    void *copies[ARENA_COPY_CACHE + 1];
     REQUIRE(!arena_copy_find(&storage, &sources[0]));
-    arena_copy_remember(&storage, &sources[0], copy);
-    REQUIRE(arena_copy_find(&storage, &sources[0]) == copy);
-    REQUIRE(!arena_copy_find(&storage, &sources[1]));
-    arena_copy_remember(&storage, &sources[1], later);
-    REQUIRE(arena_copy_find(&storage, &sources[1]) == later);
-    REQUIRE(!arena_copy_find(&storage, &sources[0]));
+    for (int i = 0; i <= ARENA_COPY_CACHE; i++) {
+        REQUIRE(!arena_copy_find(&storage, &sources[i]));
+        copies[i] = arena_alloc(&storage, 8);
+        arena_copy_remember(&storage, &sources[i], copies[i]);
+        REQUIRE(arena_copy_find(&storage, &sources[i]) == copies[i]);
+        REQUIRE(
+            arena_copy_find(&storage, &sources[0]) ==
+            (i < ARENA_COPY_CACHE ? copies[0] : NULL)
+        );
+    }
+    REQUIRE(arena_copy_find(&storage, &sources[1]) == copies[1]);
     arena_reset(&storage);
     REQUIRE(!arena_copy_find(&storage, &sources[1]));
     arena_copy_remember(&storage, &sources[0], arena_alloc(&storage, 8));
@@ -178,5 +214,6 @@ void test_arena()
     RUN_TEST_CASE(arena_growth_keeps_allocations_and_reset_reuses_blocks);
     RUN_TEST_CASE(zero_arena_allocates_on_first_use);
     RUN_TEST_CASE(collectable_arena_finds_values_by_address);
+    RUN_TEST_CASE(collectable_arena_packs_small_values_into_slabs);
     RUN_TEST_CASE(arena_remembers_last_copy_until_reset_or_collection);
 }

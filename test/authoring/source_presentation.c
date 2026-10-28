@@ -125,13 +125,13 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
     REQUIRE(o != NULL);
     node *n = origin_node(view, o);
     REQUIRE(!strcmp(pin_text(n->output_pins[0].default_value).bytes, "hello"));
-    const char *original_default = pin_text(n->output_pins[0].default_value).bytes;
     copy = authoring_source_presentation_clone(view);
     const source_presentation_origin *owned = literal(copy);
     REQUIRE(owned != NULL);
     node *copied = origin_node(copy, owned);
     REQUIRE(copied->desc != n->desc);
-    REQUIRE(pin_text(copied->output_pins[0].default_value).bytes != original_default);
+    /* Text is shared by reference, so the copy keeps the literal's text alive
+     * after the original is freed below. */
     REQUIRE(
         pin_text(copied->desc->outputs[0].default_value).bytes ==
         pin_text(copied->output_pins[0].default_value).bytes

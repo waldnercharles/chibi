@@ -72,7 +72,7 @@ extern char **environ;
 static const char PACKAGE[] = "project:package_compiler";
 enum
 {
-    CALLS = 12,
+    CALLS = 14,
     SAMPLE_INPUTS = 4,
     ARGUMENTS = 12,
     /* Compile's debug flag, then the six that describe the target. */
@@ -115,7 +115,12 @@ typedef enum
  * variants that keep their payload values, and its Copied function builds one
  * it keeps after a change. A `built` sample calls no native: its Built
  * functions build the arrays they return in their caller's storage, and its
- * Copied function, which assigns its array, does not. A `debug_metadata`
+ * Copied function, which assigns its array, does not. A `lends` sample's Lent
+ * functions pass locals to natives and keep or return natives' results
+ * without a copy,
+ * and its Copied function copies the element it passes. A `drops` sample's
+ * Plain functions pass temporaries that hold no collection and drop none, and
+ * its Held functions drop the temporary arrays they pass. A `debug_metadata`
  * sample compares source points and watches with stage zero on both compiler
  * backends. A `traced` sample's calls take no arguments and deliver the
  * watches stage zero's do, in its order and with its values; a traced
@@ -125,8 +130,12 @@ typedef struct
 {
     const char *name, *source, *more, *library;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built, same_rejection,
-        c_string_probe, host_effects, update_order, debug_metadata, traced;
+    bool core, updates, boxed, game, moves, aliases, variants, built, lends,
+        drops, same_rejection, c_string_probe, host_effects, update_order,
+        debug_metadata, traced;
+    /* Its calls run with the probe natives linked, take no arguments and
+     * return one int. */
+    bool probe_calls;
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
@@ -200,6 +209,30 @@ static const native_parameter_definition DOUBLE_INTEGER_INPUT[] = {
 static const native_parameter_definition CSTRING_OUTPUT[] = {
     { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
 };
+/* Borrowed native result banks exercise tuple copies without authored named
+ * collection results, which stage one does not support. */
+static const char *sequence_pair_probe(void *, const pin_value *, pin_value *results)
+{
+    static int items[] = { 3, 4 };
+    static pin_array values = {
+        .element_type = PIN_I32,
+        .count = 2,
+        .capacity = 2,
+        .data = items,
+        .stride = sizeof *items,
+    };
+    results[0].ptr = &values;
+    results[1].i = 9;
+    return NULL;
+}
+static const native_parameter_definition SEQUENCE_PAIR_OUTPUTS[] = {
+    { .name = "values",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_I32,
+      .container = PIN_CONTAINER_ARRAY,
+      .type_name = "int" },
+    { .name = "stamp", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+};
 #define PROBE_DEFINITION(CANONICAL, SOURCE, INPUT, PURE)                       \
     { .canonical_name = CANONICAL,                                             \
       .source_name = SOURCE,                                                   \
@@ -227,6 +260,13 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
     PROBE_DEFINITION("Qualified Integer Overload", "native.overload", INTEGER_INPUT, true),
     PROBE_DEFINITION("Qualified Ambiguous One", "native.ProbeOne", CSTRING_INPUT, true),
     PROBE_DEFINITION("Qualified Ambiguous Two", "native.probe_one", CSTRING_INPUT, true),
+    { .canonical_name = "Sequence Pair Probe",
+      .source_name = "Multi",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .outputs = SEQUENCE_PAIR_OUTPUTS,
+      .output_count = 2,
+      .completion_output = -1,
+      .pure = true },
     PROBE_DEFINITION("Number Kernel", "native.kernel", NUMBER_INPUT, true),
     PROBE_DEFINITION("Double Kernel", "native.kernel", DOUBLE_INPUT, true),
     PROBE_DEFINITION("Integer Double Pair", "native.pair", INTEGER_DOUBLE_INPUT, true),
@@ -236,6 +276,7 @@ static const native_capability_definition CSTRING_DEFINITIONS[] = {
 static const node_host_call CSTRING_CALL = { .value = cstring_probe };
 static const node_host_call CSTRING_PAIR_CALL = { .value = cstring_pair };
 static const node_host_call INTEGER_CALL = { .value = integer_probe };
+static const node_host_call SEQUENCE_PAIR_CALL = { .invoke = sequence_pair_probe };
 static const node_host_call FIRST_CALL = { .value = first_kernel };
 static const node_host_call SECOND_CALL = { .value = second_kernel };
 static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
@@ -256,6 +297,8 @@ static const native_definition_binding CSTRING_BINDINGS[] = {
     PROBE_BINDING("Qualified Integer Overload", INTEGER_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Ambiguous One", CSTRING_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Qualified Ambiguous Two", CSTRING_CALL, CSTRING_ACCESS),
+    { .canonical_name = "Sequence Pair Probe",
+      .implementation = { .call = &SEQUENCE_PAIR_CALL, .access = &CSTRING_ACCESS } },
     PROBE_BINDING("Number Kernel", FIRST_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Double Kernel", SECOND_CALL, CSTRING_ACCESS),
     PROBE_BINDING("Integer Double Pair", FIRST_CALL, CSTRING_ACCESS),
@@ -1260,6 +1303,353 @@ static const sample samples[] = {
       .calls = { { .function = "Make", .arguments = "[1,2]", .expected = "[{\"x\":1,\"y\":2,\"title\":\"p\",\"open\":true}]" },
                  { .function = "Moved", .arguments = "[{\"x\":1,\"y\":2,\"title\":\"q\",\"open\":false},5]", .expected = "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
                  { .function = "Total", .arguments = "[5]", .expected = "[123]" } } },
+    { .name = "view element lending",
+      .group = COLLECTION_SAMPLES,
+      .source =
+                "package facts\n"
+                "Pair :: union { Row(xs: int[]) | None }\n"
+                "Hold :: (window: view int[][], owner: ^(int[][])) -> int {\n"
+                "    row := window[0];\n"
+                "    owner^[0] = [9];\n"
+                "    return row[0] * 10 + length(row);\n"
+                "}\n"
+                "Viewed :: () -> int {\n"
+                "    values: int[][] = [[1, 2], [3]];\n"
+                "    pointer := &values;\n"
+                "    selected := pointer.view(0..<2);\n"
+                "    if selected {\n"
+                "        return Hold(selected, pointer);\n"
+                "    }\n"
+                "    return -1;\n"
+                "}\n"
+                "HoldPair :: (window: view Pair[], owner: ^(Pair[])) -> int {\n"
+                "    pair := window[0];\n"
+                "    owner^[0] = Pair.None;\n"
+                "    switch pair {\n"
+                "        case .Row(xs):\n"
+                "            return length(xs);\n"
+                "        case:\n"
+                "            return -2;\n"
+                "    }\n"
+                "}\n"
+                "ViewedPair :: () -> int {\n"
+                "    values: Pair[] = [Pair.Row([1, 2]), Pair.None];\n"
+                "    pointer := &values;\n"
+                "    selected := pointer.view(0..<2);\n"
+                "    if selected {\n"
+                "        return HoldPair(selected, pointer);\n"
+                "    }\n"
+                "    return -1;\n"
+                "}\n",
+      .calls = {
+          { .function = "Viewed", .arguments = "[]",
+            .expected = "[12]" },
+          { .function = "ViewedPair", .arguments = "[]",
+            .expected = "[2]" },
+      } },
+    { .name = "scoped lent locals",
+      .group = COLLECTION_SAMPLES,
+      .source =
+                "package facts\n"
+                "Pair :: union { Row(xs: int[]) | None }\n"
+                "Make :: (n: int) -> int[] {\n"
+                "    xs: int[] = [];\n"
+                "    for i in 0..<n {\n"
+                "        xs.append(i + 1);\n"
+                "    }\n"
+                "    return xs;\n"
+                "}\n"
+                "Shape :: (xs: int[]) -> int {\n"
+                "    return length(xs) * 10 + xs[length(xs) - 1];\n"
+                "}\n"
+                "Width :: (p: Pair) -> int {\n"
+                "    switch p {\n"
+                "        case .Row(xs):\n"
+                "            return Shape(xs);\n"
+                "        case:\n"
+                "            return -1;\n"
+                "    }\n"
+                "}\n"
+                "Param :: (xs: int[], flag: bool) -> int {\n"
+                "    if flag {\n"
+                "        alias := xs;\n"
+                "        if length(alias) == 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Shape(xs);\n"
+                "}\n"
+                "Scoped :: () -> int {\n"
+                "    xs := Make(2);\n"
+                "    if length(xs) > 0 {\n"
+                "        alias := xs;\n"
+                "        if length(alias) == 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Shape(xs);\n"
+                "}\n"
+                "Passed :: () -> int {\n"
+                "    xs := Make(4);\n"
+                "    n := Param(xs, true);\n"
+                "    return n * 100 + Shape(xs);\n"
+                "}\n"
+                "PassedFalse :: () -> int {\n"
+                "    xs := Make(4);\n"
+                "    n := Param(xs, false);\n"
+                "    return n * 100 + Shape(xs);\n"
+                "}\n"
+                "Broken :: () -> int {\n"
+                "    xs := Make(3);\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        alias := xs;\n"
+                "        total += length(alias);\n"
+                "        if i == 1 {\n"
+                "            break;\n"
+                "        }\n"
+                "    }\n"
+                "    return total * 100 + Shape(xs);\n"
+                "}\n"
+                "Continued :: () -> int {\n"
+                "    xs := Make(3);\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        alias := xs;\n"
+                "        if i == 1 {\n"
+                "            continue;\n"
+                "        }\n"
+                "        total += length(alias);\n"
+                "    }\n"
+                "    return total * 100 + Shape(xs);\n"
+                "}\n"
+                "Returned :: () -> int {\n"
+                "    xs := Make(3);\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        alias := xs;\n"
+                "        total += length(alias);\n"
+                "        if i == 1 {\n"
+                "            return total * 100 + Shape(xs);\n"
+                "        }\n"
+                "    }\n"
+                "    return -1;\n"
+                "}\n"
+                "Whole :: () -> int {\n"
+                "    held := Pair.Row(Make(3));\n"
+                "    if Width(held) > 0 {\n"
+                "        alias := held;\n"
+                "        if Width(alias) < 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Width(held);\n"
+                "}\n"
+                "Looped :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
+                "    }\n"
+                "    return total * 100 + Shape(rows[0]);\n"
+                "}\n"
+                "RowBroken :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
+                "        if i == 1 {\n"
+                "            break;\n"
+                "        }\n"
+                "    }\n"
+                "    return total * 100 + Shape(rows[0]);\n"
+                "}\n"
+                "RowContinued :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        row := rows[0];\n"
+                "        if i == 1 {\n"
+                "            continue;\n"
+                "        }\n"
+                "        total += length(row);\n"
+                "    }\n"
+                "    return total * 100 + Shape(rows[0]);\n"
+                "}\n"
+                "RowReturned :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for i in 0..<3 {\n"
+                "        row := rows[0];\n"
+                "        total += length(row);\n"
+                "        if i == 1 {\n"
+                "            return total * 100 + Shape(rows[0]);\n"
+                "        }\n"
+                "    }\n"
+                "    return -1;\n"
+                "}\n"
+                "Element :: () -> int {\n"
+                "    pairs: Pair[] = [Pair.Row(Make(2)), Pair.None];\n"
+                "    if length(pairs) > 0 {\n"
+                "        pair := pairs[0];\n"
+                "        if Width(pair) < 0 {\n"
+                "            return -1;\n"
+                "        }\n"
+                "    }\n"
+                "    return Width(pairs[0]);\n"
+                "}\n"
+                "Items :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for row in rows {\n"
+                "        total += length(row);\n"
+                "    }\n"
+                "    return total * 10000 + Shape(rows[0]) * 100 + Shape(rows[1]);\n"
+                "}\n"
+                "ItemsBroken :: () -> int {\n"
+                "    rows: int[][] = [Make(3), Make(1)];\n"
+                "    total := 0;\n"
+                "    for row in rows {\n"
+                "        total += length(row);\n"
+                "        if length(row) == 3 {\n"
+                "            break;\n"
+                "        }\n"
+                "    }\n"
+                "    return total * 10000 + Shape(rows[0]) * 100 + Shape(rows[1]);\n"
+                "}\n",
+      .calls = {
+          { .function = "Scoped", .arguments = "[]",
+            .expected = "[22]" },
+          { .function = "Passed", .arguments = "[]",
+            .expected = "[4444]" },
+          { .function = "PassedFalse", .arguments = "[]",
+            .expected = "[4444]" },
+          { .function = "Broken", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "Continued", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "Returned", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "Whole", .arguments = "[]",
+            .expected = "[33]" },
+          { .function = "Looped", .arguments = "[]",
+            .expected = "[933]" },
+          { .function = "RowBroken", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "RowContinued", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "RowReturned", .arguments = "[]",
+            .expected = "[633]" },
+          { .function = "Element", .arguments = "[]",
+            .expected = "[22]" },
+          { .function = "Items", .arguments = "[]",
+            .expected = "[43311]" },
+          { .function = "ItemsBroken", .arguments = "[]",
+            .expected = "[33311]" },
+      } },
+    { .name = "removed union elements",
+      .group = COLLECTION_SAMPLES,
+      .source =
+                "package facts\n"
+                "Holder :: union { Has(xs: int[]) | Empty }\n"
+                "Work :: union { Visit(h: Holder) | Token(n: int) }\n"
+                "Removed :: () -> int {\n"
+                "    outer: Holder[] = [Holder.Empty, Holder.Has([7])];\n"
+                "    pending: Work[] = [];\n"
+                "    pending.append(Work.Visit(outer[1]));\n"
+                "    work := pending[0];\n"
+                "    pending.remove_index(0);\n"
+                "    switch work {\n"
+                "        case .Visit(h):\n"
+                "            switch h {\n"
+                "                case .Has(xs):\n"
+                "                    return length(xs);\n"
+                "                case:\n"
+                "                    return -2;\n"
+                "            }\n"
+                "        case:\n"
+                "            return -3;\n"
+                "    }\n"
+                "}\n"
+                "Replaced :: () -> int {\n"
+                "    pending: Work[] = [Work.Visit(Holder.Has([1, 2]))];\n"
+                "    work := pending[0];\n"
+                "    work = pending[0];\n"
+                "    pending[0] = Work.Token(0);\n"
+                "    switch work {\n"
+                "        case .Visit(h):\n"
+                "            switch h {\n"
+                "                case .Has(xs):\n"
+                "                    return length(xs);\n"
+                "                case:\n"
+                "                    return -2;\n"
+                "            }\n"
+                "        case:\n"
+                "            return -3;\n"
+                "    }\n"
+                "}\n"
+                "Walked :: () -> int {\n"
+                "    outer: Holder[] = [Holder.Has([5, 6, 7])];\n"
+                "    pending: Work[] = [Work.Visit(outer[0]), Work.Token(1)];\n"
+                "    total: int = 0;\n"
+                "    while (length(pending) > 0) {\n"
+                "        work := pending[length(pending) - 1];\n"
+                "        pending.remove_index(length(pending) - 1);\n"
+                "        switch work {\n"
+                "            case .Visit(h):\n"
+                "                switch h {\n"
+                "                    case .Has(xs):\n"
+                "                        total += length(xs);\n"
+                "                        pending.append(Work.Token(10));\n"
+                "                    case:\n"
+                "                        total = -2;\n"
+                "                }\n"
+                "            case .Token(n):\n"
+                "                total += n;\n"
+                "        }\n"
+                "    }\n"
+                "    return total;\n"
+                "}\n",
+      .calls = { { .function = "Removed", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Replaced", .arguments = "[]", .expected = "[2]" },
+                 { .function = "Walked", .arguments = "[]", .expected = "[14]" } } },
+    { .name = "lent arguments",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; }\n"
+                "Change :: (note: Note, xs: int[]) -> int {\n"
+                "    note.count = 9;\n    xs.append(7);\n    xs[0] = 9;\n"
+                "    return length(xs) * 10 + note.count;\n}\n"
+                "Same :: (xs: int[]) -> int[] { return xs; }\n"
+                "Read :: (note: Note, xs: int[]) -> int { return note.count * 10 + "
+                "length(xs); }\n"
+                "Grow :: (xs: ^(int[])) -> int { xs^[0] = 5; return 0; }\n"
+                "Observe :: (xs: int[], ignored: int) -> int { return xs[0]; }\n"
+                "Peek :: (p: ^(int[]), xs: int[]) -> int { p^[0] = 5; return xs[0]; }\n"
+                "Writes :: () -> int {\n"
+                "    xs: int[] = [1];\n    note: Note = {text: \"a\", count: 1};\n"
+                "    n := Change(note, xs);\n"
+                "    if (note.count != 1 || xs[0] != 1) { return -1; }\n"
+                "    return n * 100 + note.count * 10 + length(xs);\n}\n"
+                "Returns :: () -> int {\n"
+                "    xs: int[] = [1, 2];\n    kept := Same(xs);\n"
+                "    xs.append(3);\n    xs[0] = 5;\n"
+                "    return kept[0] * 100 + length(kept) * 10 + length(xs);\n}\n"
+                "Temporaries :: () -> int { return Read({text: \"t\", count: 3}, "
+                "Same([4, 5])); }\n"
+                "Referenced :: () -> int {\n"
+                "    a: int[] = [1];\n    n := Observe(a, Grow(&a));\n"
+                "    return n * 10 + a[0];\n}\n"
+                "ReferencedEarlier :: () -> int {\n"
+                "    a: int[] = [1];\n    n := Peek(&a, a);\n"
+                "    return n * 10 + a[0];\n}",
+      .calls = { { .function = "Writes", .arguments = "[]", .expected = "[2911]" },
+                 { .function = "Returns", .arguments = "[]", .expected = "[123]" },
+                 { .function = "Temporaries", .arguments = "[]", .expected = "[32]" },
+                 { .function = "Referenced", .arguments = "[]", .expected = "[15]" },
+                 { .function = "ReferencedEarlier", .arguments = "[]", .expected = "[15]" } } },
     { .name = "moved values",
       .group = IMPORT_SAMPLES,
       .moves = true,
@@ -1321,29 +1711,33 @@ static const sample samples[] = {
       .built = true,
       .source = "package facts\n"
                 "Holder :: union { Some(items: int[], name: string) }\n"
-                "BuiltCount :: (n: int) -> int[] {\n"
+                "Counted :: (n: int) -> int[] {\n"
                 "    xs: int[] = [];\n    i: int = 0;\n"
                 "    while (i < n) { xs.append(i); i += 1; }\n"
                 "    return xs;\n}\n"
-                "BuiltPair :: (n: int, ys: int[]) -> Holder {\n"
-                "    xs: int[] = [7];\n    xs.extend(BuiltCount(n));\n    "
+                "Paired :: (n: int, ys: int[]) -> Holder {\n"
+                "    xs: int[] = [7];\n    xs.extend(Counted(n));\n    "
                 "xs[0] = 9;\n"
                 "    if (n == 0) { return Holder.Some(ys, \"none\"); }\n"
                 "    return Holder.Some(xs, \"pair\");\n}\n"
+                "BuiltPair :: (n: int) -> Holder { return Holder.Some([n, n + 1], \"pair\"); }\n"
+                "BuiltOne :: () -> Holder { return Holder.Some([1], \"one\"); }\n"
                 "CopiedCount :: (n: int) -> int[] {\n"
-                "    xs: int[] = [];\n    xs = BuiltCount(n);\n    return "
+                "    xs: int[] = [];\n    xs = Counted(n);\n    return "
                 "xs;\n}\n"
                 "Total :: () -> int {\n"
-                "    a := BuiltCount(3);\n    ys: int[] = [4, 5];\n"
-                "    b := BuiltPair(2, ys);\n    c := BuiltPair(0, ys);\n    "
-                "ys[0] = 6;\n"
+                "    a := Counted(3);\n    ys: int[] = [4, 5];\n"
+                "    b := Paired(2, ys);\n    c := Paired(0, ys);\n    "
+                "ys[0] = 6;\n    d := BuiltPair(3);\n    e := BuiltOne();\n"
                 "    total: int = a[2] * 1000 + CopiedCount(4)[3] * 100;\n"
                 "    switch b { case .Some(items, name): total += items[0] * "
                 "10 + items[2]; }\n"
                 "    switch c { case .Some(items, name): total += items[0] * "
                 "10000; }\n"
+                "    switch d { case .Some(items, name): total += items[1] * 100000; }\n"
+                "    switch e { case .Some(items, name): total += items[0] * 1000000; }\n"
                 "    return total;\n}",
-      .calls = { { .function = "Total", .arguments = "[]", .expected = "[42391]" } } },
+      .calls = { { .function = "Total", .arguments = "[]", .expected = "[1442391]" } } },
     { .name = "read in place",
       .group = IMPORT_SAMPLES,
       .aliases = true,
@@ -1358,15 +1752,84 @@ static const sample samples[] = {
                 "    xs := notes;\n    total: int = 0;\n"
                 "    for (note in xs) { xs[1] = {text: \"z\", count: 100}; "
                 "total += note.count; }\n"
-                "    return total;\n}",
-      .calls = { { .function = "AliasedSum",
+                "    return total;\n}\n"
+                "LentFind :: (notes: Note[], text: string) -> int {\n"
+                "    index: int = 0;\n"
+                "    while (index < notes.length()) {\n"
+                "        note := notes[index];\n"
+                "        if (note.text == text && note.count > 0) { return index; }\n"
+                "        index += 1;\n    }\n    return -1;\n}\n"
+                "CopiedFind :: (notes: Note[]) -> int {\n"
+                "    note := notes[1];\n    notes[1] = {text: \"z\", count: 100};\n"
+                "    return note.count;\n}\n"
+                "WalkedSum :: (notes: Note[]) -> int {\n"
+                "    total: int = 0;\n    more: Note[] = [{text: \"c\", count: 3}];\n"
+                "    for (note in notes) { total += note.count; }\n"
+                "    for (note in more) { total += note.count; }\n    return total;\n}",
+      .calls = { { .function = "WalkedSum",
+                   .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
+                                "\"b\",\"count\":2}]]",
+                   .expected = "[6]" },
+                 { .function = "AliasedSum",
                    .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
                                 "\"b\",\"count\":2}]]",
                    .expected = "[103]" },
                  { .function = "CopiedWalk",
                    .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
                                 "\"y\",\"count\":2}]]",
-                   .expected = "[3]" } } },
+                   .expected = "[3]" },
+                 { .function = "LentFind",
+                   .arguments = "[[{\"text\":\"a\",\"count\":1},{\"text\":"
+                                "\"b\",\"count\":2}],\"b\"]",
+                   .expected = "[1]" },
+                 { .function = "CopiedFind",
+                   .arguments = "[[{\"text\":\"x\",\"count\":1},{\"text\":"
+                                "\"y\",\"count\":2}]]",
+                   .expected = "[2]" } } },
+    { .name = "native values",
+      .group = IMPORT_SAMPLES,
+      .lends = true,
+      .source = "package facts\n"
+                "LentLength :: (xs: int[]) -> int { return length(xs) + xs.length(); }\n"
+                "LentSlice :: (xs: int[]) -> int {\n"
+                "    part := slice(xs, 1, 2);\n    part.append(5);\n"
+                "    rest := xs.slice(0, 1);\n    rest = append(rest, 7);\n"
+                "    return length(part) * 10 + rest[1] + xs.length() * 100;\n}\n"
+                "LentReturn :: (xs: int[]) -> int[] { return slice(xs, 1, 1); }\n"
+                "CopiedElement :: () -> int { xss: int[][] = [[1, 2], [3]]; return length(xss[0]); }",
+      .calls = { { .function = "LentLength", .arguments = "[[1,2,3]]", .expected = "[6]" },
+                 { .function = "LentLength", .arguments = "[[]]", .expected = "[0]" },
+                 { .function = "LentSlice", .arguments = "[[1,2,3]]", .expected = "[337]" },
+                 { .function = "LentReturn", .arguments = "[[1,2,3]]", .expected = "[[2]]" },
+                 { .function = "CopiedElement", .arguments = "[]", .expected = "[2]" } } },
+    { .name = "plain drops",
+      .group = IMPORT_SAMPLES,
+      .drops = true,
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Shape :: union { Dot(at: Point) | Line(a: int, b: int) }\n"
+                "Bag :: union { Items(xs: int[]) | Size(n: int) }\n"
+                "Make :: (x: int) -> Point { return {x: x, y: x + 1}; }\n"
+                "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
+                "Width :: (s: Shape) -> int {\n"
+                "    switch s { case .Dot(at): return at.x; case .Line(a, b): return b - a; }\n}\n"
+                "Count :: (b: Bag) -> int {\n"
+                "    switch b { case .Items(xs): return length(xs); case .Size(n): return n; }\n}\n"
+                "PlainPoint :: (x: int) -> int { return Sum(Make(x)); }\n"
+                "PlainLine :: (x: int) -> int { return Width(Shape.Line(x, x * 3)); }\n"
+                "PlainDot :: (x: int) -> int { return Width(Shape.Dot(Make(x))); }\n"
+                "HeldBag :: (n: int) -> int { return Count(Bag.Items([n, n])); }\n"
+                "HeldArray :: (n: int) -> int { return length(Counted(n)); }\n"
+                "HeldExtend :: (n: int) -> int { xs: int[] = [1]; xs.extend(Counted(n)); xs.append(n); return xs[1] + xs[2]; }\n"
+                "HeldPush :: (n: int) -> int { bags: Bag[] = []; bags.append(Bag.Items(Counted(n))); bags.append(Bag.Size(n)); return Count(bags[0]) + Count(bags[1]); }\n"
+                "Counted :: (n: int) -> int[] { xs: int[] = []; xs.append(n); return xs; }",
+      .calls = { { .function = "PlainPoint", .arguments = "[3]", .expected = "[7]" },
+                 { .function = "PlainLine", .arguments = "[2]", .expected = "[4]" },
+                 { .function = "PlainDot", .arguments = "[2]", .expected = "[2]" },
+                 { .function = "HeldBag", .arguments = "[4]", .expected = "[2]" },
+                 { .function = "HeldArray", .arguments = "[4]", .expected = "[1]" },
+                 { .function = "HeldExtend", .arguments = "[4]", .expected = "[8]" },
+                 { .function = "HeldPush", .arguments = "[4]", .expected = "[5]" } } },
     { .name = "array methods",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -1771,6 +2234,157 @@ static const sample samples[] = {
                  { .function = "Small", .arguments = "[3]", .expected = "[4]" },
                  { .function = "Keys", .arguments = "[[5,6,7]]", .expected = "[20]" },
                  { .function = "Back", .arguments = "[[1,2,3]]", .expected = "[322110]" } } },
+    /* Observable sequence semantics use the supported package subset: ordinary
+     * parameters, unnamed results, scalar record fields and inferred optionals.
+     * Multi() below supplies a native result bank; authored named collection
+     * results and nonnumeric state remain outside this fixture's subset. */
+    { .name = "value sequence copies",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Change :: (values: int[]) -> int { values[0] = 8; values.append(9); return values.length() * 10 + values[0]; }\n"
+          "Identity :: (values: int[]) -> int[] { return values; }\n"
+          "Assignment :: () -> int { original: int[] = [1, 2]; copied := original; copied[0] = 7; copied.append(3); return original[0] * 1000 + original.length() * 100 + copied[0] * 10 + copied.length(); }\n"
+          "Parameter :: () -> int { original: int[] = [1, 2]; changed := Change(original); return original[0] * 100 + original.length() * 10 + changed; }\n"
+          "Returned :: () -> int { original: int[] = [1, 2]; copied := Identity(original); copied[1] = 9; return original[1] * 10 + copied[1]; }\n"
+          "Nested :: () -> int { original: int[][] = [[1, 2], [3]]; copied := original; copied[0].append(7); copied[1][0] = 8; return original[0].length() * 1000 + original[1][0] * 100 + copied[0].length() * 10 + copied[1][0]; }\n"
+          "Maps :: () -> int { original: [int: int[]] = [1: [2, 3]]; copied := original; copied[1].append(4); copied[2] = [9]; delete copied[1]; return original[1].length() * 100 + original[1][0] * 10 + copied[2][0]; }\n"
+          "Records :: () -> int { original: Point[] = [{x: 2, y: 3}]; copied := original; copied[0].x = 9; return original[0].x * 100 + copied[0].x * 10 + copied[0].y; }\n"
+          "Pointers :: () -> int { value: int = 1; other: int = 9; original: ^int[] = [&value]; copied := original; copied[0]^ = 5; copied[0] = &other; return original[0]^ * 100 + copied[0]^ * 10 + value; }\n"
+          "Cloned :: () -> int { original: int[] = [4, 5]; copied := original.clone(); copied[0] = 8; return original[0] * 10 + copied[0]; }\n"
+          "Empty :: () -> int { original: int[] = []; copied := original; copied.append(7); return original.length() * 100 + copied.length() * 10 + copied[0]; }\n",
+      .calls = {
+          { .function = "Assignment", .arguments = "[]",
+            .expected = "[1273]" },
+          { .function = "Parameter", .arguments = "[]",
+            .expected = "[158]" },
+          { .function = "Returned", .arguments = "[]",
+            .expected = "[29]" },
+          { .function = "Nested", .arguments = "[]",
+            .expected = "[2338]" },
+          { .function = "Maps", .arguments = "[]",
+            .expected = "[229]" },
+          { .function = "Records", .arguments = "[]",
+            .expected = "[293]" },
+          { .function = "Pointers", .arguments = "[]",
+            .expected = "[595]" },
+          { .function = "Cloned", .arguments = "[]",
+            .expected = "[48]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[17]" },
+      } },
+    { .name = "strict sequence ranges",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Bracket :: () -> int { original: int[] = [1, 2, 3, 4]; selected := original[1..<3]; if selected { selected[0] = 9; return original[1] * 100 + selected[0] * 10 + selected.length(); } return -1; }\n"
+          "Method :: () -> int { original: int[] = [1, 2, 3]; selected := original.slice(0..<2); if selected { selected[1] = 8; return original[1] * 10 + selected[1]; } return -1; }\n"
+          "Empty :: () -> int { original: int[] = [1, 2]; selected := original[2..<2]; if selected { return selected.length() + 1; } return -1; }\n"
+          "EmptySource :: () -> int { original: int[] = []; selected := original[0..<0]; if selected { return selected.length() + 1; } return -1; }\n"
+          "Bounds :: (first: int, last: int) -> int { original: int[] = [1, 2]; selected := original.slice(first..<last); if selected { return selected.length() + 1; } return 0; }\n"
+          "Text :: () -> string { original: string = \"abcd\"; selected := original[1..<3]; if selected { copied := selected.clone(); return format_text(\"{}|{}\", selected, copied); } return \"invalid\"; }\n"
+          "Bytes :: () -> int { original: string = \"a\\u03bbz\"; selected := original[1..<2]; if selected { return selected.length(); } return -1; }\n"
+          "EmptyText :: () -> int { original: string = \"abc\"; selected := original[3..<3]; if selected { return selected.length() + 1; } return -1; }\n",
+      .calls = {
+          { .function = "Bracket", .arguments = "[]",
+            .expected = "[292]" },
+          { .function = "Method", .arguments = "[]",
+            .expected = "[28]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "EmptySource", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "Bounds", .arguments = "[-1,1]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[1,0]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[0,3]",
+            .expected = "[0]" },
+          { .function = "Bounds", .arguments = "[2,2]",
+            .expected = "[1]" },
+          { .function = "Bounds", .arguments = "[0,2]",
+            .expected = "[3]" },
+          { .function = "Text", .arguments = "[]",
+            .expected = "[\"bc|bc\"]" },
+          { .function = "Bytes", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "EmptyText", .arguments = "[]",
+            .expected = "[1]" },
+      } },
+    { .name = "pointer sequence views",
+      .group = COLLECTION_SAMPLES,
+      .source =
+          "package facts\n"
+          "Owner :: () -> ^(int[]) { values: int[] = [4, 5]; return &values; }\n"
+          "Touch :: (window: view int[]) { window[0] = 7; }\n"
+          "ReadWindow :: (window: view int[]) -> int { return window.length() * 100 + window[0]; }\n"
+          "Follow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { selected[0] = 8; previous := values[1]; pointer^ = [4, 5, 6, 7]; selected[1] = 9; return previous * 1000 + values[1] * 100 + values[2] * 10 + selected.length(); } return -1; }\n"
+          "OrdinaryCopy :: () -> int { values: int[] = [1, 2]; copied := values; pointer := &values; selected := pointer.view(0..<2); if selected { selected[1] = 7; return values[1] * 100 + copied[1] * 10 + selected[1]; } return -1; }\n"
+          "Grow :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer.append(4); } if selected { selected[0] = 8; return values[1] * 100 + selected.length() * 10 + values.length(); } return -1; }\n"
+          "Cloned :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected.clone(); copied[0] = 9; return values[0] * 100 + selected[0] * 10 + copied[0]; } return -1; }\n"
+          "Sliced :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(0..<2); if selected { copied := selected[0..<1]; if copied { copied[0] = 7; return values[0] * 100 + selected[0] * 10 + copied[0]; } } return -1; }\n"
+          "Empty :: () -> int { values: int[] = []; pointer := &values; selected := pointer.view(0..<0); if selected { return selected.length() + 1; } return -1; }\n"
+          "Escaped :: () -> int { pointer := Owner(); selected := pointer.view(0..<2); if selected { selected[0] = 8; return pointer^[0] * 10 + selected[1]; } return -1; }\n"
+          "InvalidRange :: () -> int { values: int[] = [1]; pointer := &values; selected := pointer.view(2..<2); if selected { return 1; } return 0; }\n"
+          "Shrunk :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { pointer^ = [9]; return selected.length(); } return -1; }\n"
+          "Parameter :: () -> int { values: int[] = [1, 2, 3]; pointer := &values; selected := pointer.view(1..<3); if selected { Touch(selected); } if selected { return values[1] * 100 + ReadWindow(selected); } return -1; }\n",
+      .calls = {
+          { .function = "Follow", .arguments = "[]",
+            .expected = "[8592]" },
+          { .function = "OrdinaryCopy", .arguments = "[]",
+            .expected = "[727]" },
+          { .function = "Grow", .arguments = "[]",
+            .expected = "[824]" },
+          { .function = "Cloned", .arguments = "[]",
+            .expected = "[119]" },
+          { .function = "Sliced", .arguments = "[]",
+            .expected = "[117]" },
+          { .function = "Empty", .arguments = "[]",
+            .expected = "[1]" },
+          { .function = "Escaped", .arguments = "[]",
+            .expected = "[85]" },
+          { .function = "InvalidRange", .arguments = "[]",
+            .expected = "[0]" },
+          { .function = "Shrunk", .arguments = "[]",
+            .expected = NULL },
+          { .function = "Parameter", .arguments = "[]",
+            .expected = "[907]" },
+      } },
+    { .name = "value arguments and result banks",
+      .group = COLLECTION_SAMPLES,
+      .c_string_probe = true,
+      .probe_calls = true,
+      .source =
+          "package facts\n"
+          "Change :: (pointer: ^(int[])) -> int { pointer^[0] = 9; pointer.append(3); return 7; }\n"
+          "Observe :: (values: int[], changed: int) -> int { return values[0] * 100 + values.length() * 10 + changed; }\n"
+          "ObservePointer :: (pointer: ^(int[]), changed: int) -> int { return pointer^[0] + pointer^.length() * 10 + changed; }\n"
+          "ChangeRows :: (pointer: ^(int[][])) -> int { pointer^[0].append(7); return 0; }\n"
+          "ObserveRows :: (values: int[][], changed: int) -> int { return values[0][0] * 10 + values[0].length() + changed; }\n"
+          "ChangeMap :: (pointer: ^([int: int])) -> int { pointer^[1] = 8; return 2; }\n"
+          "ObserveMap :: (values: [int: int], changed: int) -> int { return values[1] * 10 + changed; }\n"
+          "EarlierArray :: () -> int { values: int[] = [1, 2]; observed := Observe(values, Change(&values)); return observed * 1000 + values[0] * 10 + values.length(); }\n"
+          "EarlierNested :: () -> int { values: int[][] = [[1]]; observed := ObserveRows(values, ChangeRows(&values)); return observed * 10 + values[0].length(); }\n"
+          "EarlierPointer :: () -> int { values: int[] = [1]; return ObservePointer(&values, Change(&values)); }\n"
+          "EarlierMap :: () -> int { values: [int: int] = [1: 3]; observed := ObserveMap(values, ChangeMap(&values)); return observed * 10 + values[1]; }\n"
+          "TupleLifetime :: () -> int { p := Multi(); total: int = 0; if total == 0 { q := p; extracted := q.values; extracted[0] = 8; total = extracted[0] + q.values[0]; } return total * 100 + p.values[0] * 10 + p.stamp; }\n"
+          "KeepTupleValue :: () -> int[] { p := Multi(); if p.stamp > 0 { q := p; return q.values; } return []; }\n"
+          "TupleReturned :: () -> int { values := KeepTupleValue(); values.append(5); return values[0] * 100 + values[2] * 10 + values.length(); }\n",
+      .calls = {
+          { .function = "EarlierArray", .arguments = "[]",
+            .expected = "[127093]" },
+          { .function = "EarlierNested", .arguments = "[]",
+            .expected = "[112]" },
+          { .function = "EarlierPointer", .arguments = "[]",
+            .expected = "[36]" },
+          { .function = "EarlierMap", .arguments = "[]",
+            .expected = "[328]" },
+          { .function = "TupleLifetime", .arguments = "[]",
+            .expected = "[1139]" },
+          { .function = "TupleReturned", .arguments = "[]",
+            .expected = "[353]" },
+      } },
     { .name = "arrays",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\n"
@@ -2679,6 +3293,16 @@ static const sample samples[] = {
                 "    return length(xs);\n}",
       .updates = true,
       .calls = { { .function = "Build", .arguments = "[3]", .expected = "[6]" } } },
+    { .name = "array updates keep aliases",
+      .source = "package facts\nBuild :: (count: int) -> int {\n"
+                "    xs: int[] = [count, count];\n"
+                "    ys := xs;\n"
+                "    xs = append(xs, count);\n"
+                "    ys = append(ys, count + 1);\n"
+                "    zs := xs;\n"
+                "    xs = extend(xs, ys);\n"
+                "    return xs[2] * 100 + ys[2] * 10 + length(zs);\n}",
+      .calls = { { .function = "Build", .arguments = "[3]", .expected = "[343]" } } },
     { .name = "map updates",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBuild :: (count: int) -> int {\n"
@@ -2723,13 +3347,14 @@ static const sample samples[] = {
       .message = "compound map assignment is not supported yet",
       .line = 2,
       .column = 41 },
+    /* A map parameter is the function's own value: removing a key leaves
+     * the caller's map as it was. */
     { .name = "map parameter removal",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\nDrop :: (m: [int: int]) -> int { delete m[1]; "
-                "return 0; }",
-      .message = "deleting a key needs a local map",
-      .line = 2,
-      .column = 41 },
+      .source = "package facts\n"
+                "Drop :: (m: [int: int]) -> int { delete m[1]; if 1 in m { return 1; } return 0; }\n"
+                "Keep :: () -> int { m: [int: int] = [1: 2]; gone := Drop(m); return gone * 100 + m[1]; }",
+      .calls = { { .function = "Keep", .arguments = "[]", .expected = "[2]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: (xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -3145,10 +3770,8 @@ static const sample samples[] = {
       .column = 45 },
     { .name = "element field assignment",
       .source = "package facts\nP :: struct { x: int; }\nOne :: () -> "
-                "int { ps: P[] = []; ps[0].x = 1; return 0; }",
-      .message = "field assignment needs a local record",
-      .line = 3,
-      .column = 34 },
+                "int { ps: P[] = []; ps.append({x: 0}); ps[0].x = 1; return ps[0].x; }",
+      .calls = { { .function = "One", .arguments = "[]", .expected = "[1]" } } },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: (u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",
@@ -3874,15 +4497,6 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
         fprintf(stderr, "package compiler load: %s\n", error);
     }
     REQUIRE(host);
-    if (getenv("CHIBI_TRACE_PACKAGE_CALLS")) {
-        fprintf(
-            stderr,
-            "package compiler call: backend=%d function=%s arguments=%s\n",
-            backend,
-            call->function,
-            call->arguments
-        );
-    }
     bool valid = compiler_host_invoke(
         host,
         function_id(call->function),
@@ -4304,6 +4918,9 @@ static bool updates_in_place(const unsigned char *bytes, size_t length, const ch
     host = NULL;
     return true;
 }
+/* An intrinsic's capability ID is "CHII" and its number. */
+static const uint64_t SEQUENCE_GET_CAPABILITY = UINT64_C(0x4348494900000000) |
+                                                EXECUTION_INTRINSIC_SEQUENCE_GET;
 /* How many of `f`'s instructions load an array's stride. */
 static int stride_loads(const behavior_function *f)
 {
@@ -4314,10 +4931,20 @@ static int stride_loads(const behavior_function *f)
     }
     return loads;
 }
+static bool reads_elements(const behavior_function *f)
+{
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        if (f->host_calls[i].capability_id == SEQUENCE_GET_CAPABILITY) {
+            return true;
+        }
+    }
+    return false;
+}
 /* An array of strings, unions or records with a string field is never packed,
- * so stage one reads its elements from `items` alone; any other array may be,
- * so its reads still choose the representation by its stride. In the root
- * module, only the Packed functions load a stride. */
+ * so stage one reads its elements from `items` alone, or through the sequence
+ * intrinsic; any other array may be, so its reads in place still choose the
+ * representation by its stride. In the root module, only the Packed functions
+ * load a stride. */
 static bool reads_boxed(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -4359,7 +4986,6 @@ static bool reads_boxed(const unsigned char *bytes, size_t length)
     REQUIRE(boxed == 4 && packed == 1 && !wrong);
     return true;
 }
-/* An intrinsic's capability ID is "CHII" and its number. */
 static const uint64_t SNAPSHOT_CAPABILITY = UINT64_C(0x4348494900000000) |
                                             EXECUTION_INTRINSIC_SNAPSHOT;
 static int snapshots(const behavior_function *f)
@@ -4372,7 +4998,8 @@ static int snapshots(const behavior_function *f)
 }
 /* A literal or an authored function's result is new in the function's
  * storage, so stage one moves it into a local or a return without a snapshot;
- * an element read from an array is still copied. */
+ * an element read from an array is still copied, by the sequence intrinsic
+ * that reads it. */
 static bool moves_fresh_values(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -4404,7 +5031,7 @@ static bool moves_fresh_values(const unsigned char *bytes, size_t length)
             int count = snapshots(f.body);
             moved += move;
             copied += copy;
-            if ((move && count) || (copy && !count)) {
+            if ((move && count) || (copy && !count && !reads_elements(f.body))) {
                 fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
                 wrong++;
             }
@@ -4478,8 +5105,11 @@ static bool moves_returned_variants(const unsigned char *bytes, size_t length)
     REQUIRE(kept == 3 && copied == 1 && !wrong);
     return true;
 }
-/* A function builds a local array it returns in its caller's storage; one
- * whose local it assigns does not. */
+/* A function builds the variant literal it returns in its caller's storage;
+ * one that returns a local it assigns does not. Arrays live on the managed
+ * heap, so a returned one is never copied, and a function that changes its
+ * arrays through their places, as Counted and Paired do, builds nothing
+ * there. */
 static bool builds_results(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -4525,8 +5155,35 @@ static bool builds_results(const unsigned char *bytes, size_t length)
     REQUIRE(built == 2 && copied == 1 && !wrong);
     return true;
 }
-/* A loop over an array nothing changes, and a local that reads an element of
- * it, read in place; a loop whose body changes its array walks a copy. */
+/* Whether f's first push or extension drops its item at once: the next host
+ * call drops a value. */
+static bool drops_pushed_item(const behavior_function *f)
+{
+    for (int i = 0; i + 1 < acount(f->host_calls); i++) {
+        execution_intrinsic kind = execution_intrinsic_kind(f->host_calls[i].capability_id);
+        if (kind == EXECUTION_INTRINSIC_ARRAY_PUSH ||
+            kind == EXECUTION_INTRINSIC_ARRAY_EXTEND) {
+            return f->host_calls[i + 1].capability_id ==
+                   (UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_VALUE_DROP);
+        }
+    }
+    return false;
+}
+static int intrinsic_calls(const behavior_function *f, execution_intrinsic kind)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += f->host_calls[i].capability_id ==
+                 (UINT64_C(0x4348494900000000) | kind);
+    }
+    return count;
+}
+/* Arrays are values a loop retains, so neither a loop over an array nothing
+ * changes nor one whose body changes its array snapshots it; CopiedWalk's
+ * result shows the walk still sees the array as it was. A local nothing
+ * changes reads its element in place without a host call, as stage zero lends
+ * it, unless its array changes. WalkedSum walks a parameter and a local
+ * nothing changes as they are, without copying either. */
 static bool reads_in_place(const unsigned char *bytes, size_t length)
 {
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
@@ -4546,26 +5203,36 @@ static bool reads_in_place(const unsigned char *bytes, size_t length)
         fprintf(stderr, "package compiler aliases load: %s\n", error);
     }
     REQUIRE(packages);
-    int aliased = 0, copied = 0, wrong = 0;
+    int walks = 0, wrong = 0;
     for (int p = 0; p < package_collection_count(packages); p++) {
         const execution_module *module = package_collection_module(packages, p);
         for (int i = 0; execution_module_id(module) == root &&
                         i < execution_module_function_count(module);
              i++) {
             execution_module_function_info f = execution_module_function_at(module, i);
-            bool alias = !strncmp(f.entry, "Aliased", 7),
-                 copy = !strcmp(f.entry, "CopiedWalk");
             int count = snapshots(f.body);
-            aliased += alias;
-            copied += copy;
-            if ((alias && count) || (copy && !count)) {
+            walks += !strcmp(f.entry, "AliasedSum") || !strcmp(f.entry, "CopiedWalk");
+            if (count) {
                 fprintf(stderr, "package compiler %s snapshots %d values\n", f.entry, count);
+                wrong++;
+            }
+            int gets = intrinsic_calls(f.body, EXECUTION_INTRINSIC_SEQUENCE_GET),
+                drops = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_DROP),
+                borrows = intrinsic_calls(f.body, EXECUTION_INTRINSIC_SEQUENCE_BORROW);
+            bool lent = !strcmp(f.entry, "LentFind"),
+                 copied = !strcmp(f.entry, "CopiedFind"),
+                 walked = !strcmp(f.entry, "WalkedSum");
+            int copies = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_COPY);
+            walks += lent || copied || walked;
+            if ((lent && (gets || drops || borrows)) ||
+                (copied && (!gets || borrows)) || (walked && copies)) {
+                fprintf(stderr, "package compiler %s reads %d, borrows %d, drops %d elements\n", f.entry, gets, borrows, drops);
                 wrong++;
             }
         }
     }
     package_collection_free(packages);
-    REQUIRE(aliased == 1 && copied == 1 && !wrong);
+    REQUIRE(walks == 5 && !wrong);
     return true;
 }
 /* Literals whose binary64 and binary32 readings LiteralBits must agree on:
@@ -4804,6 +5471,127 @@ static package_collection *read_packages(
     }
     return packages;
 }
+/* A native never changes a value it is passed, so a call lends it a local,
+ * and the result it returns is a temporary a local takes over. An element it
+ * is passed is copied. */
+static bool lends_native_values(const unsigned char *bytes, size_t length)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int lent = 0, copied = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool lend = !strncmp(f.entry, "Lent", 4),
+                 copy = !strncmp(f.entry, "Copied", 6);
+            int copies = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_COPY);
+            lent += lend;
+            copied += copy;
+            if ((lend && copies) || (copy && !copies)) {
+                fprintf(stderr, "package compiler %s copies %d values\n", f.entry, copies);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(lent == 3 && copied == 1 && !wrong);
+    return true;
+}
+/* A drop releases only collections, so a temporary that holds none is not
+ * dropped. */
+static bool drops_only_collections(const unsigned char *bytes, size_t length)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int plain = 0, held = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            bool keep = !strncmp(f.entry, "Plain", 5),
+                 drop = !strncmp(f.entry, "Held", 4);
+            int drops = intrinsic_calls(f.body, EXECUTION_INTRINSIC_VALUE_DROP);
+            plain += keep;
+            held += drop;
+            if ((keep && drops) || (drop && !drops)) {
+                fprintf(stderr, "package compiler %s drops %d values\n", f.entry, drops);
+                wrong++;
+            }
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(plain == 3 && held == 4 && !wrong);
+    return true;
+}
+/* Runs a call with the probe natives: the compiler host links only its own,
+ * so the closure is read with them and its function run directly. */
+static bool run_probe(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
+{
+    REQUIRE(!strcmp(call->arguments, "[]") && call->expected);
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    const behavior_function *body = NULL;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int f = 0; f < execution_module_function_count(module); f++) {
+            execution_module_function_info info = execution_module_function_at(module, f);
+            if (info.id == function_id(call->function)) {
+                body = info.body;
+            }
+        }
+    }
+    REQUIRE(body);
+    arena storage = { 0 };
+    pin_value result = { .type = PIN_I32 };
+    behavior_function_activation activation = { 0 };
+    bool resumable = behavior_function_resumable(body);
+    if (resumable) {
+        behavior_function_activation_init(body, &activation);
+    }
+    behavior_function_prepare_results(body, &result, &storage);
+    behavior_managed_heap heap;
+    behavior_managed_heap_init(&heap);
+    behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                          .managed_heap = &heap,
+                                          .results = &result,
+                                          .budget = TARGET_BUDGET };
+    behavior_function_bind_storage(&context, &storage);
+    bool bound = behavior_function_bind(body, &context, NULL, 0);
+    int status = bound ? behavior_function_run(body, &context, backend != 0)
+                       : FLOW_ERR_ARGUMENT;
+    char text[32];
+    snprintf(text, sizeof text, "[%d]", result.i);
+    bool expected = status == FLOW_OK && context.returned &&
+                    !strcmp(text, call->expected);
+    if (!expected) {
+        fprintf(stderr, "package compiler probe run %s: %d %s\n", call->function, status, text);
+    }
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
+    arena_free(&storage);
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(expected);
+    return true;
+}
+static bool call_sample(
+    const sample *s,
+    const unsigned char *bytes,
+    size_t length,
+    const sample_call *call,
+    int backend
+)
+{
+    return s->probe_calls ? run_probe(bytes, length, call, backend)
+                          : run(bytes, length, call, backend);
+}
 /* The receiver input must be captured before the authored item call. Comparing
  * watch sets alone cannot detect a watch moved across that call. Each fixture
  * function has exactly one update and one authored invocation. */
@@ -4952,7 +5740,11 @@ static bool observes_array_update(const unsigned char *bytes, size_t length, con
             behavior_function_activation_init(body, &activation);
         }
         behavior_function_prepare_results(body, &result, &storage);
+        /* The array values live in the invocation's managed heap. */
+        behavior_managed_heap heap;
+        behavior_managed_heap_init(&heap);
         behavior_function_context context = { .activation = resumable ? &activation : NULL,
+                                              .managed_heap = &heap,
                                               .results = &result,
                                               .budget = TARGET_BUDGET,
                                               .source_debug_user = &trace,
@@ -4972,6 +5764,7 @@ static bool observes_array_update(const unsigned char *bytes, size_t length, con
                      pin_array_get(array, 1).i == 7;
         behavior_function_release_host(&context);
         behavior_function_activation_free(&activation);
+        behavior_managed_heap_free(&heap);
         arena_free(&storage);
         package_collection_free(packages);
         native_capabilities_free(native);
@@ -5463,15 +6256,18 @@ static bool run_samples(sample_group group, int b)
                    (!s->aliases || reads_in_place(bytes, length)) &&
                    (!s->variants || moves_returned_variants(bytes, length)) &&
                    (!s->built || builds_results(bytes, length)) &&
+                   (!s->lends || lends_native_values(bytes, length)) &&
+                   (!s->drops || drops_only_collections(bytes, length)) &&
                    ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
                      points_like_oracle(bytes, length, s->host_effects)));
         bool hosted = !s->traced || !s->c_string_probe;
         for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
-                ran = run(bytes, length, &s->calls[c], backend);
+                ran = call_sample(s, bytes, length, &s->calls[c], backend);
             }
-            ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
+            ran = ran &&
+                  (b || call_sample(s, expected, expected_length, &s->calls[c], 0));
         }
         ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
         if (ran && s->update_order) {
@@ -5512,6 +6308,26 @@ static bool run_samples(sample_group group, int b)
 }
 /* Without debugger points and watches, a closure's functions have none, and
  * its loops and branches still run as they do with them. */
+/* The closure the compiler builds for sample `s` without debug information,
+ * or NULL when it does not compile. */
+static unsigned char *debug_free_closure(const sample *s, size_t *length)
+{
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(s, inputs);
+    pin_value args[ARGUMENTS], out;
+    if (!arguments(1, false, inputs, count, args)) {
+        return NULL;
+    }
+    args[DEBUG_ARGUMENT].b = false;
+    if (!compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)) {
+        return NULL;
+    }
+    const pin_union *value = out.ptr;
+    bool compiled = out.type == PIN_UNION && value && value->tag == tag(1, "Compiled");
+    unsigned char *bytes = compiled ? closure_bytes(value, length) : NULL;
+    arena_free(&detached);
+    return bytes;
+}
 TEST_CASE(package_compiler_omits_debug_info)
 {
     REQUIRE(prepare());
@@ -5521,19 +6337,9 @@ TEST_CASE(package_compiler_omits_debug_info)
         while (strcmp(s->name, names[n])) {
             s++;
         }
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(s, inputs);
-        pin_value args[ARGUMENTS], out;
-        REQUIRE(arguments(1, false, inputs, count, args));
-        args[DEBUG_ARGUMENT].b = false;
-        REQUIRE(
-            compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
-        );
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(1, "Compiled"));
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
-        arena_free(&detached);
+        unsigned char *bytes = debug_free_closure(s, &length);
+        REQUIRE(bytes);
         native_capabilities *native;
         package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
         REQUIRE(packages);
@@ -5557,6 +6363,78 @@ TEST_CASE(package_compiler_omits_debug_info)
         free(bytes);
         REQUIRE(ran);
     }
+    return true;
+}
+/* Without debug information, a push or extension of a local array updates it
+ * in place and drops a temporary item at once rather than holding it until
+ * the function returns. */
+TEST_CASE(package_compiler_drops_pushed_items)
+{
+    REQUIRE(prepare());
+    const sample *s = samples;
+    while (strcmp(s->name, "plain drops")) {
+        s++;
+    }
+    size_t length;
+    unsigned char *bytes = debug_free_closure(s, &length);
+    REQUIRE(bytes);
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int pushes = 0, wrong = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            if (strcmp(f.entry, "HeldExtend") && strcmp(f.entry, "HeldPush")) {
+                continue;
+            }
+            pushes++;
+            wrong += !drops_pushed_item(f.body);
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    bool ran = pushes == 2 && !wrong;
+    for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
+        for (int backend = 0; ran && backend < 2; backend++) {
+            ran = run(bytes, length, &s->calls[c], backend);
+        }
+    }
+    free(bytes);
+    REQUIRE(ran);
+    return true;
+}
+/* The instructions compiling a package of `records` records takes, counted
+ * across every call, or zero when it does not compile. */
+static uint64_t declaring_steps(int records)
+{
+    static char source[64 * 1024];
+    int used = snprintf(source, sizeof source, "package facts\n");
+    for (int i = 0; i < records; i++) {
+        used += snprintf(source + used, sizeof source - (size_t)used, "R%d :: struct { v: int; }\n", i);
+    }
+    used += snprintf(source + used, sizeof source - (size_t)used, "Read :: (r: R0) -> int { return r.v; }\n");
+    REQUIRE((size_t)used < sizeof source);
+    source_package_input input = { "facts/Main.chibi", source, (size_t)used };
+    behavior_execution_scope scope = { .remaining = UINT64_MAX };
+    behavior_execution_scope_begin(&scope);
+    pin_value out;
+    bool called = compile(0, false, false, false, &input, 1, COMPILE_BUDGET, &out);
+    behavior_execution_scope_end(&scope);
+    const pin_union *value = called ? out.ptr : NULL;
+    bool compiled = value && out.type == PIN_UNION && value->tag == tag(0, "Compiled");
+    arena_free(&detached);
+    return compiled ? UINT64_MAX - scope.remaining : 0;
+}
+/* Declaring each type's array and view optionals takes one pass over the
+ * type table, not a search of it for each type: twice the records take about
+ * twice the steps, where the search took three times as many. */
+TEST_CASE(package_compiler_declares_records_in_linear_steps)
+{
+    REQUIRE(prepare());
+    uint64_t fewer = declaring_steps(100), more = declaring_steps(200);
+    REQUIRE(fewer && 2 * more <= 5 * fewer);
     return true;
 }
 /* Stage zero currently resolves assert through its native catalog, so its
@@ -7162,8 +8040,9 @@ static bool same_declarations(const execution_module *expected, const execution_
                 got->type_name ? got->type_name : "",
                 wanted->type_name ? wanted->type_name : ""
             ));
-            REQUIRE(!got->record == !wanted->record);
-            REQUIRE(!got->record || pin_record_same(got->record, wanted->record));
+            /* A native record frozen into one side matches the catalog
+             * layout the other names. */
+            REQUIRE(pin_value_layout_same(got, wanted));
         }
         REQUIRE(y->body->variable_count == x->body->variable_count);
         REQUIRE(y->body->component_access == x->body->component_access);
@@ -7445,11 +8324,14 @@ static script_catalog native_game_catalog()
     return catalog;
 }
 static int catalog_calls[6];
+/* A native record is named by its catalog type and may carry its exact native
+ * layout, never an authored one. */
 static bool catalog_header(const pin_value *value, pin_type type, const char *name)
 {
     return value->type == type && value->container == PIN_CONTAINER_SINGLE &&
            value->type_name && !strcmp(value->type_name, name) &&
-           !value->record && (type != PIN_STRUCT || value->ptr);
+           (!value->record || value->record->native) &&
+           (type != PIN_STRUCT || value->ptr);
 }
 static const char *catalog_echo(void *, const pin_value *arguments, pin_value *results)
 {
@@ -10754,7 +11636,7 @@ static pin_value scalar_field(const pin_value *row, const char *name)
 static bool retained_text(const pin_value *row, const char *name, const char *expected)
 {
     pin_value value = scalar_field(row, name);
-    REQUIRE(value.type == PIN_STR && arena_contains(&detached, pin_text(value).bytes));
+    REQUIRE(value.type == PIN_STR && arena_contains(&detached, value.text));
     REQUIRE(pin_text_equal(pin_text(value), (pin_string){ expected, strlen(expected) }));
     return true;
 }
@@ -12579,17 +13461,18 @@ static bool native_text(int b, const native_module *m, pin_string *ir)
     return true;
 }
 /* The native LLVM fixtures target 64-bit layouts. Portable hosts still store
- * pin_string as their own pointer followed by the 32-bit byte length. */
+ * pin_string as their own bytes pointer, 32-bit length and owner pointer. */
 _Static_assert(
     offsetof(pin_string, bytes) == 0 &&
         offsetof(pin_string, length) == sizeof(void *) &&
+        offsetof(pin_string, owner) == 2 * sizeof(void *) &&
         sizeof(((pin_string *)0)->length) == 4,
-    "pin_string is { host pointer, i32 }"
+    "pin_string is { host pointer, i32, host pointer }"
 );
 #if UINTPTR_MAX == UINT64_MAX
-_Static_assert(sizeof(pin_string) == 16, "64-bit native text layout");
+_Static_assert(sizeof(pin_string) == 24, "64-bit native text layout");
 #else
-_Static_assert(sizeof(void *) == 4 && sizeof(pin_string) == 8, "32-bit portable text layout");
+_Static_assert(sizeof(void *) == 4 && sizeof(pin_string) == 12, "32-bit portable text layout");
 #endif
 /* Main returns whether its two texts differ: each constant is a private
  * global of its bytes and a NUL, named by its index in the text table, and
@@ -12678,7 +13561,7 @@ static bool native_formats_emit(int b)
     static const char *const expected[] = {
         "define i32 @chibi_scalar(ptr %ctx) #0 {\n",
         "%values4 = alloca [3 x { i32, i32, i64, ptr }]\n  %text4 = alloca { "
-        "ptr, i32 }\n",
+        "ptr, i32, ptr }\n",
         "%f4_1.word = sext i32 %f4_1 to i64\n  %f4_1.value = insertvalue { "
         "i32, i32, i64, ptr } "
         "{ i32 1, i32 0, i64 0, ptr null }, i64 %f4_1.word, 2\n",
@@ -12693,7 +13576,7 @@ static bool native_formats_emit(int b)
         "i32 0\n"
         "  %format4 = load ptr, ptr %format4.at\n"
         "  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n"
-        "  %v4 = load { ptr, i32 }, ptr %text4\n",
+        "  %v4 = load { ptr, i32, ptr }, ptr %text4\n",
     };
     for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
         REQUIRE(contains(ir, expected[i]));
@@ -12849,7 +13732,7 @@ static bool native_strings_emit(int b)
     REQUIRE(
         compiler_fixture_call(&consumer, b, "project:native_abi", "TextType", NULL, 0, COMPILE_BUDGET, &input, &type)
     );
-    REQUIRE(pin_text_equal(pin_text(type), (pin_string){ "{ ptr, i32 }", 12 }));
+    REQUIRE(pin_text_equal(pin_text(type), (pin_string){ "{ ptr, i32, ptr }", 17 }));
     native_module m = text_module(TEXT_CODE);
     pin_string ir;
     REQUIRE(native_text(b, &m, &ir));
@@ -12859,12 +13742,18 @@ static bool native_strings_emit(int b)
         "c\"a\\22\\5C\\0A\\C3\\A9\\00\"\n"
     ));
     REQUIRE(contains(ir, "@chibi_scalar.text.1 = private unnamed_addr constant [1 x i8] c\"\\00\"\n"));
-    REQUIRE(contains(ir, "store { ptr, i32 } { ptr @chibi_scalar.text.0, i32 6 }, ptr %s0"));
-    REQUIRE(contains(ir, "store { ptr, i32 } { ptr @chibi_scalar.text.1, i32 0 }, ptr %s1"));
-    REQUIRE(contains(ir, "call i1 @chibi_scalar.text_equal({ ptr, i32 } %a3, { ptr, i32 } %b3)"));
+    REQUIRE(
+        contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.0, i32 6, ptr null }, ptr %s0")
+    );
+    REQUIRE(
+        contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.1, i32 0, ptr null }, ptr %s1")
+    );
+    REQUIRE(
+        contains(ir, "call i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a3, { ptr, i32, ptr } %b3)")
+    );
     REQUIRE(contains(ir, "xor i1 %e3, true"));
     REQUIRE(
-        contains(ir, "define internal i1 @chibi_scalar.text_equal({ ptr, i32 } %a, { ptr, i32 } %b) #0 {")
+        contains(ir, "define internal i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a, { ptr, i32, ptr } %b) #0 {")
     );
     static const char outside[] = "native constant is outside its type",
                       operands[] = "native scalar operand type mismatch";
@@ -12911,7 +13800,7 @@ static bool native_strings_emit(int b)
     REQUIRE(native_emit_library(b, "LinuxX64", &alone, "Texts", name, id, 1, &library));
     REQUIRE(library->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
     pin_string kept = pin_text(library->values[0]);
-    REQUIRE(contains(kept, "define internal { ptr, i32 } @chibi_scalar.0() #0 {"));
+    REQUIRE(contains(kept, "define internal { ptr, i32, ptr } @chibi_scalar.0() #0 {"));
     REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
     REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
     REQUIRE(
@@ -19069,6 +19958,8 @@ void test_language_package_compiler_chibi_debug_free()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_omits_debug_info);
+    RUN_TEST_CASE(package_compiler_drops_pushed_items);
+    RUN_TEST_CASE(package_compiler_declares_records_in_linear_steps);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_scalar()

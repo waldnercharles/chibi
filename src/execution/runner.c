@@ -173,8 +173,11 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
         behavior_function_prepare_host(f, ctx);
         ctx->owned_host = true;
     }
+    ctx->error_message = behavior_function_value_arguments(ctx);
     int result;
-    if (scoped) {
+    if (ctx->error_message) {
+        result = FLOW_ERR_ARGUMENT;
+    } else if (scoped) {
         behavior_run_record(EXECUTION_RUN_SLJIT);
         result = ((int (*)(behavior_function_context *))f->artifact->scoped_code)(ctx);
     } else {
@@ -184,6 +187,7 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
     if (result < 0 && ctx->failure_observer) {
         ctx->failure_observer(f, ctx, result);
     }
+    result = behavior_function_finish_values(ctx, result, acount(f->result_defaults));
     if (ctx->owned_host && result != FLOW_SUSPENDED_RESULT &&
         result != FLOW_PAUSED_RESULT && result != BEHAVIOR_FUNCTION_CALL_RESULT) {
         behavior_function_release_host(ctx);
@@ -193,10 +197,19 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
 
 int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool compiled)
 {
-    if (f->calls || (ctx->activation && ctx->activation->calls)) {
-        return behavior_function_run_calls(f, ctx, compiled);
+    /* Every invocation counts, so a run a native reenters from one without
+     * authored calls is nested and leaves collection to the outer run. */
+    behavior_managed_heap *heap = ctx->managed_heap;
+    if (heap) {
+        heap->running_calls++;
     }
-    return behavior_function_run_once(f, ctx, compiled);
+    int result = f->calls || (ctx->activation && ctx->activation->calls)
+                   ? behavior_function_run_calls(f, ctx, compiled)
+                   : behavior_function_run_once(f, ctx, compiled);
+    if (heap) {
+        heap->running_calls--;
+    }
+    return result;
 }
 const char *behavior_function_failure_text(behavior_function_failure failure)
 {

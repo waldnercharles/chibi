@@ -37,7 +37,8 @@ size_t execution_module_storage_bytes(const execution_module *);
 bool execution_module_components_valid(const execution_module *, const ecs_world *);
 typedef struct
 {
-    size_t payload_bytes, payload_capacity;
+    size_t payload_bytes, payload_capacity; /* Activation payloads. */
+    size_t managed_bytes, managed_capacity; /* The program family's managed heap. */
     int task_slots, retained_tasks;
     size_t task_result_bytes;
     uint64_t task_lookup_steps; /* Handle-index probes in the last collection. */

@@ -106,7 +106,8 @@ void behavior_function_prepare_data(
         for (int i = 0; i < acount(f->host_calls); i++) {
             apush(
                 data->calls,
-                ((behavior_data_binding){ .invoke = f->host_calls[i].call->invoke,
+                ((behavior_data_binding){ .capability_abi = f->host_calls[i].capability_abi,
+                                          .invoke = f->host_calls[i].call->invoke,
                                           .value = f->host_calls[i].call->value,
                                           .context = f->host_calls[i].call->context,
                                           .action = f->host_calls[i].call->action })
@@ -185,6 +186,8 @@ void behavior_function_prepare_host(const behavior_function *f, behavior_functio
 }
 void behavior_function_release_host(behavior_function_context *ctx)
 {
+    behavior_function_collection_clear(ctx);
+    behavior_function_restore_arguments(ctx);
     for (int i = 0; i < acount(ctx->queries); i++) {
         free(ctx->queries[i].snapshot.items);
     }
@@ -201,6 +204,7 @@ void behavior_function_release_host(behavior_function_context *ctx)
 }
 void behavior_function_reset_host(behavior_function_context *ctx)
 {
+    behavior_function_collection_clear(ctx);
     for (int i = 0; i < acount(ctx->queries); i++) {
         free(ctx->queries[i].snapshot.items);
     }
@@ -253,6 +257,13 @@ static bool bound_to(const behavior_data_binding *binding, const node_host_call 
     return binding->invoke == call->invoke && binding->value == call->value &&
            binding->context == call->context && binding->action == call->action;
 }
+static bool language_values(const behavior_function_host_call *spec, const behavior_data_binding *binding)
+{
+    const node_host_call *call = spec->call;
+    return call->language_values && call->value && !call->service &&
+           spec->capability_abi && binding->capability_abi == spec->capability_abi &&
+           bound_to(binding, call);
+}
 const char *behavior_function_host_arguments(behavior_function_context *ctx, int target)
 {
     const behavior_function *f = ctx->data->function;
@@ -268,10 +279,94 @@ const char *behavior_function_host_arguments(behavior_function_context *ctx, int
     if (spec->call->borrows && bound_to(binding, spec->call)) {
         return NULL;
     }
+    bool language = language_values(spec, binding);
     for (int i = spec->first; i < spec->result_first; i++) {
-        const char *error = pin_value_managed_boundary_error(&ctx->data->values[i]);
+        const char
+            *error = language
+                       ? (ctx->managed_heap
+                              ? behavior_managed_storage_owner_error(
+                                    &ctx->managed_heap->storage,
+                                    &ctx->data->values[i]
+                                )
+                              : "Language sequence requires a managed heap")
+                       : pin_value_managed_boundary_error(&ctx->data->values[i]);
         if (error) {
             return error;
+        }
+    }
+    return NULL;
+}
+const char *behavior_function_host_results(behavior_function_context *ctx, int target)
+{
+    const behavior_function *f = ctx->data->function;
+    assert(target >= 0 && target < acount(f->host_calls));
+    const behavior_function_host_call *spec = &f->host_calls[target];
+    const behavior_data_binding *binding = &ctx->data->calls[target];
+    const node_host_call *canonical = execution_intrinsic_resolve(spec->capability_id);
+    bool intrinsic = canonical &&
+                     spec->capability_abi ==
+                         execution_intrinsic_abi(spec->capability_id) &&
+                     binding->invoke == canonical->invoke &&
+                     binding->value == canonical->value &&
+                     binding->context == canonical->context &&
+                     binding->action == canonical->action;
+    pin_value *results = ctx->data->values + spec->result_first;
+    bool language = language_values(spec, binding);
+    if (!intrinsic && !language) {
+        for (int i = 0; i < spec->result_count; i++) {
+            const char *error = pin_value_managed_boundary_error(&results[i]);
+            if (error) {
+                memset(results, 0, (size_t)spec->result_count * sizeof *results);
+                return error;
+            }
+        }
+    }
+    if (language) {
+        for (int i = 0; i < spec->result_count; i++) {
+            const char *error = ctx->managed_heap
+                                  ? behavior_managed_storage_value_error(
+                                        &ctx->managed_heap->storage,
+                                        &results[i]
+                                    )
+                                  : "Language sequence requires a managed heap";
+            if (error) {
+                memset(results, 0, (size_t)spec->result_count * sizeof *results);
+                return error;
+            }
+        }
+    }
+    if (!intrinsic) {
+        for (int i = 0; i < spec->result_count; i++) {
+            const char *error = behavior_function_validate_value(ctx, &results[i]);
+            if (error) {
+                memset(results, 0, (size_t)spec->result_count * sizeof *results);
+                return error;
+            }
+        }
+    }
+    if (!intrinsic && !binding->value) {
+        arena *storage = ctx->managed_heap ? &ctx->managed_heap->storage
+                                           : ctx->value_storage;
+        for (int i = 0; i < spec->result_count; i++) {
+            pin_value copy;
+            if (!pin_value_holds_storage(&results[i])) {
+                continue;
+            }
+            if (!storage || pin_value_collection_copy(storage, &copy, &results[i])) {
+                memset(results, 0, (size_t)spec->result_count * sizeof *results);
+                return "Cannot copy native result bank";
+            }
+            results[i] = copy;
+        }
+    }
+    if (!intrinsic) {
+        for (int i = 0; i < spec->result_count; i++) {
+            behavior_function_collection_retain(ctx, &results[i]);
+        }
+    }
+    if (spec->owned_arguments) {
+        for (int i = spec->first; i < spec->result_first; i++) {
+            behavior_function_collection_drop(ctx, &ctx->data->values[i]);
         }
     }
     return NULL;

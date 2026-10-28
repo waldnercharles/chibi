@@ -536,6 +536,9 @@ int script_analyzer_initializer_find(const analyzer *a, int symbol)
 /* Tasks, handles and arrays start empty without a written default. */
 static bool starts_empty(script_type type)
 {
+    if (type.container == PIN_CONTAINER_VIEW) {
+        return (type.flags & SCRIPT_TYPE_OPTIONAL) != 0;
+    }
     return (type.flags & SCRIPT_TYPE_TASK) || type.storage == PIN_HANDLE ||
            (type.storage == PIN_POINTER && (type.flags & SCRIPT_TYPE_OPTIONAL)) ||
            type.container != PIN_CONTAINER_SINGLE;
@@ -594,7 +597,8 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
         value = script_analyzer_expr_add(
             a,
             (script_expression){
-                .kind = expected.container == PIN_CONTAINER_MAP ? SCRIPT_EXPR_MAP
+                .kind = expected.container == PIN_CONTAINER_VIEW ? SCRIPT_EXPR_NIL
+                      : expected.container == PIN_CONTAINER_MAP ? SCRIPT_EXPR_MAP
                       : expected.container != PIN_CONTAINER_SINGLE ? SCRIPT_EXPR_ARRAY
                                                                    : SCRIPT_EXPR_CONSTANT,
                 .type = expected,
@@ -606,10 +610,13 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
                 .entry = -1 }
         );
     } else if (ts_node_is_null(node)) {
+        bool view = expected.container == PIN_CONTAINER_VIEW &&
+                    !(expected.flags & SCRIPT_TYPE_OPTIONAL);
         script_analyzer_diagnostic(
             a,
             node,
-            "'%s' requires a default value",
+            view ? "A nonoptional view requires an initializer"
+                 : "'%s' requires a default value",
             record->name
         );
         value = script_analyzer_expression(a, node, expected);

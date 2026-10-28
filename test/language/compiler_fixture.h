@@ -44,6 +44,8 @@ bool compiler_fixture_prepare_packs(
     const native_definition_pack *additional,
     int additional_count
 );
+/* Gives calls the managed heap a program's activations share. */
+void compiler_fixture_init_heap(compiler_fixture *);
 enum
 {
     COMPILER_FIXTURE_BYTECODE = 1u << 0,

@@ -73,6 +73,15 @@ typedef struct
      * produce the same outputs until behavior state or host state changes.
      * Allows reuse during uninterrupted, unobserved execution. */
     bool reusable;
+    /* Trusted language sequence kernel: opaque managed values stay in the
+     * caller heap. The callback handles views and opaque managed pointers
+     * safely; retained values require owned capture or managed roots. Only
+     * service-free value callbacks may opt in; this policy is part of the ABI. */
+    bool language_values;
+    /* Value callback publishes fresh logical collection owners, including
+     * nested fields. Text bytes and explicit pointer targets may be shared.
+     * The runtime adopts these owners; borrowed selections must be copied. */
+    bool owned_result;
     /* Reads its arguments only during the call and returns fresh snapshots
      * that keep managed pointer identity, so arguments may hold managed
      * pointers and are not walked at the native boundary. */

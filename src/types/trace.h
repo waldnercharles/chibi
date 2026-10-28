@@ -15,6 +15,9 @@ const char *pin_value_managed_boundary_error(const pin_value *value);
 
 /* Trace only declared managed fields; scalar words and padding are not scanned. */
 void pin_value_trace(const pin_value *value, arena_marker mark, void *user);
+/* Whether an array's items can reach storage of their own: packed scalars and
+ * plain records reach nothing beyond the array's payload. */
+bool pin_array_items_reach(const pin_array *array);
 void pin_arena_trace_struct(arena *storage, void *data, const type_desc *type);
 void pin_arena_trace_array(arena *storage, pin_array *array);
 void pin_arena_trace_union(arena *storage, pin_union *value);

@@ -1162,7 +1162,10 @@ ScalarDeclared :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, value,
                                     InferredNumberStorage(forest, text, value));
     }
-    resolved := ReadType(forest, text, types, names, callable.package, declared);
+    // Reading a type may add an optional or pointer type; this analysis
+    // keeps none of them.
+    table := types;
+    resolved := ReadType(forest, text, &table, names, callable.package, declared);
     if (resolved.container != 0) {
         return 0;
     }
@@ -1181,7 +1184,8 @@ ScalarDeclaredRecord :: (forest: snapshot.SnapshotNode[], text: string, callable
         }
         return ScalarUnionOf(forest, text, callables, names, types, callable.package, value);
     }
-    return ReadType(forest, text, types, names, callable.package, declared).record;
+    table := types;
+    return ReadType(forest, text, &table, names, callable.package, declared).record;
 }
 // The operand rows of the assignment `node` to field `field` of a variable
 // of record `record` after `rows`, as StatementStep writes a field: a read of
@@ -1493,7 +1497,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     operands.extend(read);
                     rows.append(ScalarAt(forest, binding, facts.LocalRow, type, variables, 2, name));
                     rows.extend(read);
-                    bound: Name = {name: name, place: LocalPlace, index: variables, storage: members[field].storage,
+                    bound: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: members[field].storage,
                                    container: 0, record: -1, writable: false, node: binding};
                     names.append(bound);
                     variables += 1;
@@ -1582,7 +1586,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
                     row.literal += i64(facts.RangeReverse);
                 }
                 // As the range step binds it, read-only, for the body alone.
-                binding: Name = {name: name, place: LocalPlace, index: variables, storage: IntStorage, container: 0,
+                binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: IntStorage, container: 0,
                                  record: -1, writable: false, node: declared};
                 names.append(binding);
                 variables += 1;
@@ -1648,7 +1652,7 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             type := ScalarValueType(types, storage, 0, record);
             row = ScalarAt(forest, statement, facts.LocalRow, type, variables, count, name);
             // As StatementStep binds it, after its value.
-            binding: Name = {name: name, place: LocalPlace, index: variables, storage: storage, container: 0,
+            binding: Name = {owned: false, name: name, place: LocalPlace, index: variables, storage: storage, container: 0,
                              record: record, writable: true, node: declared};
             names.append(binding);
             variables += 1;
@@ -1797,14 +1801,16 @@ ScalarTextIdentities :: (natives: ResolvedNative[], identities: u64[]) -> u64[] 
     return kept;
 }
 // Whether every host call reads a string's bytes through a text native,
-// builds a record from its fields, copies one or writes a field through a
-// reference to it, or makes a union, tests its variant or reads a payload,
-// the only host calls a string, record or union of this subset takes, and
-// every traced root is a record or union.
+// builds a record from its fields, copies, drops or snapshots one or reads or
+// writes a field through a reference to it, or makes a union, tests its
+// variant or reads a payload, the only host calls a string, record or union
+// of this subset takes, and every traced root is a record or union. Its
+// records and unions hold only numbers and bools, so a value copy or drop is
+// a plain copy or nothing.
 ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
-    admitted := [ConstructIntrinsic, SnapshotIntrinsic, ReferenceMakeIntrinsic, ReferenceFieldIntrinsic,
-                 ReferenceWriteIntrinsic, UnionMakeIntrinsic, UnionKeepIntrinsic, UnionTestIntrinsic,
-                 UnionGetIntrinsic];
+    admitted := [ConstructIntrinsic, SnapshotIntrinsic, ValueCopyIntrinsic, ValueDropIntrinsic,
+                 ReferenceMakeIntrinsic, ReferenceFieldIntrinsic, ReferenceReadIntrinsic, ReferenceWriteIntrinsic,
+                 UnionMakeIntrinsic, UnionKeepIntrinsic, UnionTestIntrinsic, UnionGetIntrinsic];
     for (host in hosts) {
         // A text native, the only natives EmitBody is given.
         if (host.intrinsic == 0 && host.linked >= 0) {
@@ -1846,7 +1852,8 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     empty_names: string[] = [];
     // No native writes: the text natives are pure.
     writes := resize([int(0)], length(natives));
-    switch EmitBody(forest, text, 0, callables, params, types, members, constants, natives, ports, identities,
+    table := types;
+    switch EmitBody(forest, text, 0, callables, params, &table, members, constants, natives, ports, identities,
                     operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
                     empty_names, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):
@@ -2088,7 +2095,7 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
         if (FindCallable(callables, 0, name) >= 0) {
             return ScalarFailure(path, text, Diagnose(forest, member, 0, format_text("Duplicate declaration '{}'", name)));
         }
-        switch FunctionSignature(forest, text, path, solid, empty_types, aliases, 0, 0, member, name, length(params)) {
+        switch FunctionSignature(forest, text, path, solid, &empty_types, aliases, 0, 0, member, name, length(params)) {
             case .Failed(diagnostic):
                 return ScalarFailure(path, text, diagnostic);
             case .Read(callable, added):

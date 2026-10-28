@@ -15,8 +15,10 @@
 #include <string.h>
 #include <unistd.h>
 
-static const pin_string stale_text = { "stale", sizeof("stale") - 1 };
-static const pin_string changed_text = { "changed", sizeof("changed") - 1 };
+static const pin_string stale_text = { .bytes = "stale",
+                                       .length = sizeof("stale") - 1 };
+static const pin_string changed_text = { .bytes = "changed",
+                                         .length = sizeof("changed") - 1 };
 
 /* Seven fixed cases. VM/SLJIT preparation and publication, no authored execution.
  * The repro selector runs only the VM half of the real publication case. */

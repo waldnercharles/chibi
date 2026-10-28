@@ -108,7 +108,7 @@ TextComparisonHelperHasArtificialLocation :: () {
     text := Emitted(native.Emit(abi.LinuxX64(), [Function(1, 0, 0, 3, 0, 6, 0, 0)],
                                 empty, [13, 13, 1], empty, code, empty, records, empty,
                                 ["a\"\\\né", ""], source, ["Main"], positions, positions, false, 1));
-    assert(strings.Contains(text, "define internal i1 @chibi_scalar.text_equal({ ptr, i32 } %a, { ptr, i32 } %b) #0 !dbg !7 {\n"));
+    assert(strings.Contains(text, "define internal i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a, { ptr, i32, ptr } %b) #0 !dbg !7 {\n"));
     assert(strings.Contains(text, "  %index = phi i32 [ 0, %entry ], [ %next, %byte ], !dbg !14\n"));
     assert(strings.Contains(text, "!7 = distinct !DISubprogram(name: \"chibi_scalar.text_equal\", scope: !1, file: !1, line: 0, type: !4, scopeLine: 0, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition, unit: !0)\n"));
     assert(strings.Contains(text, "!13 = !DILocation(line: 2, column: 2, scope: !6)\n!14 = !DILocation(line: 0, scope: !7)\n"));

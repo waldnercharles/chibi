@@ -12,6 +12,7 @@
 #include "toolchain/compiler_host.h"
 #include "types/array.h"
 #include "types/text.h"
+#include "types/trace.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -145,6 +146,52 @@ TEST_CASE(portable_packages_run_authored_tests)
     return true;
 }
 
+static bool shared_bytes_survive_producer_free(const unsigned char *expected, int count, bool packed)
+{
+    arena_init_collectable(&producer);
+    pin_array shape = { .element_type = PIN_U8, .type_name = "u8" };
+    pin_array *array = packed ? pin_array_snapshot_like(&producer, &shape, count)
+                              : pin_array_allocate(&producer, PIN_U8, "u8", count);
+    REQUIRE(array);
+    for (int i = 0; i < count; i++) {
+        pin_value item = { .type = PIN_U8, .u8 = expected[i] };
+        REQUIRE(!pin_array_set(array, i, &item));
+    }
+    REQUIRE(!pin_array_manage(&producer, array));
+    pin_value original = { .type = PIN_U8,
+                           .container = PIN_CONTAINER_ARRAY,
+                           .type_name = array->type_name,
+                           .ptr = array },
+              alias;
+    REQUIRE(!pin_value_collection_copy(&producer, &alias, &original));
+    pin_array *copy = alias.ptr;
+    REQUIRE(copy != array && array->backing && copy->backing == array->backing);
+    REQUIRE(array->stride == (size_t)packed && copy->stride == (size_t)packed);
+    REQUIRE(packed ? array->data == copy->data : array->items == copy->items);
+
+    pin_value output = { 0 };
+    REQUIRE(!NATIVE_TEXT_FROM_BYTES_CALL.value(&retained, &alias, 1, &output));
+    pin_string text = pin_text(output);
+    REQUIRE(text.owner && text.length == (uint32_t)count);
+    REQUIRE(!memcmp(text.bytes, expected, (size_t)count));
+    pin_value first = { .type = PIN_U8, .u8 = 0xa5 },
+              last = { .type = PIN_U8, .u8 = 0x5a };
+    REQUIRE(!pin_array_snapshot_set(&producer, copy, 0, &first));
+    REQUIRE(copy->backing != array->backing);
+    REQUIRE(!pin_array_snapshot_set(&producer, array, count - 1, &last));
+    for (int i = 0; i < count; i++) {
+        REQUIRE(pin_array_get(copy, i).u8 == (i == 0 ? 0xa5 : expected[i]));
+        REQUIRE(pin_array_get(array, i).u8 == (i == count - 1 ? 0x5a : expected[i]));
+    }
+    REQUIRE(!memcmp(text.bytes, expected, (size_t)count));
+    /* Both logical arrays and their detached backings die before the string. */
+    arena_free(&producer);
+    text = pin_text(output);
+    REQUIRE(text.length == (uint32_t)count && !text.bytes[count]);
+    REQUIRE(!memcmp(text.bytes, expected, (size_t)count));
+    return true;
+}
+
 TEST_CASE(text_from_bytes_preserves_storage_and_lifetime)
 {
     unsigned char expected[256];
@@ -193,6 +240,8 @@ TEST_CASE(text_from_bytes_preserves_storage_and_lifetime)
         REQUIRE(text.length == (uint32_t)count && !text.bytes[count]);
         REQUIRE(!count || !memcmp(text.bytes, expected, (size_t)count));
     }
+    REQUIRE(shared_bytes_survive_producer_free(expected, sizeof expected, false));
+    REQUIRE(shared_bytes_survive_producer_free(expected, sizeof expected, true));
     return true;
 }
 
@@ -224,6 +273,28 @@ TEST_CASE(text_from_bytes_rejects_invalid_inputs_without_output)
     REQUIRE(output.type == PIN_I32 && output.i == 42);
     REQUIRE(NATIVE_TEXT_FROM_BYTES_CALL.value(&retained, &scalar, 0, &output));
     REQUIRE(output.type == PIN_I32 && output.i == 42);
+
+    arena_init_collectable(&producer);
+    pin_array *owner = pin_array_allocate(&producer, PIN_U8, "u8", 2);
+    REQUIRE(owner && !pin_array_manage(&producer, owner));
+    pin_pointer *cell = arena_alloc(&producer, sizeof *cell);
+    *cell = (pin_pointer){ .value = { .type = PIN_U8,
+                                      .container = PIN_CONTAINER_ARRAY,
+                                      .type_name = owner->type_name,
+                                      .ptr = owner },
+                           .storage = &producer };
+    pin_arena_trace_pointer(&producer, cell);
+    pin_array *view = pin_array_pointer_view(&producer, cell, 1, 1);
+    REQUIRE(view && pin_array_valid(view));
+    input = (pin_value){ .type = PIN_U8,
+                         .container = PIN_CONTAINER_VIEW,
+                         .type_name = view->type_name,
+                         .ptr = view };
+    const char *policy = pin_value_managed_boundary_error(&input);
+    REQUIRE(policy && strstr(policy, "live array views"));
+    REQUIRE(NATIVE_TEXT_FROM_BYTES_CALL.value(&retained, &input, 1, &output));
+    REQUIRE(output.type == PIN_I32 && output.i == 42);
+    arena_free(&producer);
     return true;
 }
 

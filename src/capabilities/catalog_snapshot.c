@@ -37,7 +37,7 @@ static bool parameters(
         copy[i] = source[i];
         copy[i].name = text(storage, source[i].name);
         copy[i].unit = text(storage, source[i].unit);
-        if (source[i].has_default && pin_value_snapshot_to_arena(
+        if (source[i].has_default && pin_value_capture_to_arena(
                                          storage,
                                          &copy[i].default_value,
                                          &source[i].default_value
@@ -55,7 +55,7 @@ static bool compile_value_copy(arena *storage, script_compile_value *out, const 
         out->value = (pin_value){ 0 };
         return true;
     }
-    return !pin_value_snapshot_to_arena(storage, &out->value, &value->value);
+    return !pin_value_capture_to_arena(storage, &out->value, &value->value);
 }
 static bool generic_metadata(arena *storage, const script_catalog *source, script_catalog *out)
 {
@@ -132,7 +132,7 @@ bool script_catalog_snapshot(arena *storage, const script_catalog *source, scrip
             fields[j].name = text(storage, fields[j].name);
             fields[j].unit = text(storage, fields[j].unit);
             fields[j].read_key = text(storage, fields[j].read_key);
-            if (fields[j].has_default && pin_value_snapshot_to_arena(
+            if (fields[j].has_default && pin_value_capture_to_arena(
                                              storage,
                                              &fields[j].default_value,
                                              &types[i].fields[j].default_value
@@ -157,7 +157,7 @@ bool script_catalog_snapshot(arena *storage, const script_catalog *source, scrip
                 payload[k].name = text(storage, payload[k].name);
                 payload[k].unit = text(storage, payload[k].unit);
                 payload[k].read_key = text(storage, payload[k].read_key);
-                if (payload[k].has_default && pin_value_snapshot_to_arena(
+                if (payload[k].has_default && pin_value_capture_to_arena(
                                                   storage,
                                                   &payload[k].default_value,
                                                   &variants[j].fields[k].default_value
@@ -166,7 +166,7 @@ bool script_catalog_snapshot(arena *storage, const script_catalog *source, scrip
                 }
             }
             variants[j].fields = payload;
-            if (variants[j].is_literal && pin_value_snapshot_to_arena(
+            if (variants[j].is_literal && pin_value_capture_to_arena(
                                               storage,
                                               &variants[j].literal,
                                               &types[i].variants[j].literal

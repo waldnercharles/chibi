@@ -57,8 +57,20 @@ typedef enum
     EXECUTION_INTRINSIC_POINTER_WRITE = 48,
     EXECUTION_INTRINSIC_POINTER_FIELD = 49,
     EXECUTION_INTRINSIC_POINTER_REFERENCE = 50,
-    /* 51-60 are reserved for collection value/view operations; 61-79 are free.
-     * Query operations own 80-95 in the coordinated intrinsic registry. */
+    EXECUTION_INTRINSIC_SEQUENCE_SLICE = 51,
+    EXECUTION_INTRINSIC_SEQUENCE_VIEW = 52,
+    EXECUTION_INTRINSIC_SEQUENCE_CLONE = 53,
+    EXECUTION_INTRINSIC_RESERVED_ARRAY_MUTATE = 54,
+    EXECUTION_INTRINSIC_SEQUENCE_GET = 55,
+    EXECUTION_INTRINSIC_SEQUENCE_LENGTH = 56,
+    EXECUTION_INTRINSIC_VALUE_COPY = 57,
+    EXECUTION_INTRINSIC_VALUE_DROP = 58,
+    EXECUTION_INTRINSIC_ARRAY_MUTATE_PLACE = 59,
+    EXECUTION_INTRINSIC_REFERENCE_UNION = 60,
+    EXECUTION_INTRINSIC_MAP_DELETE_PLACE = 61,
+    EXECUTION_INTRINSIC_SEQUENCE_BORROW = 62,
+    /* 63-79 are free. Query operations own 80-95 in the coordinated intrinsic
+     * registry. */
     EXECUTION_INTRINSIC_QUERY_MAKE = 80,
     EXECUTION_INTRINSIC_QUERY_BEGIN = 81,
     EXECUTION_INTRINSIC_QUERY_NEXT = 82,
@@ -87,14 +99,37 @@ static inline bool execution_intrinsic_in_result(uint64_t id)
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
 extern const node_host_call EXECUTION_snapshot_call;
+extern const node_host_call EXECUTION_value_copy_call,
+    EXECUTION_value_drop_call, EXECUTION_array_mutate_place_call,
+    EXECUTION_reference_union_call, EXECUTION_map_delete_place_call;
 extern const node_host_call EXECUTION_string_bytes_call, EXECUTION_string_item_call,
     EXECUTION_string_next_call, EXECUTION_string_cursor_call;
 extern const node_host_call EXECUTION_construct_call;
 extern const node_host_call EXECUTION_value_equal_call;
-/* In-place append, element write and extension of a local's own array:
- * (header address, item), (header address, index, item) and (header address,
- * items). Every store into a local snapshots, so no other value shares the
- * array these update. */
+/* Older header-address forms of append, element write and extension. */
+/* Strict half-open ranges return a boxed optional: (receiver, start, end,
+ * success tag). Clone takes one receiver and returns a detached outer copy. */
+extern const node_host_call EXECUTION_sequence_slice_call,
+    EXECUTION_sequence_view_call, EXECUTION_sequence_clone_call,
+    EXECUTION_sequence_get_call, EXECUTION_sequence_length_call;
+/* sequence_get without the element's snapshot: the result stays in the
+ * array, for a reader that finishes before the array can change. */
+extern const node_host_call EXECUTION_sequence_borrow_call;
+typedef enum
+{
+    EXECUTION_ARRAY_APPEND = 1,
+    EXECUTION_ARRAY_ADD_UNIQUE,
+    EXECUTION_ARRAY_EXTEND,
+    EXECUTION_ARRAY_SET,
+    EXECUTION_ARRAY_INSERT,
+    EXECUTION_ARRAY_REMOVE_INDEX,
+    EXECUTION_ARRAY_REMOVE_ITEM,
+    EXECUTION_ARRAY_CLEAR,
+    EXECUTION_ARRAY_REVERSE,
+    EXECUTION_ARRAY_SWAP,
+    EXECUTION_ARRAY_RESIZE
+} execution_array_mutation;
+/* Place mutation takes a logical reference, an ordinal, and method arguments. */
 extern const node_host_call EXECUTION_array_push_call,
     EXECUTION_array_store_call, EXECUTION_array_extend_call;
 extern const node_host_call EXECUTION_union_make_call,
@@ -130,7 +165,8 @@ extern const node_host_call EXECUTION_query_make_call, EXECUTION_query_begin_cal
     EXECUTION_query_test_call, EXECUTION_component_snapshot_call;
 extern const node_access EXECUTION_component_read_access,
     EXECUTION_component_membership_access;
-extern const node_access EXECUTION_assignment_access, EXECUTION_value_access;
+extern const node_access EXECUTION_assignment_access, EXECUTION_value_access,
+    EXECUTION_sequence_read_access;
 size_t execution_value_size(pin_value);
 const node_host_call *execution_intrinsic_call(execution_intrinsic);
 uint64_t execution_intrinsic_id(const node_host_call *);

@@ -155,6 +155,35 @@ TEST_CASE(language_managed_pointers_reject_invalid_storage_and_types)
     }
     return true;
 }
+TEST_CASE(language_sequence_views_require_pointer_authority)
+{
+    const struct
+    {
+        const char *source, *message;
+    } invalid[] = {
+        { "L :: library { F :: () { a: int[] = [1]; v := a.view(0..<1); } }",
+          "Mutable array views require a pointer to an array" },
+        { "L :: library { F :: (v: view int[]) { other := v.view(0..<0); } }",
+          "Mutable array views require a pointer to an array" },
+        { "B :: behavior { v: view int[]; }", "A nonoptional view requires an initializer" },
+        { "L :: library { F :: (v: view int) {} }", "view requires an array type" },
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        parse(invalid[i].source);
+        REQUIRE(!syntax->diagnostic_count);
+        REQUIRE(!analysis->valid && diagnostic(invalid[i].message));
+    }
+    parse(
+        "L :: library { "
+        "Pass :: (v: view int[]) -> view int[] { return v; } "
+        "Copy :: (v: view int[]) -> int[]? { return v.slice(0..<0); } "
+        "Text :: (s: string) -> string? { return s.view(0..<0); } "
+        "F :: () -> int { a: int[] = [1]; p := &a; window := p.view(0..<1); "
+        "if window { v: view int[] = Pass(window); return v[0]; } return 0; } }"
+    );
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    return true;
+}
 TEST_CASE(language_shadowing_resolves_nearest_declaration)
 {
     const char *source = "Scope :: behavior {\ndt := 1;\non Tick :: (dt: "
@@ -2774,6 +2803,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_type_patterns_narrow_and_invalidate);
     RUN_TEST_CASE(language_constants_reject_runtime_dependencies_and_writes);
     RUN_TEST_CASE(language_managed_pointers_reject_invalid_storage_and_types);
+    RUN_TEST_CASE(language_sequence_views_require_pointer_authority);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_pub_marks_only_package_declarations);
     RUN_TEST_CASE(language_literals_are_typed_by_spelling);

@@ -101,12 +101,16 @@ static int intrinsic(const behavior_function *f, const behavior_function_instruc
         actual->context != canonical->context || actual->action != canonical->action ||
         actual->optional_service != canonical->optional_service ||
         actual->variadic != canonical->variadic ||
-        actual->reusable != canonical->reusable) {
+        actual->reusable != canonical->reusable ||
+        actual->language_values != canonical->language_values ||
+        actual->owned_result != canonical->owned_result) {
         return 0;
     }
     if (canonical == &EXECUTION_union_make_call ||
-        canonical == &EXECUTION_union_test_call || canonical == &EXECUTION_union_get_call ||
-        canonical == &EXECUTION_snapshot_call) {
+        canonical == &EXECUTION_union_test_call ||
+        canonical == &EXECUTION_union_get_call || canonical == &EXECUTION_snapshot_call ||
+        canonical == &EXECUTION_value_copy_call ||
+        canonical == &EXECUTION_value_drop_call) {
         return (int)(id & UINT64_C(0xffffffff));
     }
     return 0;
@@ -266,10 +270,20 @@ static scalar_value union_call(
         return (scalar_value){ 0 };
     }
     scalar_union *value = &(*objects)[object - 1];
-    if (kind == EXECUTION_INTRINSIC_SNAPSHOT && count == 1 &&
-        output.type == PIN_UNION && output.container == PIN_CONTAINER_SINGLE) {
+    /* A scalarized union has no storage, so copies alias it and drops are
+     * no-ops. */
+    if ((kind == EXECUTION_INTRINSIC_SNAPSHOT || kind == EXECUTION_INTRINSIC_VALUE_COPY) &&
+        count == 1 && output.type == PIN_UNION &&
+        output.container == PIN_CONTAINER_SINGLE) {
         *owner = object;
         return args[0];
+    }
+    if (kind == EXECUTION_INTRINSIC_VALUE_DROP && count == 1 &&
+        output.type == PIN_BOOL && output.container == PIN_CONTAINER_SINGLE) {
+        *owner = object;
+        scalar_value result = scalar((pin_value){ .type = PIN_BOOL, .b = true });
+        result.owner = object;
+        return result;
     }
     if (kind == EXECUTION_INTRINSIC_UNION_TEST && count >= 2 &&
         output.type == PIN_BOOL && output.container == PIN_CONTAINER_SINGLE) {

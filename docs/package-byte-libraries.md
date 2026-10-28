@@ -1,8 +1,10 @@
 # Portable byte libraries
 
-Status on 2026-10-28: independently reviewed implementation candidate based on
-accepted main `21ba81a0a`. The selected native, current-source compiler, Wasm,
-normal SDK and relocation checks below pass. Publication remains separate.
+Integration baseline on 2026-10-28: accepted main `7c6ca2f5d`, with owned string
+descriptors, value arrays and prepared format 26.
+[#795](https://github.com/waldnercharles/chibi/pull/795) records validation for
+each revision. The acceptance table below preserves the initial implementation's
+results on `21ba81a0a`.
 
 This batch contains five complete packages with 34 public functions. Their
 source declarations own the API. It separates packages that use existing
@@ -89,6 +91,12 @@ Captured source bytes still participate in the final consistency check. The
 asset compiler's existing `ExplainCosts` facade from
 [#788](https://github.com/waldnercharles/chibi/pull/788) is preserved.
 
+[`Driver.chibi`](../tools/native_aot/Driver.chibi) compiles the private scalar
+emitter with its four compiler packages and `core:strings`. Compilation and
+emitter cache identity share the same explicit core source list. Documentation
+generation prepares the complete public core with the standalone catalog; its
+parser capability stays private to the generator's separate catalog.
+
 No compiler language source, prepared ABI, bootstrap closure/manifest or
 consistency/recovery guard change is required by these packages. They add no
 host filesystem, process, network or game capability.
@@ -99,8 +107,7 @@ Endian, UTF-8, slash paths, hex and Base64 remain outside this independent batch
 Their complete contracts and the pending `Error?`, character, named-result and
 `@fallible` work are preserved. This sequencing does not replace their errors
 with sentinels or approve reduced implementations. Holds and approval requirements
-for [#694](https://github.com/waldnercharles/chibi/pull/694),
-[#790](https://github.com/waldnercharles/chibi/pull/790) and other work remain in
+for [#790](https://github.com/waldnercharles/chibi/pull/790) and other work remain in
 force.
 
 ## Acceptance evidence
@@ -110,15 +117,21 @@ boundaries, empty inputs, overlapping searches, exhaustive short binary search
 oracles, all byte values, incremental splits and long Adler block boundaries.
 Native cases cover byte conversion storage/lifetime, boxed/packed inputs,
 invalid arguments and compiler/public profile isolation.
+The collection integration also covers shared boxed/packed backing, independent
+mutations after detachment, retained strings after producer-arena destruction
+and live-view rejection without output publication.
 
 The package tests use explicit `return;`, matching the accepted authored string
-regressions. The current authored compiler's implicit void fallthrough does not
-set the completion flag required by the shared test runner. The pre-fix capture
+regressions. During the initial implementation, implicit void fallthrough did
+not set the completion flag required by the shared test runner. That capture
 reported its default instruction-budget diagnostic; no budget was exhausted or
 raised. Explicit returns retain every assertion and package API. The compiler
-fallthrough/completion issue remains a separate follow-up.
+diagnosis is recorded separately from the package implementation.
 
-| Selected proof | Result | Command wall time |
+The following measurements belong to the initial `21ba81a0a` implementation.
+Integration results for the collections/runtime baseline are recorded in #795.
+
+| Initial implementation proof | Result | Command wall time |
 | --- | --- | --- |
 | Native portable tests | 23 cases per BYTECODE/SLJIT plus four native boundaries; 225 outer assertions | 1.041 s |
 | Wasm portable tests | 23 cases per BYTECODE/WASM plus four native boundaries; 225 outer assertions | 0.568 s |

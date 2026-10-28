@@ -83,7 +83,7 @@ static size_t field_bytes(const type_field *field)
         [PIN_QUERY] = sizeof(void *),
     };
     if (field->type == PIN_STRUCT) {
-        const type_desc *type = type_catalog_find(field->type_name);
+        const type_desc *type = type_field_type(field, (type_resolver){ 0 });
         return type && field->size == type->size ? type->size : SIZE_MAX;
     }
     if (field->type == PIN_POINTER || field->type == PIN_QUERY) {
@@ -225,7 +225,15 @@ static int read_struct(
         read_error(reader, "invalid struct default for %s", type_name ? type_name : "unknown type");
         return -1;
     }
-    void *block = destination ? destination : allocate(reader, type->size);
+    const type_desc *layout = type;
+    for (int depth = 0; type && type->alias_of && depth < TYPE_MAX_NESTING; depth++) {
+        type = type_alias_type(type, (type_resolver){ 0 });
+    }
+    if (!type || type->alias_of || type->size != layout->size) {
+        read_error(reader, "invalid struct alias layout");
+        return -1;
+    }
+    void *block = destination ? destination : allocate(reader, layout->size);
     if (!block) {
         return -1;
     }
@@ -254,10 +262,10 @@ static int read_struct(
             result = 0;
         } else {
             const pin_record *record = reader->record;
-            /* Nested fields carry native names, not the enclosing authored
-             * record's descriptor. Decode their own reflected layout inline. */
+            /* A frozen parent owns each child's exact native layout. */
             if (field->type == PIN_STRUCT) {
-                reader->record = NULL;
+                const type_desc *child = type_field_type(field, (type_resolver){ 0 });
+                reader->record = child ? child->carrier : NULL;
             }
             result = read_value_into(
                 field->type,
@@ -312,7 +320,7 @@ static int read_struct(
                         .record = reader->record,
                         .ptr = block };
     if (reader->record && !destination) {
-        pin_arena_trace_struct(reader->storage, block, type);
+        pin_arena_trace_struct(reader->storage, block, layout);
     }
     return 0;
 }
@@ -580,20 +588,23 @@ int pin_value_read_document(
             (declaration.container != PIN_CONTAINER_SINGLE &&
              declaration.container != PIN_CONTAINER_ARRAY &&
              declaration.container != PIN_CONTAINER_SET) ||
-            !pin_record_valid(declaration.record) || !pin_value_type(&declaration)) {
-            read_error(&reader, "invalid authored document layout");
+            !pin_record_valid(declaration.record) ||
+            !pin_record_fields_current(declaration.record) ||
+            !pin_value_type(&declaration)) {
+            read_error(&reader, "invalid document layout or incompatible native type");
             return -1;
         }
         /* Charge the closure once even when storage already owns it. Rows use
          * this validated immutable shape and its name without per-item copies. */
-        if (!storage || declaration.record->bytes > DOCUMENT_MAX_BYTES) {
+        size_t layout_bytes = pin_record_snapshot_bytes(declaration.record);
+        if (!storage || !layout_bytes || layout_bytes > DOCUMENT_MAX_BYTES) {
             read_error(&reader, "document layout requires owned storage within byte limit");
             return -1;
         }
-        reader.bytes = declaration.record->bytes;
+        reader.bytes = layout_bytes;
         reader.record = pin_record_snapshot(storage, declaration.record);
         if (!reader.record) {
-            read_error(&reader, "invalid authored document layout ownership");
+            read_error(&reader, "invalid document layout ownership");
             return -1;
         }
     }
@@ -665,27 +676,34 @@ static int read_shape(
     out->ptr = schema && collection != PIN_CONTAINER_SINGLE ? schema->ptr : NULL;
     out->type_name = name ? own_text(reader, av_get_str(name), av_get_len(name)) : NULL;
     if (id || layout || (schema && schema->record)) {
-        if (!id || !layout || !av_is_uint(id) || !av_is_uint(layout) ||
-            !schema || !pin_record_valid(schema->record) || kind != PIN_STRUCT ||
-            !out->type_name || strcmp(out->type_name, schema->record->type.name) ||
-            av_get_uint(id) != schema->record->id ||
-            av_get_uint(layout) != schema->record->layout ||
-            schema->record->bytes > DOCUMENT_MAX_BYTES - reader->bytes) {
-            read_error(reader, "authored collection type requires its declaration layout");
+        size_t layout_bytes = schema ? pin_record_snapshot_bytes(schema->record) : 0;
+        const pin_record *record = schema ? schema->record : NULL;
+        if (!layout_bytes || !record || !pin_record_valid(record) ||
+            !pin_record_fields_current(record) || kind != PIN_STRUCT ||
+            !out->type_name || strcmp(out->type_name, record->type.name) ||
+            layout_bytes > DOCUMENT_MAX_BYTES - reader->bytes) {
+            read_error(reader, "collection type requires a compatible declaration layout");
             return -1;
         }
-        reader->bytes += schema->record->bytes;
+        if (record->native ? id || layout
+                           : !id || !layout || !av_is_uint(id) || !av_is_uint(layout) ||
+                                 av_get_uint(id) != record->id ||
+                                 av_get_uint(layout) != record->layout) {
+            read_error(reader, "collection native or authored identity differs from its declaration");
+            return -1;
+        }
+        reader->bytes += layout_bytes;
         out->record = pin_record_snapshot(reader->storage, schema->record);
         out->type_name = out->record ? out->record->type.name : NULL;
         if (!out->record) {
-            read_error(reader, "invalid authored collection layout ownership");
+            read_error(reader, "invalid collection layout ownership");
             return -1;
         }
     }
     if (schema &&
         (out->type != schema->type || out->container != schema->container ||
          strcmp(out->type_name ? out->type_name : "", schema->type_name ? schema->type_name : "") ||
-         !pin_record_same(out->record, schema->record))) {
+         !pin_value_layout_same(out, schema))) {
         read_error(reader, "collection type differs from its declaration");
         return -1;
     }

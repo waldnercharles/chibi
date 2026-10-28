@@ -3,6 +3,7 @@
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "execution/wasm_jit.h"
@@ -13,13 +14,12 @@
 #include "types/record.h"
 #include "types/text.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Five fixed cases; eight authored sources, two backends, 28 total calls,
- * four rejected module requirements, one rejected builder and four equality
- * rejection calls. At most 12 fields and three rows; no files/workers/frames. */
+/* Record values, escaped layouts and native metadata lifetime. */
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
@@ -27,6 +27,8 @@ static execution_module *module;
 static behavior_function_builder *builder;
 static uint64_t function_id;
 static behavior_function_context context;
+static behavior_function_context reference_owner;
+static behavior_managed_heap heap;
 static behavior_function_activation activation;
 static behavior_run_scope runs;
 static arena storage, escaped;
@@ -56,6 +58,8 @@ static void finish_call()
 static void cleanup()
 {
     finish_call();
+    behavior_function_release_host(&reference_owner);
+    reference_owner = (behavior_function_context){ 0 };
     execution_module_free(module);
     if (builder) {
         behavior_function_builder_free(builder);
@@ -65,6 +69,7 @@ static void cleanup()
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     arena_free(&escaped);
+    behavior_managed_heap_free(&heap);
     free(formatted);
     free(again);
     module = NULL;
@@ -151,6 +156,9 @@ static const behavior_function *body()
 static bool run(behavior_backend backend, const pin_value *args, int count)
 {
     finish_call();
+    if (!heap.owner) {
+        behavior_managed_heap_init(&heap);
+    }
     const behavior_function *function = body();
     REQUIRE(function && function->result_count == 1);
     const pin_record *record = NULL;
@@ -182,6 +190,7 @@ static bool run(behavior_backend backend, const pin_value *args, int count)
                                            .arguments = args,
                                            .argument_count = count,
                                            .results = &result,
+                                           .managed_heap = &heap,
                                            .budget = 10000 };
     behavior_function_bind_storage(&context, &storage);
     REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -233,6 +242,11 @@ static pin_value member(const pin_value *row, int index)
         }
     };
     return field;
+}
+static pin_value array_member(const pin_array *array, int row, int field)
+{
+    pin_value item = pin_array_get(array, row);
+    return member(&item, field);
 }
 TEST_CASE(record_runtime_owned_return_and_value_copy)
 {
@@ -315,7 +329,7 @@ TEST_CASE(record_runtime_array_results)
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(compile(source, backends[b], false));
-        pin_value null_saved = { 0 };
+        pin_value empty_saved = { 0 };
         REQUIRE(body());
         pin_value args[2] = { { .type = PIN_I32 }, body()->result_defaults[0] };
         args[1].ptr = NULL;
@@ -323,37 +337,96 @@ TEST_CASE(record_runtime_array_results)
             args[0].i = counts[i];
             REQUIRE(run(backends[b], args, 2));
             REQUIRE(result.record && pin_record_valid(result.record));
-            REQUIRE(arena_contains(&storage, result.record));
+            REQUIRE(arena_contains(&heap.storage, result.record));
             REQUIRE(result.type == PIN_STRUCT && result.container == PIN_CONTAINER_ARRAY);
             pin_array *array = result.ptr;
+            REQUIRE(array && array->storage == &heap.storage);
             if (counts[i] < 0) {
-                REQUIRE(!array);
-                REQUIRE(!pin_value_snapshot_to_arena(&escaped, &null_saved, &result));
+                REQUIRE(array->count == 0);
+                REQUIRE(!pin_value_capture_to_arena(&escaped, &empty_saved, &result));
                 continue;
             }
-            REQUIRE(array && array->count == counts[i]);
+            REQUIRE(array->count == counts[i]);
             REQUIRE(result.record == array->record);
-            REQUIRE(arena_contains(&storage, array->record));
+            REQUIRE(arena_contains(&heap.storage, array->record));
             for (int j = 0; j < array->count; j++) {
                 REQUIRE(pin_array_get(array, j).record == array->record);
                 pin_value item = pin_array_get(array, j);
                 REQUIRE(member(&item, 5).i == 1);
             }
         }
-        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
+        REQUIRE(!pin_value_capture_to_arena(&escaped, &saved, &result));
         finish_call();
+        behavior_managed_heap_free(&heap);
         execution_module_free(module);
         module = NULL;
         pin_array *array = saved.ptr;
-        REQUIRE(null_saved.record && pin_record_valid(null_saved.record));
+        REQUIRE(empty_saved.record && pin_record_valid(empty_saved.record));
         REQUIRE(
-            !null_saved.ptr && null_saved.type == PIN_STRUCT &&
-            null_saved.container == PIN_CONTAINER_ARRAY
+            empty_saved.ptr && empty_saved.type == PIN_STRUCT &&
+            empty_saved.container == PIN_CONTAINER_ARRAY
         );
-        REQUIRE(!strcmp(null_saved.type_name, "Rows.Row"));
+        REQUIRE(((pin_array *)empty_saved.ptr)->count == 0);
+        REQUIRE(!strcmp(empty_saved.type_name, "Rows.Row"));
+        REQUIRE(
+            arena_contains(&escaped, saved.record) &&
+            arena_contains(&escaped, array->record)
+        );
         REQUIRE(pin_record_valid(saved.record) && array->count == 3);
         pin_value last = pin_array_get(array, 2);
         REQUIRE(!strcmp(pin_text(member(&last, 1)).bytes, "C"));
+    }
+    return true;
+}
+/* A heap its call owns collects at call boundaries, and what the call still
+ * holds survives every collection. */
+TEST_CASE(record_runtime_collects_during_call)
+{
+    static const char
+        source[] = "Rows :: library { " ROW
+                   "Keep :: (text: string) -> Row[] { kept := Batch(text); "
+                   "i := 0; while (i < 60) { batch := Batch(\"garbage\"); "
+                   "if batch[2].label != \"batch\" { return []; } i += 1; } "
+                   "return kept; } "
+                   "Batch :: (text: string) -> Row[] { a: Row = {key: text, "
+                   "label: \"batch\"}; return [a, a, a]; } }";
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(compile(source, backends[b], false));
+        behavior_managed_heap_init(&heap);
+        heap.call_collection_bytes = 4096;
+        char text[] = "kept";
+        pin_value arg = { .type = PIN_STR,
+                          .text = &(
+                              const pin_string
+                          ){ .bytes = text, .length = (uint32_t)strlen(text) } };
+        REQUIRE(run(backends[b], &arg, 1));
+        REQUIRE(heap.storage.kept);
+        pin_array *array = result.ptr;
+        REQUIRE(result.container == PIN_CONTAINER_ARRAY && array && array->count == 3);
+        for (int i = 0; i < array->count; i++) {
+            REQUIRE(!strcmp(pin_text(array_member(array, i, 0)).bytes, "kept"));
+            REQUIRE(!strcmp(pin_text(array_member(array, i, 1)).bytes, "batch"));
+        }
+        /* Past the budget, the heap still grows to twice what the last
+         * collection kept before tracing it again. */
+        size_t kept = heap.storage.kept;
+        heap.call_collection_bytes = kept;
+        heap.storage.allocated = 2 * kept - 1;
+        heap.running_calls = 1;
+        behavior_managed_heap_safepoint(&heap, NULL, NULL);
+        REQUIRE(heap.storage.allocated == 2 * kept - 1 && heap.storage.kept == kept);
+        heap.running_calls = 0;
+        /* A call that runs inside a native of another call never collects:
+         * no collection traces that native's locals. */
+        cleanup();
+        REQUIRE(compile(source, backends[b], false));
+        behavior_managed_heap_init(&heap);
+        heap.call_collection_bytes = 4096;
+        heap.running_calls = 1;
+        REQUIRE(run(backends[b], &arg, 1));
+        REQUIRE(heap.running_calls == 1 && !heap.storage.kept);
+        heap.running_calls = 0;
     }
     return true;
 }
@@ -418,14 +491,15 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
         cleanup();
         REQUIRE(compile(producer, backends[b], false));
         REQUIRE(run(backends[b], NULL, 0));
-        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
+        REQUIRE(!pin_value_capture_to_arena(&escaped, &saved, &result));
         finish_call();
+        behavior_managed_heap_free(&heap);
         execution_module_free(module);
         module = NULL;
         pin_array *original = saved.ptr;
         REQUIRE(original && original->count == 2);
         REQUIRE(compile(consumer, backends[b], false));
-        pin_value args[] = { original->items[0], saved };
+        pin_value args[] = { pin_array_get(original, 0), saved };
         pin_value returned = { 0 };
         for (int call = 0; call < 2; call++) {
             REQUIRE(run(backends[b], args, 2));
@@ -436,10 +510,10 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
             REQUIRE(!strcmp(pin_text(member(&args[0], 0)).bytes, "a"));
             REQUIRE(!strcmp(pin_text(member(&args[0], 1)).bytes, "A"));
             REQUIRE(member(&args[0], 5).i == 1);
-            REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
-            REQUIRE(member(&original->items[0], 5).i == 1);
-            REQUIRE(!strcmp(pin_text(member(&original->items[1], 1)).bytes, "B"));
-            REQUIRE(member(&original->items[1], 5).i == 1);
+            REQUIRE(!strcmp(pin_text(array_member(original, 0, 1)).bytes, "A"));
+            REQUIRE(array_member(original, 0, 5).i == 1);
+            REQUIRE(!strcmp(pin_text(array_member(original, 1, 1)).bytes, "B"));
+            REQUIRE(array_member(original, 1, 5).i == 1);
             REQUIRE(!pin_value_snapshot_to_arena(&escaped, &returned, &result));
         }
         finish_call();
@@ -450,13 +524,13 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
         REQUIRE(!strcmp(pin_text(member(&returned, 1)).bytes, "local"));
         REQUIRE(member(&returned, 5).i == 6);
         REQUIRE(pin_record_valid(original->record));
-        REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
+        REQUIRE(!strcmp(pin_text(array_member(original, 0, 1)).bytes, "A"));
         const char *value_consumers[] = { exposed_consumer, inline_consumer };
         const char *labels[] = { "exposed", "inline" };
         const int depths[] = { 8, 5 };
         for (int c = 0; c < 2; c++) {
             REQUIRE(compile(value_consumers[c], backends[b], false));
-            pin_value inputs[] = { original->items[0],
+            pin_value inputs[] = { pin_array_get(original, 0),
                                    saved,
                                    { .type = PIN_I32, .i = 2 } };
             REQUIRE(run(backends[b], inputs, 3));
@@ -465,28 +539,33 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
             REQUIRE(!strcmp(pin_text(member(&inputs[0], 1)).bytes, "A"));
             REQUIRE(member(&inputs[0], 5).i == 1);
             REQUIRE(inputs[1].ptr == original);
-            REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
-            REQUIRE(member(&original->items[0], 5).i == 1);
+            REQUIRE(!strcmp(pin_text(array_member(original, 0, 1)).bytes, "A"));
+            REQUIRE(array_member(original, 0, 5).i == 1);
             REQUIRE(inputs[2].i == 2);
             finish_call();
             execution_module_free(module);
             module = NULL;
         }
         REQUIRE(compile(reference_consumer, backends[b], false));
-        behavior_function_context owner = { .value_storage = &escaped };
+        reference_owner = (behavior_function_context){ .value_storage = &escaped,
+                                                       .managed_heap = &heap };
+        /* References write their values in place, so the row is a value of
+         * its own rather than a header over the array's first item. */
+        pin_value row;
+        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &row, &args[0]));
         pin_value references[] = {
-            execution_reference_value(&escaped, &owner, &args[0], args[0]),
-            execution_reference_value(&escaped, &owner, &saved, saved),
+            execution_reference_value(&escaped, &reference_owner, &row, row),
+            execution_reference_value(&escaped, &reference_owner, &saved, saved),
         };
         REQUIRE(run(backends[b], references, 2));
-        REQUIRE(!strcmp(pin_text(member(&args[0], 1)).bytes, "reference"));
+        REQUIRE(!strcmp(pin_text(member(&row, 1)).bytes, "reference"));
         pin_array *changed = saved.ptr;
         REQUIRE(changed && changed->count == 2);
-        REQUIRE(!strcmp(pin_text(member(&changed->items[0], 1)).bytes, "reference-array"));
-        REQUIRE(member(&changed->items[0], 5).i == 8);
+        REQUIRE(!strcmp(pin_text(array_member(changed, 0, 1)).bytes, "reference-array"));
+        REQUIRE(array_member(changed, 0, 5).i == 8);
         REQUIRE(!strcmp(pin_text(member(&result, 1)).bytes, "reference-array"));
         REQUIRE(member(&result, 5).i == 8);
-        REQUIRE(!strcmp(pin_text(member(&original->items[0], 1)).bytes, "A"));
+        REQUIRE(!strcmp(pin_text(array_member(original, 0, 1)).bytes, "A"));
         finish_call();
         execution_module_free(module);
         module = NULL;
@@ -517,13 +596,196 @@ TEST_CASE(record_runtime_formatter_layout)
     REQUIRE(again && !strcmp(formatted, again));
     return true;
 }
+typedef struct
+{
+    const type_desc *types;
+    int count;
+} private_types;
+static const type_desc *find_private_type(void *user, const char *name)
+{
+    const private_types *source = user;
+    for (int i = 0; source && i < source->count; i++) {
+        if (!strcmp(source->types[i].name, name)) {
+            return &source->types[i];
+        }
+    }
+    return NULL;
+}
+TEST_CASE(record_runtime_private_layout_lifetime)
+{
+    typedef struct
+    {
+        const char *label;
+        int count;
+    } child_value;
+    typedef struct
+    {
+        bool enabled;
+        child_value child;
+        uint64_t opaque;
+    } root_value;
+    char root_name[] = "private.Root", child_name[] = "private.Child";
+    char description[] = "Native child label", label[] = "retained";
+    type_field child_fields[] = {
+        { .name = "label",
+          .type = PIN_STR,
+          .offset = offsetof(child_value, label),
+          .size = sizeof(char *),
+          .type_name = "const char *",
+          .description = description },
+        { .name = "count",
+          .type = PIN_I32,
+          .offset = offsetof(child_value, count),
+          .size = sizeof(int),
+          .type_name = "int" },
+    };
+    type_field root_fields[] = {
+        { .name = "enabled",
+          .type = PIN_BOOL,
+          .offset = offsetof(root_value, enabled),
+          .size = sizeof(bool),
+          .type_name = "bool" },
+        { .name = "child",
+          .type = PIN_STRUCT,
+          .offset = offsetof(root_value, child),
+          .size = sizeof(child_value),
+          .type_name = child_name },
+    };
+    type_desc types[] = {
+        { .name = root_name, .size = sizeof(root_value), .fields = root_fields, .field_count = 2 },
+        { .name = child_name,
+          .size = sizeof(child_value),
+          .fields = child_fields,
+          .field_count = 2 },
+    };
+    private_types source = { types, 2 };
+    type_resolver resolver = { .find = find_private_type, .user = &source };
+    REQUIRE(!pin_record_from_type(&escaped, &types[0]));
+    const pin_record *record = pin_record_from_type_resolved(&escaped, &types[0], resolver);
+    REQUIRE(record && record->native && pin_record_valid(record));
+    root_value original = { true, { label, 7 }, UINT64_C(0x12345678) };
+    pin_value value = { .type = PIN_STRUCT,
+                        .type_name = record->type.name,
+                        .record = record,
+                        .ptr = &original };
+    REQUIRE(!pin_value_snapshot_to_arena(&storage, &result, &value));
+
+    source = (private_types){ 0 };
+    memset(types, 0, sizeof types);
+    memset(child_fields, 0, sizeof child_fields);
+    memset(root_fields, 0, sizeof root_fields);
+    memset(root_name, 0, sizeof root_name);
+    memset(child_name, 0, sizeof child_name);
+    memset(description, 0, sizeof description);
+    memset(label, 'x', sizeof label - 1);
+    arena_reset(&escaped);
+    memset(arena_alloc(&escaped, 4096), 0, 4096);
+
+    REQUIRE(pin_record_valid(result.record));
+    resolver = pin_record_resolver(result.record);
+    const type_desc *root = type_resolve(resolver, "private.Root");
+    const type_desc *child = type_resolve(resolver, "private.Child");
+    REQUIRE(root && child && root->size == sizeof(root_value));
+    REQUIRE(root->fields[1].offset == offsetof(root_value, child));
+    REQUIRE(root->fields[1].layout == child);
+    REQUIRE(!child->fields[0].text_descriptor);
+    REQUIRE(!strcmp(child->fields[0].description, "Native child label"));
+    REQUIRE(((const root_value *)result.ptr)->opaque == UINT64_C(0x12345678));
+    pin_value selected, text;
+    REQUIRE(!pin_read_field(&escaped, result.ptr, &root->fields[1], &selected));
+    REQUIRE(selected.record == child->carrier);
+    REQUIRE(!pin_read_field(&escaped, selected.ptr, &child->fields[0], &text));
+    REQUIRE(pin_text(text).length == 8);
+    REQUIRE(!memcmp(pin_text(text).bytes, "retained", 8));
+    REQUIRE(!type_resolve(resolver, "private.Missing"));
+    REQUIRE(!type_resolve(pin_record_resolver(NULL), "private.Root"));
+    return true;
+}
+TEST_CASE(record_runtime_private_alias_identity)
+{
+    const type_field field = { .name = "value",
+                               .type = PIN_I32,
+                               .size = sizeof(int),
+                               .type_name = "int" };
+    const type_desc types[] = {
+        { .name = "private.Left", .size = sizeof(int), .fields = &field, .field_count = 1 },
+        { .name = "private.Right", .size = sizeof(int), .fields = &field, .field_count = 1 },
+    };
+    private_types source = { types, 2 };
+    type_resolver resolver = { .find = find_private_type, .user = &source };
+    type_desc alias = { .name = "private.Alias",
+                        .size = sizeof(int),
+                        .alias_of = "private.Left" };
+    const pin_record *left = pin_record_from_type_resolved(&escaped, &alias, resolver);
+    alias.alias_of = "private.Right";
+    const pin_record *right = pin_record_from_type_resolved(&escaped, &alias, resolver);
+    REQUIRE(left && right && pin_record_valid(left) && pin_record_valid(right));
+    source = (private_types){ 0 };
+    REQUIRE(!pin_record_same(left, right));
+    REQUIRE(
+        type_resolve(pin_record_resolver(left), "private.Left") == left->type.alias
+    );
+    REQUIRE(!type_resolve(pin_record_resolver(left), "private.Right"));
+    REQUIRE(!strcmp(right->type.alias->name, "private.Right"));
+
+    alias.alias_of = "private.Missing";
+    REQUIRE(!pin_record_from_type_resolved(&escaped, &alias, resolver));
+    alias.alias_of = alias.name;
+    source = (private_types){ &alias, 1 };
+    REQUIRE(!pin_record_from_type_resolved(&escaped, &alias, resolver));
+    return true;
+}
+TEST_CASE(record_runtime_conflicting_private_layouts)
+{
+    const type_field first = { .name = "first",
+                               .type = PIN_I32,
+                               .size = sizeof(int),
+                               .type_name = "int" };
+    const type_field second = { .name = "second",
+                                .type = PIN_I32,
+                                .size = sizeof(int),
+                                .type_name = "int" };
+    const type_desc children[] = {
+        { .name = "private.Duplicate", .size = sizeof(int), .fields = &first, .field_count = 1 },
+        { .name = "private.Duplicate", .size = sizeof(int), .fields = &second, .field_count = 1 },
+    };
+    const type_field fields[] = {
+        { .name = "a",
+          .type = PIN_STRUCT,
+          .size = sizeof(int),
+          .type_name = "private.Duplicate",
+          .layout = &children[0] },
+        { .name = "b",
+          .type = PIN_STRUCT,
+          .offset = sizeof(int),
+          .size = sizeof(int),
+          .type_name = "private.Duplicate",
+          .layout = &children[1] },
+    };
+    const type_desc type = { .name = "private.DuplicateRoot",
+                             .size = 2 * sizeof(int),
+                             .fields = fields,
+                             .field_count = 2 };
+    const pin_record *record = pin_record_from_type(&escaped, &type);
+    REQUIRE(record && pin_record_valid(record));
+    type_resolver resolver = pin_record_resolver(record);
+    REQUIRE(type_resolve(resolver, "private.DuplicateRoot") == &record->type);
+    REQUIRE(!type_resolve(resolver, "private.Duplicate"));
+    REQUIRE(!strcmp(record->type.fields[0].layout->fields[0].name, "first"));
+    REQUIRE(!strcmp(record->type.fields[1].layout->fields[0].name, "second"));
+    return true;
+}
 void test_language_record_runtime()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(record_runtime_owned_return_and_value_copy);
     RUN_TEST_CASE(record_runtime_array_results);
+    RUN_TEST_CASE(record_runtime_collects_during_call);
     RUN_TEST_CASE(record_runtime_fieldwise_equality);
     RUN_TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller);
     RUN_TEST_CASE(record_runtime_formatter_layout);
+    RUN_TEST_CASE(record_runtime_private_layout_lifetime);
+    RUN_TEST_CASE(record_runtime_private_alias_identity);
+    RUN_TEST_CASE(record_runtime_conflicting_private_layouts);
     pu_clear_setup();
 }

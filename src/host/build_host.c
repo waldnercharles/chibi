@@ -2,6 +2,7 @@
 
 #include "authoring/source_package_io.h"
 #include "execution/function_builder.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/build_host_internal.h"
@@ -130,8 +131,10 @@ static const char *environment_value(const build_host *host, const char *name)
     }
     return "";
 }
+/* Every host call starts here. */
 const char *build_host_ready(build_host *host)
 {
+    build_values_begin_call(&host->values);
     if (host->options->cancelled && *host->options->cancelled) {
         return "build process cancelled";
     }
@@ -920,6 +923,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     }
     pin_value value = { .type = PIN_I32 };
     behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     context = (behavior_function_context){ .managed_heap = &managed,
                                            .activation = resumable ? &activation : NULL,
                                            .results = &value,
@@ -992,6 +996,6 @@ done:
     free(host.program_directory);
     free(host.last_stdout);
     free(host.last_stderr);
-    arena_free(&host.values.memory);
+    build_values_free(&host.values);
     return success;
 }

@@ -11,6 +11,7 @@
 #include "execution/status.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/text.h"
 
@@ -20,6 +21,50 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Publish independent logical values only after every RHS has been imported
+ * and copied. The tracking context owns the new shells until retirement. */
+static int publish_values(
+    execution_activation *owner,
+    behavior_function_context *tracker,
+    pin_value *out,
+    const pin_value *source,
+    int count
+)
+{
+    if (count < 0 || (count && (!out || !source))) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    execution_program *program = owner->instance->program;
+    if (program_validate_values(program, source, count)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    pin_value *staged = xcalloc((size_t)count + 1, sizeof *staged);
+    int copied = 0;
+    for (; copied < count; copied++) {
+        pin_value owned;
+        if (pin_value_collection_copy(&program->owner_program->managed->storage, &owned, &source[copied])) {
+            break;
+        }
+        if (pin_value_snapshot_to_arena(&owner->payload, &staged[copied], &owned)) {
+            pin_value_collection_release(&owned);
+            break;
+        }
+    }
+    if (copied != count) {
+        for (int i = 0; i < copied; i++) {
+            pin_value_collection_release(&staged[i]);
+        }
+        free(staged);
+        return FLOW_ERR_ARGUMENT;
+    }
+    for (int i = 0; i < count; i++) {
+        behavior_function_collection_drop(tracker, &out[i]);
+        out[i] = staged[i];
+        behavior_function_collection_retain(tracker, &out[i]);
+    }
+    free(staged);
+    return FLOW_OK;
+}
 static const execution_module_action *action_plan(const execution_module *m, uint64_t id)
 {
     for (int i = 0; i < m->plan.action_count; i++) {
@@ -57,15 +102,17 @@ static action_values *action_bank(behavior_function_context *ctx, uint64_t actio
     if (!plan) {
         return NULL;
     }
-    action_values bank = { .context = ctx, .action = action, .count = plan->result_count };
+    action_values bank = { .context = ctx,
+                           .owner = a,
+                           .action = action,
+                           .count = plan->result_count };
     bank.values = arena_alloc(
         &a->storage,
         (size_t)(bank.count + 1) * sizeof *bank.values
     );
-    for (int i = 0; i < bank.count; i++) {
-        int status = pin_value_snapshot_to_arena(&a->payload, &bank.values[i], &plan->defaults[i]);
-        assert(!status);
-        (void)status;
+    memset(bank.values, 0, (size_t)(bank.count + 1) * sizeof *bank.values);
+    if (publish_values(a, &a->context, bank.values, plan->defaults, bank.count)) {
+        return NULL;
     }
     apush(a->actions, bank);
     return &a->actions[acount(a->actions) - 1];
@@ -133,11 +180,7 @@ static bool wait_complete(void *owner, int pin, pin_value value)
             !program_same_type(active->command_results[index], value)) {
             return false;
         }
-        if (pin_value_snapshot_to_arena(
-                &wait->activation->payload,
-                &wait->context->command_results[index],
-                &value
-            )) {
+        if (publish_values(wait->activation, wait->context, &wait->context->command_results[index], &value, 1)) {
             return false;
         }
     }
@@ -369,25 +412,29 @@ static int begin_command(behavior_function_context *ctx, int command)
 bool program_request_deliver(flow_host_request *request, const pin_value *values, int count)
 {
     command_wait *wait = execution_request_context(request, &wait_sink);
-    if (!wait) {
+    if (!wait || flow_host_status(request) != FLOW_HOST_PENDING || count < 0 ||
+        (count && !values)) {
         return false;
     }
     const behavior_function_command *c = &wait->function->commands[wait->command];
+    pin_value *source = xcalloc((size_t)c->result_count + 1, sizeof *source);
     for (int i = 0; i < c->result_count; i++) {
         int index = c->result_first + i;
-        const pin_value *value = i < count
-                                   ? &values[i]
-                                   : &wait->function->command_results[index];
-        if (!program_same_type(wait->function->command_results[index], *value) ||
-            pin_value_snapshot_to_arena(
-                &wait->activation->payload,
-                &wait->context->command_results[index],
-                value
-            )) {
+        source[i] = i < count ? values[i] : wait->function->command_results[index];
+        if (!program_same_type(wait->function->command_results[index], source[i])) {
+            free(source);
             return false;
         }
     }
-    return flow_host_complete(request, -1, (pin_value){ 0 });
+    int status = publish_values(
+        wait->activation,
+        wait->context,
+        c->result_count ? wait->context->command_results + c->result_first : NULL,
+        source,
+        c->result_count
+    );
+    free(source);
+    return !status && flow_host_complete(request, -1, (pin_value){ 0 });
 }
 int program_complete_action(behavior_function_context *ctx, uint64_t action, const pin_value *values, int count)
 {
@@ -408,10 +455,12 @@ int program_complete_action(behavior_function_context *ctx, uint64_t action, con
     }
     program_commit_instance(ctx);
     for (int i = 0; i < count; i++) {
-        if (!program_same_type(plan->defaults[i], values[i]) ||
-            pin_value_snapshot_to_arena(&owner->payload, &bank->values[i], &values[i])) {
+        if (!values || !program_same_type(plan->defaults[i], values[i])) {
             return FLOW_ERR_ARGUMENT;
         }
+    }
+    if (publish_values(bank->owner, &bank->owner->context, bank->values, values, count)) {
+        return FLOW_ERR_ARGUMENT;
     }
     const behavior_function *current_function = owner->function;
     behavior_function_active_context(&owner->context, &current_function);
@@ -549,8 +598,7 @@ static int state_transition(
         if (!program_same_type(plan->defaults[0], result)) {
             return FLOW_ERR_STATE;
         }
-        execution_activation *activation = ctx->inspection_user;
-        if (pin_value_snapshot_to_arena(&activation->payload, &bank->values[0], &result)) {
+        if (publish_values(bank->owner, &bank->owner->context, &bank->values[0], &result, 1)) {
             return FLOW_ERR_STATE;
         }
     }

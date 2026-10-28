@@ -217,7 +217,7 @@ static bool parameters(
         copy[i] = source[i];
         copy[i].name = own(n, source[i].name);
         copy[i].unit = own(n, source[i].unit);
-        if (source[i].has_default && pin_value_snapshot_to_arena(
+        if (source[i].has_default && pin_value_capture_to_arena(
                                          &n->storage,
                                          &copy[i].default_value,
                                          &source[i].default_value
@@ -329,6 +329,14 @@ static bool add_binding(
                        !!copy.call->context + !!copy.call->action) != 1 ||
                       (copy.call->value && copy.call->service))) {
         return reject(error, size, "Invalid native host descriptor", copy.id);
+    }
+    if (declaration->owned_result != (copy.call && copy.call->owned_result) ||
+        (declaration->owned_result && (!copy.call->value || copy.call->service))) {
+        return reject(error, size, "Native result ownership does not match declaration", copy.id);
+    }
+    if (declaration->language_values != (copy.call && copy.call->language_values) ||
+        (declaration->language_values && (!copy.call->value || copy.call->service))) {
+        return reject(error, size, "Native language-value policy does not match declaration", copy.id);
     }
     if (copy.command &&
         ((copy.command->intrinsic == NODE_COMMAND_NATIVE &&
@@ -549,7 +557,7 @@ native_capabilities *native_capabilities_new(
                 declared |= n->declarations[j].id == copy.id;
             }
             if (!declared || native_capabilities_global(n, copy.id) ||
-                pin_value_snapshot_to_arena(&n->storage, &copy.instruction.value, &value)) {
+                pin_value_capture_to_arena(&n->storage, &copy.instruction.value, &value)) {
                 reject(error, size, "Invalid native global binding", copy.id);
                 goto fail;
             }

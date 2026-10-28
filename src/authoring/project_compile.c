@@ -8,6 +8,7 @@
 #include "authoring/source_package_files.h"
 #include "execution/backend.h"
 #include "execution/function.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/native_default.h"
@@ -592,6 +593,7 @@ static bool generate(
     behavior_function_activation_free(&activation);
     behavior_managed_heap_free(&managed);
     arena_free(&storage);
+    behavior_managed_heap_free(&managed);
     return written;
 }
 

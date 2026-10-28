@@ -6,7 +6,7 @@ import strings "core:strings"
 
 PointerStorage: int : 19;
 PointerDecl: int : 6;
-ManagedPlace: int : 11;
+ManagedPlace: int : 16;
 PointerMakeIntrinsic: int : 46;
 PointerReadIntrinsic: int : 47;
 PointerWriteIntrinsic: int : 48;
@@ -19,23 +19,7 @@ PointerStorePhase: int : 32;
 // Constructor identity is the complete pointee type's semantic tag. Nullable
 // pointers share runtime identity; their declaration key retains source flags.
 SemanticTag :: (types: TypeDecl[], value: ValueType) -> u64 {
-    if (value.container == MapContainer && value.record >= 0) {
-        declared := types[value.record];
-        key := SemanticTag(types, {storage: declared.key, container: 0, record: -1});
-        item := SemanticTag(types, {storage: declared.value_storage, container: declared.value_container,
-                                    record: declared.value_record});
-        collection := binding.ID("collection-type", format_text("{}:{}:{}", MapContainer, key, item));
-        return binding.ID("union-type", format_text("{}:{}:0:0:0:{}", value.storage, value.container, collection));
-    }
-    nominal: u64 = 0;
-    flags: int = 0;
-    if (value.record >= 0) {
-        nominal = types[value.record].id;
-        if (value.storage == PointerStorage && types[value.record].key != 0) {
-            flags = 2;
-        }
-    }
-    return binding.ID("union-type", format_text("{}:{}:{}:0:{}", value.storage, value.container, nominal, flags));
+    return OptionalTag(types, value);
 }
 FindPointer :: (types: TypeDecl[], value: ValueType, nullable: bool) -> int {
     index: int = 0;
@@ -58,11 +42,14 @@ PointerElement :: (types: TypeDecl[], pointer: Value) -> ValueType {
     declared := types[pointer.record];
     return {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
 }
-AddPointer :: (types: TypeDecl[], value: ValueType, nullable: bool, package: int) -> TypeDecl[] {
-    if (value.storage == 0 || FindPointer(types, value, nullable) >= 0) {
-        return types;
+// The pointer to `value` in `table`, which gains it when it has none. The
+// table changes in place, so declaring each type costs its own entry.
+EnsurePointer :: (table: ^(TypeDecl[]), value: ValueType, nullable: bool, package: int) -> int {
+    found := FindPointer(table^, value, nullable);
+    if (found >= 0 || value.storage == 0) {
+        return found;
     }
-    id := binding.ID("pointer-type", format_text("{}", SemanticTag(types, value)));
+    id := binding.ID("pointer-type", format_text("{}", SemanticTag(table^, value)));
     key: int = 0;
     if (nullable) {
         key = 1;
@@ -72,7 +59,8 @@ AddPointer :: (types: TypeDecl[], value: ValueType, nullable: bool, package: int
                           storage: PointerStorage, id: id, layout: 0, component: 0, key: key,
                           value_storage: value.storage, value_container: value.container,
                           value_record: value.record};
-    return append(types, declared);
+    table.append(declared);
+    return length(table^) - 1;
 }
 TypePointerNode :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     if (Is(forest, node, "pointer_type")) {
@@ -119,18 +107,18 @@ DeclarePointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: 
         index -= 1;
         pointer := TypePointerNode(forest, node);
         if (pointer >= 0) {
-            element := ReadType(forest, text, types, aliases, package, Field(forest, pointer, "target"));
-            types = AddPointer(types, element, false, package);
+            element := ReadType(forest, text, &types, aliases, package, Field(forest, pointer, "target"));
+            EnsurePointer(&types, element, false, package);
             if (HasToken(forest, node, "?")) {
-                types = AddPointer(types, element, true, package);
+                EnsurePointer(&types, element, true, package);
             }
         } else if (HasToken(forest, node, "?")) {
             grouped := TypeGroupNode(forest, node);
             if (grouped >= 0) {
-                value := ReadType(forest, text, types, aliases, package, grouped);
+                value := ReadType(forest, text, &types, aliases, package, grouped);
                 if (value.storage == PointerStorage && value.container == 0 && value.record >= 0) {
                     element := PointerElement(types, Typed(-1, value.storage, 0, value.record));
-                    types = AddPointer(types, element, true, package);
+                    EnsurePointer(&types, element, true, package);
                 }
             }
         }
@@ -181,7 +169,7 @@ PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, ta
                          at.slot + 1, node));
     cells: Cell[] = [PointerCell(pointer.record), TypedCell(element.storage, element.container, element.record),
                      TypedCell(element.storage, element.container, element.record)];
-    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerReadIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerReadIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
                   result_count: 1, written: false};
     roots: Root[] = [];
     if (Pointer(element.storage, element.container)) {
@@ -194,18 +182,21 @@ PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, ta
 }
 // Address expressions may infer a pointer without spelling its type. The
 // compiler's finite type universe supplies those constructor headers before
-// immutable body emission. Each address adds at most one constructor layer.
+// immutable body emission: a pointer to each declared type, spelled pointers
+// included, so an address of a pointer field has its type. The address of a
+// local that holds a pointer an address made declares its own, as the local
+// is boxed.
 DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_types: TypeDecl[], aliases: Name[],
                            package: int, root: int) -> TypeDecl[] {
     types := input_types;
     pending: int[] = [root];
     spelled: int[] = [];
-    depth: int = 0;
+    addresses := false;
     while (length(pending) > 0) {
         at := pending[length(pending) - 1];
         pending = slice(pending, 0, length(pending) - 1);
         if (Is(forest, at, "address_expression")) {
-            depth += 1;
+            addresses = true;
         }
         if (Is(forest, at, "type")) {
             spelled.append(at);
@@ -214,43 +205,45 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
             pending.append(child);
         }
     }
-    if (depth == 0) {
+    if (!addresses) {
         return types;
     }
     for (node in spelled) {
-        types = AddPointer(types, ReadType(forest, text, types, aliases, package, node), false, package);
+        value := ReadType(forest, text, &types, aliases, package, node);
+        EnsurePointer(&types, value, false, package);
     }
     scalar: int = 1;
     while (scalar <= TextStorage) {
         if (scalar != 12) {
-            types = AddPointer(types, {storage: scalar, container: 0, record: -1}, false, package);
-            types = AddPointer(types, {storage: scalar, container: ArrayContainer, record: -1}, false, package);
+            EnsurePointer(&types, {storage: scalar, container: 0, record: -1}, false, package);
+            EnsurePointer(&types, {storage: scalar, container: ArrayContainer, record: -1}, false, package);
         }
         scalar += 1;
     }
-    while (depth > 0) {
-        count := length(types);
-        index: int = 0;
-        while (index < count) {
-            declared := types[index];
-            storage := declared.storage;
-            container: int = 0;
-            if (declared.kind == RecordDecl) {
-                storage = StructStorage;
-            }
-            if (declared.kind == UnionDecl) {
-                storage = UnionStorage;
-            }
-            if (declared.kind == MapDecl) {
-                storage = UnionStorage;
-                container = MapContainer;
-            }
-            if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
-                types = AddPointer(types, {storage: storage, container: container, record: index}, false, package);
-            }
-            index += 1;
+    count := length(types);
+    index: int = 0;
+    while (index < count) {
+        declared := types[index];
+        storage := declared.storage;
+        container: int = 0;
+        if (declared.kind == RecordDecl) {
+            storage = StructStorage;
         }
-        depth -= 1;
+        if (declared.kind == UnionDecl) {
+            storage = UnionStorage;
+        }
+        if (declared.kind == MapDecl) {
+            storage = UnionStorage;
+            container = MapContainer;
+        }
+        // A collection describes the array whose elements it holds.
+        if (declared.kind == CollectionDecl) {
+            container = ArrayContainer;
+        }
+        if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
+            EnsurePointer(&types, {storage: storage, container: container, record: index}, false, package);
+        }
+        index += 1;
     }
     return types;
 }
@@ -314,12 +307,13 @@ ManagedBoxStep :: (types: TypeDecl[], members: TypeMember[], initial: Value, nam
     cells: Cell[] = [context,
                      TypedCell(initial.storage, initial.container, initial.record),
                      TypedCell(initial.storage, initial.container, initial.record), PointerCell(pointer)];
-    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
                   result_count: 1, written: false};
-    binding: Name = {name: name, place: ManagedPlace, index: at.cell + 3, storage: initial.storage,
+    binding: Name = {owned: false, name: name, place: ManagedPlace, index: at.cell + 3, storage: initial.storage,
                      container: initial.container, record: initial.record, writable: true, node: declaration};
-    return Step.Emitted(code, slots, [], cells, [host], [], [], [binding], [], popped,
-                        NoValue(), NoValue(), []);
+    emitted := Step.Emitted(code, slots, [], cells, [host], [], [], [binding], [], popped,
+                            NoValue(), NoValue(), []);
+    return CleanupSequenceValues(emitted, [initial], ops, target, at, node);
 }
 ManagedReadStep :: (types: TypeDecl[], binding: Name, ops: Ops, target: Target, at: Bases,
                     node: snapshot.SnapshotNode) -> Step {
@@ -354,7 +348,7 @@ PointerWriteStep :: (types: TypeDecl[], pointer: Value, value: Value, popped: in
     slots.extend([AddressSlot(target), AddressSlot(target)]);
     cells: Cell[] = [PointerCell(pointer.record), TypedCell(stored.storage, stored.container, stored.record),
                      TypedCell(BoolStorage, 0, -1)];
-    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerWriteIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
                   result_count: 1, written: false};
     return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], popped, NoValue(), NoValue(), []);
 }
@@ -374,7 +368,7 @@ PointerReferenceStep :: (pointer: Value, ops: Ops, target: Target, at: Bases,
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(target.pointer_storage, at.cell + 1, ops, target, at.slot + 1, node));
     cells: Cell[] = [PointerCell(pointer.record), ReferenceCell(target)];
-    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerReferenceIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerReferenceIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1,
                   result_count: 1, written: true};
     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [], cells,
                         [host], [], [], [], [], 1, Typed(at.slot + 2, ReferenceStorage, 0, -1), NoValue(), []);
@@ -418,7 +412,7 @@ PointerFieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: in
     code := CellWrite(PointerStorage, base.slot, at.cell, ops, target, at.slot, node);
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     code.extend(CellRead(PointerStorage, at.cell + 5, ops, target, at.slot + 1, node));
-    host: Host = {command: 0, syntax_node: 0, intrinsic: PointerFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 5,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: PointerFieldIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 5,
                   result_count: 1, written: false};
     return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), {storage: PointerStorage, kind: ValueKind}],
                         [], cells, [host], [], [], [], [], popped,
@@ -652,6 +646,9 @@ PointerNilComparisonStep :: (forest: snapshot.SnapshotNode[], document: int, typ
                         [], [], [], [], [], [], [], 1, Typed(at.slot + 1, BoolStorage, 0, -1), NoValue(), []);
 }
 NeedsPointerValue :: (types: TypeDecl[], members: TypeMember[], storage: int, container: int, record: int) -> bool {
+    if (container == ViewContainer) {
+        return true;
+    }
     if (container != 0) {
         return false;
     }
@@ -662,7 +659,7 @@ NeedsPointerValue :: (types: TypeDecl[], members: TypeMember[], storage: int, co
         index := types[record].first;
         while (index < types[record].first + types[record].count) {
             field := members[index];
-            if (field.storage == PointerStorage && field.record >= 0 && types[field.record].key == 0) {
+            if (NeedsPointerValue(types, members, field.storage, field.container, field.record)) {
                 return true;
             }
             index += 1;

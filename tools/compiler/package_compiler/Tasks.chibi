@@ -135,7 +135,7 @@ TaskCommandStep :: (forest: snapshot.SnapshotNode[], document: int, values: Valu
         result_count = 1;
         cells.append(TypedCell(result.storage, result.container, result.record));
     }
-    operation: Host = {intrinsic: 0, command: command, syntax_node: item.node,
+    operation: Host = {owned_arguments: false, intrinsic: 0, command: command, syntax_node: item.node,
                        linked: -1, first: at.cell, result_first: at.cell + count, result_count: result_count,
                        written: false};
     hosts.append(operation);

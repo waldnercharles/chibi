@@ -124,21 +124,21 @@ BehaviorNames :: (kept_states: StateDecl[], globals: GameGlobal[], owner_record:
     names: Name[] = [];
     index: int = 0;
     while (index < length(globals)) {
-        bound: Name = {name: globals[index].name, place: GlobalPlace, index: index, storage: globals[index].storage,
+        bound: Name = {owned: false, name: globals[index].name, place: GlobalPlace, index: index, storage: globals[index].storage,
                        container: 0, record: globals[index].record, writable: false, node: -1};
         names.append(bound);
         index += 1;
     }
     index = 0;
     while (index < length(kept_states)) {
-        kept: Name = {name: kept_states[index].name, place: StatePlace, index: index,
+        kept: Name = {owned: false, name: kept_states[index].name, place: StatePlace, index: index,
                       storage: kept_states[index].storage, container: 0, record: kept_states[index].record,
                       writable: true,
                       node: kept_states[index].node};
         names.append(kept);
         index += 1;
     }
-    owner: Name = {name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0,
+    owner: Name = {owned: false, name: "self", place: SelfPlace, index: 0, storage: HandleStorage, container: 0,
                    record: owner_record,
                    writable: false, node: -1};
     return append(names, owner);
@@ -375,7 +375,7 @@ StateNumberStorage :: (forest: snapshot.SnapshotNode[], source: string, node: in
     return WordStorage;
 }
 // The written scalar type, or a literal initializer's natural type.
-StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[], entity: u64,
+StateType :: (forest: snapshot.SnapshotNode[], source: string, types: ^(TypeDecl[]), entity: u64,
               member: int) -> ValueType {
     written := Field(forest, member, "type");
     value := Field(forest, member, "value");
@@ -399,7 +399,7 @@ StateType :: (forest: snapshot.SnapshotNode[], source: string, types: TypeDecl[]
         if (spelled == "number") {
             return {storage: FloatStorage, container: 0, record: -1};
         }
-        return {storage: HandleStorage, container: 0, record: TypeWithId(types, entity)};
+        return {storage: HandleStorage, container: 0, record: TypeWithId(types^, entity)};
     }
     no_names: Name[] = [];
     return ReadType(forest, source, types, no_names, 0, written);
@@ -471,7 +471,7 @@ StateDefault :: (forest: snapshot.SnapshotNode[], source: string, name: string, 
 // A system's body reads its step from the execution context, including empty
 // headers. Helpers receive it explicitly; it is not a mutable local.
 SystemStepName :: (target: Target, storage: int) -> Name {
-    return {name: "dt", place: SystemStepPlace, index: target.delta_seconds_offset,
+    return {owned: false, name: "dt", place: SystemStepPlace, index: target.delta_seconds_offset,
             storage: storage, container: 0, record: -1, writable: false, node: -1};
 }
 // `identity` names the source as the project does, such as
@@ -558,8 +558,9 @@ SourceMembers :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Read(game: Game, callables: Callable[], params: Param[])
 }
+// Signatures may declare the sequence and optional types they use in `table`.
 DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, package: int, declaration: int,
-                  aliases: Name[], declared_types: TypeDecl[], callables: Callable[], params: Param[],
+                  aliases: Name[], table: ^(TypeDecl[]), callables: Callable[], params: Param[],
                   game_events: GameEvent[], event_fields: GameEventField[], entity: u64,
                   operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
                   ops: Ops) -> SourceMembers {
@@ -586,7 +587,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
     while (member >= 0) {
         if (!is_library && Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
-            declared := StateType(forest, source, declared_types, entity, member);
+            declared := StateType(forest, source, table, entity, member);
             if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
                  declared.storage != HandleStorage) || declared.container != 0 ||
                 (declared.storage == HandleStorage && declared.record < 0)) {
@@ -637,11 +638,11 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
             handled.append(found);
         } else if (Is(forest, member, "function_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
-            if (FindCallable(callables, package, name) >= 0 || FindType(declared_types, package, name) >= 0) {
+            if (FindCallable(callables, package, name) >= 0 || FindType(table^, package, name) >= 0) {
                 return SourceMembers.Failed(Diagnose(forest, member, package, format_text("Duplicate declaration '{}'", name)));
             }
-            switch FunctionSignature(forest, source, identity, solid, declared_types, aliases, package, package,
-                                     member, name, length(params)) {
+            switch FunctionSignature(forest, source, identity, solid, table, aliases, package, package, member, name,
+                                     length(params)) {
                 case .Failed(diagnostic):
                     return SourceMembers.Failed(diagnostic);
                 case .Read(procedure, added):
@@ -837,7 +838,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
     index = 0;
     while (index < length(documents)) {
         switch DeclareSource(forest, documents[index], index, roots[index], Aliases(namespaces, index),
-                             declared_types, callables, params, game_events, event_fields, entity, operators,
+                             &declared_types, callables, params, game_events, event_fields, entity, operators,
                              globals, makes, make_fields, ops) {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);
@@ -920,7 +921,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                     behaving.extend(SystemNames(forest, documents[callable.document].text, declared_types, members,
                                                 query_specs, callable, game_events, event_fields, target));
                 }
-                body := FunctionBody(scoped, documents, callables, params, declared_types, members, constants, natives,
+                body := FunctionBody(scoped, documents, callables, params, &declared_types, members, constants, natives,
                                      ports, native_ids, extend(Aliases(namespaces, callable.document), behaving),
                                      operators, makes, make_fields, index, solid, undeclared, meaning, context,
                                      generic, ops, target, SourceQueries(query_specs, callables, callable.document));

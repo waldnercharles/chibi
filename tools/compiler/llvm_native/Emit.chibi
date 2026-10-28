@@ -721,7 +721,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[], 
     type := TypeName(item.type);
     if (item.op == Constant && item.type == abi.TextStorage) {
         literal := int(item.literal);
-        text := format_text("{ ptr @{}, i32 {} }", TextSymbol(literal), strings.ByteLength(texts[literal]));
+        text := format_text("{ ptr @{}, i32 {}, ptr null }", TextSymbol(literal), strings.ByteLength(texts[literal]));
         out = format_text("{}{}", out, Store(text, item.type, "s", item.output));
     } else if (item.op == Constant && item.type >= RecordType) {
         out = format_text("{}{}", out, Store(Zero(item.type), item.type, "s", item.output));

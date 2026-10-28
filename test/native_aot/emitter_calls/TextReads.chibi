@@ -39,15 +39,15 @@ ChangedTextRead :: (row: int, item: native.Instruction) {
 @test
 TextReadsKeepBoundsAndSliceViews :: () {
     text := Emitted(TextReadModule(TextReads()));
-    assert(strings.Contains(text, "%length6 = extractvalue { ptr, i32 } %a6, 1\n"));
+    assert(strings.Contains(text, "%length6 = extractvalue { ptr, i32, ptr } %a6, 1\n"));
     assert(strings.Contains(text, "%inside7 = icmp ult i32 %b7, %length7\n  br i1 %inside7, label %read7, label %byte7\n"));
     assert(strings.Contains(text, "%at7 = getelementptr inbounds i8, ptr %bytes7, i64 %offset7\n"));
     assert(strings.Contains(text, "byte7:\n  %v7 = phi i32 [ %wide7, %read7 ], [ -1, %p7 ]\n"));
     assert(strings.Contains(text, "%over5 = icmp ugt i32 %low5, %length5\n  %n5 = select i1 %over5, i32 %length5, i32 %low5\n"));
-    assert(strings.Contains(text, "%v5 = insertvalue { ptr, i32 } %a5, i32 %n5, 1\n"));
+    assert(strings.Contains(text, "%v5 = insertvalue { ptr, i32, ptr } %a5, i32 %n5, 1\n"));
     assert(strings.Contains(text, "%start3 = getelementptr inbounds i8, ptr %bytes3, i64 %offset3\n"));
     assert(strings.Contains(text, "%rest3 = sub i32 %length3, %n3\n"));
-    assert(strings.Contains(text, "%v3 = insertvalue { ptr, i32 } %moved3, i32 %rest3, 1\n"));
+    assert(strings.Contains(text, "%v3 = insertvalue { ptr, i32, ptr } %moved3, i32 %rest3, 1\n"));
 }
 @test
 TextByteRejectsStringIndex :: () {

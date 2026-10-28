@@ -50,8 +50,10 @@ interface, or the complete allocation/memory/output/free native island.
   `right` (`extractvalue`); the field's type must be the value's. The
   exported function takes and returns scalars only, so no aggregate crosses
   the C ABI.
-- A string is `native_abi.TextType()`, `{ ptr, i32 }`, the layout of the
-  runtime's `pin_string`: its bytes, then its length. Its `Constant`'s
+- A string is `native_abi.TextType()`, `{ ptr, i32, ptr }`, the layout of
+  the runtime's `pin_string`: its bytes, its length and the owner of shared
+  runtime bytes, null for a constant. Native code only borrows strings. Its
+  `Constant`'s
   `literal` indexes the module's text table, and each
   text is a `private unnamed_addr` global of its bytes and a NUL. `Eq` and
   `Ne` call the module's internal `@chibi_scalar.text_equal`, emitted only

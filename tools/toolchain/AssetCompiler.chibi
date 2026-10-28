@@ -1,18 +1,63 @@
 package toolchain
 
 import generator "asset_generator:."
+import strings "core:strings"
+
+CompilerTimeout :: (argument: string) -> string {
+    prefix := "--compiler-timeout-ms=";
+    if (!strings.HasPrefix(argument, prefix)) {
+        return "";
+    }
+    text := strings.Slice(argument, strings.ByteLength(prefix), strings.ByteLength(argument) - strings.ByteLength(prefix));
+    value: int = 0;
+    for (part in strings.Bytes(text)) {
+        if (part < 48 || part > 57) {
+            return "";
+        }
+        // The preceding value is at most 600000, so this cannot overflow int.
+        value = value * 10 + part - 48;
+        if (value > 600000) {
+            return "";
+        }
+    }
+    if (value == 0) {
+        return "";
+    }
+    return text;
+}
 
 pub Build :: () -> int {
     arguments := build.arguments();
-    if (length(arguments) < 2 || length(arguments) > 3) {
-        build.report("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON]");
+    if (length(arguments) < 2 || length(arguments) > 4) {
+        build.report("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON] [--compiler-timeout-ms=POSITIVE_MS]");
+        return 2;
+    }
+    compiler_timeout := "180000";
+    target_argument: int = -1;
+    if (length(arguments) == 3) {
+        if (strings.HasPrefix(arguments[2], "--compiler-timeout-ms")) {
+            compiler_timeout = CompilerTimeout(arguments[2]);
+        } else {
+            target_argument = 2;
+        }
+    }
+    if (length(arguments) == 4) {
+        if (strings.HasPrefix(arguments[2], "--compiler-timeout-ms")) {
+            build.report("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON] [--compiler-timeout-ms=POSITIVE_MS]");
+            return 2;
+        }
+        target_argument = 2;
+        compiler_timeout = CompilerTimeout(arguments[3]);
+    }
+    if (compiler_timeout == "") {
+        build.report("invalid --compiler-timeout-ms: expected decimal 1..600000");
         return 2;
     }
     target := "";
-    if (length(arguments) == 3) {
-        target = build.read_file(arguments[2]);
+    if (target_argument >= 0) {
+        target = build.read_file(arguments[target_argument]);
     }
-    if (!generator.Generate(build.root(), arguments[0], arguments[1], target, "180000")) {
+    if (!generator.Generate(build.root(), arguments[0], arguments[1], target, compiler_timeout)) {
         return 1;
     }
     return 0;

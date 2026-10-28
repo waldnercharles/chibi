@@ -2,6 +2,7 @@
 #include "authoring/source_package_prepare.h"
 #include "capabilities/catalog.h"
 #include "capabilities/catalog_snapshot.h"
+#include "execution/managed.h"
 #include "execution/status.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -24,6 +25,7 @@ static authoring_packages *owners[MAX_OWNERS];
 static execution_module *retained;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap managed;
 static arena storage, metadata_storage;
 static pin_value argument, result;
 static int default_host_calls;
@@ -45,6 +47,7 @@ static void finish_call()
 {
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&managed);
     arena_free(&storage);
     context = (behavior_function_context){ 0 };
     activation = (behavior_function_activation){ 0 };
@@ -172,7 +175,10 @@ static bool call(execution_module *module, uint64_t id, behavior_backend backend
     }
     argument = (pin_value){ .type = PIN_I32, .i = value };
     result = (pin_value){ .type = PIN_I32, .i = -999 };
+    behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     context = (behavior_function_context){
+        .managed_heap = &managed,
         .activation = behavior_function_resumable(function) ? &activation : NULL,
         .arguments = &argument,
         .argument_count = 1,

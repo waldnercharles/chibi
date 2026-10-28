@@ -7,9 +7,10 @@
 #include <signal.h>
 #include <stdio.h>
 
-/* Raise with the Makefile's `build` gate whenever tools/toolchain/Build.chibi
- * needs a capability or syntax that an older host lacks. */
-#define CHIBI_BUILD_HOST_PROTOCOL 12
+/* Raise with the Makefile's `build` gate whenever the compiler bootstrap or
+ * build programs need a prepared format, capability or syntax an older host
+ * lacks. */
+#define CHIBI_BUILD_HOST_PROTOCOL 13
 #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
 
 /* A collection a program imports as name:path, as Odin's -collection names. */

@@ -1,4 +1,4 @@
-version 38
+version 39
 name "Component presentation contracts"
 content "content"
 start_scene "scenes/Start.kdl"

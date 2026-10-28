@@ -38,8 +38,6 @@ static bool static_op(shader_op op)
 {
     switch (op) {
         case SHADER_TIME:
-        case SHADER_BEAT_PHASE:
-        case SHADER_BEAT_PULSE:
         case SHADER_WORLD_POSITION:
         case SHADER_VIEW_DIRECTION:
         case SHADER_NORMAL:

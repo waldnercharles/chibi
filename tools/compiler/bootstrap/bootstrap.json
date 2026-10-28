@@ -2,12 +2,12 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "d4c172315bf20978155fd91d775dbad7c0c27196",
+  "revision": "f2a71eae9611009c8a9a237b87f867739c7a5f82",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 20761565,
-    "sha256": "7af57267e5622c5671d87600fcfc34e15bb0767943342ce88c95791bdbb11caa"
+    "bytes": 20780474,
+    "sha256": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -89,8 +89,8 @@
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 113443,
-      "sha256": "c40adc3736de0b1f4cb43349b3708e0a907a69259ec81a29e348fc8b6cedb78d"
+      "bytes": 115064,
+      "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -144,8 +144,8 @@
     },
     {
       "path": "scalar_facts/Facts.chibi",
-      "bytes": 16682,
-      "sha256": "0828652565ddfae12a4131f05953fc0770b2a194791cef7f1a680438f9bcb8f3"
+      "bytes": 16982,
+      "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50"
     }
   ],
   "target": [

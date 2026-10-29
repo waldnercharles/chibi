@@ -288,7 +288,7 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `make build` uses this program when its private host reports protocol version 13
+Elsewhere `make build` uses this program when its private host reports protocol version 14
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 the compiler bootstrap or `Build.chibi` needs a prepared format, capability or
 syntax an older host lacks; version 3 adds the
@@ -304,6 +304,9 @@ host that cannot load the code it compiled is rebuilt.
 Version 13 loads the collections-as-values compiler bootstrap with prepared
 format 26. Protocol-12 hosts must take first-host recovery before loading that
 bootstrap, even when an existing build directory contains an executable host.
+Version 14 reuses native-result storage after the VM imports each callback's
+results. Older hosts take first-host recovery before a warm full graph can
+exhaust their retained helper storage while trying to rebuild them.
 `--protocol-version` reports the version without loading compiler inputs or
 starting a build. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
@@ -345,10 +348,12 @@ executable lookup, bounded regular-text reads, atomic writes, directory creation
 last-process output, the file primitives below and string/array operations. File
 and text values are limited to 16 MiB, enough for a build graph's
 `compile_commands.json`, arrays to 8,192 entries and 16 MiB of text, and
-retained helper storage to 256 MiB of arena blocks per invocation. Last-output accessors
+each helper bank to 256 MiB of retained arena blocks. Native-result storage is
+reused on the next callback after the VM imports the results; invocation
+arguments remain in their own bank. Last-output accessors
 reject truncation and embedded NUL bytes, so authored protocol parsing cannot
-accept a partial result. Returned values remain owned by the invocation until it
-finishes; parent cwd and environment are never mutated.
+accept a partial result. Returned values keep their ordinary language lifetimes
+in VM storage; parent cwd and environment are never mutated.
 
 ### Build-host file primitives
 
@@ -428,12 +433,12 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   recompiles a source when its record is missing, its command differs, or any
   recorded stamp changed; the archive is rebuilt when an object was or its own
   record differs. A failed compile leaves no record, so the next run retries
-  it. Records are read with `build.lines`, because `core:strings` copies the
-  rest of the text at each line and an up-to-date run took seconds. Paths and
-  stamps are separate lines because build values are never freed: with 363
-  sources an up-to-date run reads about 6 MB of records, and splitting each
-  line in two exceeded the host's then 32 MB of values. It now allows 256 MB of
-  arena blocks, about 128 MB of values.
+  it. `build.lines` scans each record once. Paths and stamps are separate
+  lines, so validation compares whole fields without another split. The VM
+  imports native results before another callback reuses the helper bank;
+  checking more records does not retain every old native line buffer. The
+  helper bank's 256 MiB retained-block bound, 16 MiB text bound and 8,192-entry
+  array bound remain in force.
 - Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,
   and those only its sources include below `BUILD/sdk/private/COMPONENT`, as
   CMake stages them. A header is copied only when its contents differ, so

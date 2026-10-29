@@ -195,7 +195,18 @@ class ProfileTests(unittest.TestCase):
                 parity = block.index('python3 tools/test_policy.py tool build-graph-debug-optimization')
                 self.assertLess(verify, reference)
                 self.assertLess(reference, parity)
-        self.assertNotIn('continue-on-error:', text.split('  native:\n')[1].split('  windows:\n')[0])
+        diagnostics = ['Capture macOS facade identities', 'Preserve macOS facade identities']
+        optional = []
+        native_jobs = text.split('  native:\n', 1)[1].split('  windows:\n', 1)[0]
+        for step in native_jobs.split('\n      - '):
+            if 'continue-on-error:' not in step:
+                continue
+            name = step.splitlines()[0].removeprefix('name: ')
+            self.assertIn(name, diagnostics)
+            self.assertEqual(step.count('continue-on-error:'), 1)
+            self.assertIn('\n        continue-on-error: true\n', step)
+            optional.append(name)
+        self.assertEqual(optional, diagnostics)
 
 
 if __name__ == '__main__':

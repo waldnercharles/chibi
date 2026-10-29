@@ -88,10 +88,9 @@ RecordText :: (command: string, inputs: string[], output: string) -> string {
 }
 
 // Whether output was built by command from inputs that have not changed since.
-// Records are read with the host's line natives: core:strings copies the rest
-// of the text at each line, which costs seconds over a few records. A path and
-// its stamp are separate lines, so reading one copies nothing more: build
-// values are never freed, and an up-to-date build reads every record.
+// The host splits each record in one scan. The VM imports the lines before
+// another callback reuses the host's result bank. Paths and their stamps are
+// separate lines, so validation compares whole fields without splitting again.
 Current :: (command: string[], output: string) -> bool {
     record := Record(output);
     if (!build.file_exists(record) || !build.file_exists(output)) {

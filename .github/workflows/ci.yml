@@ -222,9 +222,29 @@ jobs:
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the Debug builds use.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
         run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
+      # Keep the actual failed input. A success has already replaced input.json
+      # with packaging input; the collector labels that role explicitly.
+      - name: Capture macOS facade identities
+        if: always() && (steps.release-build.outcome == 'success' || steps.release-build.outcome == 'failure')
+        continue-on-error: true
+        run: >-
+          python3 .github/capture-facade.py --source-root "$GITHUB_WORKSPACE"
+          --build "$GITHUB_WORKSPACE/build-release"
+          --output "$RUNNER_TEMP/facade-capture"
+          --expected-revision "$GITHUB_SHA"
+      - name: Preserve macOS facade identities
+        if: always() && (steps.release-build.outcome == 'success' || steps.release-build.outcome == 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-facade-identities-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/facade-capture/
+          if-no-files-found: warn
+          retention-days: 7
       # The Release build host runs the outer Build and Graph programs, which
       # plan the selected Debug build. Release hosts also generate the asset
       # compiler resource; products and test drivers retain the selected profile.

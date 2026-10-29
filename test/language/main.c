@@ -414,7 +414,7 @@ int main(int argc, char **argv)
             "--integer-shift-counts [case] | --integer-shift-counts-authored | "
             "--package-graph | --package-graph-chibi | --shader-source-chibi | "
             "--asset-packaging-chibi | --syntax-chibi | "
-            "--source-tokenizer-chibi | --package-paths-chibi | "
+            "--source-tokenizer-chibi | --source-parser-chibi | --package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             "--constant-proof-chibi | --constant-scalar-chibi | "
             "--scalar-lowering-chibi | --compiler-fixture | "

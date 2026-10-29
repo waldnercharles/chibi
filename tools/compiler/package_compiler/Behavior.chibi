@@ -590,6 +590,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
             declared := StateType(forest, source, table, entity, member);
             if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
                  declared.storage != HandleStorage) || declared.container != 0 ||
+                CharType(table^, declared.storage, declared.container, declared.record) ||
                 (declared.storage == HandleStorage && declared.record < 0)) {
                 return SourceMembers.Failed(Diagnose(forest, member, package, "state type is not supported yet"));
             }
@@ -799,7 +800,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
         }
         index += 1;
     }
-    declared_types := NativeTypes(types);
+    declared_types := CharTypes(NativeTypes(types));
     members := NativeFields(type_fields);
     switch PromoteRecords(forest, documents, roots, declared_types, members, target) {
         case .Failed(diagnostic):

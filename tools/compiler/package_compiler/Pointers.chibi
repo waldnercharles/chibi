@@ -241,7 +241,8 @@ DeclareAddressPointers :: (forest: snapshot.SnapshotNode[], text: string, input_
         if (declared.kind == CollectionDecl) {
             container = ArrayContainer;
         }
-        if (declared.kind != VariantDecl && declared.kind != NamespaceDecl && storage > 0) {
+        if (declared.kind != VariantDecl && declared.kind != NamespaceDecl &&
+            declared.kind != BuiltinScalarDecl && storage > 0) {
             EnsurePointer(&types, {storage: storage, container: container, record: index}, false, package);
         }
         index += 1;
@@ -259,6 +260,9 @@ PointerPrefix :: (code: Code[], slots: Slot[], step: Step) -> Step {
     }
 }
 ManagedLayoutError :: (types: TypeDecl[], members: TypeMember[], value: ValueType) -> string {
+    if (CharType(types, value.storage, value.container, value.record)) {
+        return "char pointers are not supported yet";
+    }
     record := value.record;
     storage := value.storage;
     if (value.container == MapContainer && record >= 0) {
@@ -546,6 +550,9 @@ PointerExpressionStep :: (forest: snapshot.SnapshotNode[], text: string, documen
 }
 Accepts :: (types: TypeDecl[], storage: int, container: int, record: int, value: Value) -> bool {
     if (SameType(storage, container, record, value)) {
+        return true;
+    }
+    if (storage == value.storage && CharWidens(types, storage, container, record, value)) {
         return true;
     }
     return storage == PointerStorage && value.storage == PointerStorage && container == 0 && value.container == 0 &&

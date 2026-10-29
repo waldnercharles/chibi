@@ -22,7 +22,6 @@
 #include "authoring/native_prototype.h"
 #include "authoring/preview_source.h"
 #include "authoring/project_format.h"
-#include "authoring/project_open.h"
 #include "authoring/project_prepare.h"
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
@@ -1306,32 +1305,21 @@ static struct
     char *root, *content;
 } PROJECT;
 
-static int open_authored_project(chibi_project *, const char *, char *, size_t);
-
 /* Reads where the project at `root` keeps its content for the request that
  * follows; false with why in `error` when its manifest is malformed. */
 static bool open_content_mode(const char *root, bool metadata, char *error, size_t error_size)
 {
     char *content;
     if (metadata) {
-        /* Metadata reads the content location without opening/migrating the
-         * project. Validation reports other manifest errors in its result. */
+        /* Metadata reads the content location without opening the project.
+         * Validation reports other manifest errors in its result. */
         content = chibi_project_content(root, error, error_size);
         if (!content) {
             return false;
         }
     } else {
         chibi_project opened = { 0 };
-        native_capabilities *native = authoring_application_catalog_new(
-            studio_project_is(root),
-            error,
-            error_size
-        );
-        int status = native
-                       ? authoring_project_open_content(&opened, root, native, error, error_size)
-                       : -1;
-        native_capabilities_free(native);
-        if (status) {
+        if (chibi_project_open_content(&opened, root, error, error_size)) {
             return false;
         }
         content = xstrdup(opened.content);
@@ -1762,16 +1750,6 @@ static bool links_family(const asset_family *family)
     return !strcmp(family->kind, "library") ||
            !strcmp(family->kind, "shader-library") ||
            !strcmp(family->kind, "event") || !strcmp(family->kind, "model");
-}
-
-static int open_authored_project(chibi_project *project, const char *path, char *error, size_t size)
-{
-    native_capabilities
-        *native = authoring_application_catalog_new(studio_project_is(path), error, size);
-    int result = native ? authoring_project_open(project, path, native, error, size)
-                        : -1;
-    native_capabilities_free(native);
-    return result;
 }
 
 static authoring_language_catalog *source_native_catalog(const char *root, char *error, size_t size)
@@ -4988,7 +4966,7 @@ static int handle_import_sky(const char *root, yyjson_val *request, response *re
     }
     chibi_project project = { 0 };
     char error[512] = { 0 };
-    char *key = open_authored_project(&project, root, error, sizeof error) == 0
+    char *key = chibi_project_open(&project, root, error, sizeof error) == 0
                   ? image_prepare_sky_import(project.content, source, destination, error, sizeof error)
                   : NULL;
     chibi_project_free(&project);
@@ -5048,7 +5026,7 @@ static int handle_import_model(const char *root, yyjson_val *request, response *
     }
     chibi_project project = { 0 };
     model_import_report report = { 0 };
-    bool imported = open_authored_project(&project, root, error, sizeof error) == 0 &&
+    bool imported = chibi_project_open(&project, root, error, sizeof error) == 0 &&
                     model_import(project.content, source, name, &report, error, sizeof error);
     chibi_project_free(&project);
     if (!imported) {
@@ -6656,8 +6634,7 @@ static int validate_manifest(
 {
     chibi_project project = { 0 };
     char error[512] = { 0 };
-    /* Validation never upgrades the project, so an old one fails here. */
-    if (chibi_project_read(&project, root, error, sizeof error) != 0) {
+    if (chibi_project_open(&project, root, error, sizeof error) != 0) {
         add_load_diagnostic(doc, diagnostics, error);
         return 1;
     }
@@ -6979,7 +6956,7 @@ static int handle_new_project(yyjson_val *request, response *result, int *exit_c
         response_error(result, exit_code, scaffold_status(), error);
         return -1;
     }
-    if (open_authored_project(&project, path, error, sizeof error) != 0) {
+    if (chibi_project_open(&project, path, error, sizeof error) != 0) {
         response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
         return -1;
     }

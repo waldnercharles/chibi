@@ -406,7 +406,7 @@ TEST_CASE(other_project_versions_are_not_opened)
     tool_write(manifest, old);
     REQUIRE(validate() != 0 && errors() == 1);
     const char *message = first_message(result("project"));
-    REQUIRE(message && strstr(message, "--migrate"));
+    REQUIRE(message && strstr(message, "is older than version"));
     /* Validation leaves the old project as it was. */
     text = tool_read(manifest);
     bool kept = text && !strcmp(text, old);

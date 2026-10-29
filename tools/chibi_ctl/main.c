@@ -1,6 +1,5 @@
 #include "assets/project.h"
 #include "authoring/application_catalog.h"
-#include "authoring/project_open.h"
 #include "authoring/studio_project.h"
 #include "automation/controller.h"
 #include "automation/execution_policy.h"
@@ -25,7 +24,6 @@ static void usage(const char *program)
         "Usage: %s [--project-root PATH] [--render]\n"
         "       %s --project-root PATH --render-request FILE\n"
         "       %s --project-root PATH --format [--check]\n"
-        "       %s --project-root PATH --migrate\n"
         "       %s --engine-info\n"
         "       %s --project-root PATH --prepare-project OUTPUT [--scene "
         "PATH]\n"
@@ -38,10 +36,7 @@ static void usage(const char *program)
         "Full rendering requires CHIBI_EXECUTION_PROFILE=hardware and "
         "CHIBI_ALLOW_FULL_GPU=1.\n"
         "With --format, rewrite authored assets in canonical form; --check\n"
-        "only lists assets that differ and fails when any do.\n"
-        "With --migrate, upgrade a project saved by an earlier build in "
-        "place.\n",
-        program,
+        "only lists assets that differ and fails when any do.\n",
         program,
         program,
         program,
@@ -125,7 +120,7 @@ static int run(int argc, char **argv)
     const char *request_path = NULL;
     const char *prepared_path = NULL, *scene = NULL;
     int render = 0;
-    bool format = false, check = false, migrate = false;
+    bool format = false, check = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--engine-info")) {
             char *info = resource_info();
@@ -149,10 +144,6 @@ static int run(int argc, char **argv)
             check |= !strcmp(argv[i], "--check");
             continue;
         }
-        if (!strcmp(argv[i], "--migrate")) {
-            migrate = true;
-            continue;
-        }
         if (!strcmp(argv[i], "--render-request") && i + 1 < argc) {
             render = 1;
             request_path = argv[++i];
@@ -173,24 +164,6 @@ static int run(int argc, char **argv)
         fprintf(stderr, "Unknown argument: %s\n", argv[i]);
         usage(argv[0]);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    if (migrate) {
-        char error[512];
-        native_capabilities *native = authoring_application_catalog_new(
-            studio_project_is(project_root),
-            error,
-            sizeof error
-        );
-        int steps = native
-                      ? authoring_project_migrate(project_root, native, error, sizeof error)
-                      : -1;
-        native_capabilities_free(native);
-        if (steps < 0) {
-            fprintf(stderr, "%s\n", error);
-            return CHIBI_AUTOMATION_IO_ERROR;
-        }
-        printf("Upgraded %d version step%s to version %d\n", steps, steps == 1 ? "" : "s", CHIBI_PROJECT_VERSION);
-        return CHIBI_AUTOMATION_OK;
     }
     if (prepared_path) {
         if (render || format) {

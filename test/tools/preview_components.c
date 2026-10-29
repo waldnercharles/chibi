@@ -68,7 +68,7 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
     /* Explicit preview targets do not need a default launch target. Full
      * project/player opening still requires one. */
     chibi_project launch = { 0 };
-    REQUIRE(chibi_project_read(&launch, directory, error, sizeof error) != 0);
+    REQUIRE(chibi_project_open(&launch, directory, error, sizeof error) != 0);
     REQUIRE(strstr(error, "no start scene"));
     chibi_project_free(&launch);
 

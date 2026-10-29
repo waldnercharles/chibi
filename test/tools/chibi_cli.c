@@ -229,7 +229,7 @@ static char *contents(const char *relative)
 }
 
 /* check hands the project to the compiler's --check and writes nothing; an
- * older project is reported, not migrated. */
+ * older project is refused. */
 TEST_CASE(check_prepares_without_writing)
 {
     char file[256];
@@ -992,7 +992,7 @@ TEST_CASE(compiler_test_needs_the_core_collection)
 
 /* fmt hands each project, or the one at or above the working directory, to
  * the compiler's --format, with --check when asked, and fails when one does;
- * an older project is reported, not migrated. A folder without a project.kdl
+ * an older project is refused. A folder without a project.kdl
  * goes to the compiler as given, which formats its packages. */
 TEST_CASE(fmt_formats_each_project)
 {
@@ -1079,7 +1079,7 @@ static const char
 /* The real compiler's --format --check names the assets that are not
  * canonical and changes nothing; --format rewrites them as their savers
  * write them. It refuses prototypes that share a name, as the player does,
- * and an older project, which it does not migrate. */
+ * and an older project. */
 TEST_CASE(compiler_format_rewrites_noncanonical_assets)
 {
     project("messy", CHIBI_PROJECT_VERSION);

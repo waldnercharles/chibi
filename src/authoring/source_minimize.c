@@ -1247,20 +1247,7 @@ typedef struct
     const script_analysis *original;
     const char *text;
     script_range *comments;
-    bool migration;
 } oracle;
-
-static script_analysis *analyze_source(
-    const script_syntax *syntax,
-    const script_catalog *catalog,
-    const char *identity,
-    bool migration
-)
-{
-    return migration
-             ? script_analyze_migration_document(syntax, catalog, identity, NULL, 0, false)
-             : script_analyze_document(syntax, catalog, identity);
-}
 
 static void collect_comments(TSNode node, script_range **comments)
 {
@@ -1326,7 +1313,7 @@ static bool accepts(const oracle *o, const char *text)
                 !ts_node_has_error(ts_tree_root_node(syntax->tree)) &&
                 same_comments(o, syntax);
     if (same) {
-        script_analysis *analysis = analyze_source(syntax, o->catalog, o->identity, o->migration);
+        script_analysis *analysis = script_analyze_document(syntax, o->catalog, o->identity);
         same = same_program(&(pair){ o->original, analysis, o->catalog });
         script_analysis_free(analysis);
     }
@@ -1337,7 +1324,7 @@ static bool accepts(const oracle *o, const char *text)
 static char *round_text(const oracle *o, const char *text, pass phase)
 {
     script_syntax *syntax = script_parse(text);
-    script_analysis *analysis = analyze_source(syntax, o->catalog, o->identity, o->migration);
+    script_analysis *analysis = script_analyze_document(syntax, o->catalog, o->identity);
     collector c = { .text = text,
                     .analysis = analysis,
                     .catalog = o->catalog,
@@ -1381,17 +1368,16 @@ static char *round_text(const oracle *o, const char *text, pass phase)
     return result;
 }
 
-static char *minimize(const char *text, const script_catalog *catalog, const char *identity, bool migration)
+char *authoring_source_minimize(const char *text, const script_catalog *catalog, const char *identity)
 {
     script_syntax *syntax = script_parse(text);
-    script_analysis *original = analyze_source(syntax, catalog, identity, migration);
+    script_analysis *original = script_analyze_document(syntax, catalog, identity);
     char *current = xstrdup(text);
     if (original->valid && !original->diagnostic_count && !syntax->diagnostic_count) {
         oracle o = { .catalog = catalog,
                      .identity = identity,
                      .original = original,
-                     .text = text,
-                     .migration = migration };
+                     .text = text };
         collect_comments(ts_tree_root_node(syntax->tree), &o.comments);
         for (pass phase = PASS_SHAPE; phase <= PASS_LABELS; phase++) {
             /* Each round accepts at least one rewrite, so this ends when
@@ -1408,10 +1394,6 @@ static char *minimize(const char *text, const script_catalog *catalog, const cha
     return current;
 }
 
-char *authoring_source_minimize(const char *text, const script_catalog *catalog, const char *identity)
-{
-    return minimize(text, catalog, identity, false);
-}
 char *authoring_source_canonical(
     const char *text,
     const script_catalog *catalog,
@@ -1433,345 +1415,4 @@ char *authoring_source_canonical(
     char *result = authoring_source_format(syntax, error, size);
     script_syntax_free(syntax);
     return result;
-}
-
-/* A configured action is a deferred invocation, not a statement. Preserve its
- * arguments, action identity and completion handlers by replacing only the
- * native target with a concrete property-writing procedure. */
-static bool bounded_component(const script_catalog *catalog, const script_catalog_type *type, int depth)
-{
-    if (!type || depth == 16) {
-        return false;
-    }
-    for (int i = 0; i < type->field_count; i++) {
-        const script_catalog_field *field = &type->fields[i];
-        if (field->range_contract ||
-            (field->type.storage == PIN_STRUCT &&
-             bounded_component(
-                 catalog,
-                 script_catalog_type_by_id(catalog, field->type.nominal),
-                 depth + 1
-             ))) {
-            return true;
-        }
-    }
-    return false;
-}
-static bool write_wrapper(
-    const collector *c,
-    const script_catalog_capability *cap,
-    const char *name,
-    char **definitions,
-    char *error,
-    size_t size
-)
-{
-    if (cap->component_value < 0 ||
-        cap->component_value >= cap->parameter_count || cap->result_count > 1) {
-        return false;
-    }
-    char **parameters = NULL;
-    bool valid = true;
-    source_refactor_append(definitions, "\n%s :: (", name);
-    for (int i = 0; valid && i < cap->parameter_count; i++) {
-        const script_catalog_parameter *p = &cap->parameters[i];
-        char spelling[32];
-        snprintf(spelling, sizeof spelling, "import_arg_%d", i);
-        char *parameter = xstrdup(spelling);
-        apush(parameters, parameter);
-        if (!parameter) {
-            valid = false;
-            break;
-        }
-        source_refactor_append(definitions, "%s%s: ", i ? ", " : "", parameter);
-        if (p->type.storage == PIN_HANDLE && p->type.nominal == c->catalog->entity_type &&
-            p->type.container == PIN_CONTAINER_SINGLE) {
-            source_refactor_append(definitions, "entity%s", p->type.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "");
-        } else {
-            valid = source_refactor_type(c->catalog, p->type, false, definitions, error, size);
-        }
-        /* Every migrated setter supplies its value. Native descriptors may
-         * carry a whole-row zero sentinel in that scalar parameter's default;
-         * it is never evaluated here and is not a source value. */
-        if (valid && p->has_default && i != cap->component_value) {
-            char *value = p->default_owner ? xstrdup("self")
-                        : p->default_value.type == PIN_HANDLE &&
-                                  !p->default_value.u64
-                            ? xstrdup("null")
-                            : authoring_source_literal(c->catalog, p->type, &p->default_value, error, size);
-            valid = value != NULL;
-            if (value) {
-                source_refactor_append(definitions, " = %s", value);
-            }
-            free(value);
-        }
-    }
-    source_refactor_append(definitions, ")");
-    if (valid && cap->result_count) {
-        char *result = authoring_source_identifier(cap->results[0].name, error, size);
-        valid = result != NULL;
-        if (result) {
-            source_refactor_append(definitions, " -> (%s: ", result);
-            valid = source_refactor_type(c->catalog, cap->results[0].type, false, definitions, error, size);
-            source_refactor_append(definitions, ")");
-        }
-        free(result);
-    }
-    if (valid) {
-        const script_catalog_type *type = script_catalog_type_by_id(c->catalog, cap->component);
-        char *suffix = component_suffix(c, cap, false);
-        if (!suffix) {
-            for (int i = 0; i < acount(parameters); i++) {
-                free(parameters[i]);
-            }
-            afree(parameters);
-            if (size) {
-                snprintf(error, size, "Imported component access has no identifier source spelling");
-            }
-            return false;
-        }
-        const char *entity = cap->component_entity >= 0
-                               ? parameters[cap->component_entity]
-                               : "self";
-        const char *value = parameters[cap->component_value];
-        source_refactor_append(definitions, " {");
-        if (cap->component_entity >= 0 &&
-            cap->parameters[cap->component_entity].default_owner) {
-            source_refactor_append(definitions, " if %s == 0 { %s = self; }", entity, entity);
-        }
-        source_refactor_append(definitions, " %s%s = %s;", entity, suffix, value);
-        if (cap->result_count) {
-            bool whole = cap->component_field &&
-                         cap->results[0].type.storage == PIN_STRUCT &&
-                         cap->results[0].type.nominal == type->id;
-            if (whole) {
-                script_catalog_capability root = *cap;
-                root.component_field = 0;
-                free(suffix);
-                suffix = component_suffix(c, &root, false);
-            }
-            if (whole || bounded_component(c->catalog, type, 0)) {
-                source_refactor_append(definitions, " return %s%s;", entity, suffix);
-            } else {
-                source_refactor_append(definitions, " return %s;", value);
-            }
-        }
-        source_refactor_append(definitions, " }\n");
-        free(suffix);
-    }
-    for (int i = 0; i < acount(parameters); i++) {
-        free(parameters[i]);
-    }
-    afree(parameters);
-    return valid;
-}
-typedef struct
-{
-    uint64_t capability;
-    char name[64];
-} imported_writer;
-static bool stable_import_value(const collector *c, int index)
-{
-    if (index < 0) {
-        return false;
-    }
-    const script_expression *value = &c->analysis->expressions[index];
-    bool scalar = value->type.container == PIN_CONTAINER_SINGLE &&
-                  (value->type.storage <= PIN_F64 || value->type.storage == PIN_HANDLE);
-    return (value->kind == SCRIPT_EXPR_SYMBOL &&
-            value->symbol == c->analysis->owner_symbol) ||
-           (value->kind == SCRIPT_EXPR_CONSTANT && scalar) ||
-           value->kind == SCRIPT_EXPR_NIL;
-}
-static bool wrap_write_calls(
-    collector *c,
-    TSNode node,
-    imported_writer **writers,
-    char **definitions,
-    char *error,
-    size_t size
-)
-{
-    if (is(node, "call_expression")) {
-        const script_expression *call = expression_at(c, node, SCRIPT_EXPR_CALL);
-        const script_catalog_capability
-            *cap = call ? script_catalog_capability_by_id(c->catalog, call->capability)
-                        : NULL;
-        if (cap && cap->component && !call->instance &&
-            cap->component_access == SCRIPT_COMPONENT_ACCESS_WRITE) {
-            int value = argument(call, cap->component_value);
-            if (value < 0 || c->analysis->expressions[value].partial ||
-                call->left >= 0) {
-                if (error && size) {
-                    snprintf(error, size, "Generated partial or receiver-form setter requires an explicit merge/receiver");
-                }
-                return false;
-            }
-            int written_value = written_argument(c, node, call, cap->component_value);
-            int entity = written_argument(c, node, call, cap->component_entity);
-            if (written_value < 0 ||
-                (entity >= 0 &&
-                 value_range(c, entity).start > value_range(c, written_value).start &&
-                 !stable_import_value(c, entity) &&
-                 !stable_import_value(c, written_value))) {
-                if (error && size) {
-                    snprintf(error, size, "Generated setter needs an explicit value and entity-first arguments to preserve native evaluation order");
-                }
-                return false;
-            }
-            int writer = 0;
-            while (writer < acount(*writers) &&
-                   (*writers)[writer].capability != cap->id) {
-                writer++;
-            }
-            if (writer == acount(*writers)) {
-                imported_writer item = { .capability = cap->id };
-                int ordinal = writer;
-                bool used;
-                do {
-                    snprintf(item.name, sizeof item.name, "import_component_write_%d", ++ordinal);
-                    used = false;
-                    for (int i = 0; i < c->analysis->symbol_count; i++) {
-                        used |= !strcmp(item.name, c->analysis->symbols[i].name);
-                    }
-                    for (int i = 0; i < acount(*writers); i++) {
-                        used |= !strcmp(item.name, (*writers)[i].name);
-                    }
-                } while (used);
-                if (!write_wrapper(c, cap, item.name, definitions, error, size)) {
-                    return false;
-                }
-                apush(*writers, item);
-            }
-            TSNode target = field(node, "function");
-            if (ts_node_is_null(target)) {
-                target = field(node, "target");
-            }
-            add(c, start(target), end(target), (*writers)[writer].name);
-            TSNode arguments = field(node, "arguments");
-            for (uint32_t i = 0; i < ts_node_named_child_count(arguments); i++) {
-                TSNode argument = ts_node_named_child(arguments, i),
-                       label = field(argument, "name");
-                if (ts_node_is_null(label)) {
-                    continue;
-                }
-                char *name = slice(c->text, start(label), end(label));
-                for (int p = 0; p < cap->parameter_count; p++) {
-                    if (script_name_matches(name, cap->parameters[p].name)) {
-                        char spelling[32];
-                        snprintf(spelling, sizeof spelling, "import_arg_%d", p);
-                        add(c, start(label), end(label), spelling);
-                        break;
-                    }
-                }
-                free(name);
-            }
-        }
-    }
-    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
-        if (!wrap_write_calls(c, ts_node_child(node, i), writers, definitions, error, size)) {
-            return false;
-        }
-    }
-    return true;
-}
-static char *wrap_remaining_writes(
-    const char *text,
-    const script_catalog *catalog,
-    const char *identity,
-    char *error,
-    size_t size
-)
-{
-    script_syntax *syntax = script_parse(text);
-    script_analysis *analysis = analyze_source(syntax, catalog, identity, true);
-    collector c = { .text = text,
-                    .analysis = analysis,
-                    .catalog = catalog,
-                    .tree = syntax->tree };
-    char *definitions = NULL, *result = NULL;
-    imported_writer *writers = NULL;
-    TSNode root = ts_tree_root_node(syntax->tree);
-    bool valid = analysis->valid &&
-                 wrap_write_calls(&c, root, &writers, &definitions, error, size);
-    if (!analysis->valid && error && size) {
-        const script_diagnostic *d = analysis->diagnostic_count
-                                       ? &analysis->diagnostics[0]
-                                       : NULL;
-        snprintf(
-            error,
-            size,
-            "Cannot import %s at %d:%d: %s",
-            identity,
-            d ? d->range.line : 0,
-            d ? d->range.column : 0,
-            d ? d->message : "invalid source"
-        );
-    }
-    if (valid) {
-        if (acount(writers)) {
-            TSNode body = field(ts_node_named_child(root, 0), "body");
-            apush(definitions, 0);
-            add(&c, start(body) + 1, start(body) + 1, definitions);
-            bool *accepted = xcalloc((size_t)acount(c.rewrites), sizeof *accepted);
-            for (int i = 0; i < acount(c.rewrites); i++) {
-                accepted[i] = true;
-            }
-            result = apply(text, c.rewrites, accepted, -1);
-            free(accepted);
-        } else {
-            result = xstrdup(text);
-        }
-    }
-    for (int i = 0; i < acount(c.rewrites); i++) {
-        rewrite_free(&c.rewrites[i]);
-    }
-    afree(c.rewrites);
-    afree(writers);
-    afree(definitions);
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    return result;
-}
-char *authoring_source_migrate_generated(
-    const char *text,
-    const script_catalog *catalog,
-    const char *identity,
-    char *error,
-    size_t size
-)
-{
-    char *reduced = minimize(text, catalog, identity, true);
-    char *wrapped = wrap_remaining_writes(reduced, catalog, identity, error, size);
-    char *current = wrapped ? minimize(wrapped, catalog, identity, true) : NULL;
-    free(reduced);
-    free(wrapped);
-    if (!current) {
-        return NULL;
-    }
-    script_syntax *syntax = script_parse(current);
-    script_analysis *analysis = script_analyze_document(syntax, catalog, identity);
-    bool valid = analysis->valid && !syntax->diagnostic_count;
-    if (!valid && error && size) {
-        snprintf(
-            error,
-            size,
-            "Cannot normalize generated calls in %s at %d:%d: %s [%.48s]",
-            identity,
-            analysis->diagnostic_count ? analysis->diagnostics[0].range.line : 0,
-            analysis->diagnostic_count ? analysis->diagnostics[0].range.column : 0,
-            analysis->diagnostic_count ? analysis->diagnostics[0].message
-                                       : "source does not parse",
-            analysis->diagnostic_count
-                ? current + analysis->diagnostics[0].range.start
-                : ""
-        );
-    }
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    if (!valid) {
-        free(current);
-        return NULL;
-    }
-    return current;
 }

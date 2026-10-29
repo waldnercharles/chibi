@@ -32,8 +32,8 @@ static void cleanup()
 
 TEST_CASE(fixture_projects_are_canonically_formatted)
 {
-    /* Opening an old project may migrate it even with --check. Refuse all
-     * outdated manifests before starting any controller child. */
+    /* An outdated manifest fails to open. Refuse all of them before starting
+     * any controller child. */
     for (size_t i = 0; i < sizeof projects / sizeof *projects; i++) {
         char manifest[4096];
         int length = snprintf(manifest, sizeof manifest, "%s/%s/project.kdl", tool_root(), projects[i]);

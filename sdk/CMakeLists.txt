@@ -516,11 +516,10 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
     target_link_libraries(chibi_input_map PUBLIC chibi_input_action
         PRIVATE chibi_types chibi_asset_values chibi_asset_text chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
-    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c")
+    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
-    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)
+    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h)
     target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_text
         chibi_language_syntax chibi_json chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_project_document)

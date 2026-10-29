@@ -212,7 +212,6 @@ TEST_CASE(environment_supplied_modules_keep_source_library_fields)
         .native = native,
         .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
         .modules = WORLD_PHYSICS | WORLD_MATERIALS,
-        .read_only = true,
     };
     bool prepared = authoring_project_assemble(&options, modules, acount(modules), &assembled, error, sizeof error);
     if (!prepared) {
@@ -267,7 +266,6 @@ TEST_CASE(environment_supplied_modules_reject_unprojectable_library)
         .native = native,
         .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
         .modules = WORLD_PHYSICS | WORLD_MATERIALS,
-        .read_only = true,
     };
     REQUIRE(
         !authoring_project_assemble(&options, modules, acount(modules), &assembled, error, sizeof error)

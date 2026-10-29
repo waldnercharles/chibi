@@ -555,12 +555,15 @@ executable link (the language and link
 flags, the sanitizers, the executable's `LinkOptions`, the objects, `-o`,
 then the profile's external libraries and `Links` in CMake's order, which
 may name a library twice and holds `-lm` where CMake puts it) and records it
-as it records compiles. Compiler-driver execution uses a quoted GNU response
-file beside the output, keeping long links within the host's argument limit.
-The command database and successful record retain the full ordered argv. The
-response is removed after the child returns, and success is recorded only after
-cleanup. Failed or interrupted attempts have no success record; retry replaces
-any retained response. NUL and line endings are rejected because the record
+as it records compiles. Compiler-driver execution compresses nonempty argument
+runs into quoted GNU response files beside the output when their paths are
+smaller than the original arguments. Empty arguments remain directly in argv,
+preserving option operands on older Clang versions. Transport never increases
+argument count or byte use. The command database and successful record retain
+the full ordered argv. Responses are removed after the child returns, and
+success is recorded only after cleanup. Failed or interrupted attempts have no
+success record; retry removes retained regular base and numbered responses.
+NUL and line endings are rejected because the record
 stores one argument per line. Other build steps and archivers keep their own
 command contracts.
 The native regression group uses the host in its selected `BUILD_DIR`;

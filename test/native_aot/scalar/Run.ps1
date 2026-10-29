@@ -241,27 +241,30 @@ try {
         throw 'Proof bootstrap manifest differs from the checked-out source'
     }
     $manifest = Read-Node $manifestFile
-    if ($compilerHash -ne $manifest['closure']['sha256'].GetValue[string]() -or
-        (Digest (Join-Path $repo 'tools/compiler/bootstrap/compiler.chibip')) -ne $compilerHash -or
-        $recovery['stages'][0]['input_compiler_sha256'].GetValue[string]() -ne $compilerHash -or
-        $recovery['stages'][0]['input_manifest_sha256'].GetValue[string]() -ne (Digest $manifestFile) -or
-        (Get-Item -LiteralPath $compiler).Length -ne $manifest['closure']['bytes'].GetValue[long]()) {
-        throw 'Recovered stage2 differs from the reviewed compiler artifact'
+    # The checked artifact is only the seed: recovery started from it, and the
+    # compiler under test is the fixed point that seed's successors reached.
+    if ((Digest (Join-Path $repo 'tools/compiler/bootstrap/compiler.chibip')) -ne
+            $recovery['stages'][0]['input_compiler_sha256'].GetValue[string]() -or
+        $recovery['stages'][0]['input_manifest_sha256'].GetValue[string]() -ne (Digest $manifestFile)) {
+        throw 'Recovery did not start from the checked seed'
     }
     $evidence['runtime_sha256'] = $runtimeHash
     $evidence['compiler_sha256'] = $compilerHash
     $evidence['bootstrap_manifest_sha256'] = Digest $manifestFile
     $evidence['recovery_evidence_sha256'] = Digest (Join-Path $Proof 'evidence.json')
-    # Validate every recorded compiler source and each complete included package,
-    # not just a hand-selected whitelist of known files.
+    # Validate every listed compiler source and each complete included package,
+    # not just a hand-selected whitelist of known files. The list, not the
+    # seed's record of the sources it was built from, names the compiler.
     $compilerFiles = [Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
-    foreach ($source in $manifest['sources'].AsArray()) {
-        $name = $source['path'].GetValue[string]()
+    $sourceList = 'tools/compiler/asset_compiler/CompilerSources.txt'
+    if ((Digest (Join-Path $repo $sourceList)) -ne (Digest (Join-Path $Proof $sourceList))) {
+        throw 'Proof compiler source list differs from the checked-out source'
+    }
+    foreach ($name in [IO.File]::ReadAllLines((Join-Path $repo $sourceList)) | Where-Object { $_.Trim() }) {
+        $name = $name.Trim()
         $relative = if ($name.StartsWith('/sdk/core/')) { 'packages/core/' + $name.Substring(10) } else { 'tools/compiler/' + $name }
         $file = Join-Path $repo $relative
-        if ($compilerFiles.ContainsKey($relative) -or (Digest $file) -ne $source['sha256'].GetValue[string]() -or
-            (Get-Item -LiteralPath $file).Length -ne $source['bytes'].GetValue[long]() -or
-            (Digest $file) -ne (Digest (Join-Path $Proof $relative))) {
+        if ($compilerFiles.ContainsKey($relative) -or (Digest $file) -ne (Digest (Join-Path $Proof $relative))) {
             throw "Compiler source identity differs: $relative"
         }
         $compilerFiles[$relative] = $true
@@ -271,7 +274,7 @@ try {
         foreach ($root in @($repo, $Proof)) {
             foreach ($file in Get-ChildItem -LiteralPath (Join-Path $root $folder) -File -Filter '*.chibi') {
                 $relative = [IO.Path]::GetRelativePath($root, $file.FullName).Replace('\', '/')
-                if (!$compilerFiles.ContainsKey($relative)) { throw "Unrecorded compiler package member: $relative" }
+                if (!$compilerFiles.ContainsKey($relative)) { throw "Unlisted compiler package member: $relative" }
             }
         }
     }

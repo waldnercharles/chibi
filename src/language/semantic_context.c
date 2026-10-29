@@ -400,6 +400,14 @@ void script_analyzer_generic_types(analyzer *a, TSNode node, script_signature_ge
     if (ts_node_is_null(node)) {
         return;
     }
+    if (script_analyzer_is(node, "type_name")) {
+        char *name = script_analyzer_name_copy(a, node);
+        script_math_kind kind = script_math_named(name);
+        free(name);
+        if (kind) {
+            (void)script_analyzer_math_type(a, node, kind);
+        }
+    }
     /* The reader constructs `task(T)` itself; T may hold applications. */
     if (script_analyzer_is(node, "type_application") &&
         !script_signature_task(script_analyzer_syntax(a, node)->text, node)) {

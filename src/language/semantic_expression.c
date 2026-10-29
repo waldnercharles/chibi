@@ -512,7 +512,7 @@ static const char *managed_address_layout(analyzer *a, int expression)
         return NULL;
     }
     const script_catalog_type *record = script_catalog_type_by_id(a->catalog, type.nominal);
-    if (!record || !record->authored_record) {
+    if (!record || (!record->authored_record && !script_math_layout_valid(record))) {
         return "Managed values require authored record layouts";
     }
     for (int i = 0; i < record->field_count; i++) {
@@ -1436,6 +1436,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             result.op = SCRIPT_OP_NEG;
             if (!script_type_numeric(result.type) &&
                 !(result.type.flags & SCRIPT_TYPE_ERROR) &&
+                !script_analyzer_math_operator(a, node, &result) &&
                 !script_analyzer_resolve_operator(a, node, op, &result)) {
                 script_analyzer_diagnostic(a, node, "Negation requires a compatible operator");
             }
@@ -1543,6 +1544,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             script_analyzer_require(a, left, script_analyzer_boolean_type(), x);
             script_analyzer_require(a, right, script_analyzer_boolean_type(), y);
             result.type = script_analyzer_boolean_type();
+        } else if (script_analyzer_math_operator(a, node, &result)) {
+            /* Built-in math owns its dimensions, broadcasting and result. */
         } else if ((!script_type_numeric(x) || !script_type_numeric(y)) && script_analyzer_resolve_operator(a, node, op, &result)) {
             /* Catalog operands and result are already resolved. */
         } else if (equality && !script_type_numeric(x)) {

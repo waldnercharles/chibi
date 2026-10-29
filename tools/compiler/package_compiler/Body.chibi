@@ -2568,6 +2568,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              mutated: string[], built: int[], context: BodyContext, generic_updates: int[],
              ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
     types := table^;
+    math_enabled := false;
+    for (math_type in 0..<length(types)) {
+        if (MathKind(types, math_type) != 0) {
+            math_enabled = true;
+            break;
+        }
+    }
     callable := callables[function];
     declaration := forest[callable.node];
     inferring := Expression(declaration.kind);
@@ -2726,6 +2733,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 query_handled = false;
         }
         if (query_handled) {
+        } else if (item.phase == MathCapturePhase) {
+            step = MathCaptureStep(forest, document, types, members, values[value_top - 1], ops, target, at, node);
+        } else if ((item.phase >= MathAssignBegin && item.phase <= MathAssignWrite) ||
+                   (math_enabled && item.phase == 0 && MathAssignment(forest, text, types, members, callables, natives, ports,
+                                                                      names, callable.package, item.node))) {
+            step = MathAssignmentStep(forest, text, document, types, members, constants, names, callable.package,
+                                      callables, natives, ports, values, value_top, item, ops, target, at);
         } else if (item.phase == CopyValuePhase) {
             step = CopyValueStep(values[value_top - 1], 1, ops, target, at, node);
         } else if (item.phase == MapDeletePlacePhase || item.phase == MapDeleteDonePhase) {
@@ -3338,7 +3352,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = TaskStep(forest, text, document, callables, natives, params, types, names, callable.package,
                             values, value_top, item, ops, target, at);
         } else if (item.phase == CombinePhase) {
-            step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
+            if (MathAggregate(types, values[value_top - 2]) || MathAggregate(types, values[value_top - 1])) {
+                step = MathBinaryStep(forest, text, document, types, members, constants, names, callable.package,
+                                      values[value_top - 2], values[value_top - 1], CompoundOperator(operator), 2,
+                                      ops, target, at, node);
+            } else {
+                step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
+            }
         } else if (item.phase == PointerNilPhase && OptionalElement(types, values[value_top - 1]).storage != 0) {
             step = OptionalPresentStep(values[value_top - 1], item.c == 0, 1, ops, target, at, node);
         } else if (PointerWork(item, kind)) {
@@ -3402,7 +3422,18 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             }
             step = OptionalPresentStep(optional, operator == "==", 2, ops, target, at, node);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
-            step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
+            if (math_enabled && item.phase == 0 && kind == "binary_expression" &&
+                MathBinaryCapture(forest, text, types, members, callables, natives, ports, names, callable.package, item.node)) {
+                step = MathBinaryStart(forest, item);
+            } else if (item.phase != 0 && kind == "unary_expression" && MathAggregate(types, values[value_top - 1])) {
+                step = MathNegateStep(document, types, members, values[value_top - 1], operator, ops, target, at, node);
+            } else if (item.phase != 0 && kind == "binary_expression" &&
+                       (MathAggregate(types, values[value_top - 2]) || MathAggregate(types, values[value_top - 1]))) {
+                step = MathBinaryStep(forest, text, document, types, members, constants, names, callable.package,
+                                      values[value_top - 2], values[value_top - 1], operator, 2, ops, target, at, node);
+            } else {
+                step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
+            }
         } else if (kind == "function_declaration") {
             step = ParameterStep(params, callable, item, ops, target, at, node);
         } else if (kind == "is_expression" && item.phase == 0) {
@@ -3558,7 +3589,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             pass += 1;
         }
         types = table^;
-        if (ops.debug) {
+        if (ops.debug && item.phase != MathCapturePhase) {
             // A pointer whose member is read next is watched by that read.
             transient := length(next) > 0 && next[length(next) - 1].phase == PointerMemberReadPhase;
             switch DebugWatches(forest, item, produced, negated || transient, callables, params, natives, ports,
@@ -3571,7 +3602,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         // An argument of an overloaded native, on its last visit, reserves a
         // jump, a no-op until the call chooses its overload.
-        if (ops.debug && !Resumed(next, item.node) && OverloadArgument(forest, work, work_top, item.node)) {
+        if (ops.debug && item.phase != MathCapturePhase && !Resumed(next, item.node) && OverloadArgument(forest, work, work_top, item.node)) {
             reserved_nodes.append(item.node);
             reserved_jumps.append(length(code));
             code.append(Instruction(ops.jump, 0, 0, 0, 0, length(code) + 1, node));

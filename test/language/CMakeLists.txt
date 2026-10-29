@@ -304,7 +304,11 @@ else()
         "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
         PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 endif()
-if(TARGET Chibi::asset_compiler_host)
+option(CHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST
+    "Include the packaged asset service in the language test driver" ON)
+set_source_files_properties(package_tests.c PROPERTIES
+    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
+if(CHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST AND TARGET Chibi::asset_compiler_host)
     add_library(chibi_asset_compiler_consumer OBJECT asset_compiler_host.c)
     target_include_directories(chibi_asset_compiler_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_asset_compiler_consumer PRIVATE Chibi::asset_compiler_host Chibi::behavior_runtime

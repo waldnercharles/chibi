@@ -1,6 +1,7 @@
 #include "asset_packaging_chibi_source.h"
 #include "backend.h"
 #include "compiler_fixture.h"
+#include "package_compiler_chibi.h"
 #include "package_core_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
@@ -29,7 +30,7 @@ static char *generator_prefix;
 /* CompilerSources.txt lists the bootstrap compiler; the facade adds its own. */
 enum
 {
-    COMPILER_SOURCES = 27,
+    COMPILER_SOURCES = 30,
     SOURCES = COMPILER_SOURCES + 12
 };
 static char *source_texts[SOURCES];
@@ -401,7 +402,7 @@ static bool compiler_sources()
     size_t length = 0;
     char *manifest = read_source("tools/compiler/asset_compiler/CompilerSources.txt", &length);
     REQUIRE(manifest);
-    bool ok = true;
+    bool ok = package_compiler_bootstrap_source_order(manifest, length);
     for (char *line = manifest; ok && *line;) {
         char *end = strchr(line, '\n');
         if (end) {

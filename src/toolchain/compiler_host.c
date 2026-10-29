@@ -655,6 +655,16 @@ static bool invoke(
     if (out->flow_status != FLOW_OK || !context.returned) {
         failure = context.error_message ? context.error_message
                                         : "compiler execution did not return";
+        if (!context.error_message && out->flow_status != FLOW_OK) {
+            snprintf(
+                out->diagnostic,
+                sizeof out->diagnostic,
+                "compiler execution stopped: %s (status %d, %ju steps)",
+                behavior_function_failure_text(context.failure),
+                out->flow_status,
+                (uintmax_t)context.steps
+            );
+        }
         goto done;
     }
     if (max_bytes) {

@@ -65,6 +65,7 @@ void test_language_native_calls();
 void test_numeric_ranges();
 void test_numeric_exact_core();
 void test_language_integer_semantics();
+void test_language_integer_arithmetic();
 void test_language_integer_shift_counts(const char *name);
 void test_language_integer_shift_counts_authored();
 void test_language_package_graph();
@@ -213,6 +214,7 @@ int main(int argc, char **argv)
     bool integer_shift_counts = (argc == 2 || argc == 3) &&
                                 !strcmp(argv[1], "--integer-shift-counts");
     bool integer_semantics = argc == 2 && !strcmp(argv[1], "--integer-semantics");
+    bool integer_arithmetic = argc == 2 && !strcmp(argv[1], "--integer-arithmetic");
     bool integer_shift_counts_authored = argc == 2 &&
                                          !strcmp(argv[1], "--integer-shift-counts-authored");
     bool package_graph_chibi = argc == 2 && !strcmp(argv[1], "--package-graph-chibi");
@@ -356,10 +358,10 @@ int main(int argc, char **argv)
          !outliner_projection && !row_array && !record_runtime &&
          !runtime_attribution && !runtime_attribution_benchmark &&
          !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
-         !wasm && !migration34 && !migration34_generic_repro &&
-         !native_char_results && !program && !query_program && !query_values &&
-         !query_migration && !incremental && !operations && !modules &&
-         !native_calls && !ranges && !numeric_exact_core && !integer_semantics &&
+         !wasm && !migration34 && !migration34_generic_repro && !native_char_results &&
+         !program && !query_program && !query_values && !query_migration &&
+         !incremental && !operations && !modules && !native_calls && !ranges &&
+         !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
          !integer_shift_counts && !integer_shift_counts_authored &&
          !package_graph && !package_graph_chibi && !asset_compiler_host &&
          !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
@@ -406,6 +408,7 @@ int main(int argc, char **argv)
             "--operations | "
             "--modules | --native-calls | "
             "--ranges | --numeric-exact-core | --integer-semantics | "
+            "--integer-arithmetic | "
             "--integer-shift-counts [case] | --integer-shift-counts-authored | "
             "--package-graph | --package-graph-chibi | --shader-source-chibi | "
             "--asset-packaging-chibi | --syntax-chibi | "
@@ -617,6 +620,8 @@ int main(int argc, char **argv)
         test_language_integer_shift_counts_authored();
     } else if (integer_semantics) {
         test_language_integer_semantics();
+    } else if (integer_arithmetic) {
+        test_language_integer_arithmetic();
     } else if (package_syntax) {
         test_language_package_syntax();
     } else if (package_syntax_chibi) {

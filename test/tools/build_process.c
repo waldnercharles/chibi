@@ -1840,6 +1840,99 @@ static void primitive_file(const char *name, const char *text, size_t size)
     assert(!fclose(file));
 }
 
+/* Build callbacks recycle their borrowed result bank. Public byte conversions
+ * must retain exact binary values across later callbacks and a native write. */
+TEST_CASE(private_core_bytes_survive_native_result_bank_reuse)
+{
+    static const unsigned char expected[] = { 65, 0, 255, 66 };
+    static const char *const arguments[] = { "primitive-byte-bridge-input",
+                                             "primitive-byte-bridge-output" };
+    primitive_file(arguments[0], (const char *)expected, sizeof expected);
+    static const char source[] =
+        "package byte_bridge_lifetime\n"
+        "\n"
+        "import bytes \"core:bytes\"\n"
+        "\n"
+        "Exact :: (value: string) -> bool {\n"
+        "    return text_byte_length(value) == 4 &&\n"
+        "           text_byte_at(value, 0) == 65 && text_byte_at(value, 1) == "
+        "0 &&\n"
+        "           text_byte_at(value, 2) == 255 && text_byte_at(value, 3) == "
+        "66;\n"
+        "}\n"
+        "\n"
+        "Build :: () -> int {\n"
+        "    args := build.arguments();\n"
+        "    if (length(args) != 2) { return 1; }\n"
+        "    read_text := build.read_file(args[0]);\n"
+        "    raw := bytes.FromString(read_text);\n"
+        "    kept := bytes.ToString(raw);\n"
+        "    build.platform();\n"
+        "    build.root();\n"
+        "    if (length(raw) != 4 || raw[0] != u8(65) || raw[1] != u8(0) ||\n"
+        "        raw[2] != u8(255) || raw[3] != u8(66) ||\n"
+        "        !Exact(read_text) || !Exact(kept)) { return 2; }\n"
+        "    raw[0] = u8(90);\n"
+        "    build.platform();\n"
+        "    if (!Exact(read_text) || !Exact(kept) || raw[0] != u8(90)) { "
+        "return 3; }\n"
+        "    if (!build.write_file(args[1], kept)) { return 4; }\n"
+        "    read_back := build.read_file(args[1]);\n"
+        "    build.platform();\n"
+        "    again := build.arguments();\n"
+        "    if (again[0] != \"primitive-byte-bridge-input\" ||\n"
+        "        again[1] != \"primitive-byte-bridge-output\") { return 5; }\n"
+        "    if (!Exact(read_text) || !Exact(kept) || !Exact(read_back) ||\n"
+        "        raw[0] != u8(90)) { return 6; }\n"
+        "    return 0;\n"
+        "}\n";
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        primitive_file(arguments[1], "stale", 5);
+        chibi_build_options options = primitive_options(source, backend);
+        options.core = CHIBI_SOURCE_ROOT "/packages/core";
+        options.arguments = arguments;
+        options.argument_count = 2;
+        chibi_build_result result;
+        double started = chibi_build_now();
+        bool invoked = chibi_build_invoke(&options, &result);
+        if (!invoked || result.value) {
+            fprintf(
+                stderr,
+                "core byte bridge: backend=%d invoked=%d value=%d flow=%d "
+                "elapsed=%.3f diagnostic=[%s]\n",
+                b,
+                invoked,
+                result.value,
+                result.flow_status,
+                chibi_build_now() - started,
+                result.diagnostic
+            );
+        }
+        REQUIRE(invoked && !result.value && !result.steps);
+        REQUIRE(
+            !result.counts.overflow && !result.counts.inspection_bytecode_fallbacks &&
+            !result.counts.size_bytecode_fallbacks
+        );
+        uint64_t entries = b ? result.counts.sljit_entries
+                             : result.counts.bytecode_entries;
+        uint64_t other = b ? result.counts.bytecode_entries : result.counts.sljit_entries;
+        REQUIRE(entries > 0 && !other && !result.counts.wasm_entries);
+        char path[256];
+        snprintf(path, sizeof path, "%s/%s", root, arguments[1]);
+        FILE *file = fopen(path, "rb");
+        REQUIRE(file);
+        unsigned char actual[sizeof expected];
+        size_t count = fread(actual, 1, sizeof actual, file);
+        int trailing = fgetc(file);
+        bool exact = count == sizeof expected && trailing == EOF &&
+                     !ferror(file) && !memcmp(actual, expected, sizeof expected);
+        int closed = fclose(file);
+        REQUIRE(exact && !closed);
+    }
+    return true;
+}
+
 TEST_CASE(private_file_reads_preserve_bytes_and_reject_invalid_files)
 {
     primitive_file("primitive-text", "read me\n", 8);
@@ -2637,6 +2730,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
         goto teardown;
     }
     if (cases == BUILD_PROCESS_FILES) {
+        RUN_TEST_CASE(private_core_bytes_survive_native_result_bank_reuse);
         RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
         RUN_TEST_CASE(private_value_storage_reuses_results_and_preserves_live_values);
         RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
@@ -2665,6 +2759,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(private_values_and_process_snapshots_survive_later_calls);
     RUN_TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values);
     RUN_TEST_CASE(private_natives_resolve_only_under_the_build_namespace);
+    RUN_TEST_CASE(private_core_bytes_survive_native_result_bank_reuse);
     RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
     RUN_TEST_CASE(private_programs_import_named_collections);
     RUN_TEST_CASE(private_programs_allocate_managed_pointers);

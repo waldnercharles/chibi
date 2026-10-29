@@ -48,27 +48,4 @@ struct compiler_host;
  * Release the result with compiler_host_free. */
 struct compiler_host *compiler_bootstrap_load(const compiler_bootstrap *, char *error, size_t size);
 
-typedef enum
-{
-    COMPILER_BOOTSTRAP_REUSED = 0,
-    COMPILER_BOOTSTRAP_REUSE_ERROR = 1,
-    COMPILER_BOOTSTRAP_DIFFERENT = 3
-} compiler_bootstrap_reuse_result;
-
-/* Copies the validated recorded closure (canonical owned-value CompileClosure,
- * twelve arguments and one primitive byte[] result) only when no source changed
- * and captured_json is exactly CompileClosure's recorded request, including
- * source order/text and target. The JSON is borrowed for this call. A different
- * request returns DIFFERENT without compiling or writing, so its caller may
- * compile that same snapshot normally. Hard validation/I/O errors return ERROR.
- * Output changes only at same-directory rename; load and recover are unchanged. */
-compiler_bootstrap_reuse_result compiler_bootstrap_reuse(
-    const compiler_bootstrap *,
-    const char *captured_json,
-    size_t captured_length,
-    const char *output,
-    char *why,
-    size_t why_size
-);
-
 #endif

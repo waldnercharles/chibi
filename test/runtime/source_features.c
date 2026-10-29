@@ -428,41 +428,31 @@ TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
     }
     return true;
 }
-TEST_CASE(source_native_motion_retains_numeric_outputs)
+TEST_CASE(source_native_math_retains_numeric_outputs)
 {
-    const char *text =
-        "Motion :: behavior { input:retain f64=0; angle:retain f64=0; "
-        "smooth:retain f64=0; root:retain f64=0; low:retain f64=0; "
-        "high:retain f64=0; nearest:retain f64=0; position:retain "
-        "number=0; velocity:retain number=0; Calculate :: "
-        "(Value:f64)->(Angle:f64,Smooth:f64,Root:f64,Low:f64,"
-        "High:f64,Nearest:f64){ "
-        "return(Angle:quantize_angle(Angle:Value,Step:1.5707963267948966),"
-        "Smooth:smooth_step(Value:Value),Root:sqrt(Value:Value),Low:floor("
-        "Value:Value),High:ceil(Value:Value),Nearest:round(Value:Value)); } on "
-        "Tick :: () { r:=Calculate(Value:input); angle=r.Angle; "
-        "smooth=r.Smooth; "
-        "root=r.Root; low=r.Low; high=r.High; nearest=r.Nearest; "
-        "spring:=advance_damped_spring(Position:0.0,Velocity:0.0,Target:1.0,"
-        "Frequency:1.0,Damping:1.0,Delta:0.125); position=spring.Position; "
-        "velocity=spring.Velocity; } }";
-    const char *names[] = { "angle", "smooth",  "root",     "low",
-                            "high",  "nearest", "position", "velocity" };
+    const char
+        *text = "Math :: behavior { input:retain f64=0; root:retain f64=0; "
+                "low:retain f64=0; high:retain f64=0; nearest:retain f64=0; "
+                "on Tick :: () { root=sqrt(input); low=floor(input); "
+                "high=ceil(input); "
+                "nearest=round(input); } }";
+    const char *names[] = { "root", "low", "high", "nearest" };
     const double samples[] = {
         NAN, INFINITY,         -INFINITY,         -0.0, 0.0, -.5, .5, -1.5,
         1.5, nextafter(.5, 0), nextafter(-.5, 0), .125
     };
     pin_value (*const kernels[])(const pin_value *, int, arena *) = {
-        native_math_Quantize_Angle, native_math_Smooth_Step,
-        native_math_SquareRoot,     native_math_Floor,
-        native_math_Ceiling,        native_math_Round
+        native_math_SquareRoot,
+        native_math_Floor,
+        native_math_Ceiling,
+        native_math_Round
     };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick"),
-                 input = state_id("input"), ids[8];
+                 input = state_id("input"), ids[4];
         REQUIRE(tick && input);
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 4; i++) {
             ids[i] = state_id(names[i]);
             REQUIRE(ids[i]);
         }
@@ -470,35 +460,12 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
         REQUIRE(instance);
         retire_producer();
         for (int sample = 0; sample < 12; sample++) {
-            REQUIRE(
-                execution_instance_set_state(
-                    instance,
-                    input,
-                    (pin_value){ .type = PIN_F64, .d = samples[sample] }
-                ) == 0
-            );
-            if (!isfinite(samples[sample])) {
-                pin_value inputs[] = { { .type = PIN_F64, .d = samples[sample] },
-                                       { .type = PIN_F64, .d = 1.5707963267948966 } };
-                REQUIRE(native_math_Quantize_Angle(inputs, 2, NULL).type == PIN_FLOW);
-                REQUIRE(dispatch(tick, 1024) == FLOW_ERR_INVALID_GRAPH);
-                const execution_program_failure *failure = execution_program_error(program);
-                REQUIRE(failure && failure->status == FLOW_ERR_INVALID_GRAPH);
-                REQUIRE(!strcmp(failure->message, "Native value operation failed"));
-                REQUIRE(execution_instance_pending(instance) == 0);
-                for (int i = 0; i < 8; i++) {
-                    const pin_value *value = execution_instance_state(instance, ids[i]);
-                    REQUIRE(value && (i < 6 ? value->d == 0 : value->f == 0));
-                }
-                execution_program_clear_error(program);
-                continue;
-            }
+            pin_value argument = { .type = PIN_F64, .d = samples[sample] };
+            REQUIRE(!execution_instance_set_state(instance, input, argument));
             REQUIRE(dispatch(tick, 1024) >= 0);
             REQUIRE(execution_instance_pending(instance) == 0);
-            for (int i = 0; i < 6; i++) {
-                pin_value args[] = { { .type = PIN_F64, .d = samples[sample] },
-                                     { .type = PIN_F64, .d = 1.5707963267948966 } };
-                pin_value expected = kernels[i](args, i ? 1 : 2, NULL);
+            for (int i = 0; i < 4; i++) {
+                pin_value expected = kernels[i](&argument, 1, NULL);
                 const pin_value *actual = execution_instance_state(instance, ids[i]);
                 REQUIRE(actual && actual->type == PIN_F64);
                 REQUIRE(
@@ -508,17 +475,6 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
                     REQUIRE(signbit(actual->d) == signbit(expected.d));
                 }
             }
-            pin_value spring[] = { { .type = PIN_F32, .f = 0 },
-                                   { .type = PIN_F32, .f = 0 },
-                                   { .type = PIN_F32, .f = 1 },
-                                   { .type = PIN_F32, .f = 1 },
-                                   { .type = PIN_F32, .f = 1 },
-                                   { .type = PIN_F32, .f = .125f } },
-                      result[2] = { { 0 } };
-            REQUIRE(!native_math_spring(spring, result));
-            REQUIRE(execution_instance_state(instance, ids[6])->f == result[0].f);
-            REQUIRE(execution_instance_state(instance, ids[7])->f == result[1].f);
-            REQUIRE(result[0].f > 0 && result[0].f < 1 && result[1].f > 0);
         }
         cleanup();
     }
@@ -1364,7 +1320,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
 void test_source_native_numeric_queries()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(source_native_motion_retains_numeric_outputs);
+    RUN_TEST_CASE(source_native_math_retains_numeric_outputs);
     RUN_TEST_CASE(source_native_number_random_range_checks_both_bounds);
     RUN_TEST_CASE(source_int_wire_into_f64_keeps_every_digit);
     RUN_TEST_CASE(source_native_query_retains_nested_iteration_and_membership);

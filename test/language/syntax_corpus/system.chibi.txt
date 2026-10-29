@@ -1,0 +1,4 @@
+Mover :: system (e: Position from world, t in times, c := 1, if e.x > 0, g: Foo in list) {
+    count: retain int = 0
+    e.x += 1
+}

@@ -493,6 +493,12 @@ TEST_CASE(sdk_consumers_receive_one_exact_reflection_path)
         snprintf(environment, sizeof environment, "EXPECTED_REFLECT=%s/reflect", resolved[variant]);
         snprintf(expected, sizeof expected, "-DCHIBI_REFLECT_EXECUTABLE=%s/reflect\n", resolved[variant]);
         for (int i = 0; i < 4; i++) {
+#ifdef __APPLE__
+            /* macOS constructs the runtime SDK with the graph, not CMake. */
+            if (i == 1) {
+                continue;
+            }
+#endif
             const char *args[] = { "env",
                                    search,
                                    environment,
@@ -675,6 +681,84 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     return true;
 }
 
+#ifdef __APPLE__
+TEST_CASE(runtime_sdk_recipes_use_graph_programs_on_macos)
+{
+    char source[1024], canonical[1024], filename[1024], original[1024],
+        invocations[1024], expected[8192];
+    path(source, directory, "runtime recipe");
+    assert(!mkdir(source, 0700));
+    REQUIRE(realpath(source, canonical));
+    path(filename, source, "tools");
+    assert(!mkdir(filename, 0700));
+    path(original, tool_root(), "Makefile");
+    path(filename, source, "Makefile");
+    const char *copy[] = { "cp", original, filename, NULL };
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    path(filename, source, "tools/quiet.sh");
+    tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
+    path(filename, source, "fixture-host");
+    tool_write(
+        filename,
+        "#!/bin/sh\nset -eu\n"
+        "if [ \"$1\" = --protocol-version ]; then echo 14; exit 0; fi\n"
+        "printf '%s\\n' \"$@\" >> invocations\n"
+        "printf -- '--end\\n' >> invocations\n"
+    );
+    assert(!chmod(filename, 0700));
+    path(invocations, source, "invocations");
+    const char *args[] = {
+        "make",
+        "-o",
+        "sdk-reflect-build",
+        "package-runtime-sdk",
+        "QUIET=sh tools/quiet.sh",
+        "BUILD_HOST=./fixture-host",
+        "SDK_REFLECT_BUILD_DIR=reflection build",
+        "RUNTIME_SDK_BUILD_DIR=runtime-build",
+        "RUNTIME_SDK_PREFIX=runtime-package",
+        "JOBS=3",
+        "NATIVE_TOOLCHAIN_FLAGS=-DCMAKE_C_COMPILER=/fixture/cc",
+        "SDK_CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Release",
+        NULL
+    };
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    snprintf(
+        expected,
+        sizeof expected,
+        "--compiler\ntools/compiler\n--compiler-core\npackages/"
+        "core\n--root\n%s\n"
+        "--source\ntools/toolchain/Build.chibi\n--core\npackages/"
+        "core\n--entry\nBuild\n"
+        "--timeout-ms\n1800000\n--\nthird-party\nruntime-build\n--end\n"
+        "--compiler\ntools/compiler\n--compiler-core\npackages/"
+        "core\n--root\n%s\n"
+        "--source\ntools/toolchain/Graph.chibi\n--core\npackages/core\n"
+        "--collection\ngraph=tools/"
+        "graph\n--entry\nRuntimeSDK\n--timeout-ms\n3600000\n"
+        "--\n--build\n%s/runtime-build\n--reflect\n%s/reflection "
+        "build/reflect\n"
+        "--jobs\n3\n--\n-DCMAKE_C_COMPILER=/fixture/"
+        "cc\n-DCMAKE_BUILD_TYPE=Release\n--end\n"
+        "--compiler\ntools/compiler\n--compiler-core\npackages/"
+        "core\n--root\n%s\n"
+        "--source\ntools/toolchain/RuntimeSDK.chibi\n--core\npackages/core\n"
+        "--collection\ngraph=tools/"
+        "graph\n--entry\nRuntimePackage\n--timeout-ms\n3600000\n"
+        "--\n--build\n%s/runtime-build\n--output\n%s/runtime-package\n--end\n",
+        canonical,
+        canonical,
+        canonical,
+        canonical,
+        canonical,
+        canonical,
+        canonical
+    );
+    REQUIRE(file_equals(invocations, expected));
+    return true;
+}
+#endif
+
 void test_tool_package()
 {
     strcpy(directory, "/tmp/chibi-package-XXXXXX");
@@ -711,5 +795,8 @@ void test_tool_package()
     RUN_TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity);
     RUN_TEST_CASE(sdk_consumers_receive_one_exact_reflection_path);
     RUN_TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host);
+#ifdef __APPLE__
+    RUN_TEST_CASE(runtime_sdk_recipes_use_graph_programs_on_macos);
+#endif
     tool_remove_tree(directory);
 }

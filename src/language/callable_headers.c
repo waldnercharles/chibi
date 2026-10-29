@@ -3,12 +3,48 @@
 #include "support/array.h"
 #include "yyjson.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
 static bool is(TSNode node, const char *kind)
 {
     return !ts_node_is_null(node) && !strcmp(ts_node_type(node), kind);
+}
+TSNode script_callable_type_node(TSNode node)
+{
+    if (is(node, "callable_type")) {
+        return node;
+    }
+    uint32_t count = ts_node_is_null(node) ? 0 : ts_node_named_child_count(node);
+    for (uint32_t i = 0; i < count; i++) {
+        TSNode found = script_callable_type_node(ts_node_named_child(node, i));
+        if (!ts_node_is_null(found)) {
+            return found;
+        }
+    }
+    return (TSNode){ 0 };
+}
+bool script_callable_type_annotation(TSNode node)
+{
+    if (is(node, "callable_type")) {
+        return true;
+    }
+    if (!is(node, "type") && !is(node, "parenthesized_type")) {
+        return false;
+    }
+    bool found = false;
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        if (is(child, "(") || is(child, ")") || ts_node_is_extra(child)) {
+            continue;
+        }
+        if (found || !script_callable_type_annotation(child)) {
+            return false;
+        }
+        found = true;
+    }
+    return found;
 }
 static TSNode field(TSNode node, const char *name)
 {
@@ -292,7 +328,8 @@ static TSNode pointer_annotation(TSNode type)
 }
 static bool callable_declaration(TSNode node)
 {
-    return is(node, "function_declaration") || is(node, "macro_declaration");
+    return is(node, "function_declaration") || is(node, "lambda_expression") ||
+           is(node, "macro_declaration");
 }
 /* The declaration a plain call names: the nearest callable declared in a
  * block around the call, nested in its caller or beside it. */
@@ -459,7 +496,8 @@ static void parameters(headers *h, TSNode node, bool results)
         TSNode parameter = ts_node_named_child(node, i);
         if (ts_node_is_extra(parameter) ||
             (h->context.instantiating &&
-             !ts_node_is_null(field(parameter, "comptime")))) {
+             (!ts_node_is_null(field(parameter, "comptime")) ||
+              !ts_node_is_null(script_callable_type_node(field(parameter, "type")))))) {
             continue;
         }
         script_signature_reading read = annotation(h, field(parameter, "type"), true);
@@ -506,7 +544,7 @@ static bool returns_value(TSNode node)
     }
     for (uint32_t i = 0; i < named_count(node); i++) {
         TSNode child = ts_node_named_child(node, i);
-        if (!is(child, "function_declaration") &&
+        if (!is(child, "function_declaration") && !is(child, "lambda_expression") &&
             !is(child, "macro_declaration") && returns_value(child)) {
             return true;
         }
@@ -516,16 +554,41 @@ static bool returns_value(TSNode node)
 static void register_header(headers *h, TSNode node, int *symbol_out, int *function_out)
 {
     bool macro = is(node, "macro_declaration");
+    bool lambda = is(node, "lambda_expression");
     TSNode name = field(node, "name");
-    int symbol = declare_node(
-        h,
-        name,
-        macro ? SCRIPT_MACRO : SCRIPT_FUNCTION,
-        (script_type){ .storage = PIN_FLOW },
-        false
-    );
+    char internal[48];
+    snprintf(internal, sizeof internal, "lambda@%u", ts_node_start_byte(node));
+    int symbol = lambda ? declare(
+                              h,
+                              internal,
+                              node_range(node, h->context.document),
+                              SCRIPT_FUNCTION,
+                              (script_type){ .storage = PIN_FLOW },
+                              false
+                          )
+                        : declare_node(
+                              h,
+                              name,
+                              macro ? SCRIPT_MACRO : SCRIPT_FUNCTION,
+                              (script_type){ .storage = PIN_FLOW },
+                              false
+                          );
+    if (lambda) {
+        const char
+            *key = h->facts.named.document_count
+                     ? h->facts.named.lexical.documents[h->context.document].key
+                     : h->facts.named.lexical.identity;
+        int parent_symbol = h->context.function >= 0
+                              ? h->functions[h->context.function].symbol
+                              : -1;
+        uint64_t parent = parent_symbol >= 0 ? h->symbols[parent_symbol].id : 0;
+        size_t size = strlen(key) + 64;
+        char *identity = arena_alloc(h->storage, size);
+        snprintf(identity, size, "%s:%u:%" PRIu64, key, ts_node_start_byte(node), parent);
+        h->symbols[symbol].id = script_catalog_id("lambda", identity);
+    }
     *symbol_out = symbol;
-    script_range range = node_range(name, h->context.document);
+    script_range range = node_range(lambda ? node : name, h->context.document);
     if (h->facts.named.document_count &&
         (h->symbols[symbol].declaration.document != range.document ||
          h->symbols[symbol].declaration.start != range.start ||

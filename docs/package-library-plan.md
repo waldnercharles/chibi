@@ -5,7 +5,16 @@ implementation. The owner approved this program on 2026-10-20, chose fidelity
 separately for each package, and asked that useful language features be
 implemented before the ports that need them.
 
-## Current checkpoint
+## Portable byte libraries (2026-10-28)
+
+The approved portable work now has an independent candidate containing complete
+selected APIs for bytes, bits, FNV, Adler-32 and CRC-32. It uses existing integer,
+array and string contracts; character and recoverable-result work remains
+separate. The [package decision](package-byte-libraries.md) records exact APIs,
+the additive binary-text native boundary and current validation status. The
+remaining five packages keep their approved contracts and prerequisites.
+
+## Foundation checkpoint (2026-10-21)
 
 - Planning base: `4a751bd5fb2bb414ec867f089acae9b9736e1d9e` in `chibi`.
 - Branch: `codex/odin-package-foundations-20261020`.
@@ -58,8 +67,8 @@ approve a coherent subset and defer the rest.
 
 ## Decisions and ownership
 
-The [toolchain plan](../PLAN.md#language-and-package-ownership) owns the existing
-`core:`, `game:` and `vendor:` boundaries. ECS stays a language contract.
+`core:` owns portable packages, `game:` owns engine-facing packages, and
+`vendor:` owns third-party bindings. ECS stays a language contract.
 The foundations proposal considers how Odin's `base:` responsibilities fit
 those boundaries; creating a public `base:` is a separate decision.
 
@@ -88,8 +97,8 @@ features can wait for another package to demonstrate the need.
 | Length-carrying strings, embedded NUL handling and byte conversions | Strings, UTF-8, codecs and compiler text | String invariant approved; API signatures remain proposed in foundations | Before expanding text APIs |
 | Checked arithmetic with explicit wrapping | Hashes, checksums, sizes and random generators | Default behavior already approved; edge cases documented in numeric proposal | Before new overflow-dependent algorithms |
 | Record fields that compose value types | Builders and containers holding byte arrays or records | Needs a separate concrete design, including copies and prepared layouts | Before those stateful APIs |
-| Exported generic specialization | Slice algorithms and generic containers | Needs a separate design and visibility/identity rules | Before generic package APIs |
-| Non-capturing procedure values | Comparator/predicate APIs | Needs a separate lifetime and capability design | Before callback-based algorithms |
+| Exported generic specialization | Slice algorithms and generic containers | Approved 2026-10-27; local function implementation under validation, with definition-site visibility and canonical identities | First stage before generic package APIs |
+| Non-capturing procedure values | Comparator/predicate APIs | Approved 2026-10-27; local synchronous, non-escaping named/inline argument implementation under validation | Second stage after exported generic functions |
 | Host capabilities exposed as imported packages | Shared I/O and build-library consumers | Needs a host/package design | Before OS/process/stream APIs |
 | Foreign layout and lifetime contracts | Public vendor bindings | Per-library decision | Before a binding is assigned |
 

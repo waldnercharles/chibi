@@ -81,6 +81,22 @@ The package README maps every migrated row and documents retained native
 boundaries and independent oracles. Native byte ownership, copy/read counters,
 metadata and binary/hash witnesses stay in C.
 
+### Portable byte-library regressions
+
+`language-package-portable` embeds the actual sources and adjacent tests for
+bytes, bits, FNV, Adler-32 and CRC-32. Explicit core-collection discovery runs
+their 23 authored cases on bytecode and the compiled backend. Project-only
+discovery defaults stay unchanged. Native cases cover binary text conversion,
+boxed/packed/null arrays, ownership after source retirement, exact collection
+selection and the compiler/public text-profile boundary.
+
+`language-package-portable-compiler` checks the public consumer against the
+current authored compiler and runs the emitted closure on both backends. The
+Wasm route uses the embedded compiler fixture; the native route also checks
+validated bootstrap loading. The selectors are in the language and Wasm groups.
+They do not include the deferred UTF-8, endian, path or codec packages. See the
+[package decision and validation record](package-byte-libraries.md).
+
 ## CI profiles and release validation
 
 Ordinary pull requests and pushes to `main` use **Debug O1 without ASan/UBSan**
@@ -1639,6 +1655,14 @@ is compared after producer storage retires. This route uses no filesystem,
 process, service or GPU work. Build separately.
 It remains outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-source-parser-chibi` compares the
+authored parser (`docs/source-parser.md`) with Tree-sitter. It parses every
+`.chibi` file below `packages/`, `test/` and `tools/`, and the `*.chibi.txt`
+sources in `test/language/syntax_corpus`, once on each backend, and
+`test/language/SourceParserDiff.chibi` compares every row of the two trees:
+kind, range, links, field, named and extra flags. Text Tree-sitter rejects must
+be rejected as well.
+
 `python3 tools/test_policy.py tool language-source-tokenizer-chibi` compares
 the authored tokenizer (`docs/source-tokenizer.md`) with Tree-sitter. It reads
 every `.chibi` file below `packages/`, `test/` and `tools/` at run time, about
@@ -2138,8 +2162,7 @@ other failures. A nonzero command exit alone is not the intended red proof.
 
 The original baseline wired the extracted C oracle and authored draft into the
 language driver, retaining the zero-ID guard and recursive evaluator until both
-red witnesses executed. The merged repair and later full semantic regression pass
-are recorded in PLAN.md. The production analyzer remains unchanged.
+red witnesses executed. The production analyzer remains unchanged.
 Configuration/build timing is separate. All three routes stay standalone and
 outside the aggregate.
 Prior measurements and source review do not validate a new integrated binary or
@@ -2203,8 +2226,8 @@ artifact bound. The instruction budgets and child deadlines are unchanged.
 
 ## Game equivalence
 
-`python3 tools/test_policy.py tool game-equivalence` is the gate for PLAN.md
-M5 step 4. It rebuilds the stories in `test/stories` with a reference and a
+`python3 tools/test_policy.py tool game-equivalence` rebuilds the stories in
+`test/stories` with a reference and a
 candidate compiler, and compares what the two artifacts of each story declare
 and how they play. It is a standalone selector, not part of any group, and
 takes about 6 s.
@@ -2613,11 +2636,15 @@ average of 4.
 two-page site with the installed generator. It takes about three seconds and starts no
 player.
 
+`python3 tools/test_policy.py tool runtime-sdk` takes the private build host and selects the
+authored runtime SDK checks: canonical JSON against the Python manifest encoder, and on
+macOS the installer's verify, replace and rollback paths plus graph record, tool and
+configuration evidence over synthetic records. No engine library, SDK or package is built.
+
 `build-process`, `build-toolchain`, M0's `chibi-cli` and `chibi-cli-installed` remain focused routes. The complete
 `make test-tools` group builds a runtime-only tooling driver and does not build
 the private host or public launcher. Route registration does not add either
-fixture to that aggregate. Current platform results belong in `PLAN.md`;
-Windows does not build or select the private host.
+fixture to that aggregate. Windows does not build or select the private host.
 
 ## Batch validation (CUT62)
 
@@ -3267,8 +3294,7 @@ separate; failures were not suppressed. These are measured full commands, not
 sums of old timings. That documentation follow-up preserved tested product,
 test, policy and fixture bytes and performed no new runtime.
 `wasm-format` remains a pre-existing standalone gap; this does not claim every
-selector is covered. See the linked proof and
-[machine-readable historical evidence and current status](module-composition-validation.json).
+selector is covered.
 No full-L07, application-scale, benchmark, or scheduling claim follows;
 those checks were not run.
 The explicit platform merge hold remains; no GitHub approval or resolved-thread
@@ -3294,14 +3320,8 @@ invocations with the existing tiny instruction/context budgets and 512 KiB trial
 storage cap. Neither route adds frames, GPU/browser/network workers or
 environment-controlled repetitions.
 
-Before this correctness/benchmark split, the six cases passed with 69,013 native
-assertions and 69,000 Wasm assertions.
-The integrated complete language/Wasm groups, native-tools and installed
-compiler-free prepared consumer also passed. Exact source, build/SDK boundaries,
-raw timing samples, log hashes and limitations are in
-[the validation record](evidence/runtime-attribution/validation.md). Counters
-cover selected copy and backend operations; they are not a global allocation
-census or a whole-application performance/retention claim.
+Counters cover selected copy and backend operations; they are not a global
+allocation census or a whole-application performance/retention claim.
 
 ### Private owner retention
 

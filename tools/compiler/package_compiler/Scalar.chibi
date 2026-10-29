@@ -630,7 +630,20 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
     // it, and a record argument is the record its parameter takes. Calling
     // ScalarOperand here for a call, not ScalarConvert or ScalarRecordValue,
     // keeps one frame per nested call.
-    for (argument in Members(forest, Field(forest, node, "arguments"))) {
+    for (supplied in Members(forest, Field(forest, node, "arguments"))) {
+        if (GenericOmitted(names, supplied)) {
+            continue;
+        }
+        argument := supplied;
+        if (Is(forest, supplied, "named_argument")) {
+            signature := GenericCallbackSignature(forest, text, names, node);
+            if ((signature < 0 && !GenericResolvedCall(names, node)) ||
+                GenericCallParameter(forest, text, callables, params, names, callee, node, supplied, count) != count) {
+                return ScalarOperands.Failed(Diagnose(forest, supplied, 0,
+                                                      "scalar proof passes callable arguments in order"));
+            }
+            argument = Field(forest, supplied, "value");
+        }
         param := params[target.first + count];
         expected := param.storage;
         operand := ScalarOperands.Built(output);
@@ -1381,7 +1394,7 @@ ScalarAsserted :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
 // names end with it.
 ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], callables: Callable[],
                    params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], function: int, ops: Ops,
-                   target: Target) -> ScalarOperands {
+                   target: Target, aliases: Name[]) -> ScalarOperands {
     callable := callables[function];
     result := ScalarValueType(types, callable.result, callable.result_container, callable.result_record);
     rows: facts.Row[] = [ScalarAt(forest, callable.node, facts.FunctionRow, result, 0, callable.count, callable.name)];
@@ -1402,7 +1415,6 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
             rows.append(ScalarLiteral(forest, named.node, type, 0));
         }
     }
-    aliases: Name[] = [];
     empty_names: string[] = [];
     names: Name[] = [];
     switch Prologue(forest, text, params, callable, aliases, key, solid, 0, empty_names, empty_names, empty_names, ops, target, false) {
@@ -1844,11 +1856,10 @@ ScalarHosts :: (hosts: Host[], roots: Root[]) -> bool {
 ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[], params: Param[],
                 types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], solid: int[], function: int,
                 ops: Ops, target: Target, natives: ResolvedNative[], ports: ResolvedPort[],
-                identities: u64[]) -> syntax.Diagnostic {
+                identities: u64[], aliases: Name[]) -> syntax.Diagnostic {
     operators: NumericOperator[] = [];
     makes: NativeMake[] = [];
     indices: int[] = [];
-    aliases: Name[] = [];
     empty_names: string[] = [];
     // No native writes: the text natives are pure.
     writes := resize([int(0)], length(natives));
@@ -1858,6 +1869,8 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
                     empty_names, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):
             return diagnostic;
+        case .Specialize(template, call, arguments, caller_names):
+            return Diagnose(forest, call, callables[function].document, "scalar proof requires a specialized callable");
         case .Inferred(value):
             return Diagnose(forest, Field(forest, callables[function].node, "body"), 0,
                             "scalar proof requires a callable body");
@@ -1875,7 +1888,7 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
 ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[],
                  params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], ops: Ops,
                  target: Target, natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[],
-                 is_library: bool) -> ScalarOperands {
+                 is_library: bool, generic_bindings: GenericBinding[], documents: snapshot.Document[]) -> ScalarOperands {
     // The view the facts take; EmitBody takes the ordinary compiler's own.
     seen: Callable[] = [];
     records: TypeDecl[] = [];
@@ -1891,6 +1904,9 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         if (rejected >= 0) {
             return ScalarOperands.Failed(Diagnose(forest, rejected, 0, "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result"));
         }
+    }
+    if (length(seen) == 0) {
+        return ScalarOperands.Failed(ScalarStart("scalar proof requires a concrete function"));
     }
     // A library has no entry.
     first := seen[0];
@@ -1911,13 +1927,19 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
             rows = record_rows;
     }
     for (function in 0..<length(callables)) {
-        emitted := ScalarEmits(forest, text, key, callables, params, types, members, constants, solid, function,
-                               ops, target, natives, ports, identities);
+        empty_aliases: Name[] = [];
+        aliases := GenericAliases(empty_aliases, generic_bindings, function);
+        used := constants;
+        if (length(generic_bindings) > 0) {
+            used = GenericConstants(forest, constants, generic_bindings, function, callables[function], documents);
+        }
+        emitted := ScalarEmits(forest, text, key, callables, params, types, members, used, solid, function,
+                               ops, target, natives, ports, identities, aliases);
         if (emitted.message != "") {
             return ScalarOperands.Failed(emitted);
         }
-        switch ScalarFunction(forest, text, key, solid, seen, params, records, fields, constants,
-                              function, ops, target) {
+        switch ScalarFunction(forest, text, key, solid, seen, params, records, fields, used,
+                              function, ops, target, aliases) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);
             case .Built(function_rows):
@@ -1958,7 +1980,7 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number and bool results where a function has several"));
             }
-            if (type == 0 || type == facts.StringType) {
+            if (type == 0 || type == facts.StringType || field.container != 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number and bool record fields"));
             }
@@ -2111,7 +2133,7 @@ ScalarLibrary :: (path: string, text: string, ops: Ops, target: Target, natives:
     members: TypeMember[] = [];
     constants: ConstDecl[] = [];
     switch ScalarModule(forest, text, path, callables, params, empty_types, members, constants, ops, target, natives,
-                        ports, identities, true) {
+                        ports, identities, true, [], []) {
         case .Failed(diagnostic):
             return ScalarFailure(path, text, diagnostic);
         case .Built(rows):
@@ -2185,17 +2207,30 @@ pub CollectScalar :: (project: string, path: string, text: string, target: Targe
                         case .Failed(diagnostic):
                             return ScalarFailure(path, text, diagnostic);
                         case .Collected(callables, params, types, members, constants):
-                            switch ScalarModule(nodes, text, document.key, callables, params, types, members,
-                                                constants, ops, target, text_natives, text_ports, text_identities, false) {
+                            // Use the ordinary compiler's concrete functions and bindings. The
+                            // scalar pass then checks its existing pure numeric domain.
+                            table := types;
+                            effects := resize([int(0)], length(text_natives));
+                            switch SpecializePackages(nodes, documents, order, links, [document.identity],
+                                                      WaitingCallables(nodes, callables), params, &table, members,
+                                                      constants, text_natives, text_ports, text_identities,
+                                                      BodyContext.Known(effects), ops, target) {
                                 case .Failed(diagnostic):
                                     return ScalarFailure(path, text, diagnostic);
-                                case .Built(rows):
-                                    head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
-                                                       literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0,
-                                                       column: 0};
-                                    module: facts.Row[] = [ScalarSource(path, text), head];
-                                    module.extend(rows);
-                                    return module;
+                                case .Ready(concrete, concrete_params, bindings):
+                                    switch ScalarModule(nodes, text, document.key, concrete, concrete_params, table, members,
+                                                        constants, ops, target, text_natives, text_ports, text_identities, false,
+                                                        bindings, documents) {
+                                        case .Failed(diagnostic):
+                                            return ScalarFailure(path, text, diagnostic);
+                                        case .Built(rows):
+                                            head: facts.Row = {kind: facts.DocumentRow, type: 0, value: 0, count: 0,
+                                                               literal: 0, name: document.key, text: "", start: 0, end: 0, line: 0,
+                                                               column: 0};
+                                            module: facts.Row[] = [ScalarSource(path, text), head];
+                                            module.extend(rows);
+                                            return module;
+                                    }
                             }
                     }
             }

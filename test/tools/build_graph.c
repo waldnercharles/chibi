@@ -2380,10 +2380,6 @@ TEST_CASE(asset_generator_source_lists_bounded_ordered_phases)
     char *source = tool_read(filename);
     REQUIRE(source);
     const char *phases[] = { "asset compiler: entered generator",
-                             "asset compiler: serialize bootstrap request",
-                             "asset compiler: bootstrap request ready",
-                             "asset compiler: bootstrap reuse status {}",
-                             "asset compiler: invoke bootstrap fallback",
                              "asset compiler: serialize facade request",
                              "asset compiler: invoke facade compiler",
                              "asset compiler: facade ready",

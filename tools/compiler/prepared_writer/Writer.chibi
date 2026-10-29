@@ -17,7 +17,7 @@ import strings "core:strings"
 // far more than a field.
 
 Magic: u64 : 0x4348494249505245;
-Version: int : 26;
+Version: int : 27;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),
@@ -50,6 +50,8 @@ pub Field :: struct {
     has_type_name: bool;
     unit: string;
     has_unit: bool;
+    container: int;
+    record: int;
 }
 // An event the module handles; its payload fields are
 // event_fields[first, first + count).
@@ -789,7 +791,8 @@ WriteTables :: (module: Module, items: string[], used: bool[]) -> u8[] {
                         bytes.extend(Ints([field.kind]));
                         bytes.extend(Text(field.type_name, field.has_type_name, items, slots));
                         bytes.extend(Text(field.unit, field.has_unit, items, slots));
-                        bytes.extend(Words([Flag(field.kind == TextTag)]));
+                        bytes.extend(Words([Flag(field.kind == TextTag && field.container == 0)]));
+                        bytes.extend(Ints([field.container, field.record]));
                         index += 1;
                     }
                 }

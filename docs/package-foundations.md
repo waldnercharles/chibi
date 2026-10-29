@@ -1,5 +1,9 @@
 # Package foundations decision record
 
+This is the historical foundation proposal. The later approved
+[portable byte-library decision](package-byte-libraries.md) owns the implemented
+bytes, bits and checksum subset. Other proposals below retain their stated status.
+
 Status: string invariant approved on 2026-10-21; detailed APIs remain proposed. The owner selected
 immutable, length-carrying, byte-preserving strings with explicit UTF-8 operations and embedded NUL.
 The merged string design specifies one public `string` type and a descriptor behind the existing
@@ -36,8 +40,8 @@ stored lengths. Slice still copies its selected bytes; shared backing remains a 
 | --- | --- |
 | Value layout, string length/storage/lifetime, checked scalar conversion, allocation failure and intrinsics | Language/runtime, with private implementation modules |
 | Binary operations, codecs, builders and portable text algorithms | `core:bytes`, `core:utf8`, `core:strings` |
-| ECS declarations, entity identity and queries | Existing language contracts; explicit world inspection may use future `core:ecs` as recorded in PLAN.md |
-| Rendering, input, audio, physics, assets and UI | Existing `game:*` collection direction in PLAN.md; each public package still needs its contract |
+| ECS declarations, entity identity and queries | Existing language contracts; explicit world inspection may use future `core:ecs` |
+| Rendering, input, audio, physics, assets and UI | `game:*`; each public package still needs its contract |
 | Third-party declarations, target linkage, ABI adapters | `vendor:*`, introduced for concrete consumers |
 
 Recommend no public `base:*` in the first wave. Document builtins in the language reference and keep runtime

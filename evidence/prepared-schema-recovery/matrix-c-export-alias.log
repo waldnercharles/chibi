@@ -1,4 +1,0 @@
-Running: generated_c_preserves_aliased_operands_and_debug_continuations (OK) (0.017164 secs)
-===============================================================
-Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 997
-Test command wall time: 0.585s; includes in-test fixture setup; external configuration/build excluded.

@@ -271,6 +271,20 @@ TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors)
         }
     }
     REQUIRE(nested);
+    cleanup();
+    REQUIRE(analyze(
+        "Forward :: library { Box :: struct($T:Type) { item:T } "
+        "Outer :: struct { box:Box(Inner) } "
+        "Inner :: struct { values:int[] } "
+        "Make :: ()->Outer { return {box:{item:{values:[7,9]}}} } }"
+    ));
+    REQUIRE(!syntax->diagnostic_count);
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count) {
+            REQUIRE(type->size && type->layout);
+        }
+    }
     return true;
 }
 TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_is_a_pointer)
@@ -578,15 +592,33 @@ TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings)
     REQUIRE(fraction && whole && difference && text && local && assigned && deep);
     cleanup(); /* Arena-backed compile values must not be individually freed. */
     REQUIRE(
-        !analyze("Bad :: library { Box :: struct($T:Type) { items:T[] } Make :: ()->Box(int) { return {items:[]} } }")
+        analyze("Arrays :: library { Box :: struct($T:Type) { items:T[] } Make :: ()->Box(int) { return {items:[]} } }")
     );
     REQUIRE(!syntax->diagnostic_count);
-    bool layout = false;
-    for (int i = 0; i < analysis->diagnostic_count; i++) {
-        layout |= strstr(analysis->diagnostics[i].message, "collections and references are not supported") !=
-                  NULL;
+    bool array = false;
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count == 1) {
+            array |= type->fields[0].type.storage == PIN_I32 &&
+                     type->fields[0].type.container == PIN_CONTAINER_ARRAY;
+        }
     }
-    REQUIRE(layout);
+    REQUIRE(array);
+    cleanup();
+    REQUIRE(analyze(
+        "Nested :: library { Box :: struct($T:Type) { item:T } "
+        "Inner :: struct { values:int[] } "
+        "Make :: ()->Box(Inner) { return {item:{values:[7,9]}} } }"
+    ));
+    REQUIRE(!syntax->diagnostic_count);
+    bool nested = false;
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count == 1 && type->size) {
+            nested |= type->fields[0].type.storage == PIN_STRUCT;
+        }
+    }
+    REQUIRE(nested);
     return true;
 }
 static const pin_record *generic_wire_record(execution_wire *, void *user, const pin_value *, bool authored)
@@ -801,8 +833,210 @@ TEST_CASE(compile_time_string_alias_survives_analysis_destruction)
     }
     return true;
 }
+TEST_CASE(generic_callable_arguments_specialize_and_execute)
+{
+    const char *source = "Callbacks :: behavior { result: retain int = 0; "
+                         "Double :: (x: int) -> int { return x * 2; } "
+                         "Apply :: (x: int, transform: fn(value: int) -> int) "
+                         "-> int { return transform(value: x); } "
+                         "Forward :: (x: int, transform: fn(value: int) -> "
+                         "int) -> int { return Apply(x, transform); } "
+                         "on Run :: () { result = Apply(3, Double) + "
+                         "Forward(4, (x: int) => x + 1); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = invoke();
+        REQUIRE(instance);
+        const pin_value *value = execution_instance_state(instance, state_id("result"));
+        REQUIRE(value && value->i == 11);
+        for (int f = 0; f < analysis->function_count; f++) {
+            const script_function *function = &analysis->functions[f];
+            for (int p = 0; p < function->parameter_count; p++) {
+                REQUIRE(!analysis->symbols[function->parameters[p]].callable_binding);
+            }
+        }
+    }
+    return true;
+}
+TEST_CASE(generic_callable_arguments_reject_captures_and_escape)
+{
+    REQUIRE(!analyze(
+        "Callbacks :: behavior { "
+        "Apply :: (x: int, transform: fn(value: int) -> int) -> int { return "
+        "transform(x); } "
+        "on Run :: () { offset := 3; result := Apply(4, (x: int) => x + "
+        "offset); } }"
+    ));
+    REQUIRE(reported("Nested functions require enclosing locals to be passed as parameters"));
+    REQUIRE(!analyze(
+        "Callbacks :: library { "
+        "Bad :: (transform: fn(value: int) -> int) -> int { saved := "
+        "transform; return 1; } "
+        "Double :: (x: int) -> int { return x * 2; } "
+        "Main :: () -> int { return Bad(Double); } }"
+    ));
+    REQUIRE(reported("Callable arguments can only be called or passed to another callable parameter"));
+    REQUIRE(!analyze(
+        "Callbacks :: library { "
+        "Apply :: (x: int, transform: fn(value: int) -> int) -> int { return "
+        "transform(x); } "
+        "Wrong :: (x: int) -> bool { return x > 0; } "
+        "Main :: () -> int { return Apply(4, Wrong); } }"
+    ));
+    REQUIRE(reported("Callable result 1 has a different type from its parameter signature"));
+    return true;
+}
+TEST_CASE(generic_callable_arguments_require_one_binding_and_synchronous_calls)
+{
+    const char *invalid[] = {
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (x: int, f: fn(x: int) -> int) -> int { return f(x); } "
+        "Main :: () -> int { return Apply(3); } }",
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (x: int, f: fn(x: int) -> int) -> int { return f(x); } "
+        "Main :: () -> int { return Apply(3, f: Id, f: Id); } }",
+        "C :: library { Wait :: (x: int) -> int { yield; return x; } "
+        "Apply :: (x: int, f: fn(x: int) -> int) -> int { return f(x); } "
+        "Main :: () -> int { return Apply(3, Wait); } }",
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (x: int, f: fn(x: int) -> int) -> int { yield; return f(x); "
+        "} "
+        "Main :: () -> int { return Apply(3, Id); } }",
+    };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(!analyze(invalid[i]));
+        REQUIRE(!syntax->diagnostic_count);
+        REQUIRE(
+            reported(
+                i < 2 ? "Pass callable argument 'f' exactly once" : "Functions with callable parameters must finish synchronously"
+            ) ||
+            reported("Callable arguments must finish synchronously")
+        );
+    }
+    return true;
+}
+TEST_CASE(generic_inline_functions_preserve_inferred_return_results_while_tables_grow)
+{
+    char source[8192];
+    int length = snprintf(
+        source,
+        sizeof source,
+        "Callbacks :: behavior { result: retain int = 0; "
+        "Apply :: (x: int, transform: fn(value: int) -> int) -> int { return "
+        "transform(value: x); } "
+        "Pick :: () { return "
+    );
+    for (int i = 0; i < 32; i++) {
+        length += snprintf(
+            source + length,
+            sizeof source - (size_t)length,
+            "%sApply(%d, (value: int) => value + 1)",
+            i ? " + " : "",
+            i
+        );
+    }
+    snprintf(source + length, sizeof source - (size_t)length, "; } on Run :: () { result = Pick(); } }");
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = invoke();
+        REQUIRE(instance);
+        const pin_value *value = execution_instance_state(instance, state_id("result"));
+        REQUIRE(value && value->i == 528);
+    }
+    return true;
+}
+TEST_CASE(generic_callable_signatures_reject_stored_forms_and_hidden_defaults)
+{
+    REQUIRE(analyze(
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (f: (fn(value: int) -> int)) -> int { return f(value: 3); } "
+        "Main :: () -> int { return Apply(Id); } }"
+    ));
+    const char *invalid[] = {
+        "C :: library { Apply :: (f: (fn(x: int) -> int)[]) {} }",
+        "C :: library { Apply :: (f: (fn(x: int) -> int)?) {} }",
+        "C :: library { Apply :: (f: ^(fn(x: int) -> int)) {} }",
+        "C :: library { Apply :: (f: fn() -> (left: int, right: int)) {} }",
+        "C :: library { Apply :: (f: fn(x: int = 1) -> int) {} }",
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (f: fn(x: int) -> int = Id) {} }",
+        "C :: library { Pair :: (a: int = 1, b: int = 2) -> int { return a + "
+        "b; } "
+        "Apply :: (f: fn(a: int, b: int) -> int) -> int { return f(b: 5); } "
+        "Main :: () -> int { return Apply(Pair); } }",
+        "C :: library { macro Value(x: int) -> int { return x; } "
+        "Apply :: (f: fn(x: int) -> int) -> int { return f(1); } "
+        "Main :: () -> int { return Apply(Value); } }",
+    };
+    for (int i = 0; i < 8; i++) {
+        REQUIRE(!analyze(invalid[i]));
+        REQUIRE(!syntax->diagnostic_count);
+    }
+    return true;
+}
+TEST_CASE(generic_inline_functions_keep_caller_guards_and_own_loop_context)
+{
+    const char *invalid[] = {
+        "C :: library { Apply :: (f: fn() -> int) -> int { return f(); } Main "
+        ":: () -> int { while (true) { return Apply(() -> int { break; return "
+        "1; }); } return 0; } }",
+        "C :: library { Apply :: (f: fn() -> int) -> int { return f(); } Main "
+        ":: () -> int { while (true) { return Apply(() -> int { continue; "
+        "return 1; }); } return 0; } }",
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(!analyze(invalid[i]));
+        REQUIRE(!syntax->diagnostic_count);
+        REQUIRE(reported("Loop control requires a containing loop"));
+    }
+    const char
+        *source = "Callbacks :: behavior { result: retain int = 0; "
+                  "Use :: (transform: fn(value: int) -> int, value: int) -> "
+                  "int { return transform(value); } "
+                  "Apply :: (f: fn() -> int) -> int { return f(); } "
+                  "Pair :: (left: int, right: int) -> int { return left + "
+                  "right; } "
+                  "Read :: (p: ^int?) -> int { if (p != nil) { return "
+                  "Pair(Use((x: "
+                  "int) => x + 1, 1), p^); } return 0; } "
+                  "on Run :: () { x: int = 4; result = Read(&x) + Read(nil); "
+                  "while (true) { result += Apply(() -> int { while (true) { "
+                  "break; } return 3; }); break; } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = invoke();
+        REQUIRE(instance);
+        const pin_value *value = execution_instance_state(instance, state_id("result"));
+        REQUIRE(value && value->i == 9);
+    }
+    return true;
+}
+TEST_CASE(generic_callable_arguments_cannot_be_queued_in_nested_tasks)
+{
+    const char *source = "C :: library { Id :: (x: int) -> int { return x; } "
+                         "Run :: (f: fn(x: int) -> int) { Later :: () { yield; "
+                         "value := f(1); } t := Later(); } "
+                         "Main :: () { Run(Id); } }";
+    REQUIRE(!analyze(source));
+    REQUIRE(!syntax->diagnostic_count);
+    REQUIRE(
+        reported("Functions with callable parameters must finish synchronously") ||
+        reported("Callable arguments must finish synchronously")
+    );
+    return true;
+}
 TEST_SUITE(language_generic_suite)
 {
+    RUN_TEST_CASE(generic_inline_functions_preserve_inferred_return_results_while_tables_grow);
+    RUN_TEST_CASE(generic_inline_functions_keep_caller_guards_and_own_loop_context);
+    RUN_TEST_CASE(generic_callable_arguments_cannot_be_queued_in_nested_tasks);
+    RUN_TEST_CASE(generic_callable_signatures_reject_stored_forms_and_hidden_defaults);
+    RUN_TEST_CASE(generic_callable_arguments_require_one_binding_and_synchronous_calls);
+    RUN_TEST_CASE(generic_callable_arguments_specialize_and_execute);
+    RUN_TEST_CASE(generic_callable_arguments_reject_captures_and_escape);
     RUN_TEST_CASE(generic_argument_types_specialize_once_and_execute);
     RUN_TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls);
     RUN_TEST_CASE(compile_time_calls_follow_runtime_semantics);

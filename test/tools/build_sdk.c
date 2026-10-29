@@ -262,6 +262,8 @@ static int install_from(const char *source_root, const char *build, const char *
         CHIBI_SOURCE_ROOT "/tools/toolchain/SDK.chibi",
         "--core",
         CHIBI_SOURCE_ROOT "/packages/core",
+        "--collection",
+        "graph=" CHIBI_SOURCE_ROOT "/tools/graph",
         "--entry",
         "CompilerTools",
         "--timeout-ms",

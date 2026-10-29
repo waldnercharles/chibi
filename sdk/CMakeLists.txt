@@ -31,6 +31,7 @@ option(CHIBI_SDK_BUILD_COMPILER "Build language, compiler and source authoring p
 option(CHIBI_SDK_BUILD_NATIVE "Build built-in component and entity packages" OFF)
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop platform, rendering and UI packages" OFF)
 option(CHIBI_SDK_COMPILER_HOST_ONLY "Build only the prepared compiler's native runtime" OFF)
+option(CHIBI_SDK_BUILD_ASSET_COMPILER_HOST "Build the source-generated authored asset compiler component" ON)
 option(CHIBI_WEB_THREADS "Build the web SDK with pthread workers" OFF)
 option(CHIBI_WEB_PLAYER "Build the browser player that chibi export --web ships" OFF)
 # The compiler's recovery runtime builds pinned portable sources. Normal SDK
@@ -307,8 +308,8 @@ set_target_properties(chibi_text_capabilities PROPERTIES EXPORT_NAME text_capabi
 chibi_sdk_headers(chibi_text_capabilities PUBLIC runtime/text_format.h runtime/text_definition.h)
 target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
 # Authored core collection sources are explicit snapshot inputs for SDK users.
-install(FILES "${CHIBI_SDK_ROOT}/packages/core/strings/Strings.chibi"
-    DESTINATION share/chibi/core/strings)
+install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
+    FILES_MATCHING PATTERN "*.chibi")
 # chibi doc's site generator is authored package source the SDK compiles.
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/markdown/Markdown.chibi" DESTINATION share/chibi/docs/markdown)
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/site/Site.chibi" DESTINATION share/chibi/docs/site)
@@ -329,6 +330,14 @@ add_library(Chibi::host_native_catalog ALIAS chibi_host_native_catalog)
 set_target_properties(chibi_host_native_catalog PROPERTIES EXPORT_NAME host_native_catalog)
 chibi_sdk_headers(chibi_host_native_catalog PUBLIC host/native_catalog.h)
 target_link_libraries(chibi_host_native_catalog PUBLIC chibi_native_capabilities PRIVATE chibi_events)
+
+# Explicit host clock registration, independent of game/world services.
+add_library(chibi_host_clock STATIC "${CHIBI_SDK_ROOT}/src/host/clock.c"
+    "${CHIBI_SDK_ROOT}/src/host/clock_package.c")
+add_library(Chibi::host_clock ALIAS chibi_host_clock)
+set_target_properties(chibi_host_clock PROPERTIES EXPORT_NAME host_clock)
+chibi_sdk_headers(chibi_host_clock PUBLIC host/clock.h host/clock_package.h)
+target_link_libraries(chibi_host_clock PUBLIC chibi_native_capabilities)
 add_library(chibi_behavior_runtime STATIC
     "${CHIBI_SDK_ROOT}/src/runtime/event_catalog.c"
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/source.c"
@@ -376,7 +385,7 @@ chibi_sdk_headers(chibi_field_catalog PUBLIC runtime/material_field.h runtime/ma
 target_link_libraries(chibi_field_catalog PUBLIC chibi_fields)
 set(CHIBI_SDK_TARGETS chibi_support chibi_types chibi_execution_contract chibi_ecs
     chibi_execution chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities chibi_state_capabilities chibi_selection_capabilities chibi_behavior_runtime chibi_events chibi_asset_values chibi_value_document chibi_capabilities chibi_native_capabilities chibi_scene_runtime chibi_scheduling chibi_fields chibi_field_catalog chibi_tasks chibi_input_action)
-list(APPEND CHIBI_SDK_TARGETS chibi_set_capabilities chibi_host_native_catalog chibi_native_prepared
+list(APPEND CHIBI_SDK_TARGETS chibi_set_capabilities chibi_host_native_catalog chibi_host_clock chibi_native_prepared
     chibi_comparison_capabilities chibi_conversion_capabilities chibi_text_capabilities chibi_fmt)
 add_library(chibi_ui_documents STATIC "${CHIBI_SDK_ROOT}/src/runtime/ui/documents.c"
     "${CHIBI_SDK_ROOT}/src/runtime/ui/font.c")
@@ -633,8 +642,6 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY AND
     install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/native_aot/" DESTINATION share/chibi/tools/native_aot
         FILES_MATCHING PATTERN "*.chibi")
     install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/compiler/" DESTINATION share/chibi/compiler)
-    install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
-        FILES_MATCHING PATTERN "*.chibi")
     install(FILES "${CHIBI_SDK_ROOT}/tools/toolchain/Build.chibi"
         DESTINATION share/chibi/tools/toolchain)
     install(FILES "${CHIBI_SDK_ROOT}/tools/configure_inputs.py" DESTINATION share/chibi/tools)
@@ -687,7 +694,11 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
     install(TARGETS chibi-compiler-host RUNTIME DESTINATION libexec/chibi)
 endif()
 set(CHIBI_SDK_HAS_ASSET_COMPILER_HOST OFF CACHE INTERNAL "Native authored asset compiler component" FORCE)
-if(TARGET chibi-build-host AND TARGET Chibi::compiler_host AND
+# A prepared-format change first needs a source-compiler driver to generate its
+# matching bootstrap. That driver can omit the asset service until the new
+# artifact exists; ordinary SDK builds still generate the checked real resource.
+if(CHIBI_SDK_BUILD_ASSET_COMPILER_HOST AND
+   TARGET chibi-build-host AND TARGET Chibi::compiler_host AND
    CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT CMAKE_CROSSCOMPILING)
     include(asset_compiler_host.cmake)
     set(CHIBI_SDK_HAS_ASSET_COMPILER_HOST ON CACHE INTERNAL "Native authored asset compiler component" FORCE)

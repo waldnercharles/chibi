@@ -1743,6 +1743,50 @@ TEST_CASE(program_cancellation_stops_busy_main_and_tests)
     return true;
 }
 
+#ifdef __linux__
+/* An orphaned process that was killed stays a zombie until its new parent
+ * reaps it, which a CI runner's subreaper may never do. A zombie is not running. */
+static bool process_state(int pid, char *state, int *group)
+{
+    char name[64], text[512];
+    snprintf(name, sizeof name, "/proc/%d/stat", pid);
+    FILE *file = fopen(name, "r");
+    if (!file) {
+        return false;
+    }
+    size_t size = fread(text, 1, sizeof text - 1, file);
+    fclose(file);
+    text[size] = 0;
+    const char *end = strrchr(text, ')');
+    int parent;
+    return end && sscanf(end + 1, " %c %d %d", state, &parent, group) == 3;
+}
+
+static bool pid_gone(int pid)
+{
+    assert(pid > 0);
+    char state;
+    int group;
+    return !process_state(pid, &state, &group) || state == 'Z' || state == 'X';
+}
+
+static bool group_gone(int pid)
+{
+    assert(pid > 0);
+    DIR *directory = opendir("/proc");
+    assert(directory);
+    bool gone = true;
+    for (struct dirent *entry; gone && (entry = readdir(directory));) {
+        int member = atoi(entry->d_name);
+        char state;
+        int group;
+        gone = member <= 0 || !process_state(member, &state, &group) ||
+               group != pid || state == 'Z' || state == 'X';
+    }
+    closedir(directory);
+    return gone;
+}
+#else
 static bool pid_gone(int pid)
 {
     assert(pid > 0);
@@ -1754,6 +1798,7 @@ static bool group_gone(int pid)
     assert(pid > 0);
     return kill(-pid, 0) < 0 && errno == ESRCH;
 }
+#endif
 
 /* Signal only the public CLI PID. Its owned process.run child may ignore
  * signals or retain inherited streams through a descendant. */

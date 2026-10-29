@@ -130,8 +130,8 @@ def collect(root, build, output, expected_revision):
             captured = copy_file(parent, relative, output / key, min(FILE_BYTES, remaining))
             receipt['files'][key] = captured
             remaining -= captured.get('bytes', 0)
-    # Success leaves the later packaging request in input.json. Never describe
-    # that file as the earlier facade request or reconstruct one from sources.
+    # Success removes transient inputs. A failed later stage may retain
+    # packaging input; distinguish its role and preserve all bytes unchanged.
     receipt['input_role'] = 'unavailable'
     if receipt['files'][f'build/{PAYLOADS[0]}']['status'] == 'captured':
         try:

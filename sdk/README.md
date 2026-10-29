@@ -22,9 +22,12 @@ includes `chibi-compile`, `chibi-player`, and the authoring interfaces Studio ne
 `package-runtime-sdk` enables native/desktop runtime with compiler disabled; its
 only product executable is `chibi-player`. `package-player` derives a deployment
 containing that executable, resources, licenses and exact SDK pin. It carries no
-SDK headers/libraries or authoring tools. Native profiles build a standalone
-reflection generator from `tools/reflect`; matching libclang headers belong to
-that host tool. `SDK_CMAKE_FLAGS` selects Debug by default or an explicit Release
+SDK headers/libraries or authoring tools. Native profiles construct the
+`tools/reflect` generator with the Chibi graph on Linux/macOS; matching libclang
+headers belong to that host tool. Private host recovery stays inside
+`SDK_REFLECT_BUILD_DIR`, alongside its `reflect` executable. Windows retains the
+restricted standalone CMake construction until its authored replacement passes.
+`SDK_CMAKE_FLAGS` selects Debug by default or an explicit Release
 profile. `package-player` requests Release.
 
 For a library-only compiler or headless runtime, configure explicitly:

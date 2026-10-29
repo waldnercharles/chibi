@@ -561,6 +561,10 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         !script_analyzer_present(a, receiver.symbol)) {
         script_analyzer_diagnostic(a, member, "Optional component requires a presence guard before member access");
     }
+    if (script_analyzer_math_swizzle(a, member, left, name, &result)) {
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
     const script_catalog_type
         *type = script_catalog_type_by_id(a->catalog, receiver.type.nominal);
     int index = type ? script_catalog_find_field(type, name) : -1;
@@ -912,9 +916,11 @@ static bool field_argument(
 static int overloaded_capability(analyzer *a, const char *name, TSNode arguments, int **values)
 {
     int count = (int)script_analyzer_named_count(arguments);
-    *values = xmalloc((size_t)(count ? count : 1) * sizeof **values);
-    for (int i = 0; i < count; i++) {
-        (*values)[i] = -1;
+    if (!*values) {
+        *values = xmalloc((size_t)(count ? count : 1) * sizeof **values);
+        for (int i = 0; i < count; i++) {
+            (*values)[i] = -1;
+        }
     }
     int found = -1, best_cost = INT_MAX, best_literal_cost = INT_MAX;
     for (int c = 0; c < a->catalog->capability_count; c++) {
@@ -1619,6 +1625,15 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             free(name);
             free(resolved_arguments);
             return imported;
+        }
+    }
+    if (symbol < 0 && !capability && !emitting && !imported &&
+        script_analyzer_is(target, "identifier")) {
+        int math = script_analyzer_math_call(a, node, name, &resolved_arguments);
+        if (math >= 0) {
+            free(name);
+            free(resolved_arguments);
+            return math;
         }
     }
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION) {

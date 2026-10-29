@@ -490,7 +490,8 @@ Files :: (target: string) -> string[] {
             "src/language/signature_reader.c", "src/language/callable_headers.c",
             "src/language/unit_analysis.c", "src/language/union_members.c", "src/language/effect_analysis.c",
             "src/language/record_members.c", "src/language/semantic_package.c",
-            "src/language/semantic_generic.c", "src/language/semantic_comptime.c"
+            "src/language/semantic_generic.c", "src/language/semantic_comptime.c",
+            "src/language/semantic_math.c", "src/language/math_types.c"
         ];
     }
     if (target == "chibi_compiler") {
@@ -1265,7 +1266,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["authoring/image_prepare.h"];
     }
     if (target == "chibi_language") {
-        return ["language/component.h", "language/identity.h", "language/semantic.h"];
+        return ["language/component.h", "language/identity.h", "language/semantic.h", "language/math_types.h"];
     }
     if (target == "chibi_compiler") {
         return ["language/lower.h"];
@@ -3470,7 +3471,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
     if (target == "test_language" &&
         (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/source_parser_chibi.c" ||
          file == "test/language/asset_packaging_chibi.c" || file == "test/language/integer_semantics.c" ||
-         file == "test/language/package_portable_compiler.c" ||
+         file == "test/language/package_tests.c" || file == "test/language/package_portable_compiler.c" ||
          file == "test/language/host_packages_compiler.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
@@ -3655,6 +3656,9 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_GENERICS_BYTES=bytes:tools/compiler/package_compiler/Generics.chibi",
             "CHIBI_PACKAGE_COMPILER_COMPILE_BYTES=bytes:tools/compiler/package_compiler/Compile.chibi",
             "CHIBI_PACKAGE_COMPILER_MAPS_BYTES=bytes:tools/compiler/package_compiler/Maps.chibi",
+            "CHIBI_PACKAGE_COMPILER_MATH_BYTES=bytes:tools/compiler/package_compiler/Math.chibi",
+            "CHIBI_MATH_TYPES_BYTES=bytes:tools/compiler/math_types/Types.chibi",
+            "CHIBI_MATH_FUNCTIONS_BYTES=bytes:tools/compiler/math_types/Functions.chibi",
             "CHIBI_PACKAGE_COMPILER_NUMBER_BYTES=bytes:tools/compiler/package_compiler/Number.chibi",
             "CHIBI_PACKAGE_COMPILER_OPTIONAL_BYTES=bytes:tools/compiler/package_compiler/Optional.chibi",
             "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",

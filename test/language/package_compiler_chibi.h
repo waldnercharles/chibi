@@ -20,9 +20,12 @@ bool package_compiler_closure(
     unsigned char **bytes,
     size_t *length
 );
+/* CompilerSources.txt must preserve the supported bootstrap producer's order. */
+bool package_compiler_bootstrap_source_order(const char *inventory, size_t length);
 
 void test_language_package_compiler_chibi();
 void test_language_package_compiler_chibi_types();
+void test_language_package_compiler_chibi_math_native();
 void test_language_package_compiler_chibi_imports();
 void test_language_package_compiler_chibi_compiled();
 void test_language_package_compiler_chibi_types_compiled();

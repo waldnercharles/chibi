@@ -1,0 +1,113 @@
+package chibi_cli
+
+import strings "core:strings"
+
+Version :: () -> int {
+    identity := sdk.identity()
+    if !identity.valid {
+        Error(identity.error)
+        return 1
+    }
+    Output(format_text("chibi {}", identity.version))
+    Output(format_text("build: {}", identity.build))
+    Output(format_text("compiler: {}", Compiler()))
+    Output(format_text("project format: {}", identity.project_version))
+    formats := "artifact formats:"
+    index := 0
+    while index < length(identity.formats) {
+        separator := ","
+        if index == 0 {
+            separator = ""
+        }
+        formats = format_text("{}{} {} {}", formats, separator, identity.formats[index], identity.format_versions[index])
+        index += 1
+    }
+    Output(formats)
+    return 0
+}
+
+Report :: (name: string, status: string, detail: string) -> bool {
+    Output(format_text("{}: {} ({})", name, status, detail))
+    return status == "broken"
+}
+
+Executable :: (name: string, path: string) -> bool {
+    if files.find_executable(path) == "" {
+        return Report(name, "broken", Join(["missing ", path]))
+    }
+    if application.platform() != "Windows" {
+        probe := process.capture([path, "--help"])
+        if probe.error != 0 || probe.status != 0 {
+            return Report(name, "broken", Join([path, " --help failed"]))
+        }
+    }
+    return Report(name, "supported", path)
+}
+
+Browser :: (player: string) -> bool {
+    if player == "" {
+        return Report("browser export", "unavailable", "pass --web PLAYER; make package-web-player builds one")
+    }
+    for name in ["index.html", "chibi-player.js", "chibi-player.wasm", "compiler/chibi-compile.js", "compiler/chibi-compile.wasm"] {
+        if !files.readable(Join([player, "/", name])) {
+            return Report("browser export", "broken", format_text("{} lacks {}", player, name))
+        }
+    }
+    node := files.find_executable(Join(["node", sdk.executable_suffix()]))
+    if node == "" {
+        return Report("browser export", "broken", format_text("node, which runs {}'s compiler, is not on PATH", player))
+    }
+    return Report("browser export", "supported", format_text("{} with {}", player, node))
+}
+
+Doctor :: (options: Options) -> int {
+    identity := sdk.identity()
+    broken := false
+    if identity.valid {
+        Report("sdk", "supported", format_text("chibi {}, build {}", identity.version, identity.build))
+    } else {
+        Error(identity.error)
+        broken = Report("sdk", "broken", "no valid build identity")
+    }
+    compiler_broken := Executable("compiler", Compiler())
+    player_broken := Executable("player", Player())
+    broken = broken || compiler_broken || player_broken
+    if identity.valid {
+        host := sdk.platform()
+        if identity.system == "" || length(identity.processors) == 0 {
+            broken = Report("platform", "broken", "the build identity names no platform") || broken
+        } else {
+            native := false
+            for processor in identity.processors {
+                native = native || processor == host.machine
+            }
+            if !native || identity.system != host.system {
+                others := ""
+                if length(identity.processors) > 1 {
+                    others = " and others"
+                }
+                Report("platform", "unavailable", format_text("built for {} {}{}, running on {} {}", identity.system, identity.processors[0], others, host.system, Default(host.machine, "an unknown processor")))
+            } else {
+                Report("platform", "supported", format_text("{} {}", identity.system, host.machine))
+            }
+        }
+        if !identity.backends_valid {
+            broken = Report("native backend", "broken", "the build identity names no backends") || broken
+        } else {
+            native := false
+            for backend in identity.backends {
+                native = native || backend == "sljit"
+            }
+            if native {
+                Report("native backend", "supported", "SLJIT")
+            } else {
+                Report("native backend", "unavailable", "built for the bytecode interpreter only")
+            }
+        }
+    }
+    browser_broken := Browser(options.web)
+    if broken || browser_broken {
+        return 1
+    }
+    return 0
+}

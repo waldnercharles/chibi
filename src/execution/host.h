@@ -22,7 +22,12 @@ typedef const char *(*node_query_fn)(void *service, const char *key, struct pin_
  * must outlive the activation. Access metadata describes the host effects. */
 typedef const char *(*node_host_call_fn)(void *service, const pin_value *arguments, pin_value *results);
 /* Synchronous context-aware effects receive borrowed runtime metadata. They
- * may not retain or mutate the context, arguments, component storage or graphs. */
+ * may not retain or mutate the context, arguments, component storage or graphs.
+ * An explicitly bound application program service may synchronously invoke a
+ * separately owned, quiescent program. Its runtime and managed heap differ
+ * from the caller's; no borrowed values cross that boundary. The service
+ * rejects reentry into an active program. This allowance does not apply to
+ * ordinary game callbacks. */
 typedef const char *(*node_context_call_fn)(
     const struct behavior_function_context *,
     void *service,

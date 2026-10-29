@@ -357,7 +357,8 @@ int authoring_project_test(const char *root, const char *core)
     char error[512] = { 0 };
     const native_definition_pack compiler[] = { COMPILER_SYNTAX_DEFINITION_PACK,
                                                 COMPILER_JSON_DEFINITION_PACK };
-    native_capabilities *native = host_native_standalone_catalog_new(compiler, 2, error, sizeof error);
+    native_capabilities
+        *native = host_native_standalone_catalog_new(NULL, 0, compiler, 2, error, sizeof error);
     if (!native) {
         fprintf(stderr, "Test preparation failed: %s\n", error);
         return 1;
@@ -1273,9 +1274,10 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
     if (!valid) {
         fprintf(stderr, "%s: %s\n", manifest, error);
     }
-    native_capabilities *native = valid
-                                    ? host_native_standalone_catalog_new(NULL, 0, error, sizeof error)
-                                    : NULL;
+    native_capabilities
+        *native = valid
+                    ? host_native_standalone_catalog_new(NULL, 0, NULL, 0, error, sizeof error)
+                    : NULL;
     /* The private parser belongs to the generator, never to validated examples. */
     const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                              NATIVE_ARRAY_DEFINITION_PACK,

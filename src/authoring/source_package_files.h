@@ -12,8 +12,7 @@
  * entries, sixteen directory levels below the longest matching root.
  * Invalid options, filesystem errors and loader limits return NULL with a
  * value-owned error. Parsed/graph errors return an owned invalid snapshot;
- * inspect source_package_snapshot_error_at. Input strings are not retained.
- * Windows returns an explicit unsupported error; buffer APIs are unaffected. */
+ * inspect source_package_snapshot_error_at. Input strings are not retained. */
 source_package_snapshot *source_package_snapshot_load(
     const source_package_disk_options *,
     source_package_load_error *

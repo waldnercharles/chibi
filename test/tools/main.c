@@ -83,10 +83,6 @@ void test_tool_chibi_cli_installed(const char *binary, const char *self);
 void test_native_build(const char *binary);
 void test_native_workload_benchmark(const char *binary);
 void test_tool_chibi_cli_export(const char *binary);
-#ifdef CHIBI_TEST_PUBLISHED_DOCS
-void test_tool_published_docs(const char *binary);
-void test_tool_chibi_docs(const char *binary);
-#endif
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_artifact(const char *producer, const char *host);
 void test_tool_compiler_bootstrap(const char *producer, const char *host);
@@ -785,19 +781,6 @@ int main(int argc, char **argv)
         test_tool_chibi_cli_installed(argv[2], argv[0]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
-    }
-    if (argc == 3 && !strcmp(argv[1], "--published-docs")) {
-#ifdef CHIBI_TEST_PUBLISHED_DOCS
-        tool_init();
-        pu_display_time(true);
-        test_tool_published_docs(argv[2]);
-        test_tool_chibi_docs(argv[2]);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s requires the KDL asset reader\n", argv[1]);
-        return 2;
-#endif
     }
     if (argc == 2 && !strcmp(argv[1], "--surface-transport")) {
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS

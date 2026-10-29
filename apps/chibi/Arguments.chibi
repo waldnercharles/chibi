@@ -11,7 +11,6 @@ Options :: struct {
     target: string
     mode: string
     error: string
-    path_count: int
     tail_first: int
     port: int
     valid: bool
@@ -19,19 +18,17 @@ Options :: struct {
     watch: bool
     native: bool
     archive: bool
-    check: bool
     explain: bool
     json: bool
-    serve: bool
     debug: bool
 }
 
 NewOptions :: (command: string) -> Options {
     return {command: command, path: "", output: "", web: "", llvm: "",
-            target: "x86_64-unknown-linux-gnu", mode: "2", error: "", path_count: 0,
+            target: "x86_64-unknown-linux-gnu", mode: "2", error: "",
             tail_first: 0, port: 8000, valid: true, help: false, watch: false,
-            native: false, archive: false, check: false, explain: false,
-            json: false, serve: false, debug: false}
+            native: false, archive: false, explain: false,
+            json: false, debug: false}
 }
 
 Tail :: (arguments: string[], first: int) -> string[] {
@@ -139,8 +136,8 @@ Parse :: (arguments: string[]) -> Options {
         return ParseRun(arguments, 1)
     }
     known := command == "version" || command == "doctor" || command == "build" ||
-             command == "check" || command == "test" || command == "fmt" ||
-             command == "doc" || command == "web" || command == "export"
+             command == "check" || command == "test" || command == "web" ||
+             command == "export"
     if !known {
         options = ParseRun(arguments, 1)
         options.command = "shorthand"
@@ -180,21 +177,11 @@ Parse :: (arguments: string[]) -> Options {
             options.help = true
             return options
         }
-        if command == "fmt" {
-            if argument == "--check" && !options.check {
-                options.check = true
-            } else if !Option(argument) {
-                options.path_count += 1
-            } else {
-                return Invalid(options, "Invalid fmt option; use --help.")
-            }
-        } else if command == "check" && argument == "--explain-costs" && !options.explain {
+        if command == "check" && argument == "--explain-costs" && !options.explain {
             options.explain = true
         } else if command == "check" && argument == "--json" && !options.json {
             options.json = true
-        } else if command == "doc" && argument == "--serve" && !options.serve {
-            options.serve = true
-        } else if (command == "doc" || command == "web") && argument == "--port" &&
+        } else if command == "web" && argument == "--port" &&
                   index + 1 < length(arguments) && !ported {
             index += 1
             options.port = Port(arguments[index])
@@ -243,9 +230,6 @@ Parse :: (arguments: string[]) -> Options {
     if options.json && !options.explain {
         return Invalid(options, "--json requires --explain-costs; use --help.")
     }
-    if ported && command == "doc" && !options.serve {
-        return Invalid(options, "--port needs --serve; use --help.")
-    }
     if command == "web" && options.web == "" {
         return Invalid(options, "web needs --player PLAYER, the browser player's folder")
     }
@@ -277,10 +261,8 @@ CommandArgumentsKeepProgramArguments :: () {
 @test
 CommandArgumentsRejectInvalidCombinations :: () {
     assert(!Parse(["chibi", "check", "--json"]).valid)
-    assert(!Parse(["chibi", "doc", "--port", "0"]).valid)
     assert(!Parse(["chibi", "web"]).valid)
     assert(!Parse(["chibi", "export", "--output", "site", "--llvm", "llvm"]).valid)
-    assert(!Parse(["chibi", "fmt", "--check", "--check"]).valid)
     assert(!Parse(["chibi", "test", "first", "second"]).valid)
     assert(!Parse(["chibi", "doctor", "--unknown"]).valid)
     assert(!Parse(["chibi"]).valid)
@@ -294,9 +276,7 @@ CommandArgumentsRejectInvalidCombinations :: () {
     assert(!Parse(["chibi", "build", ""]).valid)
     assert(!Parse(["chibi", "build", "--native", ""]).valid)
     assert(!Parse(["chibi", "check", ""]).valid)
-    assert(!Parse(["chibi", "fmt", ""]).valid)
     assert(!Parse(["chibi", "test", ""]).valid)
-    assert(!Parse(["chibi", "doc", ""]).valid)
     assert(!Parse(["chibi", "web", "", "--player", "browser"]).valid)
     assert(!Parse(["chibi", "export", "", "--output", "site"]).valid)
     assert(!Parse(["chibi", "run", ""]).valid)
@@ -328,12 +308,8 @@ CommandArgumentsCoverProjectTools :: () {
     assert(built.valid && built.path == "game" && !built.native)
     checked := Parse(["chibi", "check", "--explain-costs", "game", "--json"])
     assert(checked.valid && checked.explain && checked.json && checked.path == "game")
-    formatted := Parse(["chibi", "fmt", "first", "--check", "second"])
-    assert(formatted.valid && formatted.check && formatted.path_count == 2)
     tested := Parse(["chibi", "test", "packages"])
     assert(tested.valid && tested.path == "packages")
-    documented := Parse(["chibi", "doc", "--port", "0", "docs", "--serve"])
-    assert(documented.valid && documented.port == 0 && documented.serve && documented.path == "docs")
     web := Parse(["chibi", "web", "game", "--player", "browser", "--port", "42"])
     assert(web.valid && web.path == "game" && web.web == "browser" && web.port == 42)
     doctor := Parse(["chibi", "doctor", "--web", "browser"])

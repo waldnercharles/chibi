@@ -1930,7 +1930,6 @@ TEST_CASE(resources_install_as_cmake)
     const char *const trees[][2] = {
         { "share/chibi/engine.json", "build/share/chibi/engine.json" },
         { "share/chibi/core", "build/share/chibi/core" },
-        { "share/chibi/docs", "build/share/chibi/docs" },
         { "share/chibi/apps/chibi", "build/share/chibi/apps/chibi" },
         { "share/chibi/shaders", "src/render/shaders" },
     };

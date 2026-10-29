@@ -68,23 +68,6 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_INTEGER_ARITHMETIC_BYTES "${CHIBI_INT
 configure_file(integer_arithmetic_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/integer_arithmetic_source.h" @ONLY)
 
-# The documentation site's Markdown renderer is authored package source too.
-set(docs_markdown_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/docs/markdown/Markdown.chibi")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${docs_markdown_source}")
-file(READ "${docs_markdown_source}" CHIBI_DOCS_MARKDOWN_HEX HEX)
-string(REGEX REPLACE "(..)" "0x\\1," CHIBI_DOCS_MARKDOWN_BYTES "${CHIBI_DOCS_MARKDOWN_HEX}")
-foreach(part SITE:site/Site.chibi REFERENCE:reference/Reference.chibi GRAMMAR:grammar/Grammar.chibi)
-    string(REPLACE ":" ";" part "${part}")
-    list(GET part 0 name)
-    list(GET part 1 file)
-    set(docs_part_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/docs/${file}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${docs_part_source}")
-    file(READ "${docs_part_source}" docs_part_hex HEX)
-    string(REGEX REPLACE "(..)" "0x\\1," CHIBI_DOCS_${name}_BYTES "${docs_part_hex}")
-endforeach()
-configure_file(docs_markdown_source.h.in
-    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/docs_markdown_source.h" @ONLY)
-
 # The first compiler component is ordinary authored package source.
 set(package_graph_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/package_graph/Graph.chibi")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${package_graph_source}")
@@ -275,7 +258,7 @@ target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UND
 # The backend-specific fixtures inspect private activation storage. Other tests
 # continue to compile solely against their public SDK dependencies.
 set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_publication.c outliner_projection.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c query_values.c program.c capture.c maps.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
-add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c query_values.c incremental.c operations.c modules.c native_calls.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
+add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c query_values.c incremental.c operations.c modules.c native_calls.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 target_sources(test_language PRIVATE host_packages.c host_packages_compiler.c)
 target_link_libraries(test_language PRIVATE Chibi::host_clock)
 set_source_files_properties(host_packages_compiler.c
@@ -302,7 +285,7 @@ configure_file(host_packages_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/host_packages_source.h" @ONLY)
 
 # Package tests consume the owning SDK implementation; extraction stays private.
-target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_math.c package_tests.c package_graph_chibi.c docs_markdown.c)
+target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_math.c package_tests.c package_graph_chibi.c)
 target_sources(test_language PRIVATE compositional_records.c)
 set_source_files_properties(compositional_records.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
@@ -322,7 +305,7 @@ set_source_files_properties(source_tokenizer_chibi.c source_parser_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
     COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 target_sources(test_language PRIVATE package_routes_chibi.c package_snapshot_chibi.c)
-set_source_files_properties(package_syntax.c package_syntax_chibi.c package_paths_chibi.c package_routes_chibi.c package_snapshot_chibi.c docs_markdown.c
+set_source_files_properties(package_syntax.c package_syntax_chibi.c package_paths_chibi.c package_routes_chibi.c package_snapshot_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

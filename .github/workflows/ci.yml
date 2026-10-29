@@ -97,7 +97,7 @@ jobs:
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
-      # published-docs and chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi-cli runs chibi-compile too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.
       - name: Build an unsanitized chibi launcher (Release)
         env:
@@ -236,7 +236,7 @@ jobs:
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
-      # published-docs and chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi-cli runs chibi-compile too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the Debug builds use.
       - name: Build an unsanitized chibi launcher (Release)

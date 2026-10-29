@@ -1840,7 +1840,7 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     char *output = tool_read(commands);
     const char *expected = "--mesh-files\n--model-import\n"
                            "--terrain-checkpoint\n"
-                           "--terrain-playable\n--published-docs\n--chibi-cli\n"
+                           "--terrain-playable\n--chibi-cli\n"
                            "--native-build\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
@@ -1849,9 +1849,11 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     REQUIRE(run_group("native") == 0);
     output = tool_read(commands);
     bool separate = output && *output && !strstr(output, "benchmark");
-    const char *selectors[] = { "--mesh-files\n",         "--model-import\n",
-                                "--terrain-checkpoint\n", "--published-docs\n",
-                                "--chibi-cli\n",          "--native-build\n" };
+    const char *selectors[] = { "--mesh-files\n",
+                                "--model-import\n",
+                                "--terrain-checkpoint\n",
+                                "--chibi-cli\n",
+                                "--native-build\n" };
     for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
         separate = !strstr(output, selectors[i]);
     }
@@ -3174,8 +3176,6 @@ TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered)
         const char *name, *expected;
     } cases[] = {
         { "language", "0 1\n" },
-        { "language-format", "0 1\n" },
-        /* A focused alias: the format selector already runs its three cases. */
         { "language-root-state", "0 0\n" },
         { "language-test-parallel", "0 1\n" },
         { "language-package-tests", "0 1\n" },

@@ -252,13 +252,6 @@ if(TARGET Chibi::asset_text AND TARGET Chibi::asset_json)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_ASSET_VALUES=1)
 endif()
 
-# The repository's published documentation site, built by a given compiler
-# from copies of the pages docs/site.kdl lists.
-if(TARGET Chibi::asset_text)
-    target_sources(test_tools PRIVATE published_docs.c)
-    target_link_libraries(test_tools PRIVATE Chibi::asset_text)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PUBLISHED_DOCS=1)
-endif()
 
 # UI documents and RCSS, and the watched, overlaid text files they read.
 if(TARGET Chibi::ui_document)

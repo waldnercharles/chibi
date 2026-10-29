@@ -130,6 +130,12 @@ pub JsonQuote :: (text: string) -> string {
     if (strings.ByteLength(text) > 16777216) {
         return "";
     }
+    if (strings.ByteLength(text) <= 511) {
+        span := JsonPlainRun(JsonJoin([text, "\""]), 0);
+        if (span == strings.ByteLength(text)) {
+            return JsonJoin(["\"", text, "\""]);
+        }
+    }
     parts := ["\""];
     size := 2;
     at := 0;
@@ -179,6 +185,24 @@ pub JsonQuote :: (text: string) -> string {
     return JsonJoin(parts);
 }
 
+// Strings of printable ASCII without escapes dominate package data. Scan one
+// bounded chunk for the closing quote instead of decoding every rune; -1 means
+// the string needs the general decoder.
+JsonPlainRun :: (text: string, at: int) -> int {
+    chunk := strings.Slice(text, at, 512);
+    count := 0;
+    for (byte in strings.Bytes(chunk)) {
+        if (byte == 34) {
+            return count;
+        }
+        if (byte < 32 || byte >= 127 || byte == 92) {
+            return -1;
+        }
+        count += 1;
+    }
+    return -1;
+}
+
 JsonSpace :: (cursor: ^JsonCursor) {
     byte := strings.ByteAt(cursor.text, cursor.at);
     while (byte == 32 || byte == 9 || byte == 10 || byte == 13) {
@@ -192,6 +216,12 @@ JsonString :: (cursor: ^JsonCursor) -> string {
         return "";
     }
     cursor.at += 1;
+    span := JsonPlainRun(cursor.text, cursor.at);
+    if (span >= 0) {
+        text := strings.Slice(cursor.text, cursor.at, span);
+        cursor.at += span + 1;
+        return text;
+    }
     parts: string[] = [];
     while (cursor.at < strings.ByteLength(cursor.text)) {
         byte := strings.ByteAt(cursor.text, cursor.at);
@@ -396,6 +426,12 @@ JsonValue :: (cursor: ^JsonCursor, depth: int) -> string {
     JsonSpace(cursor);
     byte := strings.ByteAt(cursor.text, cursor.at);
     if (byte == 34) {
+        span := JsonPlainRun(cursor.text, cursor.at + 1);
+        if (span >= 0) {
+            quoted := strings.Slice(cursor.text, cursor.at, span + 2);
+            cursor.at += span + 2;
+            return quoted;
+        }
         value := JsonString(cursor);
         if (!cursor.good) {
             return "";

@@ -26,11 +26,6 @@
 #include "test/support/reflected_types.h"
 bool test_source_runtime_active();
 #endif
-#ifdef CHIBI_TEST_MATERIAL_GRAPHS
-/* Material graphs keep colors and ramp stops in shader-typed defaults. */
-bool test_material_graphs_active();
-type_catalog_pack test_material_graph_types();
-#endif
 
 typedef struct
 {
@@ -140,18 +135,7 @@ static const enum_desc *const second_enums[] = { &duplicate_mode };
 bool test_native_catalog_active();
 type_catalog_pack test_native_catalog_pack();
 #endif
-#ifdef CHIBI_TEST_MODEL_IMPORT
-/* Imports write shader-typed material defaults and game-typed prototypes. */
-bool test_model_import_active();
-type_catalog_pack test_model_import_types(int index);
-#endif
 
-#ifdef CHIBI_TEST_MODEL_GRAPHS
-/* Model and shader graphs keep vectors and colors in shader-typed defaults,
- * and their render cases read game-typed components. */
-bool test_graph_types_active();
-type_catalog_pack test_graph_types(int index);
-#endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 #include "authoring/studio_schema.h"
 bool test_shader_parameters_active();
@@ -159,21 +143,6 @@ type_catalog_pack test_shader_parameters_types();
 #endif
 int type_catalog_pack_count()
 {
-#ifdef CHIBI_TEST_MODEL_GRAPHS
-    if (test_graph_types_active()) {
-        return 2;
-    }
-#endif
-#ifdef CHIBI_TEST_MODEL_IMPORT
-    if (test_model_import_active()) {
-        return 2;
-    }
-#endif
-#ifdef CHIBI_TEST_MATERIAL_GRAPHS
-    if (test_material_graphs_active()) {
-        return 3;
-    }
-#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES
@@ -194,21 +163,6 @@ int type_catalog_pack_count()
 type_catalog_pack type_catalog_pack_at(int index)
 {
     assert(index >= 0 && index < type_catalog_pack_count());
-#ifdef CHIBI_TEST_MODEL_GRAPHS
-    if (test_graph_types_active()) {
-        return test_graph_types(index);
-    }
-#endif
-#ifdef CHIBI_TEST_MODEL_IMPORT
-    if (test_model_import_active()) {
-        return test_model_import_types(index);
-    }
-#endif
-#ifdef CHIBI_TEST_MATERIAL_GRAPHS
-    if (index == 2 && test_material_graphs_active()) {
-        return test_material_graph_types();
-    }
-#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES

@@ -13,7 +13,6 @@
 #include "authoring/source_format.h"
 #include "authoring/source_minimize.h"
 #include "authoring/source_package_files.h"
-#include "graph/document/serialize.h"
 #include "runtime/declared_components.h"
 #include "support/array.h"
 #include "support/asset_format.h"
@@ -35,7 +34,6 @@
 typedef enum
 {
     FORMAT_SOURCE,
-    FORMAT_GRAPH,
     FORMAT_PROTOTYPE,
     FORMAT_RELATIONSHIP,
     FORMAT_SCENE,
@@ -50,13 +48,7 @@ typedef struct
 /* The content folders whose assets have a canonical form, and its writer. */
 static const asset_family FAMILIES[] = {
     { "behaviors", CODE_ASSET_EXTENSION, FORMAT_SOURCE },
-    { "events", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
     { "libraries", CODE_ASSET_EXTENSION, FORMAT_SOURCE },
-    { "materials", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
-    { "shapes", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
-    { "models", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
-    { "fields", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
-    { "shader-libraries", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
     { "systems", CODE_ASSET_EXTENSION, FORMAT_SOURCE },
     { "prototypes", CODE_ASSET_EXTENSION, FORMAT_PROTOTYPE },
     { "relationships", CODE_ASSET_EXTENSION, FORMAT_RELATIONSHIP },
@@ -276,25 +268,6 @@ static char *format_text(const char *text, char *error, size_t size)
     return saved;
 }
 
-static char *canonical_graph(const char *text, char *error, size_t size)
-{
-    behavior_asset *asset = behavior_asset_load(text);
-    if (!asset) {
-        snprintf(error, size, "%s", graph_last_error());
-        return NULL;
-    }
-    char *saved = behavior_asset_save(asset);
-    behavior_asset *reopened = saved ? behavior_asset_load(saved) : NULL;
-    if (!reopened || !behavior_asset_equal(asset, reopened)) {
-        free(saved);
-        saved = NULL;
-        snprintf(error, size, "formatted graph does not preserve the complete native asset");
-    }
-    behavior_asset_free(reopened);
-    behavior_asset_free(asset);
-    return saved;
-}
-
 /* It must resolve, but saves as authored: its own content, naming its
  * includes and children's prototypes. */
 static char *canonical_prototype(formatter *f, const char *text, const char *path, char *error, size_t size)
@@ -341,7 +314,6 @@ static char *canonical_asset(
 {
     switch (family->kind) {
         case FORMAT_SOURCE: return canonical_source(f, text, path, error, size);
-        case FORMAT_GRAPH: return canonical_graph(text, error, size);
         case FORMAT_PROTOTYPE:
             return canonical_prototype(f, text, path, error, size);
         case FORMAT_RELATIONSHIP: {

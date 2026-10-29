@@ -335,7 +335,7 @@ if(TARGET Chibi::render)
         ../render/memory_images.c
         ../render/radiance.c ../render/radiance_depth.c ../render/material_borders.c
         ../render/material_sampling.c ../render/material_coefficients.c ../render/material_lod.c
-        ../render/scene2d.c ../render/scene3d.c ../render/material_terrain_seams.c
+        ../render/scene2d.c  ../render/material_terrain_seams.c
         device_controls.c ../render/interior_border.c ../render/viewport_resize.c ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
@@ -346,24 +346,9 @@ if(TARGET Chibi::render)
     target_sources(test_tools PRIVATE particle_fields.c audio_output.c player_clock.c $<TARGET_OBJECTS:chibi_render_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
-    # Surface materials with roughness and metallic come from material graphs, and
-    # the visibility scenes build shader graphs too.
-    if(TARGET Chibi::shader_preparation)
-        configure_file("${CHIBI_TOOL_ROOT}/test/graph/packs.h"
-            "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/graph/packs.h" COPYONLY)
-        configure_file("${CHIBI_TOOL_ROOT}/test/render/hidden_app.h"
-            "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/render/hidden_app.h" COPYONLY)
-        target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
-)
-        target_sources(chibi_render_consumer PRIVATE ../render/material_graphs.c ../render/material_ramps.c
-            ../render/material_pixels.c ../sdf_visibility.c surface_transport.c
-            material_mesh_cache.c hrc_spot.c)
-        target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
-        target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
-)
-        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
-        target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
-    endif()
+    configure_file("${CHIBI_TOOL_ROOT}/test/render/hidden_app.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/render/hidden_app.h" COPYONLY)
+    target_sources(chibi_render_consumer PRIVATE ../render/material_ramps.c hrc_spot.c)
 endif()
 
 # Mesh surfaces and 3D shapes read the mesh parts project preparation
@@ -387,62 +372,8 @@ if(TARGET Chibi::image_preparation)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_IMAGE_PREPARATION=1)
 endif()
 
-# Mesh preparation reads `.mesh` content files, and model export writes them,
-# so only compiler builds have them.
-if(TARGET Chibi::model_authoring)
-    add_library(chibi_mesh_preparation_consumer OBJECT ../authoring/mesh_files.c)
-    target_include_directories(chibi_mesh_preparation_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_compile_definitions(chibi_mesh_preparation_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
-    target_link_libraries(chibi_mesh_preparation_consumer PRIVATE Chibi::model_authoring Chibi::shader_preparation
-        Chibi::mesh_runtime)
-    target_compile_options(chibi_mesh_preparation_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_mesh_preparation_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::model_authoring Chibi::shader_preparation
-        Chibi::mesh_runtime)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MESH_PREPARATION=1)
-endif()
 
-# Model graphs compile to distance programs, bounds and hit resolvers.
-if(TARGET Chibi::model_authoring)
-    target_sources(test_tools PRIVATE ../graph/packs.c ../graph/modeling.c ../graph/model_constructive.c
-        ../graph/model_profiles.c ../graph/model_reuse.c ../graph/model_inspection.c
-        ../graph/model_sampled.c)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
-    target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
-    # Models and materials in the renderer's shader catalog, and shader graphs
-    # the renderer compiles.
-    if(TARGET Chibi::render)
-        target_sources(test_tools PRIVATE ../graph/model_parameters.c ../graph/model_material_scope.c
-            ../graph/model_validation.c ../graph/model_materials.c ../graph/model_preview.c ../graph/model_surface.c
-            ../graph/shader_detail.c ../render/shader_effects.c ../render/shader_image.c
-            ../render/shader_parity.c ../render/shader_program.c ../render/shader_image_routes.c
-            ../render/camera_orbit.c ../render/camera_plane.c ../render/camera_centered_orbit.c
-            ../render/camera_emitter_orbit.c ../render/mesh_material.c ../render/sdf_quality.c
-            ../render/sdf_spatial.c)
-    endif()
-endif()
 
-# Model import reads glTF files and writes content files, so only compiler
-# builds have it. The render cases draw what it writes.
-if(TARGET Chibi::model_import)
-    configure_file("${CHIBI_TOOL_ROOT}/test/support/gltf_fixture.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/support/gltf_fixture.h" COPYONLY)
-    add_library(chibi_model_import_consumer OBJECT ../authoring/model_import.c ../support/gltf_fixture.c)
-    target_include_directories(chibi_model_import_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_compile_definitions(chibi_model_import_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
-    target_link_libraries(chibi_model_import_consumer PRIVATE Chibi::model_import Chibi::mesh_runtime
- Chibi::native_types Chibi::asset_text Chibi::platform)
-    target_compile_options(chibi_model_import_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_model_import_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::model_import Chibi::mesh_runtime
- Chibi::native_types Chibi::asset_text Chibi::platform)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
-    target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
-    if(TARGET chibi_render_consumer)
-        target_link_libraries(chibi_render_consumer PRIVATE Chibi::model_import Chibi::image_preparation)
-        target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
-    endif()
-endif()
 
 if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     configure_file("${CHIBI_TOOL_ROOT}/test/support/reflected_types.h"
@@ -450,7 +381,7 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     add_library(chibi_source_runtime_consumer OBJECT
         ../runtime/whole_math.c ../runtime/whole_integer.c ../runtime/whole_conversion.c
         ../runtime/owned_tick.c ../runtime/parallel_tick.c ../runtime/whole_alias.c ../runtime/persistent_store.c
-        ../authoring/new_asset.c ../authoring/asset_refactor.c
+
         ../support/reflected_types.c)
     target_include_directories(chibi_source_runtime_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring Chibi::asset_authoring
@@ -463,9 +394,9 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::native_types)
     if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
-        add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../runtime/source_input_save.c ../authoring/source_presentation.c
-            ../runtime/system_schedule.c ../runtime/source_reductions.c scheduler_benchmark.c ../code_system_runtime.c
-            ../authoring/shader_parameters.c ../authoring/component_presentation.c ../language/corpus_semantic.c)
+        add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../runtime/source_input_save.c
+             ../runtime/source_reductions.c scheduler_benchmark.c
+             ../authoring/component_presentation.c ../language/corpus_semantic.c)
         target_include_directories(chibi_source_features_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
         target_link_libraries(chibi_source_features_consumer PRIVATE Chibi::project_preparation Chibi::component_presentation
             Chibi::render Chibi::host_native_default Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
@@ -477,27 +408,6 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::studio_capabilities)
         target_link_libraries(test_tools PRIVATE Chibi::studio_capabilities)
-        # Graph document authoring over the application's composed node palette.
-        configure_file("${CHIBI_TOOL_ROOT}/test/graph/fixture.h"
-            "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/graph/fixture.h" COPYONLY)
-        add_library(chibi_graph_consumer OBJECT ../graph/fixture.c ../graph/comments.c ../graph/model.c
-            ../graph/inline.c ../graph/find.c ../graph/describe.c ../graph/functions.c ../graph/signature.c
-            ../graph/collapse.c ../graph/problems.c ../graph/vectors.c)
-        target_include_directories(chibi_graph_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-        target_link_libraries(chibi_graph_consumer PRIVATE Chibi::project_preparation Chibi::graph_catalog
- Chibi::asset_text Chibi::arithmetic_capabilities
-            Chibi::vector_capabilities)
-        target_compile_options(chibi_graph_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-        target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_graph_consumer>)
-        target_link_libraries(test_tools PRIVATE
-            Chibi::asset_text Chibi::vector_capabilities)
-        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_GRAPH_AUTHORING=1)
-        target_sources(test_tools PRIVATE terrain_playable.c game_equivalence.c)
-        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1)
-        # game-equivalence rebuilds Terrain Lab with chibi-compile by default.
-        if(TARGET chibi-compile)
-            add_dependencies(test_tools chibi-compile)
-        endif()
     endif()
 endif()
 
@@ -505,41 +415,25 @@ endif()
 # authored components through a preview world.
 if(TARGET Chibi::entity_runtime AND TARGET Chibi::project_preparation AND TARGET Chibi::render)
     target_sources(test_tools PRIVATE ../runtime/materials.c ../runtime/material_fixture.c
-        ../runtime/material_mask_damage.c ../runtime/material_cave_terrain.c
-        ../runtime/material_fluids.c ../runtime/material_destruction.c
-        ../runtime/material_fragments.c ../runtime/material_debris.c ../runtime/reference_cave.c
-        ../runtime/material_blast.c ../runtime/material_constitutive.c ../runtime/material_detail.c
-        ../runtime/material_impulse.c ../runtime/material_mixed.c ../runtime/material_mpm.c
+
+        ../runtime/material_fluids.c
+         ../runtime/material_debris.c ../runtime/reference_cave.c
+
+         ../runtime/material_mixed.c ../runtime/material_mpm.c
         ../runtime/material_obstacles.c ../runtime/material_particle_index.c
-        ../runtime/material_reactions.c ../runtime/material_simulation.c ../runtime/material_thermal.c
-        ../runtime/material_benchmark.c ../runtime/contact_benchmark.c)
+         ../runtime/material_simulation.c
+        ../runtime/material_benchmark.c )
     target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MATERIAL_RUNTIME=1)
 endif()
 
 # Authoring documents over the game's reflected components and graph nodes:
 # prototype and scene documents, the reference index and asset source edits.
-if(TARGET chibi_source_runtime_consumer AND TARGET)
-    target_sources(test_tools PRIVATE ../authoring/prototype_documents.c ../authoring/reference_index.c
-        ../authoring/ui_pages.c ../authoring/asset_source.c ../support/graph_packs.c)
+if(TARGET chibi_source_runtime_consumer )
+    target_sources(test_tools PRIVATE ../authoring/prototype_documents.c)
     target_link_libraries(test_tools PRIVATE Chibi::reference_index
         Chibi::prototype_document Chibi::scene_document Chibi::native_types)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_AUTHORING_DOCUMENTS=1)
-endif()
-
-# Project preparation: the application's source loader, prototype preview
-# scene launches and the preview engine's fixed clock.
-if(TARGET Chibi::project_preparation)
-    target_sources(test_tools PRIVATE ../authoring/behavior_loader.c ../runtime/engine_clock.c)
-    target_link_libraries(test_tools PRIVATE Chibi::project_preparation)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_PREPARATION=1)
-    # Preview graph layout and field programs use the game graph packs the
-    # authoring documents build.
-    if(TARGET chibi_source_runtime_consumer AND TARGET)
-        target_sources(test_tools PRIVATE ../authoring/preview_layout.c ../runtime/fields.c
-            ../runtime/field_library.c)
-        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PREVIEW_GRAPHS=1)
-    endif()
 endif()
 
 add_executable(benchmark_trials "${CHIBI_TOOL_ROOT}/tools/benchmark.c"

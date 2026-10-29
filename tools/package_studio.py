@@ -26,7 +26,7 @@ def sdk_package(sdk):
     verify_files(sdk, source.get('files'))
     if source.get('build_id') != package_identity(source):
         raise ValueError('SDK package identity mismatch')
-    required = {'Chibi::graph_catalog', 'Chibi::project_preparation', 'Chibi::ui', 'Chibi::render'}
+    required = {'Chibi::project_preparation', 'Chibi::ui', 'Chibi::render'}
     if not required.issubset(source.get('targets', [])):
         raise ValueError('SDK is missing Studio authoring/desktop targets')
     engine = json.loads((sdk / ENGINE).read_text())

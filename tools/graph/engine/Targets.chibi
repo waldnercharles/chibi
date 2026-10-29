@@ -2608,27 +2608,27 @@ pub Includes :: (target: string) -> string[] {
     }
     if (target == "test_language") {
         return [
-            "build/test/language/testing/include", "public/host_clock", "public/tasks", "public/program", "public/source_catalog",
-            "public/authoring", "public/compiler", "public/language", "public/language_syntax",
-            "public/support", "public/capabilities", "public/types", "public/execution",
-            "public/execution_contract", "public/ecs", "public/native_capabilities", "public/reference_index",
-            "public/input_map", "public/input_action", "public/prototype_document", "public/asset_values",
-            "public/scene_document", "public/scene_runtime", "public/behavior_runtime", "public/events",
-            "public/task_pool_runtime", "public/conversion_capabilities", "public/json", "public/asset_json",
-            "public/native_prepared", "public/compiler_host", "public/asset_compiler_host",
-            "public/math_capabilities", "public/project_compilation", "public/project_document",
-            "public/player", "public/engine", "public/entity_runtime", "public/native_types",
-            "public/scheduling", "public/physics_runtime", "public/material_runtime", "public/field_catalog",
-            "public/fields", "public/mesh_runtime", "public/physics3d_runtime", "public/visibility_runtime",
-            "public/particle_runtime", "public/audio_runtime", "public/url_runtime", "public/ui_runtime",
-            "public/save_runtime", "public/input_runtime", "public/declared_components",
-            "public/shader_preparation", "public/visual_catalog", "public/shader_runtime",
-            "public/model_runtime", "public/graph_model", "public/asset_text", "public/value_document",
-            "public/array_capabilities", "public/source_presentation", "public/text_source",
-            "public/text_search", "public/field_capabilities", "public/ui_authoring", "public/ui_document",
-            "public/ui_document_values", "public/text_capabilities", "public/state_capabilities",
-            "public/arithmetic_capabilities", "public/core_capabilities", "public/graph_authoring",
-            "public/graph_compilation", "public/ui_documents"
+            "build/test/language/testing/include", "public/host_clock", "public/native_capabilities",
+            "public/capabilities", "public/types", "public/support", "public/execution_contract",
+            "public/tasks", "public/program", "public/source_catalog", "public/authoring", "public/compiler",
+            "public/language", "public/language_syntax", "public/execution", "public/ecs",
+            "public/reference_index", "public/input_map", "public/input_action", "public/prototype_document",
+            "public/asset_values", "public/scene_document", "public/scene_runtime", "public/behavior_runtime",
+            "public/events", "public/task_pool_runtime", "public/conversion_capabilities", "public/json",
+            "public/asset_json", "public/native_prepared", "public/compiler_host",
+            "public/asset_compiler_host", "public/math_capabilities", "public/project_compilation",
+            "public/project_document", "public/player", "public/engine", "public/entity_runtime",
+            "public/native_types", "public/scheduling", "public/physics_runtime", "public/material_runtime",
+            "public/field_catalog", "public/fields", "public/mesh_runtime", "public/physics3d_runtime",
+            "public/visibility_runtime", "public/particle_runtime", "public/audio_runtime",
+            "public/url_runtime", "public/ui_runtime", "public/save_runtime", "public/input_runtime",
+            "public/declared_components", "public/shader_preparation", "public/visual_catalog",
+            "public/shader_runtime", "public/model_runtime", "public/graph_model", "public/asset_text",
+            "public/value_document", "public/array_capabilities", "public/source_presentation",
+            "public/text_source", "public/text_search", "public/field_capabilities", "public/ui_authoring",
+            "public/ui_document", "public/ui_document_values", "public/text_capabilities",
+            "public/state_capabilities", "public/arithmetic_capabilities", "public/core_capabilities",
+            "public/graph_authoring", "public/graph_compilation", "public/ui_documents"
         ];
     }
     if (target == "chibi_sdk_contracts") {

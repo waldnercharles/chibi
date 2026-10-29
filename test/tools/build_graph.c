@@ -2186,6 +2186,212 @@ TEST_CASE(failed_steps_name_only_the_output)
     return true;
 }
 
+/* The compiler and linked program are real. Only the partial-output failure
+ * uses a controlled driver, so quoting and the host's argv limit stay tested
+ * independently of the response-file implementation. */
+TEST_CASE(link_response_files_preserve_commands_and_recover)
+{
+    char source[GRAPH_PATH], directory[GRAPH_PATH], libraries[GRAPH_PATH],
+        program[GRAPH_PATH], partial[GRAPH_PATH];
+    join(directory, suite, "quoted '\"\\ café 雪 directory");
+    REQUIRE(!mkdir(directory, 0700));
+    char name[201];
+    memset(name, 'l', sizeof name - 1);
+    name[sizeof name - 1] = 0;
+    join(libraries, directory, name);
+    REQUIRE(!mkdir(libraries, 0700));
+    join(source, suite, "link.c");
+    tool_write(source, "int main(void) { return 37; }\n");
+    join(partial, suite, "partial-driver");
+    tool_write(partial, "#!/bin/sh\nprintf partial > \"${0%/*}/partial-output\"\nexit 9\n");
+    REQUIRE(!chmod(partial, 0700));
+    join(program, suite, "LinkResponse.chibi");
+    tool_write(
+        program,
+        "package link_fixture\n"
+        "import c \"graph_c:.\"\n"
+        "import strings \"core:strings\"\n"
+        "Check :: (condition: bool, note: string) -> bool {\n"
+        "    if (!condition) { build.report(note); } return condition;\n}\n"
+        "Build :: () -> int {\n"
+        "    args := build.arguments(); root := args[0]; quoted := args[1];\n"
+        "    search_dir := args[2]; source := build.join([root, \"/link.c\"], "
+        "\"\");\n"
+        "    selected := build.environment(\"CC\");\n"
+        "    if (selected == \"\") { selected = \"clang\"; }\n"
+        "    compiler := build.find_executable(selected);\n"
+        "    tools: c.Tools = {launcher: \"\", compiler: compiler, "
+        "cxx_compiler: \"\",\n"
+        "        archiver: \"\", ranlib: \"\", jobs: 1};\n"
+        "    object := build.join([quoted, \"/object '\\\"\\\\ name.o\"], "
+        "\"\");\n"
+        "    output := build.join([quoted, \"/program '\\\"\\\\ name\"], "
+        "\"\");\n"
+        "    flags := [\"-Wl,-dead_strip\"];\n"
+        "    if (build.platform() == \"Linux\") { flags[0] = "
+        "\"-Wl,--gc-sections\"; }\n"
+        "    record := build.join([output, \".chibi-record\"], \"\");\n"
+        "    response := build.join([output, \".chibi-link.rsp\"], \"\");\n"
+        "    if (!Check(compiler != \"\" && build.run([compiler, \"-c\", "
+        "source, \"-o\", object]) == 0, \"compile failed\")) { return 1; }\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, []) == 1 && "
+        "build.run([output]) == 37, \"quoted link failed\")) { return 2; }\n"
+        "    original := c.LinkCommand(tools, output, [object], flags, []);\n"
+        "    prefix := build.join([build.join(original, \"\\n\"), \"\\n\\n\"], "
+        "\"\");\n"
+        "    if (!Check(strings.HasPrefix(build.read_file(record), prefix), "
+        "\"short original argv lost\")) { return 3; }\n"
+        "    stamp := build.file_stamp(output);\n"
+        "    if (!Check(!build.file_exists(response) && "
+        "build.make_directory(response), \"response cleanup failed\")) { "
+        "return 4; }\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, []) == 0 && "
+        "build.file_stamp(output) == stamp && build.remove(response), \"cache "
+        "hit ran link\")) { return 5; }\n"
+        "    empty_output := build.join([quoted, \"/empty-argument\"], \"\");\n"
+        "    empty_flags := slice(flags, 0, length(flags)); "
+        "empty_flags.append(\"\");\n"
+        "    empty_command := c.LinkCommand(tools, empty_output, [object], "
+        "empty_flags, []);\n"
+        "    direct_status := build.run(empty_command);\n"
+        "    response_status := c.Link(tools, empty_output, [object], "
+        "empty_flags, []);\n"
+        "    if (!Check((direct_status == 0 && response_status == 1) || "
+        "(direct_status != 0 && response_status == -1), \"empty argument "
+        "transport changed driver semantics\")) { return 25; }\n"
+        "    empty_record := build.join([empty_output, \".chibi-record\"], "
+        "\"\");\n"
+        "    if (direct_status == 0) {\n"
+        "        empty_prefix := build.join([build.join(empty_command, "
+        "\"\\n\"), \"\\n\\n\"], \"\");\n"
+        "        if (!Check(build.run([empty_output]) == 37 && "
+        "strings.HasPrefix(build.read_file(empty_record), empty_prefix), "
+        "\"accepted empty argument lost original argv\")) { return 26; }\n"
+        "        if (!Check(c.Link(tools, empty_output, [object], empty_flags, "
+        "[]) == 0, \"empty argument cache identity changed\")) { return 30; }\n"
+        "    } else if (!Check(!build.file_exists(empty_record), \"rejected "
+        "empty argument retained a success record\")) { return 27; }\n"
+        "    if (!build.write_file(build.join([root, "
+        "\"/empty_link_commands.json\"], \"\"), c.LinkEntry(empty_command, "
+        "empty_output))) { return 28; }\n"
+        "    if (!Check(!build.file_exists(build.join([empty_output, "
+        "\".chibi-link.rsp\"], \"\")), \"empty argument response cleanup "
+        "failed\")) { return 29; }\n"
+        "    build.report(format_text(\"empty link: direct {0}, response "
+        "{1}\", direct_status, response_status));\n"
+        "    libraries: string[] = [];\n"
+        "    for (i in 0..<400) { libraries.append(build.join([\"-L\", "
+        "search_dir], \"\")); }\n"
+        "    command := c.LinkCommand(tools, output, [object], flags, "
+        "libraries);\n"
+        "    bytes := 0; for (argument in command) { bytes += "
+        "strings.ByteLength(argument) + 1; }\n"
+        "    if (!Check(bytes > 65536 && length(command) < 1023, \"fixture did "
+        "not exceed argv byte limit\")) { return 6; }\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, libraries) == 1 "
+        "&& build.run([output]) == 37, \"long real link failed\")) { return 7; "
+        "}\n"
+        "    prefix = build.join([build.join(command, \"\\n\"), \"\\n\\n\"], "
+        "\"\");\n"
+        "    if (!Check(strings.HasPrefix(build.read_file(record), prefix) && "
+        "!build.file_exists(response), \"long original argv lost\")) { return "
+        "8; }\n"
+        "    if (!build.write_file(build.join([root, \"/link_commands.json\"], "
+        "\"\"), c.LinkEntry(command, output))) { return 9; }\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, libraries) == "
+        "0, \"long cache miss\")) { return 10; }\n"
+        "    libraries.append(\"-lm\");\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, libraries) == 1 "
+        "&& c.Link(tools, output, [object], flags, libraries) == 0, \"command "
+        "invalidation failed\")) { return 11; }\n"
+        "    if (!build.write_file(source, \"int main(void) { return 38; "
+        "}\\n\")) { return 12; }\n"
+        "    if (build.run([compiler, \"-c\", source, \"-o\", object]) != 0) { "
+        "return 13; }\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, libraries) == 1 "
+        "&& build.run([output]) == 38, \"input invalidation failed\")) { "
+        "return 14; }\n"
+        "    failed := slice(libraries, 0, length(libraries)); "
+        "failed.append(build.join([root, \"/missing.a\"], \"\"));\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, failed) == -1 "
+        "&& !build.file_exists(record) && !build.file_exists(response), \"link "
+        "failure retained success\")) { return 15; }\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, libraries) == 1 "
+        "&& build.run([output]) == 38, \"link retry failed\")) { return 16; }\n"
+        "    partial := build.join([root, \"/partial-output\"], \"\");\n"
+        "    if (c.Link(tools, partial, [object], flags, []) != 1) { return "
+        "17; }\n"
+        "    broken := tools; broken.compiler = build.join([root, "
+        "\"/partial-driver\"], \"\");\n"
+        "    if (!Check(c.Link(broken, partial, [object], flags, []) == -1 && "
+        "build.read_file(partial) == \"partial\" && "
+        "!build.file_exists(build.join([partial, \".chibi-record\"], \"\")), "
+        "\"partial failure retained success\")) { return 18; }\n"
+        "    if (!Check(c.Link(tools, partial, [object], flags, []) == 1 && "
+        "build.run([partial]) == 38, \"partial retry failed\")) { return 19; "
+        "}\n"
+        "    if (!build.remove(record) || !build.make_directory(response)) { "
+        "return 20; }\n"
+        "    if (!Check(c.Link(tools, output, [object], flags, libraries) == "
+        "-1 && !build.file_exists(record), \"response write failure retained "
+        "success\")) { return 21; }\n"
+        "    if (!build.remove(response) || c.Link(tools, output, [object], "
+        "flags, libraries) != 1) { return 22; }\n"
+        "    for (bad in [\"line\\nending\", \"line\\rending\", "
+        "\"nul\\u0000ending\"]) {\n"
+        "        if (!Check(c.Link(tools, output, [object], [bad], []) == -1, "
+        "\"malformed link argument accepted\")) { return 23; }\n"
+        "    }\n"
+        "    if (!Check(c.Link(tools, \"\", [object], flags, []) == -1, "
+        "\"empty output accepted\")) { return 24; }\n"
+        "    build.report(format_text(\"response link: {0} arguments, {1} "
+        "bytes\", length(command), bytes));\n"
+        "    return 0;\n}\n"
+    );
+    const char *argv[] = {
+        host_path,       "--root",       CHIBI_SOURCE_ROOT,
+        "--source",      program,        "--core",
+        "packages/core", "--collection", "graph_c=tools/graph/c",
+        "--entry",       "Build",        "--timeout-ms",
+        "50000",         "--",           suite,
+        directory,       libraries,      NULL
+    };
+    REQUIRE(tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS) == 0);
+    char database[GRAPH_PATH];
+    join(database, suite, "link_commands.json");
+    yyjson_doc *doc = yyjson_read_file(database, 0, NULL, NULL);
+    REQUIRE(doc);
+    yyjson_val *arguments = yyjson_obj_get(yyjson_doc_get_root(doc), "arguments");
+    bool original_argv = yyjson_is_arr(arguments) && yyjson_arr_size(arguments) == 405;
+    yyjson_doc_free(doc);
+    REQUIRE(original_argv);
+    join(database, suite, "empty_link_commands.json");
+    doc = yyjson_read_file(database, 0, NULL, NULL);
+    REQUIRE(doc);
+    arguments = yyjson_obj_get(yyjson_doc_get_root(doc), "arguments");
+    yyjson_val *empty = yyjson_arr_get(arguments, 2);
+    bool retained_empty = yyjson_arr_size(arguments) == 6 &&
+                          yyjson_is_str(empty) && !yyjson_get_len(empty);
+    yyjson_doc_free(doc);
+    REQUIRE(retained_empty);
+    char *log = tool_read(log_path);
+    REQUIRE(log && strstr(log, "response link: 405 arguments,") && strstr(log, "empty link: direct "));
+    fputs(log, stdout);
+    free(log);
+    return true;
+}
+
+void test_build_graph_link_response(const char *host)
+{
+    assert(strlen(host) < sizeof host_path);
+    strcpy(host_path, host);
+    strcpy(suite, "/tmp/chibi-link-response-XXXXXX");
+    assert(mkdtemp(suite));
+    join(log_path, suite, "link.log");
+    RUN_TEST_CASE(link_response_files_preserve_commands_and_recover);
+    tool_remove_tree(suite);
+}
+
 /* Source-registration guard only. Actual success/fallback/failure emitted
  * traces have separate integration assertions; this scan does not execute
  * Generate or prove that any report is reached at runtime. */

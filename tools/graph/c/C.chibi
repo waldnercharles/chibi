@@ -358,13 +358,56 @@ pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: str
 // on failure.
 pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> int {
     command := LinkCommand(tools, output, objects, flags, libraries);
+    // Records hold one argument per line. A response file must not turn an
+    // embedded NUL or line ending into a different command or cache identity.
+    if (output == "" || tools.compiler == "") {
+        build.report("graph: invalid link output or compiler");
+        return -1;
+    }
+    for (argument in command) {
+        for (byte in strings.Bytes(argument)) {
+            if (byte == 0 || byte == 10 || byte == 13) {
+                build.report("graph: link arguments cannot contain NUL or line endings");
+                return -1;
+            }
+        }
+    }
+    if (Current(command, output)) {
+        return 0;
+    }
     inputs := slice(objects, 0, length(objects));
     for (linked in libraries) {
         if (strings.HasPrefix(linked, "/")) {
             inputs.append(linked);
         }
     }
-    return Step(command, inputs, output);
+    build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+    // Supported graph compiler drivers use GNU response syntax. Keep this
+    // transport out of Step and Archive, whose programs have other contracts.
+    // The command database and record retain the original, ordered argv.
+    response := Join([output, ".chibi-link.rsp"]);
+    arguments: string[] = [];
+    for (i in 1..<length(command)) {
+        escaped := build.replace(build.replace(command[i], "\\", "\\\\"), "\"", "\\\"");
+        arguments.append(Join(["\"", escaped, "\""]));
+    }
+    // A killed host can leave the response file, but no successful record.
+    // Retry rewrites it before starting the same owned, cancellable child.
+    build.remove(Record(output));
+    if (!build.write_file(response, Join([build.join(arguments, "\n"), "\n"]))) {
+        build.report(Join(["graph: writing link response failed: ", output]));
+        return -1;
+    }
+    status := build.run([command[0], Join(["@", response])]);
+    removed := build.remove(response);
+    if (status != 0 || !removed || !build.file_exists(output)) {
+        build.report(Join(["graph: step failed: ", output]));
+        return -1;
+    }
+    if (!build.write_file(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
+        return -1;
+    }
+    return 1;
 }
 
 // Runs a command that writes output, unless output was written by the same

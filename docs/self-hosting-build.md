@@ -555,7 +555,17 @@ executable link (the language and link
 flags, the sanitizers, the executable's `LinkOptions`, the objects, `-o`,
 then the profile's external libraries and `Links` in CMake's order, which
 may name a library twice and holds `-lm` where CMake puts it) and records it
-as it records compiles. An object library (`ObjectLibrary`, as
+as it records compiles. Compiler-driver execution uses a quoted GNU response
+file beside the output, keeping long links within the host's argument limit.
+The command database and successful record retain the full ordered argv. The
+response is removed after the child returns, and success is recorded only after
+cleanup. Failed or interrupted attempts have no success record; retry replaces
+any retained response. NUL and line endings are rejected because the record
+stores one argument per line. Other build steps and archivers keep their own
+command contracts.
+The native regression group uses the host in its selected `BUILD_DIR`;
+`CHIBI_BUILD_HOST` can explicitly select another matching host.
+An object library (`ObjectLibrary`, as
 `chibi_build_host`) compiles but is not archived; an executable's
 `LinkedObjects` put its objects before the executable's own. On macOS the
 graph also compiles the tooling tests' SDK contract consumers, object

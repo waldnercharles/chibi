@@ -38,7 +38,7 @@ typedef struct
 
 /* Collects owned, sorted source bytes and canonical roots, without parsing or
  * resolving imports. Roots must be absolute; root symlinks are canonicalized,
- * descendant symlinks rejected, hidden descendants skipped and overlapping
+ * descendant symlinks/reparse points rejected, hidden descendants skipped and overlapping
  * roots scanned once. Limits: 256 files, 512 KiB/file, 8 MiB total, 4096 path
  * bytes/visited entries and sixteen directory levels below the longest root.
  * Inputs must initially be empty. Release a successful result with release. */
@@ -49,8 +49,11 @@ bool source_package_files_load(
 );
 void source_package_files_release(source_package_snapshot_options *inputs);
 /* The same bounded filesystem reader for one root, retaining only files.
- * Stores nothing on failure. Windows returns an unsupported error. */
+ * Stores nothing on failure. Windows paths use canonical forward slashes. */
 bool source_package_files_read(const char *root, source_package_input **files, source_package_load_error *);
+/* Reads one explicit regular source, with the same byte/read checks. The
+ * resulting one-element array is released with source_package_files_free. */
+bool source_package_file_read(const char *path, source_package_input **files, source_package_load_error *);
 void source_package_files_free(source_package_input *files);
 
 #endif

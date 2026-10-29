@@ -1730,6 +1730,88 @@ int execution_instance_dispatch(
     program_collect_states(program);
     return status;
 }
+static int synchronous_wait(behavior_function_context *context, int)
+{
+    context->error_message = "a synchronous call must finish without waiting";
+    return FLOW_ERR_STATE;
+}
+static int synchronous_task(behavior_function_context *context, int)
+{
+    context->error_message = "a synchronous call cannot start a task";
+    const behavior_function *function = context->source_function;
+    const behavior_function_instruction
+        *call = &function->instructions[context->activation->pc - 1];
+    context->failure = BEHAVIOR_FUNCTION_COMMAND;
+    context->node_id = call->node_id;
+    context->error_source = call->source;
+    context->error_frame = call->frame;
+    context->error_stack = call->stack;
+    /* Task refusal returns through the call scheduler, outside the normal
+     * instruction failure observer. Capture its diagnostic before unwinding. */
+    record_failure(function, context, FLOW_ERR_STATE);
+    return FLOW_ERR_STATE;
+}
+int execution_instance_call(
+    execution_instance *instance,
+    uint64_t id,
+    int *result,
+    double now,
+    double delta,
+    unsigned budget
+)
+{
+    assert(instance && result);
+    execution_program *p = instance->program;
+    if (p->running || p->dispatching || p->system_prepared ||
+        execution_instance_pending(instance)) {
+        return FLOW_ERR_STATE;
+    }
+    const behavior_function *function = NULL;
+    for (int i = 0; i < p->module->plan.function_count; i++) {
+        const execution_module_function *candidate = &p->module->plan.functions[i];
+        if (candidate->id == id &&
+            candidate->kind == EXECUTION_FUNCTION_AUTHORED && !candidate->parent) {
+            function = candidate->body;
+            break;
+        }
+    }
+    if (!function) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    int parameters = 0, results = 0;
+    behavior_function_arguments(function, &parameters);
+    const pin_value *signature = behavior_function_results(function, &results);
+    if (parameters || results > 1 ||
+        (results && (signature[0].type != PIN_I32 || signature[0].container != PIN_CONTAINER_SINGLE ||
+                     behavior_function_kind(function, BEHAVIOR_BANK_RESULT, 0) !=
+                         BEHAVIOR_VALUE))) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    execution_activation *a = program_activation_new(instance, function, NULL, 0, now, delta, budget);
+    if (!a) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    a->context.begin_command = synchronous_wait;
+    a->context.start_task = synchronous_task;
+    int status = program_activation_run(a, now, delta, budget);
+    if (status > 0 || (status == FLOW_OK && !a->context.returned)) {
+        const behavior_function *active = function;
+        behavior_function_context *context = behavior_function_active_context(&a->context, &active);
+        context
+            ->error_message = "a synchronous call must finish without waiting";
+        status = FLOW_ERR_STATE;
+        record_failure(active, context, status);
+    }
+    if (status == FLOW_OK) {
+        *result = results ? a->context.results[0].i : 0;
+    } else {
+        program_activation_cancel(a);
+    }
+    program_activation_free(a);
+    program_apply_services(p->owner_program);
+    program_collect_states(p);
+    return status;
+}
 const pin_value *execution_instance_state(const execution_instance *instance, uint64_t id)
 {
     for (int i = 0; i < instance->program->module->plan.state_count; i++) {

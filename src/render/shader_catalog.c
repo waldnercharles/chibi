@@ -267,17 +267,6 @@ char *render_shader_model_preview_glsl(int index, int part, shader_error *error)
     free(h);
     return result;
 }
-bool render_shader_model_hit(
-    int index,
-    const float prepared[32][4],
-    const float object_position[3],
-    model_hit *out,
-    shader_error *error
-)
-{
-    return render_shader_is_model(index) &&
-           model_program_hit(&shader_catalog_assets[index - 1].model, prepared, object_position, out, error);
-}
 static bool model_snapshot_prepare(
     int index,
     const float incoming[32][4],

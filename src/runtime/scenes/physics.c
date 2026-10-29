@@ -414,19 +414,6 @@ physics_settings physics_configuration(const physics *physics)
     return physics->configuration;
 }
 
-void physics_set_tasks(physics *physics, const task_system *tasks)
-{
-    assert(!acount(physics->bodies));
-    assert(!tasks || (tasks->workers > 0 && tasks->enqueue && tasks->finish));
-    task_pool *pool = physics->pool;
-    physics->pool = NULL;
-    configure_tasks(physics, tasks);
-    physics_reset(physics);
-    if (pool) {
-        task_pool_release(pool);
-    }
-}
-
 int physics_workers(const physics *physics)
 {
     return physics->active_workers;

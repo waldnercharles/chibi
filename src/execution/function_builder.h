@@ -138,7 +138,6 @@ int behavior_function_builder_component(
     bool binding,
     bool written
 );
-int behavior_function_builder_state(behavior_function_builder *builder, int index, int outputs);
 void behavior_function_builder_limits(behavior_function_builder *builder, unsigned steps, unsigned depth);
 /* HOST_SLOT indexes this contiguous value bank; result values follow arguments. */
 int behavior_function_builder_host_first(const behavior_function_builder *builder, int host);
@@ -153,5 +152,4 @@ behavior_function *behavior_function_builder_finish(
 /* Returns borrowed, immutable declared defaults for the signature banks. */
 const pin_value *behavior_function_arguments(const behavior_function *function, int *count);
 const pin_value *behavior_function_results(const behavior_function *function, int *count);
-const pin_value *behavior_function_variables(const behavior_function *function, int *count);
 #endif

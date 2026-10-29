@@ -23,7 +23,6 @@ void render_scene3d_trails_collect(
     const struct engine *runtime,
     double time
 );
-const scene3d_trail_segment *render_scene3d_trails_segments(const scene3d_trails *trails, int *count);
 /* Preflight/upload shared ribbons before scene submission; each source has one sortable range. */
 bool render_scene3d_trails_prepare(
     scene3d_trails *trails,

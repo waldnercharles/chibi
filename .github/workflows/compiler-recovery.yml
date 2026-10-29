@@ -154,6 +154,11 @@ jobs:
               $record['output_compiler_sha256'] = (Get-FileHash $output -Algorithm SHA256).Hash.ToLowerInvariant()
             }
             New-Item -ItemType Directory -Path "$proof/stage1", "$proof/stage2" | Out-Null
+            # The checked artifact is only a seed. It has to load on the pinned
+            # runtime and compile these sources; the host then builds stage one
+            # with it and walks on to the sources' fixed point, so a change to the
+            # code the compiler generates for itself needs no new seed. Stage 1
+            # is that fixed point.
             Recover-Stage 'stage1' "$proof/tools/compiler/bootstrap" "$proof/stage1/compiler.chibip"
             # Preserve every original source hash and target ABI value. Only the
             # closure's size/hash change so the next call loads the new compiler.
@@ -163,6 +168,7 @@ jobs:
             $closure['bytes'] = [System.Text.Json.Nodes.JsonNode]::Parse([string]$evidence.stages[0].output_bytes)
             $closure['sha256'] = [System.Text.Json.Nodes.JsonNode]::Parse('"' + $evidence.stages[0].output_compiler_sha256 + '"')
             [IO.File]::WriteAllText("$proof/stage1/bootstrap.json", $manifest.ToJsonString())
+            # Stage 2 is built by stage 1 and must be stage 1's bytes.
             Recover-Stage 'stage2' "$proof/stage1" "$proof/stage2/compiler.chibip"
             $first = $evidence.stages[0]
             $second = $evidence.stages[1]

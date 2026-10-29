@@ -271,6 +271,8 @@ set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_
 add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c query_values.c incremental.c operations.c modules.c native_calls.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 # Package tests consume the owning SDK implementation; extraction stays private.
 target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_tests.c package_graph_chibi.c docs_markdown.c)
+target_sources(test_language PRIVATE argument_effects_chibi.c)
+set_source_files_properties(argument_effects_chibi.c package_tests.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::tasks)
 if(TARGET Chibi::task_pool_runtime)
     target_link_libraries(test_language PRIVATE Chibi::task_pool_runtime Chibi::conversion_capabilities)

@@ -21,8 +21,9 @@
 
 /* The manifest format this host reads and writes. */
 #define BOOTSTRAP_FORMAT 1
-/* Instructions one compile of the compiler sources may run (fits 32-bit uintptr_t). */
-#define BOOTSTRAP_BUDGET 4000000000u
+/* Instructions one compile of the compiler sources may run; the authored
+ * parser and checker cost far more than a native parse did. */
+#define BOOTSTRAP_BUDGET (UINTPTR_MAX > UINT32_MAX ? (uintptr_t)UINT64_C(200000000000) : (uintptr_t)UINT32_MAX)
 #define CLOSURE_FILE "compiler.chibip"
 #define MANIFEST_FILE "bootstrap.json"
 #define CONTRACT_FILE "bootstrap.kdl"

@@ -261,6 +261,24 @@ immediately adding it back in the same handler is rejected as a duplicate: the
 removal is still queued. Retain the target and re-add it in a later handler after
 the removal commits.
 
+## Authored events
+
+A file under `content/events` declares one event as a record whose fields are the
+payload. Leading `//` comments describe it, and an underscore in the name reads as
+a space, so `Material_Impact` is the event `Material Impact`:
+
+```code
+// Damage delivered to an entity.
+Damage :: struct {
+    Amount: int
+    Source: entity
+}
+```
+
+Field types are builtin or reflected type names, with `[]` for an array. Payload
+fields have no defaults. `chibi_ctl` formats, validates and describes event files
+like other `.chibi` assets.
+
 ## System queries
 
 A system uses the same typed description as an explicit query iterator.

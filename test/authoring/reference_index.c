@@ -232,7 +232,7 @@ TEST_CASE(reference_graphs_index_every_kind_of_symbol)
     healer h = healer_new();
     healer_asset = h.asset;
     refs = reference_index_new();
-    int event = reference_index_add_asset(refs, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.kdl", NULL);
+    int event = reference_index_add_asset(refs, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.chibi", NULL);
     int source = reference_index_add_asset(refs, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.chibi", NULL);
     damaged = behavior_asset_new("Damaged");
     damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
@@ -451,7 +451,7 @@ TEST_CASE(reference_calls_climb_handlers_and_detect_cycles)
     REQUIRE(graph_connect_exec(g, h.tick, 0, h.send, 0, 0) == 0);
     REQUIRE(behavior_asset_add_function_call_node_to_graph(h.asset, h.heal, h.heal));
     refs = reference_index_new();
-    int event = reference_index_add_asset(refs, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.kdl", NULL);
+    int event = reference_index_add_asset(refs, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.chibi", NULL);
     int source = reference_index_add_asset(refs, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.chibi", NULL);
     damaged = behavior_asset_new("Damaged");
     damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;

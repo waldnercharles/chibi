@@ -28,10 +28,10 @@
     "purpose": "batch compilation keeps an unused named event payload available to debugger watches",
     "sha256": "e55f029a430d561aa34984c96ffda0a357f9717b5b0bf4e3eb902f30d7705761"
   },
-  "content/events/Damage.kdl": {
+  "content/events/Damage.chibi": {
     "purpose": "authored event payload fixture",
-    "sha256": "e2a90987fa4ac914bd079a3f2ad47b0002f0933ae38186fb1ad3beb184f90aaf",
-    "source": "projects/arena2d/content/events/Damage.kdl"
+    "sha256": "dc3d293c6d6b4e21a3c0bb589882fe207b5f62eed6d1e13c5d74e7a2177d2b22",
+    "source": "projects/arena2d/content/events/Damage.chibi"
   },
   "content/libraries/DirectionMath.chibi": {
     "purpose": "callable library import and rename",

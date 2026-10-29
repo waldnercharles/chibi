@@ -436,10 +436,10 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
 {
     char message[192];
     size_t length = strlen(path);
-    bool source = !event && length > 6 && !strcmp(path + length - 6, ".chibi");
-    av_doc *document = source
-                         ? authoring_prototype_source_read(text, NULL, message, sizeof message)
-                         : asset_text_read(text, message, sizeof message);
+    bool chibi = length > 6 && !strcmp(path + length - 6, ".chibi"), source = !event && chibi;
+    av_doc *document = event    ? authoring_event_source_read(text, message, sizeof message)
+                     : source ? authoring_prototype_source_read(text, NULL, message, sizeof message)
+                              : asset_text_read(text, message, sizeof message);
     if (!document) {
         error(c, path, (script_range){ 0 }, message);
         return;
@@ -491,8 +491,8 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
                                       .path = owned_path,
                                       .text = owned_text,
                                       .range = value_range(text, name_value),
-                                      .text_kind = source ? SOURCE_TEXT_CHIBI
-                                                          : SOURCE_TEXT_KDL })
+                                      .text_kind = chibi ? SOURCE_TEXT_CHIBI
+                                                         : SOURCE_TEXT_KDL })
     );
     if (!event) {
         project_references(c, owned_path, owned_text, root, 0);
@@ -667,7 +667,8 @@ static void scan(source_catalog *c, const char *path, int depth, declaration_kin
         }
         return;
     }
-    const char *suffix = kind == DECLARATION_SOURCE || kind == DECLARATION_RELATIONSHIP
+    const char *suffix = kind == DECLARATION_SOURCE || kind == DECLARATION_RELATIONSHIP ||
+                                 kind == DECLARATION_EVENT
                            ? ".chibi"
                        : kind == DECLARATION_UI ? ".rml"
                                                 : ".kdl";
@@ -1862,8 +1863,8 @@ bool source_catalog_edit_path(const char *root, const char *path)
     const char *folders[] = { "events/", "prototypes/", "scenes/", "ui/", "relationships/" };
     for (int i = 0; i < 5; i++) {
         const char *extension = i == 3 ? ".rml"
-                              : i == 4 ? ".chibi"
-                                       : DECLARATIVE_ASSET_EXTENSION;
+                              : i == 4 || i == 0 ? ".chibi"
+                                                 : DECLARATIVE_ASSET_EXTENSION;
         size_t size = strlen(relative), suffix = strlen(extension);
         if (!strncmp(relative, folders[i], strlen(folders[i])) &&
             ((size > suffix && !strcmp(relative + size - suffix, extension)) ||

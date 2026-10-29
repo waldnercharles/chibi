@@ -133,6 +133,7 @@ typedef enum
     ASSET_SYSTEM,
     ASSET_PROTOTYPE,
     ASSET_RELATIONSHIP,
+    ASSET_EVENT,
     ASSET_SCENE,
     ASSET_EDITOR,
     ASSET_UI,
@@ -150,7 +151,7 @@ typedef struct
 
 static const asset_family ASSET_FAMILIES[] = {
     { "behavior", "behaviors", CODE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_BEHAVIOR },
-    { "event", "events", DECLARATIVE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_EVENT },
+    { "event", "events", CODE_ASSET_EXTENSION, ASSET_EVENT, REFERENCE_ASSET_EVENT },
     { "library", "libraries", CODE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
     { "material", "materials", DECLARATIVE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_MATERIAL },
     { "shape", "shapes", DECLARATIVE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_SHAPE },
@@ -1453,7 +1454,7 @@ static char *asset_name_from_filename(const char *filename)
     return name;
 }
 
-/* Prototypes and relationships use their declared identities, as the runtime
+/* Prototypes, relationships and events use their declared identities, as the runtime
  * catalog does. Invalid declarations fall back to their diagnostic file name. */
 static char *asset_name(const asset_family *family, const char *filename, const char *text)
 {
@@ -1461,6 +1462,16 @@ static char *asset_name(const asset_family *family, const char *filename, const 
         char error[160];
         av_doc *document = authoring_prototype_document_read(text, NULL, error, sizeof error);
         const char *declared = av_get_str(av_obj_get(av_doc_root(document), "name"));
+        char *name = declared && declared[0] ? xstrdup(declared) : NULL;
+        av_doc_free(document);
+        if (name) {
+            return name;
+        }
+    }
+    if (family->loader == ASSET_EVENT) {
+        char error[160];
+        av_doc *document = authoring_event_source_read(text, error, sizeof error);
+        const char *declared = document ? av_get_str(av_obj_get(av_doc_root(document), "name")) : NULL;
         char *name = declared && declared[0] ? xstrdup(declared) : NULL;
         av_doc_free(document);
         if (name) {
@@ -1994,6 +2005,14 @@ static void catalog_validate_asset(
             compile_report_free(&report);
         }
         behavior_asset_free(behavior);
+    } else if (family->loader == ASSET_EVENT) {
+        char error[256] = { 0 };
+        av_doc *event = authoring_event_source_read(json, error, sizeof error);
+        if (!event) {
+            asset->errors = 1;
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
+        }
+        av_doc_free(event);
     } else if (family->loader == ASSET_RELATIONSHIP) {
         char error[256] = { 0 };
         ecs_relationship_desc *relationship = authoring_relationship_source_read(json, error, sizeof error);
@@ -2170,6 +2189,7 @@ static void catalog_add_content(
             reference_index_add_ui(index, asset->reference, text);
             return;
         case ASSET_EDITOR:
+        case ASSET_EVENT:
         case ASSET_RELATIONSHIP:
         case ASSET_SCENARIO: return;
     }
@@ -5829,7 +5849,8 @@ static int load_asset(
     /* Declared identities need not match their files. */
     const asset_family *family = family_by_kind(request_string(request, "kind"));
     if (!request_string(request, "path") && family &&
-        (family->loader == ASSET_PROTOTYPE || family->loader == ASSET_RELATIONSHIP)) {
+        (family->loader == ASSET_PROTOTYPE || family->loader == ASSET_RELATIONSHIP ||
+         family->loader == ASSET_EVENT)) {
         const char *name = request_string(request, "name");
         return load_named_asset(root, family, name, ref, json, bytes, hash, error, error_size);
     }
@@ -5968,7 +5989,7 @@ static int load_named_asset(
     ref->family = family;
     *json = NULL;
     bool declared = family->loader == ASSET_PROTOTYPE ||
-                    family->loader == ASSET_RELATIONSHIP;
+                    family->loader == ASSET_RELATIONSHIP || family->loader == ASSET_EVENT;
     if (declared) {
         return find_declared_asset(root, name, ref, json, bytes, hash, error, error_size);
     }
@@ -6085,7 +6106,8 @@ static int read_asset_complete(
         return status;
     }
     if (code_filename(ref->relative) && (ref->family->loader == ASSET_PROTOTYPE ||
-                                         ref->family->loader == ASSET_RELATIONSHIP)) {
+                                         ref->family->loader == ASSET_RELATIONSHIP ||
+                                         ref->family->loader == ASSET_EVENT)) {
         authoring_language_catalog *native = source_native_catalog(root, error, error_size);
         if (!native) {
             return CHIBI_AUTOMATION_VALIDATION_ERROR;
@@ -6451,6 +6473,13 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             compile_report_free(&report);
             behavior_asset_free(asset);
         }
+    } else if (ref.family->loader == ASSET_EVENT) {
+        av_doc *event = authoring_event_source_read(json, error, sizeof error);
+        if (!event) {
+            errors = 1;
+            add_load_diagnostic(result->doc, diagnostics, error);
+        }
+        av_doc_free(event);
     } else if (ref.family->loader == ASSET_RELATIONSHIP) {
         ecs_relationship_desc *relationship = authoring_relationship_source_read(json, error, sizeof error);
         if (!relationship) {

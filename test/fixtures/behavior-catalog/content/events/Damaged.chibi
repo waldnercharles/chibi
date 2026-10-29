@@ -1,0 +1,5 @@
+// Accepted health loss after damage is applied. Amount is the actual health lost.
+Damaged :: struct {
+    Amount: int
+    Source: entity
+}

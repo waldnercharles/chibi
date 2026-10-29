@@ -1,0 +1,4 @@
+// An entity reached zero health. Source identifies the accepted lethal damage source.
+Died :: struct {
+    Source: ecs.entity
+}

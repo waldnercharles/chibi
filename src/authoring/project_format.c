@@ -38,6 +38,7 @@ typedef enum
     FORMAT_GRAPH,
     FORMAT_PROTOTYPE,
     FORMAT_RELATIONSHIP,
+    FORMAT_EVENT,
     FORMAT_SCENE,
     FORMAT_EDITOR,
     FORMAT_SCENARIO,
@@ -50,7 +51,7 @@ typedef struct
 /* The content folders whose assets have a canonical form, and its writer. */
 static const asset_family FAMILIES[] = {
     { "behaviors", CODE_ASSET_EXTENSION, FORMAT_SOURCE },
-    { "events", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
+    { "events", CODE_ASSET_EXTENSION, FORMAT_EVENT },
     { "libraries", CODE_ASSET_EXTENSION, FORMAT_SOURCE },
     { "materials", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
     { "shapes", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
@@ -351,6 +352,14 @@ static char *canonical_asset(
                 return NULL;
             }
             authoring_relationship_source_free(relationship);
+            return format_text(text, error, size);
+        }
+        case FORMAT_EVENT: {
+            av_doc *event = authoring_event_source_read(text, error, size);
+            if (!event) {
+                return NULL;
+            }
+            av_doc_free(event);
             return format_text(text, error, size);
         }
         case FORMAT_SCENE: {

@@ -53,6 +53,7 @@ const char *new_asset_extension(new_asset_kind kind)
     switch (kind) {
         case NEW_ASSET_BEHAVIOR:
         case NEW_ASSET_LIBRARY:
+        case NEW_ASSET_EVENT:
         case NEW_ASSET_PROTOTYPE:
         case NEW_ASSET_RELATIONSHIP:
         case NEW_ASSET_SYSTEM: return CODE_ASSET_EXTENSION;
@@ -150,8 +151,7 @@ char *new_asset_text(new_asset_kind kind, const char *name)
         case NEW_ASSET_RELATIONSHIP: return source_text("relationship", name);
         case NEW_ASSET_SYSTEM: return source_text("system", name);
         case NEW_ASSET_BEHAVIOR: return source_text("behavior", name);
-        case NEW_ASSET_EVENT:
-            return graph_text(BEHAVIOR_DOMAIN_EVENT_DEFINITION, name);
+        case NEW_ASSET_EVENT: return source_text("struct", name);
         case NEW_ASSET_LIBRARY: return source_text("library", name);
         case NEW_ASSET_MATERIAL:
             return graph_text(BEHAVIOR_DOMAIN_MATERIAL, name);

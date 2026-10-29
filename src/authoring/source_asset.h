@@ -9,6 +9,8 @@
  * ranges remain attached to values for shared navigation/refactoring. */
 av_doc *authoring_prototype_source_read(const char *, const prototype_registry *, char *, size_t);
 av_doc *authoring_prototype_document_read(const char *, const prototype_registry *, char *, size_t);
+/* An event record: the payload fields as {name, type_name} variables. */
+av_doc *authoring_event_source_read(const char *, char *, size_t);
 bool authoring_relationship_declarations_load(const char *, ecs_relationship_desc ***, char *, size_t);
 /* The returned descriptor owns its name/key; release it with the paired free. */
 ecs_relationship_desc *authoring_relationship_source_read(const char *, char *, size_t);

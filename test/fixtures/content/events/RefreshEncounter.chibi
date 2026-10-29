@@ -1,0 +1,3 @@
+// Recount encounter members after a lifecycle change.
+RefreshEncounter :: struct {
+}

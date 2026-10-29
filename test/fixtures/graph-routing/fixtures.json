@@ -74,15 +74,15 @@
     "sha256": "07175c210c1fc4366e54b00b46331e31d80ed4e49808b4362fe6e1e15b140b53",
     "source": "projects/arena2d/content/behaviors/Weapon.chibi"
   },
-  "content/events/Damage.kdl": {
+  "content/events/Damage.chibi": {
     "purpose": "event signature dependency of routing corpus",
-    "sha256": "e2a90987fa4ac914bd079a3f2ad47b0002f0933ae38186fb1ad3beb184f90aaf",
-    "source": "projects/arena2d/content/events/Damage.kdl"
+    "sha256": "dc3d293c6d6b4e21a3c0bb589882fe207b5f62eed6d1e13c5d74e7a2177d2b22",
+    "source": "projects/arena2d/content/events/Damage.chibi"
   },
-  "content/events/Material Impact.kdl": {
+  "content/events/Material_Impact.chibi": {
     "purpose": "event signature dependency of routing corpus",
-    "sha256": "d57898ee3f520364fe2344140d8caa9db4811dc534be90321b40bc25421137d2",
-    "source": "projects/arena2d/content/events/Material Impact.kdl"
+    "sha256": "4adb5389436ab7c74c0e145cff5199df6d203fd3f07fe8c25a5b8fb48a95fc6f",
+    "source": "projects/arena2d/content/events/Material_Impact.chibi"
   },
   "content/libraries/DirectionMath.chibi": {
     "purpose": "call signature dependency of routing corpus",

@@ -582,12 +582,12 @@ TEST_CASE(model_imports_refuse_names_the_project_declares)
     REQUIRE(declare("content/prototypes/Box.kdl", "Box"));
     /* A file or folder it cannot read could hide a clash, so it refuses
      * then too. A file that declares no name hides none. */
-    REQUIRE(put("content/events/Broken.kdl", "name \"Broken\n"));
-    REQUIRE(put("content/events/Nameless.kdl", "event\n"));
+    REQUIRE(put("content/shader-libraries/Broken.kdl", "name \"Broken\n"));
+    REQUIRE(put("content/shader-libraries/Nameless.kdl", "event\n"));
     REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
-    REQUIRE(!strcmp(error, "Cannot read content/events/Broken.kdl: line 1, column 6: Parse error"));
+    REQUIRE(!strcmp(error, "Cannot read content/shader-libraries/Broken.kdl: line 1, column 6: Parse error"));
     REQUIRE(entries("content") == 3 && entries("content/prototypes") == 1);
-    REQUIRE(declare("content/events/Broken.kdl", "Broken"));
+    REQUIRE(declare("content/shader-libraries/Broken.kdl", "Broken"));
     char fields[128];
     inside(fields, sizeof fields, "content/fields");
     REQUIRE(declare("content/fields", "Fields"));
@@ -606,8 +606,7 @@ TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares)
 {
     gltf_fixture f = { 0 };
     crate(&f);
-    static const char *const folders[] = { "shader-libraries", "events",
-                                           "fields",           "materials",
+    static const char *const folders[] = { "shader-libraries", "fields", "materials",
                                            "shapes",           "models" };
     /* The crate writes three materials, one more than the catalog holds. */
     int existing = NATIVE_GRAPH_DOCUMENTS_MAX - 2;
@@ -615,7 +614,7 @@ TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares)
     for (int i = 0; i < existing; i++) {
         char key[96], name[16];
         snprintf(name, sizeof name, "Graph%d", i);
-        snprintf(key, sizeof key, "content/%s/%s.kdl", folders[i % 6], name);
+        snprintf(key, sizeof key, "content/%s/%s.kdl", folders[i % 5], name);
         declared = declare(key, name) && declared;
     }
     REQUIRE(declared);

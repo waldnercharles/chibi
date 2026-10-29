@@ -1,0 +1,4 @@
+// A count sent between fixture entities.
+Probe_Signal :: struct {
+    Count: int
+}

@@ -2,6 +2,7 @@
 #define CHIBI_TEST_CODE_FIXTURE_H
 
 #include "authoring/application_catalog.h"
+#include "authoring/graph_sources.h"
 #include "authoring/language_catalog.h"
 #include "authoring/preview_runtime.h"
 #include "authoring/source_collection.h"
@@ -99,6 +100,9 @@ static inline behavior_asset *test_project_asset(const char *path, const char *t
 {
     if (!strstr(path, ".chibi")) {
         return behavior_asset_load(text);
+    }
+    if (strstr(path, "/events/")) {
+        return authoring_event_definition(text);
     }
     test_source_fixture fixture = test_source_prepare(path, text);
     authoring_source_presentation *presentation = authoring_source_presentation_new(

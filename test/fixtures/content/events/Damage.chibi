@@ -1,0 +1,5 @@
+// Damage delivered to an entity.
+Damage :: struct {
+    Amount: int
+    Source: ecs.entity
+}

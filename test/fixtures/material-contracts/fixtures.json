@@ -4,10 +4,10 @@
     "sha256": "fae9952169c2afff133e46bb296fc4c467333a24eeb23840bd12f8cfe0678530",
     "source": "projects/arena2d/content/behaviors/MaterialImpactHealth.chibi"
   },
-  "content/events/Material Impact.kdl": {
+  "content/events/Material_Impact.chibi": {
     "purpose": "material impact payload dispatch",
-    "sha256": "d57898ee3f520364fe2344140d8caa9db4811dc534be90321b40bc25421137d2",
-    "source": "projects/arena2d/content/events/Material Impact.kdl"
+    "sha256": "4adb5389436ab7c74c0e145cff5199df6d203fd3f07fe8c25a5b8fb48a95fc6f",
+    "source": "projects/arena2d/content/events/Material_Impact.chibi"
   },
   "content/fields/CaveField.kdl": {
     "purpose": "field noise and terrain generation",

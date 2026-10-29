@@ -1,0 +1,5 @@
+Material_Impact :: struct {
+    Energy: number
+    Cause: int
+    Point: vec2
+}

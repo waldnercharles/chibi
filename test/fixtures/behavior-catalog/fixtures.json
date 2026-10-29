@@ -1,28 +1,28 @@
 {
-  "content/events/CollectExperience.kdl": {
+  "content/events/CollectExperience.chibi": {
     "purpose": "shared runtime test signature and exact linked callable contract",
-    "sha256": "bde027f8b22b0c27244d854464656916b91c1fe8990814ff8b9c6dc657d25fb5",
-    "source": "content/events/CollectExperience.kdl"
+    "sha256": "0753da46cfee111646c37c39c2cd9cf6e12d69005168fcf8b030a00c81b709e6",
+    "source": "content/events/CollectExperience.chibi"
   },
-  "content/events/Damage.kdl": {
+  "content/events/Damage.chibi": {
     "purpose": "shared runtime test signature and exact linked callable contract",
-    "sha256": "e2a90987fa4ac914bd079a3f2ad47b0002f0933ae38186fb1ad3beb184f90aaf",
-    "source": "content/events/Damage.kdl"
+    "sha256": "dc3d293c6d6b4e21a3c0bb589882fe207b5f62eed6d1e13c5d74e7a2177d2b22",
+    "source": "content/events/Damage.chibi"
   },
-  "content/events/Damaged.kdl": {
+  "content/events/Damaged.chibi": {
     "purpose": "shared runtime test signature and exact linked callable contract",
-    "sha256": "c15780843c895e8e5a6cc6f49360c8b7d10684ba3bf6b08e82925d20cc8a3789",
-    "source": "content/events/Damaged.kdl"
+    "sha256": "804f5c670170d196848febf8751841bf1df4bf042e14c581839375c0250d39a3",
+    "source": "content/events/Damaged.chibi"
   },
-  "content/events/Died.kdl": {
+  "content/events/Died.chibi": {
     "purpose": "shared runtime test signature and exact linked callable contract",
-    "sha256": "a657074520b482981fa4ed753dc6fe8c08e6a93b41b20193ac32a04850504ce9",
-    "source": "content/events/Died.kdl"
+    "sha256": "08f34af3ed07be9d6b1e7bb802f2cf34b12568819616918dce366fe100dc7ade",
+    "source": "content/events/Died.chibi"
   },
-  "content/events/RefreshEncounter.kdl": {
+  "content/events/RefreshEncounter.chibi": {
     "purpose": "shared runtime test signature and exact linked callable contract",
-    "sha256": "6a4e38e5560a51fdf4d64659e8608f5e36d320325b0673c80e99da93a68d6e93",
-    "source": "content/events/RefreshEncounter.kdl"
+    "sha256": "11562bf683ca64cece11b4a79a6f78027a32cb7c470d7d0b5cdb7492ac2a9557",
+    "source": "content/events/RefreshEncounter.chibi"
   },
   "content/libraries/DirectionMath.chibi": {
     "purpose": "shared runtime test signature and exact linked callable contract",

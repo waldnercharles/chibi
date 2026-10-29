@@ -433,6 +433,90 @@ av_doc *authoring_prototype_source_read(
     }
     return r.doc;
 }
+/* An event is a record: its fields are the payload. Leading line comments
+ * describe it. The document has the shape the declarative event loader reads. */
+static char *event_description(reader *r, TSNode declaration)
+{
+    char *description = NULL;
+    for (TSNode before = ts_node_prev_named_sibling(declaration);
+         !ts_node_is_null(before) && is(before, "comment");
+         before = ts_node_prev_named_sibling(before)) {
+        char *line = text(r, before);
+        const char *body = line + (!strncmp(line, "//", 2) ? 2 : 0);
+        while (*body == ' ') {
+            body++;
+        }
+        size_t size = (description ? strlen(description) + 1 : 0) + strlen(body) + 1;
+        char *joined = xmalloc(size);
+        snprintf(joined, size, "%s%s%s", body, description ? " " : "", description ? description : "");
+        free(description);
+        free(line);
+        description = joined;
+    }
+    return description;
+}
+av_doc *authoring_event_source_read(const char *source, char *error, size_t size)
+{
+    reader r = { .syntax = script_parse(source),
+                 .doc = av_doc_new(),
+                 .error = error,
+                 .size = size };
+    TSNode declaration = root(&r, "record_declaration");
+    av_value *out = av_obj(r.doc);
+    av_doc_set_root(r.doc, out);
+    if (!r.failed && !ts_node_is_null(field(declaration, "parameters"))) {
+        fail(&r, declaration, "An event cannot have type parameters");
+    }
+    if (!r.failed) {
+        /* The spelling `Material_Impact` names the event `Material Impact`. */
+        char *name = text(&r, field(declaration, "name"));
+        for (char *c = name; *c; c++) {
+            *c = *c == '_' ? ' ' : *c;
+        }
+        av_obj_add_strcpy(r.doc, out, "name", name);
+        free(name);
+        char *description = event_description(&r, declaration);
+        if (description) {
+            av_obj_add_strcpy(r.doc, out, "description", description);
+            free(description);
+        }
+    }
+    av_value *variables = av_obj_add_arr(r.doc, out, "variables");
+    TSNode body = field(declaration, "body");
+    for (uint32_t i = 0; !r.failed && i < ts_node_named_child_count(body); i++) {
+        TSNode member = ts_node_named_child(body, i);
+        if (is(member, "comment")) {
+            continue;
+        }
+        TSNode name = field(member, "name"), type = field(member, "type");
+        if (!is(member, "record_field") || !ts_node_is_null(field(member, "value"))) {
+            fail(&r, member, "An event payload field is a name and a type, without a default");
+            break;
+        }
+        char *type_text = text(&r, type);
+        size_t length = strlen(type_text);
+        bool array = length > 2 && !strcmp(type_text + length - 2, "[]");
+        if (array) {
+            type_text[length - 2] = 0;
+        }
+        av_value *variable = av_obj(r.doc);
+        char *key = text(&r, name);
+        av_obj_add_strcpy(r.doc, variable, "name", key);
+        av_obj_add_strcpy(r.doc, variable, "type_name", type_text);
+        if (array) {
+            av_obj_add_str(r.doc, variable, "container", "array");
+        }
+        av_arr_append(variables, variable);
+        free(key);
+        free(type_text);
+    }
+    script_syntax_free(r.syntax);
+    if (r.failed) {
+        av_doc_free(r.doc);
+        return NULL;
+    }
+    return r.doc;
+}
 ecs_relationship_desc *authoring_relationship_source_read(const char *source, char *error, size_t size)
 {
     reader r = { .syntax = script_parse(source),

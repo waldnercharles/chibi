@@ -1,5 +1,7 @@
 #include "authoring/graph_sources.h"
 
+#include "authoring/source_asset.h"
+#include "capabilities/catalog.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -60,6 +62,44 @@ static bool has_suffix(const char *text, const char *suffix)
            !strcmp(text + text_length - suffix_length, suffix);
 }
 
+/* Graph assets link against an event's payload; the event itself is a Chibi
+ * record, so the linkable definition is made from it. */
+behavior_asset *authoring_event_definition(const char *text)
+{
+    char error[160];
+    av_doc *document = authoring_event_source_read(text, error, sizeof error);
+    if (!document) {
+        load_error("event", "parse", error);
+        return NULL;
+    }
+    const av_value *root = av_doc_root(document), *variables = av_obj_get(root, "variables");
+    behavior_asset *asset = behavior_asset_new(av_get_str(av_obj_get(root, "name")));
+    asset->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
+    const char *description = av_get_str(av_obj_get(root, "description"));
+    if (description) {
+        behavior_asset_set_description(asset, description);
+    }
+    for (size_t i = 0; i < av_arr_size(variables); i++) {
+        const av_value *variable = av_arr_get(variables, i);
+        const char *type_name = av_get_str(av_obj_get(variable, "type_name"));
+        script_type type = script_builtin_type(type_name);
+        bool builtin = !(type.flags & SCRIPT_TYPE_ERROR);
+        pin_container container = av_get_str(av_obj_get(variable, "container")) ? PIN_CONTAINER_ARRAY
+                                                                                : PIN_CONTAINER_SINGLE;
+        behavior_asset_add_variable(
+            asset,
+            av_get_str(av_obj_get(variable, "name")),
+            builtin ? type.storage : PIN_STRUCT,
+            type.nominal ? "ecs.entity" : type_name,
+            container,
+            NULL,
+            "Payload"
+        );
+    }
+    av_doc_free(document);
+    return asset;
+}
+
 bool authoring_graph_sources_load(const char *content_root, authoring_graph_source **out)
 {
     assert(out && !*out);
@@ -82,7 +122,7 @@ bool authoring_graph_sources_load(const char *content_root, authoring_graph_sour
         struct dirent *entry;
         while ((entry = readdir(directory))) {
             if (entry->d_name[0] == '.' ||
-                !has_suffix(entry->d_name, DECLARATIVE_ASSET_EXTENSION)) {
+                !has_suffix(entry->d_name, f == 1 ? CODE_ASSET_EXTENSION : DECLARATIVE_ASSET_EXTENSION)) {
                 continue;
             }
             size_t path_size = strlen(directory_path) + strlen(entry->d_name) + 2;
@@ -119,7 +159,8 @@ bool authoring_graph_sources_load(const char *content_root, authoring_graph_sour
     authoring_graph_source *result = NULL;
     for (int i = 0; i < acount(paths); i++) {
         char *text = read_file(paths[i]);
-        behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
+        bool event = has_suffix(paths[i], CODE_ASSET_EXTENSION);
+        behavior_asset *asset = !text ? NULL : event ? authoring_event_definition(text) : behavior_asset_load(text);
         if (!asset) {
             load_error(paths[i], "deserialize", text ? graph_last_error() : "Cannot read asset");
             valid = false;

@@ -8214,6 +8214,7 @@ static behavior_function *query_evaluator(lower *parent, int index)
     lower l = *parent;
     l.slot_schemas = l.local_schemas = NULL;
     l.schema_builder = NULL;
+    l.temporaries = NULL;
     l.function = -1;
     l.query_evaluating = index + 1;
     l.query_banks = indices(l.a->symbol_count);
@@ -8365,6 +8366,7 @@ static behavior_function *query_evaluator(lower *parent, int index)
     free(l.results);
     free(l.captured);
     free(l.query_banks);
+    afree(l.temporaries);
     parent->failed = l.failed;
     parent->occurrences = l.occurrences;
     return function;

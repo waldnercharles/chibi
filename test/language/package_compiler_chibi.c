@@ -4506,11 +4506,12 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         return true;
     }
     if (!linked[game][probe]) {
-        const native_definition_pack packs[] = {
-            NATIVE_TEXT_DEFINITION_PACK,   NATIVE_ARRAY_DEFINITION_PACK,
-            COMPILER_JSON_DEFINITION_PACK, COMPILER_SYNTAX_DEFINITION_PACK,
-            CORE_DEFINITION_PACK,          CSTRING_PACK
-        };
+        const native_definition_pack packs[] = { NATIVE_COMPILER_TEXT_DEFINITION_PACK,
+                                                 NATIVE_ARRAY_DEFINITION_PACK,
+                                                 COMPILER_JSON_DEFINITION_PACK,
+                                                 COMPILER_SYNTAX_DEFINITION_PACK,
+                                                 CORE_DEFINITION_PACK,
+                                                 CSTRING_PACK };
         char error[256];
         native_definition_pack selected[6];
         int count = 4;
@@ -7285,10 +7286,34 @@ TEST_CASE(package_compiler_compiles_itself)
     REQUIRE(target && compiled_arguments);
     bool target_equal = true;
     for (size_t i = 0; i < 6; i++) {
-        target_equal &= yyjson_equals(
-            yyjson_arr_get(yyjson_doc_get_root(target), i),
-            yyjson_arr_get(yyjson_doc_get_root(compiled_arguments), TARGET_ARGUMENT + i)
+        yyjson_val *host_part = yyjson_arr_get(yyjson_doc_get_root(target), i);
+        yyjson_val *argument_part = yyjson_arr_get(
+            yyjson_doc_get_root(compiled_arguments),
+            TARGET_ARGUMENT + i
         );
+        bool same = yyjson_equals(host_part, argument_part);
+        if (!same) {
+            char *host_text = yyjson_val_write(host_part, 0, NULL);
+            char *argument_text = yyjson_val_write(argument_part, 0, NULL);
+            size_t at = 0;
+            while (host_text[at] && argument_text[at] &&
+                   host_text[at] == argument_text[at]) {
+                at++;
+            }
+            size_t from = at > 120 ? at - 120 : 0;
+            fprintf(
+                stderr,
+                "self-hosted target part %zu differs at byte %zu:\n host: "
+                "%.240s\n args: %.240s\n",
+                i,
+                at,
+                host_text + from,
+                argument_text + from
+            );
+            free(host_text);
+            free(argument_text);
+        }
+        target_equal &= same;
     }
     yyjson_doc_free(compiled_arguments);
     yyjson_doc_free(target);

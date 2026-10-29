@@ -523,24 +523,6 @@ TEST_CASE(source_native_number_random_range_checks_both_bounds)
     }
     return true;
 }
-/* Origins at a source offset; NULL when the presentation has none. */
-static const source_presentation_origin *origin_at(
-    const authoring_source_presentation *view,
-    source_presentation_kind kind,
-    const char *text
-)
-{
-    const char *start = strstr(prepared->analysis->text, text);
-    assert(start);
-    int offset = (int)(start - prepared->analysis->text);
-    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
-        const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
-        if (o->kind == kind && !o->pin && o->range.start == offset) {
-            return o;
-        }
-    }
-    return NULL;
-}
 /* 16,777,217 is the first integer an f32 rounds. A wire from an int into an
  * f64 keeps it; an explicit To Real still yields a number. */
 TEST_CASE(source_native_query_retains_nested_iteration_and_membership)

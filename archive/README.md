@@ -1,6 +1,8 @@
 # Archive
 
-Features removed from the build but kept for reference and later revival. Paths mirror the original tree: `archive/src/authoring/x.c` was `src/authoring/x.c`.
+This tree is not built. It keeps code that is being rebuilt in Chibi so it can serve as a reference
+while features are replaced one at a time with Zig- and Odin-style tooling. Paths below `archive/`
+match their original paths in the repository root.
 
 Nothing here is built, formatted, tested or listed in an inventory. Bring a file back with `git mv` to its original path and re-add it to the build lists.
 

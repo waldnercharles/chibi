@@ -2,13 +2,10 @@
 #include "runtime/behaviors/package.h"
 #include "runtime/native_capabilities.h"
 
-typedef struct authoring_graph_catalog authoring_graph_catalog;
-/* The application composition chibi build compiles with: its natives, and its
- * node packs, installed in the graph registry until authoring_application_end. */
+/* The application composition chibi build compiles with: its natives. */
 typedef struct
 {
     native_capabilities *native;
-    authoring_graph_catalog *graphs;
 } authoring_application;
 bool authoring_application_begin(authoring_application *, char *error, size_t size);
 void authoring_application_end(authoring_application *);

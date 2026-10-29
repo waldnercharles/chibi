@@ -1,0 +1,76 @@
+package asset_compiler_stage
+
+// The native dispatcher appends this check to the production generator so its
+// private Key/Product helpers are exercised without exposing a test-only API.
+// The controlled compiler writes a marker instead of spending a real compile.
+CacheHost :: (host: string, marker: string) {
+    assert(build.write_file(host, Join([
+        "#!/bin/sh\nset -eu\nprintf x >> \"$0.calls\"\n",
+        "while [ \"$#\" -gt 1 ]; do shift; done\nprintf '", marker, "' > \"$1\"\n"
+    ])));
+    assert(build.run(["chmod", "+x", host]) == 0);
+}
+
+@test
+CacheIdentity :: () {
+    root := build.arguments()[0];
+    host := Join([root, "/compiler-host"]);
+    seed := Join([root, "/seed"]);
+    cache := Join([root, "/cache"]);
+    output := Join([root, "/output"]);
+    inputs := Join([root, "/input"]);
+    request := "same sources and target ABI";
+    assert(build.write_file(seed, "same seed"));
+    CacheHost(host, "first host");
+    first := Key(host, seed, request);
+    assert(first != "");
+    assert(Key("sh", seed, request) == Key(build.find_executable("sh"), seed, request));
+    missing := Join([root, "/missing-host"]);
+    assert(Key(missing, seed, request) == "");
+    assert(Key(host, Join([root, "/missing-seed"]), request) == "");
+    assert(!Product(host, seed, "fixture", request, "", output, cache, "1000", inputs));
+    assert(!build.file_exists(output) && !build.file_exists(cache) && !build.file_exists(inputs));
+    assert(!build.file_exists(Join([host, ".calls"])));
+    assert(Product(host, seed, "fixture", request, first, output, cache, "1000", inputs));
+    assert(build.read_file(output) == "first host");
+    assert(build.read_file(inputs) == request);
+    assert(build.read_file(Join([host, ".calls"])) == "x");
+
+    // Identical bytes, even at another path, retain the product identity.
+    copy := Join([root, "/same-host"]);
+    assert(build.copy_file(host, copy));
+    assert(Key(copy, seed, request) == first);
+    assert(Key(host, seed, request) == first);
+    assert(build.remove(output));
+    assert(Product(host, seed, "fixture", request, first, output, cache, "1000", inputs));
+    assert(build.read_file(output) == "first host");
+    assert(build.read_file(Join([host, ".calls"])) == "x");
+
+    // Only implementation bytes change: same path, seed, sources and target.
+    CacheHost(host, "second host");
+    second := Key(host, seed, request);
+    assert(second != first, "host-only change reused the product key");
+    assert(Product(host, seed, "fixture", request, second, output, cache, "1000", inputs));
+    assert(build.read_file(output) == "second host");
+    assert(build.read_file(Join([host, ".calls"])) == "xx");
+    assert(Key(host, seed, "changed request") != second);
+    assert(build.write_file(seed, "changed seed"));
+    assert(Key(host, seed, request) != second);
+    assert(build.write_file(seed, "same seed"));
+
+    // A missing entry recompiles; pruning drops obsolete host products.
+    assert(build.remove(Join([cache, "/", second])));
+    assert(Product(host, seed, "fixture", request, second, output, cache, "1000", inputs));
+    assert(build.read_file(output) == "second host");
+    assert(build.read_file(Join([host, ".calls"])) == "xxx");
+    Prune(cache, [second]);
+    assert(!build.file_exists(Join([cache, "/", first])));
+    assert(length(build.list_directory(cache)) == 1);
+    assert(build.file_exists(Join([cache, "/", second])));
+}
+
+CacheCheck :: () -> int {
+    CacheIdentity();
+    build.report("asset compiler cache: host, seed, request, hit, miss and pruning passed");
+    return 0;
+}

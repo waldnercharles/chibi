@@ -91,12 +91,15 @@ jobs:
         run: |
           ccache --show-config
           ccache --zero-stats
+      # Per-commit snapshots can publish changed host products; each restored
+      # product is checked against the actual host bytes by the generator.
       - name: Restore the compiled asset compiler
         id: asset-cache
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       # published-docs and chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.
       - name: Build an unsanitized chibi launcher (Release)
@@ -189,7 +192,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
 
   native-macos:
     name: Engine build and native tests (macOS)
@@ -235,7 +238,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       # published-docs and chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the Debug builds use.
@@ -339,7 +343,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
 
   # The engine's test drivers do not build on Windows yet, so the Linux job
   # builds each module language-scalar-native runs for macOS arm64 and Windows
@@ -514,8 +518,17 @@ jobs:
       - name: Restore the compiled asset compiler
         uses: actions/cache/restore@v4
         with:
-          path: engine/.chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('engine/tools/compiler/**', 'engine/packages/**', 'engine/tools/graph/asset_compiler/**') }}
+          path: .chibi/asset-compiler-cache
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
+      # actions/cache versions include the literal path input. Restore the same
+      # workspace-relative path native jobs save, then stage it in the checkout.
+      - name: Stage the compiled asset compiler in the engine checkout
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/.chibi/asset-compiler-cache" ]; then
+            mkdir -p .chibi
+            cp -R "$GITHUB_WORKSPACE/.chibi/asset-compiler-cache" .chibi/
+          fi
       - name: Package the SDK
         run: make package-sdk SDK_PREFIX=dist/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Verify clean packaged SDK identity
@@ -640,7 +653,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
-          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
+          key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: asset-compiler-v2-${{ runner.os }}-
       - name: Build Release graph compiler and build hosts
         run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
       - name: Record Release graph tool identities

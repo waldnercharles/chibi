@@ -203,11 +203,81 @@ pub CcacheDebugDirectory :: (source_root: string, build_dir: string) -> string {
     return strings.Join(parts, "/");
 }
 
-// libclang's headers or library below the first LLVM prefix that has both,
-// in root CMakeLists.txt's order of hints: Homebrew's, then the newest of
-// Debian's /usr/lib/llvm-N.
+// Environment path lists use the host's separator; spaces belong to a path.
+LibclangEnvironment :: (name: string) -> string[] {
+    separator := ":";
+    if (build.platform() == "Windows") {
+        separator = ";";
+    }
+    return strings.Split(build.environment(name), separator);
+}
+
+// Conventional include/library directories still identify one installation.
+// Keep its headers and library together instead of combining LLVM versions.
+LibclangPrefix :: (directory: string) -> string {
+    while (strings.ByteLength(directory) > 1 && strings.HasSuffix(directory, "/")) {
+        directory = strings.Slice(directory, 0, strings.ByteLength(directory) - 1);
+    }
+    if (directory == "include" || directory == "lib" || directory == "lib64") {
+        return ".";
+    }
+    for (suffix in ["/include", "/lib", "/lib64"]) {
+        if (strings.HasSuffix(directory, suffix)) {
+            return strings.Slice(directory, 0, strings.ByteLength(directory) - strings.ByteLength(suffix));
+        }
+    }
+    multiarch := strings.LastIndex(directory, "/lib/");
+    if (multiarch >= 0) {
+        return strings.Slice(directory, 0, multiarch);
+    }
+    if (strings.HasPrefix(directory, "lib/") && strings.LastIndex(directory, "/") == 3) {
+        return ".";
+    }
+    return "";
+}
+
+LibclangLibrary :: (prefix: string) -> string {
+    directories := [Join([prefix, "/lib"]), Join([prefix, "/lib64"])];
+    if (build.platform() == "Linux" && build.probe(["uname", "-m"]) == 0) {
+        machine := strings.TrimSpace(build.last_stdout());
+        if (machine == "arm64") {
+            machine = "aarch64";
+        }
+        directories.append(Join([prefix, "/lib/", machine, "-linux-gnu"]));
+    }
+    for (directory in directories) {
+        for (name in ["libclang.dylib", "libclang.so", "libclang-18.dylib", "libclang-18.so", "libclang.a", "libclang-18.a"]) {
+            path := Join([directory, "/", name]);
+            if (build.file_exists(path)) {
+                return path;
+            }
+        }
+    }
+    return "";
+}
+
+// Relative environment paths name directories below the engine source root.
+// Preserve absolute aliases, including drive paths, in generated commands.
+LibclangAbsolutePrefix :: (prefix: string) -> string {
+    drive := strings.ByteLength(prefix) >= 3 && strings.Slice(prefix, 1, 1) == ":" &&
+             (strings.Slice(prefix, 2, 1) == "/" || strings.Slice(prefix, 2, 1) == "\\");
+    if (strings.HasPrefix(prefix, "/") || strings.HasPrefix(prefix, "\\\\") || drive) {
+        return prefix;
+    }
+    return build.resolve_path(Join([build.root(), "/", prefix]));
+}
+
+// An explicit root wins, followed by environment prefixes, known LLVM installs
+// and ordinary system prefixes. Each candidate must own both headers/library.
 DiscoverLibclang :: (part: string, root: string) -> string {
-    prefixes := [root, "/opt/homebrew/opt/llvm", "/usr/local/opt/llvm"];
+    prefixes := [root];
+    prefixes.extend(LibclangEnvironment("CMAKE_PREFIX_PATH"));
+    for (variable in ["CMAKE_INCLUDE_PATH", "CMAKE_LIBRARY_PATH"]) {
+        for (directory in LibclangEnvironment(variable)) {
+            prefixes.append(LibclangPrefix(directory));
+        }
+    }
+    prefixes.extend(["/opt/homebrew/opt/llvm", "/usr/local/opt/llvm"]);
     versions: string[] = [];
     for (name in build.list_directory("/usr/lib")) {
         if (strings.HasPrefix(name, "llvm-")) {
@@ -229,18 +299,21 @@ DiscoverLibclang :: (part: string, root: string) -> string {
     for (version in versions) {
         prefixes.append(Join(["/usr/lib/", version]));
     }
-    for (prefix in prefixes) {
+    prefixes.extend(["/usr/local", "/usr", "/"]);
+    for (candidate in prefixes) {
+        if (candidate == "") {
+            continue;
+        }
+        prefix := LibclangAbsolutePrefix(candidate);
         if (prefix == "") {
             continue;
         }
         include := Join([prefix, "/include"]);
-        shared := "";
-        for (name in ["libclang.dylib", "libclang.so"]) {
-            if (shared == "" && build.file_exists(Join([prefix, "/lib/", name]))) {
-                shared = Join([prefix, "/lib/", name]);
-            }
+        if (!build.file_exists(Join([include, "/clang-c/Index.h"]))) {
+            continue;
         }
-        if (shared != "" && build.file_exists(Join([include, "/clang-c/Index.h"]))) {
+        shared := LibclangLibrary(prefix);
+        if (shared != "") {
             if (part == "include") {
                 return include;
             }

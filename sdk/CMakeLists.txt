@@ -31,6 +31,7 @@ option(CHIBI_SDK_BUILD_COMPILER "Build language, compiler and source authoring p
 option(CHIBI_SDK_BUILD_NATIVE "Build built-in component and entity packages" OFF)
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop platform, rendering and UI packages" OFF)
 option(CHIBI_SDK_COMPILER_HOST_ONLY "Build only the prepared compiler's native runtime" OFF)
+option(CHIBI_SDK_BUILD_ASSET_COMPILER_HOST "Build the source-generated authored asset compiler component" ON)
 option(CHIBI_WEB_THREADS "Build the web SDK with pthread workers" OFF)
 option(CHIBI_WEB_PLAYER "Build the browser player that chibi export --web ships" OFF)
 # The compiler's recovery runtime builds pinned portable sources. Normal SDK
@@ -686,7 +687,11 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin|Wi
     install(TARGETS chibi-compiler-host RUNTIME DESTINATION libexec/chibi)
 endif()
 set(CHIBI_SDK_HAS_ASSET_COMPILER_HOST OFF CACHE INTERNAL "Native authored asset compiler component" FORCE)
-if(TARGET chibi-build-host AND TARGET Chibi::compiler_host AND
+# A prepared-format change first needs a source-compiler driver to generate its
+# matching bootstrap. That driver can omit the asset service until the new
+# artifact exists; ordinary SDK builds still generate the checked real resource.
+if(CHIBI_SDK_BUILD_ASSET_COMPILER_HOST AND
+   TARGET chibi-build-host AND TARGET Chibi::compiler_host AND
    CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT CMAKE_CROSSCOMPILING)
     include(asset_compiler_host.cmake)
     set(CHIBI_SDK_HAS_ASSET_COMPILER_HOST ON CACHE INTERNAL "Native authored asset compiler component" FORCE)

@@ -389,12 +389,15 @@ test-bootstrap:
 # test-recovery with sources exported from HEAD. See docs/self-hosting-build.md.
 BOOTSTRAP_ARTIFACT ?= tools/compiler/bootstrap
 BOOTSTRAP_SEED = $(RELEASE_BUILD_DIR)/bootstrap.seed
+BOOTSTRAP_DRIVER_BUILD = $(RELEASE_BUILD_DIR)/compiler-bootstrap-driver
 bootstrap-artifact:
-	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
+	@$(QUIET) configure-bootstrap-driver -- cmake -S test/language -B "$(BOOTSTRAP_DRIVER_BUILD)" -G Ninja -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF
+	@$(QUIET) build-bootstrap-driver -- cmake --build "$(BOOTSTRAP_DRIVER_BUILD)" --target test_language chibi-compiler-host --parallel $(JOBS)
 	@rm -rf "$(BOOTSTRAP_SEED)" && mkdir -p "$(BOOTSTRAP_SEED)"
-	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
-	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(BOOTSTRAP_DRIVER_BUILD)" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+	@"$(BOOTSTRAP_DRIVER_BUILD)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
+	@$(MAKE) stage-zero-build GRAPH_BUILD= BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_TARGET='test_language chibi-compiler-host' LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=ON"
 
 bootstrap-recover:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host

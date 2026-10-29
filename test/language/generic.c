@@ -271,6 +271,20 @@ TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors)
         }
     }
     REQUIRE(nested);
+    cleanup();
+    REQUIRE(analyze(
+        "Forward :: library { Box :: struct($T:Type) { item:T } "
+        "Outer :: struct { box:Box(Inner) } "
+        "Inner :: struct { values:int[] } "
+        "Make :: ()->Outer { return {box:{item:{values:[7,9]}}} } }"
+    ));
+    REQUIRE(!syntax->diagnostic_count);
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count) {
+            REQUIRE(type->size && type->layout);
+        }
+    }
     return true;
 }
 TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_is_a_pointer)
@@ -578,15 +592,33 @@ TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings)
     REQUIRE(fraction && whole && difference && text && local && assigned && deep);
     cleanup(); /* Arena-backed compile values must not be individually freed. */
     REQUIRE(
-        !analyze("Bad :: library { Box :: struct($T:Type) { items:T[] } Make :: ()->Box(int) { return {items:[]} } }")
+        analyze("Arrays :: library { Box :: struct($T:Type) { items:T[] } Make :: ()->Box(int) { return {items:[]} } }")
     );
     REQUIRE(!syntax->diagnostic_count);
-    bool layout = false;
-    for (int i = 0; i < analysis->diagnostic_count; i++) {
-        layout |= strstr(analysis->diagnostics[i].message, "collections and references are not supported") !=
-                  NULL;
+    bool array = false;
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count == 1) {
+            array |= type->fields[0].type.storage == PIN_I32 &&
+                     type->fields[0].type.container == PIN_CONTAINER_ARRAY;
+        }
     }
-    REQUIRE(layout);
+    REQUIRE(array);
+    cleanup();
+    REQUIRE(analyze(
+        "Nested :: library { Box :: struct($T:Type) { item:T } "
+        "Inner :: struct { values:int[] } "
+        "Make :: ()->Box(Inner) { return {item:{values:[7,9]}} } }"
+    ));
+    REQUIRE(!syntax->diagnostic_count);
+    bool nested = false;
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count == 1 && type->size) {
+            nested |= type->fields[0].type.storage == PIN_STRUCT;
+        }
+    }
+    REQUIRE(nested);
     return true;
 }
 static const pin_record *generic_wire_record(execution_wire *, void *user, const pin_value *, bool authored)

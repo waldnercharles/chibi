@@ -165,6 +165,15 @@ The C API borrows it through `chibi_build_options.compiler`; reuse it sequential
 and reload it after compiler source edits. Release it with
 `chibi_build_compiler_free`.
 
+When changing the prepared format, the checked bootstrap cannot yet run on the
+new runtime. `make bootstrap-artifact` first builds the compiler-only SDK language
+driver with `CHIBI_SDK_BUILD_NATIVE=OFF`, `CHIBI_SDK_BUILD_DESKTOP=OFF` and
+`CHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF`. Native authoring depends on the
+generated asset service, so it is built after the matching bootstrap exists.
+The recovery driver omits that component and retains artifact validation.
+After regeneration the target builds the real asset compiler with the component
+enabled, its default, before SDK or product validation.
+
 Build-program compilation invokes `CompileClosureWithEffects`, or
 `CompileWithEffects` for rejection diagnostics. Their first twelve arguments
 match the existing `Compile`/`CompileClosure` bootstrap contract; argument thirteen

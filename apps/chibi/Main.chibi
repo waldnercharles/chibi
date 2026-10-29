@@ -93,6 +93,13 @@ Player :: () -> string {
 
 Main :: () -> int {
     arguments := application.arguments()
+    if length(arguments) > 1 && arguments[1] == "build" && !strings.Contains(Join(arguments), "--native") &&
+       NearestProject() == "" {
+        root := EngineRoot()
+        if root != "" {
+            return EngineBuild(root, Tail(arguments, 2))
+        }
+    }
     options := Parse(arguments)
     if options.help {
         application.stdout(Usage(ProgramName(arguments)))

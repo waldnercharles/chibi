@@ -107,7 +107,7 @@ Cases :: () -> Case[] {
         Rejected("array_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires number, bool, string, record or union parameters and one number, bool, string, record or union result", "int[]"),
         Rejected("nominal_result", "package scalar\nMain :: () -> Missing { return 42; }", "result type is not supported yet", "Missing"),
         Accepted("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", 42, "Main", "x := x return 42"),
-        Rejected("struct", "package scalar\nValue :: struct { x: string; }\nMain :: () -> int { return 42; }", "scalar proof requires number and bool record fields", "x: string;"),
+        Rejected("struct", "package scalar\nValue :: struct { x: int[]; }\nMain :: () -> int { return 42; }", "scalar proof requires number, bool and string record fields", "x: int[];"),
         // A package constant is its folded value: alone, and in a folded
         // expression.
         Accepted("constant", "package scalar\nN: int : 40;\nHalf: number : 0.5;\nMain :: () -> int {\n    if (Half < 1.0) { return Add(N, N / 20); }\n    return 0;\n}\nAdd :: (a: int, b: int) -> int { return a + b; }\n", 42, "Main,Add", "if Half ; 1.0 ; Half < 1.0 return N ; N / 20 ; Add(N, N / 20) end return 0 | return a ; b ; a + b"),

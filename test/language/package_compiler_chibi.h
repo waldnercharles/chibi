@@ -9,6 +9,17 @@ bool package_compiler_authored_tests(
     int count,
     uintptr_t budget
 );
+/* Compile source with the embedded current compiler on backend 0 or 1.
+ * Success returns malloc-owned closure bytes. Failure leaves NULL/zero output
+ * and reports the authored diagnostic through the ordinary test output. */
+bool package_compiler_closure(
+    int compiler_backend,
+    const source_package_input *,
+    int count,
+    uintptr_t budget,
+    unsigned char **bytes,
+    size_t *length
+);
 
 void test_language_package_compiler_chibi();
 void test_language_package_compiler_chibi_types();

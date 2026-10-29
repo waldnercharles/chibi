@@ -244,18 +244,8 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
             }
         }
     }
-    for (relative in Sources(Join([root, "/packages/core"]))) {
-        path := Join(["/sdk/core/", relative]);
-        found := false;
-        for (item in paths) {
-            if (item == path) {
-                found = true;
-            }
-        }
-        if (!found) {
-            paths.append(path);
-        }
-    }
+    // Compiler implementation dependencies are explicit in CompilerSources.txt.
+    // Public core sources are packaged below, without entering the seed target.
     for (directory in ["asset_compiler", "asset_source", "asset_packaging"]) {
         for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
             if (strings.HasSuffix(file, ".chibi")) {
@@ -301,6 +291,23 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     }
     if (build.file_kind(cache) == "directory") {
         Prune(cache, kept);
+    }
+    // Keep the complete public library snapshot separate from compiler inputs.
+    // Retain original compiled source bytes so the final hash check still
+    // rejects a file changed during generation.
+    for (relative in Sources(Join([root, "/packages/core"]))) {
+        path := Join(["/sdk/core/", relative]);
+        found := false;
+        for (item in paths) {
+            if (item == path) {
+                found = true;
+            }
+        }
+        if (!found) {
+            captured := Read(root, [path]);
+            paths.append(path);
+            sources.append(captured[0]);
+        }
     }
     library_paths: string[] = [];
     library_sources: string[] = [];

@@ -1,0 +1,29 @@
+package crc32
+
+// CRC-32/ISO-HDLC, also called IEEE CRC-32: polynomial 0x04c11db7,
+// reflected bytes and result, initial/final XOR 0xffffffff.
+// This scalar implementation takes eight bit steps per byte, O(n) time and
+// O(1) storage, without constructing a lookup table on each invocation.
+
+pub Ieee :: (data: u8[]) -> u32 {
+    return UpdateIeee(u32(0), data);
+}
+
+// Continue from the checksum returned by Ieee or a previous UpdateIeee.
+// Empty input preserves previous. The input array is never changed.
+pub UpdateIeee :: (previous: u32, data: u8[]) -> u32 {
+    crc := ~previous;
+    for value in data {
+        crc ^= u32(value);
+        bit := 0;
+        while bit < 8 {
+            low := crc & u32(1);
+            crc = crc >> u32(1);
+            if low != 0 {
+                crc ^= u32(0xedb88320);
+            }
+            bit += 1;
+        }
+    }
+    return ~crc;
+}

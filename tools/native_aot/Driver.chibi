@@ -409,6 +409,12 @@ EmitterPackages :: () -> string[] {
     return ["scalar_facts", "scalar_llvm", "llvm_native", "native_abi"];
 }
 
+// The scalar emitter imports core:strings. Its closure and cache key use the
+// same explicit dependencies within the compiler's private native catalog.
+EmitterCoreSources :: () -> string[] {
+    return ["strings/Strings.chibi"];
+}
+
 Quote :: (text: string) -> string {
     parts := ["\""];
     start := 0;
@@ -521,8 +527,8 @@ Finish :: (work: string, status: int) -> int {
     return status;
 }
 
-// The emitter closure: the scalar emitter's packages, the core collection and
-// native_emitter, compiled once by the compiler artifact into `emitter`.
+// The emitter closure: the scalar emitter's packages, its core dependencies
+// and native_emitter, compiled once by the compiler artifact into `emitter`.
 Emitter :: (host: string, artifact: string, compiler: string, core: string, work: string, target: string,
             emitter: string) -> bool {
     paths := ["native_emitter/Emitter.chibi"];
@@ -533,7 +539,7 @@ Emitter :: (host: string, artifact: string, compiler: string, core: string, work
             files.append(Join([compiler, "/", part, "/", path]));
         }
     }
-    for (path in Sources(core)) {
+    for (path in EmitterCoreSources()) {
         paths.append(Join(["/sdk/core/", path]));
         files.append(Join([core, "/", path]));
     }
@@ -594,7 +600,7 @@ EmitterKey :: (host: string, artifact: string, compiler: string, core: string) -
             lines.append(Join([part, "/", path, " ", build.hash_file(Join([compiler, "/", part, "/", path]))]));
         }
     }
-    for (path in Sources(core)) {
+    for (path in EmitterCoreSources()) {
         lines.append(Join([path, " ", build.hash_file(Join([core, "/", path]))]));
     }
     return build.hash_text(strings.Join(lines, "\n"));

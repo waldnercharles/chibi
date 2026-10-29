@@ -81,6 +81,22 @@ The package README maps every migrated row and documents retained native
 boundaries and independent oracles. Native byte ownership, copy/read counters,
 metadata and binary/hash witnesses stay in C.
 
+### Portable byte-library regressions
+
+`language-package-portable` embeds the actual sources and adjacent tests for
+bytes, bits, FNV, Adler-32 and CRC-32. Explicit core-collection discovery runs
+their 23 authored cases on bytecode and the compiled backend. Project-only
+discovery defaults stay unchanged. Native cases cover binary text conversion,
+boxed/packed/null arrays, ownership after source retirement, exact collection
+selection and the compiler/public text-profile boundary.
+
+`language-package-portable-compiler` checks the public consumer against the
+current authored compiler and runs the emitted closure on both backends. The
+Wasm route uses the embedded compiler fixture; the native route also checks
+validated bootstrap loading. The selectors are in the language and Wasm groups.
+They do not include the deferred UTF-8, endian, path or codec packages. See the
+[package decision and validation record](package-byte-libraries.md).
+
 ## CI profiles and release validation
 
 Ordinary pull requests and pushes to `main` use **Debug O1 without ASan/UBSan**

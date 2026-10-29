@@ -1,0 +1,151 @@
+package bytes
+
+import strings "core:strings"
+
+// Copy every encoded byte, including NUL and malformed UTF-8. O(n) time and space.
+pub FromString :: (value: string) -> u8[] {
+    result: u8[] = [];
+    for index in 0..<strings.ByteLength(value) {
+        result.append(u8(strings.ByteAt(value, index)));
+    }
+    return result;
+}
+
+// The immutable result preserves every byte without UTF-8 validation. O(n).
+pub ToString :: (value: u8[]) -> string {
+    return text_from_bytes(value);
+}
+
+// Unsigned lexicographic comparison, returning exactly -1, 0 or 1.
+// O(min(length(left), length(right))) time and no temporary storage.
+pub Compare :: (left: u8[], right: u8[]) -> int {
+    index: int = 0;
+    while index < length(left) && index < length(right) {
+        if left[index] < right[index] {
+            return -1;
+        }
+        if left[index] > right[index] {
+            return 1;
+        }
+        index += 1;
+    }
+    if length(left) < length(right) {
+        return -1;
+    }
+    if length(left) > length(right) {
+        return 1;
+    }
+    return 0;
+}
+
+pub Equal :: (left: u8[], right: u8[]) -> bool {
+    return length(left) == length(right) && Compare(left, right) == 0;
+}
+
+// Byte offsets start at zero; -1 means absent. O(n), no temporary storage.
+pub IndexByte :: (data: u8[], value: u8) -> int {
+    for index in 0..<length(data) {
+        if data[index] == value {
+            return index;
+        }
+    }
+    return -1;
+}
+
+pub LastIndexByte :: (data: u8[], value: u8) -> int {
+    index := length(data) - 1;
+    while index >= 0 {
+        if data[index] == value {
+            return index;
+        }
+        index -= 1;
+    }
+    return -1;
+}
+
+MatchesAt :: (data: u8[], needle: u8[], offset: int) -> bool {
+    for index in 0..<length(needle) {
+        if data[offset + index] != needle[index] {
+            return false;
+        }
+    }
+    return true;
+}
+
+PrefixTable :: (needle: u8[]) -> int[] {
+    table: int[] = [0];
+    matched: int = 0;
+    for index in 1..<length(needle) {
+        while matched > 0 && needle[index] != needle[matched] {
+            matched = table[matched - 1];
+        }
+        if needle[index] == needle[matched] {
+            matched += 1;
+        }
+        table.append(matched);
+    }
+    return table;
+}
+
+// Knuth-Morris-Pratt search retains overlapping matches when finding the last one.
+Search :: (data: u8[], needle: u8[], last: bool) -> int {
+    if length(needle) == 0 {
+        if last {
+            return length(data);
+        }
+        return 0;
+    }
+    if length(needle) > length(data) {
+        return -1;
+    }
+    if length(needle) == 1 {
+        if last {
+            return LastIndexByte(data, needle[0]);
+        }
+        return IndexByte(data, needle[0]);
+    }
+    table := PrefixTable(needle);
+    matched: int = 0;
+    found: int = -1;
+    for index in 0..<length(data) {
+        while matched > 0 && data[index] != needle[matched] {
+            matched = table[matched - 1];
+        }
+        if data[index] == needle[matched] {
+            matched += 1;
+        }
+        if matched == length(needle) {
+            found = index - length(needle) + 1;
+            if !last {
+                return found;
+            }
+            matched = table[matched - 1];
+        }
+    }
+    return found;
+}
+
+// An empty needle matches at zero. O(n+m) time, O(m) temporary integer storage.
+// Empty and one-byte needles need no temporary storage.
+pub Index :: (data: u8[], needle: u8[]) -> int {
+    return Search(data, needle, false);
+}
+
+// An empty needle matches at length(data). O(n+m) time, O(m) temporary storage.
+pub LastIndex :: (data: u8[], needle: u8[]) -> int {
+    return Search(data, needle, true);
+}
+
+pub Contains :: (data: u8[], needle: u8[]) -> bool {
+    return Index(data, needle) >= 0;
+}
+
+// O(length(prefix)) time, no temporary storage. Empty prefixes always match.
+pub HasPrefix :: (data: u8[], prefix: u8[]) -> bool {
+    return length(prefix) <= length(data) && MatchesAt(data, prefix, 0);
+}
+
+// O(length(suffix)) time, no temporary storage. Empty suffixes always match.
+pub HasSuffix :: (data: u8[], suffix: u8[]) -> bool {
+    return length(suffix) <= length(data) && MatchesAt(data, suffix, length(data) - length(suffix));
+}

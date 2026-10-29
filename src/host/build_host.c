@@ -46,8 +46,7 @@ struct chibi_build_compiler
 /* Instructions one program may run, as many as a package test: a build graph
  * parses a dependency file per object. The deadline bounds the time. */
 #define BUILD_INSTRUCTION_BUDGET 100000000
-#define BUILD_COMPILE_BUDGET                                                   \
-    (UINTPTR_MAX > UINT32_MAX ? (uintptr_t)UINT64_C(200000000000) : (uintptr_t)UINT32_MAX)
+#define BUILD_COMPILE_BUDGET 2000000000u
 
 static const char *const environment_names[] = {
     "PATH",

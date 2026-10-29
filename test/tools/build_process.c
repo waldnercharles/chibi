@@ -531,15 +531,15 @@ TEST_CASE(private_host_protocol_probe_precedes_source_and_budget_requirements)
     const char *probe[] = { host_path, "--protocol-version", NULL };
     REQUIRE(!tool_run(probe, root, log));
     char *text = tool_read(log);
-    bool current = text && !strcmp(text, "13\n");
+    bool current = text && !strcmp(text, "14\n");
     free(text);
     REQUIRE(current);
     /* A nonzero probe result, as produced by the M1 CLI, must be distinguishable
-     * from an invocation error after a successful version-13 selection. */
+     * from an invocation error after a successful version-14 selection. */
     const char *invalid[] = { host_path, "--protocol-version", "extra", NULL };
     REQUIRE(tool_run(invalid, root, log) != 0);
     text = tool_read(log);
-    bool rejected = text && strstr(text, "usage:") && strcmp(text, "13\n");
+    bool rejected = text && strstr(text, "usage:") && strcmp(text, "14\n");
     free(text);
     REQUIRE(rejected);
     return true;
@@ -1479,9 +1479,9 @@ TEST_CASE(private_embed_file_writes_cmake_byte_arrays)
     return true;
 }
 
-/* The current compiler rejects direct and indirect yield before execution.
- * Host runtime guards remain a boundary; this does not invoke their callbacks. */
-TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation)
+/* Yield and task syntax compile; private execution guards reject suspension
+ * and task creation before any process step starts. */
+TEST_CASE(private_programs_reject_yield_and_unawaited_tasks)
 {
     static const char *sources[] = {
         "package waits\nBuild :: () -> int { yield; return 0; }",
@@ -1489,8 +1489,8 @@ TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation)
         "return 0; }",
     };
     static const char *diagnostics[] = {
-        "unsupported syntax 'yield_statement'",
-        "unsupported syntax 'yield_statement'",
+        "a build program cannot wait",
+        "a build program cannot start a task",
     };
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < 2; i++) {
@@ -1515,10 +1515,7 @@ TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation)
             }
             REQUIRE(!ran);
             REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
-            REQUIRE(
-                !result.steps && !result.counts.bytecode_entries &&
-                !result.counts.sljit_entries
-            );
+            REQUIRE(!result.steps && primitive_backend(&result, options.backend));
         }
     }
     return true;
@@ -1616,9 +1613,12 @@ TEST_CASE(private_waits_take_output_in_wait_order)
         "if (build.wait(code) != 7) { return 1; } "
         "if (build.wait(large) != 0 || text_byte_length(build.last_stdout()) "
         "!= 300000) { return 2; } "
+        "held:=build.last_stdout(); build.platform(); "
         "if (build.wait(argv) != 23 || build.after(build.last_stdout(), "
         "\"arg=5:\") != \"first\\n\") { return 3; } "
         "if (build.last_stderr() != \"worker-stderr\\n\") { return 4; } "
+        "if (text_byte_length(held)!=300000 || text_byte_at(held,0)!=111 || "
+        "text_byte_at(held,299999)!=111) { return 5; } "
         "return 0; }";
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
@@ -2002,36 +2002,46 @@ TEST_CASE(private_byte_lists_write_cmake_initializers)
     return true;
 }
 
-/* Build values are never freed, so a program's values only grow: a build
- * graph that reads a record per source holds tens of megabytes, and a
- * program past the storage limit fails with its cause. */
-TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth)
+/* A bank still rejects growth past its bound. Native results are imported
+ * before the next callback reuses its bank; live values and arguments survive. */
+TEST_CASE(private_value_storage_reuses_results_and_preserves_live_values)
 {
     size_t size = 1024 * 1024;
     char *text = malloc(size);
     assert(text);
     memset(text, 's', size);
+    text[0] = 'a';
+    text[1] = 0;
+    text[2] = 'b';
+    text[3] = '\n';
     primitive_file("primitive-storage", text, size);
+    build_values bank = { 0 };
+    int retained = 0;
+    while (retained < 300 && build_values_text(&bank, text, size)) {
+        retained++;
+    }
     free(text);
-    static const char *sources[] = {
-        "package storage\nBuild :: () -> int { for (i in 0..<64) { "
-        "build.read_file(\"primitive-storage\"); } return 0; }",
-        "package storage\nBuild :: () -> int { for (i in 0..<300) { "
-        "build.read_file(\"primitive-storage\"); } return 0; }",
-    };
-    for (int i = 0; i < 2; i++) {
-        chibi_build_options options = primitive_options(sources[i], BEHAVIOR_BYTECODE);
+    REQUIRE(retained > 0 && retained < 300);
+    REQUIRE(bank.error && !strcmp(bank.error, "build value storage limit exceeded"));
+    REQUIRE(arena_storage_bytes(&bank.memory) <= BUILD_STORAGE_LIMIT);
+    build_values_free(&bank);
+    char *source = tool_read(CHIBI_SOURCE_ROOT "/test/language/BuildValueLifetime.chibi");
+    REQUIRE(source);
+    const char *arguments[] = { "primitive-storage", "root argument" };
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(source, backend);
+        options.arguments = arguments;
+        options.argument_count = 2;
         chibi_build_result result;
         double started = chibi_build_now();
         bool invoked = chibi_build_invoke(&options, &result);
-        bool expected = i ? !strcmp(result.diagnostic, "build value storage limit exceeded")
-                          : !result.value;
-        if (invoked != !i || !expected) {
+        if (!invoked || result.value) {
             fprintf(
                 stderr,
                 "build storage case=%d invoked=%d value=%d flow=%d "
                 "elapsed=%.3f diagnostic=[%s]\n",
-                i,
+                b,
                 invoked,
                 result.value,
                 result.flow_status,
@@ -2039,9 +2049,10 @@ TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth)
                 result.diagnostic
             );
         }
-        REQUIRE(invoked == !i);
-        REQUIRE(expected);
+        REQUIRE(invoked && !result.value);
+        REQUIRE(!result.steps && primitive_backend(&result, backend));
     }
+    free(source);
     return true;
 }
 
@@ -2627,7 +2638,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     }
     if (cases == BUILD_PROCESS_FILES) {
         RUN_TEST_CASE(private_programs_import_core_packages_and_format_text);
-        RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+        RUN_TEST_CASE(private_value_storage_reuses_results_and_preserves_live_values);
         RUN_TEST_CASE(private_directory_publication_refuses_existing_paths);
         goto teardown;
     }
@@ -2658,7 +2669,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(private_programs_import_named_collections);
     RUN_TEST_CASE(private_programs_allocate_managed_pointers);
     RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
-    RUN_TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation);
+    RUN_TEST_CASE(private_programs_reject_yield_and_unawaited_tasks);
     RUN_TEST_CASE(private_runtime_failures_name_their_cause);
     RUN_TEST_CASE(private_started_steps_run_together);
     RUN_TEST_CASE(private_waits_take_output_in_wait_order);
@@ -2670,7 +2681,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(private_file_reads_preserve_bytes_and_reject_invalid_files);
     RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);
     RUN_TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth);
-    RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+    RUN_TEST_CASE(private_value_storage_reuses_results_and_preserves_live_values);
     RUN_TEST_CASE(private_byte_lists_write_cmake_initializers);
     RUN_TEST_CASE(private_argument_bounds_reject_before_authored_execution);
     RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);

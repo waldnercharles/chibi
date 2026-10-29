@@ -329,8 +329,8 @@ static const char driver_integer_parallel
          "              policy.GROUPS['language'].count(name), flush=True)\n"
          "        policy.TOOLS[name] = [sys.argv[3], 'parallel', root,\n"
          "                              alias, 'barrier']\n"
-         "    print('migration-exclusive', "
-         "'language-migration34-generic-repro'\n"
+         "    print('census-exclusive', "
+         "'language-native-census-flattening'\n"
          "          not in policy.PARALLEL_RESOURCES, flush=True)\n"
          "    sys.exit(policy.run_group(names, jobs=2))\n";
 /* Standalone developer targets still build their prerequisites and stop on
@@ -3222,9 +3222,29 @@ TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work)
         char *output = tool_read(logpath);
         REQUIRE(output && strstr(output, names[i]));
         REQUIRE(strstr(output, "frozenset() 1\n"));
-        REQUIRE(strstr(output, "migration-exclusive True\n"));
+        REQUIRE(strstr(output, "census-exclusive True\n"));
         free(output);
     }
+    reset_parallel();
+    return true;
+}
+
+TEST_CASE(parallel_migration_selector_overlaps_with_owned_scratch)
+{
+    reset_parallel();
+    REQUIRE(run("integer-parallel", "language-migration34-generic-repro") == 0);
+    REQUIRE(exists("parallel/first-overlapped") && exists("parallel/second-overlapped"));
+    char *output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "language-migration34-generic-repro frozenset() 1\n"));
+    REQUIRE(strstr(output, "census-exclusive True\n"));
+    char first[4096], second[4096];
+    const char *a = strstr(output, "scratch-first="),
+               *b = strstr(output, "scratch-second=");
+    REQUIRE(a && b);
+    REQUIRE(sscanf(a, "scratch-first=%4095[^\n]", first) == 1);
+    REQUIRE(sscanf(b, "scratch-second=%4095[^\n]", second) == 1);
+    REQUIRE(strcmp(first, second) && access(first, F_OK) && access(second, F_OK));
+    free(output);
     reset_parallel();
     return true;
 }
@@ -3936,6 +3956,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work);
     RUN_TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered);
     RUN_TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work);
+    RUN_TEST_CASE(parallel_migration_selector_overlaps_with_owned_scratch);
     RUN_TEST_CASE(parallel_language_manifest_matches_serial_exactly);
     RUN_TEST_CASE(parallel_admission_bounds_cpu_and_available_memory);
     RUN_TEST_CASE(parallel_serial_escape_uses_real_cli_and_environment);

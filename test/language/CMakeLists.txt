@@ -281,9 +281,9 @@ if(TARGET Chibi::task_pool_runtime)
     target_compile_definitions(test_language PRIVATE CHIBI_PACKAGE_TEST_POOL=1)
 endif()
 target_sources(test_language PRIVATE syntax_corpus.c syntax_chibi.c compiler_fixture.c package_syntax_chibi.c package_paths_chibi.c)
-target_sources(test_language PRIVATE source_tokenizer_chibi.c)
+target_sources(test_language PRIVATE source_tokenizer_chibi.c source_parser_chibi.c)
 # The tokenizer differential reads the checked-in sources at run time.
-set_source_files_properties(source_tokenizer_chibi.c
+set_source_files_properties(source_tokenizer_chibi.c source_parser_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
     COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 target_sources(test_language PRIVATE package_routes_chibi.c package_snapshot_chibi.c)

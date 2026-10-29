@@ -78,6 +78,7 @@ void test_language_asset_compiler_host();
 #endif
 void test_language_syntax_chibi();
 void test_language_source_tokenizer_chibi();
+void test_language_source_parser_chibi();
 void test_language_package_syntax();
 void test_language_package_syntax_chibi();
 void test_language_package_paths_chibi();
@@ -226,6 +227,7 @@ int main(int argc, char **argv)
     bool syntax_chibi = argc == 2 && !strcmp(argv[1], "--syntax-chibi");
     bool source_tokenizer_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--source-tokenizer-chibi");
+    bool source_parser_chibi = argc == 2 && !strcmp(argv[1], "--source-parser-chibi");
     bool package_paths_chibi = argc == 2 && !strcmp(argv[1], "--package-paths-chibi");
     bool package_routes_chibi = argc == 2 &&
                                 !strcmp(argv[1], "--package-routes-chibi");
@@ -365,7 +367,7 @@ int main(int argc, char **argv)
          !integer_shift_counts && !integer_shift_counts_authored &&
          !package_graph && !package_graph_chibi && !asset_compiler_host &&
          !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
-         !source_tokenizer_chibi && !package_syntax && !package_syntax_chibi &&
+         !source_tokenizer_chibi && !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
          !compiler_fixture && !bounded_compiler_chibi && !prepared_writer_chibi &&
@@ -751,6 +753,8 @@ int main(int argc, char **argv)
         test_language_syntax_chibi();
     } else if (source_tokenizer_chibi) {
         test_language_source_tokenizer_chibi();
+    } else if (source_parser_chibi) {
+        test_language_source_parser_chibi();
     } else if (package_graph) {
         test_language_package_graph();
     } else if (ranges) {

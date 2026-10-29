@@ -239,8 +239,6 @@ STUDIO_OUTPUT ?= dist/chibi-studio-$(shell uname -s | tr '[:upper:]' '[:lower:]'
 STUDIO_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug
 STUDIO_CHECKPOINT ?= $(STUDIO_BUILD_DIR)/workspace.json
 PREFIX ?= $(HOME)/.local
-INSTALL_SDK_BUILD_DIR ?= build-install-sdk
-INSTALL_SDK_PREFIX ?= dist/install-sdk
 
 prepare-project:
 	@test -n "$(PROJECT_ROOT)" -a -n "$(ARTIFACT)" || { printf '%s\n' 'Set PROJECT_ROOT and ARTIFACT' >&2; exit 2; }
@@ -272,14 +270,12 @@ package-studio:
 	@$(MAKE) studio-build STUDIO_BUILD_DIR="$(STUDIO_PACKAGE_BUILD_DIR)" STUDIO_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_STUDIO_DISTRIBUTION=ON"
 	@$(QUIET) package-studio -- python3 "$(STUDIO_SDK_PREFIX)/share/chibi/tools/package_studio.py" --build "$(STUDIO_PACKAGE_BUILD_DIR)" --sdk "$(STUDIO_SDK_PREFIX)" --output "$(STUDIO_OUTPUT)"
 
-# A Release SDK, in its own build tree so the development SDK stays as it is.
-# Packaging computes the engine identity, engine.json, which exports carry;
-# the install adds it to the build's files. Studio's `make install` builds
-# against PREFIX.
+# Installs the Release graph products into PREFIX (tools/toolchain/SDK.chibi):
+# bin/chibi, bin/chibi-compile, bin/chibi-player, the private hosts in
+# libexec/chibi and share/chibi.
 install:
-	@$(MAKE) package-sdk SDK_BUILD_DIR="$(INSTALL_SDK_BUILD_DIR)" SDK_PREFIX="$(INSTALL_SDK_PREFIX)" SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
-	@cmake --install "$(INSTALL_SDK_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
-	@cmake -E copy "$(INSTALL_SDK_PREFIX)/share/chibi/engine.json" "$(abspath $(PREFIX))/share/chibi/engine.json"
+	@$(MAKE) build-release BUILD_TARGET='chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host'
+	@$(QUIET) install -- "$(RELEASE_BUILD_DIR)/sdk/chibi-build-host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source tools/toolchain/SDK.chibi --core packages/core --collection graph=tools/graph --entry Install --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RELEASE_BUILD_DIR))" --prefix "$(abspath $(PREFIX))"
 
 # The Release build generates its asset compiler with its own hosts, even when
 # a sanitized build in the same make borrows them.

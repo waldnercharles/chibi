@@ -78,6 +78,19 @@ using actual staged include paths in 2.795s; no source-root include fallback.
 Clang-format22 and diff checks pass. Real Windows and Linux execution, broad
 aggregates, browser and Studio UI checks remain unrun. Native-build execution is
 Linux-only; macOS ran its portable argv-forwarding fixture, not Linux LLVM output.
+
+Final-tip validation on 7134851ef (macOS; main 7c5fa4af1 merged, program.test
+reentry guard 9ccb1477d): `program.test` called from an active test now fails with
+status 1; without the guard the regression fails (11 / 12), with it 12 / 12.
+Program-session 12 / 181, execution-scope 9 / 315, program 211 / 14,167 and
+integer-arithmetic 1 / 4,016 pass. Tools: package-ownership 5 / 275,
+build-graph-resources 3 / 26, build-sdk 8 / 212 (264.5s). Raw build-tree CLI
+35 / 550, process 3 / 50, build 4 / 39, doctor 1 / 60, program-sdk 2 / 17. Against
+the packaged SDK built from the same head: installed CLI 15 / 213, export and
+relocation 2 / 25, isolated program consumer. These supersede the receipts bound
+to 1dd12f7c1. Installed and export selectors need the packaged SDK, not the raw
+build tree. Still unrun: Windows, Linux, wasm, the aggregate suites and Studio
+build/UI.
 Studio resource copying passed its nine-file CMake fixture in 0.506s. The
 guide game example is current format39 and passes check plus fmt --check
 in 0.770s.

@@ -2287,6 +2287,89 @@ TEST_CASE(failed_steps_name_only_the_output)
     return true;
 }
 
+/* The compiler and linked program are real. Only the partial-output failure
+ * uses a controlled driver, so quoting and the host's argv limit stay tested
+ * independently of the response-file implementation. */
+TEST_CASE(link_response_files_preserve_commands_and_recover)
+{
+    char source[GRAPH_PATH], directory[GRAPH_PATH], libraries[GRAPH_PATH],
+        program[GRAPH_PATH], partial[GRAPH_PATH];
+    join(directory, suite, "quoted '\"\\ café 雪 directory");
+    REQUIRE(!mkdir(directory, 0700));
+    char name[201];
+    memset(name, 'l', sizeof name - 1);
+    name[sizeof name - 1] = 0;
+    join(libraries, directory, name);
+    REQUIRE(!mkdir(libraries, 0700));
+    join(source, suite, "link.c");
+    tool_write(source, "int main(void) { return 37; }\n");
+    join(partial, suite, "partial-driver");
+    tool_write(partial, "#!/bin/sh\nprintf partial > \"${0%/*}/partial-output\"\nexit 9\n");
+    REQUIRE(!chmod(partial, 0700));
+    join(partial, suite, "record-driver");
+    tool_write(
+        partial,
+        "#!/bin/sh\nset -eu\n"
+        "printf '%s\\n' \"$@\" > \"${0%/*}/transport-argv\"\n"
+        "IFS= read -r compiler < \"$0.compiler\"\n"
+        "exec \"$compiler\" \"$@\"\n"
+    );
+    REQUIRE(!chmod(partial, 0700));
+    join(program, CHIBI_SOURCE_ROOT, "test/tools/GraphLinkResponse.chibi");
+    const char *argv[] = {
+        host_path,       "--root",       CHIBI_SOURCE_ROOT,
+        "--source",      program,        "--core",
+        "packages/core", "--collection", "graph_c=tools/graph/c",
+        "--entry",       "Build",        "--timeout-ms",
+        "50000",         "--",           suite,
+        directory,       libraries,      NULL
+    };
+    REQUIRE(tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS) == 0);
+    char database[GRAPH_PATH];
+    join(database, suite, "link_commands.json");
+    yyjson_doc *doc = yyjson_read_file(database, 0, NULL, NULL);
+    REQUIRE(doc);
+    yyjson_val *arguments = yyjson_obj_get(yyjson_doc_get_root(doc), "arguments");
+    bool original_argv = yyjson_is_arr(arguments) && yyjson_arr_size(arguments) == 405;
+    yyjson_doc_free(doc);
+    REQUIRE(original_argv);
+    join(database, suite, "empty_link_commands.json");
+    doc = yyjson_read_file(database, 0, NULL, NULL);
+    REQUIRE(doc);
+    arguments = yyjson_obj_get(yyjson_doc_get_root(doc), "arguments");
+    yyjson_val *empty = yyjson_arr_get(arguments, 2);
+    bool retained_empty = yyjson_arr_size(arguments) == 6 &&
+                          yyjson_is_str(empty) && !yyjson_get_len(empty);
+    yyjson_doc_free(doc);
+    REQUIRE(retained_empty);
+    join(database, suite, "operand_link_commands.json");
+    doc = yyjson_read_file(database, 0, NULL, NULL);
+    REQUIRE(doc);
+    arguments = yyjson_obj_get(yyjson_doc_get_root(doc), "arguments");
+    bool retained_operand = yyjson_arr_size(arguments) == 16 &&
+                            !strcmp(yyjson_get_str(yyjson_arr_get(arguments, 10)), "-B") &&
+                            !strcmp(yyjson_get_str(yyjson_arr_get(arguments, 11)), "") &&
+                            !strcmp(yyjson_get_str(yyjson_arr_get(arguments, 12)), "");
+    yyjson_doc_free(doc);
+    REQUIRE(retained_operand);
+    char *log = tool_read(log_path);
+    REQUIRE(log && strstr(log, "response link: 405 arguments,") && strstr(log, "empty link: direct "));
+    fputs(log, stdout);
+    free(log);
+    return true;
+}
+
+void test_build_graph_link_response(const char *host)
+{
+    assert(strlen(host) < sizeof host_path);
+    strcpy(host_path, host);
+    strcpy(suite, "/tmp/chibi-link-response-XXXXXX");
+    assert(mkdtemp(suite));
+    join(log_path, suite, "link.log");
+    RUN_TEST_CASE(link_response_files_preserve_commands_and_recover);
+    tool_remove_tree(suite);
+}
+
 /* Source-registration guard only. Actual success/fallback/failure emitted
  * traces have separate integration assertions; this scan does not execute
  * Generate or prove that any report is reached at runtime. */

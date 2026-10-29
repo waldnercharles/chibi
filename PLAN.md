@@ -892,6 +892,21 @@ separate gate; the native runtime itself is still an explicit prebuilt input.
 
 ### M6. Replace the internal build graph
 
+Compiler-link transport, 2026-10-28: the authored graph writes GNU response
+files for compiler-driver link execution while retaining full argv in command
+databases and cache records. The native argument admission limit is unchanged.
+A real Clang fixture exceeds that limit with UTF-8, quoted and empty arguments,
+then checks cache hits, input/argument invalidation and failure/retry cleanup.
+The native test group carries the host from its selected build directory and
+preserves explicit host overrides. Broader caller/platform proof remains a
+separate gate from the focused local control.
+Older Clang GNU response parsers discard quoted empty arguments. The transport
+keeps those arguments directly in argv and compresses each surrounding nonempty
+run only when its response path is smaller. Argument count and byte use never
+increase. The readable authored fixture covers empty option operands, numbered
+response failure/cleanup and interrupted-attempt remnants on Clang 21, 22 and
+23. It also avoids the oversized C literal rejected by Clang 18 in CI.
+
 SDK version ownership, 2026-10-28: `sdk/VERSION` is the shared version authority.
 The graph identity no longer parses a CMake assignment; retained CMake SDK and
 consumer-version generation read the same file and track configuration changes.

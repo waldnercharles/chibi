@@ -487,8 +487,8 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                         make_fields: int[]) -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
     context: BodyContext = BodyContext.Unknown;
     switch CompileBehaviorResolved(identity, source, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
-                                    game_events, event_fields, types, type_fields, entity, operators, globals,
-                                    makes, make_fields, resize([int(0)], length(natives)), context) {
+                                   game_events, event_fields, types, type_fields, entity, operators, globals,
+                                   makes, make_fields, resize([int(0)], length(natives)), context) {
         case .Rejected(diagnostic):
             return (0, [], diagnostic);
         case .Compiled(compiled_module, prepared):
@@ -521,7 +521,9 @@ PromoteRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
             while (member >= 0) {
                 if (Is(forest, member, "record_declaration")) {
                     attributes := DeclarationAttributes(forest, source, file, member, "error");
-                    if length(attributes) > 0 { return SourceTypes.Failed(attributes[0]); }
+                    if length(attributes) > 0 {
+                        return SourceTypes.Failed(attributes[0]);
+                    }
                     name := Text(forest, source, Field(forest, member, "name"));
                     id := binding.ID("symbol", format_text("{}:1:{}", documents[file].identity, name));
                     found := TypeWithId(types, id);

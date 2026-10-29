@@ -575,7 +575,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                     next.append(Expect(value, result.storage, result.container, result.record));
                     next.append(Resume(value, CopyValuePhase, 0, 0));
                     write := Resume(item.node, FieldPhase, found, index);
-                    if (operator != "") { write.c = 1; }
+                    if (operator != "") {
+                        write.c = 1;
+                    }
                     next.append(write);
                     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                                         NoValue(), retained, marks);
@@ -812,8 +814,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                         if (!Parameter(forest, original)) {
                             // The write updates the original optional symbol.
                             return SequenceJoined(written, Step.Emitted([SymbolCode(ops, original.node, node)],
-                                                                         [], [], [], [], [], [], [], [], 0,
-                                                                         NoValue(), NoValue(), []));
+                                                                        [], [], [], [], [], [], [], [], 0,
+                                                                        NoValue(), NoValue(), []));
                         }
                         return written;
                 }
@@ -937,7 +939,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             called := callables[binding.record];
             result := params[called.first + called.count + item.b];
             return FunctionResultAssignStep(forest, text, document, types, binding, result, values[top - 1],
-                                             item, ops, target, at, node);
+                                            item, ops, target, at, node);
         }
         return WriteStep(EffectsStep(FieldStep(forest, text, document, binding, members[item.b], values[top - 1], item,
                                                ops, target, at, node), MemberEffects(types, binding.record)),
@@ -4271,8 +4273,8 @@ FunctionResultAssignStep :: (forest: snapshot.SnapshotNode[], text: string, docu
         return Fail(forest, destination, document, "assigned value differs from its destination");
     }
     view: Name = {owned: false, name: binding.name, place: CellPlace, index: cell,
-                   storage: result.storage, container: result.container, record: result.record,
-                   writable: true, node: binding.node};
+                  storage: result.storage, container: result.container, record: result.record,
+                  writable: true, node: binding.node};
     shifted := SlotsPast(at, length(slots));
     shifted.pc = at.pc + length(code);
     switch NamePlaceStep(forest, document, types, view, destination, ops, target, shifted) {

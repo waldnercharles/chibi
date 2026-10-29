@@ -835,7 +835,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             record := Is(forest, member, "record_declaration");
             if (record || Is(forest, member, "union_declaration")) {
                 attributes := DeclarationAttributes(forest, text, file, member, "error");
-                if length(attributes) > 0 { return Declarations.Failed(attributes[0]); }
+                if length(attributes) > 0 {
+                    return Declarations.Failed(attributes[0]);
+                }
                 name := Text(forest, text, Field(forest, member, "name"));
                 if (name == "") {
                     return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
@@ -1679,7 +1681,9 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], table: ^(TypeDecl[]),
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
     attributes := DeclarationAttributes(forest, text, file, member, "test");
-    if (length(attributes) > 0) { return Signature.Failed(attributes[0]); }
+    if (length(attributes) > 0) {
+        return Signature.Failed(attributes[0]);
+    }
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
     while (parameter >= 0) {
@@ -2365,7 +2369,9 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
             }
             if requires_check {
                 problems := FallibleBody(forest, documents, callables, params, table^, callable, facts, generated_query);
-                if length(problems) > 0 { return Body.Failed(problems[0]); }
+                if length(problems) > 0 {
+                    return Body.Failed(problems[0]);
+                }
             }
         case:
             return emitted;
@@ -3054,7 +3060,7 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
 pub CompileWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                            sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
                            ports: Port[], identities: u64[], native_effects: int[])
-                           -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
+-> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
     switch CompileInput(project, collection_names, collection_paths, paths, sources, debug, target, abi,
                         names, natives, ports, identities, native_effects) {
         case .Rejected(diagnostic):

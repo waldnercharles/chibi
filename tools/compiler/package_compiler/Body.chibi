@@ -634,17 +634,25 @@ ConstantElement :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
 FoldedIntegerArray :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[],
                        callables: Callable[], package: int, item: Work) -> bool {
     if !Is(forest, item.node, "array_expression") || item.record >= 0 ||
-       (item.container != 0 && item.container != ArrayContainer) { return false; }
+       (item.container != 0 && item.container != ArrayContainer) {
+        return false;
+    }
     elements := Members(forest, item.node);
-    if length(elements) == 0 { return false; }
+    if length(elements) == 0 {
+        return false;
+    }
     storage := item.storage;
     if item.container == 0 {
         storage = ConstantType(forest, text, constants, names, package, elements[0]);
     }
-    if !Integer(storage) { return false; }
+    if !Integer(storage) {
+        return false;
+    }
     for element in elements {
         actual := ConstantType(forest, text, constants, names, package, element);
-        if actual == 0 { actual = storage; }
+        if actual == 0 {
+            actual = storage;
+        }
         if actual != storage || ShadowedConversion(forest, text, callables, package, element) ||
            (!NumberLiteral(forest, element) && !Folds(forest, text, constants, names, package, element, storage)) {
             return false;
@@ -656,7 +664,9 @@ FoldedIntegerArray :: (forest: snapshot.SnapshotNode[], text: string, constants:
 // independently evaluated expressions.
 InConstantArray :: (forest: snapshot.SnapshotNode[], arrays: int[], node: int) -> bool {
     for array in arrays {
-        if forest[array].start < forest[node].start && forest[node].end < forest[array].end { return true; }
+        if forest[array].start < forest[node].start && forest[node].end < forest[array].end {
+            return true;
+        }
     }
     return false;
 }

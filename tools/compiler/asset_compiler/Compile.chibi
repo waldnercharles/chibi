@@ -108,7 +108,7 @@ Entry :: (project: string, collection_names: string[], collection_paths: string[
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                 sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
                 natives: compiler.Native[], ports: compiler.Port[], identities: u64[])
-                -> (entry_id: u64, prepared: u8[], error: syntax.Diagnostic?) {
+-> (entry_id: u64, prepared: u8[], error: syntax.Diagnostic?) {
     compiled := compiler.Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
                                  names, natives, ports, identities);
     diagnostic := compiled.error;

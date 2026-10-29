@@ -14,7 +14,7 @@ ErrorMarked :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> boo
 }
 
 DeclarationAttributes :: (forest: snapshot.SnapshotNode[], text: string, file: int, node: int,
-                           allowed: string) -> syntax.Diagnostic[] {
+                          allowed: string) -> syntax.Diagnostic[] {
     seen: string[] = [];
     for child in Members(forest, node) {
         if Is(forest, child, "attribute") {
@@ -40,10 +40,14 @@ ErrorBearing :: (types: TypeDecl[], value: ValueType) -> bool {
     visited: int[] = [];
     while current.container == 0 && (current.storage == StructStorage || current.storage == UnionStorage) &&
           current.record >= 0 {
-        if visited.contains(current.record) { return false; }
+        if visited.contains(current.record) {
+            return false;
+        }
         visited.append(current.record);
         declared := types[current.record];
-        if declared.error { return true; }
+        if declared.error {
+            return true;
+        }
         if declared.kind == OptionalDecl {
             current = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
         } else if declared.kind == NativeDecl && declared.parent >= 0 {
@@ -79,7 +83,9 @@ FallibleBind :: (name: string, node: int, scope: int, visible: int, until: int, 
 FallibleWithin :: (forest: snapshot.SnapshotNode[], node: int, scope: int) -> bool {
     at := node;
     while (at >= 0) {
-        if (at == scope) { return true; }
+        if (at == scope) {
+            return true;
+        }
         at = forest[at].parent;
     }
     return false;
@@ -124,7 +130,9 @@ FallibleBindings :: (forest: snapshot.SnapshotNode[], text: string, callable: Ca
         if (Is(forest, node, "if_statement") || Is(forest, node, "while_statement")) {
             condition := Field(forest, node, "condition");
             consequence := Field(forest, node, "consequence");
-            if (consequence < 0) { consequence = Field(forest, node, "body"); }
+            if (consequence < 0) {
+                consequence = Field(forest, node, "body");
+            }
             patterns: int[] = [condition];
             while (length(patterns) > 0) {
                 pattern := patterns[length(patterns) - 1];
@@ -132,7 +140,9 @@ FallibleBindings :: (forest: snapshot.SnapshotNode[], text: string, callable: Ca
                 if (Is(forest, pattern, "is_expression")) {
                     declared: int[] = [];
                     name := Field(forest, pattern, "binding");
-                    if (name >= 0) { declared.append(name); }
+                    if (name >= 0) {
+                        declared.append(name);
+                    }
                     variant := Field(forest, pattern, "type");
                     if (Is(forest, variant, "variant_pattern")) {
                         declared.extend(Members(forest, Field(forest, variant, "bindings")));
@@ -166,7 +176,9 @@ FallibleBindings :: (forest: snapshot.SnapshotNode[], text: string, callable: Ca
 }
 
 FallibleFindBinding :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], node: int) -> int {
-    if (!Is(forest, node, "identifier")) { return -1; }
+    if (!Is(forest, node, "identifier")) {
+        return -1;
+    }
     name := Text(forest, text, node);
     scope := node;
     while (scope >= 0) {
@@ -178,7 +190,9 @@ FallibleFindBinding :: (forest: snapshot.SnapshotNode[], text: string, bindings:
                 found = index;
             }
         }
-        if (found >= 0) { return found; }
+        if (found >= 0) {
+            return found;
+        }
         scope = forest[scope].parent;
     }
     return -1;
@@ -186,7 +200,9 @@ FallibleFindBinding :: (forest: snapshot.SnapshotNode[], text: string, bindings:
 
 FallibleDeclarationBinding :: (bindings: FallibleBinding[], node: int) -> int {
     for (binding, index in bindings) {
-        if (binding.node == node) { return index; }
+        if (binding.node == node) {
+            return index;
+        }
     }
     return -1;
 }
@@ -208,17 +224,23 @@ FallibleLink :: (input: FallibleNode[], index: int, first: int, second: int) -> 
     nodes[index] = row;
     return nodes;
 }
-FallibleGraph :: union { Built(nodes: FallibleNode[], start: int) }
+FallibleGraph :: union {
+    Built(nodes: FallibleNode[], start: int)
+}
 
 FallibleTruth :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
     value := Unparenthesized(forest, node);
     if (Is(forest, value, "boolean")) {
-        if (Text(forest, text, value) == "true") { return 1; }
+        if (Text(forest, text, value) == "true") {
+            return 1;
+        }
         return 0;
     }
     if (Is(forest, value, "unary_expression") && Text(forest, text, Field(forest, value, "operator")) == "!") {
         truth := FallibleTruth(forest, text, Field(forest, value, "operand"));
-        if (truth >= 0) { return 1 - truth; }
+        if (truth >= 0) {
+            return 1 - truth;
+        }
     }
     return -1;
 }
@@ -226,7 +248,9 @@ FallibleTruth :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> i
 FallibleBuildGraph :: (forest: snapshot.SnapshotNode[], text: string, statement: int, next: int,
                        leave: int, repeat: int, input: FallibleNode[]) -> FallibleGraph {
     nodes := input;
-    if (statement < 0) { return FallibleGraph.Built(nodes, next); }
+    if (statement < 0) {
+        return FallibleGraph.Built(nodes, next);
+    }
     kind := forest[statement].kind;
     if (kind == "block" || kind == "callable_body" || kind == "sequence_statement") {
         members := Members(forest, statement);
@@ -235,7 +259,9 @@ FallibleBuildGraph :: (forest: snapshot.SnapshotNode[], text: string, statement:
         while (index > 0) {
             index -= 1;
             switch FallibleBuildGraph(forest, text, members[index], start, leave, repeat, nodes) {
-                case .Built(changed, head): nodes = changed; start = head;
+                case .Built(changed, head):
+                    nodes = changed;
+                    start = head;
             }
         }
         return FallibleGraph.Built(nodes, start);
@@ -263,23 +289,33 @@ FallibleBuildGraph :: (forest: snapshot.SnapshotNode[], text: string, statement:
             loop_repeat = current;
         }
         switch FallibleBuildGraph(forest, text, body, outgoing, loop_leave, loop_repeat, nodes) {
-            case .Built(changed, head): nodes = changed; nodes = FallibleLink(nodes, current, head, nodes[current].second);
+            case .Built(changed, head):
+                nodes = changed;
+                nodes = FallibleLink(nodes, current, head, nodes[current].second);
         }
         alternative := next;
         if (kind == "if_statement") {
             switch FallibleBuildGraph(forest, text, Field(forest, statement, "alternative"), next, leave, repeat, nodes) {
-                case .Built(changed, head): nodes = changed; alternative = head;
+                case .Built(changed, head):
+                    nodes = changed;
+                    alternative = head;
             }
         }
         nodes = FallibleLink(nodes, current, nodes[current].first, alternative);
         truth := FallibleTruth(forest, text, Field(forest, statement, "condition"));
-        if (truth == 0) { nodes = FallibleLink(nodes, current, alternative, -1); }
-        if (truth == 1) { nodes = FallibleLink(nodes, current, nodes[current].first, -1); }
+        if (truth == 0) {
+            nodes = FallibleLink(nodes, current, alternative, -1);
+        }
+        if (truth == 1) {
+            nodes = FallibleLink(nodes, current, nodes[current].first, -1);
+        }
     } else if (kind == "for_statement") {
         guard := length(nodes);
         nodes.append(FallibleNodeFor(statement, next, -1, true));
         switch FallibleBuildGraph(forest, text, Field(forest, statement, "body"), guard, next, guard, nodes) {
-            case .Built(changed, head): nodes = changed; nodes = FallibleLink(nodes, guard, nodes[guard].first, head);
+            case .Built(changed, head):
+                nodes = changed;
+                nodes = FallibleLink(nodes, guard, nodes[guard].first, head);
         }
         nodes = FallibleLink(nodes, current, guard, nodes[current].second);
     } else if (kind == "switch_statement") {
@@ -295,11 +331,15 @@ FallibleBuildGraph :: (forest: snapshot.SnapshotNode[], text: string, statement:
                 pattern := Field(forest, arm, "value");
                 exhaustive = exhaustive || Is(forest, pattern, "variant_pattern");
                 truth := FallibleTruth(forest, text, pattern);
-                if (truth >= 0) { booleans = booleans | (truth + 1); }
+                if (truth >= 0) {
+                    booleans = booleans | (truth + 1);
+                }
                 if (pattern < 0) {
                     has_default = true;
                     switch FallibleBuildGraph(forest, text, Field(forest, arm, "body"), next, leave, repeat, nodes) {
-                        case .Built(changed, head): nodes = changed; dispatch = head;
+                        case .Built(changed, head):
+                            nodes = changed;
+                            dispatch = head;
                     }
                 }
             }
@@ -315,7 +355,9 @@ FallibleBuildGraph :: (forest: snapshot.SnapshotNode[], text: string, statement:
                     case .Built(changed, head):
                         nodes = changed;
                         unmatched := dispatch;
-                        if (last_case && !has_default && exhaustive) { unmatched = -1; }
+                        if (last_case && !has_default && exhaustive) {
+                            unmatched = -1;
+                        }
                         link := length(nodes);
                         nodes.append(FallibleNodeFor(arm, head, unmatched, false));
                         dispatch = link;
@@ -344,23 +386,32 @@ FallibleJoin :: (left_pending: bool, left: int[], left_pointers: int[], left_ass
         first := FallibleAlias(left, left_pointers, index);
         second := FallibleAlias(right, right_pointers, index);
         aliases[index] = first;
-        if (right_pending && !left_pending) { aliases[index] = second; }
-        else if (right_pending && left_pending) { aliases[index] = first & second; }
-        if (left_pointers[index] != right_pointers[index]) { pointers[index] = -1; }
+        if (right_pending && !left_pending) {
+            aliases[index] = second;
+        } else if (right_pending && left_pending) {
+            aliases[index] = first & second;
+        }
+        if (left_pointers[index] != right_pointers[index]) {
+            pointers[index] = -1;
+        }
         associated[index] = left_associated[index] || right_associated[index];
     }
     return FallibleEval.Evaluated(left_pending || right_pending, false, 0, aliases, pointers, associated);
 }
 
 FallibleAlias :: (aliases: int[], pointers: int[], binding: int) -> int {
-    if (binding < 0) { return 0; }
+    if (binding < 0) {
+        return 0;
+    }
     at := binding;
     levels: int = 0;
     while (pointers[at] >= 0 && levels < length(pointers)) {
         at = pointers[at];
         levels += 1;
     }
-    if (levels >= length(pointers) || aliases[at] == 0) { return 0; }
+    if (levels >= length(pointers) || aliases[at] == 0) {
+        return 0;
+    }
     return aliases[at] + levels * 8;
 }
 
@@ -371,7 +422,9 @@ FallibleWriteAliases :: (input: int[], pointers: int[], associated: bool[], targ
         // unknown merged pointer cannot retain a proof across its overwrite.
         // Known pointers follow live targets and normalize at the next join.
         for (index in 0..<length(aliases)) {
-            if (pointers[index] < 0 && aliases[index] >= 8) { aliases[index] = 0; }
+            if (pointers[index] < 0 && aliases[index] >= 8) {
+                aliases[index] = 0;
+            }
         }
     }
     aliases[target] = value;
@@ -381,10 +434,14 @@ FallibleWriteAliases :: (input: int[], pointers: int[], associated: bool[], targ
 FallibleTarget :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[],
                    pointers: int[], node: int) -> int {
     value := Unparenthesized(forest, node);
-    if (Is(forest, value, "identifier")) { return FallibleFindBinding(forest, text, bindings, value); }
+    if (Is(forest, value, "identifier")) {
+        return FallibleFindBinding(forest, text, bindings, value);
+    }
     if (Is(forest, value, "dereference_expression")) {
         target := FallibleTarget(forest, text, bindings, pointers, Field(forest, value, "operand"));
-        if (target >= 0) { return pointers[target]; }
+        if (target >= 0) {
+            return pointers[target];
+        }
     }
     return -1;
 }
@@ -396,7 +453,9 @@ FalliblePointer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fal
         return FallibleTarget(forest, text, bindings, pointers, Field(forest, value, "operand"));
     }
     target := FallibleTarget(forest, text, bindings, pointers, value);
-    if (target >= 0) { return pointers[target]; }
+    if (target >= 0) {
+        return pointers[target];
+    }
     return -1;
 }
 
@@ -411,7 +470,9 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
     pending := input_pending;
     lost := false;
     value: int = 0;
-    if (node < 0) { return FallibleEval.Evaluated(pending, lost, value, aliases, pointers, associated); }
+    if (node < 0) {
+        return FallibleEval.Evaluated(pending, lost, value, aliases, pointers, associated);
+    }
     kind := forest[node].kind;
     if (kind == "identifier") {
         value = FallibleAlias(aliases, pointers, FallibleFindBinding(forest, text, bindings, node));
@@ -420,17 +481,29 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
                                   Field(forest, node, "expression"), mode, pending, aliases, pointers, associated);
     } else if (kind == "member_expression" || kind == "dereference_expression" || kind == "address_expression") {
         operand := Field(forest, node, "object");
-        if (kind != "member_expression") { operand = Field(forest, node, "operand"); }
+        if (kind != "member_expression") {
+            operand = Field(forest, node, "operand");
+        }
         switch FallibleExpression(forest, text, bindings, source, error_name, tuple, operand, 0, pending, aliases, pointers, associated) {
             case .Evaluated(next_pending, next_lost, owner, changed, targets, changed_associated):
-                pending = next_pending; lost = next_lost;
-                aliases = changed; pointers = targets; associated = changed_associated;
-                if (kind == "address_expression" && owner > 0) { value = owner + 8; }
-                if (kind == "dereference_expression" && owner >= 8) { value = owner - 8; }
+                pending = next_pending;
+                lost = next_lost;
+                aliases = changed;
+                pointers = targets;
+                associated = changed_associated;
+                if (kind == "address_expression" && owner > 0) {
+                    value = owner + 8;
+                }
+                if (kind == "dereference_expression" && owner >= 8) {
+                    value = owner - 8;
+                }
                 if (kind == "member_expression") {
                     member := Text(forest, text, Field(forest, node, "member"));
-                    if (owner > 0 && owner < 8 && member == error_name) { value = 2; }
-                    else if ((owner & 2) != 0 && owner < 8) { pending = false; }
+                    if (owner > 0 && owner < 8 && member == error_name) {
+                        value = 2;
+                    } else if ((owner & 2) != 0 && owner < 8) {
+                        pending = false;
+                    }
                 }
         }
     } else if (kind == "binary_expression") {
@@ -438,15 +511,20 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
         switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
                                   Field(forest, node, "left"), 1, pending, aliases, pointers, associated) {
             case .Evaluated(next_pending, next_lost, ignored, changed, targets, changed_associated):
-                pending = next_pending; lost = next_lost;
-                aliases = changed; pointers = targets; associated = changed_associated;
+                pending = next_pending;
+                lost = next_lost;
+                aliases = changed;
+                pointers = targets;
+                associated = changed_associated;
         }
         skip := operator == "&&" || operator == "||" || operator == "and" || operator == "or" || operator == "??";
         truth := FallibleTruth(forest, text, Field(forest, node, "left"));
         runs := true;
         if (skip && truth >= 0 && operator != "??") {
             runs = truth == 1;
-            if (operator == "||" || operator == "or") { runs = !runs; }
+            if (operator == "||" || operator == "or") {
+                runs = !runs;
+            }
         }
         if (runs) {
             before := aliases;
@@ -456,14 +534,19 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
             switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
                                       Field(forest, node, "right"), 1, pending, aliases, pointers, associated) {
                 case .Evaluated(next_pending, next_lost, ignored, changed, targets, changed_associated):
-                    pending = next_pending; lost = lost || next_lost;
-                    aliases = changed; pointers = targets; associated = changed_associated;
+                    pending = next_pending;
+                    lost = lost || next_lost;
+                    aliases = changed;
+                    pointers = targets;
+                    associated = changed_associated;
             }
             if (skip && truth < 0) {
                 switch FallibleJoin(before_pending, before, before_pointers, before_associated, pending, aliases, pointers, associated) {
                     case .Evaluated(next_pending, ignored_lost, ignored, changed, targets, changed_associated):
                         pending = next_pending;
-                        aliases = changed; pointers = targets; associated = changed_associated;
+                        aliases = changed;
+                        pointers = targets;
+                        associated = changed_associated;
                 }
             }
         }
@@ -496,8 +579,11 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
             switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
                                       child, child_mode, pending, aliases, pointers, associated) {
                 case .Evaluated(next_pending, next_lost, ignored, changed, targets, changed_associated):
-                    pending = next_pending; lost = lost || next_lost;
-                    aliases = changed; pointers = targets; associated = changed_associated;
+                    pending = next_pending;
+                    lost = lost || next_lost;
+                    aliases = changed;
+                    pointers = targets;
+                    associated = changed_associated;
             }
         }
         if (node == source) {
@@ -506,10 +592,14 @@ FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: 
             aliases = resize([int(0)], length(aliases));
             associated = resize([false], length(associated));
             value = 2;
-            if (tuple) { value = 1; }
+            if (tuple) {
+                value = 1;
+            }
         }
     }
-    if ((mode == 1 && value > 0 && value < 8) || (mode == 2 && value > 0)) { pending = false; }
+    if ((mode == 1 && value > 0 && value < 8) || (mode == 2 && value > 0)) {
+        pending = false;
+    }
     return FallibleEval.Evaluated(pending, lost, value, aliases, pointers, associated);
 }
 
@@ -534,16 +624,22 @@ FallibleAddress :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fal
         switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
                                   expression, 0, pending, aliases, pointers, associated) {
             case .Evaluated(next_pending, next_lost, ignored, changed, targets, changed_associated):
-                pending = next_pending; lost = lost || next_lost;
-                aliases = changed; pointers = targets; associated = changed_associated;
+                pending = next_pending;
+                lost = lost || next_lost;
+                aliases = changed;
+                pointers = targets;
+                associated = changed_associated;
         }
     }
     if (Is(forest, node, "index_expression")) {
         switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
                                   Field(forest, node, "index"), 1, pending, aliases, pointers, associated) {
             case .Evaluated(next_pending, next_lost, ignored, changed, targets, changed_associated):
-                pending = next_pending; lost = lost || next_lost;
-                aliases = changed; pointers = targets; associated = changed_associated;
+                pending = next_pending;
+                lost = lost || next_lost;
+                aliases = changed;
+                pointers = targets;
+                associated = changed_associated;
         }
     }
     return FallibleEval.Evaluated(pending, lost, 0, aliases, pointers, associated);
@@ -558,14 +654,19 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
     associated := input_associated;
     lost := false;
     node := current.statement;
-    if (node < 0 || current.guard) { return FallibleEval.Evaluated(pending, lost, 0, aliases, pointers, associated); }
+    if (node < 0 || current.guard) {
+        return FallibleEval.Evaluated(pending, lost, 0, aliases, pointers, associated);
+    }
     kind := forest[node].kind;
     if (kind == "assignment") {
         switch FallibleAddress(forest, text, bindings, source, error_name, tuple,
                                Field(forest, node, "target"), pending, aliases, pointers, associated) {
             case .Evaluated(next_pending, next_lost, ignored, changed, targets, changed_associated):
-                pending = next_pending; lost = next_lost;
-                aliases = changed; pointers = targets; associated = changed_associated;
+                pending = next_pending;
+                lost = next_lost;
+                aliases = changed;
+                pointers = targets;
+                associated = changed_associated;
         }
     }
     expression: int = -1;
@@ -573,7 +674,9 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
     if (kind == "local_declaration" || kind == "assignment" || kind == "return_statement") {
         expression = Field(forest, node, "value");
         mode = 0;
-        if (kind == "return_statement") { mode = 2; }
+        if (kind == "return_statement") {
+            mode = 2;
+        }
     } else if (kind == "if_statement" || kind == "while_statement") {
         expression = Field(forest, node, "condition");
     } else if (kind == "switch_statement" || kind == "switch_arm" || kind == "for_statement") {
@@ -591,16 +694,23 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
     switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
                               expression, mode, pending, aliases, pointers, associated) {
         case .Evaluated(next_pending, next_lost, produced, changed, targets, changed_associated):
-            pending = next_pending; lost = lost || next_lost; value = produced;
-            aliases = changed; pointers = targets; associated = changed_associated;
+            pending = next_pending;
+            lost = lost || next_lost;
+            value = produced;
+            aliases = changed;
+            pointers = targets;
+            associated = changed_associated;
     }
     if (kind == "for_statement" || kind == "cancel_statement") {
         for (field in ["first", "last", "duration"]) {
             switch FallibleExpression(forest, text, bindings, source, error_name, tuple,
                                       Field(forest, node, field), 1, pending, aliases, pointers, associated) {
                 case .Evaluated(next_pending, next_lost, ignored, changed, targets, changed_associated):
-                    pending = next_pending; lost = lost || next_lost;
-                    aliases = changed; pointers = targets; associated = changed_associated;
+                    pending = next_pending;
+                    lost = lost || next_lost;
+                    aliases = changed;
+                    pointers = targets;
+                    associated = changed_associated;
             }
         }
     }
@@ -624,19 +734,27 @@ FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: Fa
             if (owner >= 0 && FallibleAlias(aliases, pointers, owner) == 1) {
                 if (member == error_name) {
                     kept: int = 0;
-                    if (value > 0) { kept = 1; }
+                    if (value > 0) {
+                        kept = 1;
+                    }
                     aliases = FallibleWriteAliases(aliases, pointers, associated, owner, kept);
                     pointers[owner] = -1;
                     associated[owner] = associated[owner] || kept > 0;
                 }
-            } else if (value > 0) { pending = false; }
+            } else if (value > 0) {
+                pending = false;
+            }
         } else if (Is(forest, destination, "dereference_expression")) {
             // Unknown merged pointees cannot prove the old alias survived.
             aliases = resize([int(0)], length(aliases));
-        } else if (value > 0) { pending = false; }
+        } else if (value > 0) {
+            pending = false;
+        }
     } else if (kind == "return_statement") {
         for (binding, index in bindings) {
-            if (binding.returned && FallibleAlias(aliases, pointers, index) > 0) { pending = false; }
+            if (binding.returned && FallibleAlias(aliases, pointers, index) > 0) {
+                pending = false;
+            }
         }
         lost = lost || pending;
     }
@@ -649,7 +767,9 @@ FallibleOutcome :: (forest: snapshot.SnapshotNode[], text: string, callable: Cal
     aliases := resize([int(0)], length(nodes) * width);
     pointers := resize([int(0)], length(nodes) * width);
     associated := resize([false], length(nodes) * width);
-    for (index in 0..<length(pointers)) { pointers[index] = -1; }
+    for (index in 0..<length(pointers)) {
+        pointers[index] = -1;
+    }
     reached := resize([false], length(nodes));
     pending := resize([false], length(nodes));
     reached[start] = true;
@@ -664,12 +784,17 @@ FallibleOutcome :: (forest: snapshot.SnapshotNode[], text: string, callable: Cal
         outgoing := pending[current];
         switch FallibleTransfer(forest, text, bindings, source, error_name, tuple, nodes[current], outgoing, local, targets, history) {
             case .Evaluated(next_pending, next_lost, ignored, changed, changed_targets, changed_associated):
-                outgoing = next_pending; lost = lost || next_lost;
-                local = changed; targets = changed_targets; history = changed_associated;
+                outgoing = next_pending;
+                lost = lost || next_lost;
+                local = changed;
+                targets = changed_targets;
+                history = changed_associated;
         }
         if (current == 0) {
             for (binding, index in bindings) {
-                if (binding.returned && FallibleAlias(local, targets, index) > 0) { outgoing = false; }
+                if (binding.returned && FallibleAlias(local, targets, index) > 0) {
+                    outgoing = false;
+                }
             }
             lost = lost || outgoing;
         }
@@ -685,9 +810,11 @@ FallibleOutcome :: (forest: snapshot.SnapshotNode[], text: string, callable: Cal
                     previous_targets := slice(pointers, destination * width, width);
                     previous_associated := slice(associated, destination * width, width);
                     switch FallibleJoin(pending[destination], previous, previous_targets, previous_associated,
-                                         outgoing, local, targets, history) {
+                                        outgoing, local, targets, history) {
                         case .Evaluated(joined, ignored_lost, ignored, joined_aliases, joined_targets, joined_associated):
-                            next_pending = joined; merged = joined_aliases; merged_targets = joined_targets;
+                            next_pending = joined;
+                            merged = joined_aliases;
+                            merged_targets = joined_targets;
                             merged_associated = joined_associated;
                     }
                     changed = pending[destination] != next_pending;
@@ -727,12 +854,18 @@ FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
                                      "Task error result checking is not supported by stage one yet")];
                 }
                 duplicate := false;
-                for (source in sources) { duplicate = duplicate || source.node == fact.node; }
-                if (!duplicate) { sources.append(fact); }
+                for (source in sources) {
+                    duplicate = duplicate || source.node == fact.node;
+                }
+                if (!duplicate) {
+                    sources.append(fact);
+                }
             }
         }
     }
-    if (length(sources) == 0) { return []; }
+    if (length(sources) == 0) {
+        return [];
+    }
     // A generated system-query evaluator retains the system's source node,
     // but executes its header rather than that node's authored body.
     if (generated_query || Field(forest, callable.node, "body") < 0) {
@@ -744,7 +877,9 @@ FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     nodes: FallibleNode[] = [{statement: -1, first: -1, second: -1, guard: true}];
     start: int = 0;
     switch FallibleBuildGraph(forest, text, Field(forest, callable.node, "body"), 0, 0, 0, nodes) {
-        case .Built(built, head): nodes = built; start = head;
+        case .Built(built, head):
+            nodes = built;
+            start = head;
     }
     // Gotos resolve once all label nodes exist, preserving ordinary control flow.
     for (node, index in nodes) {
@@ -761,7 +896,9 @@ FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     for (source in sources) {
         producer := callables[source.target];
         error_name: string = "";
-        if (producer.results > 0) { error_name = params[producer.first + producer.count + producer.results - 1].name; }
+        if (producer.results > 0) {
+            error_name = params[producer.first + producer.count + producer.results - 1].name;
+        }
         if (FallibleOutcome(forest, text, callable, bindings, nodes, start, source.node, error_name, producer.results > 1)) {
             return [Diagnose(forest, source.node, callable.document,
                              "Error result is ignored on a reachable path; check, report, store or return it")];

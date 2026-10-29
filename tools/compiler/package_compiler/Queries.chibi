@@ -1567,7 +1567,7 @@ QueryBooleanStep :: (types: TypeDecl[], step: Step, ops: Ops, target: Target, at
             storage := value.storage;
             if (value.container != 0 || value.record < 0 ||
                 (storage != PointerStorage && !IsBoxedOptional(types, {storage: value.storage, container: value.container,
-                                                                    record: value.record}) &&
+                                                                       record: value.record}) &&
                  (storage != StructStorage || types[value.record].kind != OptionalComponentDecl))) {
                 return step;
             }

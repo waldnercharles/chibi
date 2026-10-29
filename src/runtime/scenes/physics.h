@@ -53,9 +53,6 @@ void physics_reset(physics *physics);
  * Invalid changes fail without modifying settings. Resets retain settings. */
 int physics_configure(physics *physics, physics_settings settings);
 physics_settings physics_configuration(const physics *physics);
-/* Configure before bodies are synchronized, or immediately after reset.
- * The borrowed executor must outlive this physics world. NULL selects serial. */
-void physics_set_tasks(physics *physics, const task_system *tasks);
 /* Effective worker budget for the last step; 1 before the first step. */
 int physics_workers(const physics *physics);
 /* Push entity's dynamic Body through its center of mass in the next step that

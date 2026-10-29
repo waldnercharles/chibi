@@ -138,7 +138,6 @@ const input_keyframe *engine_recorded_input(const engine *engine, int *count);
 /* Copies the keys, which start at step zero in nondecreasing order. */
 void engine_replay_input(engine *engine, const input_keyframe *keys, int count, unsigned seed);
 void engine_stop_replay(engine *engine);
-bool engine_replaying_input(const engine *engine);
 int engine_frame(engine *engine, double monotonic_time);
 /* Borrowed diagnostic from the last frame failure, or NULL after success. */
 const char *engine_error(const engine *engine);

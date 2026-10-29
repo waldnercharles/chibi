@@ -65,13 +65,6 @@ bool render_shader_model_preview_bounds(
     model_bounds *bounds,
     shader_error *error
 );
-bool render_shader_model_hit(
-    int index,
-    const float prepared[32][4],
-    const float object_position[3],
-    model_hit *out,
-    shader_error *error
-);
 bool render_shader_binding_parameters_validate(const Shader *binding, const char *text, shader_error *error);
 
 typedef struct

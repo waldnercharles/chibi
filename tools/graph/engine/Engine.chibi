@@ -722,12 +722,9 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
         return -1;
     }
     output := Join([folder, "/sdk/generated/assets"]);
-    // Unoptimized or sanitized hosts take minutes to compile the asset compiler.
-    slow := profile.sanitizers != "" || profile.build_type != "Release";
-    timeout := "600000";
-    if (slow) {
-        timeout = "600000";
-    }
+    // Compiling the asset compiler takes minutes; this outer deadline leaves room
+    // for the generator's own 600 s compiler deadline.
+    timeout := "900000";
     build_host := Executable(folder, "chibi-build-host");
     compiler_host := Executable(folder, "chibi-compiler-host");
     if (profile.asset_generator_hosts != "") {
@@ -739,9 +736,6 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
                 "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
                 "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", timeout, "--",
                 compiler_host, output];
-    if (slow) {
-        command.append("--compiler-timeout-ms=600000");
-    }
     inputs := [build_host, compiler_host];
     for (directory in ["tools/compiler", "packages/core", "packages/game", "tools/graph/asset_compiler"]) {
         inputs.extend(ChibiSources(Join([root, "/", directory])));

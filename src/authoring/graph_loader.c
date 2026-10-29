@@ -113,8 +113,3 @@ int authoring_graphs_prepare(preview_world *world, prototype_preview *preview, c
     }
     return loaded;
 }
-
-int authoring_graph_fixtures_prepare(preview_world *world, const char *root)
-{
-    return authoring_graphs_prepare(world, NULL, root);
-}

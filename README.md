@@ -1,12 +1,11 @@
 # Chibi
 
-Chibi is a language and runtime for games. Write game behavior in `.chibi`
-files. Define scenes, components and resources in text files. Run the game with
-`chibi run`.
+Chibi is a language and runtime for games. Start with a `.chibi` program and
+run it with `chibi`. Game projects add scenes, components and resources.
 
 - [Language](docs/code-language.md): learn the syntax through code.
 - [Examples](docs/examples.md): try common game programming tasks.
-- [Toolchain](docs/guide/toolchain.md): build, run and export a project.
+- [Toolchain](docs/guide/toolchain.md): run a program, or build and export a game.
 - [Testing](docs/guide/testing.md): check package functions with `@test`.
 
 ## Install
@@ -26,6 +25,42 @@ player, headers and libraries.
 
 For a development build, use `make build`. Run the command as `build/sdk/chibi`.
 
+## Hello World
+
+Save this as `Hello.chibi`:
+
+```chibi
+package hello
+
+Main :: () {
+    print_string("Hello, world!")
+}
+```
+
+Run it:
+
+```sh
+chibi Hello.chibi
+```
+
+It prints `Hello, world!` and exits. `chibi run Hello.chibi` does the same thing.
+The program runner calls `Main` once. It takes no arguments and can return
+nothing, as above, or an `int` exit status from 0 to 255.
+
+Every program source needs a `package` header. Running a file compiles that
+file and the core library. To include sibling source files and local package
+imports, run the package directory with `chibi .`.
+
+To keep the program open while you edit it, use `chibi --watch Hello.chibi`.
+Each valid source change calls `Main` again. Explicit `retain` bindings keep
+their values; ordinary locals start again. Invalid edits report diagnostics
+and keep the last valid program and state. See [program reload](docs/guide/toolchain.md#reload-a-program)
+for a complete example.
+
+The CLI is itself an ordinary Chibi program in
+[apps/chibi/Main.chibi](apps/chibi/Main.chibi). The native launcher locates the
+SDK and starts its `Main`; command parsing and reload policy live in Chibi.
+
 ## Run a project
 
 Give `chibi run` a project folder or its `project.kdl`:
@@ -33,6 +68,8 @@ Give `chibi run` a project folder or its `project.kdl`:
 ```sh
 chibi run /path/to/game
 ```
+
+`chibi /path/to/game` also runs a game folder containing `project.kdl`.
 
 Inside a project folder, omit the path:
 

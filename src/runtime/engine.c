@@ -778,11 +778,6 @@ void engine_stop_replay(engine *engine)
     engine->replay = NULL;
 }
 
-bool engine_replaying_input(const engine *engine)
-{
-    return engine->replay != NULL;
-}
-
 /* The index of the key in effect at `step`: the last one at or before it. */
 static int replay_key(const engine *engine, int step)
 {

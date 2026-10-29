@@ -181,7 +181,6 @@ InstallEntries :: (root: string, build_dir: string, third_party: string) -> stri
         Join(["bin/chibi-player=", build_dir, "/sdk/chibi-player"]),
         Join(["share/chibi/engine.json=", build_dir, "/share/chibi/engine.json"]),
         Join(["share/chibi/apps=", build_dir, "/share/chibi/apps"]),
-        Join(["share/chibi/docs=", build_dir, "/share/chibi/docs"]),
         Join(["share/chibi/shaders=", build_dir, "/share/chibi/shaders"])
     ]);
     return entries;

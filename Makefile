@@ -169,12 +169,8 @@ package-runtime-sdk: runtime-sdk-build
 	@$(SDK_GRAPH_HOST) \
 	$(QUIET) package-runtime-sdk -- "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source tools/toolchain/RuntimeSDK.chibi --core packages/core --collection graph=tools/graph --entry RuntimePackage --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RUNTIME_SDK_BUILD_DIR))" --output "$(abspath $(RUNTIME_SDK_PREFIX))"
 else
-runtime-sdk-build: sdk-reflect-build
-	@$(QUIET) configure-runtime-sdk -- sh tools/configure.sh sdk-native "$(RUNTIME_SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=OFF -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(SDK_REFLECT_PATH)/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-	@$(QUIET) build-runtime-sdk -- cmake --build "$(RUNTIME_SDK_BUILD_DIR)" --parallel $(JOBS)
-
-package-runtime-sdk: runtime-sdk-build
-	@python3 tools/package_sdk.py --build "$(RUNTIME_SDK_BUILD_DIR)" --output "$(RUNTIME_SDK_PREFIX)" --kind runtime
+runtime-sdk-build package-runtime-sdk:
+	@printf '%s\n' 'The runtime SDK is constructed on macOS only; Linux returns with the graph.' >&2; exit 2
 endif
 
 PROJECT_ROOT ?=

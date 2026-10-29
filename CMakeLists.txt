@@ -174,7 +174,6 @@ include(cmake/sources.cmake)
 option(CHIBI_SDK_BUILD_COMPILER "Build compiler and authoring packages" ON)
 option(CHIBI_SDK_BUILD_NATIVE "Build native component/capability packages" ON)
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop player and controller packages" ON)
-option(CHIBI_BUILD_TESTS "Build the admitted package-consumer C test drivers" ON)
 
 set(CHIBI_REFLECT_EXECUTABLE "" CACHE FILEPATH "Native reflection generator for cross builds")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -249,37 +248,6 @@ if(TARGET chibi)
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/shaders")
     add_dependencies(chibi chibi_build_shaders)
-endif()
-
-# The C tests use POSIX processes and files directly.
-if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if(TARGET Chibi::authoring)
-        add_subdirectory(test/language)
-    endif()
-    add_executable(test_host test/host/main.c test/host/export.c test/host/process.c
-        test/host/state_file.c src/host/export.c src/host/process.c src/host/state_file.c
-        src/support/xalloc.c third_party/yyjson/yyjson.c)
-    set(host_test_headers "${CMAKE_CURRENT_BINARY_DIR}/testing/host/include")
-    foreach(header export process state_file)
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/host/${header}.h"
-            "${host_test_headers}/host/${header}.h" COPYONLY)
-    endforeach()
-    foreach(header array xalloc)
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/support/${header}.h"
-            "${host_test_headers}/support/${header}.h" COPYONLY)
-    endforeach()
-    target_include_directories(test_host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers/pico_unit.h"
-        "${host_test_headers}/third_party/pico_headers/pico_unit.h" COPYONLY)
-    target_include_directories(test_host PRIVATE "${host_test_headers}")
-    target_compile_options(test_host PRIVATE -UNDEBUG)
-    add_executable(concurrent_runner test/host/concurrent.c src/host/process.c)
-    target_include_directories(concurrent_runner PRIVATE "${host_test_headers}")
-    target_compile_options(concurrent_runner PRIVATE -UNDEBUG)
-    find_program(CHIBI_PYTHON_EXECUTABLE python3 REQUIRED)
-    add_custom_target(check-host
-        COMMAND "${CHIBI_PYTHON_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/test_policy.py" disabled check-host
-        VERBATIM)
 endif()
 
 # Windows needs Developer Mode for symbolic links, so editors there read the

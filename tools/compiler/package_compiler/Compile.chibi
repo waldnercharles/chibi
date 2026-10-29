@@ -892,11 +892,17 @@ RecordFieldType :: (types: TypeDecl[], value: ValueType) -> bool {
         return value.record >= 0 &&
                (types[value.record].kind == RecordDecl || types[value.record].kind == NativeDecl);
     }
+    if (value.storage == UnionStorage) {
+        return value.container == 0 && value.record >= 0 && types[value.record].kind == UnionDecl;
+    }
     return value.record < 0 && (Integer(value.storage) || Floating(value.storage) ||
                                 value.storage == BoolStorage || value.storage == TextStorage);
 }
 RecordFieldSize :: (field: TypeMember, types: TypeDecl[], target: Target) -> int {
     if (field.container == ArrayContainer) {
+        return target.pointer_size;
+    }
+    if (field.storage == UnionStorage) {
         return target.pointer_size;
     }
     if (field.storage == StructStorage) {
@@ -1126,7 +1132,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                      Field(forest, field_node, "type"));
                 if (!RecordFieldType(types, resolved)) {
                     return Declarations.Failed(Diagnose(forest, field_node, file,
-                                                        "record fields require a scalar, pointer, record or array of those types"));
+                                                        "record fields require a scalar, pointer, record, union or array of those types"));
                 }
                 field := members[index];
                 field.storage = resolved.storage;
@@ -1221,7 +1227,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
             for (field_index in declared.first..<declared.first + declared.count) {
                 field := members[field_index];
                 step := FieldSize(field.storage, target);
-                if (field.container == ArrayContainer) {
+                if (field.container == ArrayContainer || field.storage == UnionStorage) {
                     step = target.pointer_size;
                 } else if (field.storage == StructStorage) {
                     step = record_alignments[field.record];
@@ -2173,7 +2179,8 @@ LayoutHash :: (record: TypeDecl, fields: TypeMember[], types: TypeDecl[], target
         if (field.storage == TextStorage && field.container == 0) {
             hash = HashBytes(hash, 1, 1);
         }
-        if (field.storage == PointerStorage || field.storage == StructStorage) {
+        if (field.storage == PointerStorage || field.storage == StructStorage ||
+            (field.storage == UnionStorage && field.record >= 0)) {
             hash = HashText(hash, types[field.record].type_name);
         } else {
             hash = HashText(hash, "");
@@ -2787,7 +2794,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 if (members[at].storage == StructStorage) {
                     field.record = requirement_indices[members[at].record];
                 }
-                if (members[at].storage == PointerStorage || members[at].storage == StructStorage) {
+                if (members[at].storage == PointerStorage || members[at].storage == StructStorage ||
+                    (members[at].storage == UnionStorage && members[at].record >= 0)) {
                     field.type_name = types[members[at].record].type_name;
                     field.has_type_name = true;
                 }

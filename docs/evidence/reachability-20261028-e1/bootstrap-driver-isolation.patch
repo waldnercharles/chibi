@@ -1,0 +1,13 @@
+diff --git a/test/language/CMakeLists.txt b/test/language/CMakeLists.txt
+index 3145b97ec..887984a3b 100644
+--- a/test/language/CMakeLists.txt
++++ b/test/language/CMakeLists.txt
+@@ -304,7 +304,7 @@ else()
+         "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
+         PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+ endif()
+-if(TARGET Chibi::asset_compiler_host)
++if(FALSE AND TARGET Chibi::asset_compiler_host)
+     add_library(chibi_asset_compiler_consumer OBJECT asset_compiler_host.c)
+     target_include_directories(chibi_asset_compiler_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+     target_link_libraries(chibi_asset_compiler_consumer PRIVATE Chibi::asset_compiler_host Chibi::behavior_runtime

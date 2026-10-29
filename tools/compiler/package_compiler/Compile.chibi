@@ -1904,6 +1904,43 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
     }
     return seen;
 }
+// Every project package is a checked root, even when another project package
+// does not import it. Collection packages enter the compile only through an
+// import from one of those roots. Keep graph indices and dependency order;
+// snapshot validation still checks the complete structural graph.
+ActivePackageOrder :: (documents: snapshot.Document[], packages: graph.Package[], files_of: int[],
+                       order: int[], edges: graph.Edge[], root: int) -> int[] {
+    active := resize([false], length(packages));
+    pending: int[] = [];
+    package: int = 0;
+    while (package < length(packages)) {
+        identity := documents[files_of[packages[package].member_start]].identity;
+        // paths[0] still names the requested root, including a direct compile
+        // of a collection package with no project package in its snapshot.
+        if (package == root || strings.HasPrefix(identity, "project:")) {
+            active[package] = true;
+            pending.append(package);
+        }
+        package += 1;
+    }
+    next: int = 0;
+    while (next < length(pending)) {
+        for (edge in edges) {
+            if (edge.from == pending[next] && !active[edge.to]) {
+                active[edge.to] = true;
+                pending.append(edge.to);
+            }
+        }
+        next += 1;
+    }
+    selected: int[] = [];
+    for (listed in order) {
+        if (active[listed]) {
+            selected.append(listed);
+        }
+    }
+    return selected;
+}
 // The closure of every package, each a prepared module, rooted at package
 // `root`. Dependencies come first, so an importer has every module it imports.
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
@@ -1939,8 +1976,10 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
     }
     fingerprints := resize([u64(0)], length(packages));
     data: u8[] = [];
-    starts := resize([int(0)], length(packages));
-    lengths := resize([int(0)], length(packages));
+    closure_ids: u64[] = [];
+    closure_names: string[] = [];
+    starts: int[] = [];
+    lengths: int[] = [];
     effects := resize([int(0)], length(callables));
     for (package in order) {
         switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
@@ -1955,13 +1994,15 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
                 if (package != root) {
                     fingerprints[package] = writer.Fingerprint(bytes);
                 }
-                starts[package] = length(data);
-                lengths[package] = length(bytes);
+                closure_ids.append(package_ids[package]);
+                closure_names.append(package_names[package]);
+                starts.append(length(data));
+                lengths.append(length(bytes));
                 data.extend(bytes);
         }
     }
     return Result.Compiled(package_ids[root],
-                           writer.Closure(package_ids[root], package_ids, package_names, data, starts, lengths));
+                           writer.Closure(package_ids[root], closure_ids, closure_names, data, starts, lengths));
 }
 // The prepared module of package `package`, or of a behavior, whose
 // functions are its handlers; its bytes are the Compiled result's. Each body
@@ -3006,11 +3047,12 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
                 case .Rejected(error, cycle):
                     return InputFailure(-1, "package graph is invalid");
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
-                    switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
+                    active_order := ActivePackageOrder(documents, packages, files_of, order, edges, file_packages[0]);
+                    switch Declare(nodes, documents, packages, files_of, active_order, imports, links, target) {
                         case .Failed(diagnostic):
                             return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members, constants):
-                            return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
+                            return Link(nodes, documents, packages, files_of, file_packages[0], active_order, edges, links,
                                         callables, params, types, members, constants, resolved_natives, resolved_ports, identities, native_effects, ops, target,
                                         abi);
                     }

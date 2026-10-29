@@ -31,7 +31,10 @@ authoring_packages *authoring_packages_prepare(
 bool authoring_packages_valid(const authoring_packages *);
 int authoring_packages_count(const authoring_packages *);
 int authoring_packages_reused(const authoring_packages *);
-/* Graph package indices, not dependency-order ordinals. Views are borrowed. */
+/* Prepared packages in snapshot graph order, not dependency order. Unused
+ * collection packages are absent; these indices are not snapshot graph indices.
+ * With no project files, the first input file selects a collection root.
+ * Every project package is prepared. Views are borrowed. */
 const authoring_package *authoring_packages_at(const authoring_packages *, int package);
 const source_package_snapshot *authoring_packages_snapshot(const authoring_packages *);
 /* Owner-level preparation/snapshot error, or NULL. Semantic/lowering diagnostics

@@ -1638,19 +1638,6 @@ static bool watch_output(chibi_process *process, size_t after, const char *expec
     return false;
 }
 
-static bool watch_unchanged(chibi_process *process)
-{
-    size_t size = watch_output_size();
-    double deadline = chibi_process_now() + 1;
-    do {
-        if (chibi_process_poll(process) || watch_output_size() != size) {
-            return false;
-        }
-        usleep(10000);
-    } while (chibi_process_now() < deadline);
-    return true;
-}
-
 static bool stop_process(chibi_process *process, int expected, bool allow_signal, int interrupt)
 {
     if (interrupt == SIGTERM) {

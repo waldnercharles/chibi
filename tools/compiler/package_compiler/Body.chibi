@@ -3649,10 +3649,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                    OptionalElement(types, values[value_top - 1]).storage != 0) {
             step = OptionalPresentStep(values[value_top - 1], true, 1, ops, target, at, node);
         } else if (kind == "binary_expression" && item.phase == 1 && (operator == "==" || operator == "!=") &&
-                   ((OptionalElement(types, values[value_top - 2]).storage != 0 &&
-                     Is(forest, Unparenthesized(forest, Field(forest, item.node, "right")), "nil")) ||
-                    (OptionalElement(types, values[value_top - 1]).storage != 0 &&
-                     Is(forest, Unparenthesized(forest, Field(forest, item.node, "left")), "nil")))) {
+                   ((Is(forest, Unparenthesized(forest, Field(forest, item.node, "right")), "nil") &&
+                     OptionalElement(types, values[value_top - 2]).storage != 0) ||
+                    (Is(forest, Unparenthesized(forest, Field(forest, item.node, "left")), "nil") &&
+                     OptionalElement(types, values[value_top - 1]).storage != 0))) {
             optional := values[value_top - 2];
             if (OptionalElement(types, optional).storage == 0) {
                 optional = values[value_top - 1];

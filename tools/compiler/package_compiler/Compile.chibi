@@ -558,7 +558,7 @@ CharTypes :: (input: TypeDecl[]) -> TypeDecl[] {
     declared: TypeDecl = {name: "char", type_name: "char", package: -1, node: -1,
                           kind: BuiltinScalarDecl, first: 0, count: 0, size: 4, parent: -1,
                           storage: IntStorage, id: binding.ID("type", "char"), layout: 0,
-                          component: 0, key: 0, value_storage: 0, value_container: 0, value_record: -1};
+                          component: 0, key: 0, value_storage: 0, value_container: 0, value_record: -1, error: false};
     return append(input, declared);
 }
 CharType :: (types: TypeDecl[], storage: int, container: int, record: int) -> bool {

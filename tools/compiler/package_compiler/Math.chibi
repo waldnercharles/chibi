@@ -162,7 +162,7 @@ DeclareMath :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
             declared: TypeDecl = {name: name, type_name: name, package: -1, node: -1, kind: MathDecl,
                                   first: first, count: math.Components(kind), size: math.Components(kind) * 4,
                                   parent: -1, storage: StructStorage, id: id, layout: 0, component: 0,
-                                  key: 0, value_storage: 0, value_container: 0, value_record: -1};
+                                  key: 0, value_storage: 0, value_container: 0, value_record: -1, error: false};
             declared.layout = LayoutHash(declared, members, types, target);
             types.append(declared);
         }

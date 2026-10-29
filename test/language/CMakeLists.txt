@@ -267,6 +267,11 @@ target_link_libraries(test_language PRIVATE Chibi::host_clock)
 set_source_files_properties(host_packages_compiler.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
     COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
+if(CHIBI_INSTALLED_SDK)
+    set_property(SOURCE host_packages_compiler.c APPEND PROPERTY COMPILE_DEFINITIONS
+        "CHIBI_HOST_PACKAGES_COMPILER_ROOT=\"${Chibi_RESOURCE_DIR}/compiler\""
+        "CHIBI_HOST_PACKAGES_CORE_ROOT=\"${Chibi_CORE_SOURCE_DIR}\"")
+endif()
 foreach(part TIME:packages/core/time/Time.chibi TIME_TEST:test/standard_library/time/TimeTests.chibi)
     string(REPLACE ":" ";" part "${part}")
     list(GET part 0 name)

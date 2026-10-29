@@ -18,6 +18,13 @@
 #include <string.h>
 #include <yyjson.h>
 
+#ifndef CHIBI_HOST_PACKAGES_COMPILER_ROOT
+#define CHIBI_HOST_PACKAGES_COMPILER_ROOT CHIBI_SOURCE_ROOT "/tools/compiler"
+#endif
+#ifndef CHIBI_HOST_PACKAGES_CORE_ROOT
+#define CHIBI_HOST_PACKAGES_CORE_ROOT CHIBI_SOURCE_ROOT "/packages/core"
+#endif
+
 enum
 {
     COMPILE_BUDGET = 200000000,
@@ -156,9 +163,9 @@ static bool load_compiler()
     mixed_native = native_capabilities_from_definition_packs(packs, 2, definitions, 2, error, sizeof error);
     REQUIRE(mixed_native);
     const compiler_bootstrap options = {
-        .folder = CHIBI_SOURCE_ROOT "/tools/compiler/bootstrap",
-        .compiler = CHIBI_SOURCE_ROOT "/tools/compiler",
-        .core = CHIBI_SOURCE_ROOT "/packages/core",
+        .folder = CHIBI_HOST_PACKAGES_COMPILER_ROOT "/bootstrap",
+        .compiler = CHIBI_HOST_PACKAGES_COMPILER_ROOT,
+        .core = CHIBI_HOST_PACKAGES_CORE_ROOT,
     };
     compiler = compiler_bootstrap_load(&options, error, sizeof error);
     if (!compiler) {

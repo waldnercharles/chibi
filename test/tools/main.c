@@ -112,9 +112,7 @@ void test_build_sdk(const char *host, const char *build, const char *third_party
 void test_runtime_sdk(const char *host);
 #endif
 #endif
-void test_tool_desktop_dependencies();
 void test_tool_third_party_publish();
-void test_tool_package_ownership();
 void test_tool_collab();
 void test_tool_test_policy();
 void test_tool_validation_plan();
@@ -1131,9 +1129,6 @@ int main(int argc, char **argv)
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared");
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
-    bool package_ownership = argc == 2 && !strcmp(argv[1], "--package-ownership");
-    bool desktop_dependencies = argc == 2 &&
-                                !strcmp(argv[1], "--desktop-dependencies");
     bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
@@ -1320,12 +1315,12 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
-        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
-        !tilemap && !package && !desktop_dependencies && !third_party_publish &&
-        !collab && !package_ownership && !unit && !test_runner && !validation_plan &&
-        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
-        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage &&
+        !preview_components && !shader_parameters && !source_edit && !new_asset &&
+        !asset_refactor && !tilemap && !package && !third_party_publish &&
+        !collab && !unit && !test_runner && !validation_plan && !web_storage &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !scene_hierarchy &&
         !scene_snapshot_read && !native && !native_values && !native_catalog &&
         !physics && !physics3d && !transforms && !render_resources &&
         !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
@@ -1347,8 +1342,8 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --package | "
-            "--desktop-dependencies | --third-party-publish | --collab | "
-            "--package-ownership | --unit | "
+            "--third-party-publish | --collab | "
+            "--unit | "
             "--test-runner | --validation-plan | "
             "--reflect-ranges | --c-export-alias | "
             "--ecs-query | --ecs-strings | "
@@ -1715,14 +1710,10 @@ int main(int argc, char **argv)
         test_tool_webgpu_staging();
     } else if (wasm_browser) {
         test_tool_wasm_browser();
-    } else if (package_ownership) {
-        test_tool_package_ownership();
     } else if (third_party_publish) {
         test_tool_third_party_publish();
     } else if (collab) {
         test_tool_collab();
-    } else if (desktop_dependencies) {
-        test_tool_desktop_dependencies();
     } else if (package) {
         test_tool_package();
     } else if (scene_prepared) {
@@ -1766,7 +1757,6 @@ int main(int argc, char **argv)
         test_tool_ecs_world();
         test_tool_ecs_query();
         test_tool_package();
-        test_tool_desktop_dependencies();
         test_tool_third_party_publish();
         test_tool_collab();
         test_tool_test_policy();

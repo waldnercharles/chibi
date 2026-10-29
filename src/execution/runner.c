@@ -38,14 +38,29 @@ bool behavior_execution_scope_active()
 {
     return execution_scope != NULL;
 }
+static behavior_execution_scope *inherited_scope(behavior_execution_scope *scope)
+{
+    return scope->inherit ? scope->previous : NULL;
+}
 bool behavior_execution_scope_pure()
 {
-    return execution_scope && execution_scope->pure;
+    for (behavior_execution_scope *scope = execution_scope; scope;
+         scope = inherited_scope(scope)) {
+        if (scope->pure) {
+            return true;
+        }
+    }
+    return false;
 }
 bool behavior_execution_scope_cancelled()
 {
-    return execution_scope && execution_scope->cancelled &&
-           execution_scope->cancelled(execution_scope->user);
+    for (behavior_execution_scope *scope = execution_scope; scope;
+         scope = inherited_scope(scope)) {
+        if (scope->cancelled && scope->cancelled(scope->user)) {
+            return true;
+        }
+    }
+    return false;
 }
 const char *behavior_execution_scope_step()
 {
@@ -55,11 +70,28 @@ const char *behavior_execution_scope_step()
     if (behavior_execution_scope_cancelled()) {
         return "execution cancelled";
     }
-    if (!execution_scope->remaining) {
-        return "shared instruction budget exhausted";
+    for (behavior_execution_scope *scope = execution_scope; scope;
+         scope = inherited_scope(scope)) {
+        if (!scope->remaining) {
+            return "shared instruction budget exhausted";
+        }
     }
-    execution_scope->remaining--;
+    for (behavior_execution_scope *scope = execution_scope; scope;
+         scope = inherited_scope(scope)) {
+        scope->remaining--;
+    }
     return NULL;
+}
+
+static bool scope_prefers_compiled()
+{
+    for (behavior_execution_scope *scope = execution_scope; scope;
+         scope = inherited_scope(scope)) {
+        if (!scope->prefer_compiled || scope->pure) {
+            return false;
+        }
+    }
+    return execution_scope != NULL;
 }
 
 void behavior_run_scope_begin(behavior_run_scope *scope)
@@ -154,8 +186,7 @@ static int run_compiled(const behavior_function *f, behavior_function_context *c
 
 int behavior_function_run_once(const behavior_function *f, behavior_function_context *ctx, bool compiled)
 {
-    bool scoped = execution_scope && execution_scope->prefer_compiled &&
-                  !execution_scope->pure &&
+    bool scoped = scope_prefers_compiled() &&
                   !behavior_function_inspection_required(f, ctx) &&
                   behavior_function_compile_scoped(f);
     compiled &= !behavior_execution_scope_active();

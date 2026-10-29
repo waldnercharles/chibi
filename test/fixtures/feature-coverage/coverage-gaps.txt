@@ -57,6 +57,12 @@ component Drive
 # argument and process capabilities on bytecode and SLJIT; scene admission would
 # expose build authority to games. No runtime capability entries are omitted.
 
+# The application, program, project and SDK catalogs belong to standalone
+# application hosts and are absent from the deployed game catalog. Ordinary
+# CLI, program-session and SDK boundary tests exercise those services with
+# their explicit bindings. Their filesystem/process/network capabilities are
+# host authority, not scene entries, so no function gaps are listed here.
+
 # Compiler JSON String belongs only to the private compiler catalog. The
 # package-routes-chibi differential exercises its decoded value and lifetime
 # through authored routing on both backends; it is absent from scene catalogs.

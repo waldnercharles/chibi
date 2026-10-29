@@ -1,6 +1,7 @@
 #ifndef CHIBI_HOST_PROCESS_H
 #define CHIBI_HOST_PROCESS_H
 
+#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -12,14 +13,21 @@
 #define CHIBI_EXECUTABLE_SUFFIX ""
 #endif
 
-/* Runs argv[0], a path or a program on PATH, with this process's standard
- * streams and waits for it. Returns its exit code or 128 + signal, or prints
- * why it could not start and returns 1. */
-int chibi_process_run(char *const *argv);
+/* Runs argv[0], a path or a program on PATH, with inherited standard streams.
+ * NULL stop_signal waits with the caller's existing process-group behavior.
+ * Otherwise the child owns a process group/job, and a signal handler may set
+ * *stop_signal to the actual cancellation signal. POSIX forwards it and
+ * escalates shutdown after two seconds; Windows terminates the owned job.
+ * Remaining descendants are cleaned and the direct child is reaped.
+ * Foreground POSIX terminal control is handed to the child and restored.
+ * On POSIX a child terminated by SIGINT/SIGTERM/SIGHUP also records that signal
+ * when *stop_signal is still zero; a voluntary exit status of 130 does not.
+ * Returns 128 + cancellation signal, the child exit/signal status, or 1 after
+ * reporting a launch/host error. This is process-group ownership, not isolation
+ * of descendants that deliberately leave the group. */
+int chibi_process_run(char *const *argv, volatile sig_atomic_t *stop_signal);
 
 #ifndef _WIN32
-#include <signal.h>
-
 typedef enum
 {
     CHIBI_PROCESS_OK,

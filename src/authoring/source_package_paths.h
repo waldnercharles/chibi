@@ -13,6 +13,9 @@ enum
 /* Private lexical path mechanics shared by snapshot root/file/import policy.
  * No filesystem, symlink, environment or cwd inspection occurs here. */
 bool source_package_path_bounded(const char *path);
+/* Forward-slash absolute logical paths; Windows also accepts drive and UNC
+ * roots. Backslashes remain invalid snapshot input on every platform. */
+bool source_package_path_absolute(const char *path);
 /* root and path are non-NULL, terminated strings. Snapshot callers supply
  * canonical absolute roots; this predicate does not normalize its inputs. */
 bool source_package_path_within(const char *root, const char *path);

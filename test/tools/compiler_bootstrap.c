@@ -627,30 +627,74 @@ static bool output_is(const char *output, const void *expected, size_t expected_
     return true;
 }
 
-/* The canonical compiler entry and its captured request are reused, not run.
+/* A controlled source snapshot makes this a reuse unit fixture, independent of
+ * whether HEAD still matches the checked seed's recording. The checked closure
+ * supplies a real canonical compiler entry and its target/byte guards, but the
+ * fixture manifest deliberately binds it to these two tiny source files. This
+ * does not certify the current compiler: bootstrap recovery and fixed-point
+ * checks exercise current-source provenance separately.
  * Copying retires the CLI's owned source, artifact and decoded host buffers. */
 TEST_CASE(bootstrap_reuses_only_the_exact_captured_request_without_compilation)
 {
     folder("reuse-real");
-    char archive[PATH_MAX], extracted[PATH_MAX], closure[PATH_MAX];
-    path(archive, "reuse-sources.tar");
-    path(extracted, "reuse-real");
-    const char *export[] = {
-        "git",      "-C",    tool_root(), "archive",        "--format=tar",
-        "--output", archive, "HEAD",      "tools/compiler", "packages/core",
-        NULL
-    };
-    REQUIRE(tool_run(export, root, log_path) == 0);
-    const char *extract[] = { "tar", "-xf", archive, "-C", extracted, NULL };
-    REQUIRE(tool_run(extract, root, log_path) == 0);
+    folder("reuse-real/tools");
+    folder("reuse-real/tools/compiler");
+    folder("reuse-real/tools/compiler/bootstrap");
+    folder("reuse-real/tools/compiler/package_compiler");
+    folder("reuse-real/packages");
+    folder("reuse-real/packages/core");
+    folder("reuse-real/packages/core/strings");
     path(reuse_folder, "reuse-real/tools/compiler/bootstrap");
     path(reuse_compiler, "reuse-real/tools/compiler");
     path(reuse_core, "reuse-real/packages/core");
     path(reuse_manifest_path, "reuse-real/tools/compiler/bootstrap/bootstrap.json");
-    path(closure, "reuse-real/tools/compiler/bootstrap/compiler.chibip");
-    reuse_manifest_text = tool_read(reuse_manifest_path);
-    reuse_bytes = read_bytes(closure, &reuse_length);
-    REQUIRE(reuse_manifest_text && reuse_bytes && reuse_length);
+    char checked[PATH_MAX];
+    snprintf(checked, sizeof checked, "%s/tools/compiler/bootstrap/bootstrap.json", tool_root());
+    char *recorded = tool_read(checked);
+    REQUIRE(recorded);
+    yyjson_doc *original = yyjson_read(recorded, strlen(recorded), 0);
+    free(recorded);
+    REQUIRE(original);
+    yyjson_mut_doc *fixture = yyjson_doc_mut_copy(original, NULL);
+    yyjson_doc_free(original);
+    REQUIRE(fixture);
+    yyjson_mut_val *record = yyjson_mut_doc_get_root(fixture);
+    char contract_text[96];
+    snprintf(
+        contract_text,
+        sizeof contract_text,
+        "version %llu\nminimum %llu\n",
+        (unsigned long long)yyjson_mut_get_uint(yyjson_mut_obj_get(record, "version")),
+        (unsigned long long)yyjson_mut_get_uint(yyjson_mut_obj_get(record, "minimum"))
+    );
+    write_file("reuse-real/tools/compiler/bootstrap.kdl", contract_text);
+    static const char *const names[] = { "package_compiler/Compile.chibi",
+                                         "/sdk/core/strings/Strings.chibi" };
+    static const char *const texts[] = { "package package_compiler\n",
+                                         "package strings\n" };
+    static const char *const files[] = {
+        "reuse-real/tools/compiler/package_compiler/Compile.chibi",
+        "reuse-real/packages/core/strings/Strings.chibi"
+    };
+    yyjson_mut_val *sources = yyjson_mut_arr(fixture);
+    for (int i = 0; i < 2; i++) {
+        write_file(files[i], texts[i]);
+        char digest[65];
+        sha256_hex(texts[i], strlen(texts[i]), digest);
+        yyjson_mut_val *source = yyjson_mut_arr_add_obj(fixture, sources);
+        yyjson_mut_obj_add_str(fixture, source, "path", names[i]);
+        yyjson_mut_obj_add_strcpy(fixture, source, "sha256", digest);
+    }
+    yyjson_mut_obj_put(record, yyjson_mut_str(fixture, "sources"), sources);
+    yyjson_mut_obj_put(record, yyjson_mut_str(fixture, "revision"), yyjson_mut_str(fixture, "unit-fixture"));
+    reuse_manifest_text = yyjson_mut_write(fixture, 0, NULL);
+    yyjson_mut_doc_free(fixture);
+    REQUIRE(reuse_manifest_text);
+    tool_write(reuse_manifest_path, reuse_manifest_text);
+    snprintf(checked, sizeof checked, "%s/tools/compiler/bootstrap/compiler.chibip", tool_root());
+    reuse_bytes = read_bytes(checked, &reuse_length);
+    REQUIRE(reuse_bytes && reuse_length);
+    write_binary("reuse-real/tools/compiler/bootstrap/compiler.chibip", reuse_bytes, reuse_length);
     char output[PATH_MAX], request[PATH_MAX];
     path(output, "reused.chibip");
     path(request, "reuse-input.json");

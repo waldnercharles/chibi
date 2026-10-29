@@ -140,7 +140,7 @@ class ProfileTests(unittest.TestCase):
                           ('native-macos', 'Engine build and native tests (macOS)')):
             block = text.split(f'  {job}:\n', 1)[1]
             self.assertTrue(block.startswith(f'    name: {name}\n'))
-            block = block.split('\n  windows:', 1)[0] if job == 'native-macos' else block.split('\n  native-macos:', 1)[0]
+            block = block.split('\n  native-targets:', 1)[0] if job == 'native-macos' else block.split('\n  native-macos:', 1)[0]
             self.assertIn('timeout-minutes: 45', block)
             self.assertIn('make test-tools', block)
             groups = ['python3 tools/test_policy.py group ' + name
@@ -168,7 +168,7 @@ class ProfileTests(unittest.TestCase):
                 self.assertLess(verify, parity)
         diagnostics = ['Capture macOS facade identities', 'Preserve macOS facade identities']
         optional = []
-        native_jobs = text.split('  native:\n', 1)[1].split('  windows:\n', 1)[0]
+        native_jobs = text.split('  native:\n', 1)[1].split('  format:\n', 1)[0]
         for step in native_jobs.split('\n      - '):
             if 'continue-on-error:' not in step:
                 continue

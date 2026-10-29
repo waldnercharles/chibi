@@ -281,6 +281,8 @@ target_sources(test_language PRIVATE packages.c package_syntax.c package_executi
 target_sources(test_language PRIVATE compositional_records.c)
 set_source_files_properties(compositional_records.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+target_sources(test_language PRIVATE argument_effects_chibi.c)
+set_source_files_properties(argument_effects_chibi.c package_tests.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::tasks)
 if(TARGET Chibi::task_pool_runtime)
     target_link_libraries(test_language PRIVATE Chibi::task_pool_runtime Chibi::conversion_capabilities)

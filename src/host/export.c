@@ -580,15 +580,16 @@ static bool write_desktop_entry(const chibi_export_spec *spec, const char *stagi
 
 /* Signs a macOS app ad hoc, so it runs after its contents changed. Other
  * hosts cannot sign and keep the app as built. */
-static bool sign(const char *staging)
+static bool sign(const char *staging, volatile sig_atomic_t *stop_signal)
 {
 #ifdef __APPLE__
     char *argv[] = { "/usr/bin/codesign", "--force", "--sign", "-",
                      (char *)staging,     NULL };
-    return chibi_process_run(argv) == 0 ||
+    return chibi_process_run(argv, stop_signal) == 0 ||
            failed("the app could not be signed", staging);
 #else
     (void)staging;
+    (void)stop_signal;
     return true;
 #endif
 }
@@ -611,7 +612,7 @@ static bool finish_app(const chibi_export_spec *spec, const char *staging, const
             return false;
         }
     }
-    return sign(staging);
+    return sign(staging, spec->stop_signal);
 }
 
 /* Lists every file under `directory` by its path from `prefix`, except the
@@ -735,7 +736,12 @@ static bool finish(
 }
 
 /* Runs `command` with the data folder's natives/ appended, for `project`. */
-static bool build_natives(const char *const *command, const char *data, const char *project)
+static bool build_natives(
+    const char *const *command,
+    const char *data,
+    const char *project,
+    volatile sig_atomic_t *stop_signal
+)
 {
     /* The driver takes absolute paths, and --output may be relative. */
     char *resolved = realpath(data, NULL);
@@ -748,7 +754,7 @@ static bool build_natives(const char *const *command, const char *data, const ch
     }
     apush(argv, natives);
     apush(argv, NULL);
-    bool built = chibi_process_run(argv) == 0 ||
+    bool built = chibi_process_run(argv, stop_signal) == 0 ||
                  failed("the native libraries did not build", project);
     afree(argv);
     free(natives);
@@ -778,12 +784,13 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
     char **command = web ? argv : argv + 1;
     bool assembled = make_parents(artifact) || failed(strerror(errno), data);
     assembled = assembled && write_marker(data);
-    if (assembled && chibi_process_run(command) != 0) {
+    if (assembled && chibi_process_run(command, spec->stop_signal) != 0) {
         assembled = failed("the project did not compile", spec->project);
     }
     assembled = assembled && copy_external(spec->project, data);
     if (spec->natives) {
-        assembled = assembled && build_natives(spec->natives, data, spec->project);
+        assembled = assembled &&
+                    build_natives(spec->natives, data, spec->project, spec->stop_signal);
     }
     static const char *const engine_files[] = { "shaders", "licenses", "engine.json" };
     for (size_t i = 0; assembled && i < sizeof engine_files / sizeof *engine_files;
@@ -849,7 +856,7 @@ static bool publish(const char *staging, const char *output)
 
 /* Writes <output>.tar.gz through a partial file, so a failed tar leaves an
  * earlier archive in place. */
-static bool archive(const char *output)
+static bool archive(const char *output, volatile sig_atomic_t *stop_signal)
 {
     size_t size = strlen(output) + sizeof ".tar.gz.XXXXXX";
     char *path = xmalloc(size), *partial = xmalloc(size);
@@ -864,7 +871,7 @@ static bool archive(const char *output)
         free(path);
         return false;
     }
-    fchmod(fd, 0644);
+    (void)fchmod(fd, 0644);
     close(fd);
     char *parent = xstrdup(output);
     char *slash = strrchr(parent, '/');
@@ -878,7 +885,8 @@ static bool archive(const char *output)
         "tar",  "-czf", partial, "-C", slash ? (parent[0] ? parent : "/") : ".",
         member, NULL
     };
-    bool archived = chibi_process_run(argv) == 0 && rename(partial, path) == 0;
+    bool archived = chibi_process_run(argv, stop_signal) == 0 &&
+                    (!stop_signal || !*stop_signal) && rename(partial, path) == 0;
     if (archived) {
         printf("Archived %s\n", path);
     } else {
@@ -929,6 +937,9 @@ bool chibi_export(const chibi_export_spec *spec)
 {
     assert(spec->layout >= CHIBI_EXPORT_FOLDER && spec->layout <= CHIBI_EXPORT_WEB);
     assert((spec->layout == CHIBI_EXPORT_WEB) == (spec->web != NULL));
+    if (spec->stop_signal && *spec->stop_signal) {
+        return false;
+    }
     char *output = output_path(spec);
     if (!output) {
         return failed("the output must name a folder", spec->output);
@@ -953,6 +964,7 @@ bool chibi_export(const chibi_export_spec *spec)
         failed(strerror(errno), output);
     } else {
         exported = chmod(staging, 0755) == 0 && assemble(spec, staging) &&
+                   (!spec->stop_signal || !*spec->stop_signal) &&
                    publish(staging, output);
         chibi_remove_tree(staging);
     }
@@ -960,7 +972,7 @@ bool chibi_export(const chibi_export_spec *spec)
     if (exported) {
         printf("Exported %s\n", output);
     }
-    exported = exported && (!spec->archive || archive(output));
+    exported = exported && (!spec->archive || archive(output, spec->stop_signal));
     free(output);
     return exported;
 }

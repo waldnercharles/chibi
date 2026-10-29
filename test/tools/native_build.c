@@ -89,8 +89,8 @@ static void relocate(const char *binary)
         snprintf(to, sizeof to, "%s/libexec/chibi/%s", sdk, hosts[i]);
         copy(from, to);
     }
-    const char *shared[] = { "compiler", "core", "tools/native_aot" };
-    for (int i = 0; i < 3; i++) {
+    const char *shared[] = { "compiler", "core", "tools/native_aot", "apps" };
+    for (size_t i = 0; i < sizeof shared / sizeof *shared; i++) {
         snprintf(from, sizeof from, "%s/share/chibi/%s", built, shared[i]);
         snprintf(to, sizeof to, "%s/share/chibi/%s", sdk, shared[i]);
         copy(from, to);
@@ -327,7 +327,10 @@ TEST_CASE(native_build_adds_line_tables_with_g)
     REQUIRE(build(launcher, "-O0", tools) == 0 && strstr(errors, "is up to date"));
     REQUIRE(build_with(launcher, lines, tools) == 0 && count("O0-") == 3 && any_ir(file));
     const char *twice[] = { "-g", "-g", NULL };
-    REQUIRE(build_with(launcher, twice, tools) == 2 && strstr(errors, "Invalid build option: -g"));
+    REQUIRE(
+        build_with(launcher, twice, tools) == 2 &&
+        strstr(errors, "Invalid build option; use --help.")
+    );
     return true;
 }
 
@@ -508,7 +511,7 @@ TEST_CASE(native_build_links_macos_and_windows_programs)
                             NULL };
     REQUIRE(
         build_with(launcher, twice, tools) == 2 &&
-        strstr(errors, "Invalid build option: --target")
+        strstr(errors, "Invalid build option; use --help.")
     );
     REQUIRE(count("O0-") == 2);
     return true;

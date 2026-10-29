@@ -1908,10 +1908,9 @@ TEST_CASE(sdk_version_authority_is_shared_and_invalidates_configuration)
     return true;
 }
 
-/* The launcher's share/chibi and chibi_ctl's resources equal what CMake
- * configures: the build identity, the core and documentation sources and the
- * shaders. They are written before any compile, so a compiler that always
- * fails still writes them, and an unchanged run leaves their stamps. */
+/* Product resources equal what CMake configures: the build identity, core,
+ * documentation, application and shaders. They are written before any compile;
+ * unchanged runs leave their stamps and stale copies are refreshed. */
 TEST_CASE(resources_install_as_cmake)
 {
     char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH],
@@ -1929,20 +1928,19 @@ TEST_CASE(resources_install_as_cmake)
     };
     const char *const installs[] = { "--target", "chibi", "--target", "chibi_ctl", NULL };
     REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, installs) == -1);
-    /* The identity, seven sources and the shaders below share/chibi, and the
-     * identity and the shaders again for chibi_ctl. The shaders are compared
-     * with the sources CMake copies, since it copies chibi_ctl's only when it
-     * configures. */
+    /* The shaders are compared with their source because CMake copies the
+     * controller's shaders only when it configures. */
     const char *const trees[][2] = {
         { "share/chibi/engine.json", "build/share/chibi/engine.json" },
         { "share/chibi/core", "build/share/chibi/core" },
         { "share/chibi/docs", "build/share/chibi/docs" },
+        { "share/chibi/apps/chibi", "build/share/chibi/apps/chibi" },
         { "share/chibi/shaders", "src/render/shaders" },
         { "controller_resources/engine.json", "build/controller_resources/engine.json" },
         { "controller_resources/shaders", "src/render/shaders" },
     };
-    int files = 0;
-    for (int i = 0; i < 6; i++) {
+    int files = 0, application_files = 0;
+    for (size_t i = 0; i < sizeof trees / sizeof *trees; i++) {
         join(ours, build_dir, trees[i][0]);
         if (!strncmp(trees[i][1], "build/", 6)) {
             join(theirs, reference, trees[i][1] + 6);
@@ -1952,8 +1950,11 @@ TEST_CASE(resources_install_as_cmake)
         int count = same_tree(ours, theirs);
         REQUIRE(count > 0);
         files += count;
+        if (!strcmp(trees[i][0], "share/chibi/apps/chibi")) {
+            application_files = count;
+        }
     }
-    REQUIRE(files == 213);
+    REQUIRE(files == 213 + application_files);
     struct stat before, after, identity_before, identity_after;
     char identity[GRAPH_PATH];
     join(ours, build_dir, "share/chibi/engine.json");
@@ -1970,6 +1971,19 @@ TEST_CASE(resources_install_as_cmake)
         identity_after.st_ino == identity_before.st_ino &&
         identity_after.st_mtime == identity_before.st_mtime
     );
+    join(ours, build_dir, "share/chibi/apps/chibi/Main.chibi");
+    join(theirs, CHIBI_SOURCE_ROOT, "apps/chibi/Main.chibi");
+    struct stat policy_before, policy_after;
+    REQUIRE(!stat(ours, &policy_before));
+    const char *const application_only[] = { "--target", "chibi", NULL };
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, application_only) == -1);
+    REQUIRE(
+        !stat(ours, &policy_after) && policy_after.st_ino == policy_before.st_ino &&
+        policy_after.st_mtime == policy_before.st_mtime
+    );
+    tool_write(ours, "stale application source\n");
+    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, application_only) == -1);
+    REQUIRE(same_tree(ours, theirs) == 1);
     return true;
 }
 

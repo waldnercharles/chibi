@@ -57,6 +57,10 @@ typedef struct behavior_execution_scope
     /* Trusted packaged code may request guarded native execution. Pure scopes
      * always use the VM. Unsupported native targets fall back to the VM. */
     bool prefer_compiled;
+    /* Nested scopes are exclusive by default. Inheriting also enforces the
+     * enclosing scope's budget, cancellation, purity and VM preference. Each
+     * operation checks every inherited budget before debiting any of them. */
+    bool inherit;
     struct behavior_execution_scope *previous;
     bool active;
 } behavior_execution_scope;

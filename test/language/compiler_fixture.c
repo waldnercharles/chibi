@@ -605,6 +605,9 @@ static bool run(
         );
     }
     REQUIRE(status == FLOW_OK && state->context.returned);
+    if (getenv("CHIBI_FIXTURE_STEPS")) {
+        fprintf(stderr, "STEPS %s %zu\n", name, (size_t)state->context.steps);
+    }
     REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
     /* A compiled run enters bytecode only for a definition past the Wasm
      * JIT's size budget. */

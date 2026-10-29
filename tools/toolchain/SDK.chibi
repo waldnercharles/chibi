@@ -2,6 +2,7 @@ package toolchain
 
 import strings "core:strings"
 import files "graph:install"
+import engine "graph:engine"
 
 // Install the graph-built private compiler tools into a fresh prefix. This is
 // the compiler-tools part of SDK packaging, without public libraries/headers.
@@ -165,5 +166,47 @@ CompilerTools :: () -> int {
         return 1;
     }
     build.report(Join(["sdk: installed compiler tools at ", output]));
+    return 0;
+}
+
+// Install the Release graph products into PREFIX, overlaying what is there, as
+// the layout the launcher and private hosts read: products in bin, hosts in
+// libexec/chibi, resources in share/chibi.
+//   Install -- --build ABS --prefix ABS
+InstallEntries :: (root: string, build_dir: string, third_party: string) -> string[] {
+    entries := Entries(root, build_dir, third_party);
+    entries.extend([
+        Join(["bin/chibi=", build_dir, "/sdk/chibi"]),
+        Join(["bin/chibi-compile=", build_dir, "/sdk/chibi-compile"]),
+        Join(["bin/chibi-player=", build_dir, "/sdk/chibi-player"]),
+        Join(["share/chibi/engine.json=", build_dir, "/share/chibi/engine.json"]),
+        Join(["share/chibi/apps=", build_dir, "/share/chibi/apps"]),
+        Join(["share/chibi/docs=", build_dir, "/share/chibi/docs"]),
+        Join(["share/chibi/shaders=", build_dir, "/share/chibi/shaders"])
+    ]);
+    return entries;
+}
+Install :: () -> int {
+    arguments := build.arguments();
+    build_dir := Option(arguments, "--build");
+    prefix := Option(arguments, "--prefix");
+    if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(prefix, "/")) {
+        build.report("sdk: --build and --prefix must be absolute paths");
+        return 2;
+    }
+    entries := InstallEntries(build.root(), build_dir, engine.ThirdParty(build.root(), "", ""));
+    for (item in entries) {
+        if (build.file_kind(build.after(item, "=")) == "") {
+            build.report(Join(["sdk: missing install input ", build.after(item, "=")]));
+            return 1;
+        }
+    }
+    for (item in entries) {
+        if (!files.CopyTree(build.after(item, "="), Join([prefix, "/", build.before(item, "=")]))) {
+            build.report(Join(["sdk: cannot install ", build.before(item, "=")]));
+            return 1;
+        }
+    }
+    build.report(Join(["sdk: installed at ", prefix]));
     return 0;
 }

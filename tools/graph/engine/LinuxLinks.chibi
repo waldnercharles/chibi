@@ -37,7 +37,7 @@ pub LinuxLinks :: (target: string) -> string[] {
     if (target == "chibi-compile") {
         return [
             "chibi_project_compilation", "chibi_project_document", "chibi_behavior_runtime", "chibi_asset_json",
-            "chibi_project_format", "chibi_project_compilation", "chibi_asset_compiler_host",
+            "chibi_project_compilation", "chibi_asset_compiler_host",
             "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
             "chibi_shader_preparation", "chibi_player", "chibi_engine", "chibi_scheduling",
             "chibi_visual_catalog", "chibi_graph_catalog", "chibi_host_native_default",
@@ -145,7 +145,7 @@ pub LinuxLinks :: (target: string) -> string[] {
             "third-party/lib/chibi-vendor/libchibi_vendor_AWS__crypto.a", "-ldl", "-lrt",
             "third-party/lib/chibi-vendor/libchibi_vendor_SDL3_static.a",
             "third-party/lib/chibi-vendor/libchibi_vendor_rmlui_core.a",
-            "third-party/lib/chibi-vendor/libchibi_vendor_freetype.a", "chibi_project_format",
+            "third-party/lib/chibi-vendor/libchibi_vendor_freetype.a",
             "chibi_project_compilation", "chibi_source_catalog", "chibi_image_preparation",
             "chibi_host_native_default", "chibi_host_native_catalog", "chibi_native_bindings",
             "chibi_shader_preparation", "chibi_player", "chibi_engine", "chibi_audio_runtime",

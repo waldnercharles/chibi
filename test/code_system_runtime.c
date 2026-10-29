@@ -1,6 +1,5 @@
 #include "authoring/language_catalog.h"
 #include "authoring/preview_runtime.h"
-#include "authoring/source_format.h"
 #include "authoring/source_prepare.h"
 #include "execution/inspection.h"
 #include "execution/status.h"
@@ -29,7 +28,6 @@ typedef struct
 } system_fixture;
 
 static system_fixture active;
-static char *formatted;
 static ecs_world *input_world;
 static source_registry *input_sources;
 static engine_input *test_source_input;
@@ -358,20 +356,14 @@ static bool optional_membership_roundtrip(behavior_backend backend)
                        "! Collider) { if trigger { if "
                        "trigger.Firing { health.Current+=7; } } else { "
                        "health.Current+=2; } }";
-    script_syntax *syntax = script_parse(text);
-    char error[256];
-    char *saved = authoring_source_format(syntax, error, sizeof error);
-    formatted = saved;
-    script_syntax_free(syntax);
-    REQUIRE(saved);
-    for (int pass = 0; pass < 2; pass++) {
+    {
         system_fixture f = fixture_new();
         ecs_entity present = health(&f), absent = health(&f), excluded = health(&f);
         REQUIRE(!Aim_add(f.world, present, 0));
         REQUIRE(!Collider_add(f.world, excluded, 0));
         REQUIRE(!ecs_world_apply_commands(f.world));
         Aim_get(f.world, present)->firing = true;
-        REQUIRE(prepare(&f, pass ? saved : text, backend));
+        REQUIRE(prepare(&f, text, backend));
         REQUIRE(tick(&f, 0));
         REQUIRE(instance(&f, present) && instance(&f, absent) && !instance(&f, excluded));
         REQUIRE(Health_get_const(f.world, present)->current == 7);
@@ -385,8 +377,6 @@ static bool optional_membership_roundtrip(behavior_backend backend)
         REQUIRE(Health_get_const(f.world, excluded)->current == 0);
         fixture_free(&f);
     }
-    free(saved);
-    formatted = NULL;
     return true;
 }
 /* Lowers any(...) with a nested not(...) to an OR chain with a scoped NOT. */
@@ -544,8 +534,6 @@ static void cleanup()
     if (active.world) {
         fixture_free(&active);
     }
-    free(formatted);
-    formatted = NULL;
 }
 TEST_CASE(source_system_persistent_wait_membership)
 {

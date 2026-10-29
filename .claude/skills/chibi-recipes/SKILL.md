@@ -67,7 +67,7 @@ The smallest complete example is Play Sound:
 2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
    of `- name=... prototype=...`) and the prototypes it uses. A scenario in
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
-3. Format and validate: `chibi fmt <root>`, then `chibi check <root>`.
+3. Validate: `chibi check <root>`.
 4. Run it bounded with the project's `@test` functions (`chibi test <root>`) or
    a scenario through `make agent-test`. Choose enough frames to exercise the
    scenario.
@@ -92,8 +92,7 @@ When you do bump it:
 3. Edit Studio's projects (`projects/starter`, `projects/studio`,
    `tests/acceptance/project`) the same way in a Studio PR that pins the
    engine PR in `.github/engine-ref`, and merge the two together.
-4. Run `chibi fmt` on each edited project and compile it with
-   `chibi-compile` to prove it loads.
+4. Compile each edited project with `chibi check` to prove it loads.
 
 Prepared artifact versions (`PLAYER_PREPARED_VERSION` and the other
 `*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that

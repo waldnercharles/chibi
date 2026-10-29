@@ -87,41 +87,6 @@ Check :: (options: Options) -> int {
     return process.run(arguments)
 }
 
-FormatOne :: (requested: string, check: bool) -> int {
-    root := requested
-    packages := root != "" && files.kind(root) == 2 && files.kind(Join([root, "/project.kdl"])) == 0
-    if !packages {
-        game := ReadProject(root)
-        if !game.valid {
-            return 2
-        }
-        root = game.root
-    }
-    arguments := [Compiler(), "--project-root", root, "--format"]
-    if check {
-        arguments = append(arguments, "--check")
-    }
-    return process.run(arguments)
-}
-
-Format :: (options: Options, arguments: string[]) -> int {
-    if options.path_count == 0 {
-        return FormatOne("", options.check)
-    }
-    status := 0
-    index := 2
-    while index < length(arguments) {
-        if !Option(arguments[index]) {
-            formatted := FormatOne(arguments[index], options.check)
-            if formatted != 0 {
-                status = formatted
-            }
-        }
-        index += 1
-    }
-    return status
-}
-
 Test :: (options: Options) -> int {
     status := program.test(Default(options.path, "."))
     if application.stopped() {

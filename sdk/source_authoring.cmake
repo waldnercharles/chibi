@@ -45,13 +45,12 @@ target_link_libraries(chibi_program PUBLIC chibi_source_catalog chibi_native_cap
 add_library(chibi_source_presentation STATIC)
 foreach(unit graph_expression presentation_schema source_presentation source_presentation_graph source_presentation_anchors
     source_presentation_values source_presentation_flow source_presentation_layout
-    source_presentation_details source_minimize)
+    source_presentation_details)
     target_sources(chibi_source_presentation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
 endforeach()
 add_library(Chibi::source_presentation ALIAS chibi_source_presentation)
 set_target_properties(chibi_source_presentation PROPERTIES EXPORT_NAME source_presentation)
-chibi_sdk_headers(chibi_source_presentation PUBLIC authoring/graph_expression.h authoring/presentation_schema.h authoring/source_presentation.h
-    authoring/source_minimize.h)
+chibi_sdk_headers(chibi_source_presentation PUBLIC authoring/graph_expression.h authoring/presentation_schema.h authoring/source_presentation.h)
 foreach(header source_presentation_internal source_presentation_anchors source_presentation_details)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/source_presentation/authoring/${header}.h" COPYONLY)

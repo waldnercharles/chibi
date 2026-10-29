@@ -1,6 +1,0 @@
-integer semantics contextual-counts, stage zero: rejects Numeric literal is outside the range of int8 at 2:32 (expected a closure at 0:0)
-(FAILED: $BASELINE/test/language/integer_semantics.c (1093): agrees)
-Running: contextual-counts
-===============================================================
-Summary: Passed: 0 Failed: 1 Total: 1 Suites: 0 Asserts: 4
-Test command wall time: 0.086s; includes in-test fixture setup; external configuration/build excluded.

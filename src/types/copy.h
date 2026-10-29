@@ -15,8 +15,7 @@
  * their text/nominal/record copies and the owned-set name. The task-result
  * wrapper's borrowed buffer is separate. Other assignments, BF_COPY_STRING,
  * ECS row publication, serializers, allocator movement and arbitrary host
- * copies are excluded. These are C operation spans, not hardware bandwidth.
- * See docs/evidence/runtime-attribution/design.md for the exact inventory. */
+ * copies are excluded. These are C operation spans, not hardware bandwidth. */
 typedef struct
 {
     uint64_t text_bytes;

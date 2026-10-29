@@ -18,7 +18,6 @@ typedef struct
 } behavior_reactive_path;
 
 int behavior_reactive_output_index(const node *n, uint64_t id);
-void behavior_reactive_order(const behavior_asset *asset, int **order);
 bool behavior_reactive_path_compile(
     const graph *g,
     const node *n,

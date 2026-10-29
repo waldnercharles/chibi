@@ -47,35 +47,6 @@ const compile_effects *compile_report_effects(const compile_report *out)
     return out ? &out->effects : NULL;
 }
 
-static int effect_intersects(const uint64_t *left, const uint64_t *right)
-{
-    for (int i = 0; i < acount(left); i++) {
-        for (int j = 0; j < acount(right); j++) {
-            if (left[i] == right[j]) {
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
-
-int compile_effects_conflict(const compile_effects *left, const compile_effects *right, int same_instance)
-{
-    if (!left || !right) {
-        return 1;
-    }
-    if (same_instance || left->all_writes || right->all_writes) {
-        return 1;
-    }
-    if ((left->flags | right->flags) &
-        (NODE_EFFECT_STRUCTURAL | NODE_EFFECT_WORLD_READ | NODE_EFFECT_HOST_SINK)) {
-        return 1;
-    }
-    return effect_intersects(left->writes, right->writes) ||
-           effect_intersects(left->writes, right->reads) ||
-           effect_intersects(right->writes, left->reads);
-}
-
 const char *cmpl_rule_name(int rule)
 {
     switch (rule) {

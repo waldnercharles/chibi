@@ -4,12 +4,14 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* A bootstrap artifact is a folder of two files. compiler.chibip is a closure
- * of the stage-one package compiler that compiles the compiler sources to
- * itself. bootstrap.json records its format, its bootstrap version, the
- * revision and checksums of the sources it compiles, its own checksum and the
- * target it was compiled for. The sources' bootstrap.kdl names the version a
- * compiler built from them has and the oldest version that can compile them. */
+/* A bootstrap artifact is a folder of two files, a seed. compiler.chibip is a
+ * closure of the stage-one package compiler that compiles the compiler sources
+ * it was written from to itself. bootstrap.json records its format, its
+ * bootstrap version, the revision and checksums of those sources, its own
+ * checksum and the target it was compiled for. The sources' bootstrap.kdl
+ * names the version a compiler built from them has and the oldest version that
+ * can compile them, and asset_compiler/CompilerSources.txt lists the sources
+ * in Compile's order. The seed need not match the sources on disk. */
 typedef struct
 {
     const char *folder;   /* The artifact. */
@@ -28,43 +30,22 @@ typedef struct
 bool compiler_bootstrap_write(const compiler_bootstrap *, char *error, size_t size);
 /* Recovers the compiler from the artifact and the sources on disk. When the
  * sources are those it recorded, the artifact must compile them to its own
- * bytes; otherwise the compiler it compiles must compile them to itself. An
- * unknown format, a damaged closure, another target or a version older than
- * the sources' minimum is rejected first. False with why; on success, report
- * says what was recovered, and the recovered compiler is written to `output`
- * when there is one. */
+ * bytes. Otherwise it only has to compile them: that compiler (stage one)
+ * compiles them to stage two, and when the two differ stage two compiles them
+ * to a third that must be stage two's bytes, which is the fixed point. An
+ * unknown format, a damaged closure, another target, a package with a source
+ * the list omits or a version older than the sources' minimum is rejected
+ * first. False with why; on success, report says what was recovered, and the
+ * recovered compiler is written to `output` when there is one. */
 bool compiler_bootstrap_check(const compiler_bootstrap *, char *report, size_t size);
 
 struct compiler_host;
 
 /* Loads one owned, validated current compiler generation. Matching source
  * hashes admit the recorded closure directly, after checksum, version, ABI and
- * source-completeness validation. Changed sources go through the existing
- * recovery/fixpoint path. This writes no files and has no persistent cache.
+ * source-completeness validation. Changed sources go through the
+ * recovery/fixed-point path. This writes no files and has no persistent cache.
  * Release the result with compiler_host_free. */
 struct compiler_host *compiler_bootstrap_load(const compiler_bootstrap *, char *error, size_t size);
-
-typedef enum
-{
-    COMPILER_BOOTSTRAP_REUSED = 0,
-    COMPILER_BOOTSTRAP_REUSE_ERROR = 1,
-    COMPILER_BOOTSTRAP_DIFFERENT = 3
-} compiler_bootstrap_reuse_result;
-
-/* Copies the validated recorded closure (canonical owned-value CompileClosure,
- * twelve arguments and one primitive byte[] result) only when no source changed
- * and captured_json is exactly CompileClosure's recorded request, including
- * source order/text and target. The JSON is borrowed for this call. A different
- * request returns DIFFERENT without compiling or writing, so its caller may
- * compile that same snapshot normally. Hard validation/I/O errors return ERROR.
- * Output changes only at same-directory rename; load and recover are unchanged. */
-compiler_bootstrap_reuse_result compiler_bootstrap_reuse(
-    const compiler_bootstrap *,
-    const char *captured_json,
-    size_t captured_length,
-    const char *output,
-    char *why,
-    size_t why_size
-);
 
 #endif

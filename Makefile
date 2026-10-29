@@ -30,11 +30,17 @@ FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
 BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
+CHIBI_BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 # Another build's sdk directory, such as build-release/sdk, whose
 # chibi-build-host and chibi-compiler-host generate the asset compiler instead
 # of this build's. The resource is the same; Release hosts generate it faster.
 ASSET_GENERATOR_HOSTS ?=
 ASSET_GENERATOR_HOSTS_PATH = $(if $(strip $(ASSET_GENERATOR_HOSTS)),$(abspath $(ASSET_GENERATOR_HOSTS)),)
+# Compiling the asset compiler with Debug hosts exceeds its compiler deadline from a
+# cold tree, so a non-Release graph build borrows the Release hosts, which it builds
+# first, unless ASSET_GENERATOR_HOSTS names other hosts.
+ASSET_GENERATOR_HOSTS_DEFAULT = $(if $(or $(strip $(ASSET_GENERATOR_HOSTS)),$(filter release,$(BUILD_PROFILE))),,$(RELEASE_BUILD_DIR)/sdk)
+ASSET_GENERATOR_HOSTS_EFFECTIVE = $(if $(ASSET_GENERATOR_HOSTS_PATH),$(ASSET_GENERATOR_HOSTS_PATH),$(if $(ASSET_GENERATOR_HOSTS_DEFAULT),$(abspath $(ASSET_GENERATOR_HOSTS_DEFAULT)),))
 BUILD_PROGRAM ?= tools/toolchain/Build.chibi
 BUILD_TIMEOUT_MS ?= 1800000
 # On Linux and macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
@@ -137,8 +143,9 @@ build:
 .PHONY: toolchain-build stage-zero-build graph-reference
 ifneq ($(GRAPH_BUILD),)
 toolchain-build:
+	@if [ -n "$(ASSET_GENERATOR_HOSTS_DEFAULT)" ]; then $(MAKE) build-release BUILD_HOST="$(abspath $(BUILD_HOST))" BUILD_TARGET='chibi-build-host chibi-compiler-host' || exit $$?; fi
 	@$(QUIET) third-party -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
-	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(abspath $(LIBCLANG_ROOT))",) $(if $(strip $(GRAPH_REFLECT)),--reflect "$(abspath $(GRAPH_REFLECT))",) $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_PATH),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_PATH)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
+	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(abspath $(LIBCLANG_ROOT))",) $(if $(strip $(GRAPH_REFLECT)),--reflect "$(abspath $(GRAPH_REFLECT))",) $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_EFFECTIVE),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_EFFECTIVE)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
 	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
 
 # Recovery builds the first build host with CMake beside the build directory;
@@ -169,16 +176,22 @@ graph-reference:
 build-debug:
 	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_PROFILE=debug BUILD_TARGET="$(BUILD_TARGET)"
 
-.PHONY: sdk-reflect-build sdk-build sdk-install package-sdk runtime-sdk-build package-runtime-sdk
-ifneq ($(filter Linux Darwin,$(shell uname -s)),)
-sdk-reflect-build:
-	@host="$(BUILD_HOST)"; \
+# The private build host that runs the authored SDK programs: the build's own, or
+# the one cold recovery constructs beside the reflection build.
+define SDK_GRAPH_HOST
+host="$(BUILD_HOST)"; \
 	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
-		host="$(SDK_REFLECT_BUILD_DIR)/host/chibi-build-host"; \
+		host="$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"; \
 		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
 			$(MAKE) sdk-reflect-bootstrap || exit $$?; \
 		fi; \
-	fi; \
+	fi;
+endef
+
+.PHONY: sdk-reflect-build sdk-build sdk-install package-sdk runtime-sdk-build package-runtime-sdk
+ifneq ($(filter Linux Darwin,$(shell uname -s)),)
+sdk-reflect-build:
+	@$(SDK_GRAPH_HOST) \
 	$(QUIET) build-sdk-reflect -- env CCACHE_BASEDIR="$(CURDIR)" "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry SDKReflect --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(SDK_REFLECT_PATH)" --jobs "$(JOBS)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(SDK_REFLECT_LLVM_ROOT)",) -- $(NATIVE_TOOLCHAIN_FLAGS)
 
 # Cold recovery constructs only the host that runs the authored graph. Remove
@@ -205,12 +218,25 @@ sdk-install: sdk-build
 package-sdk: sdk-build
 	@python3 tools/package_sdk.py --build "$(SDK_BUILD_DIR)" --output "$(SDK_PREFIX)" --kind sdk
 
+ifeq ($(shell uname -s),Darwin)
+# The macOS runtime SDK is constructed by the Chibi graph and installed by
+# tools/toolchain/RuntimeSDK.chibi. Linux keeps the CMake route below.
+runtime-sdk-build: sdk-reflect-build
+	@$(SDK_GRAPH_HOST) \
+	$(QUIET) third-party -- "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(RUNTIME_SDK_BUILD_DIR)" && \
+	$(QUIET) build-runtime-sdk -- env CCACHE_BASEDIR="$(CURDIR)" "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry RuntimeSDK --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RUNTIME_SDK_BUILD_DIR))" --reflect "$(SDK_REFLECT_PATH)/reflect" --jobs "$(JOBS)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(SDK_REFLECT_LLVM_ROOT)",) -- $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS)
+
+package-runtime-sdk: runtime-sdk-build
+	@$(SDK_GRAPH_HOST) \
+	$(QUIET) package-runtime-sdk -- "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source tools/toolchain/RuntimeSDK.chibi --core packages/core --collection graph=tools/graph --entry RuntimePackage --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RUNTIME_SDK_BUILD_DIR))" --output "$(abspath $(RUNTIME_SDK_PREFIX))"
+else
 runtime-sdk-build: sdk-reflect-build
 	@$(QUIET) configure-runtime-sdk -- sh tools/configure.sh sdk-native "$(RUNTIME_SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=OFF -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(SDK_REFLECT_PATH)/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 	@$(QUIET) build-runtime-sdk -- cmake --build "$(RUNTIME_SDK_BUILD_DIR)" --parallel $(JOBS)
 
 package-runtime-sdk: runtime-sdk-build
 	@python3 tools/package_sdk.py --build "$(RUNTIME_SDK_BUILD_DIR)" --output "$(RUNTIME_SDK_PREFIX)" --kind runtime
+endif
 
 controller-build:
 	@$(MAKE) build BUILD_TARGET=chibi_ctl
@@ -356,7 +382,7 @@ test-build:
 	@$(MAKE) build BUILD_TARGET='chibi_ctl test_tools test_language'
 
 test-native: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group native
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_BUILD_HOST="$(CHIBI_BUILD_HOST)" python3 tools/test_policy.py group native
 
 test-materials: test-build
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group materials
@@ -382,12 +408,15 @@ test-bootstrap:
 # test-recovery with sources exported from HEAD. See docs/self-hosting-build.md.
 BOOTSTRAP_ARTIFACT ?= tools/compiler/bootstrap
 BOOTSTRAP_SEED = $(RELEASE_BUILD_DIR)/bootstrap.seed
+BOOTSTRAP_DRIVER_BUILD = $(RELEASE_BUILD_DIR)/compiler-bootstrap-driver
 bootstrap-artifact:
-	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
+	@$(QUIET) configure-bootstrap-driver -- cmake -S test/language -B "$(BOOTSTRAP_DRIVER_BUILD)" -G Ninja -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF
+	@$(QUIET) build-bootstrap-driver -- cmake --build "$(BOOTSTRAP_DRIVER_BUILD)" --target test_language chibi-compiler-host --parallel $(JOBS)
 	@rm -rf "$(BOOTSTRAP_SEED)" && mkdir -p "$(BOOTSTRAP_SEED)"
-	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
-	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(BOOTSTRAP_DRIVER_BUILD)" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+	@"$(BOOTSTRAP_DRIVER_BUILD)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
+	@$(MAKE) stage-zero-build GRAPH_BUILD= BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_TARGET='test_language chibi-compiler-host' LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=ON"
 
 bootstrap-recover:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host

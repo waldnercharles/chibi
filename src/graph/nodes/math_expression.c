@@ -122,8 +122,8 @@ static const math_function functions[] = {
     { .name = "max", .arity = 2, .nodes = { "Max", "Shader Max", "Field Max" } },
     { .name = "clamp", .arity = 3, .nodes = { "Clamp", "Shader Clamp", "Field Clamp" } },
     { .name = "saturate", .arity = 1, .nodes = { NULL, "Shader Saturate" } },
-    { .name = "mix", .arity = 3, .nodes = { "Mix", "Shader Mix" } },
-    { .name = "step", .arity = 2, .nodes = { "Step", "Shader Step" }, .order = { 1, 0 } },
+    { .name = "mix", .arity = 3, .nodes = { NULL, "Shader Mix" } },
+    { .name = "step", .arity = 2, .nodes = { NULL, "Shader Step" }, .order = { 1, 0 } },
     { .name = "smoothstep",
       .arity = 3,
       .nodes = { NULL, "Shader Smoothstep" },
@@ -3475,59 +3475,6 @@ static behavior_asset *regenerate(
     }
     behavior_asset_free(staged);
     return generate(asset, caller, call, source, error, NULL, 0, asset->graph->id_counter, mode);
-}
-
-int behavior_expression_infer_assignment_result(behavior_asset *asset, node *call, behavior_expression_error *error)
-{
-    behavior_expression_error local = { 0 };
-    error = error ? error : &local;
-    const char *source = behavior_expression_source(asset, call);
-    if (!prepare_error(error, asset, source)) {
-        return -1;
-    }
-    parser p = { .source = source, .cursor = source, .error = error };
-    int result = parse_source(&p);
-    int symbol = result >= 0 ? expression_assignment_symbol(&p) : -1;
-    if (symbol >= 0) {
-        pin_binding binding;
-        graph *caller = caller_graph(asset, call);
-        int reference = expression_assignment_reference(caller, call, p.symbols[symbol], NULL, 0, &binding);
-        pin_type type;
-        const char *name;
-        pin_container container;
-        const term *left = &p.terms[p.assignment_left];
-        if (reference < 0 ||
-            (reference > 0 &&
-             expression_binding_type(asset, &binding, left, &type, &name, &container))) {
-            snprintf(error->message, sizeof error->message, "Assignment target binding is invalid");
-            result = -1;
-        } else if (reference > 0) {
-            if (left->index_count) {
-                container = PIN_CONTAINER_SINGLE;
-            }
-            if (left->field[0]) {
-                const type_desc *root = type_catalog_find(name);
-                const type_field *field = root ? pin_type_field_path(root, left->field)
-                                               : NULL;
-                if (!field) {
-                    snprintf(error->message, sizeof error->message, "Assignment member is invalid");
-                    result = -1;
-                } else {
-                    type = field->type;
-                    name = field->type_name;
-                }
-            }
-            int output = find_named_output(call, "Result");
-            if (result >= 0 && output >= 0 && type >= PIN_I8 &&
-                type <= PIN_F64 && container == PIN_CONTAINER_SINGLE &&
-                graph_set_pin_type(caller, call, true, output, type, name)) {
-                snprintf(error->message, sizeof error->message, "Assignment result type could not be inferred");
-                result = -1;
-            }
-        }
-    }
-    parser_free(&p);
-    return result < 0 ? -1 : 0;
 }
 
 int behavior_expression_refresh_mode(

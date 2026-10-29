@@ -250,11 +250,6 @@ int execution_inspector_frame_count(const execution_inspector *i)
     assert(i);
     return acount(i->frames);
 }
-execution_debug_frame execution_inspector_frame_at(const execution_inspector *i, int n)
-{
-    assert(i && n >= 0 && n < acount(i->frames));
-    return i->frames[n];
-}
 int execution_inspector_activity_count(const execution_inspector *i)
 {
     assert(i);

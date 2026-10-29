@@ -2173,6 +2173,84 @@ TEST_CASE(ci_groups_share_one_build_and_stop_on_failure)
     return true;
 }
 
+/* Exercise Make's selected paths without building products. The stand-in
+ * supervisor records the environment at the real native-group boundary. */
+TEST_CASE(native_make_keeps_selected_build_host_and_overrides)
+{
+    char root[PATH_MAX], filename[PATH_MAX], original[PATH_MAX],
+        absolute_build[PATH_MAX], selection[PATH_MAX + 16],
+        expected_host[PATH_MAX], expected[3 * PATH_MAX + 64];
+    path(root, "native make");
+    assert(!mkdir(root, 0700));
+    int size = snprintf(filename, sizeof filename, "%s/tools", root);
+    assert(size > 0 && size < (int)sizeof filename);
+    assert(!mkdir(filename, 0700));
+    size = snprintf(original, sizeof original, "%s/Makefile", tool_root());
+    assert(size > 0 && size < (int)sizeof original);
+    size = snprintf(filename, sizeof filename, "%s/Makefile", root);
+    assert(size > 0 && size < (int)sizeof filename);
+    const char *copy[] = { "cp", original, filename, NULL };
+    REQUIRE(tool_run(copy, root, logpath) == 0);
+    size = snprintf(filename, sizeof filename, "%s/tools/test_policy.py", root);
+    assert(size > 0 && size < (int)sizeof filename);
+    tool_write(
+        filename,
+        "import os, sys\n"
+        "assert sys.argv[1:] == ['group', 'native']\n"
+        "for name in ('CHIBI_TOOLS_BUILD_DIR', 'CHIBI_LANGUAGE_BUILD_DIR', "
+        "'CHIBI_BUILD_HOST'):\n"
+        "    print(os.environ.get(name, '<missing>'))\n"
+    );
+    size = snprintf(absolute_build, sizeof absolute_build, "%s/absolute build", root);
+    assert(size > 0 && size < (int)sizeof absolute_build);
+    const char *builds[] = { "custom build", absolute_build };
+    for (int variant = 0; variant < 2; variant++) {
+        size = snprintf(selection, sizeof selection, "BUILD_DIR=%s", builds[variant]);
+        assert(size > 0 && size < (int)sizeof selection);
+        size = snprintf(expected_host, sizeof expected_host, "%s/sdk/chibi-build-host", builds[variant]);
+        assert(size > 0 && size < (int)sizeof expected_host);
+        for (int override = 0; override < 3; override++) {
+            const char *argv[16] = {
+                "env",        "-u",      "CHIBI_BUILD_HOST",
+                "MAKEFLAGS=", "MFLAGS=", "TEST_ARGS="
+            };
+            int count = 6;
+            if (override) {
+                argv[count++] = "CHIBI_BUILD_HOST=environment hosts/selected "
+                                "host";
+            }
+            argv[count++] = "make";
+            argv[count++] = "--no-print-directory";
+            argv[count++] = "-o";
+            argv[count++] = "test-build";
+            argv[count++] = "test-native";
+            argv[count++] = selection;
+            if (override == 2) {
+                argv[count++] = "CHIBI_BUILD_HOST=command hosts/selected host";
+            }
+            argv[count] = NULL;
+            REQUIRE(tool_run(argv, root, logpath) == 0);
+            const char *host = override == 2 ? "command hosts/selected host"
+                             : override      ? "environment hosts/selected host"
+                                             : expected_host;
+            size = snprintf(
+                expected,
+                sizeof expected,
+                "%s/test/tools\n%s/test/language\n%s\n",
+                builds[variant],
+                builds[variant],
+                host
+            );
+            assert(size > 0 && size < (int)sizeof expected);
+            char *output = tool_read(logpath);
+            bool exact = output && !strcmp(output, expected);
+            free(output);
+            REQUIRE(exact);
+        }
+    }
+    return true;
+}
+
 TEST_CASE(ci_build_timings_use_ready_drivers_and_bounded_selector)
 {
     char *workflow = tool_read(CHIBI_SOURCE_ROOT "/.github/workflows/ci.yml");
@@ -3151,26 +3229,6 @@ TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work)
     return true;
 }
 
-TEST_CASE(parallel_migration_selector_overlaps_with_owned_scratch)
-{
-    reset_parallel();
-    REQUIRE(run("integer-parallel", "language-migration34-generic-repro") == 0);
-    REQUIRE(exists("parallel/first-overlapped") && exists("parallel/second-overlapped"));
-    char *output = tool_read(logpath);
-    REQUIRE(output && strstr(output, "language-migration34-generic-repro frozenset() 1\n"));
-    REQUIRE(strstr(output, "census-exclusive True\n"));
-    char first[4096], second[4096];
-    const char *a = strstr(output, "scratch-first="),
-               *b = strstr(output, "scratch-second=");
-    REQUIRE(a && b);
-    REQUIRE(sscanf(a, "scratch-first=%4095[^\n]", first) == 1);
-    REQUIRE(sscanf(b, "scratch-second=%4095[^\n]", second) == 1);
-    REQUIRE(strcmp(first, second) && access(first, F_OK) && access(second, F_OK));
-    free(output);
-    reset_parallel();
-    return true;
-}
-
 TEST_CASE(parallel_language_manifest_matches_serial_exactly)
 {
     reset_parallel();
@@ -3846,6 +3904,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(language_artifact_archive_validates_before_writing);
     RUN_TEST_CASE(language_artifact_cli_requires_exact_argument_counts);
     RUN_TEST_CASE(ci_groups_share_one_build_and_stop_on_failure);
+    RUN_TEST_CASE(native_make_keeps_selected_build_host_and_overrides);
     RUN_TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage);
     RUN_TEST_CASE(ci_build_timings_use_ready_drivers_and_bounded_selector);
     RUN_TEST_CASE(ci_initial_build_keeps_targets_profiles_and_failures);
@@ -3877,7 +3936,6 @@ void test_tool_test_policy()
     RUN_TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work);
     RUN_TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered);
     RUN_TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work);
-    RUN_TEST_CASE(parallel_migration_selector_overlaps_with_owned_scratch);
     RUN_TEST_CASE(parallel_language_manifest_matches_serial_exactly);
     RUN_TEST_CASE(parallel_admission_bounds_cpu_and_available_memory);
     RUN_TEST_CASE(parallel_serial_escape_uses_real_cli_and_environment);

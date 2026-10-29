@@ -37,6 +37,11 @@ AnyReference :: (params: Param[]) -> bool {
 // The function a call names, of this package or an import, -1 for any other.
 CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[], aliases: Name[],
                    package: int, call: int) -> int {
+    for (resolved in aliases) {
+        if (resolved.place == GenericCallPlace && resolved.node == call) {
+            return resolved.index;
+        }
+    }
     callee := Field(forest, call, "function");
     qualifier: int = -1;
     if (Is(forest, callee, "member_expression")) {
@@ -48,6 +53,10 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return -1;
     }
     if (qualifier < 0) {
+        local := Lookup(aliases, Text(forest, text, callee));
+        if (local >= 0 && aliases[local].place == GenericFunctionPlace) {
+            return aliases[local].index;
+        }
         return SourceCallable(callables, natives, aliases, home, Text(forest, text, callee));
     }
     return QualifiedCallable(callables, natives, aliases, home, Text(forest, text, callee),
@@ -100,13 +109,16 @@ ScopedArguments :: (forest: snapshot.SnapshotNode[], text: string, callables: Ca
         at := pending[top];
         if (Is(forest, at, "call_expression")) {
             called := CalledFunction(forest, text, callables, natives, aliases, package, at);
-            index: int = 0;
+            position: int = 0;
             for (argument in Members(forest, Field(forest, at, "arguments"))) {
-                if (called >= 0 && index < callables[called].count &&
-                    params[callables[called].first + index].reference && Is(forest, argument, "address_expression")) {
-                    found.append(argument);
+                if (GenericOmitted(aliases, argument)) { continue; }
+                index := GenericCallParameter(forest, text, callables, params, aliases, called, at, argument, position);
+                value := GenericArgumentValue(forest, argument);
+                if (called >= 0 && index >= 0 && index < callables[called].count &&
+                    params[callables[called].first + index].reference && Is(forest, value, "address_expression")) {
+                    found.append(value);
                 }
-                index += 1;
+                if (!Is(forest, argument, "named_argument")) { position += 1; }
             }
         }
         child := forest[at].first_child;
@@ -224,7 +236,8 @@ PointerAnnotation :: (forest: snapshot.SnapshotNode[], type: int) -> int {
     return pointer;
 }
 CallableDeclaration :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
-    return Is(forest, node, "function_declaration") || Is(forest, node, "macro_declaration");
+    return Is(forest, node, "function_declaration") || Is(forest, node, "macro_declaration") ||
+           Is(forest, node, "lambda_expression");
 }
 // The declaration a plain call names among its caller's siblings, or -1.
 SiblingCallable :: (forest: snapshot.SnapshotNode[], text: string, caller: int, callee: int) -> int {

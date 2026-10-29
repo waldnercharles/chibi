@@ -135,8 +135,13 @@ class CacheTests(unittest.TestCase):
 
     def test_workflow_cache_scope(self):
         workflow = (cache.ROOT / '.github/workflows/ci.yml').read_text()
-        self.assertEqual(workflow.count('uses: actions/cache/restore@v4'), 2)
-        self.assertEqual(workflow.count('uses: actions/cache/save@v4'), 2)
+        # Two compiler-object caches and four compiled-asset-compiler caches.
+        self.assertEqual(workflow.count('uses: actions/cache/restore@v4'), 6)
+        self.assertEqual(workflow.count('uses: actions/cache/save@v4'), 4)
+        asset_guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'"
+        self.assertEqual(workflow.count(asset_guard), 2)
+        self.assertEqual(workflow.count('path: .chibi/asset-compiler-cache'), 5)
+        self.assertEqual(workflow.count('path: engine/.chibi/asset-compiler-cache'), 1)
         self.assertNotIn('key: ${{ steps.ccache-config.outputs.compatibility-prefix }}', workflow)
         self.assertNotIn('pull_request_target:', workflow)
         guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'"

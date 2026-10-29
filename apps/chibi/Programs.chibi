@@ -1,0 +1,148 @@
+package chibi_cli
+
+import strings "core:strings"
+
+Run :: (options: Options, tail: string[]) -> int {
+    requested := options.path
+    if requested == "" {
+        requested = Default(NearestProject(), ".")
+    }
+    path := files.resolve(requested)
+    if path == "" {
+        Error(format_text("{}: cannot resolve source target", requested))
+        return 2
+    }
+    directory := files.kind(path) == 2
+    game := strings.HasSuffix(path, "/project.kdl")
+    if directory {
+        game = files.kind(Join([path, "/project.kdl"])) != 0
+    }
+    if game {
+        if options.watch {
+            Error("--watch requires a standalone .chibi program or package directory")
+            return 2
+        }
+        return Game(path, tail, true)
+    }
+    if !directory && !strings.HasSuffix(path, ".chibi") {
+        Error("A program requires a .chibi file or package directory")
+        return 2
+    }
+    arguments := Concat([path], tail)
+    return Session(program.open(path, "", arguments), options.watch)
+}
+
+Stopped :: (handle: Program, watch: bool) -> int {
+    program.close(handle)
+    if watch {
+        return 0
+    }
+    return application.interrupt_status()
+}
+
+Failed :: (handle: Program) {
+    Error(program.diagnostic(handle))
+}
+
+ExitStatus :: (status: int) -> int {
+    if status < 0 || status > 255 {
+        Error("Main returned an exit status outside 0..255")
+        return 1
+    }
+    return status
+}
+
+// A program runs `Main` once, then calls `Frame` repeatedly until it is
+// stopped. With --watch every accepted edit replaces the running program's
+// code between calls: state is kept and `Main` is not called again. A failure
+// pauses the program until the next accepted edit.
+Session :: (handle: Program, watch: bool) -> int {
+    polled := 0
+    loaded := false
+    started := false
+    framing := false
+    paused := false
+    result := 1
+    while !application.stopped() {
+        if polled == 0 && (watch || !loaded) {
+            update := program.update(handle)
+            if application.stopped() {
+                return Stopped(handle, watch)
+            }
+            if update < 0 {
+                Failed(handle)
+                if !loaded {
+                    paused = true
+                }
+            } else if update > 0 {
+                loaded = true
+                paused = false
+                if framing && !program.has(handle, "Frame") {
+                    Error("No runnable Frame in the root package")
+                }
+            }
+            if !loaded && !watch {
+                program.close(handle)
+                return 1
+            }
+            polled = 15
+        }
+        polled -= 1
+        if loaded && !paused && !started {
+            if program.has(handle, "Main") {
+                called := program.call_entry(handle, "Main")
+                if application.stopped() {
+                    return Stopped(handle, watch)
+                }
+                if called.status != 0 {
+                    Failed(handle)
+                    result = 1
+                    paused = true
+                } else {
+                    result = ExitStatus(called.result)
+                    started = true
+                }
+            } else if program.has(handle, "Frame") {
+                result = 0
+                started = true
+            } else {
+                Error("No runnable Main in the root package")
+                result = 1
+                paused = true
+            }
+        }
+        if paused && !watch {
+            program.close(handle)
+            return result
+        }
+        if loaded && started && !paused && program.has(handle, "Frame") {
+            framing = true
+            frame := program.call_entry(handle, "Frame")
+            if application.stopped() {
+                return Stopped(handle, watch)
+            }
+            if frame.status != 0 {
+                Failed(handle)
+                result = 1
+                paused = true
+            } else if frame.result != 0 {
+                program.close(handle)
+                return ExitStatus(frame.result)
+            }
+            if !application.wait(16) {
+                return Stopped(handle, watch)
+            }
+            continue
+        }
+        if started && !watch {
+            program.close(handle)
+            return result
+        }
+        polled = 0
+        if !application.wait(250) {
+            program.close(handle)
+            return 0
+        }
+    }
+    return Stopped(handle, watch)
+}

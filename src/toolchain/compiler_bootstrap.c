@@ -26,6 +26,8 @@
 #define CLOSURE_FILE "compiler.chibip"
 #define MANIFEST_FILE "bootstrap.json"
 #define CONTRACT_FILE "bootstrap.kdl"
+/* Below the compiler sources: the compiler's sources in Compile's order. */
+#define SOURCES_FILE "asset_compiler/CompilerSources.txt"
 /* Compile's arguments: the project, its collections' names and paths, the
  * source paths and texts, whether to emit debugger points and watches, which
  * the compiler is compiled without, then the six that describe the target:
@@ -294,41 +296,104 @@ static bool read_seed(const char *folder, seed *s, char *error, size_t size)
     return valid;
 }
 
-/* The path of a source in a list of paths or of manifest source records. */
-static const char *source_path(yyjson_val *sources, size_t index)
+/* A list of compiler source paths: Compile's source order. */
+typedef struct
 {
-    yyjson_val *source = yyjson_arr_get(sources, index);
-    return yyjson_get_str(yyjson_is_obj(source) ? yyjson_obj_get(source, "path") : source);
+    char **paths;
+    size_t count;
+} source_list;
+
+static void free_list(source_list *list)
+{
+    for (size_t i = 0; i < list->count; i++) {
+        free(list->paths[i]);
+    }
+    free(list->paths);
+    *list = (source_list){ 0 };
 }
 
-static bool recorded(yyjson_val *sources, const char *path)
+static void add_path(source_list *list, const char *path, size_t length)
 {
+    list->paths = xrealloc(list->paths, (list->count + 1) * sizeof *list->paths);
+    list->paths[list->count] = xmalloc(length + 1);
+    memcpy(list->paths[list->count], path, length);
+    list->paths[list->count++][length] = 0;
+}
+
+/* The paths a JSON array of strings holds, or of objects with a path. */
+static source_list json_list(yyjson_val *sources)
+{
+    source_list list = { 0 };
     for (size_t i = 0; i < yyjson_arr_size(sources); i++) {
-        const char *source = source_path(sources, i);
-        if (source && !strcmp(source, path)) {
+        yyjson_val *source = yyjson_arr_get(sources, i);
+        yyjson_val *path = yyjson_is_obj(source) ? yyjson_obj_get(source, "path")
+                                                 : source;
+        const char *text = yyjson_get_str(path);
+        add_path(&list, text ? text : "", text ? yyjson_get_len(path) : 0);
+    }
+    return list;
+}
+
+/* The compiler sources the folder lists, one path to a line, in the order
+ * Compile takes them. False with why when the list is missing or empty. */
+static bool read_sources(const compiler_bootstrap *b, source_list *list, char *error, size_t size)
+{
+    char *file = join(b->compiler, SOURCES_FILE);
+    size_t length;
+    char *text = (char *)read_bytes(file, COMPILER_HOST_MAX_BYTES, &length);
+    for (char *line = text, *next; line && *line; line = next) {
+        char *end = strchr(line, '\n');
+        next = end ? end + 1 : line + strlen(line);
+        size_t size_of_line = (size_t)((end ? end : next) - line);
+        if (size_of_line && line[size_of_line - 1] == '\r') {
+            size_of_line--;
+        }
+        if (size_of_line) {
+            add_path(list, line, size_of_line);
+        }
+    }
+    if (!list->count) {
+        snprintf(error, size, "%s lists no compiler sources", file);
+    }
+    free(text);
+    free(file);
+    return list->count > 0;
+}
+
+static bool recorded(const source_list *sources, const char *path)
+{
+    for (size_t i = 0; i < sources->count; i++) {
+        if (!strcmp(sources->paths[i], path)) {
             return true;
         }
     }
     return false;
 }
 
-/* Whether each .chibi file in the folder of each recorded source, a package,
- * is itself recorded: a package that gained a file is no longer the one the
- * artifact compiled. False with the first file that is not. */
+/* Whether each .chibi file in the folder of each listed source, a package,
+ * is itself listed: a package that gained a file the list does not name would
+ * compile without it. False with the first file that is not. */
 static bool packages_complete(
     const compiler_bootstrap *b,
     const char *core_path,
-    yyjson_val *sources,
+    const source_list *sources,
     char *error,
     size_t size
 )
 {
     bool valid = true;
-    for (size_t i = 0; valid && i < yyjson_arr_size(sources); i++) {
-        const char *path = source_path(sources, i);
+    for (size_t i = 0; valid && i < sources->count; i++) {
+        const char *path = sources->paths[i];
         char *file = disk_path(b, core_path, path);
-        assert(file);
-        *strrchr(file, '/') = 0;
+        if (!file) {
+            continue;
+        }
+        char *last = strrchr(file, '/');
+        if (!last) {
+            free(file);
+            continue;
+        }
+        *last = 0;
         const char *slash = strrchr(path, '/');
         int prefix = slash ? (int)(slash - path) + 1 : 0;
         DIR *dir = opendir(file);
@@ -345,10 +410,10 @@ static bool packages_complete(
                 snprintf(
                     error,
                     size,
-                    "%s is not among the artifact's sources: its package "
-                    "changed, so produce a new "
-                    "artifact from stage zero",
-                    sibling
+                    "%s is in the package of a compiler source but %s "
+                    "does not list it",
+                    sibling,
+                    SOURCES_FILE
                 );
             }
         }
@@ -398,7 +463,10 @@ static yyjson_mut_val *record_sources(
             return NULL;
         }
     }
-    return packages_complete(b, core_path, paths, error, size) ? sources : NULL;
+    source_list listed = json_list(paths);
+    bool complete = packages_complete(b, core_path, &listed, error, size);
+    free_list(&listed);
+    return complete ? sources : NULL;
 }
 
 /* The manifest of the seed's closure, its sources and its target. */
@@ -569,8 +637,9 @@ static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a,
     return true;
 }
 
-/* Compile's arguments for the recorded sources as they are on disk, counting
- * those that changed since the artifact recorded them; NULL with why. */
+/* Compile's arguments for the sources the folder lists as they are on disk,
+ * counting those that differ from what the artifact recorded: new, moved and
+ * edited sources and recorded ones the list dropped. NULL with why. */
 static char *disk_arguments(
     const compiler_bootstrap *b,
     yyjson_val *root,
@@ -582,11 +651,16 @@ static char *disk_arguments(
 {
     const char *project = yyjson_get_str(yyjson_obj_get(root, "project"));
     const char *core_path = yyjson_get_str(yyjson_obj_get(root, "core"));
-    yyjson_val *sources = yyjson_obj_get(root, "sources"),
+    yyjson_val *recorded_sources = yyjson_obj_get(root, "sources"),
                *target = yyjson_obj_get(root, "target");
-    if (!project || !core_path || !yyjson_arr_size(sources) ||
+    if (!project || !core_path || !yyjson_arr_size(recorded_sources) ||
         yyjson_arr_size(target) != ARGUMENTS - TARGET_FIRST) {
         snprintf(error, size, "%s does not record Compile's arguments", MANIFEST_FILE);
+        return NULL;
+    }
+    source_list sources = { 0 };
+    if (!read_sources(b, &sources, error, size)) {
+        free_list(&sources);
         return NULL;
     }
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
@@ -598,11 +672,11 @@ static char *disk_arguments(
     yyjson_mut_val *paths = yyjson_mut_arr_add_arr(doc, args),
                    *texts = yyjson_mut_arr_add_arr(doc, args);
     bool valid = true;
-    *changed = 0;
-    for (size_t i = 0; valid && i < yyjson_arr_size(sources); i++) {
-        yyjson_val *source = yyjson_arr_get(sources, i);
-        const char *path = yyjson_get_str(yyjson_obj_get(source, "path"));
-        char *file = path ? disk_path(b, core_path, path) : NULL;
+    size_t before = yyjson_arr_size(recorded_sources);
+    *changed = sources.count < before ? (int)(before - sources.count) : 0;
+    for (size_t i = 0; valid && i < sources.count; i++) {
+        const char *path = sources.paths[i];
+        char *file = disk_path(b, core_path, path);
         size_t bytes = 0;
         unsigned char *text = file ? read_bytes(file, COMPILER_HOST_MAX_BYTES, &bytes)
                                    : NULL;
@@ -610,11 +684,17 @@ static char *disk_arguments(
         if (valid) {
             char digest[65];
             sha256_hex(text, bytes, digest);
-            *changed += !yyjson_equals_str(yyjson_obj_get(source, "sha256"), digest);
+            yyjson_val *before_source = yyjson_arr_get(recorded_sources, i);
+            bool same_path = before_source &&
+                             yyjson_equals_str(yyjson_obj_get(before_source, "path"), path);
+            *changed += !(
+                same_path &&
+                yyjson_equals_str(yyjson_obj_get(before_source, "sha256"), digest)
+            );
             yyjson_mut_arr_add_strcpy(doc, paths, path);
             yyjson_mut_arr_add_strncpy(doc, texts, (const char *)text, bytes);
         } else {
-            snprintf(error, size, "cannot read the compiler source %s", path ? path : "without a path");
+            snprintf(error, size, "cannot read the compiler source %s", path);
         }
         free(text);
         free(file);
@@ -623,13 +703,14 @@ static char *disk_arguments(
     for (size_t i = 0; i < yyjson_arr_size(target); i++) {
         yyjson_mut_arr_append(args, yyjson_val_mut_copy(doc, yyjson_arr_get(target, i)));
     }
-    valid = valid && packages_complete(b, core_path, sources, error, size);
+    valid = valid && packages_complete(b, core_path, &sources, error, size);
     char *json = valid ? yyjson_mut_write(doc, YYJSON_WRITE_ALLOW_INVALID_UNICODE, length)
                        : NULL;
     if (valid && !json) {
         snprintf(error, size, "cannot encode Compile's arguments");
     }
     yyjson_mut_doc_free(doc);
+    free_list(&sources);
     return json;
 }
 
@@ -642,10 +723,14 @@ static bool written(const char *output, const unsigned char *bytes, size_t lengt
     }
     return true;
 }
-/* Compiles the sources with the artifact loaded in host, which this frees:
- * the artifact's own bytes when they are the sources it recorded, otherwise a
- * compiler that compiles them to itself. Writes that compiler to `output`
- * when there is one. */
+/* Compiles the sources with the artifact loaded in host, which this frees.
+ * When they are the sources the artifact recorded, the result is the
+ * artifact's own bytes. Otherwise the artifact only has to compile them, as
+ * the seed of a Zig-style bootstrap: it compiles stage one, stage one compiles
+ * stage two, and stage two, or stage one when it already is stage two's bytes,
+ * must compile the sources to itself, so the artifact's code generation need
+ * not match the sources'. Writes that fixed point to `output` when there is
+ * one and hands its host to `current`. */
 static bool recover(
     compiler_host *host,
     const artifact *a,
@@ -658,7 +743,7 @@ static bool recover(
     size_t size
 )
 {
-    size_t first_length = 0, second_length = 0;
+    size_t first_length = 0, second_length = 0, third_length = 0;
     unsigned char *first = compile(host, json, length, &first_length, report, size);
     compiler_host_free(host);
     if (!first) {
@@ -667,8 +752,8 @@ static bool recover(
     const char *revision = yyjson_get_str(yyjson_obj_get(a->root, "revision"));
     revision = revision && *revision ? revision : "unrecorded";
     char digest[65];
-    sha256_hex(first, first_length, digest);
     if (!changed) {
+        sha256_hex(first, first_length, digest);
         bool valid = same(first, first_length, a->closure, a->closure_length);
         if (valid) {
             snprintf(
@@ -686,33 +771,52 @@ static bool recover(
         free(first);
         return valid;
     }
-    compiler_host *next = compiler_host_load(first, first_length, behavior_default_backend(), report, size);
-    unsigned char *second = next
-                              ? compile(next, json, length, &second_length, report, size)
+    compiler_host *stage_one = compiler_host_load(first, first_length, behavior_default_backend(), report, size);
+    unsigned char *second = stage_one
+                              ? compile(stage_one, json, length, &second_length, report, size)
                               : NULL;
-    bool valid = second && same(second, second_length, first, first_length);
+    unsigned char *fixed = first, *third = NULL;
+    size_t fixed_length = first_length;
+    compiler_host *fixed_host = stage_one;
+    bool valid = second != NULL;
+    if (valid && !same(second, second_length, first, first_length)) {
+        /* Stage one generates other code than the artifact did, so stage two
+         * is the first compiler built the way the sources build themselves. */
+        fixed = second;
+        fixed_length = second_length;
+        fixed_host = compiler_host_load(second, second_length, behavior_default_backend(), report, size);
+        compiler_host_free(stage_one);
+        third = fixed_host
+                  ? compile(fixed_host, json, length, &third_length, report, size)
+                  : NULL;
+        valid = third && same(third, third_length, second, second_length);
+        if (third && !valid) {
+            snprintf(report, size, "the second compiler compiles the sources to %zu other bytes, not to itself", third_length);
+        }
+    }
+    sha256_hex(fixed, fixed_length, digest);
     if (valid) {
         snprintf(
             report,
             size,
             "%d compiler sources changed since revision %s; the artifact "
-            "compiled a compiler of %zu "
-            "bytes, sha256 %s, that compiles them to itself",
+            "compiled a compiler of %zu bytes%s, sha256 %s, that compiles "
+            "them to itself",
             changed,
             revision,
-            first_length,
+            fixed_length,
+            third ? " (after a second compiler)" : "",
             digest
         );
-    } else if (second) {
-        snprintf(report, size, "the recovered compiler compiles the sources to %zu other bytes", second_length);
     }
-    valid = valid && written(output, first, first_length, report, size);
-    free(second);
+    valid = valid && written(output, fixed, fixed_length, report, size);
     if (valid && current) {
-        *current = next;
-        next = NULL;
+        *current = fixed_host;
+        fixed_host = NULL;
     }
-    compiler_host_free(next);
+    compiler_host_free(fixed_host);
+    free(third);
+    free(second);
     free(first);
     return valid;
 }
@@ -745,66 +849,6 @@ static compiler_host *validated(
         host = NULL;
     }
     return host;
-}
-
-compiler_bootstrap_reuse_result compiler_bootstrap_reuse(
-    const compiler_bootstrap *b,
-    const char *captured_json,
-    size_t captured_length,
-    const char *output,
-    char *why,
-    size_t why_size
-)
-{
-    assert(captured_json && output && *output);
-    artifact a = { 0 };
-    char *json = NULL;
-    size_t length = 0;
-    int changed = 0;
-    compiler_host *host = validated(b, &a, &json, &length, &changed, why, why_size);
-    if (host) {
-        uint64_t closure_entry = entry("CompileClosure");
-        char id[19];
-        snprintf(id, sizeof id, "0x%016" PRIx64, closure_entry);
-        bool valid_entry = yyjson_equals_str(yyjson_obj_get(a.root, "entry"), id);
-        if (!valid_entry) {
-            snprintf(why, why_size, "the artifact records another compiler entry");
-        }
-        if (valid_entry) {
-            valid_entry = compiler_host_accepts_byte_entry(host, closure_entry, ARGUMENTS, why, why_size);
-        }
-        if (!valid_entry) {
-            compiler_host_free(host);
-            host = NULL;
-        }
-    }
-    yyjson_doc *captured = host ? yyjson_read(captured_json, captured_length, YYJSON_READ_ALLOW_INVALID_UNICODE)
-                                : NULL;
-    yyjson_doc *expected = host ? yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE)
-                                : NULL;
-    compiler_bootstrap_reuse_result result = COMPILER_BOOTSTRAP_REUSE_ERROR;
-    if (host && (!captured || !expected)) {
-        snprintf(why, why_size, "cannot decode the captured compiler request");
-    }
-    if (host && captured && expected) {
-        bool matches = !changed &&
-                       yyjson_equals(yyjson_doc_get_root(captured), yyjson_doc_get_root(expected));
-        result = COMPILER_BOOTSTRAP_DIFFERENT;
-        if (!matches) {
-            snprintf(why, why_size, "the captured compiler request differs from the validated bootstrap snapshot");
-        } else if (written(output, a.closure, a.closure_length, why, why_size)) {
-            snprintf(why, why_size, "reused the validated bootstrap closure without compilation");
-            result = COMPILER_BOOTSTRAP_REUSED;
-        } else {
-            result = COMPILER_BOOTSTRAP_REUSE_ERROR;
-        }
-    }
-    yyjson_doc_free(expected);
-    yyjson_doc_free(captured);
-    compiler_host_free(host);
-    free(json);
-    free_artifact(&a);
-    return result;
 }
 
 bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)

@@ -1,0 +1,36 @@
+Thing :: behavior {
+    Speed: number = 3.0
+    Count := 0
+    Name: string
+    action fire = Weapon(x: 1)
+    disabled action quiet: int = 2
+    event Hit: (damage: int) = Event()
+    bind a.b = c
+    events Group {
+        Inner: int = 1
+    }
+    entry Start {
+        a = 1
+    }
+    exit Stop
+    on Tick :: (dt: number s) {
+        Step = dt
+    }
+    after fire (result: int) {
+        a = 1
+    }
+    after Thing.fire {
+        b = 2
+    }
+    on state.Change :: (x: int) {
+    }
+    on entry :: () {
+    }
+    Helper :: (x: int) -> int {
+        local: retain int = 1
+        ok: retain = 2
+        return x
+    }
+    LIMIT :: 3
+    Kind :: union { A | B }
+}

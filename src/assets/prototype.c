@@ -63,8 +63,14 @@ static void set_error(char *error, size_t size, const char *format, ...)
 
 static char *own_string(prototype *document, const char *text)
 {
-    char *copy = xstrdup(text ? text : "");
-    apush(document->strings, copy);
+    size_t size = strlen(text ? text : "") + 1;
+    assert(size <= SIZE_MAX - sizeof(pin_string));
+    /* Names remain C strings, not counted text. An empty descriptor owns
+     * their inline bytes so every retained allocation uses pin_text_destroy. */
+    pin_string *owner = xcalloc(1, sizeof *owner + size);
+    char *copy = (char *)(owner + 1);
+    memcpy(copy, text ? text : "", size);
+    apush(document->strings, (char *)owner);
     return copy;
 }
 
@@ -172,7 +178,7 @@ static const char *write_field(prototype *document, void *base, const type_field
 void prototype_owned_strings_free(char **strings)
 {
     for (int i = 0; i < acount(strings); i++) {
-        free(strings[i]);
+        pin_text_destroy((const pin_string *)strings[i]);
     }
     afree(strings);
 }
@@ -2414,7 +2420,7 @@ int prototype_add_component(prototype *document, const ecs_component_desc *desc)
             !desc->type || desc->type->size != desc->element_size ||
             copy_default_fields(document, component.data, initial->data, desc->type, 0)) {
             for (int j = strings; j < acount(document->strings); j++) {
-                free(document->strings[j]);
+                pin_text_destroy((const pin_string *)document->strings[j]);
             }
             asetlen(document->strings, strings);
             free(component.data);

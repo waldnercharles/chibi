@@ -1,6 +1,7 @@
 package toolchain
 
 import strings "core:strings"
+import files "graph:install"
 
 // Install the graph-built private compiler tools into a fresh prefix. This is
 // the compiler-tools part of SDK packaging, without public libraries/headers.
@@ -18,144 +19,6 @@ Option :: (arguments: string[], name: string) -> string {
         }
     }
     return "";
-}
-Parent :: (path: string) -> string {
-    end := strings.LastIndex(path, "/");
-    if (end == 0 && path != "/") {
-        return "/";
-    }
-    return strings.Slice(path, 0, end);
-}
-// Resolve existing components before interpreting '..', preserving symlink
-// semantics. Missing suffixes are normalized without creating directories.
-CanonicalPath :: (path: string) -> string {
-    result := "/";
-    parts := strings.Split(path, "/");
-    for (index in 0..<length(parts)) {
-        part := parts[index];
-        if (part == "" || part == ".") {
-            continue;
-        }
-        if (part == "..") {
-            result = Parent(result);
-            if (result == "") {
-                result = "/";
-            }
-            continue;
-        }
-        candidate := Join([result, "/", part]);
-        if (result == "/") {
-            candidate = Join([result, part]);
-        }
-        resolved := build.resolve_path(candidate);
-        kind := build.file_kind(candidate);
-        if (kind != "" && (resolved == "" ||
-            (index < length(parts) - 1 && build.file_kind(resolved) != "directory"))) {
-            return "";
-        }
-        result = candidate;
-        if (resolved != "") {
-            result = resolved;
-        }
-    }
-    return result;
-}
-// file_stamp starts with device:inode; its remaining metadata may change.
-Identity :: (path: string) -> string {
-    stamp := build.file_stamp(path);
-    if (stamp == "") {
-        return "";
-    }
-    device := build.before(stamp, ":");
-    inode := build.before(build.after(stamp, ":"), ":");
-    if (device == "" || inode == "") {
-        return "";
-    }
-    return Join([device, ":", inode]);
-}
-// A case-insensitive filesystem can name the same directory with two cases.
-Inside :: (path: string, directory: string) -> bool {
-    identity := Identity(directory);
-    if (identity == "") {
-        // Without the input identity, containment cannot be proved safe.
-        return true;
-    }
-    current := path;
-    while (current != "") {
-        if (Identity(current) == identity) {
-            return true;
-        }
-        current = Parent(current);
-    }
-    return false;
-}
-// Only regular files and real directories are distribution inputs.
-SameTree :: (source: string, staged: string) -> bool {
-    kind := build.file_kind(source);
-    if (kind != build.file_kind(staged)) {
-        return false;
-    }
-    if (kind == "file") {
-        hash := build.hash_file(source);
-        return hash != "" && hash == build.hash_file(staged);
-    }
-    if (kind != "directory") {
-        return false;
-    }
-    names := build.list_directory(source);
-    if (build.join(names, "\n") != build.join(build.list_directory(staged), "\n")) {
-        return false;
-    }
-    for (name in names) {
-        if (!SameTree(Join([source, "/", name]), Join([staged, "/", name]))) {
-            return false;
-        }
-    }
-    return true;
-}
-CopyTree :: (source: string, destination: string) -> bool {
-    kind := build.file_kind(source);
-    if (kind == "file") {
-        return build.make_directory(Parent(destination)) && build.copy_file(source, destination);
-    }
-    if (kind != "directory" || !build.make_directory(destination)) {
-        return false;
-    }
-    for (name in build.list_directory(source)) {
-        if (!CopyTree(Join([source, "/", name]), Join([destination, "/", name]))) {
-            return false;
-        }
-    }
-    return true;
-}
-RemoveTree :: (path: string) -> bool {
-    if (build.file_kind(path) == "directory") {
-        for (name in build.list_directory(path)) {
-            if (!RemoveTree(Join([path, "/", name]))) {
-                return false;
-            }
-        }
-    }
-    return build.remove(path);
-}
-// Sorted relative file names and their byte hashes, without absolute paths.
-Inventory :: (root: string, relative: string) -> string {
-    path := root;
-    if (relative != "") {
-        path = Join([root, "/", relative]);
-    }
-    if (build.file_kind(path) == "file") {
-        return Join([relative, "\t", build.hash_file(path), "\n"]);
-    }
-    text := "";
-    for (name in build.list_directory(path)) {
-        child := name;
-        if (relative != "") {
-            child = Join([relative, "/", name]);
-        }
-        text = Join([text, Inventory(root, child)]);
-    }
-    return text;
 }
 // Every item is DESTINATION=SOURCE, with absolute source paths.
 Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
@@ -203,7 +66,7 @@ Verify :: () -> int {
 }
 Prepare :: (stage: string, entries: string[]) -> bool {
     for (item in entries) {
-        if (!CopyTree(build.after(item, "="), Join([stage, "/", build.before(item, "=")]))) {
+        if (!files.CopyTree(build.after(item, "="), Join([stage, "/", build.before(item, "=")]))) {
             build.report(Join(["sdk: cannot copy ", build.after(item, "=")]));
             return false;
         }
@@ -217,11 +80,12 @@ Prepare :: (stage: string, entries: string[]) -> bool {
     }
     if (build.run([Join([stage, "/libexec/chibi/chibi-build-host"]),
                    "--root", stage, "--source", Join([stage, "/share/chibi/tools/toolchain/SDK.chibi"]),
-                   "--core", Join([stage, "/share/chibi/core"]), "--entry", "Verify", "--timeout-ms", "120000"]) != 0) {
+                   "--core", Join([stage, "/share/chibi/core"]),
+                   "--collection", Join(["graph=", stage, "/share/chibi/graph"]), "--entry", "Verify", "--timeout-ms", "120000"]) != 0) {
         build.report("sdk: staged build host failed capability verification");
         return false;
     }
-    return build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", Inventory(stage, "")]));
+    return build.write_file(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", files.Inventory(stage, "")]));
 }
 CompilerTools :: () -> int {
     arguments := build.arguments();
@@ -239,12 +103,12 @@ CompilerTools :: () -> int {
         return 2;
     }
     root := build.root();
-    output = CanonicalPath(output);
+    output = files.CanonicalPath(output);
     if (output == "") {
         build.report("sdk: output has an invalid directory ancestor");
         return 2;
     }
-    stage := CanonicalPath(Join([output, ".chibi-stage"]));
+    stage := files.CanonicalPath(Join([output, ".chibi-stage"]));
     if (stage == "") {
         build.report("sdk: staging has an invalid directory ancestor");
         return 2;
@@ -253,13 +117,13 @@ CompilerTools :: () -> int {
     for (item in entries) {
         source := build.after(item, "=");
         if (build.file_kind(source) == "directory" &&
-            (Inside(output, source) || Inside(stage, source))) {
+            (files.Inside(output, source) || files.Inside(stage, source))) {
             build.report("sdk: output or staging lies inside a distribution input");
             return 2;
         }
     }
-    if (!SameTree(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
-        !SameTree(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
+    if (!files.SameTree(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
+        !files.SameTree(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
         build.report("sdk: graph compiler/core resources are missing or stale; rebuild the private hosts");
         return 1;
     }
@@ -285,7 +149,7 @@ CompilerTools :: () -> int {
             return 1;
         }
     }
-    if (!build.make_directory(Parent(output))) {
+    if (!build.make_directory(files.Parent(output))) {
         build.report("sdk: cannot create output parent");
         return 1;
     }
@@ -294,7 +158,7 @@ CompilerTools :: () -> int {
         return 1;
     }
     if (!Prepare(stage, entries) || !build.publish_directory(stage, output)) {
-        if (!RemoveTree(stage)) {
+        if (!files.RemoveTree(stage)) {
             build.report(Join(["sdk: incomplete staging directory retained at ", stage]));
         }
         build.report("sdk: compiler-tools publication failed");

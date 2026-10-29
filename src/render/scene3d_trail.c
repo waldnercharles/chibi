@@ -294,12 +294,6 @@ void render_scene3d_trails_collect(scene3d_trails *trails, ecs_world *world, con
     }
 }
 
-const scene3d_trail_segment *render_scene3d_trails_segments(const scene3d_trails *trails, int *count)
-{
-    *count = trails->count;
-    return trails->segments;
-}
-
 static bool prepare_resources(scene3d_trails *trails, char *error, size_t size)
 {
     if (!trails->shader.id) {

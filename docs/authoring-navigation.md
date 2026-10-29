@@ -1,8 +1,5 @@
 # Authoring navigation
 
-Reconciled on 2026-10-11 for the combined engine/Studio review candidate.
-See [current status](status.md) for execution evidence and remaining scope.
-
 Navigation and refactoring live in shared C modules outside `src/editor/`.
 Studio, the SDK and file inspection consume the same resolved identities and
 source ranges. Agents edit asset files directly; there is no agent mutation

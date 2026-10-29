@@ -43,7 +43,6 @@ bool render_image_sampler(int id, shader_image_source *, shader_image_view *, ui
 /* Authoring operations. Failed reloads retain the last valid pixels and textures. */
 bool render_image_reload(const char *key, char *message, size_t size);
 bool render_image_info(const char *key, int *width, int *height);
-const char *render_image_error(const char *key);
 
 bool render_image_validate_volumes(const shader_graph *, shader_error *);
 

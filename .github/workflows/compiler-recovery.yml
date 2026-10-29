@@ -12,7 +12,9 @@ permissions:
 
 concurrency:
   group: compiler-recovery-${{ github.ref }}
-  cancel-in-progress: true
+  # Let a running main build finish so main's health is known; only the
+  # newest queued main run is kept. PR runs still cancel superseded ones.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   recover:
@@ -21,17 +23,9 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
+      # PRs self-build on Linux only; main and `ci-full`-labelled PRs build all three.
       matrix:
-        include:
-          - os: macos-15
-            platform: macos-arm64
-            arch: ARM64
-          - os: ubuntu-24.04
-            platform: linux-x64
-            arch: X64
-          - os: windows-2022
-            platform: windows-x64
-            arch: X64
+        include: ${{ fromJSON((github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci-full')) && '[{"os":"ubuntu-24.04","platform":"linux-x64","arch":"X64"}]' || '[{"os":"macos-15","platform":"macos-arm64","arch":"ARM64"},{"os":"ubuntu-24.04","platform":"linux-x64","arch":"X64"},{"os":"windows-2022","platform":"windows-x64","arch":"X64"}]') }}
     defaults:
       run:
         shell: pwsh
@@ -154,6 +148,11 @@ jobs:
               $record['output_compiler_sha256'] = (Get-FileHash $output -Algorithm SHA256).Hash.ToLowerInvariant()
             }
             New-Item -ItemType Directory -Path "$proof/stage1", "$proof/stage2" | Out-Null
+            # The checked artifact is only a seed. It has to load on the pinned
+            # runtime and compile these sources; the host then builds stage one
+            # with it and walks on to the sources' fixed point, so a change to the
+            # code the compiler generates for itself needs no new seed. Stage 1
+            # is that fixed point.
             Recover-Stage 'stage1' "$proof/tools/compiler/bootstrap" "$proof/stage1/compiler.chibip"
             # Preserve every original source hash and target ABI value. Only the
             # closure's size/hash change so the next call loads the new compiler.
@@ -163,6 +162,7 @@ jobs:
             $closure['bytes'] = [System.Text.Json.Nodes.JsonNode]::Parse([string]$evidence.stages[0].output_bytes)
             $closure['sha256'] = [System.Text.Json.Nodes.JsonNode]::Parse('"' + $evidence.stages[0].output_compiler_sha256 + '"')
             [IO.File]::WriteAllText("$proof/stage1/bootstrap.json", $manifest.ToJsonString())
+            # Stage 2 is built by stage 1 and must be stage 1's bytes.
             Recover-Stage 'stage2' "$proof/stage1" "$proof/stage2/compiler.chibip"
             $first = $evidence.stages[0]
             $second = $evidence.stages[1]
@@ -212,7 +212,7 @@ jobs:
   compare:
     name: Compiler self-build across platforms
     needs: recover
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci-full'))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

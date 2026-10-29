@@ -2,7 +2,6 @@
 
 The recording proof and private real-process host use existing Chibi syntax on
 bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
-`PLAN.md` owns milestone status and current validation evidence.
 
 ## First increment
 
@@ -165,6 +164,15 @@ The C API borrows it through `chibi_build_options.compiler`; reuse it sequential
 and reload it after compiler source edits. Release it with
 `chibi_build_compiler_free`.
 
+When changing the prepared format, the checked bootstrap cannot yet run on the
+new runtime. `make bootstrap-artifact` first builds the compiler-only SDK language
+driver with `CHIBI_SDK_BUILD_NATIVE=OFF`, `CHIBI_SDK_BUILD_DESKTOP=OFF` and
+`CHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF`. Native authoring depends on the
+generated asset service, so it is built after the matching bootstrap exists.
+The recovery driver omits that component and retains artifact validation.
+After regeneration the target builds the real asset compiler with the component
+enabled, its default, before SDK or product validation.
+
 Build-program compilation invokes `CompileClosureWithEffects`, or
 `CompileWithEffects` for rejection diagnostics. Their first twelve arguments
 match the existing `Compile`/`CompileClosure` bootstrap contract; argument thirteen
@@ -243,7 +251,7 @@ the graph's commands equal CMake's again.
 ### Linux native graph
 
 Linux uses the same default graph for native products and the full
-tooling/language test drivers. For a fast Debug O1 build with Release generators:
+tooling/language test drivers. `make build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `ASSET_GENERATOR_HOSTS=DIR` names other hosts. For a fast Debug O1 build with Release generators:
 
 ```sh
 make build-release BUILD_TARGET='chibi chibi_ctl chibi-build-host chibi-compiler-host'
@@ -399,8 +407,8 @@ deadline still bounds the time.
 
 ## Build graph (M6)
 
-The build graph replaces CMake's internal build graph one target at a time
-(PLAN.md M6). Its library is the `graph:` collection in `tools/graph`, and
+The build graph replaces CMake's internal build graph one target at a time.
+Its library is the `graph:` collection in `tools/graph`, and
 `tools/toolchain/Graph.chibi` is the program that runs it:
 
 ```sh
@@ -560,7 +568,20 @@ executable link (the language and link
 flags, the sanitizers, the executable's `LinkOptions`, the objects, `-o`,
 then the profile's external libraries and `Links` in CMake's order, which
 may name a library twice and holds `-lm` where CMake puts it) and records it
-as it records compiles. An object library (`ObjectLibrary`, as
+as it records compiles. Compiler-driver execution compresses nonempty argument
+runs into quoted GNU response files beside the output when their paths are
+smaller than the original arguments. Empty arguments remain directly in argv,
+preserving option operands on older Clang versions. Transport never increases
+argument count or byte use. The command database and successful record retain
+the full ordered argv. Responses are removed after the child returns, and
+success is recorded only after cleanup. Failed or interrupted attempts have no
+success record; retry removes retained regular base and numbered responses.
+NUL and line endings are rejected because the record
+stores one argument per line. Other build steps and archivers keep their own
+command contracts.
+The native regression group uses the host in its selected `BUILD_DIR`;
+`CHIBI_BUILD_HOST` can explicitly select another matching host.
+An object library (`ObjectLibrary`, as
 `chibi_build_host`) compiles but is not archived; an executable's
 `LinkedObjects` put its objects before the executable's own. On macOS the
 graph also compiles the tooling tests' SDK contract consumers, object
@@ -585,7 +606,7 @@ identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 platform, processors and backends, and each of `ArtifactFormats`' versions
 with the SHA-256 of the sources and headers that own it. A target's
 `SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
-ROOT by absolute path, byte-sorted, without its `Unlisted` sources, as
+ROOT by absolute path, byte-sorted, as
 `test/language/CMakeLists.txt` writes the language corpus `test_language`
 reads.
 Every run
@@ -634,7 +655,7 @@ Windows keeps CMake: the build host has no Windows process support yet.
    compiler's own workload ruled it out for now: SLJIT's generated code was
    6.2% of stage one's samples while it compiled the compiler, and the rest
    was C runtime value copies and per-call resets that an LLVM backend would
-   still call (`PLAN.md` M5).
+   still call.
 
 ## Testing and library replacement
 
@@ -670,8 +691,8 @@ review before any reuse.
 
 ## Private compiler binary handoff
 
-The raw-syntax/binary transport increment passes its selectors on macOS (see
-`PLAN.md`). The contracts below are not a self-hosting completion claim.
+The contracts below describe the private compiler transport. They do not
+establish self-hosting completion.
 
 The existing raw parser bridge now retains aligned Tree-sitter named/extra flags
 and a syntax root separate from the document's routing root. Its private native
@@ -755,7 +776,11 @@ the remaining declaration and native-binding contracts move.
 ## Bootstrap artifact
 
 The recovery artifact of the stage-one package compiler is checked in at
-`tools/compiler/bootstrap`, as Zig checks in `stage1/zig1.wasm`.
+`tools/compiler/bootstrap`, as Zig checks in `stage1/zig1.wasm`. It is a seed,
+not a snapshot of the current sources: it has to load on the pinned runtime and
+compile the sources on disk, and nothing else ties it to them. The compiler
+reaches its fixed point from the seed (see below), so compiler changes do not
+queue behind a regenerated artifact.
 `make bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
 folder). It runs in two steps:
 
@@ -782,7 +807,10 @@ folder). It runs in two steps:
 - `entry`: `CompileClosure`'s entry ID.
 - `closure`: its file, length and SHA-256.
 - `project` and `core`: the virtual roots Compile saw.
-- `sources`: each source in Compile's order, with its length and SHA-256.
+- `sources`: each source the seed compiled, in Compile's order, with its length
+  and SHA-256. This records where the seed came from. Recovery takes the
+  sources to compile from `tools/compiler/asset_compiler/CompilerSources.txt`
+  and uses the record only to tell whether they changed.
 - `target`: Compile's last six arguments, copied verbatim. These are the external
   inputs:
   - the value layout (`Target`);
@@ -793,8 +821,7 @@ folder). It runs in two steps:
 
 `tools/compiler/bootstrap.kdl` is the sources' bootstrap contract. `version` is
 the bootstrap version a compiler built from them has. `minimum` is the oldest
-version that can compile them. Language dependencies follow the two-step rule in
-`PLAN.md` M5:
+version that can compile them. Update language dependencies in two steps:
 1. When the compiler gains a feature, raise `version` and produce an artifact.
 2. Raise `minimum` only once the sources use that feature.
 
@@ -805,27 +832,36 @@ with its own message:
 - a manifest format it doesn't read;
 - a version older than the sources' minimum;
 - a closure other than the recorded one;
-- a missing source, or a package folder holding a `.chibi` file the manifest
-  doesn't record;
+- a listed source that is missing, or a package folder holding a `.chibi` file
+  that `asset_compiler/CompilerSources.txt` does not list, because a package
+  compiles only the files it is given;
 - a target other than the host's own (`compiler_host_target_json`), compared
   in full: value layout, prepared ABI, instruction names, natives, their
   ports and native identities.
 
-It then compiles the recorded sources from disk with the artifact:
-- If they are the recorded sources, the result must be the artifact's own bytes.
-- If they changed, the compiler it produces must compile them to itself, which
-  takes a second compile.
+It then compiles the listed sources from disk with the artifact:
+- If they are the sources the artifact recorded, the result must be the
+  artifact's own bytes.
+- If they differ from the record (edited, added, removed or reordered), the
+  artifact is only the seed, as zig1 is Zig's. It compiles the sources to stage
+  one, and stage one compiles them to stage two. When the two are the same
+  bytes, the compiler has reached its fixed point. When they differ, because
+  the sources changed how the compiler generates code, stage two compiles them
+  to stage three, which must be stage two's bytes. The fixed point is the
+  recovered compiler. The seed's own code generation never has to match the
+  sources', and the sources never have to match the seed's record.
 
 The in-process `compiler_bootstrap_load` API uses the same validation but loads
-matching source hashes directly. Changed sources take the two-compile recovery
-path and return the recovered compiler as an owned host. This API writes no
+matching source hashes directly. Changed sources take the recovery path above
+and return the recovered compiler as an owned host. This API writes no
 files, including when an output path is present in its options; the CLI check
 above still performs the reproduction proof and can write `--recover FILE`.
 
 `make test-recovery` exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and runs that check with the Release host. On macOS arm64 the
-check takes one compile, about 11 s, or two when the sources changed, about
-26 s; the whole selector takes about 18 s.
+check takes one compile, about 11 s, two when the sources changed, about
+26 s, or three when they also changed the generated code; the whole selector
+takes about 18 s.
 
 A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
 `chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
@@ -875,7 +911,10 @@ hashes continue to identify the original seed's provenance. It then invokes
 the runtime with `--bootstrap stage1` to produce stage two. This second
 process loads and executes the compiler just built, and the outputs must have
 identical hashes. Each invocation also performs the recovery checks above,
-including an internal fixed-point compile when recorded sources changed.
+including the fixed-point compiles when the sources differ from the record.
+The proof therefore checks the self-hosting fixed point of the current
+sources, not that they match the checked seed. The scalar regression that
+follows runs with that fixed-point compiler.
 
 Each job uploads both compiler stages, their SHA-256 hashes, logs and JSON evidence
 with seed/runtime identities, input inventory, revision, platform, cleared
@@ -897,25 +936,40 @@ change that needed it. Routine compiler self-builds continue to consume the
 pinned release. The initial runtime seeds
 were produced by the predecessor recovery workflow at the recorded revision.
 
-Rewrite the artifact only when it can no longer recover the compiler:
-- when `minimum` rises past its version;
-- when the host's target changes;
+Rewrite the seed only when it can no longer compile the sources on disk or no
+longer loads on the pinned runtime, and then in a PR of its own or in the one
+change that needs it:
+- when `minimum` rises past its version, which is when the sources start to
+  use a language feature the seed cannot compile;
+- when the host's target changes, which moves the pinned runtime with it;
 - when the prepared payload or semantic version changes, even if layout and
-  instruction names remain unchanged;
-- when a compiler package gains or loses a source file, because recovery
-  compiles the files the manifest records;
-- when the compiler emits other code for its own sources, because the first
-  compile is the artifact's code generation: the compiler it builds compiles
-  the sources to other bytes than its own, and recovery fails.
+  instruction names remain unchanged.
 
-Any other change to the contents of recorded sources needs no new artifact,
-because recovery reaches the fixpoint in a second compile. To rewrite it:
+Adding or removing a source file, editing sources, and changing the code the
+compiler generates for itself need no new seed. A new file needs a line in
+`tools/compiler/asset_compiler/CompilerSources.txt`.
+
+A language feature takes two PRs, as in Zig, where a feature lands before
+`zig1.wasm` is rebuilt and only then do `stage2` sources use it:
+1. Add the feature to the compiler and raise `version` in
+   `tools/compiler/bootstrap.kdl`. The compiler sources themselves must not use
+   the feature yet, because the checked seed cannot compile it. Run
+   `make bootstrap-artifact` and commit the seed with this change.
+2. Use the feature in the compiler sources and raise `minimum` to that
+   `version`. The seed from step 1 compiles them.
+
+To tell whether a compiler PR needs a seed refresh, run `make bootstrap-recover`
+(or `make test-recovery`) on its head merged with `main`. If recovery reports
+that the seed cannot compile a source, the sources use something the seed
+lacks: move that use to a later PR or refresh the seed first.
+
+To rewrite the seed:
 1. Run `make bootstrap-artifact` on a clean tree, so that it records a
    revision without `-dirty`.
 2. Commit `tools/compiler/bootstrap` together with the change that needs it.
 
-The final normal installed workflow remains subject to `PLAN.md`: it must
-compile Chibi and drive build/link with `cmake`, `clang` and `gcc` executables
+The final installed workflow must compile Chibi and drive build/link with
+`cmake`, `clang` and `gcc` executables
 unavailable, including hidden or renamed equivalents. Explicit platform
 assemblers/linkers, SDKs, native backends and runtime libraries may remain behind
 narrow bindings. Current native tools remain construction/recovery inputs during
@@ -940,7 +994,7 @@ that their `.chibi-record` link records name:
 make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
 build-release/sdk/chibi-build-host --root "$PWD" \
   --source tools/toolchain/SDK.chibi --core packages/core \
-  --entry CompilerTools --timeout-ms 120000 -- \
+  --collection graph=tools/graph --entry CompilerTools --timeout-ms 120000 -- \
   --build "$PWD/build-release" --output "$PWD/dist/compiler-tools" \
   --third-party /absolute/path/to/the/pinned/archive
 ```

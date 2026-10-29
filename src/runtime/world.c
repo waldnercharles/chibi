@@ -256,10 +256,6 @@ materials *world_materials(const world *w)
 {
     return w->modules.materials;
 }
-material_fields *world_fields(const world *w)
-{
-    return w->modules.materials ? materials_fields(w->modules.materials) : NULL;
-}
 
 scene_flow *world_scenes(const world *w)
 {

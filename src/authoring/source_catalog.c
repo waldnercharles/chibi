@@ -1155,8 +1155,11 @@ static void callable_ports(source_catalog *c, const script_analysis *a, int func
 
 static bool same_compile_value(script_compile_value a, script_compile_value b)
 {
-    if (a.is_type != b.is_type) {
+    if (a.is_type != b.is_type || a.is_callable != b.is_callable) {
         return false;
+    }
+    if (a.is_callable) {
+        return a.callable == b.callable;
     }
     if (a.is_type) {
         return script_type_equal(a.type, b.type);
@@ -1213,11 +1216,12 @@ static const script_compile_binding *own_compile_bindings(
     for (int i = 0; i < count; i++) {
         owned[i] = bindings[i];
         owned[i].name = (char *)own(c, bindings[i].name);
-        if (!bindings[i].value.is_type && pin_value_capture_to_arena(
-                                              &c->storage,
-                                              &owned[i].value.value,
-                                              &bindings[i].value.value
-                                          )) {
+        if (!bindings[i].value.is_type && !bindings[i].value.is_callable &&
+            pin_value_capture_to_arena(
+                &c->storage,
+                &owned[i].value.value,
+                &bindings[i].value.value
+            )) {
             error(c, path, (script_range){ 0 }, "Cannot retain imported specialization argument");
             return NULL;
         }
@@ -1252,7 +1256,10 @@ static bool export_templates(source_catalog *c, const source_catalog_source *sou
                         (!a->binder || !strcmp(a->binder, b->binder)) &&
                         script_type_equal(a->type, b->type) &&
                         a->comptime == b->comptime && a->type_value == b->type_value &&
-                        a->binds_type == b->binds_type;
+                        a->binds_type == b->binds_type &&
+                        (!a->callable_type == !b->callable_type) &&
+                        (!a->callable_type ||
+                         !strcmp(a->callable_type, b->callable_type));
             }
             if (equal) {
                 continue;
@@ -1272,6 +1279,7 @@ static bool export_templates(source_catalog *c, const source_catalog_source *sou
             parameters[j] = input->parameters[j];
             parameters[j].name = own(c, parameters[j].name);
             parameters[j].binder = own(c, parameters[j].binder);
+            parameters[j].callable_type = own(c, parameters[j].callable_type);
         }
         value.parameters = parameters;
         for (int j = 0; j < acount(c->templates); j++) {
@@ -1493,11 +1501,12 @@ static bool export_specializations(
         if (value.binding_count && !value.bindings) {
             continue;
         }
-        if (!value.result.is_type && pin_value_capture_to_arena(
-                                         &c->storage,
-                                         &value.result.value,
-                                         &input->result.value
-                                     )) {
+        if (!value.result.is_type && !value.result.is_callable &&
+            pin_value_capture_to_arena(
+                &c->storage,
+                &value.result.value,
+                &input->result.value
+            )) {
             error(c, source->path, (script_range){ 0 }, "Cannot retain compile-time specialization result");
             continue;
         }

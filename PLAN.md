@@ -7,6 +7,145 @@
 
 # Chibi toolchain consolidation and self-hosting
 
+## Ordinary Chibi CLI application and shared program sessions, 2026-10-28
+
+The owner approved making the public CLI an ordinary Chibi application with
+Main and a shared compiler/runtime interface. The isolated branch
+codex/chibi-main-app-20261028 started at 2c6d3ed5c and now includes accepted
+origin/main 79743c567, including SDK VERSION, compiler reachability and accepted
+private build-host lifetime fixes (protocol14; compiler/E1 unchanged).
+The original checkout and its tracked/untracked edits remain byte-identical.
+Earlier native and private authored-runner checkpoints are preserved under
+.chibi/main-runner-reload; ordinary-cli-pre-reachability-forward-port preserves
+the candidate before the latest accepted-main integration.
+
+apps/chibi owns all public command routing, argument validation, watching,
+retry, exit policy, game-cache decisions and subprocess construction. The SDK
+installs that package. chibi_main.c resolves app/core resources, starts the
+generic application host and returns Main's result. The private Run entry,
+runner pack and compiler --run bridge are removed. Program argv is ordinary
+application argv; chibi apps/chibi -- version runs the CLI through the same
+program service used for user Main functions.
+
+Chibi::program exposes owned immutable source snapshots, including editor
+buffers, candidate/accepted generations, structured diagnostics, transactional
+prepare/commit/discard and synchronous invocation. CLI and user programs share
+program.open/update/call/diagnostic/close/test. Existing compiler preparation and
+runtime replacement own compilation and retained-state migration. Invalid edits
+preserve accepted state; active/reentrant sessions reject mutation, caller and
+target heaps remain distinct, and catalogs/services outlive their sessions.
+Root invocation cooperates with authored cancellation policy; nested calls stay
+interruptible. Pure tests use an injected bounded executor and isolated runtime
+scopes, with no worker pool retained during compilation.
+
+Generic application services provide OS/file/process/network leaves. Typed SDK
+and project adapters expose facts and export operations without parsing argv.
+Owned child groups/jobs support parent-only interruption, escalation and cleanup.
+Terminal ownership is restored across suspension; Darwin foreground children
+start suspended until handoff so they cannot read before receiving the terminal.
+Export passes the same cancellation flag through compiler/native/sign/archive
+phases and checks before publishing; staging, listeners and temporary paths are
+cleaned before authored exit policy runs. Export-phase interruption returns the
+signal status; stopping an active preview server remains graceful.
+
+SDK/CMake/graph descriptions export program headers and dependencies and own the
+installed app/core resources. A compiler-only profile of the existing test_tools
+dispatcher isolates installed Chibi::program and explicit core dependencies.
+Studio's separate CMake change copies these resources with its embedded CLI.
+Its UI standalone Run flow is outside this increment. Windows source/path input
+now uses pinned Win32 handles, reparse/limit checks and public snapshot coverage.
+Compiler/application capabilities remain outside deployed game catalogs.
+
+Accepted-main integration preserved identity-based project diagnostics. Shared
+sessions already use package identities rather than public enumeration indices.
+A new regression places an unused invalid core package before the root, executes
+a required import, then checks a required-import error's source path while the
+accepted Main remains callable. Disk test sessions also cover unused invalid core.
+
+Validation on accepted a253ef4b5: native release build passes in 123.7s plus 1.8s
+for dependencies. Focused runtime/session coverage passes 280 cases / 22,420
+assertions in 1.564s summed process time. POSIX source/path/import coverage passes
+41 / 17,381 in 0.366s parallel outer wall time. Process boundary checks pass
+3 / 50 in 14.998s: parent-only SIGINT/SIGTERM, child/descendant cleanup, five
+terminal scenarios and Export/Web interruption with staging/temp/listener cleanup.
+Full CLI integration passes 35 / 524 in 39.041s. Both pre-fix binary controls
+still fail the expected stop/export oracles and clean their owned processes. SDK public-header consumer passes 1 / 13 in 0.409s;
+graph/CMake version/resource/staging parity passes 3 / 26 in 53.957s. The CLI runs
+its own seven authored tests and nested version output matches direct invocation.
+
+Strict MinGW syntax passes for twelve production files and the Windows fixture
+using actual staged include paths in 2.795s; no source-root include fallback.
+Clang-format22 and diff checks pass. Real Windows and Linux execution, broad
+aggregates, browser and Studio UI checks remain unrun. Native-build execution is
+Linux-only; macOS ran its portable argv-forwarding fixture, not Linux LLVM output.
+
+Final-tip validation on 7134851ef (macOS; main 7c5fa4af1 merged, program.test
+reentry guard 9ccb1477d): `program.test` called from an active test now fails with
+status 1; without the guard the regression fails (11 / 12), with it 12 / 12.
+Program-session 12 / 181, execution-scope 9 / 315, program 211 / 14,167 and
+integer-arithmetic 1 / 4,016 pass. Tools: package-ownership 5 / 275,
+build-graph-resources 3 / 26, build-sdk 8 / 212 (264.5s). Raw build-tree CLI
+35 / 550, process 3 / 50, build 4 / 39, doctor 1 / 60, program-sdk 2 / 17. Against
+the packaged SDK built from the same head: installed CLI 15 / 213, export and
+relocation 2 / 25, isolated program consumer. These supersede the receipts bound
+to 1dd12f7c1. Installed and export selectors need the packaged SDK, not the raw
+build tree. Still unrun: Windows, Linux, wasm, the aggregate suites and Studio
+build/UI.
+Studio resource copying passed its nine-file CMake fixture in 0.506s. The
+guide game example is current format39 and passes check plus fmt --check
+in 0.770s.
+
+Clean implementation candidate fee955dc2 / tree a2f1c02a6 passes direct full
+public SDK construction: configure 1.094s, Release ALL build 111.017s and package
+20.606s. Installed/relocated CLI coverage passes 15 / 213 in 26.293s, including
+Main, independent sessions, retained/imported reload, invalid drafts, cancellation
+and source-free relocation. The isolated existing-dispatcher C consumer links
+only installed Chibi::program and explicit core capabilities and passes 1 / 13
+in 0.534s (configure 0.451s, build 0.828s), with no engine/private include roots.
+Its primitive-only host supplies the documented empty type composition.
+
+Actual exported-game startup and relocation pass 2 / 25 in 9.975s, including
+hidden-frame/pixel assertions after removing the source project and scratch SDK.
+The successful fixture did not retain backend/device names; no hardware identity
+is inferred from the host platform. Studio's current-main resource copy/install
+block matches all 155 SDK resource files and engine metadata; its copied CLI
+imports core and prints Hello, Studio. The separate Studio companion is
+30d7650 on be7709f; no editor compile or UI interaction is claimed.
+
+Final receipts are under .chibi/main-runner-reload, including public-sdk-validation,
+public-sdk-consumer-validation, ordinary-cli-validation and studio-real-sdk/result.
+The test-only host composition and this evidence update follow fee955dc2; refresh
+package identity and affected installed checks on the final clean tip. Product
+sources are unchanged by that follow-up. Private compiler-tools packaging is
+separate proof. No global SDK installation or new checked seed occurred.
+
+Independent review of fee955dc2 found three additional parity/interaction issues.
+Nested program calls now explicitly inherit the caller's instruction budget,
+cancellation, purity and VM preference; default compiler/asset scopes remain
+exclusive. Finite-loop, repeated-call and live-cancellation controls fail on the
+old implementation and pass after the fix. The repeated-call fixture uses a
+measured 256-instruction budget because 32 cannot complete one retained call;
+no wall-clock policy is introduced. Runtime scope/session/host/test and existing
+replacement coverage pass 309 / 23,211 in 42.755s summed subprocess time.
+
+Standalone full-SDK CMake builds put all five sibling tools in bin and stage
+the authoritative generated engine identity beside the existing app/core data.
+Compiler-host-only and embedded/Graph layouts retain their paths. Raw build-tree
+help, version, doctor, Main and private-driver lookup pass 4 / 39 in 6.677s;
+raw ALL build passes in 86.437s. Browser diagnosis uses shared files.readable
+rather than presence; all five unreadable payload controls now fail correctly
+and restore to healthy status (doctor 1 / 60 in 4.548s).
+
+The complete CLI passes 35 / 550 in 40.954s, resource/version parity 3 / 26 in
+56.004s and public program consumer 2 / 17 in 0.472s. POSIX source/import checks
+pass 41 / 17,381 in 0.908s parallel outer wall; actual-staged-header MinGW syntax
+passes thirteen production files plus the Windows fixture in 3.423s. The native
+combined build uses matching protocol14 hosts and passes in 123.0s plus 1.8s
+for dependencies. All C sources pass clang-format22 (25.611s). Final installed
+SDK evidence must use this clean combined repair candidate; earlier fee955dc2
+receipts remain attributed to that checkpoint. Root review continues before PR
+acceptance; no held #814/#818 code is included.
+
 ## Coordinated named struct results, 2026-10-22
 
 The next local setup slice extends the ABI20 authored compiler's existing
@@ -329,10 +468,9 @@ and the managed-pointer dependency. This remains unpublished draft work.
   and equivalence gate recorded there.
 - Read [`docs/testing.md`](docs/testing.md) before adding or running checks.
   Select coverage from the affected contracts and report what actually ran.
-- Read the current language architecture and contracts before compiler work:
-  [`docs/code-language.md`](docs/code-language.md),
-  [`docs/language-contracts/v1.md`](docs/language-contracts/v1.md), and the live
-  sources under `src/language/`.
+- Read the current language architecture before compiler work:
+  [`docs/code-language.md`](docs/code-language.md) and the live sources under
+  `src/language/`.
 
 These documents explain existing contracts. This file owns toolchain milestone
 order, current status, and the next action; the package library program linked
@@ -753,6 +891,21 @@ separate gate; the native runtime itself is still an explicit prebuilt input.
 
 ### M6. Replace the internal build graph
 
+Compiler-link transport, 2026-10-28: the authored graph writes GNU response
+files for compiler-driver link execution while retaining full argv in command
+databases and cache records. The native argument admission limit is unchanged.
+A real Clang fixture exceeds that limit with UTF-8, quoted and empty arguments,
+then checks cache hits, input/argument invalidation and failure/retry cleanup.
+The native test group carries the host from its selected build directory and
+preserves explicit host overrides. Broader caller/platform proof remains a
+separate gate from the focused local control.
+Older Clang GNU response parsers discard quoted empty arguments. The transport
+keeps those arguments directly in argv and compresses each surrounding nonempty
+run only when its response path is smaller. Argument count and byte use never
+increase. The readable authored fixture covers empty option operands, numbered
+response failure/cleanup and interrupted-attempt remnants on Clang 21, 22 and
+23. It also avoids the oversized C literal rejected by Clang 18 in CI.
+
 SDK version ownership, 2026-10-28: `sdk/VERSION` is the shared version authority.
 The graph identity no longer parses a CMake assignment; retained CMake SDK and
 consumer-version generation read the same file and track configuration changes.
@@ -824,10 +977,7 @@ fresh relocatable prefix. Private directory reservation and publication refuse
 existing paths. The graph's explicit profile emits commands without toolchain
 discovery. This working slice now includes main `5c28191b3e` and its ABI20
 compiler resources; it does not regenerate the bootstrap. The macOS packaging,
-host, graph parity and five required groups pass. The reviewed source trees,
-format-only refresh, binary identities, reserved files, Linux recipe and
-remaining full-SDK/platform gates are in
-[`docs/design/graph-sdk-packaging.md`](docs/design/graph-sdk-packaging.md).
+host, graph parity and five required groups pass.
 
 Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and
 the 32-bit Wasm host; its Linux x86_64 and Windows x64 bootstrap runs stay an
@@ -1807,3 +1957,51 @@ assertions in 3.1s and `language-signature-reader-chibi` 4 cases / 128,443
 assertions in 6.6s on macOS.
 It does not implement header composition, semantic phases, exports, lowering,
 artifact output or `Checked`, and makes no M5/self-hosting completion claim.
+
+## Runtime SDK construction and installation
+
+Summary: Build the native runtime SDK through the authored graph and install it through Chibi. Preserve installed consumer contracts and generate CMake import files only as interoperability metadata.
+
+### Context
+
+The isolated checkpoint starts from reflection PR #814 at `3cef6c2a`, based on accepted `79743c56`. Published #814/#818 remain frozen. Existing metadata-only WIP reproduced 71 public exports, 10 vendor exports, 293 owned headers and 632 resource/vendor files on macOS; its placeholder archives do not establish a usable SDK.
+
+`tools/toolchain/Graph.chibi` and `tools/graph/engine` already construct the runtime archives, generated reflection, fonts, headers and player. `sdk/CMakeLists.txt` and `tools/package_sdk.py` currently own independent SDK construction, installation, compiled provenance, package manifests and publication. Public CLI and integer migration work have separate owners.
+
+### System impact
+
+- Graph targets and their source/header ownership stay authoritative for construction.
+- `tools/graph/sdk` describes the installed runtime surface, vendor roles, resources and consumer metadata. Vendor-only interface exports do not become build targets.
+- A runtime-specific graph entry selects the graph-owned runtime closure and the standalone player explicitly; it must never fall through to the default all-targets build.
+- Installation reserves a sibling stage, verifies regular inputs and their provenance, writes relocatable metadata and package identities, rechecks inputs, then publishes. Fresh publication is exclusive; managed replacement uses two exclusive moves with rollback and retains recovery evidence if restoration fails. It is not an atomic exchange.
+- Downstream player packaging must accept the resulting existing runtime package contract without weakening its checks.
+
+### Preparation and dependencies
+
+1. Bring the previously validated `Contracts.chibi` and `CMake.chibi` into the SDK graph collection; canonicalize and review them.
+2. Add the runtime construction entry and strict options, reuse the existing profile/build lifecycle, and produce a commands-only selection proof without compiling SDK products.
+3. Implement Chibi-owned installation, canonical JSON identities and graph compile/link provenance using the existing file/process capabilities. Keep construction records separate from installed consumer metadata.
+4. Switch the supported runtime Make caller only after installer and package/consumer proof are complete. Remove that caller's CMake configure/build/install responsibility. Retain full SDK, Windows/web and installed consumer interoperability separately until covered.
+5. Coordinate the first real runtime SDK build after #801's isolated compiler writer/recovery candidate review. No competing heavy producer starts during source preparation.
+
+### Files
+
+- `tools/graph/sdk/Contracts.chibi`, `CMake.chibi`: runtime installed surface and generated compatibility files.
+- `tools/toolchain/Graph.chibi`: explicit runtime construction entry using the existing build lifecycle.
+- `tools/toolchain/RuntimeSDK.chibi` and focused SDK modules as needed: installation and package provenance.
+- `Makefile`: supported runtime caller cutover and removal of its construction/configuration/install commands.
+- `test/tools`: dispatcher-owned boundary checks; authored fixtures for expressible selection, metadata and installation behavior.
+
+### Verification
+
+Before the real producer slot: exact target selection, no compiler/parser/asset-compiler closure, commands-only dependency/flag mapping, invalid options before writes, metadata parity and canonical JSON vectors including UTF-8, installer path/symlink/overlap/failure boundaries with small fixtures. Reuse one dispatcher and compatible read-only host.
+
+At the coordinated producer slot: build actual runtime archives/player, verify graph records against inputs and installed bytes, package through the new route, configure/link C and C++ consumers outside the source tree, execute a source-free player, relocate the SDK, validate package/player identity with unchanged consumers, test cache reuse and transactional replacement/failure. Choose broader checks from the final diff and required contracts; report elapsed times and unrun platforms explicitly.
+
+### Deletion gates
+
+The supported `runtime-sdk-build`/`package-runtime-sdk` route must no longer configure/build/install `sdk/` through CMake or parse a CMake cache for its identity. Generated `lib/cmake/Chibi/*.cmake` remain for installed consumers. Shared `sdk/CMakeLists.txt`, full-SDK/web/Windows routes and Python player consumers cannot be deleted while they retain active callers. Document exact remaining callers after the cutover.
+
+### Status
+
+Source preparation is in progress on accepted `907b1fe0`. Existing WIP metadata is now in graph:sdk; construction entry/strict options, canonical JSON codec, graph evidence and staged installer are being prepared in parallel. Only commands-only and small codec/record/install fixtures may execute while the recovery archive owns the heavy IO slot. Actual SDK construction, installation acceptance and the caller cutover remain unproved; no new SDK, compiler seed or public CLI has been produced.

@@ -180,11 +180,6 @@ ui_documents *ui_documents_new_budget(size_t *remaining, bool active)
     d->active = active;
     return d;
 }
-ui_documents *ui_documents_new()
-{
-    size_t remaining = SIZE_MAX;
-    return ui_documents_new_budget(&remaining, true);
-}
 bool ui_documents_add_owned_budget(ui_documents *table, prepared_ui_document *d, size_t *remaining)
 {
     assert(table && d && remaining);
@@ -208,11 +203,6 @@ bool ui_documents_add_owned_budget(ui_documents *table, prepared_ui_document *d,
     *d = (prepared_ui_document){ 0 };
     apush(table->items, owned);
     return true;
-}
-bool ui_documents_add_owned(ui_documents *table, prepared_ui_document *d)
-{
-    size_t remaining = SIZE_MAX;
-    return ui_documents_add_owned_budget(table, d, &remaining);
 }
 void ui_documents_exchange(ui_documents *table)
 {

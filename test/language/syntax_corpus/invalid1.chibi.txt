@@ -1,0 +1,6 @@
+package demo
+
+import project:greet
+
+Main :: () {
+}

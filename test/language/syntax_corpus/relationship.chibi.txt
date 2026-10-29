@@ -1,0 +1,3 @@
+Pair :: relationship {
+    a: 1
+}

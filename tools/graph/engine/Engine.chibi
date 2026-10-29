@@ -458,7 +458,7 @@ Version :: (path: string, define: string) -> string {
 
 // Writes the build identity to build/sdk/chibi_engine_metadata.json, where
 // CMake writes it, when its text changed. False when it cannot.
-WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) -> bool {
+pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) -> bool {
     text := Identity(source_root, profile);
     path := Join([build_dir, "/sdk/chibi_engine_metadata.json"]);
     if (text == "") {
@@ -525,17 +525,8 @@ Sorted :: (paths: string[]) -> string[] {
 
 // Writes each of a target's source lists (SourceLists) when its text changed.
 WriteSourceLists :: (source_root: string, build_dir: string, target: string) -> bool {
-    unlisted: string[] = [];
-    for (path in Unlisted(target)) {
-        unlisted.append(Join([source_root, "/", path]));
-    }
     for (source_list in SourceLists(target)) {
-        listed: string[] = [];
-        for (source in ChibiSources(Join([source_root, "/", build.after(source_list, "=")]))) {
-            if (!Listed(unlisted, source)) {
-                listed.append(source);
-            }
-        }
+        listed := ChibiSources(Join([source_root, "/", build.after(source_list, "=")]));
         text := Join([build.join(Sorted(listed), "\n"), "\n"]);
         output := Resolve(source_root, build_dir, "", build.before(source_list, "="));
         if (build.file_exists(output) && build.read_file(output) == text) {
@@ -722,12 +713,9 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
         return -1;
     }
     output := Join([folder, "/sdk/generated/assets"]);
-    // Unoptimized or sanitized hosts take minutes to compile the asset compiler.
-    slow := profile.sanitizers != "" || profile.build_type != "Release";
-    timeout := "240000";
-    if (slow) {
-        timeout = "600000";
-    }
+    // Compiling the asset compiler takes minutes; this outer deadline leaves room
+    // for the generator's own 600 s compiler deadline.
+    timeout := "900000";
     build_host := Executable(folder, "chibi-build-host");
     compiler_host := Executable(folder, "chibi-compiler-host");
     if (profile.asset_generator_hosts != "") {
@@ -739,9 +727,6 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
                 "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
                 "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", timeout, "--",
                 compiler_host, output];
-    if (slow) {
-        command.append("--compiler-timeout-ms=600000");
-    }
     inputs := [build_host, compiler_host];
     for (directory in ["tools/compiler", "packages/core", "packages/game", "tools/graph/asset_compiler"]) {
         inputs.extend(ChibiSources(Join([root, "/", directory])));

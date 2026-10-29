@@ -24,13 +24,13 @@ const TSLanguage *tree_sitter_chibi();
  * cover it, and in a corpus file it would fail the comparison as an extra
  * tokenizer terminator rather than pass unseen. Files Tree-sitter rejects
  * compare their leaves only, since its recovery places their terminators.
- * Workload: about 150 files, under 1 MiB, each at most 256 KiB, one
+ * Workload: about 150 files, under 1 MiB, each at most 512 KiB, one
  * compiled-backend call per file; the fixed sources and cases run on both
  * backends. Calls are capped at 64 steps per byte (they take under 20). No
  * children, services or GPU. */
 enum
 {
-    MAX_SOURCE = 256 * 1024,
+    MAX_SOURCE = 512 * 1024,
     MAX_DEPTH = 1024,
     MAX_KINDS = 256,
     STEPS_PER_BYTE = 64,
@@ -152,6 +152,9 @@ static int leaf_kind(const char *type, const char *text, int size)
     }
     if (!strcmp(type, "string")) {
         return kind_named("String");
+    }
+    if (!strcmp(type, "character")) {
+        return kind_named("Char");
     }
     if (!strcmp(type, "number")) {
         return number_kind(text, size);

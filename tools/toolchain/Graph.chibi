@@ -2,6 +2,7 @@ package toolchain
 
 import c "graph:c"
 import engine "graph:engine"
+import sdk "graph:sdk"
 import strings "core:strings"
 
 // Builds the engine libraries the Chibi graph owns (PLAN.md M6), beside the
@@ -161,9 +162,203 @@ SDKReflectWithArguments :: (arguments: string[]) -> int {
     return LibrariesWithArguments(options);
 }
 
+// Construct the native runtime SDK, without source authoring or compiler tools.
+// Installation is a separate entry over these outputs and graph:sdk contracts.
+// RuntimeSDK -- --build ABS --reflect ABS [--jobs N] [--third-party ABS]
+//   [--libclang-root ABS] [--commands-only on|off] -- NATIVE_TOOLCHAIN_AND_SDK_DEFINITIONS
+// Defaults are Debug, no sanitizers and no launcher. Warnings use the shared
+// graph policy, which is stricter than the standalone CMake SDK's warnings.
+// Cross-architecture and universal SDKs retain the CMake construction route.
+RuntimeSDK :: () -> int {
+    return RuntimeSDKWithArguments(build.arguments());
+}
+
+RuntimeSDKBoolean :: (value: string) -> string {
+    lower := strings.ToLower(value);
+    if (lower == "on" || lower == "true" || lower == "yes" || lower == "1") {
+        return "on";
+    }
+    if (lower == "off" || lower == "false" || lower == "no" || lower == "0") {
+        return "off";
+    }
+    return "";
+}
+
+RuntimeSDKWithArguments :: (arguments: string[]) -> int {
+    if (!sdk.Supported(build.platform())) {
+        build.report("graph: runtime SDK construction currently supports Darwin only");
+        return 2;
+    }
+    options: string[] = [];
+    build_type := "Debug";
+    warnings := "on";
+    ccache := "off";
+    sanitizers := "address,undefined";
+    sanitize := "off";
+    definitions := false;
+    split := false;
+    index := 0;
+    while (index < length(arguments)) {
+        argument := arguments[index];
+        index += 1;
+        if (!definitions && argument == "--") {
+            definitions = true;
+            continue;
+        }
+        if (!definitions) {
+            if ((argument != "--build" && argument != "--jobs" && argument != "--reflect" &&
+                 argument != "--third-party" && argument != "--libclang-root" && argument != "--commands-only") ||
+                index == length(arguments) || strings.HasPrefix(arguments[index], "--") || arguments[index] == "") {
+                build.report(format_text("graph: invalid runtime SDK option '{0}'", argument));
+                return 2;
+            }
+            value := arguments[index];
+            index += 1;
+            if ((argument == "--jobs" && Count(value) < 1) ||
+                (argument == "--commands-only" && value != "on" && value != "off") ||
+                (argument != "--jobs" && argument != "--commands-only" && !strings.HasPrefix(value, "/"))) {
+                build.report(format_text("graph: invalid runtime SDK value for '{0}'", argument));
+                return 2;
+            }
+            options = build.concat([argument, value], options);
+            continue;
+        }
+        if (argument == "-D" && !split) {
+            split = true;
+            continue;
+        }
+        definition := argument;
+        if (split) {
+            definition = strings.Join(["-D", argument], "");
+            split = false;
+        }
+        name := "";
+        value := "";
+        if (strings.HasPrefix(definition, "-D") && strings.Contains(definition, "=")) {
+            name = build.before(build.before(build.after(definition, "-D"), "="), ":");
+            value = build.after(definition, "=");
+        }
+        if (name == "CMAKE_BUILD_TYPE") {
+            if (value != "Debug" && value != "Release" && value != "RelWithDebInfo" && value != "MinSizeRel") {
+                build.report("graph: unsupported runtime SDK build type");
+                return 2;
+            }
+            build_type = value;
+            continue;
+        }
+        if (name == "CHIBI_ENABLE_WARNINGS" || name == "CHIBI_ENABLE_CCACHE" || name == "CHIBI_ENABLE_SANITIZERS") {
+            enabled := RuntimeSDKBoolean(value);
+            if (enabled == "") {
+                build.report(format_text("graph: invalid runtime SDK boolean '{0}'", definition));
+                return 2;
+            }
+            if (name == "CHIBI_ENABLE_WARNINGS") {
+                warnings = enabled;
+            }
+            if (name == "CHIBI_ENABLE_CCACHE") {
+                ccache = enabled;
+            }
+            if (name == "CHIBI_ENABLE_SANITIZERS") {
+                sanitize = enabled;
+            }
+            continue;
+        }
+        if (name == "CHIBI_SANITIZERS") {
+            if (value != "address" && value != "undefined" && value != "address,undefined" && value != "thread") {
+                build.report("graph: unsupported runtime SDK sanitizers");
+                return 2;
+            }
+            sanitizers = value;
+            continue;
+        }
+        mapped := engine.NativeToolchainOption(definition);
+        if (length(mapped) != 2) {
+            build.report(format_text("graph: unsupported runtime SDK toolchain argument '{0}'", definition));
+            return 2;
+        }
+        options = build.concat(mapped, options);
+    }
+    if (split || Option(options, "--build", "") == "" || Option(options, "--reflect", "") == "") {
+        build.report("graph: runtime SDK requires --build and --reflect; -D requires a definition");
+        return 2;
+    }
+    // The selected dependency archive belongs to this host's architecture.
+    architecture := Option(options, "--architecture", "");
+    if (architecture != "") {
+        if (architecture != "arm64" && architecture != "x86_64") {
+            build.report("graph: runtime SDK requires one native host architecture; use CMake for cross or universal SDKs");
+            return 2;
+        }
+        if (build.probe(["uname", "-m"]) != 0 || strings.TrimSpace(build.last_stdout()) != architecture) {
+            build.report("graph: runtime SDK architecture differs from this host; use CMake for cross SDKs");
+            return 2;
+        }
+    }
+    // Use the same target order and compile policy as ordinary graph builds.
+    // Vendor-only interfaces have no engine compilation or header staging.
+    targets: string[] = [];
+    for (component in sdk.RuntimeTargets()) {
+        if (component == "box2d" || component == "box3d" || component == "execution_sljit" || component == "task_scheduler") {
+            if (!sdk.Interface(component)) {
+                build.report(format_text("graph: runtime SDK vendor component '{0}' is not an interface", component));
+                return 2;
+            }
+            continue;
+        }
+        target := sdk.BuildTarget(component);
+        found := false;
+        for (known in engine.Targets()) {
+            found = found || known == target;
+        }
+        if (!found) {
+            build.report(format_text("graph: runtime SDK component '{0}' has no construction target", component));
+            return 2;
+        }
+        targets.append(target);
+    }
+    targets.append("chibi-player");
+    for (target in engine.Targets()) {
+        for (selected in targets) {
+            if (target == selected) {
+                options.extend(["--target", target]);
+            }
+        }
+    }
+    for (name in ["--compiler", "--cxx-compiler", "--archiver", "--ranlib"]) {
+        chosen := Option(options, name, "");
+        if (chosen == "") {
+            continue;
+        }
+        program := build.find_executable(chosen);
+        if (program == "") {
+            build.report(format_text("graph: runtime SDK tool not found for '{0}'", chosen));
+            return 2;
+        }
+        options = build.concat([name, program], options);
+    }
+    profile := "debug";
+    if (build_type == "Release") {
+        profile = "release";
+    }
+    launcher := "";
+    if (ccache == "on") {
+        launcher = build.find_executable("ccache");
+    }
+    if (sanitize == "off") {
+        sanitizers = "";
+    }
+    options.extend(["--profile", profile, "--build-type", build_type, "--warnings", warnings,
+                    "--sanitizers", sanitizers, "--launcher", launcher]);
+    return BuildLibrariesWithArguments(options, true);
+}
+
 // Keep argument evaluation independent so bounded verification cases can share
 // compilation without sharing a profile or a build result.
 LibrariesWithArguments :: (arguments: string[]) -> int {
+    return BuildLibrariesWithArguments(arguments, false);
+}
+
+BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
     targets := engine.Targets();
     if (!TargetsValid(arguments, targets)) {
         return 2;
@@ -330,9 +525,21 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
     if (Option(arguments, "--commands-only", "") == "on") {
         return 0;
     }
+    if (runtime_sdk && !sdk.PrepareBuildConfiguration(build_dir, profile, tools)) {
+        build.report("graph: preparing runtime SDK build configuration failed");
+        return 1;
+    }
+    if (runtime_sdk && !engine.WriteIdentity(build.root(), build_dir, profile)) {
+        build.report("graph: writing runtime SDK identity failed");
+        return 1;
+    }
     total := engine.Build(tools, profile, build.root(), build_dir, selected);
     if (total < 0) {
         build.report("graph: the build failed");
+        return 1;
+    }
+    if (runtime_sdk && !sdk.WriteBuildConfiguration(build_dir, profile, tools)) {
+        build.report("graph: writing runtime SDK build configuration failed");
         return 1;
     }
     build.report(format_text("graph: compiled {0} sources", total));

@@ -114,6 +114,7 @@ WriteFact: int : 3;
 UnknownWrite: int : -1;
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
+    | Specialize(template: int, call: int, arguments: ValueType[], names: Name[])
     | Inferred(value: ValueType)
     | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
               hosts: Host[], roots: Root[], points: SourcePoint[], watches: SourceWatch[], effects: int,
@@ -1450,7 +1451,7 @@ CompoundOperator :: (text: string) -> string {
 FindCallable :: (callables: Callable[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(callables)) {
-        if (callables[index].package == package && callables[index].name == name) {
+        if (callables[index].identity == 0 && callables[index].package == package && callables[index].name == name) {
             return index;
         }
         index += 1;
@@ -2678,6 +2679,147 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         node := forest[item.node];
         kind := node.kind;
+        if (item.phase == GenericReturnPhase) {
+            value := values[value_top - 1];
+            storage := value.storage;
+            record := value.record;
+            if (storage == NumberStorage) {
+                storage = InferredNumberStorage(forest, text, record);
+                if (storage == 0) {
+                    storage = UntypedStorage(forest, text, record);
+                }
+                record = -1;
+            }
+            return Body.Inferred({storage: storage, container: value.container, record: record});
+        }
+        if (callable.result == GenericInferStorage && kind == "return_statement" && item.phase == 0) {
+            value := Field(forest, item.node, "value");
+            if (value < 0) {
+                continue;
+            }
+            if (Is(forest, value, "argument_list")) {
+                return Body.Failed(Diagnose(forest, value, document, "Inline named results require an explicit result type"));
+            }
+            scheduled := Resume(item.node, GenericReturnPhase, 0, 0);
+            if (work_top < length(work)) {
+                work[work_top] = scheduled;
+            } else {
+                work.append(scheduled);
+            }
+            work_top += 1;
+            scheduled = Visit(value);
+            if (work_top < length(work)) {
+                work[work_top] = scheduled;
+            } else {
+                work.append(scheduled);
+            }
+            work_top += 1;
+            continue;
+        }
+        if (item.phase == GenericFunctionPhase) {
+            value_node := Unparenthesized(forest, item.node);
+            hidden := PrivateAccess(forest, text, callables, types, constants, names, callable.package, value_node);
+            if (hidden >= 0) {
+                return Body.Failed(Diagnose(forest, hidden, document, PrivateMessage(Text(forest, text, hidden))));
+            }
+            called := GenericFunctionTarget(forest, text, callables, natives, names, callable.package, value_node);
+            if (called == -1) {
+                return Body.Failed(Diagnose(forest, item.node, document, "A callable argument requires a named function or capture-free inline function"));
+            }
+            if (called == -2) {
+                captured := GenericLambdaCapture(forest, text, names, value_node);
+                if (captured >= 0) {
+                    return Body.Failed(Diagnose(forest, captured, document, "Inline functions cannot capture enclosing locals"));
+                }
+            } else if (callables[called].waits || callables[called].count < 0) {
+                return Body.Failed(Diagnose(forest, item.node, document, "A callable argument requires a concrete synchronous function"));
+            }
+            value := Typed(value_node, GenericFunctionStorage, 0, called);
+            if (value_top < length(values)) {
+                values[value_top] = value;
+            } else {
+                values.append(value);
+            }
+            value_top += 1;
+            continue;
+        }
+        if (item.phase == GenericCallPhase) {
+            arguments: ValueType[] = [];
+            first := value_top - item.b;
+            while (first < value_top) {
+                value := values[first];
+                storage := value.storage;
+                record := value.record;
+                if (storage == NumberStorage) {
+                    storage = InferredNumberStorage(forest, text, record);
+                    if (storage == 0) {
+                        storage = UntypedStorage(forest, text, record);
+                    }
+                    record = -1;
+                }
+                argument_type: ValueType = {storage: storage, container: value.container, record: record};
+                arguments.append(argument_type);
+                first += 1;
+            }
+            supplied := Members(forest, Field(forest, item.node, "arguments"));
+            ordered := arguments;
+            position: int = 0;
+            ordinal: int = 0;
+            for (argument in supplied) {
+                parameter := GenericSourceParameter(forest, text, params, callables[item.a], argument, position);
+                ordered[parameter] = arguments[ordinal];
+                if (!Is(forest, argument, "named_argument")) { position += 1; }
+                ordinal += 1;
+            }
+            return Body.Specialize(item.a, item.node, ordered, names);
+        }
+        if (kind == "call_expression" && item.phase == 0) {
+            called := CalledFunction(forest, text, callables, natives, names, callable.package, item.node);
+            if (called >= 0 && callables[called].count < 0) {
+                hidden := PrivateAccess(forest, text, callables, types, constants, names, callable.package,
+                                        Field(forest, item.node, "function"));
+                if (hidden >= 0) {
+                    return Body.Failed(Diagnose(forest, hidden, document, PrivateMessage(Text(forest, text, hidden))));
+                }
+                arguments := Members(forest, Field(forest, item.node, "arguments"));
+                parameters := Members(forest, Field(forest, callables[called].node, "parameters"));
+                if (length(arguments) != length(parameters)) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "generic call needs one value per parameter"));
+                }
+                indices: int[] = [];
+                position: int = 0;
+                for (argument in arguments) {
+                    parameter := GenericSourceParameter(forest, text, params, callables[called], argument, position);
+                    if (parameter < 0 || parameter >= length(parameters) || indices.contains(parameter)) {
+                        return Body.Failed(Diagnose(forest, argument, document, "Unknown or repeated generic parameter label"));
+                    }
+                    indices.append(parameter);
+                    if (!Is(forest, argument, "named_argument")) { position += 1; }
+                }
+                scheduled := Resume(item.node, GenericCallPhase, called, length(arguments));
+                if (work_top < length(work)) {
+                    work[work_top] = scheduled;
+                } else {
+                    work.append(scheduled);
+                }
+                work_top += 1;
+                ordinal := length(arguments) - 1;
+                while (ordinal >= 0) {
+                    scheduled = Visit(GenericArgumentValue(forest, arguments[ordinal]));
+                    if (params[callables[called].first + indices[ordinal]].storage == GenericFunctionStorage) {
+                        scheduled.phase = GenericFunctionPhase;
+                    }
+                    if (work_top < length(work)) {
+                        work[work_top] = scheduled;
+                    } else {
+                        work.append(scheduled);
+                    }
+                    work_top += 1;
+                    ordinal -= 1;
+                }
+                continue;
+            }
+        }
         // Items this one schedules, in the order they run.
         next: Work[] = [];
         // A value this item leaves for its consumer, when `produced.storage` is set.
@@ -3410,7 +3552,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = OptionalPresentStep(optional, operator == "==", 2, ops, target, at, node);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
-        } else if (kind == "function_declaration") {
+        } else if (kind == "lambda_expression" && item.node != callable.node) {
+            return Body.Failed(Diagnose(forest, item.node, document,
+                                        "Inline functions may only be passed to a callable parameter"));
+        } else if (kind == "function_declaration" || kind == "lambda_expression") {
             step = ParameterStep(params, callable, item, ops, target, at, node);
         } else if (kind == "is_expression" && item.phase == 0) {
             stepped = false;
@@ -3651,6 +3796,9 @@ FinishBody :: (forest: snapshot.SnapshotNode[], document: int, callable: Callabl
     }
     // A function completes at its end, and one with named results returns
     // them.
+    if (callable.result == GenericInferStorage) {
+        return Body.Inferred({storage: 0, container: 0, record: -1});
+    }
     if (inferring && value_top > 0) {
         value := values[value_top - 1];
         return Body.Inferred({storage: value.storage, container: value.container, record: value.record});

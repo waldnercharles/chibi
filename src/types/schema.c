@@ -36,7 +36,7 @@ static bool collect_types(const type_desc *type, type_resolver resolver, const t
     }
     apush(*types, type);
     if (type->alias_of) {
-        const type_desc *alias = type_resolve(resolver, type->alias_of);
+        const type_desc *alias = type_alias_type(type, resolver);
         if (!alias || alias->size != type->size ||
             !collect_types(alias, resolver, types, depth + 1)) {
             return false;
@@ -44,12 +44,12 @@ static bool collect_types(const type_desc *type, type_resolver resolver, const t
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
-        if (!field->name || field->offset > type->size ||
-            field->size > type->size - field->offset) {
+        if (!field->name || field->container != PIN_CONTAINER_SINGLE ||
+            field->offset > type->size || field->size > type->size - field->offset) {
             return false;
         }
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = type_resolve(resolver, field->type_name);
+            const type_desc *nested = type_field_type(field, resolver);
             if (!nested || nested->size != field->size ||
                 !collect_types(nested, resolver, types, depth + 1)) {
                 return false;
@@ -116,13 +116,27 @@ static const pin_schema *create_schema(arena *storage, const type_desc *root, co
         types[i].name = copy_text(&text, sources[i]->name);
         types[i].alias_of = copy_text(&text, sources[i]->alias_of);
         types[i].fields = next;
+        types[i].carrier = NULL;
+        types[i].alias = NULL;
         for (int j = 0; j < types[i].field_count; j++) {
             *next = sources[i]->fields[j];
             next->name = copy_text(&text, next->name);
             next->type_name = copy_text(&text, next->type_name);
             next->unit = copy_text(&text, next->unit);
             next->description = copy_text(&text, next->description);
+            next->layout = NULL;
             next++;
+        }
+    }
+    for (int i = 0; i < schema->count; i++) {
+        if (types[i].alias_of) {
+            types[i].alias = pin_schema_type(schema, types[i].alias_of);
+        }
+        type_field *fields = (type_field *)types[i].fields;
+        for (int j = 0; j < types[i].field_count; j++) {
+            if (fields[j].type == PIN_STRUCT) {
+                fields[j].layout = pin_schema_type(schema, fields[j].type_name);
+            }
         }
     }
     assert(text == (char *)schema + bytes);
@@ -147,12 +161,7 @@ const pin_schema *pin_schema_create_record(arena *storage, const pin_record *rec
     for (int i = 0; i < record->type.field_count; i++) {
         const type_field *field = &record->type.fields[i];
         if (field->type == PIN_STRUCT &&
-            !collect_types(
-                type_resolve((type_resolver){ 0 }, field->type_name),
-                (type_resolver){ 0 },
-                &sources,
-                1
-            )) {
+            !collect_types(type_field_type(field, (type_resolver){ 0 }), (type_resolver){ 0 }, &sources, 1)) {
             afree(sources);
             return NULL;
         }
@@ -184,6 +193,7 @@ const pin_schema *pin_schema_snapshot(arena *storage, const pin_schema *source)
         lookup[i] = &types[i];
         types[i].name = relocate(source, copy, types[i].name);
         types[i].alias_of = relocate(source, copy, types[i].alias_of);
+        types[i].alias = relocate(source, copy, types[i].alias);
         type_field *fields = (type_field *)relocate(source, copy, types[i].fields);
         types[i].fields = fields;
         for (int j = 0; j < types[i].field_count; j++) {
@@ -191,6 +201,7 @@ const pin_schema *pin_schema_snapshot(arena *storage, const pin_schema *source)
             fields[j].type_name = relocate(source, copy, fields[j].type_name);
             fields[j].unit = relocate(source, copy, fields[j].unit);
             fields[j].description = relocate(source, copy, fields[j].description);
+            fields[j].layout = relocate(source, copy, fields[j].layout);
         }
     }
     return copy;
@@ -365,6 +376,23 @@ static bool header_describes(const pin_value *value, const pin_array *array)
     }
     return pin_record_same(value->record, array->record);
 }
+/* Compositional authored records already close every child layout. Their
+ * container headers and authored child identities belong to that carrier,
+ * rather than to the native-only schema representation. */
+static bool authored_composition(const pin_record *record)
+{
+    if (!record || record->native || !record->frozen) {
+        return false;
+    }
+    for (int i = 0; i < record->type.field_count; i++) {
+        const type_field *field = &record->type.fields[i];
+        if (field->container != PIN_CONTAINER_SINGLE ||
+            (field->layout && field->layout->carrier && !field->layout->carrier->native)) {
+            return true;
+        }
+    }
+    return false;
+}
 static int snapshot_owned(arena *storage, pin_value *out, const pin_value *source, int depth)
 {
     if (depth >= 64) {
@@ -403,7 +431,8 @@ static int snapshot_owned(arena *storage, pin_value *out, const pin_value *sourc
         }
     }
     if (value.type == PIN_STRUCT &&
-        (value.container == PIN_CONTAINER_SINGLE || typed_array) && !value.schema) {
+        (value.container == PIN_CONTAINER_SINGLE || typed_array) &&
+        !value.schema && !authored_composition(value.record)) {
         bool native = !value.record;
         for (int i = 0; value.record && i < value.record->type.field_count; i++) {
             native |= value.record->type.fields[i].type == PIN_STRUCT;

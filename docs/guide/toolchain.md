@@ -73,34 +73,44 @@ chibi run --watch Hello.chibi
 chibi Hello.chibi --watch
 ```
 
-Each accepted source change replaces the program and calls `Main` again.
-Use `retain` for a value that should survive those replacements:
+`Main` runs once. To keep a program running, give it a `Frame` function that
+the runner calls about 60 times a second until you press Ctrl-C. `Frame` returns
+nothing to continue, or a nonzero `int` exit status to stop. Use `retain` for a
+value that should survive edits and calls:
 
 ```chibi
 package reload
 
 Main :: () {
-    count: retain int = 0
-    count += 1
-    print_string(format_text("Run {}", count))
+    print_string("started")
+}
+
+Frame :: () {
+    ticks: retain int = 0
+    ticks += 1
+    if ticks % 60 == 0 {
+        print_string(format_text("tick {}", ticks))
+    }
 }
 ```
 
-The first call prints `Run 1`. Change the message to `"Reloaded {}"` and save;
-the next call prints `Reloaded 2`. The retained `count` keeps its value while
-ordinary locals initialize again. Changed retained types follow the existing
-[state conversion and reset rules](../code-language.md#behaviors-and-state).
+Each accepted save replaces the running code between frames. `Main` is not called
+again, the next `Frame` runs the new body, and `ticks` keeps counting: retained
+values stay (converted when their type changed), ordinary locals start fresh each
+call. Change `"tick {}"` to `"tock {}"` and save to see it. See
+[Edit and Continue](../edit-and-continue.md) for what is patched when.
 
-Invalid source, or a missing or invalid `Main`, reports diagnostics and keeps
-the last valid program and its state. A later valid edit replaces that version.
-File targets watch the selected source and core library. Directory targets also
-watch sibling files and local package sources. Use `chibi --watch .` for a
-program that spans several files.
+A syntax or type error prints its diagnostic and keeps the last valid code
+running; the next valid save applies. A runtime failure pauses the program, and
+the next valid save resumes it. File targets watch the selected source and the core
+library. Directory targets also watch sibling files and local package sources. Use
+`chibi --watch .` for a program that spans several files.
 
-`Main` must finish synchronously; it cannot suspend or start tasks. Reloads
-apply between completed calls, so an edit cannot interrupt a busy `Main`.
-Press Ctrl-C to stop watching. `--watch` applies to standalone programs, not
-game projects.
+`Main` and `Frame` must finish synchronously; they cannot suspend or start tasks.
+An edit applies between calls, so it cannot interrupt a busy `Main`, and a loop
+written inside `Main` is not patched; put per-frame work in `Frame`. Without a
+`Frame`, `--watch` keeps polling but has nothing to re-run. Press Ctrl-C to
+stop. `--watch` applies to standalone programs, not game projects.
 
 ## Build and run
 
@@ -269,13 +279,15 @@ The nested CLI receives its own argument vector through
 service, with the same explicit application catalog and services. The CLI and
 other applications use the same program API.
 
-The [program service](../../src/authoring/program_service.h) has six operations:
+The [program service](../../src/authoring/program_service.h) has these operations:
 
 | Operation | Result |
 | --- | --- |
-| `program.open(path, entry, arguments)` | An owned program handle with a copied argument vector. Source errors are reported by `update`. |
+| `program.open(path, entry, arguments)` | An owned program handle with a copied argument vector. `entry` may be empty to require none. Source errors are reported by `update`. |
 | `program.update(handle)` | `1` when a changed generation is accepted, `0` when unchanged, or `-1` for a new failure. |
-| `program.call(handle)` | Separate `status` and `result` values. Status 0 means execution succeeded; result is the authored integer return, or 0 for no return value. |
+| `program.call(handle)` | Calls the entry named at `open`. Separate `status` and `result` values. Status 0 means execution succeeded; result is the authored integer return, or 0 for no return value. |
+| `program.call_entry(handle, name)` | The same, for a named zero-argument function of the accepted generation, such as `Main` or `Frame`. A missing name fails with a diagnostic. |
+| `program.has(handle, name)` | Whether the accepted generation has a runnable function of that name. |
 | `program.diagnostic(handle)` | The current source or runtime diagnostic. |
 | `program.close(handle)` | Releases the session and its generations; a closed handle cannot name another program. |
 | `program.test(path)` | Runs package `@test` functions and returns 0 on success or 1 on failure. |

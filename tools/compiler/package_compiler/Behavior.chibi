@@ -580,7 +580,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
         }
         callable: Callable = {name: Text(forest, source, Field(forest, declaration, "name")), package: package,
                               document: package, node: declaration, first: length(params), count: 0, result: 0,
-                              result_container: 0, result_record: -1, results: 0, waits: false};
+                              result_container: 0, result_record: -1, results: 0, waits: false, identity: 0, owner_package: package};
         callables.append(callable);
         handled.append(tick);
     }
@@ -634,7 +634,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
             }
             callable: Callable = {name: name, package: package, document: package, node: member, first: first,
                                   count: game_events[found].count, result: 0, result_container: 0, result_record: -1,
-                                  results: 0, waits: false};
+                                  results: 0, waits: false, identity: 0, owner_package: package};
             callables.append(callable);
             handled.append(found);
         } else if (Is(forest, member, "function_declaration")) {
@@ -929,6 +929,8 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 switch body {
                     case .Failed(diagnostic):
                         return Result.Rejected(diagnostic);
+                    case .Specialize(template, call, arguments, caller_names):
+                        return InputFailure(callable.document, "unresolved generic call");
                     case .Inferred(value):
                         return InputFailure(callable.document, "expression inferred where a callable body was required");
                     case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,

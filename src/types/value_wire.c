@@ -483,8 +483,15 @@ static bool valid_field(const type_desc *type, const type_field *field, type_res
         field->offset > type->size || field->size > type->size - field->offset) {
         return false;
     }
+    if (field->container == PIN_CONTAINER_ARRAY) {
+        return field->size == sizeof(pin_array *) &&
+               (field->type != PIN_STRUCT || type_field_type(field, resolver));
+    }
+    if (field->container != PIN_CONTAINER_SINGLE) {
+        return false;
+    }
     if (field->type == PIN_STRUCT) {
-        const type_desc *nested = type_resolve(resolver, field->type_name);
+        const type_desc *nested = type_field_type(field, resolver);
         return nested && nested->size == field->size;
     }
     if (field->type == PIN_ENUM) {
@@ -615,7 +622,8 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
         }
         pin_value member = { 0 };
         pin_string borrowed = { 0 };
-        if (!w->reading && field->type == PIN_STR && !field->text_descriptor) {
+        if (!w->reading && field->container == PIN_CONTAINER_SINGLE &&
+            field->type == PIN_STR && !field->text_descriptor) {
             const char *bytes = *(const char *const *)((const char *)v->ptr +
                                                        field->offset);
             bytes = bytes ? bytes : "";
@@ -643,18 +651,29 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
         }
         pin_value target = { .type = field->type,
                              .type_name = field->type_name,
+                             .record = field->layout ? field->layout->carrier : NULL,
                              .ptr = (unsigned char *)v->ptr + field->offset };
-        value_into(c, &member, depth + 1, w->reading && field->type == PIN_STRUCT ? &target : NULL);
+        value_into(
+            c,
+            &member,
+            depth + 1,
+            w->reading && field->type == PIN_STRUCT && field->container == PIN_CONTAINER_SINGLE
+                ? &target
+                : NULL
+        );
         if (w->error) {
             return;
         }
-        if (member.type != field->type || member.container != PIN_CONTAINER_SINGLE ||
+        if (member.type != field->type || member.container != field->container ||
             !same_name(member.type_name, field->type_name) ||
-            (member.type == PIN_STRUCT && !member.ptr)) {
+            (member.type == PIN_STRUCT &&
+             member.container == PIN_CONTAINER_SINGLE && !member.ptr)) {
             fail(w, "Prepared field type differs from linked type");
             return;
         }
-        if (w->reading && field->type == PIN_STR) {
+        if (w->reading && field->container == PIN_CONTAINER_ARRAY) {
+            memcpy((char *)v->ptr + field->offset, &member.ptr, sizeof member.ptr);
+        } else if (w->reading && field->type == PIN_STR) {
             void *destination = (unsigned char *)v->ptr + field->offset;
             if (field->text_descriptor) {
                 *(const pin_string **)destination = member.text;
@@ -957,7 +976,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     }
     if (destination && (v->type != destination->type || v->container != PIN_CONTAINER_SINGLE ||
                         !same_name(v->type_name, destination->type_name) ||
-                        !pin_record_same(v->record, destination->record))) {
+                        !pin_value_layout_same(v, destination))) {
         fail(w, "Prepared inline value differs from its destination type");
         return;
     }

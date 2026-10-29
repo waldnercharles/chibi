@@ -200,8 +200,6 @@ Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.
 `chibi_ctl` formats, validates, describes and runs them like engine components.
-Projects saved before version 20 declared components in KDL; `--migrate`
-rewrites each into `.chibi`.
 
 ## Authored prototypes and relationships
 

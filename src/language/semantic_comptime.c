@@ -82,6 +82,23 @@ static bool scalar_cast(compile_value *value, pin_type type)
     behavior_scalar_cast(value->value, type, BEHAVIOR_CAST_WRAP, &value->value);
     return true;
 }
+static bool compile_constant(analyzer *a, TSNode node, int symbol, compile_value *out)
+{
+    script_analyzer_resolve_initializer(a, symbol);
+    const script_symbol *constant = &a->out->symbols[symbol];
+    pin_value value;
+    const char *error = script_analyzer_scalar_constant(
+        a,
+        constant->initializer,
+        constant->type.storage,
+        &value
+    );
+    if (error) {
+        return fail(a, node, error);
+    }
+    *out = (compile_value){ .value = value };
+    return true;
+}
 static bool lookup(analyzer *a, TSNode node, compile_binding *bindings, const char *name, compile_value *out)
 {
     int index = find(bindings, name);
@@ -100,20 +117,7 @@ static bool lookup(analyzer *a, TSNode node, compile_binding *bindings, const ch
         return true;
     }
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_CONSTANT) {
-        script_analyzer_resolve_initializer(a, symbol);
-        const script_symbol *constant = &a->out->symbols[symbol];
-        pin_value value;
-        const char *error = script_analyzer_scalar_constant(
-            a,
-            constant->initializer,
-            constant->type.storage,
-            &value
-        );
-        if (error) {
-            return fail(a, node, error);
-        }
-        *out = (compile_value){ .value = value };
-        return true;
+        return compile_constant(a, node, symbol, out);
     }
     int type = script_catalog_find_type(a->catalog, name);
     if (type >= 0) {
@@ -216,12 +220,19 @@ static bool compile_member(
     compile_expression_frame *frame
 )
 {
-
+    TSNode object = script_analyzer_field(node, "object");
+    char *name = script_analyzer_name_copy(a, object);
+    bool bound = find(bindings, name) >= 0;
+    free(name);
+    int constant = bound ? -1 : script_analyzer_package_constant(a, node);
+    if (constant >= 0) {
+        return compile_constant(a, node, constant, out);
+    }
     compile_value *type = &frame->first;
-    if (!script_analyzer_compile_expression(a, script_analyzer_field(node, "object"), bindings, type, budget)) {
+    if (!script_analyzer_compile_expression(a, object, bindings, type, budget)) {
         return false;
     }
-    char *name = script_analyzer_name_copy(a, script_analyzer_field(node, "member"));
+    name = script_analyzer_name_copy(a, script_analyzer_field(node, "member"));
     bool valid = type->is_type &&
                  script_analyzer_generic_member(a, type->type, name, out);
     free(name);

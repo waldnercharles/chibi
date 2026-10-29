@@ -539,7 +539,7 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         return {storage: StateNumberStorage(forest, text, node), container: 0, record: -1};
     }
     expression: Callable = {name: "", package: document, document: document, node: node, first: 0, count: 0,
-                            result: 0, result_container: 0, result_record: -1, results: 0, waits: false};
+                            result: 0, result_container: 0, result_record: -1, results: 0, waits: false, identity: 0, owner_package: document};
     functions := append(callables, expression);
     expressions := ops;
     expressions.debug = false;
@@ -547,6 +547,8 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     switch EmitBody(forest, text, document, functions, params, &table, members, [], natives, ports, [], [], [], [], names,
                     "", SolidOffsets(text), 0, 0, length(functions) - 1, [], [], [], BodyContext.Unknown, [],
                     expressions, target, queries) {
+        case .Specialize(template, call, arguments, caller_names):
+            return none;
         case .Inferred(value):
             if (value.storage == NumberStorage) {
                 return {storage: StateNumberStorage(forest, text, node), container: 0, record: -1};
@@ -1207,7 +1209,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     }
     callable: Callable = {name: format_text("__query_evaluate_{}", numbered), package: document, document: document,
                           node: node, first: param_first, count: length(captures), result: 0,
-                          result_container: 0, result_record: -1, results: length(fields) + 1, waits: false};
+                          result_container: 0, result_record: -1, results: length(fields) + 1, waits: false, identity: 0, owner_package: document};
     callables.append(callable);
     described: QuerySpec = {node: node, evaluator: evaluator, row: row, description: descriptor, variables: variables,
                             first_capture: param_first, capture_count: length(captures)};

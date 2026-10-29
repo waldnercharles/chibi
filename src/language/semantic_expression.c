@@ -515,12 +515,6 @@ static const char *managed_address_layout(analyzer *a, int expression)
     if (!record || !record->authored_record) {
         return "Managed values require authored record layouts";
     }
-    for (int i = 0; i < record->field_count; i++) {
-        if (record->fields[i].type.storage == PIN_STRUCT) {
-            return "Managed pointers require records without inline record "
-                   "fields";
-        }
-    }
     return NULL;
 }
 static bool addressable_local(analyzer *a, int expression)
@@ -1286,6 +1280,18 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         int index = script_analyzer_lookup(a, node);
         if (index < 0) {
+            char *name = script_analyzer_name_copy(a, node);
+            int callable = script_analyzer_callable_symbol(a, name);
+            free(name);
+            if (callable >= 0 && a->out->symbols[callable].callable_binding) {
+                index = callable;
+            }
+        }
+        if (index >= 0 && a->out->symbols[index].callable_binding) {
+            script_analyzer_diagnostic(a, node, "Callable arguments can only be called or passed to another callable parameter");
+            return script_analyzer_expr_add(a, result);
+        }
+        if (index < 0) {
             int reference = script_analyzer_symbol_reference(a, node, expected);
             if (reference >= 0) {
                 return reference;
@@ -1687,6 +1693,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         result.type = expected;
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
+        script_catalog_type definition = type ? *type : (script_catalog_type){ 0 };
+        type = type ? &definition : NULL;
         if (!type || expected.storage != PIN_STRUCT) {
             script_analyzer_diagnostic(a, node, "Struct literal needs an explicit record or reflected type");
             result.type = script_analyzer_bad_type();

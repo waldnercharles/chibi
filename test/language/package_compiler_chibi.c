@@ -4,6 +4,8 @@
 #include "authoring/source_collection.h"
 #include "backend.h"
 #include "compiler_fixture.h"
+#include "compositional_records.h"
+#include "compositional_records_source.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
@@ -18,6 +20,7 @@
 #include "runtime/arithmetic_definition.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
+#include "runtime/math_definition.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
@@ -62,6 +65,10 @@
 #include <signal.h>
 #include <sys/stat.h>
 extern char **environ;
+#endif
+
+#ifndef CHIBI_CORE_MATH_ROOT
+#define CHIBI_CORE_MATH_ROOT "packages/core/math"
 #endif
 
 /* The authored package compiler, prepared by stage zero, compiles each sample
@@ -135,9 +142,9 @@ typedef struct
     const char *name, *source, *more, *library;
     const char *collection_source, *collection_dependency;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built, lends,
-        drops, same_rejection, c_string_probe, host_effects, update_order,
-        debug_metadata, traced, char_checks;
+    bool core, math, updates, boxed, game, moves, aliases, variants, built,
+        lends, drops, same_rejection, c_string_probe, host_effects,
+        update_order, debug_metadata, traced, char_checks;
     /* Its calls run with the probe natives linked, take no arguments and
      * return one int. */
     bool probe_calls;
@@ -145,6 +152,7 @@ typedef struct
     const char *message;
     const char *oracle_message;
     int line, column, project_modules;
+    int specializations;
 } sample;
 static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
 {
@@ -1076,6 +1084,37 @@ static const sample samples[] = {
       .source = "package facts\nRun :: () -> int { value: int = 65; return "
                 "native.kernel(value); }",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[1]" } } },
+    { .name = "core-math-imported-values",
+      .group = IMPORT_SAMPLES,
+      .math = true,
+      .game = true,
+      .source =
+          "package facts\nimport math \"core:math\"\nimport ease "
+          "\"core:math/ease\"\n"
+          "pub Check :: () -> bool { x: number = 16777215; "
+          "return math.InverseLerp(-1, 16777216, x) == 1 && "
+          "math.InverseLerp(6, 2, 3) == 0.75 && math.Lerp(2, 6, 0.25) == 3 && "
+          "ease.QuadraticInOut(0.5) == 0.5; }\n"
+          "pub Spring :: () -> bool { spring: math.Spring = {position: 1, "
+          "velocity: 0}; "
+          "next := math.AdvanceSpring(spring, 0, 1, 1, 0.125); "
+          "return next.position > 0.8140309 && next.position < 0.8140313 && "
+          "next.velocity > -2.2499655 && next.velocity < -2.2499635; }\n"
+          "pub Narrow :: () -> bool { wide: f64 = 16777217; "
+          "return math.InverseLerp(16777216, 16777218, number(wide)) == 0; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Spring", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Narrow", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "core-math-rejects-implicit-f64-narrowing",
+      .group = IMPORT_SAMPLES,
+      .math = true,
+      .game = true,
+      .source = "package facts\nimport math \"core:math\"\n"
+                "pub Narrow :: (value: f64) -> number { return "
+                "math.InverseLerp(16777216, 16777218, value); }\n",
+      .message = "argument differs from its parameter type",
+      .line = 3,
+      .column = 47 },
     { .name = "array update debug order",
       .group = COLLECTION_SAMPLES,
       .update_order = true,
@@ -3027,6 +3066,399 @@ static const sample samples[] = {
                  { .function = "Make", .arguments = "[2]", .expected = "[{\"tag\":10337135207335990755,\"values\":[{\"x\":4,\"y\":6}]}]" },
                  { .function = "Make", .arguments = "[3]", .expected = "[{\"tag\":16893218631787042844,\"values\":[\"tri\",[1,2,3]]}]" },
                  { .function = "Make", .arguments = "[4]", .expected = "[{\"tag\":16895435817925979816,\"values\":[]}]" } } },
+    { .name = "exported generic functions",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Identity :: (value: int) -> int { return value + 100; }\n"
+                "Main :: (value: int) -> int { return lib.Repeated(value) + "
+                "lib.Identity(value); }\n"
+                "Wide :: (value: i64) -> i64 { return lib.Identity(value); }\n"
+                "First :: () -> int { values: int[] = [7, 2]; return "
+                "lib.First(values); }\n"
+                "Scaled :: () -> int { return lib.Scale(5, 1 + 2) + "
+                "lib.Scale(2, 4); }\n"
+                "Enabled :: () -> int { return lib.Maybe(7, true) + "
+                "lib.Maybe(7, false); }\n",
+      .library = "package lib\n"
+                 "pub Identity :: (value: $T) -> T { local: T = value; return "
+                 "local; }\n"
+                 "pub Repeated :: (value: $T) -> T { return "
+                 "Hidden(Identity(value)); }\n"
+                 "Hidden :: (value: $T) -> T { return value + value; }\n"
+                 "pub First :: (values: $T[]) -> T { return values[0]; }\n"
+                 "pub Scale :: (value: $T, $N: int) -> T { return value * N; "
+                 "}\n"
+                 "pub Maybe :: (value: int, $Enabled: bool) -> int { "
+                 "if Enabled { return value; } return 0; }\n",
+      .calls = { { .function = "Main", .arguments = "[7]", .expected = "[21]" },
+                 { .function = "Wide", .arguments = "[9007199254740993]", .expected = "[9007199254740993]" },
+                 { .function = "First", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
+                 { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "generic collection and optional values preserve ownership",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Nested :: () -> int { rows: int[][] = [[1, 2], [3]]; "
+                "head := lib.First(rows); head.append(7); head[0] = 8; "
+                "return rows[0][0] * 1000 + rows[0].length() * 100 + "
+                "head[0] * 10 + head.length(); }\n"
+                "Whole :: () -> int { rows: int[][] = [[1, 2], [3]]; "
+                "copied := lib.Identity(rows); copied[1].append(4); "
+                "return rows[1].length() * 100 + copied[1].length() * 10 + "
+                "copied[1][1]; }\n"
+                "Present :: () -> int { values: int[] = [3, 4]; "
+                "selected := lib.Identity(values[0..<2]); if selected { "
+                "selected[0] = 8; return values[0] * 100 + selected[0] * 10 + "
+                "selected.length(); } return -1; }\n"
+                "Absent :: () -> int { values: int[] = [3, 4]; "
+                "selected := lib.Identity(values[0..<3]); if selected { "
+                "return -1; } return values[0]; }\n"
+                "Empty :: () -> int { values: int[] = [3, 4]; "
+                "selected := lib.Identity(values[2..<2]); if selected { "
+                "return selected.length() + 1; } return -1; }\n"
+                "Fallback :: () -> int { values: int[] = [3, 4]; "
+                "fallback: int[] = [9]; present := lib.OrElse(values[0..<1], "
+                "fallback); absent := lib.OrElse(values[0..<3], fallback); "
+                "absent[0] = 7; return present[0] * 100 + fallback[0] * 10 + "
+                "absent[0]; }\n",
+      .library = "package lib\n"
+                 "pub First :: (values: $T[]) -> T { return values[0]; }\n"
+                 "pub Identity :: (value: $T) -> T { return value; }\n"
+                 "pub OrElse :: (value: $T?, fallback: T) -> T { return "
+                 "value ?? fallback; }\n",
+      .calls = { { .function = "Nested", .arguments = "[]", .expected = "[1283]" },
+                 { .function = "Whole", .arguments = "[]", .expected = "[124]" },
+                 { .function = "Present", .arguments = "[]", .expected = "[382]" },
+                 { .function = "Absent", .arguments = "[]", .expected = "[3]" },
+                 { .function = "Empty", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Fallback", .arguments = "[]", .expected = "[397]" } } },
+    { .name = "generic specialization identities are reused across documents",
+      .group = IMPORT_SAMPLES,
+      .specializations = 2,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Flat :: () -> int { values: int[] = [3, 5]; return "
+                "lib.First(values) + Again(values) + lib.First(values); }\n"
+                "Nested :: () -> int { rows: int[][] = [[4], [6]]; "
+                "head := lib.First(rows); again := NestedAgain(rows); "
+                "return head[0] * 10 + again[0]; }\n",
+      .more = "package facts\nimport tool \"project:lib\"\n"
+              "Again :: (values: int[]) -> int { return tool.First(values); }\n"
+              "NestedAgain :: (rows: int[][]) -> int[] { return "
+              "tool.First(rows); }\n",
+      .library = "package lib\npub First :: (values: $T[]) -> T { return "
+                 "values[0]; }\n",
+      .calls = { { .function = "Flat", .arguments = "[]", .expected = "[9]" },
+                 { .function = "Nested", .arguments = "[]", .expected = "[44]" } } },
+    { .name = "forwarded callbacks preserve sequence values",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Count :: (input: int[]) -> int { return input.length(); }\n"
+                "Change :: (input: int[]) -> int[] { input.append(9); "
+                "input[0] = 7; return input; }\n"
+                "ReadNamed :: (input: int[]) -> int { return "
+                "lib.ReadForward(input, Count); }\n"
+                "ReadInline :: (input: int[]) -> int { return "
+                "lib.ReadForward(input, (row: int[]) => row.length()); }\n"
+                "CopiedNamed :: () -> int { original: int[] = [1, 2]; "
+                "copied := lib.TransformForward(original, Change); return "
+                "original[0] * 1000 + original.length() * 100 + copied[0] * "
+                "10 + copied.length(); }\n"
+                "CopiedInline :: () -> int { original: int[] = [1, 2]; "
+                "copied := lib.TransformForward(original, (row: int[]) { "
+                "row.append(9); row[0] = 8; return row; }); return "
+                "original[0] * 1000 + original.length() * 100 + copied[0] * "
+                "10 + copied.length(); }\n",
+      .library = "package lib\n"
+                 "pub ReadForward :: (input: $T, operation: fn(data: T) -> "
+                 "int) -> int { return Read(input, operation); }\n"
+                 "Read :: (input: $T, operation: fn(data: T) -> int) -> int { "
+                 "return operation(data: input); }\n"
+                 "pub TransformForward :: (input: $T, operation: fn(data: T) "
+                 "-> T) -> T { return Transform(input, operation); }\n"
+                 "Transform :: (input: $T, operation: fn(data: T) -> T) -> T { "
+                 "return operation(data: input); }\n",
+      .calls = { { .function = "ReadNamed", .arguments = "[[1,2,3]]", .expected = "[3]" },
+                 { .function = "ReadNamed", .arguments = "[[]]", .expected = "[0]" },
+                 { .function = "ReadInline", .arguments = "[[1,2]]", .expected = "[2]" },
+                 { .function = "ReadInline", .arguments = "[[]]", .expected = "[0]" },
+                 { .function = "CopiedNamed", .arguments = "[]", .expected = "[1273]" },
+                 { .function = "CopiedInline", .arguments = "[]", .expected = "[1283]" } } },
+    { .name = "forwarded callback labels survive erased and reordered arguments",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Join :: (left: int, right: int) -> int { return left * 100 + "
+                "right; }\n"
+                "Mark :: (order: ^int, digit: int, value: int) -> int { "
+                "order^ = order^ * 10 + digit; return value; }\n"
+                "Positional :: () -> int { return lib.Forward(2, 3, Join, "
+                "4); }\n"
+                "Named :: () -> int { order := 0; result := "
+                "lib.Forward(tail: Mark(&order, 1, 4), operation: Join, "
+                "input: Mark(&order, 2, 3), Count: 2); return order * 1000 + "
+                "result; }\n"
+                "Inline :: () -> int { return lib.Forward(2, 3, "
+                "(a: int, b: int) => a * 10 + b, 4); }\n",
+      .library = "package lib\n"
+                 "pub Forward :: ($Count: int, input: $T, operation: "
+                 "fn(first: T, second: T) -> T, tail: T) -> T { return "
+                 "Apply(operation, Count, input, tail); }\n"
+                 "Apply :: (operation: fn(first: int, second: int) -> int, "
+                 "$Offset: int, input: int, tail: int) -> int { return "
+                 "operation(second: tail + Offset, first: input); }\n",
+      .calls = { { .function = "Positional", .arguments = "[]", .expected = "[306]" },
+                 { .function = "Named", .arguments = "[]", .expected = "[12306]" },
+                 { .function = "Inline", .arguments = "[]", .expected = "[36]" } } },
+    { .name = "inline pointer parameter shadows enclosing pointer parameter",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Bump :: (value: ^int) -> int { value^ += 1; return value^; }\n"
+                "Held :: (value: ^int) -> int { pointer := value; pointer^ += "
+                "2; return pointer^; }\n"
+                "Observe :: (value: ^int) -> int { other := 7; observed := "
+                "lib.Apply(&other, (value: ^int) -> int { value^ += 2; return "
+                "value^; }); return value^ * 100 + observed * 10 + other; }\n"
+                "Main :: () -> int { original := 3; observed := "
+                "Observe(&original); return observed * 10 + original; }\n"
+                "Scoped :: () -> int { original := 3; observed := "
+                "lib.Apply(&original, Bump); return observed * 10 + original; }\n"
+                "Managed :: () -> int { original := 3; observed := "
+                "lib.Apply(&original, Held); return observed * 10 + original; }\n",
+      .library = "package lib\npub Apply :: (input: ^int, function: "
+                 "fn(value: ^int) -> int) -> int { return function(input); }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[3993]" },
+                 { .function = "Scoped", .arguments = "[]", .expected = "[44]" },
+                 { .function = "Managed", .arguments = "[]", .expected = "[55]" } } },
+    { .name = "non-escaping callable algorithms",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Less :: (a: int, b: int) -> bool { return a < b; }\n"
+                "Positive :: (value: int) -> bool { return value > 0; }\n"
+                "Named :: () -> int { values: int[] = [3, 1, 2]; sorted := "
+                "lib.Sorted(values, Less); "
+                "if lib.Any(sorted, Positive) { return values[0] * 1000 + "
+                "sorted[0] * 100 + sorted[1] * 10 + sorted[2]; } return 0; }\n"
+                "Inline :: () -> int { values: int[] = [3, 1, 2]; sorted := "
+                "lib.Sorted(values, (a: int, b: int) => a > b); "
+                "if lib.Any(sorted, (value: int) => value == 2) { return "
+                "sorted[0] * 100 + sorted[1] * 10 + sorted[2]; } return 0; }\n"
+                "Gain :: (input: number) -> number { return input * 2.0; }\n"
+                "ShaderHelper :: () -> number { return lib.Remap(0.25, Gain); "
+                "}\n"
+                "LoopShadow :: () -> int { item := 9; return lib.Remap(3, "
+                "(value: int) { total := 0; for item in 0..<value { total += "
+                "item; } return total; }) + item; }\n",
+      .library = "package lib\n"
+                 "pub Sorted :: (values: $T[], less: fn(a: T, b: T) -> bool) "
+                 "-> T[] {\n"
+                 "  result := values; i := 1; while i < length(result) { j := "
+                 "i; "
+                 "while j > 0 && less(result[j], result[j - 1]) { item: T = "
+                 "result[j]; result[j] = result[j - 1]; result[j - 1] = item; "
+                 "j -= 1; } i += 1; } return result; }\n"
+                 "pub Any :: (values: $T[], predicate: fn(value: T) -> bool) "
+                 "-> bool { return AnyInternal(values, predicate); }\n"
+                 "AnyInternal :: (values: $T[], predicate: fn(value: T) -> "
+                 "bool) -> bool { for value in values { if predicate(value) { "
+                 "return true; } } return false; }\n"
+                 "pub Remap :: (value: $T, transform: (fn(value: T) -> T)) -> "
+                 "T { return transform(value: value); }\n",
+      .calls = { { .function = "Named", .arguments = "[]", .expected = "[3123]" },
+                 { .function = "Inline", .arguments = "[]", .expected = "[321]" },
+                 { .function = "ShaderHelper", .arguments = "[]", .expected = "[0.5]" },
+                 { .function = "LoopShadow", .arguments = "[]", .expected = "[12]" } } },
+    /* No declaration needs specialization. Ordinary body typing must reject
+     * the lambda at its source location instead of treating its parameter as
+     * a parameter of Run. */
+    { .name = "inline function cannot satisfy scalar parameter without templates",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Take :: (value: int) -> int { return value; }\n"
+                "Run :: () -> int { return Take((value: int) => value); }\n",
+      .message = "Inline functions may only be passed to a callable parameter",
+      .line = 3,
+      .column = 32 },
+    { .name = "callable capture rejection",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Main :: (limit: int) -> bool { return lib.Apply(3, (value: "
+                "int) => value > limit); }\n",
+      .library = "package lib\npub Apply :: (value: int, predicate: fn(value: "
+                 "int) -> bool) -> bool { return predicate(value); }\n",
+      .message = "Inline functions cannot capture enclosing locals",
+      .line = 3,
+      .column = 76 },
+    { .name = "callable pattern bindings shadow enclosing locals",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Choice :: union { Some(amount: int) | None }\n"
+                "IfPattern :: () -> int { payload := 90; return lib.Remap(3, "
+                "(value: int) { choice := Choice.Some(value); if choice is "
+                ".Some(payload) && payload > 0 { return payload + 1; } return "
+                "0; }) + payload; }\n"
+                "WhilePattern :: () -> int { payload := 90; return "
+                "lib.Remap(3, "
+                "(value: int) { choice := Choice.Some(value); total := 0; "
+                "while "
+                "choice is .Some(payload) && payload > 0 { total += payload; "
+                "choice = Choice.Some(payload - 1); } return total; }) + "
+                "payload; }\n",
+      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
+                 "int) -> int) -> int { return transform(value); }\n",
+      .calls = { { .function = "IfPattern", .arguments = "[]", .expected = "[94]" },
+                 { .function = "WhilePattern", .arguments = "[]", .expected = "[96]" } } },
+    { .name = "callable single result names do not change signature",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Named :: () -> (answer: int) { return 7; }\n"
+                "Unnamed :: () -> int { return 11; }\n"
+                "Main :: () -> int { return lib.UnnamedContract(Named) * 100 + "
+                "lib.NamedContract(Unnamed); }\n"
+                "Inline :: () -> int { answer := 90; return "
+                "lib.UnnamedContract(() -> (answer: int) { answer = 13; "
+                "return; }) + "
+                "lib.NamedContract(() => 17) + answer; }\n",
+      .library = "package lib\n"
+                 "pub UnnamedContract :: (function: fn() -> int) -> int { "
+                 "return function(); }\n"
+                 "pub NamedContract :: (function: fn() -> (expected: int)) -> "
+                 "int { return function(); }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[711]" },
+                 { .function = "Inline", .arguments = "[]", .expected = "[120]" } } },
+    { .name = "compile-time arguments retain lexical constant scope",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Factor :: 3;\n"
+                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
+                "Maybe :: (value: int, $Flag: bool) -> int { if Flag { return "
+                "value; } return 0; }\n"
+                "Forward :: ($Flag: bool) -> int { return Maybe(1, Flag); }\n"
+                "Main :: () -> int { return Scale(2, Factor) + Maybe(4, "
+                "true) + Scale(1, lib.Factor) + Forward(true); }\n",
+      .library = "package lib\npub Factor :: 5;\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[16]" } } },
+    { .name = "compile-time argument cannot use shadowing parameter",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nFactor :: 3;\n"
+                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
+                "Main :: (Factor: int) -> int { return Scale(2, Factor); }\n",
+      .message = "constant value must be an integer expression",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "compile-time argument cannot use shadowing local",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nFactor :: 3;\n"
+                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
+                "Main :: () -> int { Factor := 5; return Scale(2, Factor); }\n",
+      .message = "constant value must be an integer expression",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "compile-time argument cannot use shadowed import alias",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Options :: struct { Factor: int; }\n"
+                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
+                "Main :: (lib: Options) -> int { return Scale(2, lib.Factor); "
+                "}\n",
+      .library = "package lib\npub Factor :: 3;\n",
+      .message = "constant value must be an integer expression",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "boolean compile-time argument cannot use shadowing parameter",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Maybe :: (value: int, $Flag: bool) -> int { if Flag { return "
+                "value; } return 0; }\n"
+                "Main :: (Enabled: bool) -> int { return Maybe(2, Enabled); "
+                "}\n",
+      .message = "A boolean compile-time argument requires a constant boolean "
+                 "value",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "boolean compile-time argument cannot use shadowing local",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Maybe :: (value: int, $Flag: bool) -> int { if Flag { return "
+                "value; } return 0; }\n"
+                "Forward :: ($Enabled: bool) -> int { if true { Enabled := "
+                "false; return Maybe(2, Enabled); } return 0; }\n"
+                "Main :: () -> int { return Forward(true); }\n",
+      .message = "A boolean compile-time argument requires a constant boolean "
+                 "value",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "callable pattern binding cannot escape consequence",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Choice :: union { Some(amount: int) | None }\n"
+                "Main :: (payload: int) -> int { return lib.Remap(3, (value: "
+                "int) { choice := Choice.Some(value); if choice is "
+                ".Some(payload) "
+                "{ return value; } return payload; }); }\n",
+      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
+                 "int) -> int) -> int { return transform(value); }\n",
+      .message = "Inline functions cannot capture enclosing locals",
+      .line = 4,
+      .column = 151 },
+    { .name = "callable capture respects lexical scopes",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\noffset :: 1;\nimport lib \"project:lib\"\n"
+                "Main :: (offset: int) -> int { return lib.Remap(3, (value: "
+                "int) { if false { offset := 9; } return value + offset; }); "
+                "}\n",
+      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
+                 "int) -> int) -> int { return transform(value); }\n",
+      .message = "Inline functions cannot capture enclosing locals",
+      .line = 4,
+      .column = 108 },
+    { .name = "callable signature rejection",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Wrong :: (value: int) -> int { return value; }\n"
+                "Main :: () -> bool { return lib.Apply(3, Wrong); }\n",
+      .library = "package lib\npub Apply :: (value: int, predicate: fn(value: "
+                 "int) -> bool) -> bool { return predicate(value); }\n",
+      .message = "Function argument does not match the callable parameter "
+                 "signature",
+      .line = 4,
+      .column = 42 },
+    { .name = "callable inferred result rejects contextual widening",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Main :: () -> number { return lib.Apply(2.0, (value: number) "
+                "=> 1); }\n",
+      .library = "package lib\npub Apply :: (value: number, transform: "
+                 "fn(value: number) -> number) -> number { return "
+                 "transform(value); }\n",
+      .message = "Function argument does not match the callable parameter "
+                 "signature",
+      .line = 3,
+      .column = 46 },
+    { .name = "callable consumer cannot suspend",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { return 1; }\nMain :: () { pending := "
+                "lib.Apply(One); }\n",
+      .library = "package lib\npub Apply :: (function: fn() -> int) -> int { "
+                 "yield; return function(); }\n",
+      .message = "Non-escaping callable parameters require synchronous "
+                 "function bodies",
+      .line = 2,
+      .column = 1 },
+    { .name = "callable invocation cannot inherit target defaults",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Pair :: (a: int = 1, b: int = 2) -> int { return a + b; "
+                "}\nMain :: () -> int { return lib.Apply(Pair); }\n",
+      .library = "package lib\npub Apply :: (function: fn(a: int, b: int) -> "
+                 "int) -> int { return function(b: 5); }\n",
+      .message = "call has the wrong number of arguments",
+      .line = 2,
+      .column = 68 },
     { .name = "imports",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -4403,11 +4835,12 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
             CORE_DEFINITION_PACK,          CSTRING_PACK
         };
         char error[256];
-        native_definition_pack selected[6];
+        native_definition_pack selected[7];
         int count = 4;
         memcpy(selected, packs, (size_t)count * sizeof *selected);
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
+            selected[count++] = NATIVE_MATH_DEFINITION_PACK;
         }
         if (probe) {
             selected[count++] = CSTRING_PACK;
@@ -4529,6 +4962,30 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
             s->collection_dependency,
             strlen(s->collection_dependency)
         };
+    }
+    if (s->math) {
+        static char sources[3][32768];
+        static const char *const names[] = { "Math.chibi", "Spring.chibi", "ease/Ease.chibi" };
+        static const char *const paths[] = { "/sdk/core/math/Math.chibi",
+                                             "/sdk/core/math/Spring.chibi",
+                                             "/sdk/core/math/ease/Ease.chibi" };
+        const char *root = getenv("CHIBI_CORE_MATH_ROOT");
+        if (!root || !root[0]) {
+            root = CHIBI_CORE_MATH_ROOT;
+        }
+        for (int i = 0; i < 3; i++) {
+            char path[4096];
+            int n = snprintf(path, sizeof path, "%s/%s", root, names[i]);
+            assert(n > 0 && (size_t)n < sizeof path && count < SAMPLE_INPUTS);
+            FILE *file = fopen(path, "rb");
+            assert(file);
+            size_t length = fread(sources[i], 1, sizeof sources[i] - 1, file);
+            bool read = !ferror(file) && feof(file);
+            fclose(file);
+            assert(read);
+            sources[i][length] = 0;
+            inputs[count++] = (source_package_input){ paths[i], sources[i], length };
+        }
     }
     return count;
 }
@@ -4668,6 +5125,89 @@ static uint64_t function_id(const char *name)
     snprintf(text, sizeof text, "project:facts:1:%s:callable", name);
     return script_catalog_id("package-symbol", text);
 }
+/* Math packages link the ordinary native libm pack, outside the compiler
+ * host's intentionally restricted JSON/text/array execution profile. */
+static bool run_math(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
+{
+    REQUIRE(!strcmp(call->arguments, "[]") && !strcmp(call->expected, "[true]"));
+    native_prepared_context native = { .native = linked[1][0] };
+    execution_prepared_linker linker = native_capabilities_prepared_linker(&native);
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root;
+    char error[256];
+    behavior_backend mode = backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE;
+    package_collection *collection = compiler_artifact_read(
+        bytes,
+        length,
+        &linker,
+        mode,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!collection) {
+        fprintf(stderr, "math artifact: %s\n", error);
+    }
+    REQUIRE(collection);
+    const behavior_function *body = NULL;
+    for (int i = 0; i < package_collection_count(collection); i++) {
+        execution_module *module = package_collection_module(collection, i);
+        if (execution_module_id(module) != root) {
+            continue;
+        }
+        for (int j = 0; j < execution_module_function_count(module); j++) {
+            execution_module_function_info info = execution_module_function_at(module, j);
+            if (info.id == function_id(call->function)) {
+                body = info.body;
+            }
+        }
+    }
+    REQUIRE(body);
+    arena memory = { 0 };
+    behavior_managed_heap heap = { 0 };
+    behavior_managed_heap_init(&heap);
+    behavior_function_activation activation = { 0 };
+    if (behavior_function_resumable(body)) {
+        behavior_function_activation_init(body, &activation);
+    }
+    pin_value answer = { .type = PIN_BOOL };
+    behavior_function_context context = {
+        .results = &answer,
+        .activation = behavior_function_resumable(body) ? &activation : NULL,
+        .managed_heap = &heap,
+        .budget = TARGET_BUDGET
+    };
+    behavior_function_bind_storage(&context, &memory);
+    REQUIRE(behavior_function_bind(body, &context, NULL, 0));
+    behavior_run_scope counts = { 0 };
+    behavior_run_scope_begin(&counts);
+    int status = behavior_function_run(body, &context, backend != 0);
+    behavior_run_scope_end(&counts);
+    bool passed = status == FLOW_OK && context.returned && answer.type == PIN_BOOL &&
+                  answer.b && !counts.counts.inspection_bytecode_fallbacks &&
+                  (!backend || ((TEST_COMPILED_BACKEND == BEHAVIOR_WASM
+                                     ? counts.counts.wasm_entries > 0
+                                     : counts.counts.sljit_entries > 0) &&
+                                !counts.counts.bytecode_entries));
+    if (!passed) {
+        fprintf(
+            stderr,
+            "math artifact %s backend=%d status=%d: %s\n",
+            call->function,
+            backend,
+            status,
+            context.error_message ? context.error_message : "wrong result"
+        );
+    }
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
+    arena_free(&memory);
+    package_collection_free(collection);
+    REQUIRE(passed);
+    return true;
+}
 static bool run(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
 {
     char error[256];
@@ -4751,11 +5291,46 @@ static bool same_point(const behavior_source_point *x, const behavior_source_poi
  * statement points, as many of each, in any order. */
 static bool same_points(const execution_module *expected, const execution_module *actual)
 {
+    if (expected->plan.function_count != actual->plan.function_count) {
+        fprintf(
+            stderr,
+            "function count module %016llx: stage zero=%d stage one=%d\n",
+            (unsigned long long)execution_module_id(actual),
+            expected->plan.function_count,
+            actual->plan.function_count
+        );
+        for (int i = 0; i < expected->plan.function_count; i++) {
+            fprintf(
+                stderr,
+                "  stage zero function %016llx\n",
+                (unsigned long long)expected->plan.functions[i].id
+            );
+        }
+        for (int i = 0; i < actual->plan.function_count; i++) {
+            fprintf(
+                stderr,
+                "  stage one function %016llx\n",
+                (unsigned long long)actual->plan.functions[i].id
+            );
+        }
+    }
     REQUIRE(expected->plan.function_count == actual->plan.function_count);
     bool all_alike = true;
     for (int i = 0; i < expected->plan.function_count; i++) {
-        const behavior_function *x = expected->plan.functions[i].body,
-                                *y = actual->plan.functions[i].body;
+        const behavior_function *x = expected->plan.functions[i].body, *y = NULL;
+        for (int j = 0; !y && j < actual->plan.function_count; j++) {
+            if (actual->plan.functions[j].id == expected->plan.functions[i].id) {
+                y = actual->plan.functions[j].body;
+            }
+        }
+        if (!y) {
+            fprintf(
+                stderr,
+                "stage one lacks function %016llx\n",
+                (unsigned long long)expected->plan.functions[i].id
+            );
+        }
+        REQUIRE(y);
         int count = acount(y->source_points);
         bool *used = xcalloc((size_t)count + 1, sizeof *used);
         bool alike = true;
@@ -4849,8 +5424,20 @@ static bool same_watches(const execution_module *expected, const execution_modul
     REQUIRE(expected->plan.function_count == actual->plan.function_count);
     bool all_alike = true;
     for (int i = 0; i < expected->plan.function_count; i++) {
-        const behavior_function *x = expected->plan.functions[i].body,
-                                *y = actual->plan.functions[i].body;
+        const behavior_function *x = expected->plan.functions[i].body, *y = NULL;
+        for (int j = 0; !y && j < actual->plan.function_count; j++) {
+            if (actual->plan.functions[j].id == expected->plan.functions[i].id) {
+                y = actual->plan.functions[j].body;
+            }
+        }
+        if (!y) {
+            fprintf(
+                stderr,
+                "stage one lacks function %016llx\n",
+                (unsigned long long)expected->plan.functions[i].id
+            );
+        }
+        REQUIRE(y);
         int count = acount(y->source_watches);
         bool *used = xcalloc((size_t)count + 1, sizeof *used);
         bool alike = count == acount(x->source_watches);
@@ -4887,7 +5474,8 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK,
-                                       CORE_DEFINITION_PACK };
+                                       CORE_DEFINITION_PACK,
+                                       NATIVE_MATH_DEFINITION_PACK };
     /* Only this bytecode owner is serialized and compared below. Each
      * caller still chooses its original target execution backends. */
     REQUIRE(compiler_fixture_prepare_backends(
@@ -4896,7 +5484,9 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
         inputs,
         count,
         packs,
-        s->game ? 4 : 3
+        s->math   ? 5
+        : s->game ? 4
+                  : 3
     ));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
@@ -5656,6 +6246,39 @@ static package_collection *read_packages(
     }
     return packages;
 }
+/* Repeated equivalent bindings share one emitted specialization, while
+ * distinct bindings have different IDs. Source points separately compare
+ * those IDs with stage zero's independently prepared modules. */
+static bool reuses_specializations(const unsigned char *bytes, size_t length, int expected)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    uint64_t *ids = NULL;
+    bool distinct = true;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info function = execution_module_function_at(module, i);
+            if (strncmp(function.entry, "__generic_", 10)) {
+                continue;
+            }
+            for (int j = 0; j < acount(ids); j++) {
+                distinct = distinct && ids[j] != function.id;
+            }
+            apush(ids, function.id);
+        }
+    }
+    int count = acount(ids);
+    afree(ids);
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    if (!distinct || count != expected) {
+        fprintf(stderr, "package compiler specialization reuse: %d distinct=%d, expected %d\n", count, distinct, expected);
+    }
+    REQUIRE(distinct && count == expected);
+    return true;
+}
 /* A native never changes a value it is passed, so a call lends it a local,
  * and the result it returns is a temporary a local takes over. An element it
  * is passed is copied. */
@@ -5774,6 +6397,9 @@ static bool call_sample(
     int backend
 )
 {
+    if (s->math) {
+        return run_math(bytes, length, call, backend);
+    }
     return s->probe_calls ? run_probe(bytes, length, call, backend)
                           : run(bytes, length, call, backend);
 }
@@ -6489,6 +7115,8 @@ static bool run_samples(sample_group group, int b)
         size_t expected_length = 0;
         bool ran = (!s->char_checks || char_failures_use_data_status(bytes, length)) &&
                    (!s->updates || updates_in_place(bytes, length, s->name)) &&
+                   (!s->specializations ||
+                    reuses_specializations(bytes, length, s->specializations)) &&
                    (!s->boxed || reads_boxed(bytes, length)) &&
                    (!s->moves || moves_fresh_values(bytes, length)) &&
                    (!s->aliases || reads_in_place(bytes, length)) &&
@@ -6498,7 +7126,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->drops || drops_only_collections(bytes, length)) &&
                    ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
-                     points_like_oracle(bytes, length, s->host_effects)));
+                     (s->math || points_like_oracle(bytes, length, s->host_effects))));
         bool hosted = !s->traced || !s->c_string_probe;
         for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
@@ -12229,6 +12857,28 @@ static const char
     SCALAR_SOURCE[] = "package scalar\n"
                       "Main :: () -> int { return Pick(7, true); }\n"
                       "Pick :: (x: int, b: bool) -> int { return x; }\n";
+/* Two concrete Remap instances, one with a named function and one with an
+ * inline function. Main's independent arithmetic oracle is 50 + 150 = 200. */
+static const char CASES_PACKAGE[] = "project:scalar_cases";
+static const char GENERIC_SCALAR_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return int(Named(0.25) * 100) + int(Inline(0.5) "
+         "* 100); }\n"
+         "Named :: (sample: number) -> number { return Remap(sample, Gain); }\n"
+         "Inline :: (sample: number) -> number { return Remap(sample, (value: "
+         "number) => value * 3); }\n"
+         "Remap :: (sample: $T, transform: fn(value: T) -> T) -> T { return "
+         "transform(value: sample); }\n"
+         "Gain :: (input: number) -> number { return input * 2; }\n";
+static const char GENERIC_INTEGER_SCALAR_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Named(25) + Inline(50); }\n"
+         "Named :: (sample: int) -> int { return Remap(sample, Gain); }\n"
+         "Inline :: (sample: int) -> int { return Remap(sample, (value: int) "
+         "=> value * 3); }\n"
+         "Remap :: (sample: $T, transform: fn(value: T) -> T) -> T { return "
+         "transform(value: sample); }\n"
+         "Gain :: (input: int) -> int { return input * 2; }\n";
 /* A guarded module as CollectScalar gives it: Pick's guard compares its
  * parameters and its arm calls Id. */
 static const char GUARD_SOURCE[] = "package scalar\n"
@@ -13455,6 +14105,56 @@ static bool unioned_rows(const pin_value *rows)
     REQUIRE(scalar_field(guard_row(rows, UNION_H_PAYLOAD), "value").i == 1);
     return true;
 }
+/* Every produced call names a concrete numeric function, and erased
+ * callable arguments never become runtime parameters or operand rows. */
+static bool generic_scalar_rows(const pin_value *rows)
+{
+    const pin_array *array = rows->ptr;
+    REQUIRE(array->count > 1);
+    pin_value *document = guard_row(rows, 1);
+    if (scalar_field(document, "kind").i == SCALAR_REJECTION_ROW) {
+        fprintf(
+            stderr,
+            "generic scalar: %s\n",
+            pin_text(scalar_field(document, "text")).bytes
+        );
+    }
+    REQUIRE(array->count > 2);
+    pin_value *first = guard_row(rows, 2);
+    REQUIRE(scalar_field(first, "kind").i == SCALAR_FUNCTION_ROW);
+    pin_value *functions[8];
+    int count = 0, calls = 0;
+    for (int i = 2; i < array->count; i++) {
+        pin_value *row = guard_row(rows, i);
+        if (scalar_field(row, "kind").i != SCALAR_FUNCTION_ROW) {
+            continue;
+        }
+        REQUIRE(count < 8);
+        functions[count++] = row;
+        REQUIRE(scalar_field(row, "literal").i64 == 0);
+        REQUIRE(scalar_field(row, "count").i <= 1);
+    }
+    REQUIRE(count == 7);
+    for (int i = 2; i < array->count; i++) {
+        pin_value *row = guard_row(rows, i);
+        if (scalar_field(row, "kind").i != SCALAR_CALL_ROW) {
+            continue;
+        }
+        int target = scalar_field(row, "value").i;
+        REQUIRE(target >= 0 && target < count);
+        REQUIRE(
+            scalar_field(row, "count").i ==
+            scalar_field(functions[target], "count").i
+        );
+        REQUIRE(pin_text_equal(
+            pin_text(scalar_field(row, "name")),
+            pin_text(scalar_field(functions[target], "name"))
+        ));
+        calls++;
+    }
+    REQUIRE(calls == 6);
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
  * them as LLVM IR that keeps the call, and validates guarded and arithmetic
@@ -13464,17 +14164,19 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
         looped[2], switched[2], recorded[2], unioned[2], stringed[2], texted[2],
-        formatted[2], asserted[2];
-    const char *const texts[] = { SCALAR_SOURCE,       GUARD_SOURCE,
-                                  ARITHMETIC_SOURCE,   WIDTH_SOURCE,
-                                  CONTROL_ROWS_SOURCE, LOOP_ROWS_SOURCE,
-                                  SWITCH_ROWS_SOURCE,  RECORD_ROWS_SOURCE,
-                                  UNION_ROWS_SOURCE,   STRING_ROWS_SOURCE,
-                                  TEXT_ROWS_SOURCE,    FORMAT_ROWS_SOURCE,
-                                  ASSERT_ROWS_SOURCE };
-    pin_value *outputs[] = { produced, guarded,   computed, widened, controlled,
-                             looped,   switched,  recorded, unioned, stringed,
-                             texted,   formatted, asserted };
+        formatted[2], asserted[2], specialized[2], specialized_integer[2];
+    const char *const texts[] = {
+        SCALAR_SOURCE,      GUARD_SOURCE,          ARITHMETIC_SOURCE,
+        WIDTH_SOURCE,       CONTROL_ROWS_SOURCE,   LOOP_ROWS_SOURCE,
+        SWITCH_ROWS_SOURCE, RECORD_ROWS_SOURCE,    UNION_ROWS_SOURCE,
+        STRING_ROWS_SOURCE, TEXT_ROWS_SOURCE,      FORMAT_ROWS_SOURCE,
+        ASSERT_ROWS_SOURCE, GENERIC_SCALAR_SOURCE, GENERIC_INTEGER_SCALAR_SOURCE
+    };
+    pin_value *outputs[] = { produced, guarded,     computed,
+                             widened,  controlled,  looped,
+                             switched, recorded,    unioned,
+                             stringed, texted,      formatted,
+                             asserted, specialized, specialized_integer };
     for (int b = 0; b < 2; b++) {
         pin_value args[SCALAR_ARGUMENTS];
         REQUIRE(scalar_arguments(b, "Scalar.chibi", text(SCALAR_SOURCE), args));
@@ -13497,7 +14199,26 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
     arena_free(&input);
     const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
     REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
+    const source_package_input oracle[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, oracle, (int)(sizeof oracle / sizeof *oracle)));
     for (int b = 0; b < 2; b++) {
+        REQUIRE(generic_scalar_rows(&specialized[b]));
+        REQUIRE(validated(b, &specialized[b], ""));
+        REQUIRE(generic_scalar_rows(&specialized_integer[b]));
+        REQUIRE(validated(b, &specialized_integer[b], ""));
+        pin_value expected;
+        REQUIRE(compiler_fixture_call(
+            &corpus,
+            b,
+            CASES_PACKAGE,
+            "Value",
+            &specialized_integer[b],
+            1,
+            COMPILE_BUDGET,
+            &input,
+            &expected
+        ));
+        REQUIRE(expected.type == PIN_I64 && expected.i64 == 200);
         const pin_array *rows = produced[b].ptr;
         REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && arena_contains(&detached, rows));
         REQUIRE(rows->count == 12 && arena_contains(&detached, rows->record));
@@ -14219,7 +14940,6 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     REQUIRE(compiler_fixture_tests(&consumer));
     return true;
 }
-static const char CASES_PACKAGE[] = "project:scalar_cases";
 /* A shared wrong result is not an oracle. Each executed value must match
  * the fixture's literal, including Main's value. */
 static bool scalar_results_match(const int64_t values[4], int64_t expected)
@@ -20747,5 +21467,110 @@ void test_language_package_compiler_chibi_native_arguments()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(native_arguments_authored_contract);
+    pu_clear_setup();
+}
+
+TEST_CASE(package_compiler_compositional_records)
+{
+    REQUIRE(prepare());
+    /* The sample host names its root package facts. Change only the package
+     * declaration so both stages execute the authored fixture's assertions. */
+    const char *body = strchr(COMPOSITIONAL_RECORDS_SOURCE, '\n');
+    REQUIRE(body);
+    char source[sizeof COMPOSITIONAL_RECORDS_SOURCE + 16];
+    int used = snprintf(source, sizeof source, "package facts\n%s", body + 1);
+    REQUIRE(used > 0 && (size_t)used < sizeof source);
+    const sample s = { .name = "compositional records", .source = source, .game = true };
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(&s, inputs);
+    const sample_call call = { .function = "Main", .arguments = "[]", .expected = "[0]" };
+    for (int b = 0; b < 2; b++) {
+        pin_value out;
+        REQUIRE(compile(b, true, false, false, inputs, count, COMPILE_BUDGET, &out));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value);
+        if (value->tag == tag(b, "Rejected")) {
+            pin_value message, line, column;
+            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(&value->values[0], "line", &line));
+            REQUIRE(get(&value->values[0], "column", &column));
+            fprintf(
+                stderr,
+                "compositional stage one: %s at %d:%d\n",
+                pin_text(message).bytes,
+                line.i,
+                column.i
+            );
+        }
+        REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+        size_t length;
+        unsigned char *bytes = closure_bytes(value, &length);
+        arena_free(&detached);
+        bool passed = true;
+        for (int backend = 0; passed && backend < 2; backend++) {
+            passed = run(bytes, length, &call, backend);
+        }
+        free(bytes);
+        REQUIRE(passed);
+        const source_package_input rejected = {
+            "facts/Main.chibi",
+            COMPOSITIONAL_RECORD_ALIAS_REJECTION,
+            strlen(COMPOSITIONAL_RECORD_ALIAS_REJECTION)
+        };
+        REQUIRE(compile(b, false, false, false, &rejected, 1, COMPILE_BUDGET, &out));
+        value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
+        pin_value message;
+        REQUIRE(get(&value->values[0], "message", &message));
+        if (!strstr(pin_text(message).bytes, "Nullable pointer requires a presence guard")) {
+            fprintf(
+                stderr,
+                "compositional stage-one alias rejection: %s\n",
+                pin_text(message).bytes
+            );
+        }
+        REQUIRE(strstr(pin_text(message).bytes, "Nullable pointer requires a presence guard"));
+        arena_free(&detached);
+        char depth_source[4096];
+        for (int arrays = 0; arrays < 2; arrays++) {
+            for (int depth = 16; depth <= 17; depth++) {
+                REQUIRE(
+                    compositional_records_depth_source(depth_source, sizeof depth_source, depth, arrays)
+                );
+                const source_package_input input = { "facts/Main.chibi",
+                                                     depth_source,
+                                                     strlen(depth_source) };
+                REQUIRE(compile(b, false, false, false, &input, 1, COMPILE_BUDGET, &out));
+                value = out.ptr;
+                REQUIRE(out.type == PIN_UNION && value);
+                if (value->tag != tag(b, depth == 16 ? "Compiled" : "Rejected")) {
+                    fprintf(stderr, "compositional stage-one depth: backend=%d arrays=%d depth=%d\n", b, arrays, depth);
+                    if (value->tag == tag(b, "Rejected")) {
+                        REQUIRE(get(&value->values[0], "message", &message));
+                        fprintf(stderr, "%s\n", pin_text(message).bytes);
+                    }
+                }
+                REQUIRE(value->tag == tag(b, depth == 16 ? "Compiled" : "Rejected"));
+                arena_free(&detached);
+            }
+        }
+        REQUIRE(compositional_records_fanout_source(depth_source, sizeof depth_source));
+        const source_package_input fanout = { "facts/Main.chibi",
+                                              depth_source,
+                                              strlen(depth_source) };
+        REQUIRE(compile(b, false, false, false, &fanout, 1, COMPILE_BUDGET, &out));
+        value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
+        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(strstr(pin_text(message).bytes, "metadata work"));
+        arena_free(&detached);
+    }
+    return true;
+}
+
+void test_language_package_compiler_chibi_records()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compositional_records);
     pu_clear_setup();
 }

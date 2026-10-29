@@ -191,9 +191,6 @@ static node_desc *const EXTRA_NODES[] = {
 #define MATH_NODE_ENTRY(name) &NODE_##name,
     MATH_EXPRESSION_NODES(MATH_NODE_ENTRY)
 #undef MATH_NODE_ENTRY
-#define MATH_NODE_ENTRY(name) &NODE_##name,
-            MATH_OPERATION_NODES(MATH_NODE_ENTRY)
-#undef MATH_NODE_ENTRY
         & NODE_Greater_Or_Equal,
     &NODE_Integer_Greater_Or_Equal,
     &NODE_Less,

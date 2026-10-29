@@ -554,7 +554,7 @@ Suggestion: once `char` exists (see [No character literals](#no-character-litera
 `for c, i in s` yields a `char` and its byte offset, as Odin's decoding loop,
 then a `core:utf8` package written in Chibi.
 
-### No procedure values
+### Passing functions into synchronous algorithms
 
 Language. Odin builds `trim_space` and `trim` on `trim_left_proc`,
 `index_proc` and `fields_proc`, which take a procedure. `core:strings` repeats
@@ -564,7 +564,25 @@ each loop instead and leaves the `_proc` API out.
   types and `comptime` parameters; Rust `fn` pointers and closures; C#, F#,
   TypeScript, Python and Ruby lambdas.
 
-Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
+Decision (owner, 2026-10-27): first export generic package functions, then accept
+named functions and capture-free inline functions as synchronous, non-escaping
+arguments. The local implementation is under validation; this entry does not
+claim a merged SDK or both compiler stages passing.
+
+Use `predicate: fn(value: T) -> bool` to state the required signature. A caller
+can pass a named function or `(value: int) => value > 0` directly as an argument.
+Existing named declarations express reusable callbacks, but neither inference
+nor a named declaration describes a callable parameter's input/result contract.
+That is why this stage adds a callable type and inline argument form. It does
+not add stored callback values or a capture lifetime API.
+
+The compiler resolves the callback during specialization and emits direct
+calls. It still propagates the callback's effects. Passing functions therefore
+does not promise purity, full inlining, or allocation-free sorting. Initial
+inline functions cannot capture runtime locals; callable parameters cannot be
+returned, stored, queued or passed to an unknown host. Later capture support
+must preserve the already selected shared mutable bindings. See
+[passing functions](code-language.md#passing-functions) for the current scope.
 
 ### Stage one's scoped pointer parameters reach locals and fields only
 

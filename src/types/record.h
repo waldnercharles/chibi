@@ -5,9 +5,15 @@
 
 typedef struct arena arena;
 
-/* Immutable owned layout. Authored create/init uses a flat natural layout;
- * snapshots close nested layouts and native carriers preserve exact ABI layout.
- * Each closure is one allocation, including names and child descriptors. */
+/* Per-layout closure limits. Sizing rejects excess metadata or expanded type
+ * work before allocating or copying a closure. These match the prepared codec's
+ * default owned-byte budget and bound repeated-child expansion. */
+#define PIN_RECORD_MAX_LAYOUT_BYTES (64u * 1024u * 1024u)
+#define PIN_RECORD_MAX_LAYOUT_WORK (1024u * 1024u)
+
+/* Immutable layout. Explicit authored composition owns its names and every
+ * child descriptor in one closure; snapshots also close implicit native child
+ * layouts. Native carriers preserve exact ABI offsets and sizes. */
 struct pin_record
 {
     type_desc type;
@@ -18,10 +24,14 @@ struct pin_record
     bool frozen; /* Carries exact owned child layouts, including authored roots. */
 };
 
-/* Fields supply unique nonempty names and fixed scalar/handle/enum/string types,
- * or registered plain nested layouts. Nominal names and units are owned here.
- * Natural target offsets, sizes and the layout hash are computed here. Invalid
- * input returns NULL before allocation. The result belongs to storage. */
+/* Fields supply unique nonempty names, scalar values, arrays or inline structs.
+ * Struct fields carry an owned child layout; registered plain native layouts
+ * remain supported. Array fields store a pin_array pointer and describe its
+ * element with type/type_name/layout. Other containers and recursive layouts
+ * are rejected. Natural offsets, sizes and the layout hash are computed here.
+ * Invalid input returns NULL before allocation. The result belongs to storage. */
+/* Exact owned closure allocation required by create/init; zero rejects invalid fields. */
+size_t pin_record_create_bytes(const char *name, uint64_t id, const type_field *, int count);
 const pin_record *pin_record_create(
     arena *storage,
     const char *name,

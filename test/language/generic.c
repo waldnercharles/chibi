@@ -1,5 +1,3 @@
-#include "assets/project.h"
-#include "assets/project_migrate.h"
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
@@ -15,12 +13,9 @@
 #include "types/value_document.h"
 #include "types/value_wire.h"
 
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -276,6 +271,20 @@ TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors)
         }
     }
     REQUIRE(nested);
+    cleanup();
+    REQUIRE(analyze(
+        "Forward :: library { Box :: struct($T:Type) { item:T } "
+        "Outer :: struct { box:Box(Inner) } "
+        "Inner :: struct { values:int[] } "
+        "Make :: ()->Outer { return {box:{item:{values:[7,9]}}} } }"
+    ));
+    REQUIRE(!syntax->diagnostic_count);
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count) {
+            REQUIRE(type->size && type->layout);
+        }
+    }
     return true;
 }
 TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_is_a_pointer)
@@ -420,254 +429,6 @@ static bool constructed_units(const char *source)
 TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensions)
 {
     return constructed_units(quantity_source);
-}
-/* Exercise historical generic type arguments through migration, compilation
- * and both execution backends with a literal result oracle. */
-TEST_CASE(generic_version_34_quantity_type_arguments_migrate)
-{
-    const char
-        *historical = "Units :: library { "
-                      "Quantity :: struct($DataType: Type, $Length: int, "
-                      "$Time: int) { amount: DataType } "
-                      "ProductType :: (A: Type, B: Type) -> Type { return "
-                      "Quantity(A.DataType, "
-                      "A.Length + B.Length, A.Time + B.Time) } "
-                      "Multiply :: (a: $A, b: $B) -> ProductType(A, B) { "
-                      "result: ProductType(A, B) = {amount: a.amount * "
-                      "b.amount}; return result } "
-                      "Run :: () -> Quantity(double, 1, 0) { "
-                      "speed: Quantity(double, 1, -1) = {amount: 6}; "
-                      "time: Quantity(double, 0, 1) = {amount: 2}; return "
-                      "Multiply(speed, time) } }";
-    char error[256] = { 0 }, *migrated = NULL;
-    REQUIRE(!chibi_migrate_number_names(historical, &migrated, error, sizeof error));
-    const char *actual = migrated ? migrated : historical;
-    bool matches = !strcmp(actual, quantity_source);
-    if (!matches) {
-        fprintf(stderr, "version 34 Quantity result: %s\n", actual);
-    }
-    bool executed = constructed_units(actual);
-    free(migrated);
-    REQUIRE(matches && executed);
-    return true;
-}
-TEST_CASE(generic_version_34_argument_roles_preserve_user_names)
-{
-    const struct
-    {
-        const char *source, *expected;
-    } cases[] = {
-        { "L :: library { F :: (x: double | int) {} }",
-          "L :: library { F :: (x: f64 | int) {} }" },
-        { "L :: library { F :: (p: Pair) -> Type { return pkg.Make(double, "
-          "float: float, p.double, pkg.double).field } }",
-          "L :: library { F :: (p: Pair) -> Type { return pkg.Make(f64, float: "
-          "number, p.double, pkg.double).field } }" },
-        { "L :: library { F :: (ordinary: int) -> int { return "
-          "Call(double(double(ordinary)), (byte), {double: float}, [double]) } "
-          "}",
-          "L :: library { F :: (ordinary: int) -> int { return "
-          "Call(f64(f64(ordinary)), (u8), {double: number}, [f64]) } }" },
-        { "// double stays\nL :: library { Row :: struct { double: int } U :: "
-          "union { double | Other } F :: (p: User.double) -> string { double: "
-          "return \"double\" + p.double + pkg.double(1) } }",
-          NULL },
-        { "L :: library { F :: (x: number double/s) -> number double/s { "
-          "return x } }",
-          NULL },
-        { "package p\nimport \"../math\"\nF :: () -> Type { return "
-          "Make(double) }",
-          "package p\nimport \"../math\"\nF :: () -> Type { return Make(f64) "
-          "}" },
-        { "package p\nimport \"core:strings\"\nF :: () -> Type { return "
-          "Make(float) }",
-          "package p\nimport \"core:strings\"\nF :: () -> Type { return "
-          "Make(number) }" },
-        { "package p\nimport \"../m\\u0061th\"\nF :: () -> Type { return "
-          "Make(double) }",
-          "package p\nimport \"../m\\u0061th\"\nF :: () -> Type { return "
-          "Make(f64) }" },
-        { "package p\nimport \"core:\"\nF :: () -> int { return 7 }", NULL },
-        { "package p\nimport _ \"core:\"\nF :: () -> Type { return "
-          "Make(double) }",
-          "package p\nimport _ \"core:\"\nF :: () -> Type { return Make(f64) "
-          "}" },
-    };
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        char error[256] = { 0 }, *migrated = NULL, *again = NULL;
-        int status = chibi_migrate_number_names(cases[i].source, &migrated, error, sizeof error);
-        if (status ||
-            (cases[i].expected ? !migrated || strcmp(migrated, cases[i].expected)
-                               : migrated != NULL)) {
-            fprintf(stderr, "argument role case %zu: %s\n%s\n", i, error, migrated ? migrated : "unchanged");
-        }
-        REQUIRE(!status);
-        REQUIRE(cases[i].expected ? migrated && !strcmp(migrated, cases[i].expected) : !migrated);
-        REQUIRE(
-            !chibi_migrate_number_names(migrated ? migrated : cases[i].source, &again, error, sizeof error)
-        );
-        REQUIRE(!again);
-        free(migrated);
-    }
-    return true;
-}
-TEST_CASE(generic_version_34_bindings_and_uncertain_roles_refuse)
-{
-    const struct
-    {
-        const char *source, *diagnostic;
-    } cases[] = {
-        { "L :: library { F :: (xs: int[]) { for (double, item in xs) { "
-          "Use(item) } } }",
-          "binding is named like a number type; rename it first at 1:40" },
-        { "L :: library { F :: (xs: int[]) { for (item, float in xs) { "
-          "Use(item) } } }",
-          "declaration is named like a number type; rename it first at 1:46" },
-        { "L :: library { F :: (x: int) { if (x is int double) { Use(double) } "
-          "} }",
-          "binding is named like a number type; rename it first at 1:45" },
-        { "L :: library { U :: union { A(value: int) } F :: (x: U) { switch x "
-          "{ case .A(double): Use(double) } } }",
-          "binding is named like a number type; rename it first at 1:78" },
-        { "L :: library { F :: (x: $number) -> int { return 1 } }",
-          "declaration is named like a number type; rename it first at 1:26" },
-        { "L :: library { Quantity :: struct($DataType: Type, $Length: int, "
-          "$Time: int) { amount: DataType } F :: ($number: Type) -> "
-          "Quantity(float, 1, -1) { return {} } }",
-          "declaration is named like a number type; rename it first at 1:106" },
-        { "package p\nimport number \"core:math\"\nF :: () -> Type { return "
-          "Make(float) }",
-          "import alias is named like a number type; use a different alias "
-          "before migration at 2:8" },
-        { "package p\nimport \"../double\"\nF :: () -> Type { return "
-          "Make(double) }",
-          "import alias is named like a number type; use a different alias "
-          "before migration at 2:8" },
-        { "package p\nimport \"core:\"\nF :: () -> Type { return Make(double) "
-          "}",
-          "unresolved import alias may capture a number-type rewrite; supply "
-          "an explicit alias at 2:8" },
-        { "L :: library { F :: () -> Type { return double } }", "unsupported number-type expression; use an explicit type argument before migration at 1:41" },
-    };
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        char error[256] = { 0 }, *migrated = NULL;
-        int status = chibi_migrate_number_names(cases[i].source, &migrated, error, sizeof error);
-        fprintf(stderr, "binding case %zu: %d %s\n", i, status, error);
-        REQUIRE(status < 0 && !migrated);
-        REQUIRE(!strcmp(error, cases[i].diagnostic));
-    }
-    return true;
-}
-static bool migration_write(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    if (!file) {
-        return false;
-    }
-    bool ok = fputs(text, file) >= 0;
-    return !fclose(file) && ok;
-}
-static bool migration_file_is(const char *path, const char *expected)
-{
-    FILE *file = fopen(path, "rb");
-    if (!file) {
-        return false;
-    }
-    char text[2048];
-    size_t size = fread(text, 1, sizeof text - 1, file);
-    bool complete = feof(file) && !ferror(file);
-    fclose(file);
-    text[size] = 0;
-    return complete && !strcmp(text, expected);
-}
-static bool migration_directory(char root[PATH_MAX])
-{
-    const char *temporary = getenv("TMPDIR");
-    int length = snprintf(
-        root,
-        PATH_MAX,
-        "%s/chibi-number-bindings-XXXXXX",
-        temporary && *temporary ? temporary : "/tmp"
-    );
-    REQUIRE(length > 0 && length < PATH_MAX);
-    REQUIRE(mkdtemp(root));
-    return true;
-}
-TEST_CASE(generic_migration_scratch_is_private_and_owned)
-{
-    char first[PATH_MAX], second[PATH_MAX], marker[PATH_MAX + 32];
-    REQUIRE(migration_directory(first) && migration_directory(second));
-    const char *temporary = getenv("TMPDIR");
-    const char *parent = temporary && *temporary ? temporary : "/tmp";
-    size_t length = strlen(parent);
-    REQUIRE(!strncmp(first, parent, length) && first[length] == '/');
-    REQUIRE(!strncmp(second, parent, length) && second[length] == '/');
-    REQUIRE(strcmp(first, second));
-    struct stat info;
-    REQUIRE(!stat(first, &info) && S_ISDIR(info.st_mode) && (info.st_mode & 0777) == 0700);
-    REQUIRE(!stat(second, &info) && S_ISDIR(info.st_mode) && (info.st_mode & 0777) == 0700);
-    snprintf(marker, sizeof marker, "%s/owned", first);
-    REQUIRE(migration_write(marker, "first"));
-    REQUIRE(!unlink(marker) && !rmdir(first));
-    REQUIRE(!stat(second, &info) && S_ISDIR(info.st_mode));
-    REQUIRE(!rmdir(second));
-    return true;
-}
-TEST_CASE(generic_version_34_cross_file_collisions_preserve_project)
-{
-    char root[PATH_MAX], content[PATH_MAX + 32], paths[4][PATH_MAX + 64],
-        error[512] = { 0 };
-    REQUIRE(migration_directory(root));
-    snprintf(content, sizeof content, "%s/content", root);
-    REQUIRE(!mkdir(content, 0700));
-    snprintf(paths[0], sizeof paths[0], "%s/project.kdl", root);
-    snprintf(paths[1], sizeof paths[1], "%s/Use.chibi", content);
-    snprintf(paths[2], sizeof paths[2], "%s/Binding.chibi", content);
-    snprintf(paths[3], sizeof paths[3], "%s/Event.kdl", content);
-    const char *manifest = "version 34\ncontent \"content\"\nstart_scene "
-                           "\"Start.kdl\"\n";
-    const char *use = "package p\nF :: () -> double { return double(7) }";
-    const char *binding = "package p\nnumber :: () -> int { return 3 }";
-    const char *event = "domain \"event\"\n(array)variables {\n    - "
-                        "name=\"Amount\" type=\"double\"\n}\n";
-    const char *original[] = { manifest, use, binding, event };
-    for (int i = 0; i < 4; i++) {
-        REQUIRE(migration_write(paths[i], original[i]));
-    }
-    int status = chibi_project_migrate(root, error, sizeof error);
-    fprintf(stderr, "cross-file migration: %d %s\n", status, error);
-    REQUIRE(
-        status < 0 && strstr(error, "Binding.chibi: declaration is named like a number type; rename it first at 2:1")
-    );
-    for (int i = 0; i < 4; i++) {
-        REQUIRE(migration_file_is(paths[i], original[i]));
-    }
-    /* This unresolved import is file-local and cannot capture Use.chibi's edits. */
-    const char
-        *safe = "package p\nimport \"core:\"\nG :: () -> int { return 3 }";
-    REQUIRE(migration_write(paths[2], safe));
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 34);
-    char current[80];
-    snprintf(current, sizeof current, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
-    REQUIRE(migration_file_is(paths[0], current));
-    REQUIRE(migration_file_is(paths[1], "package p\nF :: () -> f64 { return f64(7) }"));
-    REQUIRE(migration_file_is(paths[2], safe));
-    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
-    for (int i = 0; i < 4; i++) {
-        REQUIRE(!unlink(paths[i]));
-    }
-    REQUIRE(!rmdir(content) && !rmdir(root));
-    return true;
-}
-void test_language_migration34_generic_repro()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(generic_migration_scratch_is_private_and_owned);
-    RUN_TEST_CASE(generic_version_34_quantity_type_arguments_migrate);
-    RUN_TEST_CASE(generic_version_34_argument_roles_preserve_user_names);
-    RUN_TEST_CASE(generic_version_34_bindings_and_uncertain_roles_refuse);
-    RUN_TEST_CASE(generic_version_34_cross_file_collisions_preserve_project);
-    pu_clear_setup();
 }
 static bool reported(const char *message)
 {
@@ -831,15 +592,33 @@ TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings)
     REQUIRE(fraction && whole && difference && text && local && assigned && deep);
     cleanup(); /* Arena-backed compile values must not be individually freed. */
     REQUIRE(
-        !analyze("Bad :: library { Box :: struct($T:Type) { items:T[] } Make :: ()->Box(int) { return {items:[]} } }")
+        analyze("Arrays :: library { Box :: struct($T:Type) { items:T[] } Make :: ()->Box(int) { return {items:[]} } }")
     );
     REQUIRE(!syntax->diagnostic_count);
-    bool layout = false;
-    for (int i = 0; i < analysis->diagnostic_count; i++) {
-        layout |= strstr(analysis->diagnostics[i].message, "collections and references are not supported") !=
-                  NULL;
+    bool array = false;
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count == 1) {
+            array |= type->fields[0].type.storage == PIN_I32 &&
+                     type->fields[0].type.container == PIN_CONTAINER_ARRAY;
+        }
     }
-    REQUIRE(layout);
+    REQUIRE(array);
+    cleanup();
+    REQUIRE(analyze(
+        "Nested :: library { Box :: struct($T:Type) { item:T } "
+        "Inner :: struct { values:int[] } "
+        "Make :: ()->Box(Inner) { return {item:{values:[7,9]}} } }"
+    ));
+    REQUIRE(!syntax->diagnostic_count);
+    bool nested = false;
+    for (int i = 0; i < analysis->type_count; i++) {
+        const script_catalog_type *type = &analysis->types[i];
+        if (type->authored_record && type->field_count == 1 && type->size) {
+            nested |= type->fields[0].type.storage == PIN_STRUCT;
+        }
+    }
+    REQUIRE(nested);
     return true;
 }
 static const pin_record *generic_wire_record(execution_wire *, void *user, const pin_value *, bool authored)
@@ -1054,29 +833,210 @@ TEST_CASE(compile_time_string_alias_survives_analysis_destruction)
     }
     return true;
 }
-TEST_CASE(legacy_bounded_generic_aliases_migrate_but_unbound_require_binders)
+TEST_CASE(generic_callable_arguments_specialize_and_execute)
 {
-    char error[256], *migrated = NULL, *again = NULL;
-    REQUIRE(
-        !chibi_migrate_syntax("library Fixed { Identity :: <T: plain int>(item:T)->T { return item } }", &migrated, error, sizeof error)
-    );
-    REQUIRE(migrated && !strstr(migrated, "<T"));
-    REQUIRE(analyze(migrated));
-    REQUIRE(!chibi_migrate_syntax(migrated, &again, error, sizeof error));
-    REQUIRE(!again);
-    free(migrated);
-    migrated = NULL;
-    REQUIRE(chibi_migrate_syntax(
-        "library Open { Identity :: <T>(item:T)->T { return item } }",
-        &migrated,
-        error,
-        sizeof error
+    const char *source = "Callbacks :: behavior { result: retain int = 0; "
+                         "Double :: (x: int) -> int { return x * 2; } "
+                         "Apply :: (x: int, transform: fn(value: int) -> int) "
+                         "-> int { return transform(value: x); } "
+                         "Forward :: (x: int, transform: fn(value: int) -> "
+                         "int) -> int { return Apply(x, transform); } "
+                         "on Run :: () { result = Apply(3, Double) + "
+                         "Forward(4, (x: int) => x + 1); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = invoke();
+        REQUIRE(instance);
+        const pin_value *value = execution_instance_state(instance, state_id("result"));
+        REQUIRE(value && value->i == 11);
+        for (int f = 0; f < analysis->function_count; f++) {
+            const script_function *function = &analysis->functions[f];
+            for (int p = 0; p < function->parameter_count; p++) {
+                REQUIRE(!analysis->symbols[function->parameters[p]].callable_binding);
+            }
+        }
+    }
+    return true;
+}
+TEST_CASE(generic_callable_arguments_reject_captures_and_escape)
+{
+    REQUIRE(!analyze(
+        "Callbacks :: behavior { "
+        "Apply :: (x: int, transform: fn(value: int) -> int) -> int { return "
+        "transform(x); } "
+        "on Run :: () { offset := 3; result := Apply(4, (x: int) => x + "
+        "offset); } }"
     ));
-    REQUIRE(!migrated && strstr(error, "argument binders"));
+    REQUIRE(reported("Nested functions require enclosing locals to be passed as parameters"));
+    REQUIRE(!analyze(
+        "Callbacks :: library { "
+        "Bad :: (transform: fn(value: int) -> int) -> int { saved := "
+        "transform; return 1; } "
+        "Double :: (x: int) -> int { return x * 2; } "
+        "Main :: () -> int { return Bad(Double); } }"
+    ));
+    REQUIRE(reported("Callable arguments can only be called or passed to another callable parameter"));
+    REQUIRE(!analyze(
+        "Callbacks :: library { "
+        "Apply :: (x: int, transform: fn(value: int) -> int) -> int { return "
+        "transform(x); } "
+        "Wrong :: (x: int) -> bool { return x > 0; } "
+        "Main :: () -> int { return Apply(4, Wrong); } }"
+    ));
+    REQUIRE(reported("Callable result 1 has a different type from its parameter signature"));
+    return true;
+}
+TEST_CASE(generic_callable_arguments_require_one_binding_and_synchronous_calls)
+{
+    const char *invalid[] = {
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (x: int, f: fn(x: int) -> int) -> int { return f(x); } "
+        "Main :: () -> int { return Apply(3); } }",
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (x: int, f: fn(x: int) -> int) -> int { return f(x); } "
+        "Main :: () -> int { return Apply(3, f: Id, f: Id); } }",
+        "C :: library { Wait :: (x: int) -> int { yield; return x; } "
+        "Apply :: (x: int, f: fn(x: int) -> int) -> int { return f(x); } "
+        "Main :: () -> int { return Apply(3, Wait); } }",
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (x: int, f: fn(x: int) -> int) -> int { yield; return f(x); "
+        "} "
+        "Main :: () -> int { return Apply(3, Id); } }",
+    };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(!analyze(invalid[i]));
+        REQUIRE(!syntax->diagnostic_count);
+        REQUIRE(
+            reported(
+                i < 2 ? "Pass callable argument 'f' exactly once" : "Functions with callable parameters must finish synchronously"
+            ) ||
+            reported("Callable arguments must finish synchronously")
+        );
+    }
+    return true;
+}
+TEST_CASE(generic_inline_functions_preserve_inferred_return_results_while_tables_grow)
+{
+    char source[8192];
+    int length = snprintf(
+        source,
+        sizeof source,
+        "Callbacks :: behavior { result: retain int = 0; "
+        "Apply :: (x: int, transform: fn(value: int) -> int) -> int { return "
+        "transform(value: x); } "
+        "Pick :: () { return "
+    );
+    for (int i = 0; i < 32; i++) {
+        length += snprintf(
+            source + length,
+            sizeof source - (size_t)length,
+            "%sApply(%d, (value: int) => value + 1)",
+            i ? " + " : "",
+            i
+        );
+    }
+    snprintf(source + length, sizeof source - (size_t)length, "; } on Run :: () { result = Pick(); } }");
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = invoke();
+        REQUIRE(instance);
+        const pin_value *value = execution_instance_state(instance, state_id("result"));
+        REQUIRE(value && value->i == 528);
+    }
+    return true;
+}
+TEST_CASE(generic_callable_signatures_reject_stored_forms_and_hidden_defaults)
+{
+    REQUIRE(analyze(
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (f: (fn(value: int) -> int)) -> int { return f(value: 3); } "
+        "Main :: () -> int { return Apply(Id); } }"
+    ));
+    const char *invalid[] = {
+        "C :: library { Apply :: (f: (fn(x: int) -> int)[]) {} }",
+        "C :: library { Apply :: (f: (fn(x: int) -> int)?) {} }",
+        "C :: library { Apply :: (f: ^(fn(x: int) -> int)) {} }",
+        "C :: library { Apply :: (f: fn() -> (left: int, right: int)) {} }",
+        "C :: library { Apply :: (f: fn(x: int = 1) -> int) {} }",
+        "C :: library { Id :: (x: int) -> int { return x; } "
+        "Apply :: (f: fn(x: int) -> int = Id) {} }",
+        "C :: library { Pair :: (a: int = 1, b: int = 2) -> int { return a + "
+        "b; } "
+        "Apply :: (f: fn(a: int, b: int) -> int) -> int { return f(b: 5); } "
+        "Main :: () -> int { return Apply(Pair); } }",
+        "C :: library { macro Value(x: int) -> int { return x; } "
+        "Apply :: (f: fn(x: int) -> int) -> int { return f(1); } "
+        "Main :: () -> int { return Apply(Value); } }",
+    };
+    for (int i = 0; i < 8; i++) {
+        REQUIRE(!analyze(invalid[i]));
+        REQUIRE(!syntax->diagnostic_count);
+    }
+    return true;
+}
+TEST_CASE(generic_inline_functions_keep_caller_guards_and_own_loop_context)
+{
+    const char *invalid[] = {
+        "C :: library { Apply :: (f: fn() -> int) -> int { return f(); } Main "
+        ":: () -> int { while (true) { return Apply(() -> int { break; return "
+        "1; }); } return 0; } }",
+        "C :: library { Apply :: (f: fn() -> int) -> int { return f(); } Main "
+        ":: () -> int { while (true) { return Apply(() -> int { continue; "
+        "return 1; }); } return 0; } }",
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(!analyze(invalid[i]));
+        REQUIRE(!syntax->diagnostic_count);
+        REQUIRE(reported("Loop control requires a containing loop"));
+    }
+    const char
+        *source = "Callbacks :: behavior { result: retain int = 0; "
+                  "Use :: (transform: fn(value: int) -> int, value: int) -> "
+                  "int { return transform(value); } "
+                  "Apply :: (f: fn() -> int) -> int { return f(); } "
+                  "Pair :: (left: int, right: int) -> int { return left + "
+                  "right; } "
+                  "Read :: (p: ^int?) -> int { if (p != nil) { return "
+                  "Pair(Use((x: "
+                  "int) => x + 1, 1), p^); } return 0; } "
+                  "on Run :: () { x: int = 4; result = Read(&x) + Read(nil); "
+                  "while (true) { result += Apply(() -> int { while (true) { "
+                  "break; } return 3; }); break; } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = invoke();
+        REQUIRE(instance);
+        const pin_value *value = execution_instance_state(instance, state_id("result"));
+        REQUIRE(value && value->i == 9);
+    }
+    return true;
+}
+TEST_CASE(generic_callable_arguments_cannot_be_queued_in_nested_tasks)
+{
+    const char *source = "C :: library { Id :: (x: int) -> int { return x; } "
+                         "Run :: (f: fn(x: int) -> int) { Later :: () { yield; "
+                         "value := f(1); } t := Later(); } "
+                         "Main :: () { Run(Id); } }";
+    REQUIRE(!analyze(source));
+    REQUIRE(!syntax->diagnostic_count);
+    REQUIRE(
+        reported("Functions with callable parameters must finish synchronously") ||
+        reported("Callable arguments must finish synchronously")
+    );
     return true;
 }
 TEST_SUITE(language_generic_suite)
 {
+    RUN_TEST_CASE(generic_inline_functions_preserve_inferred_return_results_while_tables_grow);
+    RUN_TEST_CASE(generic_inline_functions_keep_caller_guards_and_own_loop_context);
+    RUN_TEST_CASE(generic_callable_arguments_cannot_be_queued_in_nested_tasks);
+    RUN_TEST_CASE(generic_callable_signatures_reject_stored_forms_and_hidden_defaults);
+    RUN_TEST_CASE(generic_callable_arguments_require_one_binding_and_synchronous_calls);
+    RUN_TEST_CASE(generic_callable_arguments_specialize_and_execute);
+    RUN_TEST_CASE(generic_callable_arguments_reject_captures_and_escape);
     RUN_TEST_CASE(generic_argument_types_specialize_once_and_execute);
     RUN_TEST_CASE(generic_constant_parameters_and_authored_compile_time_calls);
     RUN_TEST_CASE(compile_time_calls_follow_runtime_semantics);
@@ -1090,7 +1050,6 @@ TEST_SUITE(language_generic_suite)
     RUN_TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings);
     RUN_TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifiers);
     RUN_TEST_CASE(compile_time_string_alias_survives_analysis_destruction);
-    RUN_TEST_CASE(legacy_bounded_generic_aliases_migrate_but_unbound_require_binders);
 }
 void test_language_generic()
 {

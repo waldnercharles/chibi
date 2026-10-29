@@ -98,8 +98,8 @@ fix a hand-made project.
    node records the version the sources reached, so a rerun after a later
    failure resumes there; only a step interrupted while replacing runs again.
 2. Cover the step with a pico_unit case that migrates a small old-format
-   source and checks the result (see `program_version_11_references_migrate_to_values`
-   in `test/language/program.c`).
+   source and checks the result (see `project_retirement_migrates_owned_values_and_preserves_shader_wires`
+   in `test/authoring/project_document.c`).
 3. Migrate every project in this repository with
    `build/bin/chibi_ctl --project-root <root> --migrate`: every `project.kdl`
    under `test/fixtures`.
@@ -115,7 +115,9 @@ another repository first only when a step stops on something it can't rewrite
 (a removed component a script names): make that edit work with the current
 engine, merge it before the engine PR, and leave its version number alone.
 Raising `CHIBI_PROJECT_OLDEST_VERSION` is the one case that needs those
-projects migrated first.
+projects migrated first; then delete the steps below it and their tests. A
+project older than that version fails to open with an error naming the
+version and an older SDK's `chibi_ctl --migrate`.
 
 Prepared artifact versions (`PLAYER_PREPARED_VERSION` and the other
 `*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that

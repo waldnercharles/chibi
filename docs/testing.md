@@ -349,8 +349,6 @@ function or event catalog entry, so they need no `coverage-gaps.txt` entry.
 `language-package-compiler-chibi-queries` checks the authored compiler's matching
 query, iterator and system contracts, including implicit `dt`, captures,
 generators, snapshots, pointer access and rejected legacy forms.
-`test_language --query-migration` checks project 33-to-34 rewriting, preserved
-value copies, nested providers, refusals and idempotence.
 
 The length-carrying string migration adds the following fixed CPU workloads.
 These counts describe coverage and do not record a pass.
@@ -869,50 +867,14 @@ seconds with ASan/UBSan.
 declares the 32K zlib window it references and round-trips the pixels. No
 window or GPU; 3 assertions in 0.07 seconds with ASan/UBSan.
 
-`--project-document` runs three cases: manifests older than the oldest
-upgradable version or newer than this build are refused, a new project opens
-with an empty start scene and is never written over, and the language and
-material contract fixture projects resolve their own content. 4 assertions in
-0.08 seconds with ASan/UBSan; temporary projects only.
-
-`--project-declarations` is one standalone pico compatibility case. Its two exact
-fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi` and
-`VirtualList.chibi` from Studio
-`07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (7,147 bytes total). Each source must
-migrate from version 23 to 24 and repeat that step unchanged. Explicit retention,
-syntax, conversion, entry and after-entry migrations then produce current-grammar
-source for parsing. One
-successful content transaction must produce exactly the version-24 direct migrated
-source.
-A second transaction adds one 32-byte malformed source and must reject it with
-its actual path, leaving all three input files byte-identical and no `.migrating`
-files. The fixture prints each source name before its migration assertion so a
-rejected rewrite identifies the original source and current-parser diagnostic.
-
-The original diagnostic at `66448ee5` rejected the OutlinerRows rewrite at
-26:75, inside `not(Value: state.Collapsed)`: one failed case, three assertions,
-0.062 supervised seconds. Later controls were not reached. The migration now
-quotes only historical bare `not` call targets using existing quoted-name
-syntax; the current unary grammar is unchanged. Assertions preserve all four
-real call arguments. Two fixed in-memory snippets under 1 KiB additionally
-check exact rewrite exclusions for comments, strings, member and already-quoted
-call targets, plus unchanged current `not(value)` syntax with a unary CST node
-and no call node.
-
-The success-path ceiling is six declaration migration calls, ten later-step
-migration calls, three explicit current parses and two content transactions over
-two then three input files, with at most four simultaneous content/staging
-files.
-There is no authored execution, backend, renderer, child process, network or
-additional corpus. The test object consumes only explicitly linked public
-`Chibi::project_document`, `Chibi::language_syntax`, `Chibi::authoring` and
-`Chibi::json` owners plus the copied pico/fixture headers. The route stays outside
-all default aggregates. At `c4a9ed52`, this fixed route passed one case and
-60 assertions, exit 0 in 0.082 supervised seconds. That historical run predates
-the redesigned migration chain. On 2026-10-20 the route passed one case and 72
-assertions in 0.6 seconds on macOS. Already-current `not(value)` keeps the existing
-unchanged early return; this is not general version-aware
-call/unary disambiguation.
+`--project-document` runs eight cases: manifests newer than this build are
+refused; a manifest older than `CHIBI_PROJECT_OLDEST_VERSION` fails with an
+error naming that version and how to upgrade it with an older SDK, and stays
+unchanged; a new project opens with an empty start scene and is never written
+over; the language and material contract fixture projects resolve their own
+content; three cases cover the version 38→39 step that retires rhythm and
+visual motion; and a rerun after finalization failed resumes after the step
+that finished. Temporary projects only.
 
 A fresh full compiler/native/desktop SDK from that same source passed independent
 package/relocation and current controller/Studio consumer-link verification.
@@ -3352,8 +3314,7 @@ values, row removal/reentry, zero matches and reload/restart. Query regressions
 keep ordinary locals independent across waits and cancel only the removed
 structural match. They do not introduce engine frames, GPU work or sleeps.
 Syntax and authoring cases reject `retain(system)` and keep plain `retain` in
-system roots and helpers. Historical migration cases preserve behavior/system
-owner retention but reject per-match system state before replacing files.
+system roots and helpers.
 
 ### Name-first retained bindings (historical project version 25)
 
@@ -3364,9 +3325,7 @@ equivalence and migration.
 - `language-program`: three finite runtime cases on VM and the compiled backend
   check per-owner helper retention, system versus query-row ownership, copied
   values, membership reentry and publication/restart identity. Each dispatch has
-  a 1000-instruction budget. Two migration cases use small literal sources and
-  one temporary directory to check execution, idempotence and refusal before
-  staged replacement.
+  a 1000-instruction budget.
 - `language`, `language-semantic`, `language-format` and `language-navigation`:
   accepted/rejected binding forms, ordinary value types, storage restrictions,
   formatter/minimizer ownership preservation and source intelligence. Numeric
@@ -3652,40 +3611,6 @@ With matching compiler input it took 2.6 seconds on the Mac validation host. Wit
 changed compiler source and retained older input it took 71 seconds including supported
 in-process recovery. It retains the existing process budget. No second workflow
 invocation or broader suite is added.
-
-## Project 34 numeric migration
-
-`python3 tools/test_policy.py tool language-migration34` runs the format 34→35
-step's C cases through the production source, content and project migration
-entrypoints on disposable files; `language-migration34-generic-repro`, in the
-language group, runs its four source cases alone. The repair is Charles's
-reviewed checkpoint (`fdae32fe`, `1eaf4a8e`), ported from version 32→33 to
-34→35.
-
-Every `.chibi` source is checked before inputs are filtered or files staged.
-The inventory refuses declarations and bindings spelling an old name, a rename
-destination or a newly reserved scalar name, including loop keys and values,
-pattern and `is` bindings, generic type binders and import aliases. A local
-named `number`, which version 34 allowed, is refused only when the same source
-renames a `float` to `number`. Unqualified argument values and conversion
-callees are then rewritten; qualified names, members, argument labels, fields,
-variants, units, strings and comments keep their text. The migrated
-`Quantity(double, 1, -1)` program compiles and runs on both backends.
-
-KDL assets change only graph pin and event metadata, through source-span
-edits, so numeric payload bytes such as `1.0000000000000002`, `16777217`,
-`1e300` and `-0.0` are kept. Explicitly owned array and set default
-descriptors migrate; map collection defaults, and an omitted pin container
-that may hold a codec envelope needing a rename, are refused before any write.
-A pin that omits its storage and names an old scalar in `type_name` is renamed:
-no declaration can take that name. A malformed asset fails with the KDL
-parser's located diagnostic and leaves the project unchanged for a retry.
-
-Every project in this repository at `main`'s version 34 migrates with the
-step, and the result matches the committed projects except where they were
-hand-simplified afterwards. `project-declarations` and
-`language-query-program`, which no group runs, also failed on the checkpoint's
-base.
 
 ## Debug optimization experiment
 

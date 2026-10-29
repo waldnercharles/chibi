@@ -342,9 +342,6 @@ void test_png_encoding();
 #ifdef CHIBI_TEST_PROJECT_DOCUMENT
 void test_project_document();
 #endif
-#ifdef CHIBI_TEST_PROJECT_DECLARATIONS
-void test_tool_project_declarations();
-#endif
 #ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
 void test_prototype_documents();
 void test_reference_index();
@@ -363,25 +360,15 @@ void test_field_library();
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
-    "--player-url",
-    "--audio-analysis",
-    "--audio-browser",
-    "--shader-webgpu",
-    "--asset-values",
-    "--ui-document",
-    "--text-files",
-    "--fmt",
-    "--particles",
-    "--png-encoding",
-    "--project-document",
-    "--project-declarations",
-    "--prototype-documents",
-    "--reference-index",
-    "--asset-source",
-    "--behavior-loader",
-    "--engine-clock",
-    "--preview-layout",
-    "--fields",
+    "--player-url",       "--audio-analysis",
+    "--audio-browser",    "--shader-webgpu",
+    "--asset-values",     "--ui-document",
+    "--text-files",       "--fmt",
+    "--particles",        "--png-encoding",
+    "--project-document", "--prototype-documents",
+    "--reference-index",  "--asset-source",
+    "--behavior-loader",  "--engine-clock",
+    "--preview-layout",   "--fields",
     "--player-clock",
 };
 
@@ -472,12 +459,6 @@ static bool run_document_suites(int argc, char **argv)
 #ifdef CHIBI_TEST_PROJECT_DOCUMENT
     if (selected(argc, argv, "--project-document")) {
         test_project_document();
-        return true;
-    }
-#endif
-#ifdef CHIBI_TEST_PROJECT_DECLARATIONS
-    if (selected(argc, argv, "--project-declarations")) {
-        test_tool_project_declarations();
         return true;
     }
 #endif
@@ -1353,7 +1334,7 @@ int main(int argc, char **argv)
             "--player-clock | --audio-analysis | --audio-browser | "
             "--shader-webgpu | "
             "--player-url | "
-            "--png-encoding | --project-document | --project-declarations | "
+            "--png-encoding | --project-document | "
             "--prototype-documents | "
             "--reference-index | --asset-source | --behavior-loader | "
             "--engine-clock | --preview-layout | --fields]\n",

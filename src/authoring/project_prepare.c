@@ -5,12 +5,9 @@
 #include "authoring/language_catalog.h"
 #include "authoring/material_prepare.h"
 #include "authoring/mesh_prepare.h"
-#include "authoring/native_graph_prepare.h"
-#include "authoring/project_open.h"
 #include "authoring/project_prepare_internal.h"
 #include "authoring/prototype_prepare.h"
 #include "authoring/scene_prepare.h"
-#include "authoring/shader_prepare.h"
 #include "authoring/sound_prepare.h"
 #include "authoring/source_asset.h"
 #include "authoring/source_collection.h"
@@ -42,7 +39,6 @@ static bool fail(char *error, size_t size, const char *text)
 }
 static void clear_visuals()
 {
-    authoring_shader_catalog_clear();
     shader_values_clear();
     render_scene3d_parts_clear();
     render_mesh_assets_clear();
@@ -543,10 +539,8 @@ static bool prepare(
     const ecs_component_desc **components = NULL;
     size_t module_bytes = 0;
     char *scene_path = NULL, *start = NULL;
-    int opened = options->read_only
-                   ? chibi_project_read(&project, options->project, error, size)
-                   : authoring_project_open(&project, options->project, options->native, error, size);
-    if (opened || !application_title_valid(&project, error, size) ||
+    if (chibi_project_open(&project, options->project, error, size) ||
+        !application_title_valid(&project, error, size) ||
         !application_icon_read(&project, &icon, error, size)) {
         goto done;
     }
@@ -604,9 +598,6 @@ static bool prepare(
             goto done;
         }
         catalog = authoring_sources_source_catalog(sources);
-    }
-    if (!authoring_native_graphs_prepare(project.content, sources, catalog, fields, error, size)) {
-        goto done;
     }
     native_prepared_context event_context = { .native = options->native };
     execution_prepared_linker native_types = native_capabilities_prepared_linker(&event_context);
@@ -880,7 +871,7 @@ authoring_project_catalog *authoring_project_catalog_open(
 {
     assert(options && options->project && options->native);
     authoring_project_catalog *catalog = xcalloc(1, sizeof *catalog);
-    bool valid = !chibi_project_read(&catalog->project, options->project, error, size) &&
+    bool valid = !chibi_project_open(&catalog->project, options->project, error, size) &&
                  authoring_component_declarations_load(
                      catalog->project.content,
                      native_capabilities_catalog(options->native),

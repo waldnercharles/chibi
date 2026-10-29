@@ -1,11 +1,16 @@
 package consumer
 
 import bytes "core:bytes"
+import endian "core:encoding/endian"
+import utf8 "core:utf8"
+import paths "core:path/slashpath"
 import strings "core:strings"
 import bits "core:math/bits"
 import fnv "core:hash/fnv"
 import adler "core:hash/adler32"
 import crc "core:hash/crc32"
+import hex "core:encoding/hex"
+import base64 "core:encoding/base64"
 
 // Exercise every public operation against literal and binary answers.
 pub Check :: () -> int {
@@ -34,6 +39,56 @@ pub Check :: () -> int {
     assert(!bytes.HasPrefix([0, 255], [255]));
     assert(!bytes.HasSuffix([0, 255], [0]));
 
+    decoded := endian.ReadU32BE([18, 52, 86, 120], 0);
+    assert(decoded.value == 0x12345678, "big-endian value");
+    if (decoded.error) {
+        assert(false, "full endian read must succeed");
+    }
+    short_read := endian.ReadU32BE([18, 52], 0);
+    assert(short_read.value == 0, "failed endian read returns zero");
+    read_error := short_read.error;
+    if (read_error) {
+        assert(read_error.kind == endian.ShortBuffer && read_error.offset == 0, "typed endian read error");
+    } else {
+        assert(false, "short endian read needs an error");
+    }
+    original: u8[] = [165, 165, 165, 165, 165, 165];
+    edited := original;
+    written := endian.WriteU32LE(&edited, 1, 0x12345678);
+    if (written) {
+        assert(false, "full endian write must succeed");
+    }
+    assert(bytes.Equal(edited, [165, 120, 86, 52, 18, 165]), "little-endian wire bytes");
+    assert(bytes.Equal(original, [165, 165, 165, 165, 165, 165]), "endian value-copy isolation");
+    before := edited;
+    write_error := endian.WriteU64BE(&edited, 0, 0);
+    if (write_error) {
+        assert(write_error.kind == endian.ShortBuffer && write_error.offset == 0, "typed endian write error");
+    } else {
+        assert(false, "short endian write needs an error");
+    }
+    assert(bytes.Equal(edited, before), "failed endian write is atomic");
+    scalar := utf8.Decode([240, 159, 152, 128], 0);
+    assert(scalar.status == utf8.Success && scalar.width == 4, "UTF-8 width and status");
+    assert(int(scalar.value) == 128512, "UTF-8 scalar");
+    if (scalar.error) {
+        assert(false, "valid UTF-8 has no error");
+    }
+    bad := utf8.Decode([237, 160, 128], 0);
+    assert(bad.status == utf8.Malformed && bad.width == 0, "UTF-8 surrogate rejected");
+    utf_error := bad.error;
+    if (utf_error) {
+        assert(utf_error.kind == utf8.Malformed && utf_error.offset == 0, "typed UTF-8 error");
+    } else {
+        assert(false, "malformed UTF-8 needs an error");
+    }
+    assert(paths.Clean("a/../../b//./c/") == "../b/c", "lexical path cleaning");
+    joined := paths.Join(["textures", "../sprites", ".", "hero.png"]);
+    assert(joined.text == "sprites/hero.png", "joined lexical path");
+    if (joined.error) {
+        assert(false, "small path join must succeed");
+    }
+
     assert(bits.CountOnes32(0x01010203) == 5);
     assert(bits.CountOnes64(0x0101020304050607) == 13);
     assert(bits.LeadingZeros32(0x00001000) == 19);
@@ -61,11 +116,65 @@ pub Check :: () -> int {
     assert(crc.Ieee(digits) == 0xCBF43926);
     assert(crc.UpdateIeee(crc.UpdateIeee(0, [49, 50, 51, 52]), [53, 54, 55, 56, 57]) == 0xCBF43926);
     assert(bytes.Equal(binary, [0, 127, 128, 255, 0]));
-    return 5;
+    hex_encoded := hex.Encode([0, 255, 16]);
+    assert(hex_encoded.text == "00ff10", "hex known encoding");
+    if (hex_encoded.error) {
+        assert(false, "small hex encode must succeed");
+    }
+    hex_decoded := hex.Decode("00Ff10");
+    assert(bytes.Equal(hex_decoded.data, [0, 255, 16]), "hex known decoded bytes");
+    if (hex_decoded.error) {
+        assert(false, "mixed-case hex must decode");
+    }
+    hex_rejected := hex.Decode("00ffg0");
+    assert(length(hex_rejected.data) == 0, "hex rejection exposes no prefix");
+    hex_error := hex_rejected.error;
+    if (hex_error) {
+        assert(hex_error.kind == hex.InvalidCharacter && hex_error.offset == 4, "typed hex error");
+    } else {
+        assert(false, "invalid hex needs an error");
+    }
+    b64_encoded := base64.Encode([255]);
+    assert(b64_encoded.text == "/w==", "Base64 padded encoding");
+    if (b64_encoded.error) {
+        assert(false, "small Base64 encode must succeed");
+    }
+    b64_decoded := base64.Decode("Zm9vYmFy");
+    assert(bytes.Equal(b64_decoded.data, [102, 111, 111, 98, 97, 114]), "Base64 known decoded bytes");
+    if (b64_decoded.error) {
+        assert(false, "canonical Base64 must decode");
+    }
+    url_encoded := base64.EncodeUrl([255]);
+    assert(url_encoded.text == "_w", "Base64url raw encoding");
+    if (url_encoded.error) {
+        assert(false, "small Base64url encode must succeed");
+    }
+    url_decoded := base64.DecodeUrl("_w");
+    assert(bytes.Equal(url_decoded.data, [255]), "Base64url known decoded bytes");
+    if (url_decoded.error) {
+        assert(false, "canonical Base64url must decode");
+    }
+    b64_rejected := base64.Decode("Zm9vZh==");
+    assert(length(b64_rejected.data) == 0, "Base64 rejection exposes no prefix");
+    b64_error := b64_rejected.error;
+    if (b64_error) {
+        assert(b64_error.kind == base64.NonCanonical && b64_error.offset == 5, "typed Base64 pad-bit error");
+    } else {
+        assert(false, "noncanonical Base64 needs an error");
+    }
+    url_rejected := base64.DecodeUrl("Zg==");
+    assert(length(url_rejected.data) == 0, "Base64url rejection exposes no prefix");
+    url_error := url_rejected.error;
+    if (url_error) {
+        assert(url_error.kind == base64.InvalidPadding && url_error.offset == 2, "typed Base64url padding error");
+    } else {
+        assert(false, "padded Base64url needs an error");
+    }
+    return 10;
 }
 
 @test
 PublicImports :: () {
-    assert(Check() == 5);
+    assert(Check() == 10);
     return;
 }

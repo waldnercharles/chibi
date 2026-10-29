@@ -230,8 +230,7 @@ def main():
         env = dict(environment, CHIBI_TOOLS_BUILD_DIR=str(build / 'test/tools'),
                    CHIBI_LANGUAGE_BUILD_DIR=str(build / 'test/language'),
                    CHIBI_BUILD_HOST=str(build / 'sdk/chibi-build-host'),
-                   CHIBI_COMPILER_HOST=str(build / 'sdk/chibi-compiler-host'),
-                   CHIBI_GRAPH_REFERENCE=str(build))
+                   CHIBI_COMPILER_HOST=str(build / 'sdk/chibi-compiler-host'))
         for executable in ('test/tools/test_tools', 'test/language/test_language',
                            'sdk/chibi-build-host', 'sdk/chibi-compiler-host'):
             require(os.access(build / executable, os.X_OK), f'missing helper: {executable}')

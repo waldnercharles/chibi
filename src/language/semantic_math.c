@@ -329,8 +329,10 @@ int script_analyzer_math_call(analyzer *a, TSNode node, const char *name, int **
             aggregate |= kind_of(a, by_node[i]) >= SCRIPT_MATH_VEC2;
         }
     }
-    bool native = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION) !=
-                -1;
+    /* The catalog an ordinary call resolves against: a package sees the host's
+     * natives through a->native. */
+    const script_catalog *visible = a->native ? a->native : a->catalog;
+    bool native = script_catalog_find_capability(visible, name, SCRIPT_CAPABILITY_FUNCTION) != -1;
     if (!aggregate && native && function->op != SCRIPT_MATH_STEP) {
         afree(values);
         afree(nodes);

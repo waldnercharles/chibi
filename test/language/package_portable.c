@@ -102,6 +102,11 @@ TEST_CASE(portable_packages_run_authored_tests)
                                          "import _ \"core:hash/fnv\"\n"
                                          "import _ \"core:hash/adler32\"\n"
                                          "import _ \"core:hash/crc32\"\n"
+                                         "import _ \"core:encoding/endian\"\n"
+                                         "import _ \"core:utf8\"\n"
+                                         "import _ \"core:path/slashpath\"\n"
+                                         "import _ \"core:encoding/hex\"\n"
+                                         "import _ \"core:encoding/base64\"\n"
                                          "@test ProjectSentinel :: () {}\n";
     source_package_input files[2 + SOURCES];
     char paths[SOURCES][256];

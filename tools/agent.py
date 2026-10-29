@@ -31,34 +31,34 @@ CPU_SELECTORS = {
     '--audio-analysis': 'audio-analysis',
     '--shader-webgpu': 'shader-webgpu',
     '--arena': 'arena',
-    '--asset-source': 'asset-source',
+    
     '--asset-values': 'asset-values',
-    '--behavior-loader': 'behavior-loader',
-    '--contact-benchmark': 'contact-benchmark',
-    '--engine-clock': 'engine-clock',
-    '--fields': 'fields',
+    
+    
+    
+    
     '--fmt': 'fmt',
-    '--graph-document': 'graph-document',
-    '--graph-functions': 'graph-functions',
-    '--graph-presentation': 'graph-presentation',
+    
+    
+    
     '--material-benchmark': 'material-benchmark',
     '--material-destruction': 'material-destruction',
     '--material-fluids': 'material-fluids',
     '--material-mpm': 'material-mpm',
-    '--material-thermal': 'material-thermal',
+    
     '--material-simulation': 'material-simulation',
     '--material-ecs': 'material-ecs',
     '--material-render': 'material-render',
-    '--model-catalog': 'model-catalog',
-    '--model-graphs': 'model-graphs',
+    
+    
     '--particles': 'particles',
     '--png-encoding': 'png-encoding',
-    '--preview-layout': 'preview-layout',
+    
     '--project-document': 'project-document',
     '--prototype-documents': 'prototype-documents',
-    '--reference-index': 'reference-index',
+    
     '--render-geometry': 'render-geometry',
-    '--shader-graphs': 'shader-graphs',
+    
     '--shader-bake': 'shader-bake',
     '--shader-source-debug': 'shader-source-debug',
     '--asset-compiler-host': 'language-asset-compiler-host',
@@ -74,10 +74,10 @@ CPU_SELECTORS = {
     '--terrain-checkpoint': 'terrain-checkpoint',
     '--terrain-storage': 'terrain-storage',
     '--terrain-storage-commands': 'terrain-storage-commands',
-    '--terrain-playable': 'terrain-playable',
-    '--source-presentation': 'source-presentation',
+    
+    
     '--source-systems': 'source-systems',
-    '--system-schedule': 'system-schedule',
+    
     '--text-files': 'text-files',
     '--ui-document': 'ui-document',
     '--vector-nodes': 'vector-nodes',
@@ -105,8 +105,8 @@ STUDIO_ACCEPTANCE = {
     '--studio-debugger-source-history': ('--debugger-source-history', 47, 'Studio debugger source history accepted: frames=47'),
 }
 RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
-                    '--surface-transport': 'surface-transport',
-                    '--material-mesh-cache': 'material-mesh-cache',
+                    
+                    
                     '--scene3d-terrain-gpu': 'scene3d-terrain-gpu',
                     '--scene3d-volume-gpu': 'scene3d-volume-gpu',
                     '--hrc-spot': 'hrc-spot',
@@ -114,13 +114,13 @@ RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize':
                     '--radiance': 'radiance', '--radiance-depth': 'radiance-depth',
                     '--material-sampling': 'material-sampling',
                     '--scene2d': 'scene2d', '--material-terrain-seams': 'material-terrain-seams',
-                    '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
+                    '--scene3d-gles': 'scene3d-gles',
                     '--scene3d-gi': 'scene3d-gi', '--scene3d-gi-gles': 'scene3d-gi-gles',
                     '--material-ramps': 'material-ramps', '--radiance-surface': 'radiance-surface',
                     '--radiance-horizons4': 'radiance-horizons4', '--radiance-horizons8': 'radiance-horizons8',
-                    '--material-pixels': 'material-pixels', '--shader-parity': 'shader-parity',
-                    '--shader-programs': 'shader-programs', '--material-cameras': 'material-cameras',
-                    '--mesh-materials': 'mesh-materials', '--sdf-quality': 'sdf-quality',
+                    
+                    
+                    
                     '--scene3d-post': 'scene3d-post', '--scene3d-shapes': 'scene3d-shapes',
                     '--texture-transform': 'texture-transform'}
 GPU_SELECTORS = STUDIO_SELECTORS | RENDER_SELECTORS | {
@@ -173,14 +173,13 @@ def clone_project(source, target):
 
 
 def external_project(data):
-    """Whether `data` is Studio's fixture project.kdl at a version the engine
-    upgrades when it opens it. Studio's projects lag the engine's version."""
+    """Whether `data` is Studio's fixture project.kdl at the version the engine
+    opens."""
     header = (ROOT / 'src/assets/project.h').read_text()
-    oldest, current = (int(re.search(rf'^#define {name} (\d+)$', header, re.M)[1])
-                       for name in ('CHIBI_PROJECT_OLDEST_VERSION', 'CHIBI_PROJECT_VERSION'))
+    current = int(re.search(r'^#define CHIBI_PROJECT_VERSION (\d+)$', header, re.M)[1])
     line, _, rest = data.partition(b'\n')
     version = re.fullmatch(rb'version ([1-9][0-9]*)', line)
-    return (version is not None and oldest <= int(version[1]) <= current and
+    return (version is not None and int(version[1]) == current and
             rest == b'name "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n')
 
 

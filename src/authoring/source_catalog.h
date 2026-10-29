@@ -22,9 +22,6 @@ typedef struct
  * Files are limited to 512 KiB, 256 executable sources and 8 MiB total text.
  * Diagnostics make an incomplete snapshot explicit; it must not be published. */
 source_catalog *source_catalog_new(const char *content_root, const script_catalog *native);
-/* One-time normalization may analyze retired generated accessors. Normal
- * catalog construction never admits those source spellings. */
-source_catalog *source_catalog_new_for_migration(const char *content_root, const script_catalog *native);
 typedef struct
 {
     const char *path, *text; /* NULL text removes this source from the snapshot. */

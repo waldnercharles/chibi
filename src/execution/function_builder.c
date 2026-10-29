@@ -505,13 +505,6 @@ int behavior_function_builder_component(behavior_function_builder *b, uint64_t i
     apush(f->components, ((behavior_function_component){ id, binding }));
     return index;
 }
-int behavior_function_builder_state(behavior_function_builder *b, int index, int outputs)
-{
-    assert(index >= 0 && outputs > 0);
-    int selection = acount(b->function->state_selections);
-    apush(b->function->state_selections, ((behavior_state_selection){ index, outputs }));
-    return selection;
-}
 void behavior_function_builder_limits(behavior_function_builder *b, unsigned steps, unsigned depth)
 {
     b->function->root_steps = steps;
@@ -2766,9 +2759,4 @@ const pin_value *behavior_function_results(const behavior_function *f, int *coun
 {
     *count = f->result_count;
     return f->result_defaults;
-}
-const pin_value *behavior_function_variables(const behavior_function *f, int *count)
-{
-    *count = f->variable_count;
-    return f->variable_defaults;
 }

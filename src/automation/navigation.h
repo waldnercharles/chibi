@@ -48,24 +48,6 @@ int automation_call_hierarchy(
     char *error,
     size_t error_size
 );
-/* The symbol a request selects, as find_references reads it; names stay
- * borrowed from the request. */
-int automation_select_symbol(
-    const navigation *nav,
-    yyjson_val *request,
-    reference_symbol *symbol,
-    char *error,
-    size_t error_size
-);
-/* A use as find_references writes one: its role, its asset unless left out,
- * and where in the asset it is. */
-void automation_add_use(
-    const navigation *nav,
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *object,
-    const reference *r,
-    bool asset
-);
 /* Adds per-role use counts ("uses") to an inspected graph asset: to itself,
  * its function and macro summaries in "graphs", and its "variables". */
 void automation_add_use_counts(const navigation *nav, int asset, yyjson_mut_doc *doc, yyjson_mut_val *result);

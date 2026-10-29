@@ -9,7 +9,6 @@ void compile_report_free(compile_report *out);
 int compile_report_blocked(const compile_report *out);
 const compile_diagnostic *compile_report_first_error(const compile_report *out);
 const compile_effects *compile_report_effects(const compile_report *out);
-int compile_effects_conflict(const compile_effects *, const compile_effects *, int same_instance);
 const char *cmpl_rule_name(int rule);
 const char *cmpl_severity_name(int severity);
 

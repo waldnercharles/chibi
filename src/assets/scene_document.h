@@ -33,7 +33,6 @@ typedef struct scene_document
 
 scene_document *scene_document_new(const char *name);
 void scene_document_free(scene_document *document);
-int scene_document_set_perspective(scene_document *document, bool perspective);
 /* Names the scene's root ui document; NULL or "" leaves the project's. */
 void scene_document_set_ui(scene_document *document, const char *ui);
 /* The entity a '.'-separated path names, or -1. */

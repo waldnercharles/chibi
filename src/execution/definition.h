@@ -331,8 +331,6 @@ void *behavior_function_jit_scoped(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
 bool behavior_function_static_name(const char **name);
-void behavior_function_constant_locals(behavior_function *function);
-void behavior_function_prune_values(behavior_function *function);
 void behavior_function_runtime_code(behavior_function *function);
 void behavior_function_rebind_host(
     const behavior_function *,
@@ -353,7 +351,6 @@ void behavior_function_note_derived(behavior_function *function);
 /* The instructions control may reach next from `pc`; returns their count. */
 int behavior_function_successors(const behavior_function *function, int pc, int targets[2]);
 bool program_call_views_allowed(const behavior_function_context *context);
-void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
 void behavior_function_optimize_ranges(behavior_function *function, const bool *keep);
 void behavior_function_optimize(behavior_function *function);
@@ -365,7 +362,6 @@ typedef struct
     unsigned entry_steps, iteration_steps;
 } behavior_loop_budget;
 bool behavior_function_loop_budget(const behavior_function *function, behavior_loop_budget *proof);
-void behavior_function_fuse_queries(behavior_function *function);
 static inline bool behavior_function_fast_allowed(
     const behavior_function *f,
     const behavior_function_context *ctx

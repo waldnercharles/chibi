@@ -107,17 +107,6 @@ int source_detach(source_registry *, ecs_entity, const char *);
 int source_detach_entity(source_registry *, ecs_entity);
 int source_begin(source_registry *, double now, double delta);
 int source_dispatch(source_registry *, ecs_entity, const char *, const pin_value *, int, double now, double delta);
-/* Snapshot/deliver an exact component edge to qualified observers. Generic
- * event dispatch remains independent; nested notifications defer safely. */
-int source_field_changed(
-    source_registry *,
-    ecs_entity,
-    ecs_component_id,
-    size_t offset,
-    pin_value,
-    double now,
-    double delta
-);
 int source_dispatch_all(source_registry *, const char *, const pin_value *, int, double now, double delta);
 /* Default stepping runs every registered system. An explicit engine selection
  * instead runs systems only through run_system at their authored phases. */

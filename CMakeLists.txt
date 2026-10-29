@@ -251,18 +251,6 @@ if(TARGET chibi)
     add_dependencies(chibi chibi_build_shaders)
 endif()
 
-if(TARGET Chibi::project_preparation AND TARGET Chibi::render)
-    # The controller uses the same explicit headers and package links as its
-    # standalone installed build; this directory stages its owning resources.
-    set(Chibi_RESOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/controller_resources")
-    file(MAKE_DIRECTORY "${Chibi_RESOURCE_DIR}")
-    configure_file("${CMAKE_CURRENT_BINARY_DIR}/sdk/chibi_engine_metadata.json"
-        "${Chibi_RESOURCE_DIR}/engine.json" COPYONLY)
-    file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
-        DESTINATION "${Chibi_RESOURCE_DIR}")
-    add_subdirectory(tools/chibi_ctl)
-endif()
-
 # The C tests use POSIX processes and files directly.
 if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if(TARGET Chibi::authoring)

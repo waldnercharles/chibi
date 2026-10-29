@@ -254,11 +254,11 @@ Linux uses the same default graph for native products and the full
 tooling/language test drivers. `make build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `ASSET_GENERATOR_HOSTS=DIR` names other hosts. For a fast Debug O1 build with Release generators:
 
 ```sh
-make build-release BUILD_TARGET='chibi chibi_ctl chibi-build-host chibi-compiler-host'
+make build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'
 make build BUILD_PROFILE=debug BUILD_DEBUG_OPTIMIZATION=1 \
   BUILD_DEBUG_FRAME_POINTERS=on BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
   ASSET_GENERATOR_HOSTS=build-release/sdk \
-  BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language'
+  BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language'
 ```
 
 Use the existing Linux development prerequisites and pinned third-party archive;

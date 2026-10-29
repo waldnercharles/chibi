@@ -2317,8 +2317,19 @@ TEST_CASE(asset_generator_source_lists_bounded_ordered_phases)
 
 TEST_CASE(discovery_without_a_compiler_driver)
 {
-    char root[GRAPH_PATH];
+    char root[GRAPH_PATH], driver_root[GRAPH_PATH], driver[GRAPH_PATH],
+        resource[GRAPH_PATH], script[GRAPH_PATH + 128];
     join(root, suite, "toolchain");
+    assert(!mkdir(root, 0700));
+    join(driver_root, root, "multiarch driver");
+    assert(!mkdir(driver_root, 0700));
+    join(driver, driver_root, "bin");
+    assert(!mkdir(driver, 0700));
+    join(driver, driver_root, "bin/clang");
+    join(resource, driver_root, "resource-directory");
+    snprintf(script, sizeof script, "#!/bin/sh\ntest \"$1\" = -print-resource-dir || exit 1\ncat \"%s\"\n", resource);
+    tool_write(driver, script);
+    assert(!chmod(driver, 0700));
     const char *const argv[] = { host_path,
                                  "--root",
                                  CHIBI_SOURCE_ROOT,
@@ -2355,11 +2366,88 @@ TEST_CASE(discovery_without_a_compiler_driver)
     return true;
 }
 
+TEST_CASE(libclang_discovery_honors_environment_prefixes)
+{
+    char root[GRAPH_PATH], relative[GRAPH_PATH], prefixes[GRAPH_PATH * 5],
+        includes[GRAPH_PATH * 2], libraries[GRAPH_PATH * 2];
+    snprintf(relative, sizeof relative, ".chibi/build-graph-discovery/%s", strrchr(suite, '/') + 1);
+    join(root, CHIBI_SOURCE_ROOT, relative);
+    snprintf(
+        prefixes,
+        sizeof prefixes,
+        "CMAKE_PREFIX_PATH=:%s/missing prefix::%s/first prefix:%s/second "
+        "prefix:%s/semicolon;prefix:",
+        relative,
+        relative,
+        relative,
+        relative
+    );
+    snprintf(includes, sizeof includes, "CMAKE_INCLUDE_PATH=%s/direct prefix/include/", relative);
+    snprintf(libraries, sizeof libraries, "CMAKE_LIBRARY_PATH=%s/direct prefix/lib64/", relative);
+    const char *const argv[] = { "env",
+                                 prefixes,
+                                 includes,
+                                 libraries,
+                                 host_path,
+                                 "--root",
+                                 CHIBI_SOURCE_ROOT,
+                                 "--source",
+                                 "test/tools/GraphLibclangDiscovery.chibi",
+                                 "--core",
+                                 "packages/core",
+                                 "--collection",
+                                 "graph=tools/graph",
+                                 "--entry",
+                                 "Verify",
+                                 "--timeout-ms",
+                                 "30000",
+                                 "--",
+                                 root,
+                                 NULL };
+    int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, 30);
+    if (!status) {
+        char source[GRAPH_PATH], core[GRAPH_PATH], compiler_root[GRAPH_PATH],
+            collection[GRAPH_PATH + 32];
+        join(source, CHIBI_SOURCE_ROOT, "test/tools/GraphLibclangDiscovery.chibi");
+        join(core, CHIBI_SOURCE_ROOT, "packages/core");
+        join(compiler_root, CHIBI_SOURCE_ROOT, "tools/compiler");
+        snprintf(collection, sizeof collection, "graph=%s/tools/graph", CHIBI_SOURCE_ROOT);
+        const char *const spelling[] = { host_path,
+                                         "--root",
+                                         root,
+                                         "--source",
+                                         source,
+                                         "--core",
+                                         core,
+                                         "--compiler",
+                                         compiler_root,
+                                         "--compiler-core",
+                                         core,
+                                         "--collection",
+                                         collection,
+                                         "--entry",
+                                         "VerifyPathSpelling",
+                                         "--timeout-ms",
+                                         "30000",
+                                         NULL };
+        status = tool_run_within(spelling, CHIBI_SOURCE_ROOT, log_path, 30);
+    }
+    if (status) {
+        char *log = tool_read(log_path);
+        fprintf(stderr, "libclang discovery: %s\n", log ? log : "");
+        free(log);
+    }
+    tool_remove_tree(root);
+    REQUIRE(!status);
+    return true;
+}
+
 /* A separate route: reflect's run and the codec compile take seconds. */
 void test_build_graph_generated(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
     RUN_TEST_CASE(discovery_without_a_compiler_driver);
+    RUN_TEST_CASE(libclang_discovery_honors_environment_prefixes);
     RUN_TEST_CASE(language_delivery_registrations_match);
     RUN_TEST_CASE(asset_generator_uses_its_own_collection);
     RUN_TEST_CASE(failed_steps_name_only_the_output);

@@ -806,6 +806,16 @@ After accepted `498f1b9a` integration, the combined package, graph-reflection an
 resource/version selectors pass 7/125 in 10.00 seconds, 2/11 in 30.69 seconds and
 3/20 in 40.51 seconds respectively, with counts given as cases/assertions and
 times as outer wall time.
+Custom LLVM discovery now preserves ordered environment prefixes, spaces and
+relative paths, with coherent headers/library selection. Its regression fails
+before the fix in 9.172 seconds and passes after it in 8.777 seconds; the final
+reviewed generated selector passes 10 cases and 212 assertions in 119.232 seconds. A real
+reflection build through a relative LLVM prefix containing spaces passes in
+10.813 seconds. Focused controls cover trailing slashes, drive spellings,
+multiarch resources, ancestor names and custom driver resource directories.
+Linux multiarch execution, Windows execution and arbitrary split
+include/library layouts remain unverified or unsupported as recorded in the
+toolchain inventory.
 
 Compiler-tools packaging slice, 2026-10-22: `tools/toolchain/SDK.chibi`
 installs graph-built private hosts and their complete compiler/core/bootstrap,

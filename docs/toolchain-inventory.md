@@ -93,6 +93,16 @@ archiver, ranlib, macOS sysroot/architecture and libclang root, including typed
 `-DNAME:TYPE=VALUE` and split `-D NAME=VALUE` spellings. It rejects unsupported
 definitions before writing build output. Linux/macOS warm reflection construction
 does not configure CMake, fetch vendor archives or construct compiler hosts.
+Libclang discovery checks the explicit root first, then `CMAKE_PREFIX_PATH`,
+conventional prefixes from `CMAKE_INCLUDE_PATH` and `CMAKE_LIBRARY_PATH`, known
+LLVM installations and system prefixes. Environment lists use the host path
+separator, retain spaces and resolve relative prefixes from the source root.
+Each selected installation supplies its own C API headers, library and builtin
+headers. Its driver reports the builtin resource directory, including custom
+directory names; without that driver, discovery requires a unique matching
+resource directory beside the library. The three environment search variables
+are not accepted as `-D` definitions; arbitrary split include/library
+installations remain unsupported.
 
 ## Installed Python surface
 

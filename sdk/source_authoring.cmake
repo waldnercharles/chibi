@@ -63,15 +63,8 @@ foreach(header source_presentation_internal source_presentation_anchors source_p
 endforeach()
 target_include_directories(chibi_source_presentation PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/private/source_presentation" "${CHIBI_SDK_ROOT}/third_party/yyjson")
-target_link_libraries(chibi_source_presentation PUBLIC chibi_authoring chibi_graph_model chibi_text_source
-    PRIVATE chibi_json chibi_graph_authoring)
+target_link_libraries(chibi_source_presentation PUBLIC chibi_authoring chibi_text_source
+    PRIVATE chibi_json)
 
 
-add_library(chibi_graph_catalog STATIC "${CHIBI_SDK_ROOT}/src/authoring/graph_catalog.c")
-add_library(Chibi::graph_catalog ALIAS chibi_graph_catalog)
-set_target_properties(chibi_graph_catalog PROPERTIES EXPORT_NAME graph_catalog)
-chibi_sdk_headers(chibi_graph_catalog PUBLIC authoring/graph_catalog.h)
-target_link_libraries(chibi_graph_catalog PUBLIC chibi_graph_model chibi_native_capabilities chibi_ecs
-    PRIVATE chibi_source_presentation chibi_graph_compilation)
-
-list(APPEND CHIBI_SDK_TARGETS chibi_source_catalog chibi_program chibi_source_presentation chibi_graph_catalog)
+list(APPEND CHIBI_SDK_TARGETS chibi_source_catalog chibi_program chibi_source_presentation)

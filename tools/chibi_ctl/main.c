@@ -6,9 +6,6 @@
 #include "automation/execution_policy.h"
 #include "automation/render_preview.h"
 #include "prepare.h"
-#ifdef CHIBI_CTL_STANDALONE
-#include "registry.h"
-#endif
 #include "support/resources.h"
 
 #include <SDL3/SDL_video.h>
@@ -245,14 +242,5 @@ static int run(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-#ifdef CHIBI_CTL_STANDALONE
-    if (!chibi_ctl_registry_init()) {
-        return 1;
-    }
-#endif
-    int result = run(argc, argv);
-#ifdef CHIBI_CTL_STANDALONE
-    chibi_ctl_registry_free();
-#endif
-    return result;
+    return run(argc, argv);
 }

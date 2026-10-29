@@ -354,13 +354,13 @@ if(TARGET Chibi::render)
         configure_file("${CHIBI_TOOL_ROOT}/test/render/hidden_app.h"
             "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/render/hidden_app.h" COPYONLY)
         target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
-            Chibi::graph_compilation Chibi::graph_authoring)
+)
         target_sources(chibi_render_consumer PRIVATE ../render/material_graphs.c ../render/material_ramps.c
             ../render/material_pixels.c ../sdf_visibility.c surface_transport.c
             material_mesh_cache.c hrc_spot.c)
         target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
         target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
-            Chibi::graph_compilation Chibi::graph_authoring)
+)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
     endif()
@@ -394,11 +394,11 @@ if(TARGET Chibi::model_authoring)
     target_include_directories(chibi_mesh_preparation_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_mesh_preparation_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
     target_link_libraries(chibi_mesh_preparation_consumer PRIVATE Chibi::model_authoring Chibi::shader_preparation
-        Chibi::mesh_runtime Chibi::graph_authoring Chibi::graph_compilation Chibi::graph_model)
+        Chibi::mesh_runtime)
     target_compile_options(chibi_mesh_preparation_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_mesh_preparation_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::model_authoring Chibi::shader_preparation
-        Chibi::mesh_runtime Chibi::graph_authoring Chibi::graph_compilation Chibi::graph_model)
+        Chibi::mesh_runtime)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MESH_PREPARATION=1)
 endif()
 
@@ -431,11 +431,11 @@ if(TARGET Chibi::model_import)
     target_include_directories(chibi_model_import_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_model_import_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
     target_link_libraries(chibi_model_import_consumer PRIVATE Chibi::model_import Chibi::mesh_runtime
-        Chibi::graph_authoring Chibi::graph_compilation Chibi::native_types Chibi::asset_text Chibi::platform)
+ Chibi::native_types Chibi::asset_text Chibi::platform)
     target_compile_options(chibi_model_import_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_model_import_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::model_import Chibi::mesh_runtime Chibi::graph_authoring
-        Chibi::graph_compilation Chibi::native_types Chibi::asset_text Chibi::platform)
+    target_link_libraries(test_tools PRIVATE Chibi::model_import Chibi::mesh_runtime
+ Chibi::native_types Chibi::asset_text Chibi::platform)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
     if(TARGET chibi_render_consumer)
@@ -455,7 +455,7 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     target_include_directories(chibi_source_runtime_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring Chibi::asset_authoring
         Chibi::behavior_runtime Chibi::arithmetic_capabilities Chibi::host_native_default
-        Chibi::graph_authoring Chibi::native_types)
+ Chibi::native_types)
     target_compile_options(chibi_source_runtime_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_runtime_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::asset_authoring Chibi::arithmetic_capabilities)
@@ -468,11 +468,11 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
             ../authoring/shader_parameters.c ../authoring/component_presentation.c ../language/corpus_semantic.c)
         target_include_directories(chibi_source_features_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
         target_link_libraries(chibi_source_features_consumer PRIVATE Chibi::project_preparation Chibi::component_presentation
-            Chibi::render Chibi::graph_catalog Chibi::host_native_default Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
+            Chibi::render Chibi::host_native_default Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
         target_compile_options(chibi_source_features_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         target_compile_definitions(chibi_source_features_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
         target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_features_consumer>)
-        target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::component_presentation Chibi::graph_catalog Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
+        target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::component_presentation Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::studio_capabilities)
@@ -485,11 +485,11 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
             ../graph/collapse.c ../graph/problems.c ../graph/vectors.c)
         target_include_directories(chibi_graph_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
         target_link_libraries(chibi_graph_consumer PRIVATE Chibi::project_preparation Chibi::graph_catalog
-            Chibi::graph_authoring Chibi::graph_compilation Chibi::asset_text Chibi::arithmetic_capabilities
+ Chibi::asset_text Chibi::arithmetic_capabilities
             Chibi::vector_capabilities)
         target_compile_options(chibi_graph_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_graph_consumer>)
-        target_link_libraries(test_tools PRIVATE Chibi::graph_authoring Chibi::graph_compilation
+        target_link_libraries(test_tools PRIVATE
             Chibi::asset_text Chibi::vector_capabilities)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_GRAPH_AUTHORING=1)
         # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
@@ -530,10 +530,10 @@ endif()
 
 # Authoring documents over the game's reflected components and graph nodes:
 # prototype and scene documents, the reference index and asset source edits.
-if(TARGET chibi_source_runtime_consumer AND TARGET Chibi::graph_catalog)
+if(TARGET chibi_source_runtime_consumer AND TARGET)
     target_sources(test_tools PRIVATE ../authoring/prototype_documents.c ../authoring/reference_index.c
         ../authoring/ui_pages.c ../authoring/asset_source.c ../support/graph_packs.c)
-    target_link_libraries(test_tools PRIVATE Chibi::graph_catalog Chibi::graph_authoring Chibi::reference_index
+    target_link_libraries(test_tools PRIVATE Chibi::reference_index
         Chibi::prototype_document Chibi::scene_document Chibi::native_types)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_AUTHORING_DOCUMENTS=1)
 endif()
@@ -546,7 +546,7 @@ if(TARGET Chibi::project_preparation)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_PREPARATION=1)
     # Preview graph layout and field programs use the game graph packs the
     # authoring documents build.
-    if(TARGET chibi_source_runtime_consumer AND TARGET Chibi::graph_catalog)
+    if(TARGET chibi_source_runtime_consumer AND TARGET)
         target_sources(test_tools PRIVATE ../authoring/preview_layout.c ../runtime/fields.c
             ../runtime/field_library.c)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PREVIEW_GRAPHS=1)

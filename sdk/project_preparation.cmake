@@ -27,8 +27,8 @@ chibi_sdk_headers(chibi_shader_preparation PUBLIC authoring/shader_prepare.h
     authoring/parts_prepare.h authoring/mesh_prepare.h authoring/visual_prepare.h)
 target_include_directories(chibi_shader_preparation PRIVATE
     "${CHIBI_SDK_ROOT}/third_party/yyjson")
-target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi_graph_model chibi_player
-    PRIVATE chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
+target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi_player
+    PRIVATE chibi_asset_text chibi_json chibi_image_catalog)
 
 # Players' pinned Vorbis decoder, compiled with private symbols, so preparation
 # refuses an Ogg sound that players cannot decode.
@@ -65,7 +65,7 @@ target_include_directories(chibi_project_compilation PRIVATE "${CMAKE_CURRENT_BI
 target_include_directories(chibi_project_compilation SYSTEM PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation")
 target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chibi_prototype_document chibi_project_document
     chibi_scene_document chibi_player chibi_native_prepared chibi_shader_preparation
-    PRIVATE chibi_graph_catalog chibi_host_native_default chibi_graph_compilation chibi_graph_authoring chibi_asset_authoring
+    PRIVATE chibi_host_native_default chibi_asset_authoring
     chibi_asset_text chibi_source_presentation chibi_text_source chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json
     chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities chibi_task_pool_runtime)
 list(APPEND CHIBI_SDK_TARGETS chibi_compiler_syntax chibi_compiler_json chibi_shader_preparation chibi_project_compilation)

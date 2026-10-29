@@ -1,6 +1,5 @@
 #include "authoring/project_compile.h"
 
-#include "authoring/graph_catalog.h"
 #include "authoring/native_bindings.h"
 #include "authoring/package_tests.h"
 #include "authoring/project_prepare.h"
@@ -164,31 +163,11 @@ static bool write_artifact(
 }
 bool authoring_application_begin(authoring_application *application, char *error, size_t size)
 {
-    *application = (authoring_application){ authoring_renderer_catalog_new(error, size),
-                                            NULL };
-    if (!application->native) {
-        return false;
-    }
-    authoring_graph_catalog_config config = {
-        .native = application->native,
-        .types = TYPE_PACK,
-        .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT }
-    };
-    application->graphs = authoring_graph_catalog_new(config, error, size);
-    if (!application->graphs) {
-        native_capabilities_free(application->native);
-        return false;
-    }
-    int count = 0;
-    const registry_pack *const
-        *packs = authoring_graph_catalog_packs(application->graphs, &count);
-    registry_set_packs(packs, count);
-    return true;
+    *application = (authoring_application){ authoring_renderer_catalog_new(error, size) };
+    return application->native != NULL;
 }
 void authoring_application_end(authoring_application *application)
 {
-    registry_set_packs(NULL, 0);
-    authoring_graph_catalog_free(application->graphs);
     native_capabilities_free(application->native);
 }
 /* Prepares the project, or assembles it when `modules` is nonnull,

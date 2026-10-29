@@ -32,11 +32,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(CHIBI_FIELD_SIMD "Enable compiler SIMD in worker Web field evaluation" ON)
-if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
-   (NOT CHIBI_WEB_THREADS OR NOT CHIBI_FIELD_SIMD))
-    set_property(SOURCE src/graph/compiler/field_program.c APPEND PROPERTY
-        COMPILE_OPTIONS -mno-simd128)
-endif()
 
 option(CHIBI_ENABLE_SANITIZERS
        "Enable the selected sanitizer for native targets" ON)

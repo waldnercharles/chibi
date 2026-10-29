@@ -3,7 +3,6 @@
 #include "authoring/project_format.h"
 #include "authoring/project_prepare.h"
 #include "authoring/source_catalog.h"
-#include "graph/model/registry.h"
 #include "runtime/component_catalog.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
@@ -11,53 +10,22 @@
 #include "toolchain/compiler_target.h"
 #include "types/catalog.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 /* Explicit final application composition, shared with the prepared player. */
-static bool additional_pack(int index)
-{
-    const registry_pack *pack = registry_pack_at(index);
-    if ((!pack->type_count && !pack->enum_count) ||
-        (pack->types == TYPE_PACK.types && pack->enums == TYPE_PACK.enums &&
-         pack->type_count == TYPE_PACK.type_count &&
-         pack->enum_count == TYPE_PACK.enum_count)) {
-        return false;
-    }
-    for (int i = 0; i < index; i++) {
-        const registry_pack *previous = registry_pack_at(i);
-        if (pack->types == previous->types && pack->enums == previous->enums &&
-            pack->type_count == previous->type_count &&
-            pack->enum_count == previous->enum_count) {
-            return false;
-        }
-    }
-    return true;
-}
 int type_catalog_pack_count()
 {
-    int count = 1;
-    for (int i = 0; i < registry_pack_count(); i++) {
-        count += additional_pack(i);
-    }
-    return count;
+    return 1;
 }
 type_catalog_pack type_catalog_pack_at(int index)
 {
-    if (!index) {
-        return TYPE_PACK;
-    }
-    for (int i = 0; index > 0 && i < registry_pack_count(); i++) {
-        if (additional_pack(i) && !--index) {
-            const registry_pack *pack = registry_pack_at(i);
-            return (
-                type_catalog_pack
-            ){ pack->types, pack->type_count, pack->enums, pack->enum_count };
-        }
-    }
-    abort();
+    assert(index == 0);
+    (void)index;
+    return TYPE_PACK;
 }
 static int usage(const char *program)
 {

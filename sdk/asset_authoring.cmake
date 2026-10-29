@@ -29,9 +29,9 @@ chibi_sdk_headers(chibi_asset_authoring PUBLIC
     assets/new_asset.h assets/asset_source.h assets/reference_adapters.h assets/refactor.h
     support/code_completion.h)
 target_link_libraries(chibi_asset_authoring PUBLIC
-    chibi_prototype_document chibi_graph_model chibi_reference_index chibi_field_catalog
+    chibi_prototype_document chibi_reference_index chibi_field_catalog
     PRIVATE chibi_authoring chibi_asset_text chibi_scene_document chibi_ui_document
-    chibi_graph_authoring chibi_graph_compilation chibi_native_types chibi_text_source
+ chibi_native_types chibi_text_source
     chibi_declared_components)
 
 add_library(chibi_model_authoring STATIC
@@ -43,8 +43,8 @@ set_target_properties(chibi_model_authoring PROPERTIES EXPORT_NAME model_authori
 chibi_sdk_headers(chibi_model_authoring PUBLIC
     assets/model_source.h assets/model_validation.h assets/model_export.h)
 target_include_directories(chibi_model_authoring PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
-target_link_libraries(chibi_model_authoring PUBLIC chibi_graph_model chibi_model_bake
-    PRIVATE chibi_image_preparation chibi_shader_preparation chibi_graph_authoring chibi_graph_compilation
+target_link_libraries(chibi_model_authoring PUBLIC chibi_model_bake
+    PRIVATE chibi_image_preparation chibi_shader_preparation
     chibi_visual_catalog chibi_asset_text chibi_json chibi_support)
 
 # glTF import reads models through Cute's loader, which only the desktop
@@ -57,9 +57,9 @@ if(CHIBI_SDK_BUILD_DESKTOP)
     set_target_properties(chibi_model_import PROPERTIES EXPORT_NAME model_import)
     chibi_sdk_headers(chibi_model_import PUBLIC assets/model_import.h assets/standard_material.h)
     target_include_directories(chibi_model_import PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
-    target_link_libraries(chibi_model_import PUBLIC chibi_graph_model chibi_shader_runtime
+    target_link_libraries(chibi_model_import PUBLIC chibi_shader_runtime
         PRIVATE chibi_platform chibi_asset_authoring chibi_prototype_document chibi_image_preparation
-        chibi_mesh_runtime chibi_native_types chibi_graph_authoring chibi_graph_compilation
+        chibi_mesh_runtime chibi_native_types
         chibi_asset_text chibi_json chibi_support chibi_source_catalog)
     list(APPEND CHIBI_SDK_TARGETS chibi_model_import)
 endif()
@@ -81,7 +81,7 @@ chibi_sdk_headers(chibi_project_format PUBLIC authoring/project_format.h)
 target_link_libraries(chibi_project_format PUBLIC chibi_native_capabilities
     PRIVATE chibi_project_compilation chibi_source_catalog chibi_source_presentation chibi_authoring
     chibi_component_presentation chibi_scenario_document chibi_scene_document chibi_prototype_document
-    chibi_graph_authoring chibi_input_map chibi_declared_components chibi_project_document
+ chibi_input_map chibi_declared_components chibi_project_document
     chibi_asset_text chibi_support)
 list(APPEND CHIBI_SDK_TARGETS chibi_project_format)
 if(TARGET chibi-compile)

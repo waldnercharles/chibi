@@ -10,12 +10,12 @@ if(NOT TARGET Chibi::project_preparation)
 endif()
 
 set(packages asset_authoring asset_json asset_text authoring behavior_runtime
-    component_presentation ecs execution execution_contract field_catalog graph_authoring
-    graph_compilation graph_model graph_catalog host_native_default image_preparation json
+    component_presentation ecs execution execution_contract field_catalog
+    host_native_default image_preparation json
     model_authoring model_import model_runtime native_capabilities native_types platform project_document
     project_preparation project_compilation project_format prototype_document reference_index render
     scenario_document scene_document shader_preparation source_catalog source_presentation
-    studio_capabilities studio_graph support text_search text_source types ui ui_authoring
+    studio_capabilities support text_search text_source types ui ui_authoring
     ui_document ui_runtime visual_catalog)
 foreach(package IN LISTS packages)
     if(NOT TARGET Chibi::${package})

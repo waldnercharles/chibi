@@ -17,8 +17,8 @@ foreach(header preview_source_internal graph_sources graph_loader_internal)
 endforeach()
 target_include_directories(chibi_project_preparation PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/project_preparation")
 target_link_libraries(chibi_project_preparation PUBLIC chibi_project_compilation chibi_source_presentation
-    chibi_engine chibi_ui_host chibi_renderer chibi_graph_compilation
-    PRIVATE chibi_graph_catalog chibi_studio_catalog chibi_host_native_default chibi_graph_authoring
+    chibi_engine chibi_ui_host chibi_renderer
+    PRIVATE chibi_studio_catalog chibi_host_native_default
     chibi_asset_authoring chibi_asset_text chibi_project_document chibi_ui_authoring chibi_image_preparation
     chibi_declared_components)
 list(APPEND CHIBI_SDK_TARGETS chibi_project_preparation)

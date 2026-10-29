@@ -724,7 +724,7 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
     output := Join([folder, "/sdk/generated/assets"]);
     // Unoptimized or sanitized hosts take minutes to compile the asset compiler.
     slow := profile.sanitizers != "" || profile.build_type != "Release";
-    timeout := "240000";
+    timeout := "360000";
     if (slow) {
         timeout = "600000";
     }

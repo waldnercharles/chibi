@@ -235,8 +235,8 @@ TEST_CASE(package_argument_effects_match_across_compilers)
             &args[9],
             &args[12]
         ));
-        pin_value out;
-        REQUIRE(compiler_fixture_call(
+        pin_value out[3];
+        REQUIRE(compiler_fixture_call_results(
             &compiler,
             b,
             "project:package_compiler",
@@ -245,10 +245,11 @@ TEST_CASE(package_argument_effects_match_across_compilers)
             13,
             20000000,
             &detached,
-            &out
+            out,
+            3
         ));
-        const pin_union *result = out.ptr;
-        if (out.type == PIN_UNION && result && result->count == 1) {
+        const pin_union *result = out[2].ptr;
+        if (out[2].type == PIN_UNION && result && result->count == 1) {
             pin_value diagnostic = result->values[0], message;
             const type_field *member = pin_type_field_path(pin_value_type(&diagnostic), "message");
             if (member && !pin_read_field(&input, diagnostic.ptr, member, &message)) {
@@ -272,9 +273,9 @@ TEST_CASE(package_argument_effects_match_across_compilers)
                 );
             }
         }
-        REQUIRE(out.type == PIN_UNION && result && result->count == 2);
-        const pin_array *array = result->values[1].ptr;
-        REQUIRE(result->values[1].type == PIN_U8 && array && array->count);
+        REQUIRE(out[2].type == PIN_UNION && !result);
+        const pin_array *array = out[1].ptr;
+        REQUIRE(out[1].type == PIN_U8 && array && array->count);
         unsigned char *bytes = malloc((size_t)array->count);
         REQUIRE(bytes);
         for (int i = 0; i < array->count; i++) {

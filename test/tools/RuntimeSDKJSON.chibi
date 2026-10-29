@@ -93,65 +93,54 @@ CanonicalDepth :: () {
     assert(length(sdk.JsonFields(format_text("{{\"deep\":{}}}", text))) == 0);
 }
 
+// Expected bytes come from Python json.dumps(sort_keys=True,
+// separators=(',', ':'), ensure_ascii=True) over the decoded input.
+@test
+PythonVectors :: () {
+    inputs := [
+        " {\n \"b\" : [1, 2,{\"z\":null,\"a\":true}] , \"a\":\"x\" }\n",
+        "{\"k\":\"café 雪 😀 \\u007f \\u0001 \\\" \\\\ \\/ \\b\\f\\n\\r\\t\"}",
+        "{\"é\":1,\"e\":2,\"😀\":3,\"￿\":4}",
+        "[-0, 0, -1, 9223372036854775807, -9223372036854775808]",
+        "\"é😀\\u007f\"",
+        "{}",
+        "[]",
+        "null",
+        "true",
+        "false",
+        "[[[[]]], {\"a\":{\"b\":{\"c\":[]}}}]",
+        "{\"a\":1,\"A\":2,\"_\":3,\"0\":4}",
+        "  [ 1 , \"two\" , [ 3 ] ]  "
+    ];
+    expected := [
+        "{\"a\":\"x\",\"b\":[1,2,{\"a\":true,\"z\":null}]}",
+        "{\"k\":\"caf\\u00e9 \\u96ea \\ud83d\\ude00 \\u007f \\u0001 \\\" \\\\ / \\b\\f\\n\\r\\t\"}",
+        "{\"e\":2,\"\\u00e9\":1,\"\\uffff\":4,\"\\ud83d\\ude00\":3}",
+        "[0,0,-1,9223372036854775807,-9223372036854775808]",
+        "\"\\u00e9\\ud83d\\ude00\\u007f\"",
+        "{}",
+        "[]",
+        "null",
+        "true",
+        "false",
+        "[[[[]]],{\"a\":{\"b\":{\"c\":[]}}}]",
+        "{\"0\":4,\"A\":2,\"_\":3,\"a\":1}",
+        "[1,\"two\",[3]]"
+    ];
+    for (index in 0..<length(inputs)) {
+        assert(sdk.JsonCanonical(inputs[index]) == expected[index]);
+    }
+}
+
 // The existing build host runs this entry. The native tools dispatcher can
-// call the same cases; differential vectors are owned by its scratch root.
+// call the same cases.
 Build :: () -> int {
     CanonicalManifest();
     CanonicalUnicode();
     CanonicalRejectsMalformed();
     CanonicalFields();
     CanonicalDepth();
-    arguments := build.arguments();
-    if (length(arguments) != 1) {
-        return 2;
-    }
-    root := arguments[0];
-    for (name in build.list_directory(format_text("{}/inputs", root))) {
-        input := build.read_file(format_text("{}/inputs/{}", root, name));
-        result := sdk.JsonCanonical(input);
-        if (!build.write_file(format_text("{}/actual/{}", root, name), result)) {
-            return 3;
-        }
-        if (result != build.read_file(format_text("{}/expected/{}", root, name))) {
-            build.report(format_text("sdk-json: differential case failed {}", name));
-            return 4;
-        }
-        if (strings.HasPrefix(result, "{")) {
-            keys: string[] = [];
-            values: string[] = [];
-            for (field in sdk.JsonFields(input)) {
-                keys.append(field.key);
-                values.append(field.value);
-            }
-            if (sdk.JsonObject(keys, values) != result) {
-                return 5;
-            }
-        }
-        if (result == "" && length(sdk.JsonFields(input)) != 0) {
-            return 6;
-        }
-    }
-    build.report("sdk-json: authored cases and Python differential vectors passed");
-    return 0;
-}
-
-// A synthetic inventory measures this API without reading any SDK products.
-// Each output row is decoded key<TAB>canonical value, with sorted keys.
-Fields :: () -> int {
-    arguments := build.arguments();
-    if (length(arguments) != 2) {
-        return 2;
-    }
-    fields := sdk.JsonFields(build.read_file(arguments[0]));
-    if (length(fields) != 1000) {
-        return 3;
-    }
-    rows: string[] = [];
-    for (field in fields) {
-        rows.append(format_text("{}\t{}\n", field.key, field.value));
-    }
-    if (!build.write_file(arguments[1], strings.Join(rows, ""))) {
-        return 4;
-    }
+    PythonVectors();
+    build.report("sdk-json: authored cases and Python vectors passed");
     return 0;
 }

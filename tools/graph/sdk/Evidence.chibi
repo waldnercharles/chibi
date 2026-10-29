@@ -112,16 +112,13 @@ EvidenceToolIdentities :: (profile: engine.Profile, tools: c.Tools) -> string {
         if (checksum == "") {
             checksum = build.hash_file(resolved);
         }
-        stamp := build.file_stamp(resolved);
-        if (checksum == "" || stamp == "") {
+        if (checksum == "") {
             return EvidenceFailure("runtime tool identity is unavailable");
         }
         resolved_paths.append(resolved);
         hashes.append(checksum);
         keys.append(names[i]);
-        values.append(JsonObject(["path", "resolved", "sha256", "stamp"], [
-            JsonQuote(path), JsonQuote(resolved), JsonQuote(checksum), JsonQuote(stamp)
-        ]));
+        values.append(JsonObject(["path", "resolved", "sha256"], [JsonQuote(path), JsonQuote(resolved), JsonQuote(checksum)]));
     }
     return JsonObject(keys, values);
 }
@@ -140,6 +137,12 @@ pub PrepareBuildConfiguration :: (build_dir: string, profile: engine.Profile, to
     }
     previous := JsonCanonical(build.read_file(EvidenceJoin([build_dir, "/sdk/runtime-build.json"])));
     if (JsonGet(previous, "tool_identities") != identities) {
+        // A failed build must not let a restored tool revalidate objects the other tool made.
+        configuration := EvidenceJoin([build_dir, "/sdk/runtime-build.json"]);
+        if (build.file_kind(configuration) != "" && !build.remove(configuration)) {
+            EvidenceFailure("cannot invalidate the previous runtime build configuration");
+            return false;
+        }
         for (target in EvidenceTargets()) {
             built := engine.Library(build.root(), build_dir, profile.third_party, target);
             for (source in engine.Sources(build.root(), build_dir, profile.third_party, target)) {
@@ -279,7 +282,11 @@ EvidenceNormalize :: (roots: string[], value: string) -> string {
             if (i == 2) {
                 label = "@vendor";
             }
-            result = build.replace(result, roots[i], label);
+            // Only whole path components: /x/tp must not rewrite /x/tp-build.
+            result = build.replace(result, EvidenceJoin([roots[i], "/"]), EvidenceJoin([label, "/"]));
+            if (strings.HasSuffix(result, roots[i])) {
+                result = EvidenceJoin([strings.Slice(result, 0, strings.ByteLength(result) - strings.ByteLength(roots[i])), label]);
+            }
         }
     }
     return result;

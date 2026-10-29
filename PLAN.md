@@ -1869,4 +1869,4 @@ The supported `runtime-sdk-build`/`package-runtime-sdk` route must no longer con
 
 ### Status
 
-Source preparation is in progress on accepted907. Existing WIP metadata is now in graph:sdk; construction entry/strict options, canonical JSON codec, graph evidence and staged installer are being prepared in parallel. Only commands-only and small codec/record/install fixtures may execute while the recovery archive owns the heavy IO slot. Actual SDK construction, installation acceptance and the caller cutover remain unproved; no new SDK, compiler seed or public CLI has been produced.
+Source preparation is in progress on accepted `907b1fe0`. Existing WIP metadata is now in graph:sdk; construction entry/strict options, canonical JSON codec, graph evidence and staged installer are being prepared in parallel. Only commands-only and small codec/record/install fixtures may execute while the recovery archive owns the heavy IO slot. Actual SDK construction, installation acceptance and the caller cutover remain unproved; no new SDK, compiler seed or public CLI has been produced.

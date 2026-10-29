@@ -56,7 +56,8 @@ static bool run_authored(const char *name)
     char source[RUNTIME_SDK_PATH], work[RUNTIME_SDK_PATH], file[RUNTIME_SDK_PATH];
     snprintf(file, sizeof file, "test/tools/RuntimeSDK%s.chibi", name);
     join(work, suite, name);
-    assert(!mkdir(work, 0700));
+    int made = mkdir(work, 0700);
+    assert(!made);
     join(source, CHIBI_SOURCE_ROOT, file);
     return !run_program(source, work);
 }

@@ -168,7 +168,7 @@ ToolPreflight :: () {
     assert(build.file_exists(pending) && sdk.JsonCanonical(build.read_file(configuration)) == saved);
     assert(sdk.GraphEvidence(roots[0], roots[1], roots[2]) == "");
     assert(sdk.PrepareBuildConfiguration(roots[1], profile, tools));
-    assert(!build.file_exists(selected));
+    assert(!build.file_exists(selected) && !build.file_exists(configuration));
     assert(sdk.WriteBuildConfiguration(roots[1], profile, tools));
     assert(!build.file_exists(pending));
     saved = sdk.JsonCanonical(build.read_file(configuration));

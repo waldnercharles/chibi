@@ -100,7 +100,7 @@ RuntimeFiles :: (prefix: string, relative: string) -> string {
     return sdk.JsonObject(keys, values);
 }
 
-RuntimeHeaderHashes :: (files: string, runtime_only: bool) -> string {
+RuntimeHeaderHashes :: (members: string, runtime_only: bool) -> string {
     keys: string[] = [];
     values: string[] = [];
     owners := ["ui_document_values", "text_search", "image_catalog", "support", "types", "ecs",
@@ -110,7 +110,7 @@ RuntimeHeaderHashes :: (files: string, runtime_only: bool) -> string {
                "comparison_capabilities", "conversion_capabilities", "text_capabilities", "fmt", "host_native_catalog",
                "scene_runtime", "scheduling", "fields", "field_catalog", "tasks", "shader_runtime", "model_runtime",
                "ui_documents", "input_action"];
-    for (field in sdk.JsonFields(files)) {
+    for (field in sdk.JsonFields(members)) {
         name := field.key;
         if (!strings.HasPrefix(name, "include/")) {
             continue;
@@ -291,6 +291,7 @@ RuntimePublish :: (stage: string, output: string, previous: string) -> bool {
     old := RuntimeJoin([stage, "/previous"]);
     prepared := RuntimeJoin([stage, "/package"]);
     if (previous != "" && !build.publish_directory(output, old)) {
+        files.RemoveTree(stage);
         return false;
     }
     // The preimage can change after the caller's last check. Validate the tree
@@ -304,7 +305,10 @@ RuntimePublish :: (stage: string, output: string, previous: string) -> bool {
         return false;
     }
     if (build.publish_directory(prepared, output)) {
-        return files.RemoveTree(stage);
+        if (!files.RemoveTree(stage)) {
+            build.report(RuntimeJoin(["sdk: published; remove the leftover staging directory ", stage]));
+        }
+        return true;
     }
     if (previous != "" && !build.publish_directory(old, output)) {
         build.report(RuntimeJoin(["sdk: rollback failed; prior generation retained at ", old]));
@@ -326,14 +330,14 @@ RuntimeExtend :: (object: string, added_keys: string[], added_values: string[]) 
     return sdk.JsonObject(keys, values);
 }
 
-RuntimeArchiveInstallation :: (evidence: string, files: string) -> string {
+RuntimeArchiveInstallation :: (evidence: string, members: string) -> string {
     archives := sdk.JsonGet(evidence, "archives");
     keys: string[] = [];
     values: string[] = [];
     for (field in sdk.JsonFields(archives)) {
         archive := field.key;
         destination := RuntimeJoin(["lib/", strings.BaseName(archive)]);
-        if (field.value != sdk.JsonGet(sdk.JsonGet(files, destination), "sha256")) {
+        if (field.value != sdk.JsonGet(sdk.JsonGet(members, destination), "sha256")) {
             return RuntimeFail(RuntimeJoin(["installed archive differs from graph evidence: ", destination]));
         }
         keys.append(archive);
@@ -354,14 +358,14 @@ RuntimeManifest :: (stage: string, evidence: string, source: string) -> string {
         !build.write_file(RuntimeJoin([stage, "/share/chibi/engine.json"]), RuntimeJoin([engine_manifest, "\n"]))) {
         return RuntimeFail("cannot write engine manifest");
     }
-    files := RuntimeFiles(stage, "");
-    if (files == "") {
+    members := RuntimeFiles(stage, "");
+    if (members == "") {
         return "";
     }
-    archives := RuntimeArchiveInstallation(evidence, files);
+    archives := RuntimeArchiveInstallation(evidence, members);
     executable := sdk.JsonGet(sdk.JsonGet(evidence, "executables"), "chibi-player");
     if (archives == "" || sdk.JsonGet(executable, "sha256") !=
-        sdk.JsonGet(sdk.JsonGet(files, "bin/chibi-player"), "sha256")) {
+        sdk.JsonGet(sdk.JsonGet(members, "bin/chibi-player"), "sha256")) {
         return RuntimeFail("installed player differs from graph evidence");
     }
     requirements := sdk.JsonObject(
@@ -370,8 +374,8 @@ RuntimeManifest :: (stage: string, evidence: string, source: string) -> string {
         ["23", sdk.JsonGet(sdk.JsonGet(formats, "execution"), "version"), formats,
          sdk.JsonGet(document, "project_version"), sdk.JsonGet(configuration, "system"),
          sdk.JsonGet(configuration, "processor"), sdk.JsonGet(configuration, "pointer_bits"),
-         sdk.JsonGet(configuration, "byte_order"), sdk.JsonQuote(RuntimeHeaderHashes(files, false)),
-         sdk.JsonQuote(RuntimeHeaderHashes(files, true))]);
+         sdk.JsonGet(configuration, "byte_order"), sdk.JsonQuote(RuntimeHeaderHashes(members, false)),
+         sdk.JsonQuote(RuntimeHeaderHashes(members, true))]);
     build_manifest := sdk.JsonObject(
         ["inputs", "archive_installation", "configuration", "compiler_id", "compiler_version",
          "compiler_target", "c_flags", "configuration_c_flags", "native_backend"],
@@ -387,7 +391,7 @@ RuntimeManifest :: (stage: string, evidence: string, source: string) -> string {
          "products", "private_tools", "requirements", "build"],
         ["1", sdk.JsonQuote("runtime"), sdk.JsonGet(document, "sdk_version"),
          sdk.JsonObject(["manifest", "build_id"], [sdk.JsonQuote("share/chibi/engine.json"), sdk.JsonQuote(engine_id)]),
-         source, files, sdk.JsonArray(targets), "{\"chibi-player\":\"bin/chibi-player\"}", "{}",
+         source, members, sdk.JsonArray(targets), "{\"chibi-player\":\"bin/chibi-player\"}", "{}",
          requirements, build_manifest]);
     if (manifest == "") {
         return RuntimeFail("invalid package manifest fields");
@@ -450,6 +454,10 @@ RuntimeAssemble :: (root: string, build_dir: string, third_party: string, output
         RuntimeFail("--build, --third-party and --output must be absolute; output must name a package");
         return 2;
     }
+    // Graph records name the paths the build was given; only overlap checks resolve links.
+    recorded_root := root;
+    recorded_build := build_dir;
+    recorded_third_party := third_party;
     root = files.CanonicalPath(root);
     build_dir = files.CanonicalPath(build_dir);
     third_party = files.CanonicalPath(third_party);
@@ -483,7 +491,7 @@ RuntimeAssemble :: (root: string, build_dir: string, third_party: string, output
             return 2;
         }
     }
-    evidence := sdk.GraphEvidence(root, build_dir, third_party);
+    evidence := sdk.GraphEvidence(recorded_root, recorded_build, recorded_third_party);
     source := RuntimeSourceIdentity(root);
     inputs := RuntimeInputIdentity(entries);
     if (evidence == "" || source == "" || inputs == "") {
@@ -507,7 +515,7 @@ RuntimeAssemble :: (root: string, build_dir: string, third_party: string, output
         manifest = RuntimeManifest(prepared, evidence, source);
     }
     if (manifest == "" || !build.write_file(RuntimeJoin([prepared, "/share/chibi/package.json"]), RuntimeJoin([manifest, "\n"])) ||
-        RuntimeVerify(prepared) != manifest || sdk.GraphEvidence(root, build_dir, third_party) != evidence ||
+        RuntimeVerify(prepared) != manifest || sdk.GraphEvidence(recorded_root, recorded_build, recorded_third_party) != evidence ||
         RuntimeSourceIdentity(root) != source || RuntimeInputIdentity(entries) != inputs ||
         (previous == "" && build.file_kind(output) != "") ||
         (previous != "" && RuntimeVerify(output) != previous)) {

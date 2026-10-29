@@ -124,18 +124,17 @@ static int format_packages(const char *folder, bool check)
 }
 /* Formats the project's assets with the composition chibi build uses, or the
  * package sources below a folder without a project.kdl; with check only
- * reports what differs. Fails for an older project, which it does not
- * migrate, an asset that differs under check, an invalid one or a failed
- * write. */
+ * reports what differs. Fails for a project at another version, an asset that
+ * differs under check, an invalid one or a failed write. */
 static int format(const char *project, bool check)
 {
     if (chibi_project_package_folder(project)) {
         return format_packages(project, check);
     }
     char error[512] = { 0 };
-    chibi_project read = { 0 };
-    bool current = !chibi_project_read(&read, project, error, sizeof error);
-    chibi_project_free(&read);
+    chibi_project opened = { 0 };
+    bool current = !chibi_project_open(&opened, project, error, sizeof error);
+    chibi_project_free(&opened);
     authoring_application application;
     if (!current || !authoring_application_begin(&application, error, sizeof error)) {
         fprintf(stderr, "format: %s\n", error);
@@ -244,7 +243,7 @@ static int assemble(const char *project, const char *closure, const char *output
     free(bytes);
     return status;
 }
-/* --check prepares the project without migrating it or writing anything;
+/* --check prepares the project without writing anything;
  * --test runs its package tests; --format rewrites its assets canonically, or
  * with --check reports the ones that are not; --docs writes its documentation
  * site. */

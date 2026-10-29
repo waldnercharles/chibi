@@ -45,7 +45,7 @@ The owner's top priority is replacing C, C++ and CMake with Chibi as fast as pos
 - Work autonomously. Ask only when a choice changes the goal, an output the owner will notice, or something that can't be undone; otherwise pick the reasonable default, say which, and keep going.
 - Fix root causes. Speed toward the C exit beats preserving existing behavior; fix a red `main` before starting new work.
 - When checks need a re-run (for example after a dependency merged), label the PR `ci-rerun`; label it `ci-seed` to build, publish and pin new compiler runtime seeds on its branch (pull before pushing again). See [starting CI with labels](docs/testing.md#starting-ci-with-labels).
-- Recipes for adding a component, a native script function, a test scene and a project migration are in `.claude/skills/chibi-recipes/SKILL.md`.
+- Recipes for adding a component, a native script function, a test scene and a project format change are in `.claude/skills/chibi-recipes/SKILL.md`.
 
 ## Before every commit
 

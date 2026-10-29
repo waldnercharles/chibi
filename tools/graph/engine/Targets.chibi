@@ -370,7 +370,7 @@ Files :: (target: string) -> string[] {
         return ["src/language/syntax.c", "src/language/src/parser.c", "src/language/src/scanner.c"];
     }
     if (target == "chibi_project_document") {
-        return ["src/assets/project.c", "src/assets/project_migrate.c"];
+        return ["src/assets/project.c"];
     }
     if (target == "chibi_ui_authoring") {
         return [
@@ -437,7 +437,8 @@ Files :: (target: string) -> string[] {
             "src/language/signature_reader.c", "src/language/callable_headers.c",
             "src/language/unit_analysis.c", "src/language/union_members.c", "src/language/effect_analysis.c",
             "src/language/record_members.c", "src/language/semantic_package.c",
-            "src/language/semantic_generic.c", "src/language/semantic_comptime.c"
+            "src/language/semantic_generic.c", "src/language/semantic_comptime.c",
+            "src/language/semantic_math.c", "src/language/math_types.c"
         ];
     }
     if (target == "chibi_compiler") {
@@ -529,8 +530,8 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_project_compilation") {
         return [
-            "src/authoring/component_declarations.c", "src/authoring/project_open.c",
-            "src/authoring/project_prepare.c", "src/authoring/project_prepare_assets.c",
+            "src/authoring/component_declarations.c", "src/authoring/project_prepare.c",
+            "src/authoring/project_prepare_assets.c",
             "src/authoring/project_compile.c", "src/authoring/source_costs.c", "src/authoring/renderer_catalog.c",
             "src/authoring/prototype_prepare.c", "src/authoring/material_prepare.c", "src/authoring/scene_prepare.c",
             "src/authoring/sound_prepare.c", "src/authoring/ui_prepare.c", "src/authoring/ui_prepare_assets.c"
@@ -1074,7 +1075,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["language/syntax.h"];
     }
     if (target == "chibi_project_document") {
-        return ["assets/project.h", "assets/project_migrate.h"];
+        return ["assets/project.h"];
     }
     if (target == "chibi_ui_authoring") {
         return ["assets/ui_events.h", "assets/ui_source.h"];
@@ -1117,7 +1118,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["authoring/image_prepare.h"];
     }
     if (target == "chibi_language") {
-        return ["language/component.h", "language/identity.h", "language/semantic.h"];
+        return ["language/component.h", "language/identity.h", "language/semantic.h", "language/math_types.h"];
     }
     if (target == "chibi_compiler") {
         return ["language/lower.h"];
@@ -1167,7 +1168,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_project_compilation") {
         return [
             "authoring/component_declarations.h", "authoring/material_prepare.h",
-            "authoring/project_compile.h", "authoring/project_open.h", "authoring/project_prepare.h",
+            "authoring/project_compile.h", "authoring/project_prepare.h",
             "authoring/prototype_prepare.h", "authoring/renderer_catalog.h", "authoring/scene_prepare.h",
             "authoring/sound_prepare.h", "authoring/source_costs.h"
         ];
@@ -3070,7 +3071,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
     if (target == "test_language" &&
         (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/source_parser_chibi.c" ||
          file == "test/language/asset_packaging_chibi.c" || file == "test/language/integer_semantics.c" ||
-         file == "test/language/package_portable_compiler.c" ||
+         file == "test/language/package_tests.c" || file == "test/language/package_portable_compiler.c" ||
          file == "test/language/host_packages_compiler.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
@@ -3253,6 +3254,9 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_COMPILER_GENERICS_BYTES=bytes:tools/compiler/package_compiler/Generics.chibi",
             "CHIBI_PACKAGE_COMPILER_COMPILE_BYTES=bytes:tools/compiler/package_compiler/Compile.chibi",
             "CHIBI_PACKAGE_COMPILER_MAPS_BYTES=bytes:tools/compiler/package_compiler/Maps.chibi",
+            "CHIBI_PACKAGE_COMPILER_MATH_BYTES=bytes:tools/compiler/package_compiler/Math.chibi",
+            "CHIBI_MATH_TYPES_BYTES=bytes:tools/compiler/math_types/Types.chibi",
+            "CHIBI_MATH_FUNCTIONS_BYTES=bytes:tools/compiler/math_types/Functions.chibi",
             "CHIBI_PACKAGE_COMPILER_NUMBER_BYTES=bytes:tools/compiler/package_compiler/Number.chibi",
             "CHIBI_PACKAGE_COMPILER_OPTIONAL_BYTES=bytes:tools/compiler/package_compiler/Optional.chibi",
             "CHIBI_PACKAGE_COMPILER_REFERENCES_BYTES=bytes:tools/compiler/package_compiler/References.chibi",

@@ -561,6 +561,10 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         !script_analyzer_present(a, receiver.symbol)) {
         script_analyzer_diagnostic(a, member, "Optional component requires a presence guard before member access");
     }
+    if (script_analyzer_math_swizzle(a, member, left, name, &result)) {
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
     const script_catalog_type
         *type = script_catalog_type_by_id(a->catalog, receiver.type.nominal);
     int index = type ? script_catalog_find_field(type, name) : -1;
@@ -912,9 +916,11 @@ static bool field_argument(
 static int overloaded_capability(analyzer *a, const char *name, TSNode arguments, int **values)
 {
     int count = (int)script_analyzer_named_count(arguments);
-    *values = xmalloc((size_t)(count ? count : 1) * sizeof **values);
-    for (int i = 0; i < count; i++) {
-        (*values)[i] = -1;
+    if (!*values) {
+        *values = xmalloc((size_t)(count ? count : 1) * sizeof **values);
+        for (int i = 0; i < count; i++) {
+            (*values)[i] = -1;
+        }
     }
     int found = -1, best_cost = INT_MAX, best_literal_cost = INT_MAX;
     for (int c = 0; c < a->catalog->capability_count; c++) {
@@ -1430,20 +1436,6 @@ static bool sequence_receiver(analyzer *a, script_type type)
            type.container == PIN_CONTAINER_VIEW ||
            (type.container == PIN_CONTAINER_SINGLE && type.storage == PIN_STR);
 }
-static bool migrated_self(const analyzer *a, const script_catalog_capability *capability)
-{
-    if (!a->migration_import || a->out->kind == SCRIPT_PROGRAM_LIBRARY ||
-        !capability || capability->id != script_catalog_id("capability", "Self") ||
-        capability->operation != SCRIPT_OPERATION_OWNER ||
-        !script_catalog_operation_valid(capability) || a->out->owner_symbol < 0 ||
-        script_analyzer_lookup_name(a, "self") != a->out->owner_symbol) {
-        return false;
-    }
-    const script_symbol *owner = &a->out->symbols[a->out->owner_symbol];
-    return owner->kind == SCRIPT_GLOBAL &&
-           owner->id == script_catalog_id("owner", a->out->identity) &&
-           script_type_equal(capability->results[0].type, owner->type);
-}
 /* The capability `emit` sends events through, or NULL when the catalog has
  * none. */
 static const script_catalog_capability *event_sender(const analyzer *a)
@@ -1621,6 +1613,15 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             return imported;
         }
     }
+    if (symbol < 0 && !capability && !emitting && !imported &&
+        script_analyzer_is(target, "identifier")) {
+        int math = script_analyzer_math_call(a, node, name, &resolved_arguments);
+        if (math >= 0) {
+            free(name);
+            free(resolved_arguments);
+            return math;
+        }
+    }
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION) {
         script_analyzer_resolve_initializer(a, symbol);
         capability = script_catalog_capability_by_id(
@@ -1779,7 +1780,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             capability = &selected;
         }
     }
-    if (capability && !a->migration_import) {
+    if (capability) {
         if (capability->component &&
             (capability->component_access == SCRIPT_COMPONENT_ACCESS_READ ||
              capability->component_access == SCRIPT_COMPONENT_ACCESS_WRITE ||
@@ -1819,12 +1820,8 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         .member = selected_event,
         .effects = capability ? capability->effects : 0
     };
-    /* Legacy Self imports become the same bound self expression. Only a
-     * library's self reads its caller's invocation; behavior/system self is
-     * stable. Keep the catalog contract and the migration oracle exact. */
-    if (migrated_self(a, capability)) {
-        result.effects &= ~(unsigned)SCRIPT_EFFECT_INVOCATION_READ;
-    }
+    /* Only a library's self reads its caller's invocation; behavior/system
+     * self is stable. */
     if (capability && a->out->kind == SCRIPT_PROGRAM_LIBRARY &&
         (capability->id == script_catalog_id("capability", "Self") ||
          (capability->component && capability->component_entity < 0))) {

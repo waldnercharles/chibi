@@ -246,6 +246,8 @@ int main(int argc, char **argv)
                                             !strcmp(argv[1], "--package-compiler-chibi-libraries");
     bool package_compiler_chibi_types = argc == 2 &&
                                         !strcmp(argv[1], "--package-compiler-chibi-types");
+    bool package_compiler_chibi_math_native = argc == 2 &&
+                                              !strcmp(argv[1], "--package-compiler-chibi-math-native");
     bool package_compiler_chibi_literals = argc == 2 &&
                                            !strcmp(argv[1], "--package-compiler-chibi-literals");
     bool package_compiler_chibi_behaviors = argc == 2 &&
@@ -352,29 +354,29 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !compiler_artifact && !record_producer &&
-         !execution && !execution_scope && !semantic && !inferred_arrays &&
-         !inferred_array_repro && !root_state && !benchmark &&
-         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
-         !incremental_benchmark && !record_publication && !record_publication_repro &&
-         !record_values && !record_document && !record_state &&
-         !record_services && !record_compatibility && !record_semantic &&
-         !record_prepared_runtime && !outliner_projection && !row_array &&
-         !record_runtime && !compositional_records && !runtime_attribution &&
-         !runtime_attribution_benchmark && !query_binding_benchmark &&
-         !scalar_read_benchmark && !packed_benchmark && !wasm && !native_char_results &&
-         !program && !program_session && !query_program && !query_values &&
-         !incremental && !operations && !modules && !native_calls && !ranges &&
-         !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
-         !integer_shift_counts && !integer_shift_counts_authored && !package_graph &&
-         !package_graph_chibi && !asset_compiler_host && !asset_packaging_chibi &&
-         !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
-         !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
-         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
-         !compiler_fixture && !bounded_compiler_chibi && !prepared_writer_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_libraries &&
-         !package_compiler_chibi_types && !package_compiler_chibi_imports &&
+        (!format && !prepared && !compiler_artifact && !record_producer && !execution &&
+         !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
+         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
+         !borrow_benchmark && !incremental_benchmark && !record_publication &&
+         !record_publication_repro && !record_values && !record_document &&
+         !record_state && !record_services && !record_compatibility &&
+         !record_semantic && !record_prepared_runtime && !outliner_projection &&
+         !row_array && !record_runtime && !compositional_records &&
+         !runtime_attribution && !runtime_attribution_benchmark &&
+         !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
+         !wasm && !native_char_results && !program && !program_session &&
+         !query_program && !query_values && !incremental && !operations &&
+         !modules && !native_calls && !ranges && !numeric_exact_core &&
+         !integer_semantics && !integer_arithmetic && !integer_shift_counts &&
+         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
+         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
+         !syntax_chibi && !source_tokenizer_chibi && !source_parser_chibi &&
+         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
+         !package_routes_chibi && !package_snapshot_chibi && !constant_proof_chibi &&
+         !constant_scalar_chibi && !scalar_lowering_chibi && !compiler_fixture &&
+         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
+         !package_compiler_chibi_math_native && !package_compiler_chibi_imports &&
          !package_compiler_chibi_bootstrap && !package_compiler_chibi_compiled &&
          !package_compiler_chibi_types_compiled && !package_compiler_chibi_collections &&
          !package_compiler_chibi_collections_compiled &&
@@ -425,6 +427,7 @@ int main(int argc, char **argv)
             "--bounded-compiler-chibi | "
             "--prepared-writer-chibi | --package-compiler-chibi | "
             "--package-compiler-chibi-types | --package-compiler-chibi-imports "
+            "| --package-compiler-chibi-math-native "
             "| "
             "--package-compiler-chibi-bootstrap | "
             "--package-compiler-chibi-compiled | "
@@ -637,6 +640,8 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi();
     } else if (package_compiler_chibi_types) {
         test_language_package_compiler_chibi_types();
+    } else if (package_compiler_chibi_math_native) {
+        test_language_package_compiler_chibi_math_native();
     } else if (package_compiler_chibi_imports) {
         test_language_package_compiler_chibi_imports();
     } else if (package_compiler_chibi_compiled) {

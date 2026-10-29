@@ -111,7 +111,7 @@ static bool resolve_global(void *, uint64_t id, behavior_function_instruction *o
     *out = (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE };
     return true;
 }
-static bool compile_mode(int bounded, bool explicit_owner, int fallback, behavior_backend backend, bool private_result)
+static bool compile(int bounded, bool explicit_owner, int fallback, behavior_backend backend)
 {
     cleanup();
     fields[0] = (type_field){ .name = "value",
@@ -219,17 +219,7 @@ static bool compile_mode(int bounded, bool explicit_owner, int fallback, behavio
                                      .global_count = 1,
                                      .entity_type = ENTITY };
     char source[512];
-    if (private_result) {
-        /* Imported calls still use this private ABI. Ordinary authored source
-         * must continue to reject generated setters. */
-        snprintf(
-            source,
-            sizeof source,
-            "Writes :: library { Run :: (value: int) -> int { return "
-            "set_value(value)%s; } }",
-            fallback == 2 ? ".value" : ""
-        );
-    } else if (explicit_owner && !bounded) {
+    if (explicit_owner && !bounded) {
         snprintf(
             source,
             sizeof source,
@@ -265,26 +255,7 @@ static bool compile_mode(int bounded, bool explicit_owner, int fallback, behavio
     }
     syntax = script_parse(source);
     REQUIRE(syntax && !syntax->diagnostic_count);
-    if (private_result) {
-        script_analysis *authored = script_analyze(syntax, &catalog);
-        REQUIRE(authored && !authored->valid);
-        bool retired = false;
-        for (int j = 0; j < authored->diagnostic_count; j++) {
-            retired |= strstr(authored->diagnostics[j].message, "import-only") != NULL;
-        }
-        script_analysis_free(authored);
-        REQUIRE(retired);
-        analysis = script_analyze_migration_document(
-            syntax,
-            &catalog,
-            "test/private-component-write",
-            NULL,
-            0,
-            false
-        );
-    } else {
-        analysis = script_analyze(syntax, &catalog);
-    }
+    analysis = script_analyze(syntax, &catalog);
     for (int j = 0; analysis && j < analysis->diagnostic_count; j++) {
         fprintf(stderr, "write source semantic: %s\n", analysis->diagnostics[j].message);
     }
@@ -312,10 +283,6 @@ static bool compile_mode(int bounded, bool explicit_owner, int fallback, behavio
     REQUIRE(body);
     ordered = explicit_owner;
     return true;
-}
-static bool compile(int bounded, bool explicit_owner, int fallback, behavior_backend backend)
-{
-    return compile_mode(bounded, explicit_owner, fallback, backend, false);
 }
 static int count(behavior_function_op op)
 {
@@ -503,42 +470,11 @@ TEST_CASE(component_write_keeps_unproven_and_root_returning_setters_generic)
     }
     return true;
 }
-TEST_CASE(component_private_write_call_preserves_used_scalar_and_root_results)
-{
-    for (int variant = 0; variant < 4; variant++) {
-        int bounded = variant < 3 ? variant : 0;
-        bool root_result = variant == 3;
-        for (int backend = 0; backend < 2; backend++) {
-            REQUIRE(
-                compile_mode(bounded, false, root_result ? 2 : 0, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE, true)
-            );
-            REQUIRE(count(BF_COMPONENT_WRITE) == !root_result);
-            REQUIRE(count(BF_COMPONENT_READ) == (!root_result && bounded != 0));
-            for (int inspected = 0; inspected < 2; inspected++) {
-                pin_value input = { .type = PIN_I32, .i = 9 },
-                          output = { .type = PIN_I32, .i = -123 };
-                REQUIRE(begin(&output, &input, inspected));
-                REQUIRE(compiled_inspection(backend, inspected));
-                REQUIRE(behavior_function_run(body, &context, backend) == FLOW_OK);
-                REQUIRE(store_calls == 1);
-                REQUIRE(
-                    output.i == (bounded == 1             ? 10
-                                 : bounded || root_result ? 37
-                                                          : 9)
-                );
-                const int32_t *row = ecs_component_data_const(world, owner, COMPONENT);
-                REQUIRE(row && *row == (bounded == 1 ? 10 : 37));
-            }
-        }
-    }
-    return true;
-}
 void test_language_component_write_source()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(component_assignment_keeps_explicit_rhs_and_property_results);
     RUN_TEST_CASE(component_write_evaluates_owner_then_rhs_then_revalidates_current_storage);
     RUN_TEST_CASE(component_write_keeps_unproven_and_root_returning_setters_generic);
-    RUN_TEST_CASE(component_private_write_call_preserves_used_scalar_and_root_results);
     pu_clear_setup();
 }

@@ -350,6 +350,8 @@ else()
         "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
         PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 endif()
+set_source_files_properties(package_tests.c PROPERTIES
+    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 if(TARGET Chibi::asset_compiler_host)
     set(portable_asset_source "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/portable-byte-asset/Build.chibi")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${portable_asset_source}")

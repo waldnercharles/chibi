@@ -14,7 +14,7 @@ void authoring_application_end(authoring_application *);
 int authoring_project_explain_costs(const char *project, const char *scene, bool json);
 /* Deployed offline compiler command. Uses the explicit shared application
  * capability composition and writes the artifact plus resource manifest. A
- * NULL output checks the project as it is: nothing is migrated or written. */
+ * NULL output checks the project as it is: nothing is written. */
 int authoring_project_compile(const char *project, const char *scene, const char *output);
 /* The same artifact assembled from `modules`, one for each of the project's
  * executable sources, as another compiler prepared them, instead of compiling

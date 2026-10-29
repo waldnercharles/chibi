@@ -273,7 +273,7 @@ ManagedLayoutError :: (types: TypeDecl[], members: TypeMember[], value: ValueTyp
         return "";
     }
     declared := types[record];
-    if (declared.kind != RecordDecl) {
+    if (declared.kind != RecordDecl && MathKind(types, record) == 0) {
         return "Managed values require authored record layouts";
     }
     return "";

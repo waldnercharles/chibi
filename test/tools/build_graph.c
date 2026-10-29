@@ -948,13 +948,12 @@ TEST_CASE(named_programs_build_what_they_run)
     join(path, build_dir, "link_commands.json");
     yyjson_doc *doc = yyjson_read_file(path, 0, NULL, NULL);
     REQUIRE(doc);
-    static const char *const programs[] = { "test/tools/test_tools",
-                                            "test/tools/policy_worker",
-                                            "sdk/chibi-compile",
-                                            "sdk/chibi-build-host",
-                                            "sdk/chibi-compiler-host",
-                                            "sdk/chibi",
-                                            "sdk/chibi-player" };
+    static const char *const programs[] = {
+        "test/tools/test_tools",   "test/tools/policy_worker",
+        "sdk/chibi-compile",       "sdk/chibi-build-host",
+        "sdk/chibi-compiler-host", "sdk/chibi",
+        "sdk/chibi-player"
+    };
     int found = 0;
     yyjson_val *entry;
     yyjson_arr_iter iter = yyjson_arr_iter_with(yyjson_doc_get_root(doc));

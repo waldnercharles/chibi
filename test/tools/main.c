@@ -1248,13 +1248,13 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures &&
-        !shader_parameters && !new_asset && !asset_refactor && !tilemap &&
-        !package && !third_party_publish && !collab && !unit && !test_runner &&
-        !validation_plan && !web_storage && !webgpu_staging && !wasm_browser &&
-        !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !scene_hierarchy && !scene_snapshot_read && !native && !native_values &&
-        !native_catalog && !physics && !physics3d && !transforms && !render_resources &&
+    if (argc != 1 && !corpus && !unit_fixtures && !shader_parameters && !new_asset &&
+        !asset_refactor && !tilemap && !package && !third_party_publish &&
+        !collab && !unit && !test_runner && !validation_plan && !web_storage &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !scene_hierarchy &&
+        !scene_snapshot_read && !native && !native_values && !native_catalog &&
+        !physics && !physics3d && !transforms && !render_resources &&
         !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
         !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
         !scene3d && !material_ramps && !texture_transform && !arena && !types &&
@@ -1349,8 +1349,7 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = corpus || unit_fixtures ||
-                            shader_parameters ||
+    source_runtime_active = corpus || unit_fixtures || shader_parameters ||
                             new_asset || asset_refactor || system_schedule ||
                             scheduler_benchmark || source_reductions ||
                             source_reduction_benchmark ||

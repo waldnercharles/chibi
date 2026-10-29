@@ -1838,11 +1838,10 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     }
     REQUIRE(run_group("projects") == 0);
     char *output = tool_read(commands);
-    const char
-        *expected = "--mesh-files\n--model-import\n"
-                    "--terrain-checkpoint\n"
-                    "--terrain-playable\n--published-docs\n--chibi-cli\n"
-                    "--native-build\n";
+    const char *expected = "--mesh-files\n--model-import\n"
+                           "--terrain-checkpoint\n"
+                           "--terrain-playable\n--published-docs\n--chibi-cli\n"
+                           "--native-build\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);
@@ -1850,12 +1849,9 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     REQUIRE(run_group("native") == 0);
     output = tool_read(commands);
     bool separate = output && *output && !strstr(output, "benchmark");
-    const char *selectors[] = { "--mesh-files\n",
-                                "--model-import\n",
-                                "--terrain-checkpoint\n",
-                                "--published-docs\n",
-                                "--chibi-cli\n",
-                                "--native-build\n" };
+    const char *selectors[] = { "--mesh-files\n",         "--model-import\n",
+                                "--terrain-checkpoint\n", "--published-docs\n",
+                                "--chibi-cli\n",          "--native-build\n" };
     for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
         separate = !strstr(output, selectors[i]);
     }

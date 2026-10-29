@@ -1,6 +1,6 @@
 ---
 name: chibi-recipes
-description: Step-by-step recipes for the Chibi engine repo. Use when adding a reflected component, a native script function, a test scene or scenario, or a project migration.
+description: Step-by-step recipes for the Chibi engine repo. Use when adding a reflected component, a native script function, a test scene or scenario, or a project format change.
 ---
 
 Each recipe ends with the checklist in `AGENTS.md` ("Before every commit").

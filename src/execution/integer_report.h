@@ -27,6 +27,7 @@ typedef struct
  * host enables this once at startup; published modules keep their code. */
 void execution_integer_reports_enable(bool enabled);
 bool execution_integer_reports_enabled();
+const char *execution_integer_report_text(execution_integer_report_kind);
 /* Appends each site of the module and its imports that reported since its last
  * take. Safe while the module's programs run on other threads. */
 void execution_module_take_integer_reports(const execution_module *, execution_integer_report **reports);

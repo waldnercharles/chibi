@@ -181,12 +181,6 @@ bool render_image_info(const char *key, int *width, int *height)
     return true;
 }
 
-const char *render_image_error(const char *key)
-{
-    int index = find_source(key);
-    return index < 0 ? "" : sources[index].error;
-}
-
 int render_image_variant(const shader_image_source *source, shader_error *error)
 {
     char message[256];

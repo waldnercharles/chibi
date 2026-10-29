@@ -2,6 +2,7 @@
 
 #include "authoring/native_bindings.h"
 #include "backend.h"
+#include "execution/definition.h"
 #include "package_core_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
@@ -61,6 +62,36 @@ static const native_definition_pack OPAQUE_PACK = {
     .definitions = OPAQUE_DEFINITION,
     .definition_count = 1,
     .bindings = OPAQUE_BINDING,
+    .binding_count = 1,
+};
+
+/* This value boundary deliberately reads external state. Its memory policy
+ * must never erase that READ or make it eligible for a worker. */
+static const char *external_read(arena *, const pin_value *, int, pin_value *out)
+{
+    out[0] = (pin_value){ .type = PIN_BOOL, .b = true };
+    return NULL;
+}
+static const native_capability_definition READ_DEFINITION[] = {
+    { .canonical_name = "Test External Read",
+      .source_name = "external_read",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .completion_output = -1,
+      .outputs = OPAQUE_RESULT,
+      .output_count = 1,
+      .pure = true },
+};
+static const node_host_call READ_CALL = { .value = external_read,
+                                          .language_values = true };
+static const node_access READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+static const native_definition_binding READ_BINDING[] = {
+    { .canonical_name = "Test External Read",
+      .implementation = { .call = &READ_CALL, .access = &READ_ACCESS } },
+};
+static const native_definition_pack READ_PACK = {
+    .definitions = READ_DEFINITION,
+    .definition_count = 1,
+    .bindings = READ_BINDING,
     .binding_count = 1,
 };
 
@@ -210,9 +241,12 @@ static const char FIRST[] = "package facts\n@test\nFirst :: () {\n}\n";
 /* The package at the root itself is named by its declaration. */
 static const char TOP[] = "package top\n@test\nTop :: () {\n}\n";
 /* A collection's tests belong to the collection, not to this project. */
-static const char MARKS[] = "package marks\n@test\nCollected :: () {\n}\n"
-                            "pub Draw :: () -> number { return rand(); }\n"
-                            "pub Opaque :: () -> bool { return opaque(); }\n";
+static const char MARKS
+    [] = "package marks\n@test\nCollected :: () {\n}\n"
+         "pub Draw :: () -> number { return rand(); }\n"
+         "pub Opaque :: () -> bool { return opaque(); }\n"
+         "pub Has :: (values: int[]) -> bool { return contains(values, 2); }\n"
+         "pub Reads :: () -> bool { return external_read(); }\n";
 
 static void cleanup()
 {
@@ -237,6 +271,7 @@ static bool prepare_text_with_provider(
         NATIVE_ARRAY_DEFINITION_PACK,
         NATIVE_MATH_DEFINITION_PACK,
         OPAQUE_PACK,
+        READ_PACK,
 #ifdef CHIBI_PACKAGE_TEST_POOL
         PROBE_PACK,
 #endif
@@ -635,6 +670,91 @@ TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
     return true;
 }
 
+TEST_CASE(package_tests_distinguish_argument_values_from_external_reads)
+{
+    const char
+        source[] = "package facts\nimport marks \"core:marks\"\n"
+                   "Has :: (value: $T) -> bool { values: T[] = [value]; return "
+                   "contains(values, value); }\n"
+                   "Read :: (window: view int[]) -> bool { return "
+                   "contains(window, 2); }\n"
+                   "Window :: union { Held(value: view int[]) }\n"
+                   "@test Owned :: () { assert(contains([1, 2], 2)); }\n"
+                   "@test Generic :: () { assert(Has(2)); }\n"
+                   "@test Imported :: () { assert(marks.Has([1, 2])); }\n"
+                   "@test ViewRead :: () { values: int[] = [1, 2]; p := "
+                   "&values; window := p.view(0..<2); "
+                   "if window { assert(Read(window)); } }\n"
+                   "@test DeepView :: () { values: int[] = [1, 2]; p := "
+                   "&values; window := p.view(0..<2); "
+                   "if window { nested: Window[] = [Window.Held(window)]; "
+                   "assert(length(nested) == 1); } }\n"
+                   "@test External :: () { assert(external_read()); }\n"
+                   "@test ExternalImport :: () { assert(marks.Reads()); }\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare_text(backends[b], source, 9));
+        const script_analysis *analysis = NULL;
+        for (int p = 0; p < authoring_packages_count(packages); p++) {
+            const authoring_package *package = authoring_packages_at(packages, p);
+            if (!strcmp(package->identity, "project:facts")) {
+                analysis = package->analysis;
+            }
+        }
+        REQUIRE(analysis);
+        for (int i = 2; i < 9; i++) {
+            bool found = false;
+            for (int f = 0; f < analysis->function_count; f++) {
+                const script_function *function = &analysis->functions[f];
+                if (!strcmp(analysis->symbols[function->symbol].name, tests[i].name)) {
+                    REQUIRE(
+                        (function->effects & SCRIPT_EFFECT_READ) ==
+                        (i < 5 ? 0 : SCRIPT_EFFECT_READ)
+                    );
+                    found = true;
+                }
+            }
+            REQUIRE(found);
+            REQUIRE(tests[i].parallel == (i < 5));
+            package_test_failure failure;
+            REQUIRE(package_test_run(&tests[i], backends[b], BUDGET, &failure));
+        }
+    }
+    return true;
+}
+
+/* The native guard is independent of the source declaration. Even a caller
+ * presenting an effect-free source summary cannot waive installed access. */
+TEST_CASE(package_tests_keep_native_access_guards)
+{
+    static const uint64_t component = 1;
+    static const uint64_t *const references[] = { &component, NULL };
+    const node_access access[] = {
+        { .flags = NODE_EFFECT_PURE },
+        { .flags = NODE_EFFECT_PURE | NODE_EFFECT_WORLD_READ },
+        { .flags = NODE_EFFECT_PURE, .reads = &component, .read_count = 1 },
+        { .flags = NODE_EFFECT_PURE, .read_refs = references },
+        { .flags = NODE_EFFECT_PURE | NODE_EFFECT_HOST_SINK },
+    };
+    behavior_function function = { .frozen = true };
+    node_host_call call = READ_CALL;
+    behavior_function_host_call host = { .call = &call, .access = &access[0] };
+    apush(function.host_calls, host);
+    bool correct = behavior_function_hosts_pure(&function);
+    for (int i = 1; i < (int)(sizeof access / sizeof *access); i++) {
+        function.host_calls[0].access = &access[i];
+        correct &= !behavior_function_hosts_pure(&function);
+    }
+    function.host_calls[0].access = NULL;
+    correct &= !behavior_function_hosts_pure(&function);
+    function.host_calls[0].access = &access[0];
+    call.service = "external";
+    correct &= !behavior_function_hosts_pure(&function);
+    afree(function.host_calls);
+    REQUIRE(correct);
+    return true;
+}
+
 /* Each run allocates managed pointers in a heap of its own. Identity tests
  * that only compare pointers are inferred parallel and overlap with a pure
  * test; tests that dereference or write through a pointer are inferred serial
@@ -770,6 +890,8 @@ void test_language_package_tests()
     RUN_TEST_CASE(package_tests_keep_results_and_failures_in_discovery_order);
     RUN_TEST_CASE(package_tests_run_generic_algorithms_with_callable_arguments);
     RUN_TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports);
+    RUN_TEST_CASE(package_tests_distinguish_argument_values_from_external_reads);
+    RUN_TEST_CASE(package_tests_keep_native_access_guards);
     RUN_TEST_CASE(package_tests_allocate_managed_pointers);
 #ifdef CHIBI_PACKAGE_TEST_POOL
     RUN_TEST_CASE(package_tests_overlap_with_private_storage_and_exclusive_barriers);

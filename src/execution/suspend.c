@@ -312,43 +312,8 @@ bool behavior_function_resumable(const behavior_function *f)
 {
     return acount(f->suspensions) != 0;
 }
-bool behavior_function_breakpoints(const behavior_function *f)
-{
-    /* Asset generations are immutable while an instance owns them. */
-    return f->breakpoints;
-}
-const behavior_function_point *behavior_function_pause_point(
-    const behavior_function *f,
-    const behavior_function_activation *a
-)
-{
-    if (!a->pc || f->instructions[a->pc - 1].op != BF_POINT) {
-        return NULL;
-    }
-    return &f->points[f->instructions[a->pc - 1].left];
-}
 
 int behavior_function_frame_count(const behavior_function *f)
 {
     return acount(f->frames);
-}
-uintptr_t behavior_function_frame_steps(
-    const behavior_function *f,
-    const behavior_function_activation *a,
-    int frame
-)
-{
-    return a->values[acount(f->slots) + acount(f->locals) + frame];
-}
-int behavior_function_frame_parent(const behavior_function *f, int frame)
-{
-    return f->frames[frame].source.parent;
-}
-const behavior_function_source *behavior_function_frame_source(const behavior_function *f, int frame)
-{
-    return &f->frames[frame].source;
-}
-int behavior_function_frame_stack(const behavior_function *f, int frame)
-{
-    return f->frames[frame].stack;
 }

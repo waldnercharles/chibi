@@ -396,15 +396,6 @@ static void ar_box_bounds(
                             pos[box].y + g->boxes[box].height };
 }
 
-float arrange_cost(arrange_score score)
-{
-    return AR_COST_CROSS * (float)score.wire_crossings +
-           AR_COST_HIT * (float)score.wire_node_hits +
-           AR_COST_OVERLAP * (float)score.node_overlaps +
-           AR_COST_WIRE_OVERLAP * (float)score.wire_overlaps +
-           AR_COST_BEND * (float)score.wire_bends + AR_COST_LENGTH * score.ink_length;
-}
-
 /* Links that share a pin never cross or overlap; they join one group, whose
  * shared runs count once toward the ink. */
 static float ar_ink(const ar_drawing *d, int *group, int count)

@@ -249,18 +249,28 @@ TEST_CASE(bootstrap_checks_the_recorded_closure)
     return true;
 }
 
-/* Every recorded source must be on disk, and every .chibi file in their
- * packages must be recorded: a package that gained one is another package. */
+/* Every listed source must be on disk, and every .chibi file in their
+ * packages must be listed: a package compiles only the files it is given. The
+ * artifact's record of its own sources is no gate. */
 TEST_CASE(bootstrap_reads_every_recorded_source)
 {
     contract(1, 1);
     folder("compiler/lib");
     write_file("compiler/lib/A.chibi", "package lib\n");
+    write_file("compiler/asset_compiler/CompilerSources.txt", "lib/Missing.chibi\n");
     artifact("missing", 1, 1, "abc", ABC_SHA256, "[{\"path\": \"lib/Missing.chibi\", \"sha256\": \"\"}]", ELSEWHERE);
     REQUIRE(check("missing") == 1 && log_has("cannot read the compiler source lib/Missing.chibi"));
     write_file("compiler/lib/B.chibi", "package lib\n");
+    write_file("compiler/asset_compiler/CompilerSources.txt", "lib/A.chibi\n");
     artifact("grown", 1, 1, "abc", ABC_SHA256, "[{\"path\": \"lib/A.chibi\", \"sha256\": \"\"}]", ELSEWHERE);
-    REQUIRE(check("grown") == 1 && log_has("lib/B.chibi is not among the artifact's sources"));
+    REQUIRE(
+        check("grown") == 1 &&
+        log_has("lib/B.chibi is in the package of a compiler source but asset_compiler/CompilerSources.txt does not list it")
+    );
+    /* Listing the new file is all a grown package needs: the check goes on to
+     * the closure, which this fixture does not have. */
+    write_file("compiler/asset_compiler/CompilerSources.txt", "lib/A.chibi\nlib/B.chibi\n");
+    REQUIRE(check("grown") == 1 && !log_has("does not list it"));
     return true;
 }
 
@@ -281,6 +291,7 @@ TEST_CASE(bootstrap_rejects_another_target)
     contract(1, 1);
     folder("compiler/one");
     write_file("compiler/one/A.chibi", "package one\n");
+    write_file("compiler/asset_compiler/CompilerSources.txt", "one/A.chibi\n");
     const char *sources = "[{\"path\": \"one/A.chibi\", \"sha256\": \"\"}]";
     /* The checksum error names the closure's digest, which the next manifest
      * records. */
@@ -394,6 +405,7 @@ TEST_CASE(bootstrap_load_uses_matching_sources_without_recompilation)
     folder("compiler/api");
     write_file("compiler/api/Fixture.chibi", api_source);
     write_file("core/API.chibi", api_core);
+    write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\n");
     char source_digest[65], core_digest[65];
     sha256_hex(api_source, sizeof api_source - 1, source_digest);
     sha256_hex(api_core, sizeof api_core - 1, core_digest);
@@ -507,13 +519,20 @@ TEST_CASE(bootstrap_load_checks_compiler_and_core_source_completeness)
     REQUIRE(api_target);
     write_file("compiler/api/Extra.chibi", "package api\n");
     REQUIRE(!load(api_folder));
-    REQUIRE(strstr(api_error, "api/Extra.chibi is not among the artifact's sources"));
+    REQUIRE(strstr(api_error, "api/Extra.chibi is in the package of a compiler source but"));
+    REQUIRE(strstr(api_error, "does not list it"));
+    /* Listed, the new file is a changed source like any other: it needs no new
+     * artifact, only a compiler that can compile it, which this fixture lacks. */
+    write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\napi/Extra.chibi\n");
+    REQUIRE(!load(api_folder));
+    REQUIRE(strstr(api_error, "the compiler failed:"));
+    write_file("compiler/asset_compiler/CompilerSources.txt", "api/Fixture.chibi\n/sdk/core/API.chibi\n");
     char file[PATH_MAX];
     path(file, "compiler/api/Extra.chibi");
     REQUIRE(!unlink(file));
     write_file("core/Extra.chibi", "package core\n");
     REQUIRE(!load(api_folder));
-    REQUIRE(strstr(api_error, "/sdk/core/Extra.chibi is not among the artifact's sources"));
+    REQUIRE(strstr(api_error, "/sdk/core/Extra.chibi is in the package of a compiler source but"));
     path(file, "core/Extra.chibi");
     REQUIRE(!unlink(file));
     path(file, "compiler/api/Fixture.chibi");
@@ -641,6 +660,7 @@ TEST_CASE(bootstrap_reuses_only_the_exact_captured_request_without_compilation)
     folder("reuse-real/tools/compiler");
     folder("reuse-real/tools/compiler/bootstrap");
     folder("reuse-real/tools/compiler/package_compiler");
+    folder("reuse-real/tools/compiler/asset_compiler");
     folder("reuse-real/packages");
     folder("reuse-real/packages/core");
     folder("reuse-real/packages/core/strings");
@@ -685,6 +705,10 @@ TEST_CASE(bootstrap_reuses_only_the_exact_captured_request_without_compilation)
         yyjson_mut_obj_add_str(fixture, source, "path", names[i]);
         yyjson_mut_obj_add_strcpy(fixture, source, "sha256", digest);
     }
+    write_file(
+        "reuse-real/tools/compiler/asset_compiler/CompilerSources.txt",
+        "package_compiler/Compile.chibi\n/sdk/core/strings/Strings.chibi\n"
+    );
     yyjson_mut_obj_put(record, yyjson_mut_str(fixture, "sources"), sources);
     yyjson_mut_obj_put(record, yyjson_mut_str(fixture, "revision"), yyjson_mut_str(fixture, "unit-fixture"));
     reuse_manifest_text = yyjson_mut_write(fixture, 0, NULL);
@@ -912,7 +936,9 @@ TEST_CASE(bootstrap_reuse_hard_validation_and_write_errors_preserve_output)
     char extra[PATH_MAX];
     path(extra, "reuse-real/tools/compiler/package_compiler/Extra.chibi");
     REQUIRE(!unlink(extra));
-    REQUIRE(status == 1 && log_has("is not among the artifact's sources"));
+    REQUIRE(
+        status == 1 && log_has("package_compiler/Extra.chibi is in the package of a compiler source")
+    );
     REQUIRE(output_is(output, prior, sizeof prior - 1));
     REQUIRE(reuse_request(doc, missing) == 1 && log_has("cannot be written"));
     REQUIRE(access(missing, F_OK) != 0);
@@ -980,6 +1006,7 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host)
     host_path = host;
     setup_root();
     folder("compiler");
+    folder("compiler/asset_compiler");
     folder("core");
     RUN_TEST_CASE(bootstrap_usage_rejects_mixed_and_missing_options);
     RUN_TEST_CASE(bootstrap_needs_the_sources_contract);
@@ -1098,6 +1125,52 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     return true;
 }
 
+/* A source file the list adds to a package is a changed source, not a reason
+ * for a new artifact: the checked artifact only has to compile it. An unlisted
+ * file is refused first, naming the list. */
+TEST_CASE(bootstrap_load_recovers_a_new_listed_source_without_a_new_artifact)
+{
+    char list[PATH_MAX], added[PATH_MAX], output[PATH_MAX];
+    path(list, "tools/compiler/asset_compiler/CompilerSources.txt");
+    path(added, "tools/compiler/package_compiler/Added.chibi");
+    path(output, "added-must-not-write.chibip");
+    size_t length = 0;
+    unsigned char *original = read_bytes(list, &length);
+    REQUIRE(original && length);
+    write_file("tools/compiler/package_compiler/Added.chibi", "package package_compiler\n\npub BootstrapAddedMarker :: () -> int { return 41; }\n");
+    compiler_bootstrap options = { .folder = artifact_path,
+                                   .compiler = compiler,
+                                   .core = core,
+                                   .output = output };
+    api_error[0] = 0;
+    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
+    bool refused = !api_host &&
+                   strstr(api_error, "package_compiler/Added.chibi is in the package of a compiler source but") &&
+                   strstr(api_error, "asset_compiler/CompilerSources.txt does not list it");
+    FILE *file = fopen(list, "ab");
+    assert(file && fputs("package_compiler/Added.chibi\n", file) >= 0 && !fclose(file));
+    api_error[0] = 0;
+    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
+    bool restored = (file = fopen(list, "wb")) &&
+                    fwrite(original, 1, length, file) == length &&
+                    !fclose(file) && !unlink(added);
+    free(original);
+    REQUIRE(restored && refused);
+    if (!api_host) {
+        fprintf(stderr, "%s\n", api_error);
+    }
+    REQUIRE(api_host);
+    REQUIRE(strstr(api_error, "compiler sources changed since revision"));
+    REQUIRE(access(output, F_OK) != 0);
+    uint64_t entry = compiler_host_entry(
+        "project:package_compiler:1:BootstrapAddedMarker:callable"
+    );
+    REQUIRE(compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result));
+    REQUIRE(api_result.flow_status == FLOW_OK);
+    REQUIRE(api_result.json && !strcmp(api_result.json, "[41]"));
+    return true;
+}
+
 void test_tool_bootstrap_recovery(const char *host, const char *artifact)
 {
     host_path = host;
@@ -1106,6 +1179,8 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact)
     RUN_TEST_CASE(bootstrap_recovers_from_a_clean_checkout);
     pu_setup(NULL, cleanup_load);
     RUN_TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing);
+    cleanup_load();
+    RUN_TEST_CASE(bootstrap_load_recovers_a_new_listed_source_without_a_new_artifact);
     pu_clear_setup();
     tool_remove_tree(root);
 }

@@ -49,6 +49,7 @@ void test_language_source_assets();
 void test_language_source_prototype_edits();
 void test_language_symbol_references();
 void test_language_program();
+void test_language_program_session();
 void test_language_native_char_results();
 void test_language_migration34();
 void test_language_migration34_generic_repro();
@@ -100,6 +101,7 @@ void test_language_package_imports();
 void test_language_package_files();
 void test_language_package_core();
 void test_language_package_tests();
+void test_language_argument_effects_chibi();
 void test_language_docs_markdown();
 void test_language_scalarize();
 void test_language_component_write();
@@ -200,6 +202,7 @@ int main(int argc, char **argv)
                                      !strcmp(argv[1], "--migration34-generic-repro");
     bool native_char_results = argc == 2 && !strcmp(argv[1], "--native-char-results");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
+    bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool query_values = argc == 2 && !strcmp(argv[1], "--query-values");
     bool query_migration = argc == 2 && !strcmp(argv[1], "--query-migration");
@@ -319,6 +322,8 @@ int main(int argc, char **argv)
     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
+    bool argument_effects_chibi = argc == 2 &&
+                                  !strcmp(argv[1], "--argument-effects-chibi");
     bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
@@ -350,11 +355,11 @@ int main(int argc, char **argv)
          !record_publication && !record_publication_repro && !record_values &&
          !record_document && !record_state && !record_services &&
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !outliner_projection && !row_array && !record_runtime &&
-         !runtime_attribution && !runtime_attribution_benchmark &&
-         !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
-         !wasm && !migration34 && !migration34_generic_repro && !native_char_results &&
-         !program && !query_program && !query_values && !query_migration &&
+         !outliner_projection && !row_array && !record_runtime && !runtime_attribution &&
+         !runtime_attribution_benchmark && !query_binding_benchmark &&
+         !scalar_read_benchmark && !packed_benchmark && !wasm && !migration34 &&
+         !migration34_generic_repro && !native_char_results && !program &&
+         !program_session && !query_program && !query_values && !query_migration &&
          !incremental && !operations && !modules && !native_calls && !ranges &&
          !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
          !integer_shift_counts && !integer_shift_counts_authored &&
@@ -379,11 +384,11 @@ int main(int argc, char **argv)
          !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !snapshot_reader_chibi && !callable_headers_chibi &&
-         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
-         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
-         !package_execution && !package_resolution && !package_imports &&
-         !package_files && !package_core && !package_tests && !docs_markdown &&
+         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
+         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
+         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
+         !package_resolution && !package_imports && !package_files && !package_core &&
+         !package_tests && !argument_effects_chibi && !docs_markdown &&
          !component_write && !component_write_layout && !scalarize && !borrow &&
          !reductions && !binding_schedule && !activation_cache && !headless &&
          !build_workflow && !navigation && !publication && !field_runtime &&
@@ -396,7 +401,8 @@ int main(int argc, char **argv)
             "--execution | "
             "--execution-scope | --semantic "
             "| --inferred-string-arrays | --inferred-string-array-repro "
-            "| --root-state | --program | --native-char-results | "
+            "| --root-state | --program | --program-session | "
+            "--native-char-results | "
             "--query-program | --query-values | "
             "--query-migration | --incremental | "
             "--operations | "
@@ -445,7 +451,7 @@ int main(int argc, char **argv)
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
-            "--package-tests | --docs-markdown | "
+            "--package-tests | --argument-effects-chibi | --docs-markdown | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -722,6 +728,8 @@ int main(int argc, char **argv)
         test_language_package_core();
     } else if (package_tests) {
         test_language_package_tests();
+    } else if (argument_effects_chibi) {
+        test_language_argument_effects_chibi();
     } else if (docs_markdown) {
         test_language_docs_markdown();
     } else if (package_files) {
@@ -767,6 +775,8 @@ int main(int argc, char **argv)
         test_language_retention();
         test_language_capture();
         test_language_query_boundary();
+    } else if (program_session) {
+        test_language_program_session();
     } else if (semantic) {
         test_language_semantic();
         test_language_effects();

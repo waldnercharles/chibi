@@ -2772,13 +2772,21 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     fields: writer.Field[] = [];
     // Each record's layout and each variant's tag, as indices into `wide`, for
     // the types of this package and those it reaches; no others can occur.
+    // Shared types, such as char, the math types and game natives, belong to
+    // no package; a math type is written only where this module uses it. A
+    // requirement's index counts the requirements the loop below writes first.
+    assembled: bool[] = [];
     requirement_indices: int[] = [];
     requirement_count: int = 0;
-    for (declared in types) {
+    for declared, at in types {
+        kept := declared.kind != BuiltinScalarDecl &&
+                (source_mode || declared.package < 0 || reachable[declared.package]) &&
+                (declared.kind != MathDecl || MathRequired(at, types, callables, params, prepared, package) ||
+                 MathStateRequired(at, types, kept_states));
+        assembled.append(kept);
         index: int = -1;
-        if ((source_mode || reachable[declared.package]) &&
-            (declared.kind == RecordDecl || declared.kind == NativeDecl || declared.kind == QueryDecl ||
-             (declared.kind == PointerDecl && declared.key == 0))) {
+        if (kept && (declared.kind == RecordDecl || declared.kind == MathDecl || declared.kind == NativeDecl ||
+                     declared.kind == QueryDecl || (declared.kind == PointerDecl && declared.key == 0))) {
             index = requirement_count;
             requirement_count += 1;
         }
@@ -2789,17 +2797,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     for (declared in types) {
         layouts.append(int(0));
         tags.append(int(0));
-        if (declared.kind == BuiltinScalarDecl) { continue; }
         if (declared.kind == OptionalComponentDecl) {
             layouts[length(layouts) - 1] = layouts[declared.parent];
             continue;
         }
-        if (declared.kind == MathDecl &&
-            !MathRequired(length(layouts) - 1, types, callables, params, prepared, package) &&
-            !MathStateRequired(length(layouts) - 1, types, kept_states)) {
-            continue;
-        }
-        if (!source_mode && declared.package >= 0 && !reachable[declared.package]) {
+        if (!assembled[length(layouts) - 1]) {
             continue;
         }
         if (declared.kind == VariantDecl) {

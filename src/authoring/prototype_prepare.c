@@ -4,7 +4,6 @@
 #include "authoring/material_prepare.h"
 #include "authoring/mesh_prepare.h"
 #include "authoring/parts_prepare.h"
-#include "authoring/shader_prepare.h"
 #include "runtime/component_catalog.h"
 #include "runtime/images/catalog.h"
 #include "support/array.h"
@@ -99,15 +98,6 @@ bool authoring_prototype_resources(const prototype *document, char *error, size_
                 !image_prepare_sky(sky, diagnostic, sizeof diagnostic)) {
                 if (size) {
                     snprintf(error, size, "Environment sky %s: %s", sky, diagnostic);
-                }
-                return false;
-            }
-        }
-        if (component->desc->id == COMPONENT_Shader.id) {
-            shader_error diagnostic = { 0 };
-            if (!authoring_shader_binding_prepare(component->data, &diagnostic)) {
-                if (size) {
-                    snprintf(error, size, "%s", diagnostic.message);
                 }
                 return false;
             }

@@ -1,6 +1,5 @@
 #include "language/syntax.h"
 
-#include "authoring/source_format.h"
 #include "syntax_corpus.h"
 #include "test/parallel.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -14,8 +13,6 @@ static _Thread_local char *original_tree, *edited_tree, *fresh_tree;
 static _Thread_local FILE *manifest_file;
 static _Thread_local char *corpus_text;
 static _Thread_local const char *corpus_manifest;
-static _Thread_local bool corpus_format;
-static _Thread_local char *formatted_text, *reformatted_text;
 
 enum
 {
@@ -37,9 +34,6 @@ static void cleanup()
     original_tree = edited_tree = fresh_tree = NULL;
     free(corpus_text);
     corpus_text = NULL;
-    free(formatted_text);
-    free(reformatted_text);
-    formatted_text = reformatted_text = NULL;
     if (manifest_file) {
         fclose(manifest_file);
     }
@@ -546,56 +540,6 @@ TEST_CASE(language_callable_arguments_preserve_view_and_range_syntax)
     return true;
 }
 
-TEST_CASE(language_callable_arguments_format_without_changing_boundaries)
-{
-    const char
-        *source = "package callbacks\n"
-                  "pub Apply::(value:$T,transform:fn(value:T)->T)->T{return "
-                  "transform(value);}\n"
-                  "Main::()->int{\n"
-                  "a:=Apply(4,(value:int)=>value*2+1); // keep this comment\n"
-                  "b:=Apply(4,(value:int){return value+1;});\n"
-                  "return Apply(transform:fn(value:int)->int{return "
-                  "value;},value:4);\n"
-                  "}\n";
-    const authoring_format_options options[] = {
-        authoring_format_defaults(),
-        { .indent_width = 2, .preferred_width = 80 },
-        { .indent_width = 4, .preferred_width = 40, .use_tabs = true },
-    };
-    parse(source);
-    REQUIRE(!original->diagnostic_count);
-    for (int mode = 0; mode < 3; mode++) {
-        char error[192] = { 0 };
-        formatted_text = authoring_source_format_with_options(original, &options[mode], NULL, error, sizeof error);
-        if (!formatted_text) {
-            fprintf(pu_errors(), "Callable formatting mode %d: %s\n", mode, error);
-        }
-        REQUIRE(formatted_text);
-        REQUIRE(strstr(formatted_text, "// keep this comment"));
-        fresh = script_parse(formatted_text);
-        REQUIRE(!fresh->diagnostic_count);
-        TSNode main = ts_node_named_child(ts_tree_root_node(fresh->tree), 2);
-        TSNode first = ts_node_named_child(field(main, "body"), 0);
-        TSNode arguments = field(field(first, "value"), "arguments");
-        TSNode arrow = ts_node_named_child(arguments, 1);
-        REQUIRE(!strcmp(ts_node_type(arrow), "lambda_expression"));
-        TSNode returned = ts_node_named_child(field(arrow, "body"), 0);
-        TSNode expression = field(returned, "value");
-        REQUIRE(!strcmp(ts_node_type(expression), "binary_expression"));
-        REQUIRE(!strcmp(ts_node_type(field(expression, "left")), "binary_expression"));
-        REQUIRE(fresh->text[script_node_range(field(expression, "operator")).start] == '+');
-        reformatted_text = authoring_source_format_with_options(fresh, &options[mode], NULL, error, sizeof error);
-        REQUIRE(reformatted_text && !strcmp(formatted_text, reformatted_text));
-        script_syntax_free(fresh);
-        fresh = NULL;
-        free(formatted_text);
-        free(reformatted_text);
-        formatted_text = reformatted_text = NULL;
-    }
-    return true;
-}
-
 TEST_CASE(language_system_queries_and_control_flow)
 {
     parse(
@@ -1047,52 +991,6 @@ TEST_CASE(language_retained_corpus)
                 );
             }
         }
-        if (corpus_format && !original->diagnostic_count) {
-            const authoring_format_options options[] = {
-                authoring_format_defaults(),
-                { .indent_width = 2, .preferred_width = 80 },
-                { .indent_width = 4, .preferred_width = 40, .use_tabs = true },
-            };
-            for (int mode = 0; mode < 3; mode++) {
-                char error[192];
-                formatted_text = authoring_source_format_with_options(
-                    original,
-                    &options[mode],
-                    NULL,
-                    error,
-                    sizeof error
-                );
-                bool valid = formatted_text != NULL;
-                if (valid) {
-                    fresh = script_parse(formatted_text);
-                    reformatted_text = authoring_source_format_with_options(
-                        fresh,
-                        &options[mode],
-                        NULL,
-                        error,
-                        sizeof error
-                    );
-                    valid = reformatted_text &&
-                            !strcmp(formatted_text, reformatted_text) &&
-                            !strcmp(original->text, corpus_text);
-                }
-                if (!valid) {
-                    failures++;
-                    fprintf(
-                        pu_errors(),
-                        "Corpus formatting failed (mode %d): %s: %s\n",
-                        mode,
-                        path,
-                        error[0] ? error : "formatting is not idempotent"
-                    );
-                }
-                script_syntax_free(fresh);
-                fresh = NULL;
-                free(formatted_text);
-                free(reformatted_text);
-                formatted_text = reformatted_text = NULL;
-            }
-        }
         script_syntax_free(original);
         original = NULL;
         free(corpus_text);
@@ -1101,13 +999,7 @@ TEST_CASE(language_retained_corpus)
     REQUIRE(files > 0);
     REQUIRE(!ferror(manifest_file));
     REQUIRE(fgetc(manifest_file) == EOF);
-    printf(
-        "Retained %s corpus: %d files, %zu bytes, %d failures\n",
-        corpus_format ? "formatter" : "syntax",
-        files,
-        total,
-        failures
-    );
+    printf("Retained %s corpus: %d files, %zu bytes, %d failures\n", "syntax", files, total, failures);
     REQUIRE(failures == 0);
     return true;
 }
@@ -1130,7 +1022,6 @@ void test_language_syntax()
     RUN_TEST_CASE(language_callable_types_entries_and_results);
     RUN_TEST_CASE(language_callable_arguments_keep_declarations_and_expression_boundaries);
     RUN_TEST_CASE(language_callable_arguments_preserve_view_and_range_syntax);
-    RUN_TEST_CASE(language_callable_arguments_format_without_changing_boundaries);
     RUN_TEST_CASE(language_system_queries_and_control_flow);
     RUN_TEST_CASE(language_nested_typed_records_and_explicit_labels);
     RUN_TEST_CASE(language_definitions_unions_and_type_patterns);
@@ -1151,16 +1042,6 @@ void test_language_syntax()
 void test_language_corpus(const char *manifest)
 {
     corpus_manifest = manifest;
-    corpus_format = false;
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(language_retained_corpus);
-    pu_clear_setup();
-}
-
-void test_language_format_corpus(const char *manifest)
-{
-    corpus_manifest = manifest;
-    corpus_format = true;
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(language_retained_corpus);
     pu_clear_setup();

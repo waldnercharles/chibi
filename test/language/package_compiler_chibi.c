@@ -5369,7 +5369,9 @@ static pin_value rows(const pin_value *items, int count, pin_type type, const pi
                         .type_name = shape ? shape->type.name : NULL };
 }
 /* The data functions the compiler host links: no flow, outcomes or
- * suspension. */
+ * suspension. It links the compiler's text profile, which the compiler is
+ * compiled for; a game links the public text pack, which also converts bytes
+ * to text. */
 static bool natives(int b, bool game, bool probe, pin_value *out)
 {
     if (linked_tables[game][probe][b][0].ptr) {
@@ -5377,16 +5379,15 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         return true;
     }
     if (!linked[game][probe]) {
-        const native_definition_pack packs[] = { NATIVE_COMPILER_TEXT_DEFINITION_PACK,
+        const native_definition_pack packs[] = { game ? NATIVE_TEXT_DEFINITION_PACK
+                                                      : NATIVE_COMPILER_TEXT_DEFINITION_PACK,
                                                  NATIVE_ARRAY_DEFINITION_PACK,
                                                  COMPILER_JSON_DEFINITION_PACK,
-                                                 COMPILER_SYNTAX_DEFINITION_PACK,
-                                                 CORE_DEFINITION_PACK,
-                                                 CSTRING_PACK };
+                                                 COMPILER_SYNTAX_DEFINITION_PACK };
         char error[256];
         native_definition_pack selected[7];
-        int count = 4;
-        memcpy(selected, packs, (size_t)count * sizeof *selected);
+        int count = (int)(sizeof packs / sizeof *packs);
+        memcpy(selected, packs, sizeof packs);
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
             selected[count++] = NATIVE_MATH_DEFINITION_PACK;

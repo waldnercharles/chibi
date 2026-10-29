@@ -1,6 +1,6 @@
 ---
 name: chibi-recipes
-description: Step-by-step recipes for the Chibi engine repo. Use when adding a reflected component, a native script function, a test scene or scenario, or a project migration.
+description: Step-by-step recipes for the Chibi engine repo. Use when adding a reflected component, a native script function, a test scene or scenario, or a project format change.
 ---
 
 Each recipe ends with the checklist in `AGENTS.md` ("Before every commit").
@@ -67,50 +67,32 @@ The smallest complete example is Play Sound:
 2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
    of `- name=... prototype=...`) and the prototypes it uses. A scenario in
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
-3. Format and validate: `chibi fmt <root>`, then `chibi check <root>`.
+3. Validate: `chibi check <root>`.
 4. Run it bounded with the project's `@test` functions (`chibi test <root>`) or
    a scenario through `make agent-test`. Choose enough frames to exercise the
    scenario.
 
-## Change saved projects (migration)
+## Change saved projects
 
-Opening a project saved at an older version (`chibi_project_open`) upgrades
-it in place, and `chibi check` refuses an older project until it has been opened. There are no compatibility aliases (see the first rule in `AGENTS.md`).
+A build opens only projects at `CHIBI_PROJECT_VERSION`; there are no migration
+steps and no compatibility aliases (see the first rule in `AGENTS.md`).
 
 Bump the version only when you can name a project in this repository or
-`chibi-studio` that would otherwise load wrong or fail, and the step would
-rewrite it. Skip the steps below for additive changes, a
-contract no project uses yet, a change to what the engine does with a value
-(a physics or rendering fix), or old data that loading already handles (a step
-that would only write what the runtime does anyway). The PR then says how to
-fix a hand-made project.
+`chibi-studio` that would otherwise load wrong or fail. Skip the bump for
+additive changes, a contract no project uses yet, a change to what the engine
+does with a value (a physics or rendering fix), or old data that loading
+already handles. The PR then says how to fix a hand-made project.
 
-1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
-   that upgrades the previous version to the `switch` in
-   `src/assets/project_migrate.c`. Steps are idempotent and stage every
-   source before replacing any. After each step the manifest's `migrated`
-   node records the version the sources reached, so a rerun after a later
-   failure resumes there; only a step interrupted while replacing runs again.
-2. Cover the step with a pico_unit case that migrates a small old-format
-   source and checks the result (see `project_retirement_migrates_owned_values_and_preserves_shader_wires`
-   in `test/authoring/project_document.c`).
-3. Migrate every project in this repository by opening it (`chibi build <root>`):
-   every `project.kdl` under `test/fixtures`.
-4. Run `chibi fmt` on each migrated project and compile it with
-   `chibi-compile` to prove it still loads.
+When you do bump it:
 
-Don't open version-bump PRs in other repositories (`chibi-studio`, games).
-Their projects may lag `main`: Studio, `chibi`, `chibi-compile` and `chibi
-export` upgrade an older project when they open it, and Studio CI opens
-Studio's projects against engine `main` on every run. A lagging project takes
-the new version in the next PR that changes it for another reason. Change
-another repository first only when a step stops on something it can't rewrite
-(a removed component a script names): make that edit work with the current
-engine, merge it before the engine PR, and leave its version number alone.
-Raising `CHIBI_PROJECT_OLDEST_VERSION` is the one case that needs those
-projects migrated first; then delete the steps below it and their tests. A
-project older than that version fails to open with an error naming the
-version and an older SDK's `chibi_ctl --migrate`.
+1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h`.
+2. Edit every project in this repository (every `project.kdl` under
+   `test/fixtures`) to the new format and version directly, with a one-off
+   script if it helps; don't commit the script.
+3. Edit Studio's projects (`projects/starter`, `projects/studio`,
+   `tests/acceptance/project`) the same way in a Studio PR that pins the
+   engine PR in `.github/engine-ref`, and merge the two together.
+4. Compile each edited project with `chibi check` to prove it loads.
 
 Prepared artifact versions (`PLAYER_PREPARED_VERSION` and the other
 `*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that

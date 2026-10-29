@@ -49,13 +49,15 @@ jobs:
           python3 -m venv /tmp/cmake
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
-      # CMake builds the stage-zero host; the graph then builds this one with it.
+      # CMake builds the host until the graph can build it from a pinned one.
       - name: Build the host
         run: |
-          make build-release BUILD_TARGET=chibi-build-host LIBCLANG_ROOT="$LLVM"
-          test "$(build-release/sdk/chibi-build-host --protocol-version)" = 14
+          sh tools/configure_native.sh build-host -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF \
+            -DCHIBI_ENABLE_WARNINGS=ON -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DLIBCLANG_ROOT="$LLVM"
+          cmake --build build-host --target chibi-build-host --parallel 4
+          test "$(build-host/sdk/chibi-build-host --protocol-version)" = 14
           mkdir out
-          cp build-release/sdk/chibi-build-host "out/chibi-build-host-${{ matrix.platform }}"
+          cp build-host/sdk/chibi-build-host "out/chibi-build-host-${{ matrix.platform }}"
       - uses: actions/upload-artifact@v4
         with:
           name: host-${{ matrix.platform }}

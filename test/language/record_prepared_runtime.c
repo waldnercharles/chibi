@@ -1,4 +1,3 @@
-#include "authoring/source_format.h"
 #include "backend.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"

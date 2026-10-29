@@ -43,24 +43,8 @@ model and a shape share a name there is no catalog, so it lists no asset
 problems until one is renamed. Once nothing else is wrong, it prepares the
 project as `chibi-compile` does and lists what preparation refuses, such as
 resources that together pass the player's 4,096 records or 64 MiB, so a valid
-project compiles. It never changes files: a project saved by an earlier build
-fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
-Version 30 rewrites each `on` handler as `on X :: (Field: Type)`, listing the
-payload fields it reads; the older `on X(a)`, `on X as e` and `on X` forms no
-longer parse. The migration refuses a handler that it cannot rewrite
-exactly, such as one that reads the whole `event` or whose alias an action
-reads; rewrite that handler by hand and migrate again. It does not see events
-that a game's own native table declares, so write those handlers in the named
-form first. Version 31 removes the step globals `dt`, `delta` and
-`delta_time()`: a read in an `on Tick` handler or a system becomes a listed
-`dt`, and the migration refuses one anywhere else, where the step must be
-passed in.
-Version 38 gives systems an implicit, read-only body-local `dt` and flattens
-their query headers. It migrates live component bindings to `^T`, merges
-`join` entries into the binding list, and replaces `without` and query `where`
-clauses with `if` entries. Behavior handlers still list their payload fields.
-The migration refuses ambiguous optional whole-component reads and body
-`query expression;` declarations; rewrite those sources before retrying.
+project compiles. It never changes files. A project saved at another version
+fails to open: this build opens only `CHIBI_PROJECT_VERSION`.
 A prototype is the `name` it declares, whatever its file is called: scenes and
 other prototypes' `(array)includes` find it by that name in the player and in
 `chibi_ctl` alike, and two prototypes that declare one name, or a name over

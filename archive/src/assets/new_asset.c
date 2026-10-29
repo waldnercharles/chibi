@@ -2,7 +2,6 @@
 
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
-#include "authoring/source_format.h"
 #include "authoring/source_literal.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
@@ -124,13 +123,9 @@ static char *source_text(const char *kind, const char *name)
         return NULL;
     }
     size_t bytes = strlen(kind) + strlen(label) + 16;
-    char *raw = xmalloc(bytes);
-    snprintf(raw, bytes, "%s :: %s%s {\n}\n", label, kind, !strcmp(kind, "system") ? "()" : "");
-    script_syntax *syntax = script_parse(raw);
-    char *text = authoring_source_format(syntax, error, sizeof error);
-    script_syntax_free(syntax);
+    char *text = xmalloc(bytes);
+    snprintf(text, bytes, "%s :: %s%s {\n}\n", label, kind, !strcmp(kind, "system") ? "()" : "");
     free(label);
-    free(raw);
     return text;
 }
 

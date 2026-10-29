@@ -104,7 +104,7 @@ target_include_directories(chibi_scene_consumer PRIVATE "${CMAKE_CURRENT_BINARY_
 target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
-add_executable(test_tools main.c case_timings.c case_timings_test.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c chibi_cli.c native_build.c native_workloads.c package_ownership.c desktop_dependencies.c third_party_publish.c collab.c
+add_executable(test_tools main.c case_timings.c case_timings_test.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c chibi_cli.c native_build.c native_workloads.c third_party_publish.c collab.c
     test_policy.c validation_plan.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
@@ -464,7 +464,7 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::native_types)
     if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
         add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../runtime/source_input_save.c ../authoring/source_presentation.c
-            ../runtime/system_schedule.c ../runtime/source_reductions.c scheduler_benchmark.c ../code_system_runtime.c ../authoring/source_edit.c
+            ../runtime/system_schedule.c ../runtime/source_reductions.c scheduler_benchmark.c ../code_system_runtime.c
             ../authoring/shader_parameters.c ../authoring/component_presentation.c ../language/corpus_semantic.c)
         target_include_directories(chibi_source_features_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
         target_link_libraries(chibi_source_features_consumer PRIVATE Chibi::project_preparation Chibi::component_presentation

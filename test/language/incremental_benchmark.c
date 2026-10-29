@@ -1,5 +1,5 @@
 #include "authoring/source_collection.h"
-#include "authoring/source_intelligence.h"
+#include "authoring/source_navigation.h"
 #include "backend.h"
 #include "execution/status.h"
 #include "support/arena.h"
@@ -146,19 +146,9 @@ static bool presentation_is(
         authoring_navigation_catalog(navigation),
         tick.id
     );
-    const char *name = strstr(caller->syntax->text, "Tick");
-    char *hover = name ? authoring_source_hover(
-                             navigation,
-                             0,
-                             (int)(name - caller->syntax->text) + 1
-                         )
-                       : NULL;
-    /* Hover currently displays signatures, not these optional display strings. */
     bool ok = event && !strcmp(event->category, category) &&
               !strcmp(event->keywords, keywords) &&
-              !strcmp(event->description, description) && hover &&
-              !strcmp(hover, "Tick()");
-    free(hover);
+              !strcmp(event->description, description);
     authoring_navigation_free(navigation);
     return ok;
 }

@@ -502,7 +502,7 @@ Files :: (target: string) -> string[] {
             "src/authoring/source_references.c", "src/authoring/source_prepare.c",
             "src/authoring/source_link.c", "src/authoring/source_format.c",
             "src/authoring/source_navigation.c", "src/authoring/source_prototype_flow.c",
-            "src/authoring/source_rename.c", "src/authoring/source_intelligence.c"
+            "src/authoring/source_refactor_text.c"
         ];
     }
     if (target == "chibi_asset_authoring") {
@@ -518,12 +518,7 @@ Files :: (target: string) -> string[] {
             "src/authoring/source_presentation.c", "src/authoring/source_presentation_graph.c",
             "src/authoring/source_presentation_anchors.c", "src/authoring/source_presentation_values.c",
             "src/authoring/source_presentation_flow.c", "src/authoring/source_presentation_layout.c",
-            "src/authoring/source_presentation_details.c", "src/authoring/source_edit.c",
-            "src/authoring/source_edit_selection.c", "src/authoring/source_edit_arguments.c",
-            "src/authoring/source_edit_capability.c", "src/authoring/source_edit_declarations.c",
-            "src/authoring/source_edit_refactor.c", "src/authoring/source_edit_inline.c",
-            "src/authoring/source_edit_signature.c", "src/authoring/source_edit_binding.c",
-            "src/authoring/source_minimize.c"
+            "src/authoring/source_presentation_details.c", "src/authoring/source_minimize.c"
         ];
     }
     if (target == "chibi_graph_catalog") {
@@ -544,7 +539,7 @@ Files :: (target: string) -> string[] {
     if (target == "chibi_source_catalog") {
         return [
             "src/authoring/language_catalog.c", "src/authoring/source_catalog.c",
-            "src/authoring/source_asset.c", "src/authoring/source_prototype_edit.c",
+            "src/authoring/source_asset.c",
             "src/authoring/source_asset_completion.c", "src/authoring/source_catalog_snapshot.c",
             "src/authoring/source_collection.c", "src/authoring/source_packages.c",
             "src/authoring/source_package_syntax.c", "src/authoring/source_package_paths.c",
@@ -847,7 +842,7 @@ Files :: (target: string) -> string[] {
             "test/runtime/source_features.c", "test/runtime/source_input_save.c",
             "test/authoring/source_presentation.c", "test/runtime/system_schedule.c",
             "test/runtime/source_reductions.c", "test/tools/scheduler_benchmark.c",
-            "test/code_system_runtime.c", "test/authoring/source_edit.c",
+            "test/code_system_runtime.c",
             "test/authoring/shader_parameters.c", "test/authoring/component_presentation.c",
             "test/language/corpus_semantic.c"
         ];
@@ -866,8 +861,7 @@ Files :: (target: string) -> string[] {
             "test/tools/graph_dispatch.c", "test/tools/prepared.c",
             "test/tools/fixture.c", "test/tools/execution_policy.c", "test/tools/package.c",
             "test/tools/chibi_cli.c", "test/tools/native_build.c", "test/tools/native_workloads.c",
-            "test/tools/package_ownership.c",
-            "test/tools/desktop_dependencies.c", "test/tools/third_party_publish.c",
+            "test/tools/third_party_publish.c",
             "test/tools/collab.c",
             "test/tools/test_policy.c", "test/tools/validation_plan.c", "test/tools/web_storage.c",
             "test/tools/player_url.c", "test/tools/webgpu_staging.c", "test/tools/browser.c",
@@ -1279,9 +1273,9 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_authoring") {
         return [
             "authoring/native_bindings.h", "authoring/source_declaration.h", "authoring/source_format.h",
-            "authoring/source_intelligence.h", "authoring/source_link.h", "authoring/source_literal.h",
-            "authoring/source_navigation.h", "authoring/source_prepare.h", "authoring/source_prototype_flow.h",
-            "authoring/source_references.h", "authoring/source_rename.h"
+            "authoring/source_link.h", "authoring/source_literal.h", "authoring/source_navigation.h",
+            "authoring/source_prepare.h", "authoring/source_prototype_flow.h",
+            "authoring/source_references.h", "authoring/source_refactor_text.h"
         ];
     }
     if (target == "chibi_asset_authoring") {
@@ -1293,7 +1287,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_source_presentation") {
         return [
-            "authoring/graph_expression.h", "authoring/presentation_schema.h", "authoring/source_edit.h",
+            "authoring/graph_expression.h", "authoring/presentation_schema.h",
             "authoring/source_minimize.h", "authoring/source_presentation.h"
         ];
     }
@@ -1315,10 +1309,10 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_source_catalog") {
         return [
             "authoring/language_catalog.h", "authoring/package_tests.h", "authoring/source_asset.h",
-            "authoring/source_catalog.h", "authoring/source_collection.h",
+            "authoring/source_catalog.h", "authoring/source_collection.h", "authoring/source_completion.h",
             "authoring/source_package_exports.h", "authoring/source_package_files.h", "authoring/source_package_io.h",
             "authoring/source_package_prepare.h", "authoring/source_package_snapshot.h",
-            "authoring/source_packages.h", "authoring/source_prototype_edit.h"
+            "authoring/source_packages.h"
         ];
     }
     if (target == "chibi_program") {
@@ -1451,7 +1445,6 @@ pub PrivateHeaders :: (target: string) -> string[] {
     }
     if (target == "chibi_source_presentation") {
         return [
-            "authoring/source_edit_internal.h", "authoring/source_edit_refactor_internal.h",
             "authoring/source_presentation_anchors.h", "authoring/source_presentation_details.h",
             "authoring/source_presentation_internal.h"
         ];

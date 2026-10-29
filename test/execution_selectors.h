@@ -3,7 +3,6 @@
 /* Bounded prepared scalar scopes and value-host admission; no source I/O. */
 CHIBI_CPU_SELECTOR("--execution-scope")
 CHIBI_CPU_SELECTOR("--source-presentation")
-CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")
 CHIBI_CPU_SELECTOR("--system-schedule")
 CHIBI_CPU_SELECTOR("--asset-values")

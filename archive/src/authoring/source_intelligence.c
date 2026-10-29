@@ -564,19 +564,6 @@ char *authoring_source_hover(const authoring_navigation *index, int document, in
     const char *name = authoring_navigation_name(index, ref->target);
     return name ? declaration(catalog, name, ref->type, NULL) : NULL;
 }
-void authoring_completions_free(authoring_completions *out)
-{
-    if (!out) {
-        return;
-    }
-    for (int i = 0; i < out->count; i++) {
-        free(out->items[i].label);
-        free(out->items[i].detail);
-        free(out->items[i].insert);
-    }
-    afree(out->items);
-    *out = (authoring_completions){ 0 };
-}
 /* Exact, prefix, then fuzzy subsequence matches. Stable ties retain lexical
  * scope priority from the resolved declaration walk. */
 static int match_score(const char *name, const char *text, int length)

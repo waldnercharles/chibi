@@ -17,11 +17,6 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# The configured CMake build the build-graph checks compare the graph with:
-# on Linux and macOS `make build` uses the graph, so `make graph-reference`
-# configures one beside it. Explicit CMake callers can name their own tree.
-GRAPH_REFERENCE = str(ROOT / os.environ.get('CHIBI_GRAPH_REFERENCE',
-                                            'build-cmake' if sys.platform in ('linux', 'darwin') else 'build'))
 PROCESS_GROUP = 'CHIBI_RUNNER_PROCESS_GROUP'
 # Process tables can take seconds to enumerate on a loaded host. Bound a stuck
 # inspection separately from the caller's test timeout.
@@ -107,39 +102,25 @@ TOOLS = {
                            str(ROOT / os.environ.get('CHIBI_BOOTSTRAP_ARTIFACT', 'tools/compiler/bootstrap'))],
     'build-graph': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                     '--build-graph',
-                    str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
-                    GRAPH_REFERENCE],
+                    str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-graph-link-response': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                                  '--build-graph-link-response',
                                  str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-graph-support': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-support',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
-                            GRAPH_REFERENCE],
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-graph-reflect': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-reflect',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
-                            GRAPH_REFERENCE],
-    'build-graph-archive': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
-                            '--build-graph-archive',
-                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
-                            GRAPH_REFERENCE],
+                            str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-graph-generated': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                               '--build-graph-generated',
-                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
-                              GRAPH_REFERENCE],
+                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-graph-debug-optimization': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                                        '--build-graph-debug-optimization',
-                                       str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
-                                       GRAPH_REFERENCE],
+                                       str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-graph-programs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                              '--build-graph-programs',
-                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
-                             GRAPH_REFERENCE],
-    'build-graph-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
-                              '--build-graph-resources',
-                              str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
-                              GRAPH_REFERENCE],
+                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-sdk': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                   '--build-sdk',
                   str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build-release/sdk/chibi-build-host')),

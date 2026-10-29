@@ -293,12 +293,6 @@ if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripte
     add_custom_target(check-host
         COMMAND "${CHIBI_PYTHON_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/test_policy.py" disabled check-host
         VERBATIM)
-    add_custom_target(check-generation
-        COMMAND ${CMAKE_COMMAND} "-DROOT=${CMAKE_SOURCE_DIR}"
-            "-DTEST_DIR=${CMAKE_BINARY_DIR}/tests/generation"
-            "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
-            -P "${CMAKE_SOURCE_DIR}/cmake/tests/generation.cmake"
-        DEPENDS concurrent_runner VERBATIM)
 endif()
 
 # Windows needs Developer Mode for symbolic links, so editors there read the

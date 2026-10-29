@@ -401,10 +401,10 @@ int main(int argc, char **argv)
          !host_packages_compiler && !package_files && !package_core &&
          !package_math && !package_math_benchmark && !package_portable &&
          !package_portable_compiler && !package_tests && !argument_effects_chibi &&
-         !docs_markdown && !component_write && !component_write_layout && !scalarize &&
-         !borrow && !reductions && !binding_schedule && !activation_cache &&
-         !headless && !build_workflow && !navigation && !publication &&
-         !field_runtime && !prototype && !ui_authoring &&
+         !docs_markdown && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(

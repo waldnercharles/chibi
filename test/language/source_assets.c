@@ -673,4 +673,3 @@ void test_language_source_assets()
 #endif
     pu_clear_setup();
 }
-

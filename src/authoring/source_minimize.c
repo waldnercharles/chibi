@@ -1,8 +1,8 @@
 #include "authoring/source_minimize.h"
 
-#include "authoring/source_refactor_text.h"
 #include "authoring/source_format.h"
 #include "authoring/source_literal.h"
+#include "authoring/source_refactor_text.h"
 #include "support/array.h"
 #include "support/text_edit.h"
 #include "support/xalloc.h"

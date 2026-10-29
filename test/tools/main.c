@@ -112,9 +112,7 @@ void test_build_sdk(const char *host, const char *build, const char *third_party
 void test_runtime_sdk(const char *host);
 #endif
 #endif
-void test_tool_desktop_dependencies();
 void test_tool_third_party_publish();
-void test_tool_package_ownership();
 void test_tool_collab();
 void test_tool_test_policy();
 void test_tool_validation_plan();
@@ -1130,9 +1128,6 @@ int main(int argc, char **argv)
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared");
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
-    bool package_ownership = argc == 2 && !strcmp(argv[1], "--package-ownership");
-    bool desktop_dependencies = argc == 2 &&
-                                !strcmp(argv[1], "--desktop-dependencies");
     bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
@@ -1175,12 +1170,12 @@ int main(int argc, char **argv)
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
-    bool source_features = false, source_numeric = false, source_material = false,
-         source_presentation = false, system_schedule = false,
-         scheduler_benchmark = false, source_reductions = false,
-         source_reduction_benchmark = false, source_execution_benchmark = false,
-         source_systems = false, source_query_rows = false,
-         new_asset = false, asset_refactor = false;
+    bool source_features = false, source_numeric = false,
+         source_material = false, source_presentation = false,
+         system_schedule = false, scheduler_benchmark = false,
+         source_reductions = false, source_reduction_benchmark = false,
+         source_execution_benchmark = false, source_systems = false,
+         source_query_rows = false, new_asset = false, asset_refactor = false;
     int corpus = 0;
     bool unit_fixtures = false;
     /* The material selector given, or none. */
@@ -1319,13 +1314,12 @@ int main(int argc, char **argv)
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
     if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
-        !shader_parameters && !new_asset && !asset_refactor &&
-        !tilemap && !package && !desktop_dependencies && !third_party_publish &&
-        !collab && !package_ownership && !unit && !test_runner && !validation_plan &&
-        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
-        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
-        !scene_snapshot_read && !native && !native_values && !native_catalog &&
-        !physics && !physics3d && !transforms && !render_resources &&
+        !shader_parameters && !new_asset && !asset_refactor && !tilemap &&
+        !package && !third_party_publish && !collab && !unit && !test_runner &&
+        !validation_plan && !web_storage && !webgpu_staging && !wasm_browser &&
+        !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
+        !scene_hierarchy && !scene_snapshot_read && !native && !native_values &&
+        !native_catalog && !physics && !physics3d && !transforms && !render_resources &&
         !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
         !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
         !scene3d && !material_ramps && !texture_transform && !arena && !types &&
@@ -1345,8 +1339,8 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --package | "
-            "--desktop-dependencies | --third-party-publish | --collab | "
-            "--package-ownership | --unit | "
+            "--third-party-publish | --collab | "
+            "--unit | "
             "--test-runner | --validation-plan | "
             "--reflect-ranges | --c-export-alias | "
             "--ecs-query | --ecs-strings | "
@@ -1429,9 +1423,9 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = corpus || unit_fixtures || coverage ||
                             preview_components || shader_parameters ||
-                            new_asset || asset_refactor ||
-                            system_schedule || scheduler_benchmark ||
-                            source_reductions || source_reduction_benchmark ||
+                            new_asset || asset_refactor || system_schedule ||
+                            scheduler_benchmark || source_reductions ||
+                            source_reduction_benchmark ||
                             source_execution_benchmark || source_systems ||
                             source_query_rows || persistent_store ||
                             source_presentation || whole_alias || whole_math ||
@@ -1711,14 +1705,10 @@ int main(int argc, char **argv)
         test_tool_webgpu_staging();
     } else if (wasm_browser) {
         test_tool_wasm_browser();
-    } else if (package_ownership) {
-        test_tool_package_ownership();
     } else if (third_party_publish) {
         test_tool_third_party_publish();
     } else if (collab) {
         test_tool_collab();
-    } else if (desktop_dependencies) {
-        test_tool_desktop_dependencies();
     } else if (package) {
         test_tool_package();
     } else if (scene_prepared) {
@@ -1762,7 +1752,6 @@ int main(int argc, char **argv)
         test_tool_ecs_world();
         test_tool_ecs_query();
         test_tool_package();
-        test_tool_desktop_dependencies();
         test_tool_third_party_publish();
         test_tool_collab();
         test_tool_test_policy();

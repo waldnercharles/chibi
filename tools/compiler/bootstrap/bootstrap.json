@@ -2,30 +2,35 @@
   "format": 1,
   "version": 7,
   "minimum": 6,
-  "revision": "6c0cee1c5604dfc8fc4f49c518235626e0a66ea4",
+  "revision": "04ba478ecc79e3e191917f59a702a95fa04393ca",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 20840312,
-    "sha256": "209fdf4ece75f22f70b1e6614eb921c29a8edcbd371719709fc729227d610c9d"
+    "bytes": 21896281,
+    "sha256": "822447b87c13ce5ed7554d8113b001fff29b31f5fa579c6bab90d9dbb114eca2"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 150403,
-      "sha256": "7398ea88f67f5e890babdc749f95a8da90e52d27cd7ed5e351ff594f49c50ee4"
+      "bytes": 153306,
+      "sha256": "18476bfbab91cc441c151387b5d80ed85fd13875027b039fac87c487a1259636"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 180122,
-      "sha256": "718fe5933fa59a537c27126e92ae7e2f1320722896130d7ed1f0bc5ba3776743"
+      "bytes": 187716,
+      "sha256": "0e75cb772796ddee5be9c61044faaf320a43e58c5ba8111c071485706e04df1e"
+    },
+    {
+      "path": "package_compiler/Generics.chibi",
+      "bytes": 49137,
+      "sha256": "1077522304916269a915a2865395b856ab16c945797df88b9dbd5ad07f7f741c"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 313206,
-      "sha256": "ba6d3eec62641a0446426ae63704e27537a3b23ba0f9859de4c4a87683d320a6"
+      "bytes": 315328,
+      "sha256": "7a06e8df68da7f018e93867c51467b9accc62e82147117363845ba3944cab350"
     },
     {
       "path": "package_compiler/Maps.chibi",
@@ -34,8 +39,8 @@
     },
     {
       "path": "package_compiler/References.chibi",
-      "bytes": 40733,
-      "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852"
+      "bytes": 41448,
+      "sha256": "ab10897be071ce066343638ff0598994c118039c517819b6c14dd9468c4b6de5"
     },
     {
       "path": "package_compiler/Pointers.chibi",
@@ -74,8 +79,8 @@
     },
     {
       "path": "package_compiler/Queries.chibi",
-      "bytes": 93003,
-      "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28"
+      "bytes": 93171,
+      "sha256": "d2868b674007a70b8e547c9f55d69c7eca7632e83fe549805354b494ea672aaf"
     },
     {
       "path": "package_compiler/QueryLoops.chibi",
@@ -84,13 +89,13 @@
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 56738,
-      "sha256": "82f35ecb2f9e6c11241ceb9950a1bbc367a182936cee40cd100c5b2af751f41d"
+      "bytes": 56982,
+      "sha256": "1843ecaa97577d0b8b1138b83e0499bb05ee1929b78771ec58c3b44f3ad92bad"
     },
     {
       "path": "package_compiler/Scalar.chibi",
-      "bytes": 115064,
-      "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
+      "bytes": 117624,
+      "sha256": "dca8c8ec58e2fae602085056139b16292383518d12dee473f609358ad2223abb"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",

@@ -2730,7 +2730,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     requirement_count: int = 0;
     for (declared in types) {
         index: int = -1;
-        if ((source_mode || reachable[declared.package]) &&
+        if ((source_mode || (declared.package >= 0 && reachable[declared.package])) &&
             (declared.kind == RecordDecl || declared.kind == NativeDecl || declared.kind == QueryDecl ||
              (declared.kind == PointerDecl && declared.key == 0))) {
             index = requirement_count;

@@ -1,5 +1,9 @@
 # Package foundations decision record
 
+This is the historical foundation proposal. The later approved
+[portable byte-library decision](package-byte-libraries.md) owns the implemented
+bytes, bits and checksum subset. Other proposals below retain their stated status.
+
 Status: string invariant approved on 2026-10-21; detailed APIs remain proposed. The owner selected
 immutable, length-carrying, byte-preserving strings with explicit UTF-8 operations and embedded NUL.
 The merged string design specifies one public `string` type and a descriptor behind the existing

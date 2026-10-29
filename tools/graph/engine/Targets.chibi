@@ -746,6 +746,7 @@ Files :: (target: string) -> string[] {
             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
             "test/language/package_paths_chibi.c", "test/language/source_tokenizer_chibi.c",
+            "test/language/source_parser_chibi.c",
             "test/language/package_routes_chibi.c", "test/language/package_snapshot_chibi.c",
 
             "test/language/compiler_artifact_chibi.c", "test/language/bounded_compiler_chibi.c",
@@ -3567,6 +3568,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/runtime_attribution.c", "test/language/scalar_lowering_chibi.c",
         "test/language/scalarize.c", "test/language/signature_fixture.c",
         "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
+        "test/language/source_parser_chibi.c",
         "test/language/type_constructors_chibi.c", "test/language/type_relations_chibi.c",
         "test/language/union_members_chibi.c", "test/language/unit_algebra_chibi.c",
         "test/language/unit_analysis_chibi.c", "test/language/wasm.c"
@@ -3585,8 +3587,9 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
         ];
     }
     if (target == "test_language" &&
-        (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c" ||
-         file == "test/language/integer_semantics.c" || file == "test/language/package_portable_compiler.c")) {
+        (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/source_parser_chibi.c" ||
+         file == "test/language/asset_packaging_chibi.c" || file == "test/language/integer_semantics.c" ||
+         file == "test/language/package_portable_compiler.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     return [];

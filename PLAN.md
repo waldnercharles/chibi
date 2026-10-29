@@ -81,11 +81,29 @@ Studio resource copying passed its nine-file CMake fixture in 0.506s. The
 guide game example is current format39 and passes check plus fmt --check
 in 0.770s.
 
-Full public SDK construction, installation, relocation, isolated target linking
-and actual export startup remain acceptance gates before publication. Private
-compiler-tools packaging does not establish them. Record their final evidence
-with the reviewable candidate; no global SDK installation or new checked seed is
-authorized by this increment.
+Clean implementation candidate fee955dc2 / tree a2f1c02a6 passes direct full
+public SDK construction: configure 1.094s, Release ALL build 111.017s and package
+20.606s. Installed/relocated CLI coverage passes 15 / 213 in 26.293s, including
+Main, independent sessions, retained/imported reload, invalid drafts, cancellation
+and source-free relocation. The isolated existing-dispatcher C consumer links
+only installed Chibi::program and explicit core capabilities and passes 1 / 13
+in 0.534s (configure 0.451s, build 0.828s), with no engine/private include roots.
+Its primitive-only host supplies the documented empty type composition.
+
+Actual exported-game startup and relocation pass 2 / 25 in 9.975s, including
+hidden-frame/pixel assertions after removing the source project and scratch SDK.
+The successful fixture did not retain backend/device names; no hardware identity
+is inferred from the host platform. Studio's current-main resource copy/install
+block matches all 155 SDK resource files and engine metadata; its copied CLI
+imports core and prints Hello, Studio. The separate Studio companion is
+30d7650 on be7709f; no editor compile or UI interaction is claimed.
+
+Final receipts are under .chibi/main-runner-reload, including public-sdk-validation,
+public-sdk-consumer-validation, ordinary-cli-validation and studio-real-sdk/result.
+The test-only host composition and this evidence update follow fee955dc2; refresh
+package identity and affected installed checks on the final clean tip. Product
+sources are unchanged by that follow-up. Private compiler-tools packaging is
+separate proof. No global SDK installation or new checked seed occurred.
 
 ## Coordinated named struct results, 2026-10-22
 

@@ -13,6 +13,22 @@
 #include <string.h>
 
 #if defined(CHIBI_TEST_PROGRAM_ONLY)
+#include "types/catalog.h"
+
+#include <assert.h>
+
+/* This consumer has no reflected native structs or enums. */
+int type_catalog_pack_count()
+{
+    return 0;
+}
+
+type_catalog_pack type_catalog_pack_at(int)
+{
+    assert(false);
+    return (type_catalog_pack){ 0 };
+}
+
 void test_program_sdk();
 int main(int argc, char **argv)
 {

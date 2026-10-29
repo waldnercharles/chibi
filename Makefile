@@ -33,21 +33,16 @@ BUILD_TIMEOUT_MS ?= 1800000
 # On Linux and macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
 # profile name: sanitizer, or debug and release for build-debug and
 # build-release. CMake builds only the first build host, in a tree beside the
-# build directory, which the build-graph checks also compare against
-# (graph-reference). The SDK, web and Studio builds still use CMake.
-# GRAPH_BUILD= explicitly selects the retained CMake native route.
 # CCACHE_BASEDIR, as CMake sets it, lets worktrees share ccache objects.
 BUILD_PROFILE ?= sanitizer
 # Opt-in Graph experiment; pair with matching CMAKE_<LANG>_FLAGS_DEBUG.
 BUILD_DEBUG_OPTIMIZATION ?=
 BUILD_DEBUG_FRAME_POINTERS ?=
-GRAPH_BUILD = $(filter Linux Darwin,$(shell uname -s))
 GRAPH_PROGRAM ?= tools/toolchain/Graph.chibi
+BUILD_HOST_TARGET = chibi-build-host
 GRAPH_TIMEOUT_MS ?= 3600000
 # Optional existing native reflection tool, including cross-build wrappers.
 GRAPH_REFLECT ?=
-CMAKE_REFERENCE_DIR ?= $(BUILD_DIR)-cmake
-BUILD_HOST_TARGET = $(if $(filter Linux Darwin,$(shell uname -s)),chibi-build-host,)
 VERBOSE ?= 0
 export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory
@@ -117,7 +112,6 @@ build:
 	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 14 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
 
 .PHONY: toolchain-build stage-zero-build
-ifneq ($(GRAPH_BUILD),)
 toolchain-build:
 	@if [ -n "$(ASSET_GENERATOR_HOSTS_DEFAULT)" ]; then $(MAKE) build-release BUILD_HOST="$(abspath $(BUILD_HOST))" BUILD_TARGET='chibi-build-host chibi-compiler-host' || exit $$?; fi
 	@$(QUIET) third-party -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
@@ -129,15 +123,6 @@ toolchain-build:
 stage-zero-build:
 	@$(QUIET) bootstrap -- sh tools/bootstrap.sh "$(BUILD_HOST)"
 	@$(MAKE) toolchain-build
-else
-toolchain-build:
-	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_ASSET_GENERATOR_HOSTS="$(ASSET_GENERATOR_HOSTS_PATH)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-
-# Recovery also creates the private host used by subsequent builds.
-stage-zero-build:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_ASSET_GENERATOR_HOSTS="$(ASSET_GENERATOR_HOSTS_PATH)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET) $(BUILD_HOST_TARGET),) --parallel $(JOBS)
-endif
 
 build-debug:
 	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_PROFILE=debug BUILD_TARGET="$(BUILD_TARGET)"
@@ -163,7 +148,7 @@ sdk-reflect-build:
 # Cold recovery fetches the host that runs the authored graph.
 .PHONY: sdk-reflect-bootstrap
 sdk-reflect-bootstrap:
-	@$(QUIET) bootstrap -- sh tools/bootstrap.sh "$(SDK_REFLECT_BUILD_DIR)/host/chibi-build-host"
+	@$(QUIET) bootstrap -- sh tools/bootstrap.sh "$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"
 else
 # Windows retains native construction until its build host can run processes.
 # Keep its restricted C-only SDK profile until that replacement is verified.

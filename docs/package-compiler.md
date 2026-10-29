@@ -9,14 +9,16 @@ compiler sources.
 
 ## Entry
 
-`@fallible Compile(project: string, collection_names: string[], collection_paths:
+`Compile(project: string, collection_names: string[], collection_paths:
 string[], paths: string[], sources: string[], debug: bool, target: Target,
 abi: u64, names: string[], natives: Native[], ports: Port[], identities:
 u64[]) -> (module: u64, bytes: u8[], error: syntax.Diagnostic?)` returns
 ordinary named outputs. Success returns a root module ID, a CHIBICLO closure
 with a module for every package, and nil error. Failure returns module ID zero,
 empty bytes and a source diagnostic. The optional error requires acknowledgment
-under the [recoverable-error convention](recoverable-errors.md). `paths` and
+under the [recoverable-error convention](recoverable-errors.md):
+`syntax.Diagnostic` is an `@error` struct, and checking is inferred from the
+result type. Functions do not carry a separate marker. `paths` and
 `sources` hold the files of every package, those of imported collections such
 as `core` under their collection's path; the package of `paths[0]` is the
 closure's root. With `debug`, each function has stage zero's debugger points
@@ -190,7 +192,7 @@ a cyclic dependency there, while stage one reads the parameter.
 
 ## Behaviors and executable libraries
 
-`@fallible CompileBehavior(identity: string, source: string, target: Target, abi: u64,
+`CompileBehavior(identity: string, source: string, target: Target, abi: u64,
 names: string[], natives: Native[], ports: Port[], native_ids: u64[],
 game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
 type_fields: GameField[], entity: u64, operators: NumericOperator[],
@@ -210,7 +212,8 @@ The game arguments are flat tables, since records hold no arrays:
 - each event, with its ID, its ABI and a range of payload fields;
 - each type the game links, with whether modules require it (a namespace
   such as `SceneGlobals` is listed but not required), the type it stands for
-  (as `Transform` stands for `vec2`), its ID, layout, storage and size, its
+  (as `Transform` stands for `vec2`), its inferred error category, its ID,
+  layout, storage and size, its
   component ID when it is a component, and a range of fields with their
   storage, offsets, whether they are writable, their type as an index into
   these types, whether one is a constant whose value is its name, such as an

@@ -7,15 +7,18 @@
 
 # Chibi toolchain consolidation and self-hosting
 
-## Recoverable errors, approved 2026-10-27
+## Recoverable errors, approved 2026-10-27 and revised 2026-10-28
 
 Use ordinary named results with a final typed optional error. A nil error means
 success. Each API defines whether its other outputs remain useful on failure;
 the compiler does not require success before their use. Exceptions, a generic
 Result wrapper and propagation operators are outside this change.
 
-Mark fallible functions with `@fallible`; their final optional error requires
-acknowledgment. Testing, reporting, forwarding or storing the error acknowledges
+Mark package-owned struct and union types with `@error`; infer checking from
+the final result's resolved type. Optional and transparent union composition
+retain the category, while fields, containers and pointers remain ordinary data.
+Earlier result slots cannot directly contain errors. This replaces the draft's
+function marker. Testing, reporting, forwarding or storing the error acknowledges
 it. Reading only sibling outputs or copying it through unused aliases does not.
 Overwriting an outcome must not erase the obligation. Ordinary optional absence
 results remain unaffected. Acknowledgment does not prove useful recovery or
@@ -35,10 +38,15 @@ prepared bytes and optional diagnostic. Internal assembly unions remain
 package-local; closure byte APIs and the native 29-byte transport are unchanged.
 Preserve the accepted `ExplainCosts` facade.
 
-The current diagnostic Release checkpoint passes 102 semantic cases / 2,495
+The preceding `8dd33d14` diagnostic Release checkpoint passed 102 semantic cases / 2,495
 assertions and the 73-sample fallible group with 3 cases / 29,817 assertions on
 both compiler backends. Query-value, import/cache, formatter and whole-tree
-clang-format checks also pass. This asset-host-disabled harness is separate
+clang-format checks also passed. The revised type-marker candidate now passes
+301 focused native cases / 23,147 assertions and the 84-sample authored group
+with 3 cases / 32,742 assertions in 47.483 seconds. Whole-tree clang-format 22
+also passed. The authored unsupported-union frontier now returns its existing
+source diagnostic rather than failing on a missing type-name child. Metadata
+constructors explicitly initialize the category. This asset-host-disabled harness is separate
 from normal sanitizer/asset acceptance.
 
 The recorded `frozen-7c6ca-01` checkpoint passed focused native/source, public
@@ -54,8 +62,11 @@ normal test drivers or downstream check results were produced. That failed
 snapshot predates later checker regression repairs. Normal build success,
 matching-artifact integer integration, eligible library/shared-helper
 reconciliation, required engine aggregates and publication remain pending.
-Marked async calls and marked calls inside generated query evaluators retain
-explicit unsupported diagnostics. Do not import held character, math, generic
+Error-bearing async calls and calls inside generated query evaluators retain
+explicit unsupported diagnostics. The authored compiler retains its existing
+transparent-union, alias and function-return-inference limits. Full return-type
+inference and parameter-name `?` syntax remain design discussion, outside this
+revision. Do not import held character, math, generic
 or library work. Keep compiler ownership, bootstrap publication, manifest
 updates, phase/ABI and installed defaults with their existing owners.
 

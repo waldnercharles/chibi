@@ -502,8 +502,24 @@ script_type script_analyzer_read_type(analyzer *a, TSNode node, bool signature, 
     afree(generics);
     return reading.type;
 }
-script_type script_analyzer_collection_type(analyzer *a, pin_container container, script_type key, script_type value)
+static script_type unsupported_error_container(analyzer *a, script_range range)
 {
+    script_diagnostic diagnostic = { .range = range };
+    snprintf(diagnostic.message, sizeof diagnostic.message, "Containers and pointers of flattened error unions are not supported yet");
+    apush(a->out->diagnostics, diagnostic);
+    return script_analyzer_bad_type();
+}
+script_type script_analyzer_collection_type(
+    analyzer *a,
+    pin_container container,
+    script_type key,
+    script_type value,
+    script_range range
+)
+{
+    if ((key.flags | value.flags) & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        return unsupported_error_container(a, range);
+    }
     script_catalog_type definition = script_constructor_collection(
         &a->out->constants,
         container,
@@ -525,8 +541,11 @@ void script_analyzer_invalidate_pointers(analyzer *a)
         }
     }
 }
-script_type script_analyzer_pointer_type(analyzer *a, script_type pointee)
+script_type script_analyzer_pointer_type(analyzer *a, script_type pointee, script_range range)
 {
+    if (pointee.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        return unsupported_error_container(a, range);
+    }
     script_catalog_type definition = script_constructor_pointer(
         &a->out->constants,
         pointee,

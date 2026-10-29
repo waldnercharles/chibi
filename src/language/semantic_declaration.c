@@ -186,8 +186,7 @@ void script_analyzer_function_type(analyzer *a, int function)
 }
 enum
 {
-    FUNCTION_TEST = 1,
-    FUNCTION_FALLIBLE = 2
+    FUNCTION_TEST = 1
 };
 static unsigned function_attributes(analyzer *a, TSNode node)
 {
@@ -198,9 +197,7 @@ static unsigned function_attributes(analyzer *a, TSNode node)
             continue;
         }
         TSNode name = script_analyzer_field(attribute, "name");
-        unsigned flag = script_analyzer_text_is(a, name, "test") ? FUNCTION_TEST
-                      : script_analyzer_text_is(a, name, "fallible") ? FUNCTION_FALLIBLE
-                                                                     : 0;
+        unsigned flag = script_analyzer_text_is(a, name, "test") ? FUNCTION_TEST : 0;
         if (!flag && !a->instantiating) {
             char *text = script_analyzer_text_copy(a, name);
             script_analyzer_diagnostic(a, attribute, "Unknown attribute '@%s'", text);
@@ -213,6 +210,27 @@ static unsigned function_attributes(analyzer *a, TSNode node)
         attributes |= flag;
     }
     return attributes;
+}
+bool script_analyzer_error_attribute(analyzer *a, TSNode node)
+{
+    bool error = false;
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode attribute = ts_node_named_child(node, i);
+        if (!script_analyzer_is(attribute, "attribute")) {
+            continue;
+        }
+        TSNode name = script_analyzer_field(attribute, "name");
+        bool marked = script_analyzer_text_is(a, name, "error");
+        if (!a->instantiating && !marked) {
+            char *text = script_analyzer_text_copy(a, name);
+            script_analyzer_diagnostic(a, attribute, "Unknown attribute '@%s'", text);
+            free(text);
+        } else if (!a->instantiating && error && marked) {
+            script_analyzer_diagnostic(a, attribute, "Duplicate attribute '@error'");
+        }
+        error |= marked;
+    }
+    return error;
 }
 /* A test is a package function with no parameters or results, so the
  * runner can call it alone. Its declared header says so,
@@ -264,10 +282,6 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
      * duplicate is diagnosed where it is registered. */
     if (test && header.function >= 0) {
         mark_test(a, node, header.function);
-    }
-    if (header.function >= 0) {
-        a->out->functions[header.function].fallible = (attributes &
-                                                       FUNCTION_FALLIBLE) != 0;
     }
 }
 static uint64_t query_relationship_id(const analyzer *a, const char *name)

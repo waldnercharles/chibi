@@ -105,7 +105,6 @@ Entry :: (project: string, collection_names: string[], collection_paths: string[
 // The embedding host supplies its explicit source snapshot and target/catalog
 // facts. This facade preserves compile diagnostics without JSON interpretation
 // or generated source. The compiled public Build entry returns owned byte[].
-@fallible
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                 sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],
                 natives: compiler.Native[], ports: compiler.Port[], identities: u64[])

@@ -99,6 +99,8 @@ typedef struct
 } analyzer;
 
 void script_analyzer_check_results(analyzer *);
+void script_analyzer_classify_results(analyzer *);
+bool script_analyzer_error_attribute(analyzer *, TSNode);
 
 script_named_facts script_analyzer_named_facts(const analyzer *);
 script_range script_analyzer_range(const analyzer *, TSNode);
@@ -187,11 +189,17 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node);
 script_type script_analyzer_conversion_type(analyzer *a, TSNode node, const char *name);
 /* The type a wrap conversion reads its operand as. */
 script_type script_analyzer_conversion_operand(const analyzer *, TSNode value);
-script_type script_analyzer_pointer_type(analyzer *, script_type);
+script_type script_analyzer_pointer_type(analyzer *, script_type, script_range);
 void script_analyzer_invalidate_pointers(analyzer *);
 int script_analyzer_dereference(analyzer *, TSNode, int);
 int script_analyzer_scoped_argument(analyzer *, TSNode value, script_type);
-script_type script_analyzer_collection_type(analyzer *, pin_container, script_type key, script_type value);
+script_type script_analyzer_collection_type(
+    analyzer *,
+    pin_container,
+    script_type key,
+    script_type value,
+    script_range
+);
 script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
 void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);
 int script_analyzer_expr_add(analyzer *a, script_expression expression);
@@ -303,7 +311,7 @@ void script_analyzer_union_types(analyzer *, TSNode);
 void script_analyzer_union_fields(analyzer *, TSNode);
 script_type script_analyzer_union_type(analyzer *, TSNode, const script_type *, int);
 script_type script_analyzer_await_type(analyzer *, TSNode, script_type);
-script_type script_analyzer_task_type(analyzer *, script_type, uint64_t);
+script_type script_analyzer_task_type(analyzer *, TSNode, script_type, uint64_t);
 int script_analyzer_union_constructor(analyzer *, TSNode);
 int script_analyzer_pattern_expression(analyzer *, TSNode);
 int script_analyzer_pattern(analyzer *, TSNode, int);

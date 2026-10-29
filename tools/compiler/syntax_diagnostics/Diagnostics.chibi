@@ -18,6 +18,7 @@ pub Node :: struct {
     has_error: bool;
 }
 
+@error
 pub Diagnostic :: struct {
     start: int;
     end: int;

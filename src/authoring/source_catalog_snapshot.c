@@ -107,7 +107,7 @@ bool source_catalog_metadata_equal(const script_catalog *a, const script_catalog
             x->layout != y->layout || x->underlying != y->underlying ||
             x->component_id != y->component_id || x->component != y->component ||
             x->derived != y->derived || x->internal != y->internal ||
-            x->authored_record != y->authored_record ||
+            x->authored_record != y->authored_record || x->error != y->error ||
             x->container != y->container || !same_type(x->key_type, y->key_type) ||
             !same_type(x->element_type, y->element_type) ||
             x->variant_count != y->variant_count ||

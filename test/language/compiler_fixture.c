@@ -863,17 +863,17 @@ TEST_CASE(compiler_fixture_snapshots_multiple_results)
 }
 TEST_CASE(compiler_fixture_snapshots_optional_results)
 {
-    static const char
-        source[] = "package fixture\n"
-                   "pub Failure :: struct { code: int; message: string; }\n"
-                   "@fallible pub Scalar :: (present: bool) -> int? { "
-                   "if present { return 42; } return nil; }\n"
-                   "@fallible pub Pair :: (present: bool) -> (value: int, "
-                   "error: Failure?) { "
-                   "if present { return(7, {code: 9, message: \"bad\"}); } "
-                   "return(17, nil); }\n"
-                   "@fallible pub Defaults :: () -> (value: int, error: "
-                   "Failure?) { return; }\n";
+    static const char source
+        [] = "package fixture\n"
+             "@error pub Failure :: struct { code: int; message: string; }\n"
+             "pub Scalar :: (present: bool) -> int? { "
+             "if present { return 42; } return nil; }\n"
+             "pub Pair :: (present: bool) -> (value: int, "
+             "error: Failure?) { "
+             "if present { return(7, {code: 9, message: \"bad\"}); } "
+             "return(17, nil); }\n"
+             "pub Defaults :: () -> (value: int, error: "
+             "Failure?) { return; }\n";
     source_package_input file = { "fixture/Fixture.chibi", source, sizeof source - 1 };
     for (int collectable = 0; collectable < 2; collectable++) {
         for (int b = 0; b < 2; b++) {

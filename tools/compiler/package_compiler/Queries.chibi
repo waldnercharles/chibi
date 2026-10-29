@@ -1169,14 +1169,14 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
     declared: TypeDecl = {name: "", type_name: row_name, package: document, node: node, kind: QueryDecl,
                           first: first, count: length(fields), size: target.pointer_size, parent: -1,
                           storage: QueryStorage, id: id, layout: 0, component: 0, key: 0, value_storage: 0,
-                          value_container: 0, value_record: -1};
+                          value_container: 0, value_record: -1, error: false};
     types.append(declared);
     // A literal again: a copy of `declared` shares its u64 id, and writing
     // into that copy would make every caller copy its arguments.
     description: TypeDecl = {name: "", type_name: row_name, package: document, node: node, kind: QueryDescriptorDecl,
                              first: first, count: length(fields), size: target.pointer_size, parent: row,
                              storage: QueryStorage, id: id, layout: 0, component: 0, key: 0, value_storage: 0,
-                             value_container: 0, value_record: -1};
+                             value_container: 0, value_record: -1, error: false};
     descriptor := length(types);
     types.append(description);
     param_first := length(params);

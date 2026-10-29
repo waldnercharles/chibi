@@ -3,27 +3,27 @@ package package_compiler
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
 
-// Source callables retain their attribute nodes across package imports. The
-// marker describes an error result; ordinary optional results stay ordinary.
-FallibleMarked :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
-    for (child in Members(forest, node)) {
-        if (Is(forest, child, "attribute") && Text(forest, text, Field(forest, child, "name")) == "fallible") {
+// Error category belongs to a declared type, independently of callable names.
+ErrorMarked :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    for child in Members(forest, node) {
+        if Is(forest, child, "attribute") && Text(forest, text, Field(forest, child, "name")) == "error" {
             return true;
         }
     }
     return false;
 }
 
-FallibleAttributes :: (forest: snapshot.SnapshotNode[], text: string, file: int, node: int) -> syntax.Diagnostic[] {
+DeclarationAttributes :: (forest: snapshot.SnapshotNode[], text: string, file: int, node: int,
+                           allowed: string) -> syntax.Diagnostic[] {
     seen: string[] = [];
-    for (child in Members(forest, node)) {
-        if (Is(forest, child, "attribute")) {
+    for child in Members(forest, node) {
+        if Is(forest, child, "attribute") {
             name := Text(forest, text, Field(forest, child, "name"));
-            if (name != "test" && name != "fallible") {
+            if name != allowed {
                 return [Diagnose(forest, child, file, format_text("Unknown attribute '@{}'", name))];
             }
-            for (previous in seen) {
-                if (previous == name) {
+            for previous in seen {
+                if previous == name {
                     return [Diagnose(forest, child, file, format_text("Duplicate attribute '@{}'", name))];
                 }
             }
@@ -33,10 +33,35 @@ FallibleAttributes :: (forest: snapshot.SnapshotNode[], text: string, file: int,
     return [];
 }
 
-FallibleOptional :: (types: TypeDecl[], value: ValueType) -> bool {
-    return OptionalElement(types, Typed(-1, value.storage, value.container, value.record)).storage != 0 ||
-           (value.storage == PointerStorage && value.container == 0 && value.record >= 0 &&
-            types[value.record].key != 0);
+// Optional descriptors and existing native aliases retain their value's
+// category. Owning a field or container of errors does not make a value an error.
+ErrorBearing :: (types: TypeDecl[], value: ValueType) -> bool {
+    current := value;
+    visited: int[] = [];
+    while current.container == 0 && (current.storage == StructStorage || current.storage == UnionStorage) &&
+          current.record >= 0 {
+        if visited.contains(current.record) { return false; }
+        visited.append(current.record);
+        declared := types[current.record];
+        if declared.error { return true; }
+        if declared.kind == OptionalDecl {
+            current = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+        } else if declared.kind == NativeDecl && declared.parent >= 0 {
+            current.record = declared.parent;
+        } else {
+            return false;
+        }
+    }
+    return false;
+}
+
+ErrorResult :: (types: TypeDecl[], params: Param[], callable: Callable) -> bool {
+    last: ValueType = {storage: callable.result, container: callable.result_container, record: callable.result_record};
+    if callable.results > 0 {
+        result := params[callable.first + callable.count + callable.results - 1];
+        last = {storage: result.storage, container: result.container, record: result.record};
+    }
+    return ErrorBearing(types, last);
 }
 
 FallibleBinding :: struct {
@@ -690,16 +715,16 @@ FallibleOutcome :: (forest: snapshot.SnapshotNode[], text: string, callable: Cal
 // Resolved call facts come from emission, including calls into imported source
 // packages. No native source analyzer or spelling-based error inference runs.
 FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
-                 params: Param[], callable: Callable, facts: SemanticFact[], generated_query: bool) -> syntax.Diagnostic[] {
+                 params: Param[], types: TypeDecl[], callable: Callable, facts: SemanticFact[], generated_query: bool) -> syntax.Diagnostic[] {
     sources: SemanticFact[] = [];
     for (fact in facts) {
         if (fact.kind == CallFact && Is(forest, fact.node, "call_expression") &&
             fact.target >= 0 && fact.target < length(callables)) {
             producer := callables[fact.target];
-            if (FallibleMarked(forest, documents[producer.document].text, producer.node)) {
+            if (ErrorResult(types, params, producer)) {
                 if (producer.waits) {
                     return [Diagnose(forest, fact.node, callable.document,
-                                     "@fallible task result checking is not supported by stage one yet")];
+                                     "Task error result checking is not supported by stage one yet")];
                 }
                 duplicate := false;
                 for (source in sources) { duplicate = duplicate || source.node == fact.node; }
@@ -712,7 +737,7 @@ FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     // but executes its header rather than that node's authored body.
     if (generated_query || Field(forest, callable.node, "body") < 0) {
         return [Diagnose(forest, sources[0].node, callable.document,
-                         "@fallible result checking requires an authored function body in stage one")];
+                         "Error result checking requires an authored function body in stage one")];
     }
     text := documents[callable.document].text;
     bindings := FallibleBindings(forest, text, callable);
@@ -739,7 +764,7 @@ FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
         if (producer.results > 0) { error_name = params[producer.first + producer.count + producer.results - 1].name; }
         if (FallibleOutcome(forest, text, callable, bindings, nodes, start, source.node, error_name, producer.results > 1)) {
             return [Diagnose(forest, source.node, callable.document,
-                             "Trailing optional result is ignored on a reachable path; check, report, store or return it")];
+                             "Error result is ignored on a reachable path; check, report, store or return it")];
         }
     }
     return [];

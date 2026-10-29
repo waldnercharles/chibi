@@ -14,6 +14,13 @@ static bool discards_result(const analyzer *a, const script_expression *call)
     }
     const script_catalog_capability
         *native = script_catalog_capability_by_id(a->catalog, call->capability);
+    for (int i = 0; native && i < native->result_count; i++) {
+        script_type type = i < acount(call->results) ? call->results[i]
+                                                     : native->results[i].type;
+        if (script_catalog_type_contains_error(a->catalog, type)) {
+            return false; /* The error-result pass reports the contract. */
+        }
+    }
     /* An array method that changes its array reports that itself. */
     return native && native->pure &&
            !(call->left >= 0 && script_analyzer_array_changer(native));

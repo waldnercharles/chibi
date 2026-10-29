@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* A @fallible call's trailing optional result must be acknowledged. Sibling
+/* A call's trailing error-bearing result must be acknowledged. Sibling
  * results remain valid: streaming APIs can return progress and an error.
  * Follow each produced outcome through local aliases until a real use or an
  * explicit transfer. Binding it to an otherwise unused local is not a use. */
@@ -677,12 +677,11 @@ static uint64_t last_member(const analyzer *a, const script_expression *call)
 static void ignored_result(analyzer *a, int source)
 {
     script_diagnostic diagnostic = { .range = a->out->expressions[source].range };
-    const char
-        *message = a->out->expressions[source].task
-                     ? "Fallible task handle is ignored on a reachable "
-                       "path; await, cancel, forward, store or return it"
-                     : "Trailing optional result is ignored on a reachable "
-                       "path; check, report, store or return it";
+    const char *message = a->out->expressions[source].task
+                            ? "Fallible task handle is ignored on a reachable "
+                              "path; await, cancel, forward, store or return it"
+                            : "Error result is ignored on a reachable "
+                              "path; check, report, store or return it";
     snprintf(diagnostic.message, sizeof diagnostic.message, "%s", message);
     apush(a->out->diagnostics, diagnostic);
 }
@@ -912,22 +911,28 @@ static bool check_result(analyzer *a, const script_function *function, int sourc
     afree(work);
     return check.visited;
 }
-void script_analyzer_check_results(analyzer *a)
+void script_analyzer_classify_results(analyzer *a)
 {
-    if (acount(a->out->diagnostics)) {
-        return;
-    }
     for (int i = 0; i < acount(a->out->functions); i++) {
-        const script_function *function = &a->out->functions[i];
-        if (function->fallible &&
-            (!acount(function->results) ||
-             !(a->out->symbols[alast(function->results)].type.flags &
-               SCRIPT_TYPE_OPTIONAL))) {
-            script_diagnostic diagnostic = { .range = function->range };
-            snprintf(diagnostic.message, sizeof diagnostic.message, "@fallible requires a final optional error result");
+        script_function *function = &a->out->functions[i];
+        function->fallible = false;
+        for (int j = 0; j < acount(function->results); j++) {
+            const script_symbol *result = &a->out->symbols[function->results[j]];
+            if (!script_catalog_type_contains_error(a->catalog, result->type)) {
+                continue;
+            }
+            if (j + 1 == acount(function->results)) {
+                function->fallible = true;
+                continue;
+            }
+            script_diagnostic diagnostic = { .range = result->declaration };
+            snprintf(diagnostic.message, sizeof diagnostic.message, "An error-bearing result must be the final result");
             apush(a->out->diagnostics, diagnostic);
         }
     }
+}
+void script_analyzer_check_results(analyzer *a)
+{
     if (acount(a->out->diagnostics)) {
         return;
     }
@@ -938,16 +943,27 @@ void script_analyzer_check_results(analyzer *a)
         }
         const script_catalog_capability *native = producer(a, call);
         bool fallible = call->right >= 0 ? a->out->functions[call->right].fallible
-                                         : native && native->fallible;
-        if (!fallible) {
-            continue;
+                                         : false;
+        bool invalid = false;
+        if (call->right < 0 && native) {
+            for (int j = 0; j < native->result_count; j++) {
+                script_type type = j < acount(call->results)
+                                     ? call->results[j]
+                                     : native->results[j].type;
+                if (!script_catalog_type_contains_error(a->catalog, type)) {
+                    continue;
+                }
+                if (j + 1 == native->result_count) {
+                    fallible = true;
+                    continue;
+                }
+                script_diagnostic diagnostic = { .range = call->range };
+                snprintf(diagnostic.message, sizeof diagnostic.message, "An error-bearing result must be the final result");
+                apush(a->out->diagnostics, diagnostic);
+                invalid = true;
+            }
         }
-        if (call->right < 0 && (!native->result_count ||
-                                !(native->results[native->result_count - 1].type.flags &
-                                  SCRIPT_TYPE_OPTIONAL))) {
-            script_diagnostic diagnostic = { .range = call->range };
-            snprintf(diagnostic.message, sizeof diagnostic.message, "@fallible requires a final optional error result");
-            apush(a->out->diagnostics, diagnostic);
+        if (!fallible || invalid) {
             continue;
         }
         bool visited = false, ignored = false;

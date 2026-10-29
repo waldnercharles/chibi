@@ -943,9 +943,9 @@ TEST_CASE(package_imports_preserve_fallible_contract)
 {
     const source_package_input provider = {
         "reader/main.chibi",
-        "package reader\n@fallible pub Read :: (input: int) -> (value: int, "
-        "error: int?) "
-        "{ return(input, 9); }\n",
+        "package reader\n@error pub Failure :: struct { code: int; }\n"
+        "pub Read :: (input: int) -> (value: int, error: Failure?) "
+        "{ return(input, {code: 9}); }\n",
         0
     };
     const char *clients[] = {
@@ -972,11 +972,19 @@ TEST_CASE(package_imports_preserve_fallible_contract)
                 function_id(reader, "Read")
             );
             REQUIRE(read && read->fallible);
+            const script_catalog_type *failure = script_catalog_type_by_id(
+                metadata,
+                read->results[1].type.nominal
+            );
+            REQUIRE(failure && failure->error);
             script_catalog copied = { 0 };
             REQUIRE(script_catalog_snapshot(&metadata_storage, metadata, &copied));
             const script_catalog_capability
                 *snapshot = script_catalog_capability_by_id(&copied, read->id);
             REQUIRE(snapshot && snapshot->fallible);
+            const script_catalog_type
+                *copied_failure = script_catalog_type_by_id(&copied, failure->id);
+            REQUIRE(copied_failure && copied_failure->error);
             const authoring_package *app = package(0, "project:app");
             REQUIRE(app);
             if (!sample) {
@@ -997,9 +1005,21 @@ TEST_CASE(package_imports_preserve_fallible_contract)
 
 TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse)
 {
-    static const script_catalog_parameter output = {
+    const script_catalog_field code = { .id = 1,
+                                        .name = "code",
+                                        .type = { .storage = PIN_I32 },
+                                        .writable = true };
+    script_catalog_type failure = { .id = 702,
+                                    .name = "Failure",
+                                    .type = { .storage = PIN_STRUCT, .nominal = 702 },
+                                    .fields = &code,
+                                    .field_count = 1,
+                                    .size = sizeof(int32_t) };
+    const script_catalog_parameter output = {
         .name = "error",
-        .type = { .storage = PIN_I32, .flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL }
+        .type = { .storage = PIN_STRUCT,
+                  .nominal = 702,
+                  .flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL }
     };
     script_catalog_capability probe = {
         .id = 701,
@@ -1009,14 +1029,17 @@ TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse)
         .result_count = 1,
         .effects = SCRIPT_EFFECT_HOST,
     };
-    script_catalog metadata = { .capabilities = &probe, .capability_count = 1 };
+    script_catalog metadata = { .types = &failure,
+                                .type_count = 1,
+                                .capabilities = &probe,
+                                .capability_count = 1 };
     const script_lower_bindings bound = { .host = default_probe_binding,
                                           .generation = 1 };
     const source_package_input files[] = {
         { "app/main.chibi", "package app\nMain :: (input: int) -> int { Outcome(); return input; }\n", 0 },
     };
     for (int b = 0; b < 2; b++) {
-        probe.fallible = false;
+        failure.error = false;
         REQUIRE(prepare_catalog(0, files, 1, backends[b], -1, "/project", &metadata, &bound));
         REQUIRE(valid(0));
         const authoring_package *original = package(0, "project:app");
@@ -1025,14 +1048,33 @@ TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse)
             call(original->module, function_id(original, "Main"), backends[b], 7, 7)
         );
         uint64_t abi = script_catalog_capability_abi(&metadata, &probe);
-        probe.fallible = true;
-        REQUIRE(script_catalog_capability_abi(&metadata, &probe) == abi);
-        REQUIRE(prepare_catalog(1, files, 1, backends[b], 0, "/project", &metadata, &bound));
+        script_catalog_parameter flagged_output = output;
+        flagged_output.type.flags ^= SCRIPT_TYPE_ERROR_ALTERNATIVE;
+        script_catalog_capability flagged_probe = probe;
+        flagged_probe.results = &flagged_output;
+        script_catalog flagged_metadata = metadata;
+        flagged_metadata.capabilities = &flagged_probe;
+        REQUIRE(script_catalog_capability_abi(&flagged_metadata, &flagged_probe) == abi);
+        REQUIRE(
+            prepare_catalog(1, files, 1, backends[b], 0, "/project", &flagged_metadata, &bound)
+        );
         REQUIRE(
             !authoring_packages_valid(owners[1]) &&
             !authoring_packages_reused(owners[1])
         );
-        const authoring_package *app = package(1, "project:app");
+        const authoring_package *flagged = package(1, "project:app");
+        REQUIRE(
+            flagged && flagged->diagnostic_count == 1 &&
+            strstr(flagged->diagnostics[0].message, "ignored")
+        );
+        failure.error = true;
+        REQUIRE(script_catalog_capability_abi(&metadata, &probe) == abi);
+        REQUIRE(prepare_catalog(2, files, 1, backends[b], 0, "/project", &metadata, &bound));
+        REQUIRE(
+            !authoring_packages_valid(owners[2]) &&
+            !authoring_packages_reused(owners[2])
+        );
+        const authoring_package *app = package(2, "project:app");
         REQUIRE(
             app && app->diagnostic_count == 1 &&
             strstr(app->diagnostics[0].message, "ignored")

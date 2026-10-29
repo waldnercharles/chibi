@@ -2233,6 +2233,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                 : (script_type){ .storage = PIN_FLOW };
         result.type = script_analyzer_task_type(
             a,
+            node,
             success,
             library_task ? capability->id : a->out->symbols[function->symbol].id
         );

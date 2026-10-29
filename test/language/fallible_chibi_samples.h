@@ -1,10 +1,10 @@
 /* Source outcomes and fixed behavior oracles for the dedicated fallible group.
  * Included inside samples[], after sample and sample_group are declared. */
 #define FALLIBLE_READER                                                        \
-    "package facts\n"                                                          \
-    "@fallible Read :: () -> (value: int, error: int?) { return(7, 3); }\n"
+    "package facts\n@error Failure :: struct { code: int; }\nRead :: () -> "   \
+    "(value: int, error: Failure?) { return(7, {code: 3}); }\n"
 #define FALLIBLE_IGNORED                                                       \
-    "Trailing optional result is ignored on a reachable path; check, report, " \
+    "Error result is ignored on a reachable path; check, report, "             \
     "store or return it"
 { .name = "fallible bare result is ignored",
   .group = FALLIBLE_SAMPLES,
@@ -34,15 +34,17 @@
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[9]" } } },
     { .name = "fallible unnamed error-only result cannot be dropped",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible Fail :: () -> int? { return 3; }\n"
-                "Use :: () { Fail(); }\n",
+      .source = "package facts\n@error Failure :: struct { code: int; }\nFail "
+                ":: () -> Failure? { return {code: 3}; }\nUse :: () { Fail(); "
+                "}\n",
       .message = FALLIBLE_IGNORED,
       .same_rejection = true },
     { .name = "fallible unnamed error-only result can be checked",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible Fail :: () -> int? { return 3; }\n"
-                "Use :: () -> int { error := Fail(); if error { return "
-                "error; } return 0; }\n",
+      .source = "package facts\n@error Failure :: struct { code: int; }\nFail "
+                ":: () -> Failure? { return {code: 3}; }\nUse :: () -> int { "
+                "error := Fail(); if error { return error.code; } return 0; "
+                "}\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[3]" } } },
     { .name = "fallible progress remains valid with error present",
       .group = FALLIBLE_SAMPLES,
@@ -98,24 +100,22 @@
     { .name = "fallible errors can be forwarded to helpers",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Observe :: (error: int?) { if error {} }\nUse :: () -> int { result := "
-      "Read(); Observe(result.error); return result.value; }\n",
+      "Observe :: (error: Failure?) { if error {} }\nUse :: () -> int { result "
+      ":= Read(); Observe(result.error); return result.value; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[7]" } } },
     { .name = "fallible complete outcomes can be returned",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "@fallible Forward :: () -> (value: int, error: int?) { result := "
-      "Read(); return(result.value, result.error); "
-      "}\nUse :: () -> int { result := Forward(); if result.error {} return "
-      "result.value; }\n",
+      "Forward :: () -> (value: int, error: Failure?) { result := Read(); "
+      "return(result.value, result.error); }\nUse :: () -> int { result := "
+      "Forward(); if result.error {} return result.value; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[7]" } } },
     { .name = "fallible named error can be returned implicitly",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "@fallible Forward :: () -> (value: int, error: int?) { result := "
-      "Read(); value = result.value; error = result.error; return; }\nUse :: "
-      "() -> int { result := Forward(); if result.error {} return "
-      "result.value; }\n",
+      "Forward :: () -> (value: int, error: Failure?) { result := Read(); "
+      "value = result.value; error = result.error; return; }\nUse :: () -> int "
+      "{ result := Forward(); if result.error {} return result.value; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[7]" } } },
     { .name = "fallible loop checks each produced error",
       .group = FALLIBLE_SAMPLES,
@@ -139,8 +139,9 @@
       .group = FALLIBLE_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\nUse :: () -> int { "
                 "result := lib.Read(); return result.value; }\n",
-      .library = "package lib\n@fallible pub Read :: () -> (value: int, error: "
-                 "int?) { return(7, nil); }\n",
+      .library = "package lib\n@error pub Failure :: struct { code: int; } "
+                 "\npub Read :: () -> (value: int, error: Failure?) { "
+                 "return(7, nil); }\n",
       .message = FALLIBLE_IGNORED,
       .same_rejection = true },
     { .name = "fallible imported source error is checked",
@@ -148,59 +149,63 @@
       .source = "package facts\nimport lib \"project:lib\"\nUse :: () -> int { "
                 "result := lib.Read(); if result.error {} return result.value; "
                 "}\n",
-      .library = "package lib\n@fallible pub Read :: () -> (value: int, error: "
-                 "int?) { return(7, nil); }\n",
+      .library = "package lib\n@error pub Failure :: struct { code: int; } "
+                 "\npub Read :: () -> (value: int, error: Failure?) { "
+                 "return(7, nil); }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[7]" } } },
     { .name = "fallible optional pointer aliases are inspected",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible Fail :: () -> (error: int?) { return "
-                "3; }\nUse :: () -> int { error := Fail(); pointer := &error; "
-                "copy := pointer; if copy^ {} return 8; }\n",
+      .source = "package facts\n@error Failure :: struct { code: int; }\nFail "
+                ":: () -> (error: Failure?) { return {code: 3}; }\nUse :: () "
+                "-> int { error := Fail(); pointer := &error; copy := pointer; "
+                "if copy^ {} return 8; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[8]" } } },
     { .name = "fallible pointer comparison does not inspect error",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible Fail :: () -> (error: int?) { return "
-                "3; }\nUse :: () { error := Fail(); pointer := &error; same := "
-                "pointer == pointer; }\n",
+      .source = "package facts\n@error Failure :: struct { code: int; }\nFail "
+                ":: () -> (error: Failure?) { return {code: 3}; }\nUse :: () { "
+                "error := Fail(); pointer := &error; same := pointer == "
+                "pointer; }\n",
       .message = FALLIBLE_IGNORED,
       .same_rejection = true },
     { .name = "fallible pointer overwrite cannot erase error",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible Fail :: () -> (error: int?) { return "
-                "3; }\nUse :: () { error := Fail(); pointer := &error; "
-                "pointer^ = nil; if error {} }\n",
+      .source = "package facts\n@error Failure :: struct { code: int; }\nFail "
+                ":: () -> (error: Failure?) { return {code: 3}; }\nUse :: () { "
+                "error := Fail(); pointer := &error; pointer^ = nil; if error "
+                "{} }\n",
       .message = FALLIBLE_IGNORED,
       .same_rejection = true },
-    { .name = "fallible marker needs optional result",
+    { .name = "old function error marker is rejected",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible Fail :: () -> int { return 0; }\n",
-      .message = "@fallible requires a final optional error result",
+      .source = "package facts\n@fallible Fail :: () -> int? { return nil; }\n",
+      .message = "Unknown attribute '@fallible'",
       .same_rejection = true },
-    { .name = "fallible duplicate marker rejected",
+    { .name = "duplicate error type marker is rejected",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible @fallible Fail :: () -> int? { "
-                "return nil; }\n",
-      .message = "Duplicate attribute '@fallible'",
+      .source = "package facts\n@error @error Failure :: struct { code: int; "
+                "}\n",
+      .message = "Duplicate attribute '@error'",
       .same_rejection = true },
     { .name = "fallible unknown marker rejected",
       .group = FALLIBLE_SAMPLES,
       .source = "package facts\n@falible Fail :: () -> int? { return nil; }\n",
       .message = "Unknown attribute '@falible'",
       .same_rejection = true },
-    { .name = "fallible marked async union result retains emitter boundary",
+    { .name = "ordinary optional async result retains emitter boundary",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible Work :: () -> int? { yield; return "
-                "nil; }\nUse :: () { task := Work(); cancel task; }\n",
+      .source = "package facts\nWork :: () -> int? { yield; return nil; }\n"
+                "Use :: () { task := Work(); cancel task; }\n",
       .message = "task handles with a union result are not supported yet",
       .line = 3,
       .column = 21 },
-    { .name = "fallible marked pointer error async source is unsupported",
+    { .name = "error result async source is explicitly unsupported",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n@fallible Work :: () -> ^int? { yield; return "
-                "nil; }\nUse :: () { task := Work(); cancel task; }\n",
-      .message = "@fallible task result checking is not supported by stage one "
-                 "yet",
-      .line = 3,
+      .source = "package facts\n@error Failure :: struct { code: int; }\n"
+                "Work :: () -> Failure { yield; return {code: 3}; }\n"
+                "Use :: () { task := Work(); cancel task; }\n",
+      .message = "Task error result checking is not supported by stage one yet",
+      .line = 4,
       .column = 21 },
     { .name = "fallible synchronous argument under await cannot drop error",
       .group = FALLIBLE_SAMPLES,
@@ -212,11 +217,10 @@
     { .name = "fallible synchronous argument under await can forward error",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Observe :: (error: int?) -> int { if error { return error; } return 0; "
-      "}\n"
-      "Later :: (value: int) -> int { yield; return value; }\n"
-      "Use :: () { returned := await Later(Observe(Read().error)); }\n"
-      "Stop :: () { task := Later(0); cancel task; }\n" },
+      "Observe :: (error: Failure?) -> int { if error { return error.code; } "
+      "return 0; }\nLater :: (value: int) -> int { yield; return value; }\nUse "
+      ":: () { returned := await Later(Observe(Read().error)); }\nStop :: () { "
+      "task := Later(0); cancel task; }\n" },
     { .name = "fallible explicit blank binding still drops error",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER "Use :: () { _ := Read(); }\n",
@@ -232,20 +236,18 @@
     { .name = "fallible switch candidate can acknowledge error",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Choose :: (error: int?) -> int { if error { return error; } return 0; "
-      "}\nUse :: (subject: int) -> int { result := Read(); switch subject { "
-      "case "
-      "Choose(result.error): return 1; case: return 2; } }\n",
+      "Choose :: (error: Failure?) -> int { if error { return error.code; } "
+      "return 0; }\nUse :: (subject: int) -> int { result := Read(); switch "
+      "subject { case Choose(result.error): return 1; case: return 2; } }\n",
       .calls = { { .function = "Use", .arguments = "[0]", .expected = "[2]" },
                  { .function = "Use", .arguments = "[3]", .expected = "[1]" } } },
     { .name = "fallible later switch candidate can be skipped",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Choose :: (error: int?) -> int { if error { return error; } return 0; "
-      "}\nUse :: (subject: int) -> int { result := Read(); switch subject { "
-      "case 0: return "
-      "result.value; case Choose(result.error): return 1; case: return 2; } "
-      "}\n",
+      "Choose :: (error: Failure?) -> int { if error { return error.code; } "
+      "return 0; }\nUse :: (subject: int) -> int { result := Read(); switch "
+      "subject { case 0: return result.value; case Choose(result.error): "
+      "return 1; case: return 2; } }\n",
       .message = FALLIBLE_IGNORED,
       .same_rejection = true },
     { .name = "fallible destination index cannot drop error",
@@ -257,15 +259,15 @@
     { .name = "fallible destination index can acknowledge error",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Choose :: (error: int?) -> int { return 0; }\nUse :: () -> int { result "
-      ":= Read(); values: int[] = [0]; values[Choose(result.error)] = "
+      "Choose :: (error: Failure?) -> int { return 0; }\nUse :: () -> int { "
+      "result := Read(); values: int[] = [0]; values[Choose(result.error)] = "
       "result.value; return values[0]; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[7]" } } },
     { .name = "fallible shadowed optional is a different binding",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Use :: (flag: bool) { error := Read().error; if flag { error: int? = "
-      "nil; if error {} } }\n",
+      "Use :: (flag: bool) { error := Read().error; if flag { error: Failure? "
+      "= nil; if error {} } }\n",
       .message = FALLIBLE_IGNORED,
       .same_rejection = true },
     { .name = "fallible bracket slice start cannot drop error",
@@ -303,106 +305,91 @@
     { .name = "fallible bracket slice start can forward error",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Bound :: (error: int?) -> int { if error { return 1; } return 0; }\n"
-      "Use :: () -> int { values: int[] = [10, 20, 30, 40]; "
-      "selected := values[Bound(Read().error)..<3]; "
-      "if selected { return selected[0] * 10 + selected.length(); } return -1; "
-      "}\n",
+      "Bound :: (error: Failure?) -> int { if error { return 1; } return 0; "
+      "}\nUse :: () -> int { values: int[] = [10, 20, 30, 40]; selected := "
+      "values[Bound(Read().error)..<3]; if selected { return selected[0] * 10 "
+      "+ selected.length(); } return -1; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[202]" } } },
     { .name = "fallible bracket slice end can forward error",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Bound :: (error: int?) -> int { if error { return 1; } return 0; }\n"
-      "Use :: () -> int { values: int[] = [10, 20, 30, 40]; "
-      "selected := values[0..<Bound(Read().error)]; "
-      "if selected { return selected[0] * 10 + selected.length(); } return -1; "
-      "}\n",
+      "Bound :: (error: Failure?) -> int { if error { return 1; } return 0; "
+      "}\nUse :: () -> int { values: int[] = [10, 20, 30, 40]; selected := "
+      "values[0..<Bound(Read().error)]; if selected { return selected[0] * 10 "
+      "+ selected.length(); } return -1; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[101]" } } },
     { .name = "fallible method slice start can forward error",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Bound :: (error: int?) -> int { if error { return 1; } return 0; }\n"
-      "Use :: () -> int { values: int[] = [10, 20, 30, 40]; "
-      "selected := values.slice(Bound(Read().error)..<3); "
-      "if selected { return selected[0] * 10 + selected.length(); } return -1; "
-      "}\n",
+      "Bound :: (error: Failure?) -> int { if error { return 1; } return 0; "
+      "}\nUse :: () -> int { values: int[] = [10, 20, 30, 40]; selected := "
+      "values.slice(Bound(Read().error)..<3); if selected { return selected[0] "
+      "* 10 + selected.length(); } return -1; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[202]" } } },
     { .name = "fallible method slice end can forward error",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Bound :: (error: int?) -> int { if error { return 1; } return 0; }\n"
-      "Use :: () -> int { values: int[] = [10, 20, 30, 40]; "
-      "selected := values.slice(0..<Bound(Read().error)); "
-      "if selected { return selected[0] * 10 + selected.length(); } return -1; "
-      "}\n",
+      "Bound :: (error: Failure?) -> int { if error { return 1; } return 0; "
+      "}\nUse :: () -> int { values: int[] = [10, 20, 30, 40]; selected := "
+      "values.slice(0..<Bound(Read().error)); if selected { return selected[0] "
+      "* 10 + selected.length(); } return -1; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[101]" } } },
     { .name = "fallible member presence proof does not survive shadowing",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\nFailure :: struct { code: int; }\n"
-                "@fallible Read :: (fail: bool) -> (value: int, error: "
-                "Failure?) { "
-                "if fail { return(7, {code: 3}); } return(7, nil); }\n"
-                "Use :: (flag: bool) -> int { bad := Read(true); clean := "
-                "Read(false); "
-                "if clean.error {} if bad.error { "
-                "if flag { bad := clean; return bad.error.code; } return "
-                "bad.error.code; } return 0; }\n",
+      .source = "package facts\n@error Failure :: struct { code: int; }\nRead "
+                ":: (fail: bool) -> (value: int, error: Failure?) { if fail { "
+                "return(7, {code: 3}); } return(7, nil); }\nUse :: (flag: "
+                "bool) -> int { bad := Read(true); clean := Read(false); if "
+                "clean.error {} if bad.error { if flag { bad := clean; return "
+                "bad.error.code; } return bad.error.code; } return 0; }\n",
       .message = "Optional component requires a presence guard before member "
                  "access",
       .same_rejection = true },
     { .name = "fallible member presence proof keeps the same binding",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\nFailure :: struct { code: int; }\n"
-                "@fallible Read :: (fail: bool) -> (value: int, error: "
-                "Failure?) { "
-                "if fail { return(7, {code: 3}); } return(7, nil); }\n"
-                "Use :: (flag: bool) -> int { bad := Read(true); clean := "
-                "Read(false); "
-                "if clean.error {} if bad.error { "
-                "if flag { return bad.error.code; } return bad.error.code; } "
-                "return 0; }\n",
+      .source = "package facts\n@error Failure :: struct { code: int; }\nRead "
+                ":: (fail: bool) -> (value: int, error: Failure?) { if fail { "
+                "return(7, {code: 3}); } return(7, nil); }\nUse :: (flag: "
+                "bool) -> int { bad := Read(true); clean := Read(false); if "
+                "clean.error {} if bad.error { if flag { return "
+                "bad.error.code; } return bad.error.code; } return 0; }\n",
       .calls = { { .function = "Use", .arguments = "[false]", .expected = "[3]" },
                  { .function = "Use", .arguments = "[true]", .expected = "[3]" } } },
     { .name = "fallible shadowed member accepts its own presence guard",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\nFailure :: struct { code: int; }\n"
-                "@fallible Read :: (fail: bool) -> (value: int, error: "
-                "Failure?) { "
-                "if fail { return(7, {code: 3}); } return(7, nil); }\n"
-                "Use :: (flag: bool) -> int { bad := Read(true); clean := "
-                "Read(false); "
-                "if clean.error {} if bad.error { if flag { bad := clean; "
-                "if bad.error { return bad.error.code; } return 11; } "
-                "return bad.error.code; } return 0; }\n",
+      .source = "package facts\n@error Failure :: struct { code: int; }\nRead "
+                ":: (fail: bool) -> (value: int, error: Failure?) { if fail { "
+                "return(7, {code: 3}); } return(7, nil); }\nUse :: (flag: "
+                "bool) -> int { bad := Read(true); clean := Read(false); if "
+                "clean.error {} if bad.error { if flag { bad := clean; if "
+                "bad.error { return bad.error.code; } return 11; } return "
+                "bad.error.code; } return 0; }\n",
       .calls = { { .function = "Use", .arguments = "[false]", .expected = "[3]" },
                  { .function = "Use", .arguments = "[true]", .expected = "[11]" } } },
-    { .name = "fallible guarded transparent union can change alternatives",
+    { .name = "fallible guarded tagged union can change alternatives",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n"
-                "Failure :: union { Denied | Platform(code: int) }\n"
-                "@fallible Read :: (fail: bool) -> Failure? { "
-                "if fail { return Failure.Platform(7); } return nil; }\n"
-                "Use :: (fail: bool) -> int { error := Read(fail); if error { "
-                "error = Failure.Denied; if error { switch error { case "
-                ".Denied: return "
-                "19; "
-                "case .Platform(code): return code; } } } return 0; }\n",
+      .source = "package facts\n@error Failure :: union { Denied | "
+                "Platform(code: int) }\nRead :: (fail: bool) -> Failure? { if "
+                "fail { return Failure.Platform(7); } return nil; }\nUse :: "
+                "(fail: bool) -> int { error := Read(fail); if error { error = "
+                "Failure.Denied; if error { switch error { case .Denied: "
+                "return 19; case .Platform(code): return code; } } } return 0; "
+                "}\n",
       .calls = { { .function = "Use", .arguments = "[false]", .expected = "[0]" },
                  { .function = "Use", .arguments = "[true]", .expected = "[19]" } } },
-    { .name = "fallible nested boolean guard reads the valid payload",
+    { .name = "ordinary optional nested boolean guard reads the valid payload",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n"
-                "@fallible Flag :: (value: bool, absent: bool) -> bool? { "
-                "if absent { return nil; } return value; }\n"
-                "Use :: (value: bool, absent: bool) -> int { "
-                "error := Flag(value, absent); if error { "
-                "if error { return 99; } return 17; } return 0; }\n",
+      .source = "package facts\nFlag :: (value: bool, absent: bool) -> bool? { "
+                "if absent { return nil; } return value; }\nUse :: (value: "
+                "bool, absent: bool) -> int { error := Flag(value, absent); if "
+                "error { if error { return 99; } return 17; } return 0; }\n",
       .calls = { { .function = "Use", .arguments = "[false,false]", .expected = "[17]" },
                  { .function = "Use", .arguments = "[true,false]", .expected = "[99]" },
                  { .function = "Use", .arguments = "[false,true]", .expected = "[0]" },
                  { .function = "Use", .arguments = "[true,true]", .expected = "[0]" } } },
 #define FALLIBLE_POINTER_READER                                                \
-    "package facts\n@fallible Fail :: () -> int? { return 3; }\n"
+    "package facts\n@error Failure :: struct { code: int; }\nFail :: () -> "   \
+    "Failure? { return {code: 3}; }\n"
     { .name = "fallible correlated pointer cannot hide final erasure on true "
               "edge",
       .group = FALLIBLE_SAMPLES,
@@ -535,61 +522,63 @@
       .same_rejection = true },
 #undef FALLIBLE_MUTATION_READER
 #define FALLIBLE_BOOL_READER                                                   \
-    "package facts\n"                                                          \
-    "@fallible Flag :: (value: bool, absent: bool) -> (data: int, error: "     \
-    "bool?) { if absent { return(7, nil); } return(7, value); }\n"             \
-    "TakeBool :: (value: bool) -> int { if value { return 99; } return 17; "   \
-    "}\n"
+    "package facts\nFlag :: (value: bool, absent: bool) -> (data: int, "       \
+    "error: bool?) { if absent { return(7, nil); } return(7, value); "         \
+    "}\nTakeBool :: (value: bool) -> int { if value { return 99; } return "    \
+    "17; }\n"
 #define FALLIBLE_BOOL_CALLS                                                     \
     { .function = "Use", .arguments = "[false,false]", .expected = "[17]" },    \
         { .function = "Use", .arguments = "[true,false]", .expected = "[99]" }, \
         { .function = "Use", .arguments = "[false,true]", .expected = "[0]" },  \
         { .function = "Use", .arguments = "[true,true]", .expected = "[0]" }
-    { .name = "fallible nested boolean member keeps its payload on false edge",
+    { .name = "ordinary optional nested boolean member keeps its payload on "
+              "false edge",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_BOOL_READER
       "Use :: (value: bool, absent: bool) -> int { r := Flag(value, absent); "
       "if r.error { if r.error { return 99; } else { return TakeBool(r.error); "
       "} } return 0; }\n",
       .calls = { FALLIBLE_BOOL_CALLS } },
-    { .name = "fallible negated boolean member reads the present payload",
+    { .name = "ordinary optional negated boolean member reads the present "
+              "payload",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_BOOL_READER
       "Use :: (value: bool, absent: bool) -> int { r := Flag(value, absent); "
       "if r.error { if !r.error { return TakeBool(r.error); } return 99; } "
       "return 0; }\n",
       .calls = { FALLIBLE_BOOL_CALLS } },
-    { .name = "fallible boolean member and operand reads the present payload",
+    { .name = "ordinary optional boolean member and operand reads the present "
+              "payload",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_BOOL_READER
       "Use :: (value: bool, absent: bool) -> int { r := Flag(value, absent); "
       "if r.error { if true && r.error { return 99; } return "
       "TakeBool(r.error); } return 0; }\n",
       .calls = { FALLIBLE_BOOL_CALLS } },
-    { .name = "fallible boolean member or operand reads the present payload",
+    { .name = "ordinary optional boolean member or operand reads the present "
+              "payload",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_BOOL_READER
       "Use :: (value: bool, absent: bool) -> int { r := Flag(value, absent); "
       "if r.error { if false || r.error { return 99; } return "
       "TakeBool(r.error); } return 0; }\n",
       .calls = { FALLIBLE_BOOL_CALLS } },
-    { .name = "fallible boolean member nil comparison still tests presence",
+    { .name = "ordinary optional boolean member nil comparison still tests "
+              "presence",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_BOOL_READER
       "Use :: (value: bool, absent: bool) -> int { r := Flag(value, absent); "
       "if r.error != nil { return TakeBool(r.error); } return 0; }\n",
       .calls = { FALLIBLE_BOOL_CALLS } },
-    { .name = "fallible unnamed boolean keeps its payload on false edge",
+    { .name = "ordinary optional unnamed boolean keeps its payload on false "
+              "edge",
       .group = FALLIBLE_SAMPLES,
-      .source = "package facts\n"
-                "@fallible Flag :: (value: bool, absent: bool) -> bool? { "
-                "if absent { return nil; } return value; }\n"
-                "TakeBool :: (value: bool) -> int { if value { return 99; } "
-                "return 17; }\n"
-                "Use :: (value: bool, absent: bool) -> int { error := "
-                "Flag(value, absent); "
-                "if error { if error { return 99; } else { return "
-                "TakeBool(error); } } return 0; }\n",
+      .source = "package facts\nFlag :: (value: bool, absent: bool) -> bool? { "
+                "if absent { return nil; } return value; }\nTakeBool :: "
+                "(value: bool) -> int { if value { return 99; } return 17; "
+                "}\nUse :: (value: bool, absent: bool) -> int { error := "
+                "Flag(value, absent); if error { if error { return 99; } else "
+                "{ return TakeBool(error); } } return 0; }\n",
       .calls = { FALLIBLE_BOOL_CALLS } },
 #undef FALLIBLE_BOOL_CALLS
 #undef FALLIBLE_BOOL_READER
@@ -609,15 +598,109 @@
     { .name = "fallible sibling assignments permit actual error handling",
       .group = FALLIBLE_SAMPLES,
       .source = FALLIBLE_READER
-      "Forward :: (error: int?) { if error {} }\n"
-      "Use :: () -> int { r := Read(); r.value = 5; if r.error {} return "
-      "r.value; }\n"
-      "Alias :: () -> int { r := Read(); copy := r; copy.value = 5; "
-      "Forward(copy.error); return copy.value; }\n"
-      "Original :: () -> int { r := Read(); copy := r; copy.value = 5; if "
-      "r.error {} return copy.value; }\n",
+      "Forward :: (error: Failure?) { if error {} }\nUse :: () -> int { r := "
+      "Read(); r.value = 5; if r.error {} return r.value; }\nAlias :: () -> "
+      "int { r := Read(); copy := r; copy.value = 5; Forward(copy.error); "
+      "return copy.value; }\nOriginal :: () -> int { r := Read(); copy := r; "
+      "copy.value = 5; if r.error {} return copy.value; }\n",
       .calls = { { .function = "Use", .arguments = "[]", .expected = "[5]" },
                  { .function = "Alias", .arguments = "[]", .expected = "[5]" },
                  { .function = "Original", .arguments = "[]", .expected = "[5]" } } },
+    { .name = "required marked record errors cannot be dropped",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: struct { code: int; }\n"
+                "Read :: () -> Failure { return {code: 3}; }\nUse :: () { "
+                "Read(); }\n",
+      .message = FALLIBLE_IGNORED,
+      .same_rejection = true },
+    { .name = "required marked record errors retain their payload",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: struct { code: int; }\n"
+                "Read :: () -> Failure { return {code: 3}; }\n"
+                "Use :: () -> int { error := Read(); return error.code; }\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "required marked union errors cannot be dropped",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: union { Denied | "
+                "Platform(code: int) }\n"
+                "Read :: () -> Failure { return Failure.Denied; }\nUse :: () { "
+                "Read(); }\n",
+      .message = FALLIBLE_IGNORED,
+      .same_rejection = true },
+    { .name = "required marked union errors can be inspected",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: union { Denied | "
+                "Platform(code: int) }\n"
+                "Read :: () -> Failure { return Failure.Platform(7); }\n"
+                "Use :: () -> int { error := Read(); switch error { case "
+                ".Denied: return 0; "
+                "case .Platform(code): return code; } }\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "earlier error-bearing result slots are rejected",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: struct { code: int; }\n"
+                "Bad :: () -> (error: Failure?, value: int) { return(nil, 0); "
+                "}\n",
+      .message = "An error-bearing result must be the final result",
+      .same_rejection = true },
+    { .name = "error marker on a callable is rejected",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Bad :: () {}\n",
+      .message = "Unknown attribute '@error'",
+      .same_rejection = true },
+    { .name = "error type aliases retain an explicit source boundary",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: struct { code: int; }\n"
+                "Alias :: Failure;\nUse :: () -> Alias { return {code: 3}; }\n",
+      .message = "result type is not supported yet",
+      .line = 4,
+      .column = 14 },
+    { .name = "mixed error unions retain an explicit source boundary",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: struct { code: int; }\n"
+                "Use :: () -> Failure? | int { return 1; }\n",
+      .message = "result type is not supported yet",
+      .line = 3,
+      .column = 14 },
+    { .name = "error arrays remain ordinary report data",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: struct { code: int; }\n"
+                "ReadErrors :: () -> Failure[] { return []; }\n"
+                "Use :: () -> int { ReadErrors(); return 9; }\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[9]" } } },
+    { .name = "pointers to marked errors remain ordinary data",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n@error Failure :: struct { code: int; }\n"
+                "Read :: () -> ^Failure { value: Failure = {code: 3}; return "
+                "&value; }\n"
+                "Use :: () -> int { Read(); return 9; }\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[9]" } } },
+    { .name = "structured read error example preserves values and context",
+      .group = FALLIBLE_SAMPLES,
+      .source = "package facts\n"
+                "@error ReadError :: struct { offset: int; message: string; }\n"
+                "ReadU32 :: (bytes: u8[], offset: int) -> (value: u32, error: "
+                "ReadError?) {\n"
+                "if offset < 0 || offset > length(bytes) { return(0, {offset: "
+                "offset, message: \"Offset outside input\"}); }\n"
+                "if length(bytes) - offset < 4 { return(0, {offset: offset, "
+                "message: \"Four bytes required\"}); }\n"
+                "value = u32(bytes[offset]) | (u32(bytes[offset + 1]) << 8) | "
+                "(u32(bytes[offset + 2]) << 16) | (u32(bytes[offset + 3]) << "
+                "24);\n"
+                "return(value, nil); }\n"
+                "Whole :: () -> u32 { result := ReadU32([u8(1), 2, 3, 4], 0); "
+                "if result.error { return 0; } return result.value; }\n"
+                "Short :: () -> int { result := ReadU32([u8(1), 2], 0); if "
+                "result.error { if result.value == 0 && result.error.offset == "
+                "0 && result.error.message == \"Four bytes required\" { return "
+                "1; } } return 0; }\n"
+                "Outside :: () -> int { result := ReadU32([], -1); if "
+                "result.error { if result.value == 0 && result.error.offset == "
+                "-1 && result.error.message == \"Offset outside input\" { "
+                "return 1; } } return 0; }\n",
+      .calls = { { .function = "Whole", .arguments = "[]", .expected = "[67305985]" },
+                 { .function = "Short", .arguments = "[]", .expected = "[1]" },
+                 { .function = "Outside", .arguments = "[]", .expected = "[1]" } } },
 #undef FALLIBLE_READER
 #undef FALLIBLE_IGNORED

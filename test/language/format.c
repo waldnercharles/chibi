@@ -203,17 +203,26 @@ TEST_CASE(source_format_keeps_attributes_on_their_line)
 {
     REQUIRE(format("package facts\n@test\nAdds :: () { }\n@ test Second :: () { }\n"));
     REQUIRE(!strcmp(text, "package facts\n@test\nAdds :: () {}\n@test Second :: () {}\n"));
+    REQUIRE(format(
+        "package facts\n@ error\nFailure :: struct {}\n"
+        "@ error pub Cause :: union { Missing }\n"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\n@error\nFailure :: struct {}\n"
+        "@error pub Cause :: union {\n    Missing\n}\n"
+    ));
     return true;
 }
-TEST_CASE(source_format_preserves_fallible_named_results)
+TEST_CASE(source_format_preserves_test_named_results)
 {
     REQUIRE(format(
-        "package facts\n@ fallible\npub Read :: () -> (value: int, error: "
+        "package facts\n@ test\npub Read :: () -> (value: int, error: "
         "int?) { }\n"
     ));
     REQUIRE(!strcmp(
         text,
-        "package facts\n@fallible\npub Read :: () -> (value: int, error: int?) "
+        "package facts\n@test\npub Read :: () -> (value: int, error: int?) "
         "{}\n"
     ));
     return true;
@@ -1984,7 +1993,7 @@ void test_language_format()
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
     RUN_TEST_CASE(source_format_spaces_reverse_and_half_open_loops);
     RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
-    RUN_TEST_CASE(source_format_preserves_fallible_named_results);
+    RUN_TEST_CASE(source_format_preserves_test_named_results);
     RUN_TEST_CASE(source_format_spaces_pub_and_aligns_after_it);
     RUN_TEST_CASE(source_format_spaces_variant_patterns);
     RUN_TEST_CASE(source_format_aligns_bracket_continuations);

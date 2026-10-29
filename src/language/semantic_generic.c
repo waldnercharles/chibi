@@ -151,7 +151,8 @@ static bool equal_value(compile_value x, compile_value y)
         return false;
     }
     if (x.is_type) {
-        return script_type_equal(x.type, y.type);
+        return script_type_equal(x.type, y.type) &&
+               !((x.type.flags ^ y.type.flags) & SCRIPT_TYPE_ERROR_ALTERNATIVE);
     }
     if (x.value.type != y.value.type) {
         return false;
@@ -221,6 +222,9 @@ static uint64_t binding_id(uint64_t definition, compile_binding *bindings, bool 
         hash = mix(hash, value.is_type);
         if (value.is_type) {
             hash = mix(hash, script_type_tag(value.type));
+            if (value.type.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+                hash = mix(hash, script_catalog_id("error-alternative", ""));
+            }
         } else {
             hash = mix(hash, value.value.type);
             hash = mix(
@@ -832,15 +836,17 @@ static bool construct_record(
     script_type type = { .storage = PIN_STRUCT, .nominal = id };
     script_analyzer_publish_type(
         a,
-        (script_catalog_type){ .id = id,
-                               .name = own(a, identity),
-                               .source_name = own(a, signature),
-                               .type = type,
-                               .fields = owned_fields,
-                               .field_count = count,
-                               .size = record->type.size,
-                               .layout = record->layout,
-                               .authored_record = true }
+        (script_catalog_type){
+            .id = id,
+            .name = own(a, identity),
+            .source_name = own(a, signature),
+            .type = type,
+            .fields = owned_fields,
+            .field_count = count,
+            .size = record->type.size,
+            .layout = record->layout,
+            .authored_record = true,
+            .error = script_analyzer_error_attribute(a, definition.node) }
     );
     apush(
         a->instances,

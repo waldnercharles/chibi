@@ -1697,17 +1697,16 @@ TEST_CASE(language_optional_results_require_acknowledgment)
         snprintf(
             source,
             sizeof source,
-            "Errors :: library { @fallible Read :: () -> (value: int, error: "
-            "int?) { "
-            "return(7, nil); } "
-            "Use :: (flag: bool) { %s } }",
+            "Errors :: library { @error Failure :: struct { code: int; } Read "
+            ":: () -> (value: int, error: Failure?) { return(7, nil); } Use :: "
+            "(flag: bool) { %s } }",
             bodies[i]
         );
         parse(source);
         REQUIRE(syntax->diagnostic_count == 0);
         REQUIRE(!analysis->valid);
         REQUIRE(
-            diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+            diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
         );
     }
     return true;
@@ -1736,11 +1735,10 @@ TEST_CASE(language_optional_results_preserve_ordinary_values)
         snprintf(
             source,
             sizeof source,
-            "Errors :: library { @fallible Read :: () -> (value: int, error: "
-            "int?) { "
-            "return(7, nil); } "
-            "Forward :: (error: int?) { if error {} } "
-            "Use :: (flag: bool) -> int { %s } }",
+            "Errors :: library { @error Failure :: struct { code: int; } Read "
+            ":: () -> (value: int, error: Failure?) { return(7, nil); } "
+            "Forward :: (error: Failure?) { if error {} } Use :: (flag: bool) "
+            "-> int { %s } }",
             bodies[i]
         );
         parse(source);
@@ -1878,7 +1876,7 @@ TEST_CASE(language_named_result_presence_unwraps_at_runtime)
     const char source[] =
         "package presence\n"
         "Failure :: struct { code: int; }\n"
-        "@fallible Read :: (fail: bool) -> (value: int, error: Failure?) { "
+        "Read :: (fail: bool) -> (value: int, error: Failure?) { "
         "if fail { return(7, {code: 3}); } return(7, nil); }\n"
         "Pair :: (fail: bool) -> (first: Failure?, error: Failure?) { "
         "if fail { return({code: 5}, {code: 3}); } return(nil, nil); }\n"
@@ -1955,8 +1953,8 @@ TEST_CASE(language_fallible_aliases_retain_error_obligations)
         "error := Fail(); pointer := &error; if pointer^ {} return 0;",
         "error := Fail(); pointer := &error; alias := pointer; if alias^ {} "
         "return 0;",
-        "error: int? = nil; pointer := &error; error = Fail(); if pointer^ {} "
-        "return 0;",
+        "error: Failure? = nil; pointer := &error; error = Fail(); if pointer^ "
+        "{} return 0;",
     };
     for (int pass = 0; pass < 2; pass++) {
         const char *const *bodies = pass ? valid : invalid;
@@ -1967,9 +1965,9 @@ TEST_CASE(language_fallible_aliases_retain_error_obligations)
             snprintf(
                 source,
                 sizeof source,
-                "Errors :: library { @fallible Fail :: () -> (error: int?) { "
-                "return nil; } "
-                "Use :: () -> int { %s } }",
+                "Errors :: library { @error Failure :: struct { code: int; } "
+                "Fail :: () -> (error: Failure?) { return nil; } Use :: () -> "
+                "int { %s } }",
                 bodies[i]
             );
             parse(source);
@@ -1977,7 +1975,7 @@ TEST_CASE(language_fallible_aliases_retain_error_obligations)
             REQUIRE(analysis->valid == (pass != 0));
             if (!pass) {
                 REQUIRE(
-                    diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                    diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
                 );
             }
         }
@@ -2012,12 +2010,11 @@ TEST_CASE(language_fallible_sibling_writes_do_not_acknowledge_errors)
         snprintf(
             source,
             sizeof source,
-            "Errors :: library { "
-            "@fallible Read :: () -> (value: int, error: int?) { return(0, 3); "
-            "} "
-            "Forward :: (error: int?) { if error {} } "
-            "Choose :: (error: int?) -> int { if error {} return 0; } "
-            "Use :: () -> int { %s } }",
+            "Errors :: library { @error Failure :: struct { code: int; } Read "
+            ":: () -> (value: int, error: Failure?) { return(0, {code: 3}); } "
+            "Forward :: (error: Failure?) { if error {} } Choose :: (error: "
+            "Failure?) -> int { if error {} return 0; } Use :: () -> int { %s "
+            "} }",
             cases[i].body
         );
         parse(source);
@@ -2033,7 +2030,7 @@ TEST_CASE(language_fallible_sibling_writes_do_not_acknowledge_errors)
         REQUIRE(analysis->valid == cases[i].valid);
         if (!cases[i].valid) {
             REQUIRE(
-                diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
             );
         }
     }
@@ -2041,21 +2038,16 @@ TEST_CASE(language_fallible_sibling_writes_do_not_acknowledge_errors)
 }
 TEST_CASE(language_named_result_boolean_payload_preserves_presence)
 {
-    const char
-        source[] = "package presence\n"
-                   "@fallible Flag :: (value: bool, absent: bool) -> (data: "
-                   "int, error: bool?) { "
-                   "if absent { return(7, nil); } return(7, value); }\n"
-                   "TakeBool :: (value: bool) -> int { if value { return 99; } "
-                   "return 17; }\n"
-                   "pub Direct :: (value: bool, absent: bool) -> int { r := "
-                   "Flag(value, absent); "
-                   "if r.error { if r.error { return TakeBool(r.error); } "
-                   "else { return TakeBool(r.error); } } return 0; }\n"
-                   "pub Negated :: (value: bool, absent: bool) -> int { r := "
-                   "Flag(value, absent); "
-                   "if r.error { if !r.error { return TakeBool(r.error); } "
-                   "return TakeBool(r.error); } return 0; }\n";
+    const char source
+        [] = "package presence\nFlag :: (value: bool, absent: bool) -> (data: "
+             "int, error: bool?) { if absent { return(7, nil); } return(7, "
+             "value); }\nTakeBool :: (value: bool) -> int { if value { return "
+             "99; } return 17; }\npub Direct :: (value: bool, absent: bool) -> "
+             "int { r := Flag(value, absent); if r.error { if r.error { return "
+             "TakeBool(r.error); } else { return TakeBool(r.error); } } return "
+             "0; }\npub Negated :: (value: bool, absent: bool) -> int { r := "
+             "Flag(value, absent); if r.error { if !r.error { return "
+             "TakeBool(r.error); } return TakeBool(r.error); } return 0; }\n";
     const source_package_input input = { "/compiler/presence/Presence.chibi",
                                          source,
                                          sizeof source - 1 };
@@ -2121,8 +2113,9 @@ TEST_CASE(language_fallible_merged_pointer_aliases_track_overwrites)
         snprintf(
             source,
             sizeof source,
-            "Errors :: library { @fallible Fail :: () -> int? { return 3; } "
-            "Use :: (flag: bool) { %s } }",
+            "Errors :: library { @error Failure :: struct { code: int; } Fail "
+            ":: () -> Failure? { return {code: 3}; } Use :: (flag: bool) { %s "
+            "} }",
             cases[i].body
         );
         parse(source);
@@ -2138,7 +2131,7 @@ TEST_CASE(language_fallible_merged_pointer_aliases_track_overwrites)
         REQUIRE(analysis->valid == cases[i].valid);
         if (!cases[i].valid) {
             REQUIRE(
-                diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
             );
         }
     }
@@ -2185,8 +2178,9 @@ TEST_CASE(language_fallible_correlated_pointer_aliases_track_possible_pointees)
         snprintf(
             source,
             sizeof source,
-            "Errors :: library { @fallible Fail :: () -> int? { return 3; } "
-            "Use :: (flag: bool) { %s } }",
+            "Errors :: library { @error Failure :: struct { code: int; } Fail "
+            ":: () -> Failure? { return {code: 3}; } Use :: (flag: bool) { %s "
+            "} }",
             cases[i].body
         );
         parse(source);
@@ -2202,7 +2196,7 @@ TEST_CASE(language_fallible_correlated_pointer_aliases_track_possible_pointees)
         REQUIRE(analysis->valid == cases[i].valid);
         if (!cases[i].valid) {
             REQUIRE(
-                diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
             );
         }
     }
@@ -2234,8 +2228,9 @@ TEST_CASE(language_fallible_named_pointer_returns_use_current_pointees)
         snprintf(
             source,
             sizeof source,
-            "Errors :: library { @fallible Fail :: () -> int? { return 3; } "
-            "Use :: () -> (p: (^(int?))?) { %s } }",
+            "Errors :: library { @error Failure :: struct { code: int; } Fail "
+            ":: () -> Failure? { return {code: 3}; } Use :: () -> (p: "
+            "(^(Failure?))?) { %s } }",
             cases[i].body
         );
         parse(source);
@@ -2251,7 +2246,7 @@ TEST_CASE(language_fallible_named_pointer_returns_use_current_pointees)
         REQUIRE(analysis->valid == cases[i].valid);
         if (!cases[i].valid) {
             REQUIRE(
-                diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
             );
         }
     }
@@ -2387,21 +2382,11 @@ TEST_CASE(language_optional_direct_borrows_require_a_fresh_presence_guard)
 }
 TEST_CASE(language_fallible_checks_each_generic_specialization)
 {
-    parse(
-        "Errors :: library { @fallible Read :: () -> (value: int, error: int?) "
-        "{ return(7, nil); } "
-        "Drop :: (value: $T) { Read(); } "
-        "Use :: () { Drop(1); Drop(true); } }"
-    );
+    parse("Errors :: library { @error Failure :: struct { code: int; } Read :: () -> (value: int, error: Failure?) { return(7, nil); } Drop :: (value: $T) { Read(); } Use :: () { Drop(1); Drop(true); } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
     REQUIRE(analysis->diagnostic_count == 2);
-    parse(
-        "Errors :: library { @fallible Read :: () -> (value: int, error: int?) "
-        "{ return(7, nil); } "
-        "Keep :: (value: $T) { result := Read(); if result.error {} } "
-        "Use :: () { Keep(1); Keep(true); } }"
-    );
+    parse("Errors :: library { @error Failure :: struct { code: int; } Read :: () -> (value: int, error: Failure?) { return(7, nil); } Keep :: (value: $T) { result := Read(); if result.error {} } Use :: () { Keep(1); Keep(true); } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     return true;
@@ -2430,10 +2415,10 @@ TEST_CASE(language_fallible_await_separates_cancellation_and_error)
             snprintf(
                 source,
                 sizeof source,
-                "Errors :: library { @fallible Work :: () -> (value: int, "
-                "error: int?) { yield; return(7, nil); } "
-                "Use :: () -> int { pending := Work(); result := await "
-                "pending; %s } }",
+                "Errors :: library { @error Failure :: struct { code: int; } "
+                "Work :: () -> (value: int, error: Failure?) { yield; "
+                "return(7, nil); } Use :: () -> int { pending := Work(); "
+                "result := await pending; %s } }",
                 bodies[i]
             );
             parse(source);
@@ -2441,28 +2426,194 @@ TEST_CASE(language_fallible_await_separates_cancellation_and_error)
             REQUIRE(analysis->valid == (pass != 0));
             if (!pass) {
                 REQUIRE(
-                    diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                    diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
                 );
             }
         }
     }
     return true;
 }
-TEST_CASE(language_fallible_attribute_requires_optional_error)
+TEST_CASE(language_error_type_attributes_and_result_positions)
 {
-    parse("Errors :: library { @fallible Fail :: () {} }");
-    REQUIRE(diagnostic("@fallible requires a final optional error result"));
-    parse("Errors :: library { @fallible Fail :: () -> int { return 0; } }");
-    REQUIRE(diagnostic("@fallible requires a final optional error result"));
-    parse("Errors :: library { @fallible @fallible Fail :: () -> int? { return nil; } }");
-    REQUIRE(diagnostic("Duplicate attribute '@fallible'"));
     parse("Errors :: library { @fallible Fail :: () -> int? { return nil; } }");
-    REQUIRE(analysis->valid);
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(diagnostic("Unknown attribute '@fallible'"));
+    parse("Errors :: library { @error Fail :: () {} }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(diagnostic("Unknown attribute '@error'"));
+    parse("Errors :: library { @test Failure :: struct { code: int; } }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(diagnostic("Unknown attribute '@test'"));
+    parse("Errors :: library { @error @error Failure :: struct { code: int; } }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(diagnostic("Duplicate attribute '@error'"));
+    const char source
+        [] = "Errors :: library { @error Failure :: struct { code: int; } "
+             "Bad :: () -> (error: Failure?, value: int) { return(nil, 0); } }";
+    parse(source);
+    REQUIRE(syntax->diagnostic_count == 0 && !analysis->valid);
+    const script_diagnostic *error = diagnostic("An error-bearing result must be the final result");
+    REQUIRE(error && error->range.start == (int)(strstr(source, "error:") - source));
+    return true;
+}
+TEST_CASE(language_error_types_require_acknowledgment_without_optional_results)
+{
+    static const struct
+    {
+        const char *source;
+        bool valid;
+    } cases[] = {
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "Read :: () -> Failure { return {code: 3}; } Use :: () { Read(); } }",
+          false },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "Read :: () -> Failure { return {code: 3}; } "
+          "Use :: () -> int { error := Read(); return error.code; } }",
+          true },
+        { "Errors :: library { @error Failure :: union { Denied | "
+          "Platform(code: int) } "
+          "Read :: () -> Failure { return Failure.Denied; } Use :: () { "
+          "Read(); } }",
+          false },
+        { "Errors :: library { @error Failure :: union { Denied | "
+          "Platform(code: int) } "
+          "Read :: () -> Failure { return Failure.Platform(7); } "
+          "Use :: () -> int { error := Read(); switch error { "
+          "case .Denied: return 0; case .Platform(code): return code; } } }",
+          true },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "IdentityType :: (T: Type) -> Type { return T; } Alias :: "
+          "IdentityType(Failure); Read :: () -> Alias? { return nil; } Use :: "
+          "() { Read(); } }",
+          false },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "IdentityType :: (T: Type) -> Type { return T; } Alias :: "
+          "IdentityType(Failure); Read :: () -> Alias? { return nil; } Use :: "
+          "() { error := Read(); if error {} } }",
+          true },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "Read :: () -> Failure? | int { return 7; } Use :: () { Read(); } }",
+          false },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "Read :: () -> Failure? | int { return 7; } "
+          "Use :: () { error := Read(); if error is Failure? optionalError { "
+          "if optionalError {} } } }",
+          true },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "Read :: () -> (Failure | int)? { return nil; } "
+          "Use :: () { error := Read(); if error != nil {} } }",
+          true },
+        { "Errors :: library { @error Failure :: union {\"bad\"} "
+          "Read :: () -> Failure | int { return 7; } Use :: () { Read(); } }",
+          false },
+        { "Errors :: library { @error Failure :: union {\"bad\"} "
+          "Read :: () -> int | Failure { return 7; } Use :: () { Read(); } }",
+          false },
+        { "Errors :: library { @error Failure :: union {\"bad\"} "
+          "Read :: () -> Failure? | int { return 7; } Use :: () { Read(); } }",
+          false },
+        { "Errors :: library { @error Failure :: union {\"bad\"} IdentityType "
+          ":: (T: Type) -> Type { return T; } Alias :: IdentityType(Failure); "
+          "Read :: () -> Alias? | int { return 7; } Use :: () { Read(); } }",
+          false },
+        { "Errors :: library { Failure :: union {\"bad\"} "
+          "Read :: () -> Failure? | int { return 7; } Use :: () { Read(); } }",
+          true },
+        { "Errors :: library { @error Failure :: union {\"bad\"} Plain :: "
+          "union {\"bad\"} "
+          "Marked :: () -> Failure | int { return 7; } Ordinary :: () -> Plain "
+          "| int { return 7; } "
+          "Use :: () { Ordinary(); if Marked() is int {} } }",
+          true },
+        { "Errors :: library { Plain :: union {\"bad\"} @error Failure :: "
+          "union {\"bad\"} "
+          "Ordinary :: () -> Plain | int { return 7; } Marked :: () -> Failure "
+          "| int { return 7; } "
+          "Use :: () { Ordinary(); if Marked() is int {} } }",
+          true },
+        { "Errors :: library { @error Failure :: union {\"bad\"} Plain :: "
+          "union {\"bad\"} "
+          "Marked :: () -> Failure | int { return 7; } Ordinary :: () -> Plain "
+          "| int { return 7; } "
+          "Use :: () { Ordinary(); Marked(); } }",
+          false },
+        { "Errors :: library { Plain :: union {\"bad\"} @error Failure :: "
+          "union {\"bad\"} "
+          "Ordinary :: () -> Plain | int { return 7; } Marked :: () -> Failure "
+          "| int { return 7; } "
+          "Use :: () { Ordinary(); Marked(); } }",
+          false },
+        { "Errors :: library { Maybe :: () -> int? { return nil; } "
+          "Use :: () { Maybe(); unused := Maybe(); } }",
+          true },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "Read :: () -> Failure[] { return []; } Use :: () { Read(); } }",
+          true },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "Read :: () -> ^Failure { value: Failure = {code: 3}; return &value; "
+          "} "
+          "Use :: () { Read(); } }",
+          true },
+        { "Errors :: library { @error Failure :: struct { code: int; } "
+          "Report :: union { Wrapped(error: Failure) } "
+          "Read :: () -> Report { return Report.Wrapped({code: 3}); } Use :: "
+          "() { Read(); } }",
+          true },
+    };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        parse(cases[i].source);
+        REQUIRE(syntax->diagnostic_count == 0);
+        if (analysis->valid != cases[i].valid ||
+            (!cases[i].valid &&
+             !diagnostic("Error result is ignored on a reachable path; check, report, store or return it"))) {
+            fprintf(
+                stderr,
+                "error result category case=%d expected=%s source=%s\n",
+                i,
+                cases[i].valid ? "accepted" : "rejected with ignored error",
+                cases[i].source
+            );
+            for (int d = 0; d < analysis->diagnostic_count; d++) {
+                fprintf(
+                    stderr,
+                    "error result category diagnostic=%s\n",
+                    analysis->diagnostics[d].message
+                );
+            }
+        }
+        REQUIRE(analysis->valid == cases[i].valid);
+        if (!cases[i].valid) {
+            REQUIRE(
+                diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
+            );
+        }
+    }
     parse(
-        "Errors :: library { Find :: () -> int? { return nil; } "
-        "Use :: () { Find(); unused := Find(); } }"
+        "Errors :: library { @error Failure :: struct { code: int; } "
+        "Read :: () -> Failure? | int { return 7; } "
+        "Use :: () { error := Read(); if error != nil {} } }"
     );
-    REQUIRE(analysis->valid);
+    REQUIRE(syntax->diagnostic_count == 0 && !analysis->valid);
+    REQUIRE(diagnostic("Nil comparison requires an optional value"));
+    return true;
+}
+TEST_CASE(language_inferred_error_results_require_acknowledgment)
+{
+    const char *sources[] = {
+        "Errors :: library { @error Failure :: struct { code: int; } "
+        "Read :: () { error: Failure? = {code: 3}; return error; } Use :: () { "
+        "Read(); } }",
+        "Errors :: library { @error Failure :: union { Denied } "
+        "Read :: () { return Failure.Denied; } Use :: () { Read(); } }",
+    };
+    for (int i = 0; i < (int)(sizeof sources / sizeof *sources); i++) {
+        parse(sources[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(!analysis->valid);
+        REQUIRE(
+            diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
+        );
+    }
     return true;
 }
 TEST_CASE(language_fallible_tasks_require_handle_acknowledgment)
@@ -2488,9 +2639,9 @@ TEST_CASE(language_fallible_tasks_require_handle_acknowledgment)
             snprintf(
                 source,
                 sizeof source,
-                "Errors :: library { @fallible Async :: () -> int? { yield; "
-                "return nil; } "
-                "Queue :: (pending: $T) {} Use :: () -> int { %s } }",
+                "Errors :: library { @error Failure :: struct { code: int; } "
+                "Async :: () -> Failure? { yield; return nil; } Queue :: "
+                "(pending: $T) {} Use :: () -> int { %s } }",
                 bodies[i]
             );
             parse(source);
@@ -2503,11 +2654,7 @@ TEST_CASE(language_fallible_tasks_require_handle_acknowledgment)
             }
         }
     }
-    parse(
-        "Errors :: library { @fallible Async :: () -> int? { yield; return "
-        "nil; } "
-        "Start :: () { return Async(); } }"
-    );
+    parse("Errors :: library { @error Failure :: struct { code: int; } Async :: () -> Failure? { yield; return nil; } Start :: () { return Async(); } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     return true;
@@ -2523,9 +2670,9 @@ TEST_CASE(language_fallible_cancel_duration_requires_acknowledgment)
         snprintf(
             source,
             sizeof source,
-            "Errors :: library { Work :: () { yield; } "
-            "@fallible Delay :: () -> (value: number, error: int?) "
-            "{ return(0, 1); } Use :: () { worker := Work(); %s } }",
+            "Errors :: library { @error Failure :: struct { code: int; } Work "
+            ":: () { yield; } Delay :: () -> (value: number, error: Failure?) "
+            "{ return(0, {code: 1}); } Use :: () { worker := Work(); %s } }",
             bodies[i]
         );
         parse(source);
@@ -2533,7 +2680,7 @@ TEST_CASE(language_fallible_cancel_duration_requires_acknowledgment)
         REQUIRE(analysis->valid == (i != 0));
         if (!i) {
             REQUIRE(
-                diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
             );
         }
     }
@@ -2542,44 +2689,44 @@ TEST_CASE(language_fallible_cancel_duration_requires_acknowledgment)
 TEST_CASE(language_fallible_query_and_binding_roots_require_acknowledgment)
 {
     const char *invalid[] = {
-        ("Motion :: system(p: ^Position, if Ready().value) { "
-         "@fallible Ready :: () -> (value: bool, error: int?) { return(true, "
-         "1); } }"),
-        ("Motion :: system(p: ^Position, value := Ready().value) { "
-         "@fallible Ready :: () -> (value: bool, error: int?) { return(true, "
-         "1); } }"),
-        ("Errors :: behavior { @fallible Read :: () -> (value: number, error: "
-         "int?) "
-         "{ return(7, 1); } bind self.Position.x = Read().value; }"),
-        ("Errors :: behavior { @fallible Read :: () -> (value: int, error: "
-         "int?) "
-         "{ return(7, 1); } value: int = Read().value; }"),
-        ("Errors :: library { @fallible Ready :: () -> (value: bool, error: "
-         "int?) "
-         "{ return(true, 1); } Use :: () { matches := query(p: Position, "
-         "if Ready().value); } }"),
+        ("Motion :: system(p: ^Position, if Ready().value) { @error Failure :: "
+         "union { Failed(code: int) } Ready :: () -> (value: bool, error: "
+         "Failure?) { return(true, Failure.Failed(1)); } }"),
+        ("Motion :: system(p: ^Position, value := Ready().value) { @error "
+         "Failure :: union { Failed(code: int) } Ready :: () -> (value: bool, "
+         "error: Failure?) { return(true, Failure.Failed(1)); } }"),
+        ("Errors :: behavior { @error Failure :: union { Failed(code: int) } "
+         "Read :: () -> (value: number, error: Failure?) { return(7, "
+         "Failure.Failed(1)); } bind self.Position.x = Read().value; }"),
+        ("Errors :: behavior { @error Failure :: union { Failed(code: int) } "
+         "Read :: () -> (value: int, error: Failure?) { return(7, "
+         "Failure.Failed(1)); } value: int = Read().value; }"),
+        ("Errors :: library { @error Failure :: struct { code: int; } Ready "
+         ":: () -> (value: bool, error: Failure?) { return(true, {code: 1}); } "
+         "Use :: () { matches := query(p: Position, if Ready().value); } }"),
     };
     const char *valid[] = {
-        ("Motion :: system(p: ^Position, if Ready().error) { "
-         "@fallible Ready :: () -> (value: bool, error: int?) { return(true, "
-         "1); } }"),
-        ("Motion :: system(p: ^Position, error := Fail()) { "
-         "@fallible Fail :: () -> int? { return 1; } }"),
-        ("Motion :: system(p: ^Position, if false and Ready().value) { "
-         "@fallible Ready :: () -> (value: bool, error: int?) { return(true, "
-         "1); } }"),
-        ("Motion :: system(p: ^Position, if true or Ready().value) { "
-         "@fallible Ready :: () -> (value: bool, error: int?) { return(true, "
-         "1); } }"),
+        ("Motion :: system(p: ^Position, if Ready().error) { @error Failure :: "
+         "union { Failed(code: int) } Ready :: () -> (value: bool, error: "
+         "Failure?) { return(true, Failure.Failed(1)); } }"),
+        ("Motion :: system(p: ^Position, error := Fail()) { @error Failure :: "
+         "union { Failed(code: int) } Fail :: () -> Failure? { return "
+         "Failure.Failed(1); } }"),
+        ("Motion :: system(p: ^Position, if false and Ready().value) { @error "
+         "Failure :: union { Failed(code: int) } Ready :: () -> (value: bool, "
+         "error: Failure?) { return(true, Failure.Failed(1)); } }"),
+        ("Motion :: system(p: ^Position, if true or Ready().value) { @error "
+         "Failure :: union { Failed(code: int) } Ready :: () -> (value: bool, "
+         "error: Failure?) { return(true, Failure.Failed(1)); } }"),
         ("Motion :: system(p: ^Position, if false, value := Ready().value) { "
-         "@fallible Ready :: () -> (value: bool, error: int?) { return(true, "
-         "1); } }"),
-        ("Errors :: behavior { @fallible Fail :: () -> int? { return 1; } "
-         "error: int? = Fail(); }"),
-        ("Errors :: library { @fallible Ready :: () -> (value: bool, error: "
-         "int?) "
-         "{ return(true, 1); } Use :: () { if false { ignored := "
-         "Ready().value; } } }"),
+         "@error Failure :: union { Failed(code: int) } Ready :: () -> (value: "
+         "bool, error: Failure?) { return(true, Failure.Failed(1)); } }"),
+        ("Errors :: behavior { @error Failure :: union { Failed(code: int) } "
+         "Fail :: () -> Failure? { return Failure.Failed(1); } error: Failure? "
+         "= Fail(); }"),
+        ("Errors :: library { @error Failure :: struct { code: int; } Ready "
+         ":: () -> (value: bool, error: Failure?) { return(true, {code: 1}); } "
+         "Use :: () { if false { ignored := Ready().value; } } }"),
     };
     for (int pass = 0; pass < 2; pass++) {
         const char *const *sources = pass ? valid : invalid;
@@ -2591,56 +2738,299 @@ TEST_CASE(language_fallible_query_and_binding_roots_require_acknowledgment)
             REQUIRE(analysis->valid == (pass != 0));
             if (!pass) {
                 REQUIRE(
-                    diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                    diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
                 );
             }
         }
     }
     return true;
 }
-TEST_CASE(language_fallible_native_contract_requires_optional_error)
+TEST_CASE(language_native_error_categories_follow_direct_type_composition)
 {
-    const script_catalog_parameter result = { .name = "value",
-                                              .type = { .storage = PIN_I32 } };
-    script_catalog_capability read = { .id = 100, .name = "Read", .fallible = true };
-    script_catalog native = catalog;
-    native.capabilities = &read;
-    native.capability_count = 1;
-    for (int results = 0; results < 2; results++) {
-        read.results = &result;
-        read.result_count = results;
+    const script_type failure = { .storage = PIN_STRUCT, .nominal = 700 };
+    const script_catalog_field field = { .id = 1, .name = "error", .type = failure };
+    const script_catalog_variant alternatives[] = {
+        { .tag = 700, .type = failure },
+        { .tag = 1, .type = { .storage = PIN_I32 } },
+    };
+    const script_catalog_variant payload = { .tag = 1,
+                                             .name = "Wrapped",
+                                             .fields = &field,
+                                             .field_count = 1,
+                                             .tagged = true };
+    const script_catalog_type definitions[] = {
+        { .id = 700, .name = "Failure", .type = failure, .error = true },
+        { .id = 701,
+          .name = "Alias",
+          .type = { .storage = PIN_STRUCT, .nominal = 701 },
+          .underlying = 700 },
+        { .id = 702,
+          .name = "Mixed",
+          .type = { .storage = PIN_UNION, .nominal = 702, .flags = SCRIPT_TYPE_UNION },
+          .variants = alternatives,
+          .variant_count = 2 },
+        { .id = 703,
+          .name = "Report",
+          .type = { .storage = PIN_STRUCT, .nominal = 703 },
+          .fields = &field,
+          .field_count = 1 },
+        { .id = 704,
+          .name = "Wrapped",
+          .type = { .storage = PIN_UNION, .nominal = 704, .flags = SCRIPT_TYPE_UNION },
+          .variants = &payload,
+          .variant_count = 1 },
+        { .id = 705,
+          .name = "Pointer",
+          .type = { .storage = PIN_POINTER, .nominal = 705 },
+          .element_type = failure },
+    };
+    const struct
+    {
+        script_type type;
+        bool error;
+    } cases[] = {
+        { failure, true },
+        { { .storage = PIN_STRUCT,
+            .nominal = 700,
+            .flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL },
+          true },
+        { definitions[1].type, true },
+        { definitions[2].type, true },
+        { { .storage = PIN_UNION,
+            .nominal = 702,
+            .flags = SCRIPT_TYPE_UNION | SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL },
+          true },
+        { definitions[3].type, false },
+        { definitions[4].type, false },
+        { definitions[5].type, false },
+        { { .storage = PIN_STRUCT, .nominal = 700, .container = PIN_CONTAINER_ARRAY },
+          false },
+        { { .storage = PIN_I32, .flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL },
+          false },
+    };
+    script_catalog_parameter result = { .name = "result" };
+    script_catalog_capability read = { .id = 100,
+                                       .name = "Read",
+                                       .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                       .results = &result,
+                                       .result_count = 1,
+                                       .fallible = true };
+    script_catalog native = { .types = definitions,
+                              .type_count = sizeof definitions / sizeof *definitions,
+                              .capabilities = &read,
+                              .capability_count = 1 };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        result.type = cases[i].type;
+        REQUIRE(
+            script_catalog_type_contains_error(&native, result.type) == cases[i].error
+        );
         cleanup();
         syntax = script_parse("Errors :: library { Use :: () { Read(); } }");
         analysis = script_analyze(syntax, &native);
         REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(analysis->valid == !cases[i].error);
+        if (cases[i].error) {
+            REQUIRE(
+                diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
+            );
+        }
+    }
+    return true;
+}
+TEST_CASE(language_generic_error_results_keep_each_specialization_category)
+{
+    const struct
+    {
+        const char *body;
+        bool valid;
+    } cases[] = {
+        { "Id(Ordinary()); Id(Marked());", false },
+        { "Id(Marked()); Id(Ordinary());", false },
+        { "Id(Ordinary()); if Id(Marked()) is int {}", true },
+        { "if Id(Marked()) is int {} Id(Ordinary());", true },
+    };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        char source[700];
+        snprintf(
+            source,
+            sizeof source,
+            "Errors :: library { @error Failure :: union {\"bad\"} "
+            "Plain :: union {\"bad\"} Id :: (value: $T) -> T { return value; } "
+            "Ordinary :: () -> Plain | int { return 7; } "
+            "Marked :: () -> Failure | int { return 7; } Use :: () { %s } }",
+            cases[i].body
+        );
+        parse(source);
+        REQUIRE(syntax->diagnostic_count == 0);
+        if (analysis->valid != cases[i].valid) {
+            fprintf(
+                stderr,
+                "generic error category expected %s: %s\n",
+                cases[i].valid ? "accepted" : "rejected",
+                cases[i].body
+            );
+        }
+        REQUIRE(analysis->valid == cases[i].valid);
+        if (!cases[i].valid) {
+            REQUIRE(
+                diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
+            );
+        }
+    }
+    return true;
+}
+TEST_CASE(language_flattened_error_union_tasks_keep_explicit_boundaries)
+{
+    const char *unsupported[] = {
+        "Errors :: library { Plain :: union {\"bad\"} @error Failure :: union "
+        "{\"bad\"} Ordinary :: (pending: task(Plain | int)) { cancel pending; "
+        "} Marked :: (pending: task(Failure | int)) { cancel pending; } }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Plain :: union "
+        "{\"bad\"} Marked :: (pending: task((Failure | int))) { cancel "
+        "pending; } Ordinary :: (pending: task(Plain | int)) { cancel pending; "
+        "} }",
+        "Errors :: library { Plain :: union {\"bad\"} @error Failure :: union "
+        "{\"bad\"} "
+        "Ordinary :: () -> Plain | int { yield; return 7; } "
+        "Marked :: () -> Failure | int { yield; return 7; } "
+        "Use :: () { ordinary := Ordinary(); cancel ordinary; marked := "
+        "Marked(); cancel marked; } }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Plain :: union "
+        "{\"bad\"} "
+        "Marked :: () -> Failure | int { yield; return 7; } "
+        "Ordinary :: () -> Plain | int { yield; return 7; } "
+        "Use :: () { marked := Marked(); cancel marked; ordinary := "
+        "Ordinary(); cancel ordinary; } }",
+    };
+    for (int i = 0; i < (int)(sizeof unsupported / sizeof *unsupported); i++) {
+        parse(unsupported[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
         REQUIRE(!analysis->valid);
-        REQUIRE(diagnostic("@fallible requires a final optional error result"));
+        REQUIRE(diagnostic("Tasks of flattened error unions are not supported yet"));
+    }
+    const char *supported[] = {
+        "Errors :: library { Plain :: union {\"bad\"} @error Failure :: union "
+        "{\"bad\"} "
+        "Ordinary :: () -> (value: int, error: Plain | int) { yield; return(3, "
+        "7); } "
+        "Marked :: () -> (value: int, error: Failure | int) { yield; return(3, "
+        "7); } "
+        "Use :: () { ordinary := Ordinary(); cancel ordinary; marked := "
+        "Marked(); cancel marked; } }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Plain :: union "
+        "{\"bad\"} "
+        "Marked :: () -> (value: int, error: Failure | int) { yield; return(3, "
+        "7); } "
+        "Ordinary :: () -> (value: int, error: Plain | int) { yield; return(3, "
+        "7); } "
+        "Use :: () { marked := Marked(); cancel marked; ordinary := "
+        "Ordinary(); cancel ordinary; } }",
+        "Errors :: library { Plain :: union {\"bad\"} Take :: (pending: "
+        "task((Plain | int))) { cancel pending; } }",
+        "Errors :: library { Plain :: union {\"bad\"} "
+        "Work :: () -> Plain | int { yield; return 7; } "
+        "Use :: () { pending := Work(); cancel pending; } }",
+        "Errors :: library { @error Failure :: struct { code: int; } "
+        "Work :: () -> Failure { yield; return {code: 3}; } "
+        "Use :: () { pending: task(Failure) = Work(); cancel pending; } }",
+        "Errors :: library { @error Failure :: union { Denied } "
+        "Work :: () -> Failure { yield; return Failure.Denied; } "
+        "Use :: () { pending: task(Failure) = Work(); cancel pending; } }",
+        "Errors :: library { @error Failure :: union {\"bad\"} "
+        "Work :: () -> Failure { yield; return \"bad\"; } "
+        "Use :: () { pending: task(Failure) = Work(); cancel pending; } }",
+    };
+    for (int i = 0; i < (int)(sizeof supported / sizeof *supported); i++) {
+        parse(supported[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(analysis->valid);
+    }
+    return true;
+}
+TEST_CASE(language_flattened_error_union_wrappers_keep_explicit_boundaries)
+{
+    const char *unsupported[] = {
+        "Errors :: library { @error Failure :: union {\"bad\"} Take :: "
+        "(values: (Failure | int)[]) {} }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Take :: (value: "
+        "^(Failure | int)) {} }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Read :: () -> "
+        "Failure | int { return 7; } Use :: () { values := [Read()]; } }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Read :: () -> "
+        "Failure | int { return 7; } Use :: () { value := Read(); pointer := "
+        "&value; } }",
+    };
+    for (int i = 0; i < (int)(sizeof unsupported / sizeof *unsupported); i++) {
+        parse(unsupported[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        if (analysis->valid ||
+            !diagnostic("Containers and pointers of flattened error unions are not supported yet")) {
+            fprintf(stderr, "flattened error wrapper case=%d expected=unsupported source=%s\n", i, unsupported[i]);
+            for (int d = 0; d < analysis->diagnostic_count; d++) {
+                fprintf(
+                    stderr,
+                    "flattened error wrapper diagnostic=%s\n",
+                    analysis->diagnostics[d].message
+                );
+            }
+        }
+        REQUIRE(!analysis->valid);
+        REQUIRE(diagnostic("Containers and pointers of flattened error unions are not supported yet"));
+    }
+    const char *supported[] = {
+        "Errors :: library { @error Failure :: union {\"bad\"} Take :: "
+        "(values: (Failure? | int)[]) {} }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Take :: (value: "
+        "^(Failure? | int)) {} }",
+        "Errors :: library { Plain :: union {\"bad\"} Read :: () -> Plain | "
+        "int { return 7; } Use :: () { values := [Read()]; } }",
+        "Errors :: library { Plain :: union {\"bad\"} Read :: () -> Plain | "
+        "int { return 7; } Use :: () { value := Read(); pointer := &value; } }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Take :: "
+        "(values: Failure[], value: ^Failure) {} }",
+        "Errors :: library { @error Failure :: struct { code: int; } Take :: "
+        "(values: (Failure | int)[], value: ^(Failure | int)) {} }",
+        "Errors :: library { @error Failure :: union {\"bad\"} Plain :: union "
+        "{\"bad\"} Marked :: () -> Failure | int { return 7; } Ordinary :: "
+        "(values: (Plain | int)[], value: ^(Plain | int)) {} Use :: () { "
+        "values: (Plain | int)[] = []; value: Plain | int = 7; "
+        "Ordinary(values, &value); if Marked() is int {} } }",
+        "Errors :: library { Plain :: union {\"bad\"} @error Failure :: union "
+        "{\"bad\"} Ordinary :: (values: (Plain | int)[], value: ^(Plain | "
+        "int)) {} Marked :: () -> Failure | int { return 7; } Use :: () { "
+        "values: (Plain | int)[] = []; value: Plain | int = 7; "
+        "Ordinary(values, &value); if Marked() is int {} } }",
+    };
+    for (int i = 0; i < (int)(sizeof supported / sizeof *supported); i++) {
+        parse(supported[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(analysis->valid);
     }
     return true;
 }
 TEST_CASE(language_fallible_defaults_follow_their_executing_owner)
 {
     const char *invalid[] = {
-        ("Errors :: library { @fallible Read :: () -> (value: bool, error: "
-         "int?) "
-         "{ return(true, 1); } Take :: (value: bool = Read().value) {} "
-         "Use :: () { Take(); } }"),
-        ("Errors :: library { @fallible Read :: () -> (value: ^int?, error: "
-         "int?) "
-         "{ return(nil, 1); } Use :: () -> (value: ^int? = Read().value) { "
-         "return; } }"),
-        ("Errors :: library { @fallible Fail :: () -> ^int? { return nil; } "
-         "Use :: () -> (error: ^int? = Fail()) { error = nil; return; } }"),
+        ("Errors :: library { @error Failure :: struct { code: int; } Read :: "
+         "() -> (value: bool, error: Failure?) { return(true, {code: 1}); } "
+         "Take :: (value: bool = Read().value) {} Use :: () { Take(); } }"),
+        ("Errors :: library { @error Failure :: struct { code: int; } Read :: "
+         "() -> (value: ^int?, error: Failure?) { return(nil, {code: 1}); } "
+         "Use :: () -> (value: ^int? = Read().value) { return; } }"),
+        ("Errors :: library { @error Failure :: struct { code: int; } Fail :: "
+         "() -> Failure? { return nil; } Use :: () -> (error: Failure? = "
+         "Fail()) { error = nil; return; } }"),
     };
     const char *valid[] = {
-        ("Errors :: library { @fallible Fail :: () -> int? { return 1; } "
-         "Take :: (error: int? = Fail()) {} Use :: () { Take(); } }"),
-        ("Errors :: library { @fallible Read :: () -> (value: bool, error: "
-         "int?) "
-         "{ return(true, 1); } Take :: (value: bool = Read().value) {} "
-         "Use :: () { Take(true); } }"),
-        ("Errors :: library { @fallible Fail :: () -> ^int? { return nil; } "
-         "Use :: () -> (error: ^int? = Fail()) { return; } }"),
+        ("Errors :: library { @error Failure :: struct { code: int; } Fail :: "
+         "() -> Failure? { return {code: 1}; } Take :: (error: Failure? = "
+         "Fail()) {} Use :: () { Take(); } }"),
+        ("Errors :: library { @error Failure :: struct { code: int; } Read :: "
+         "() -> (value: bool, error: Failure?) { return(true, {code: 1}); } "
+         "Take :: (value: bool = Read().value) {} Use :: () { Take(true); } }"),
+        ("Errors :: library { @error Failure :: struct { code: int; } Fail :: "
+         "() -> Failure? { return nil; } Use :: () -> (error: Failure? = "
+         "Fail()) { return; } }"),
     };
     for (int pass = 0; pass < 2; pass++) {
         const char *const *sources = pass ? valid : invalid;
@@ -2652,7 +3042,7 @@ TEST_CASE(language_fallible_defaults_follow_their_executing_owner)
             REQUIRE(analysis->valid == (pass != 0));
             if (!pass) {
                 REQUIRE(
-                    diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                    diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
                 );
             }
         }
@@ -2704,14 +3094,12 @@ TEST_CASE(language_fallible_sequence_receivers_and_bounds_are_evaluated)
             snprintf(
                 source,
                 sizeof source,
-                "Errors :: library { "
-                "@fallible ReadText :: () -> (value: string, error: int?) { "
-                "return(\"abc\", 1); } "
-                "@fallible ReadValues :: () -> (value: int[], error: int?) { "
-                "return([0, 1, 2], 1); } "
-                "@fallible Bound :: () -> (value: int, error: int?) { "
-                "return(1, 1); } "
-                "@fallible Fail :: () -> int? { return 1; } "
+                "Errors :: library { @error Failure :: struct { code: int; } "
+                "ReadText :: () -> (value: string, error: Failure?) { "
+                "return(\"abc\", {code: 1}); } ReadValues :: () -> (value: "
+                "int[], error: Failure?) { return([0, 1, 2], {code: 1}); } "
+                "Bound :: () -> (value: int, error: Failure?) { return(1, "
+                "{code: 1}); } Fail :: () -> Failure? { return {code: 1}; } "
                 "Use :: () -> int { %s } }",
                 bodies[i]
             );
@@ -2720,7 +3108,7 @@ TEST_CASE(language_fallible_sequence_receivers_and_bounds_are_evaluated)
             REQUIRE(analysis->valid == (pass != 0));
             if (!pass) {
                 REQUIRE(
-                    diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                    diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
                 );
             }
         }
@@ -2766,9 +3154,9 @@ TEST_CASE(language_fallible_array_mutations_evaluate_receiver_and_items_once)
             snprintf(
                 source,
                 sizeof source,
-                "Errors :: library { @fallible Bound :: () -> (value: int, "
-                "error: int?) "
-                "{ return(1, 1); } Use :: () { %s } }",
+                "Errors :: library { @error Failure :: struct { code: int; } "
+                "Bound :: () -> (value: int, error: Failure?) { return(1, "
+                "{code: 1}); } Use :: () { %s } }",
                 bodies[i]
             );
             cleanup();
@@ -2778,7 +3166,7 @@ TEST_CASE(language_fallible_array_mutations_evaluate_receiver_and_items_once)
             REQUIRE(analysis->valid == (pass != 0));
             if (!pass) {
                 REQUIRE(
-                    diagnostic("Trailing optional result is ignored on a reachable path; check, report, store or return it")
+                    diagnostic("Error result is ignored on a reachable path; check, report, store or return it")
                 );
             }
             int mutations = 0;
@@ -3980,10 +4368,15 @@ void test_language_semantic()
     RUN_TEST_CASE(language_fallible_checks_each_generic_specialization);
     RUN_TEST_CASE(language_fallible_query_and_binding_roots_require_acknowledgment);
     RUN_TEST_CASE(language_fallible_cancel_duration_requires_acknowledgment);
-    RUN_TEST_CASE(language_fallible_native_contract_requires_optional_error);
+    RUN_TEST_CASE(language_native_error_categories_follow_direct_type_composition);
+    RUN_TEST_CASE(language_flattened_error_union_wrappers_keep_explicit_boundaries);
+    RUN_TEST_CASE(language_generic_error_results_keep_each_specialization_category);
+    RUN_TEST_CASE(language_flattened_error_union_tasks_keep_explicit_boundaries);
     RUN_TEST_CASE(language_fallible_defaults_follow_their_executing_owner);
     RUN_TEST_CASE(language_fallible_await_separates_cancellation_and_error);
-    RUN_TEST_CASE(language_fallible_attribute_requires_optional_error);
+    RUN_TEST_CASE(language_error_type_attributes_and_result_positions);
+    RUN_TEST_CASE(language_error_types_require_acknowledgment_without_optional_results);
+    RUN_TEST_CASE(language_inferred_error_results_require_acknowledgment);
     RUN_TEST_CASE(language_fallible_tasks_require_handle_acknowledgment);
     RUN_TEST_CASE(language_fallible_sequence_receivers_and_bounds_are_evaluated);
     RUN_TEST_CASE(language_fallible_array_mutations_evaluate_receiver_and_items_once);

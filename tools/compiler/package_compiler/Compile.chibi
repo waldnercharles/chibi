@@ -307,6 +307,7 @@ TypeDecl :: struct {
     value_storage: int;
     value_container: int;
     value_record: int;
+    error: bool;
 }
 // A record field, with its byte offset, or a variant's payload field. A
 // native type's field may be read-only, a constant whose value is its name,
@@ -578,6 +579,9 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
                                 package, view);
     }
     first := FirstMember(forest, Field(forest, node, "name"));
+    if (first < 0) {
+        return none;
+    }
     name := Text(forest, text, first);
     home := package;
     part := NextMember(forest, first);
@@ -745,7 +749,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
         declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package, node: -1, kind: MapDecl,
                               first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage, id: id, layout: 0, component: 0,
                               key: key.storage, value_storage: value.storage, value_container: value.container,
-                              value_record: value.record};
+                              value_record: value.record, error: false};
         known.append(declared);
     }
     return known;
@@ -830,6 +834,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         while (member >= 0) {
             record := Is(forest, member, "record_declaration");
             if (record || Is(forest, member, "union_declaration")) {
+                attributes := DeclarationAttributes(forest, text, file, member, "error");
+                if length(attributes) > 0 { return Declarations.Failed(attributes[0]); }
                 name := Text(forest, text, Field(forest, member, "name"));
                 if (name == "") {
                     return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
@@ -844,7 +850,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                       id: binding.ID("package-symbol", format_text("{}:{}:{}", documents[files[0]].identity,
                                                                                    TypeKind, name)),
                                       layout: 0, component: 0, key: 0, value_storage: 0,
-                                      value_container: 0, value_record: -1};
+                                      value_container: 0, value_record: -1, error: ErrorMarked(forest, text, member)};
                 if (!record) {
                     // Variants follow their union; their payloads resolve below.
                     declared.kind = UnionDecl;
@@ -866,7 +872,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             alternative: TypeDecl = {name: variant_name, type_name: "", package: package, node: member,
                                                      kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder,
                                                      storage: 0, id: 0, layout: 0, component: 0, key: 0, value_storage: 0,
-                                                     value_container: 0, value_record: -1};
+                                                     value_container: 0, value_record: -1, error: false};
                             types.append(alternative);
                             grown := types[holder];
                             grown.count += 1;
@@ -1672,7 +1678,7 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 // from `first`. Named results include text, arrays and boxed optionals.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], table: ^(TypeDecl[]),
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
-    attributes := FallibleAttributes(forest, text, file, member);
+    attributes := DeclarationAttributes(forest, text, file, member, "test");
     if (length(attributes) > 0) { return Signature.Failed(attributes[0]); }
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
@@ -1776,14 +1782,10 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
     callable: Callable = {name: name, package: package, document: file, node: member, first: first, count: count,
                           result: result.storage, result_container: result.container, result_record: result.record,
                           results: length(added) - count, waits: false};
-    if (FallibleMarked(forest, text, member)) {
-        last := result;
-        if (callable.results > 0) {
-            parameter := added[length(added) - 1];
-            last = {storage: parameter.storage, container: parameter.container, record: parameter.record};
-        }
-        if (!FallibleOptional(table^, last)) {
-            return Signature.Failed(Diagnose(forest, member, file, "@fallible requires a final optional error result"));
+    for index in count..<length(added) - 1 {
+        earlier := added[index];
+        if ErrorBearing(table^, {storage: earlier.storage, container: earlier.container, record: earlier.record}) {
+            return Signature.Failed(Diagnose(forest, earlier.node, file, "An error-bearing result must be the final result"));
         }
     }
     return Signature.Read(callable, added);
@@ -2310,27 +2312,19 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
                         query_specs);
     switch emitted {
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
-            // Copy the source closure into the checker only when a resolved
-            // producer has the optional result every marked contract requires.
-            possible_fallible := false;
-            for (fact in facts) {
-                if (fact.kind == CallFact && fact.target >= 0 && fact.target < length(callables)) {
-                    producer := callables[fact.target];
-                    last: ValueType = {storage: producer.result, container: producer.result_container,
-                                       record: producer.result_record};
-                    if (producer.results > 0) {
-                        parameter := params[producer.first + producer.count + producer.results - 1];
-                        last = {storage: parameter.storage, container: parameter.container, record: parameter.record};
-                    }
-                    if (FallibleOptional(table^, last)) {
-                        possible_fallible = true;
-                        break;
-                    }
+            // Read current resolved return types, including imported source
+            // declarations. Ordinary optional absence remains ordinary.
+            requires_check := false;
+            for fact in facts {
+                if fact.kind == CallFact && fact.target >= 0 && fact.target < length(callables) &&
+                   ErrorResult(table^, params, callables[fact.target]) {
+                    requires_check = true;
+                    break;
                 }
             }
-            if (possible_fallible) {
-                problems := FallibleBody(forest, documents, callables, params, callable, facts, generated_query);
-                if (length(problems) > 0) { return Body.Failed(problems[0]); }
+            if requires_check {
+                problems := FallibleBody(forest, documents, callables, params, table^, callable, facts, generated_query);
+                if length(problems) > 0 { return Body.Failed(problems[0]); }
             }
         case:
             return emitted;
@@ -3006,7 +3000,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 // and imports resolve against. `abi` is the target's prepared header ABI,
 // `names` its instruction names in ordinal order, and `natives` the native
 // functions it links.
-@fallible
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                 sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
                 ports: Port[], identities: u64[]) -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
@@ -3017,7 +3010,6 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
 // The complete target catalog supplies one effect mask per native, in the
 // same order as natives and identities. Compile supplies zero effect masks
 // for its verified pure-native catalog.
-@fallible
 pub CompileWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                            sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
                            ports: Port[], identities: u64[], native_effects: int[])

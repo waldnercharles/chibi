@@ -7886,6 +7886,9 @@ static bool game_arguments(int b, int first_native, pin_value *out)
         REQUIRE(put(&type, "count", t->field_count));
         REQUIRE(put_value(&type, "relationship", flag(false)));
         REQUIRE(put(&type, "traits", 0));
+        REQUIRE(
+            put_value(&type, "error", flag(script_catalog_type_contains_error(&catalog, t->type)))
+        );
         apush(types, type);
         for (int j = 0; j < t->field_count; j++) {
             pin_value field = row(b, "GameField");
@@ -19081,7 +19084,13 @@ static script_catalog query_game_catalog()
     catalog.relationship_count = 1;
     return catalog;
 }
-static bool query_compile_result(int b, const char *identity, const char *source, compiler_result *out)
+static bool query_compile_result_category(
+    int b,
+    const char *identity,
+    const char *source,
+    bool error_type,
+    compiler_result *out
+)
 {
     fixture.observe_failures = true;
     pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
@@ -19094,10 +19103,27 @@ static bool query_compile_result(int b, const char *identity, const char *source
     REQUIRE(game_arguments(b, first_native, &args[8]));
     pin_array *events = args[8].ptr, *payloads = args[9].ptr;
     script_catalog catalog = query_game_catalog();
+    script_catalog_type descriptions[sizeof game_types / sizeof *game_types];
+    memcpy(descriptions, catalog.types, sizeof descriptions);
+    for (int i = 0; i < catalog.type_count; i++) {
+        if (descriptions[i].id == SPOT) {
+            descriptions[i].error = error_type;
+        }
+    }
+    catalog.types = descriptions;
     pin_value *types = NULL;
     const pin_array *existing = args[10].ptr;
     for (int i = 0; i < existing->count; i++) {
-        apush(types, existing->items[i]);
+        pin_value type = existing->items[i], id;
+        REQUIRE(get(&type, "id", &id));
+        const script_catalog_type *definition = script_catalog_type_by_id(&catalog, id.u64);
+        REQUIRE(definition);
+        REQUIRE(put_value(
+            &type,
+            "error",
+            flag(script_catalog_type_contains_error(&catalog, definition->type))
+        ));
+        apush(types, type);
     }
     pin_value relationship = row(b, "GameType");
     REQUIRE(put_value(&relationship, "required", flag(false)));
@@ -19112,6 +19138,7 @@ static bool query_compile_result(int b, const char *identity, const char *source
     REQUIRE(put(&relationship, "count", 0));
     REQUIRE(put_value(&relationship, "relationship", flag(true)));
     REQUIRE(put(&relationship, "traits", 0));
+    REQUIRE(put_value(&relationship, "error", flag(false)));
     apush(types, relationship);
     args[10] = rows(types, acount(types), PIN_STRUCT, relationship.record);
     afree(types);
@@ -19125,23 +19152,22 @@ static bool query_compile_result(int b, const char *identity, const char *source
     REQUIRE(compiler_call(b, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, out));
     return true;
 }
+static bool query_compile_result(int b, const char *identity, const char *source, compiler_result *out)
+{
+    return query_compile_result_category(b, identity, source, false, out);
+}
 TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary)
 {
     REQUIRE(prepare());
     for (int b = 0; b < 2; b++) {
         for (int marked = 0; marked < 2; marked++) {
-            char source[512];
-            snprintf(
-                source,
-                sizeof source,
-                "Fixed :: system(point: Spot, if Ready().value) {\n"
-                "    %sReady :: () -> (value: bool, error: int?) { "
-                "return(true, 1); }\n"
-                "}\n",
-                marked ? "@fallible " : ""
-            );
+            const char
+                source[] = "Fixed :: system(point: Spot, if Ready().value) {\n"
+                           "    Ready :: () -> (value: bool, error: Spot?) { "
+                           "return(true, nil); }\n"
+                           "}\n";
             compiler_result out;
-            REQUIRE(query_compile_result(b, "Fixed", source, &out));
+            REQUIRE(query_compile_result_category(b, "Fixed", source, marked != 0, &out));
             if (marked) {
                 if (compiler_succeeded(&out)) {
                     fprintf(pu_errors(), "Marked system query accepted: %s\n", source);
@@ -19153,7 +19179,7 @@ TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary)
                 REQUIRE(get(compiler_error(&out), "line", &line));
                 REQUIRE(get(compiler_error(&out), "column", &column));
                 REQUIRE(
-                    !strcmp(pin_text(message).bytes, "@fallible result checking requires an authored function body in stage one")
+                    !strcmp(pin_text(message).bytes, "Error result checking requires an authored function body in stage one")
                 );
                 REQUIRE(document.i == 0 && line.i == 1 && column.i == 33);
             } else {

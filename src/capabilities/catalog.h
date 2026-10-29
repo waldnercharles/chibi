@@ -32,6 +32,8 @@ enum
     SCRIPT_TYPE_BOXED_OPTIONAL = 1u << 11,
     SCRIPT_TYPE_QUERY = 1u << 12,
     SCRIPT_TYPE_QUERY_ROW = 1u << 13,
+    /* Per-use source category lost by physical transparent-union flattening. */
+    SCRIPT_TYPE_ERROR_ALTERNATIVE = 1u << 14,
 };
 enum
 {
@@ -95,6 +97,7 @@ typedef struct
     int variant_count;
     bool internal; /* Structural metadata without a source-visible type name. */
     bool authored_record; /* Owned flat layout, never a native catalog alias. */
+    bool error; /* Declared @error category; source metadata, not runtime layout. */
     pin_container container;
     script_type key_type, element_type;
 } script_catalog_type;
@@ -229,7 +232,7 @@ typedef struct
     uint64_t receiver;
     bool pure, variadic, variadic_optional, numeric_aggregate, event_sender,
         language_values, owned_result;
-    bool fallible; /* Source contract; not part of the native runtime ABI. */
+    bool fallible; /* Derived error-result contract; not part of the runtime ABI. */
 } script_catalog_capability;
 typedef struct
 {
@@ -348,6 +351,9 @@ script_type script_reference_type(script_reference_kind);
 script_reference_kind script_reference_kind_for_type(script_type);
 const char *script_reference_type_name(script_reference_kind);
 script_type script_catalog_canonical_type(const script_catalog *, script_type);
+/* Direct error alternatives through aliases and transparent unions, without
+ * traversing aggregate fields, collection elements or pointer targets. */
+bool script_catalog_type_contains_error(const script_catalog *, script_type);
 bool script_catalog_type_assignable(const script_catalog *, script_type expected, script_type actual);
 bool script_type_equal(script_type a, script_type b);
 script_type script_catalog_pointee_type(const script_catalog *, script_type);

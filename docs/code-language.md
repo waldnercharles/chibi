@@ -737,8 +737,104 @@ Compile-time execution supports scalar and type values, authored calls, locals,
 assignment, `if` and `while`. It does not support arrays, `for`, closures or
 native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
 
-Generic package functions currently specialize only within their package.
-Qualified game-library calls can specialize across library boundaries.
+### Exported package functions
+
+The staged package-generics and callable work is a local implementation under
+validation. The examples in these two subsections describe that contract;
+they do not establish a merged SDK release or compiler-stage parity.
+A matching reviewed bootstrap artifact and installed SDK checks remain pending.
+
+The self-hosted route currently admits these forms in package sources and its
+numeric scalar-facts subset. Its separate legacy behavior/library compiler does
+not yet use package specialization or accept package imports. Stage-zero legacy
+behavior support is a separate path. Exported generic record/type factories and
+general compile-time execution parity remain separate work.
+
+A package exports a generic function with the same `pub` marker as an ordinary
+function. Its type bindings come from the importing call:
+
+```chibi
+package identity
+
+pub Identity :: (value: $T) -> T { return value }
+```
+
+```chibi
+package app
+import identity "../identity"
+
+Value :: () -> int { return identity.Identity(7) }
+```
+
+A specialization resolves private helpers, types and constants where its
+function was defined. Caller declarations and import aliases do not change
+that meaning. Private helpers stay private. Calls with equivalent concrete
+bindings reuse a specialization; different nominal types keep their identities.
+Changes to a defining package or its dependencies invalidate the corresponding
+cached result. A failed specialization reports the importing call and its
+relevant definition.
+
+Qualified game-library calls can also specialize across library boundaries.
+
+### Passing functions
+
+A function parameter can describe another function with `fn(parameters) ->
+Result`. Pass a function's name to supply its code; add parentheses to call it:
+
+```chibi
+package transforms
+
+Double :: (value: int) -> int { return value * 2 }
+
+Apply :: (value: int, transform: fn(value: int) -> int) -> int {
+    return transform(value)
+}
+
+Example :: () -> int {
+    return Apply(4, Double) // 8
+}
+```
+
+An inline function can appear directly as a call argument. Inputs have explicit
+types. A single expression after `=>` returns that expression; a block uses
+ordinary `return` statements. Results can be inferred, or written with `->`.
+The optional `fn` prefix has the same meaning:
+
+```chibi
+Inline :: () -> int {
+    a := Apply(4, (value: int) => value * 2)
+    b := Apply(4, (value: int) { return value * 2 })
+    c := Apply(4, fn(value: int) -> int { return value * 2 })
+    return a + b + c
+}
+```
+
+The initial callable signature supports zero or one result. `fn(value: int)`
+returns nothing; `fn(value: int) -> int` returns one integer. The callable
+parameter takes no default value or `from`/`split` source binding. Its function
+type may be parenthesized, but cannot be optional, placed in a container, or
+wrapped in a pointer type.
+Inputs in a callable signature have explicit types and no defaults or source
+bindings. Calls supply every input; defaults on the supplied named function do
+not become part of the callable signature.
+
+A generic algorithm can use its element type in a predicate or comparator
+signature, such as `predicate: fn(value: T) -> bool` or
+`less: fn(a: T, b: T) -> bool`. The compiler specializes the algorithm for the
+concrete function and emits direct calls. This preserves the callback's effects;
+passing it as an argument does not make it pure. Inlining and the algorithm's
+own allocations or value copies remain separate implementation questions.
+
+These arguments finish synchronously. A function may call them or pass them to
+another callable parameter, but cannot return, store or queue them, keep them
+in records or containers, or give them to an unknown host API. An inline
+function cannot capture enclosing runtime locals. Inline function syntax is
+currently limited to call-argument positions, and callable types are limited to
+function parameters. These rules introduce no runtime closure objects.
+
+Captured and escaping functions remain separate work. Their later admission
+must preserve the selected shared mutable lexical-binding semantics; this
+capture-free stage does not change that decision.
 
 ## Behaviors and state
 
@@ -1102,10 +1198,10 @@ and platform limits.
 
 Some language features remain unavailable:
 
-- Anonymous function values and closures.
+- Captured or stored function values and escaping callbacks.
+- General inline-function expressions outside call arguments.
 - Array, union and nested-record fields in authored records.
 - Union fields in ECS components.
-- Exported generic specialization between packages.
 - Multiline string literals.
 
 These examples describe the language accepted by the native frontend. The

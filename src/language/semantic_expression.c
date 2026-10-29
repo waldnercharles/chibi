@@ -512,7 +512,7 @@ static const char *managed_address_layout(analyzer *a, int expression)
         return NULL;
     }
     const script_catalog_type *record = script_catalog_type_by_id(a->catalog, type.nominal);
-    if (!record || !record->authored_record) {
+    if (!record || (!record->authored_record && !script_math_layout_valid(record))) {
         return "Managed values require authored record layouts";
     }
     return NULL;
@@ -1290,6 +1290,18 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         int index = script_analyzer_lookup(a, node);
         if (index < 0) {
+            char *name = script_analyzer_name_copy(a, node);
+            int callable = script_analyzer_callable_symbol(a, name);
+            free(name);
+            if (callable >= 0 && a->out->symbols[callable].callable_binding) {
+                index = callable;
+            }
+        }
+        if (index >= 0 && a->out->symbols[index].callable_binding) {
+            script_analyzer_diagnostic(a, node, "Callable arguments can only be called or passed to another callable parameter");
+            return script_analyzer_expr_add(a, result);
+        }
+        if (index < 0) {
             int reference = script_analyzer_symbol_reference(a, node, expected);
             if (reference >= 0) {
                 return reference;
@@ -1440,6 +1452,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             result.op = SCRIPT_OP_NEG;
             if (!script_type_numeric(result.type) &&
                 !(result.type.flags & SCRIPT_TYPE_ERROR) &&
+                !script_analyzer_math_operator(a, node, &result) &&
                 !script_analyzer_resolve_operator(a, node, op, &result)) {
                 script_analyzer_diagnostic(a, node, "Negation requires a compatible operator");
             }
@@ -1547,6 +1560,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             script_analyzer_require(a, left, script_analyzer_boolean_type(), x);
             script_analyzer_require(a, right, script_analyzer_boolean_type(), y);
             result.type = script_analyzer_boolean_type();
+        } else if (script_analyzer_math_operator(a, node, &result)) {
+            /* Built-in math owns its dimensions, broadcasting and result. */
         } else if ((!script_type_numeric(x) || !script_type_numeric(y)) && script_analyzer_resolve_operator(a, node, op, &result)) {
             /* Catalog operands and result are already resolved. */
         } else if (equality && !script_type_numeric(x)) {
@@ -1704,6 +1719,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         result.type.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
+        script_catalog_type definition = type ? *type : (script_catalog_type){ 0 };
+        type = type ? &definition : NULL;
         if (!type || expected.storage != PIN_STRUCT) {
             script_analyzer_diagnostic(a, node, "Struct literal needs an explicit record or reflected type");
             result.type = script_analyzer_bad_type();

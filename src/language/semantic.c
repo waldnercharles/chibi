@@ -32,6 +32,7 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
             script_analyzer_resolve_initializer(a, a->initializers[i].symbol);
         }
         script_analyzer_finish_effects(a);
+        script_analyzer_generic_check_callables(a);
         script_analyzer_finish_boxes(a);
         finish_joins(a);
         script_analyzer_finish_bindings(a);
@@ -76,6 +77,9 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
     afree(a->narrowed);
     afree(a->catalog_types);
     afree(a->catalog_capabilities);
+    afree(a->imported_documents);
+    afree(a->imported_imports);
+    afree(a->environments);
     free(a->import_used);
     afree(a->constant_proofs);
     script_analyzer_generic_free(a);
@@ -145,6 +149,7 @@ static script_analysis *analyze(
     }
     a.catalog_view.types = a.catalog_types;
     a.catalog = &a.catalog_view;
+    script_analyzer_math_prepare(&a, ts_tree_root_node(syntax->tree));
     for (int i = 0; i < syntax->diagnostic_count; i++) {
         apush(out->diagnostics, syntax->diagnostics[i]);
     }
@@ -349,6 +354,8 @@ static script_analysis *analyze_package(const script_package_options *options, b
                    .native = catalog,
                    .imports = options->imports,
                    .import_count = options->import_count,
+                   .requested = options->requests,
+                   .requested_count = options->request_count,
                    .out = out,
                    .scope = -1,
                    .function = -1,
@@ -365,6 +372,7 @@ static script_analysis *analyze_package(const script_package_options *options, b
     a.document_count = count;
     out->documents = xcalloc((size_t)count, sizeof *out->documents);
     out->document_count = count;
+    out->package_document_count = count;
     for (int i = 0; i < count; i++) {
         const script_package_document *document = &documents[i];
         assert(
@@ -386,6 +394,9 @@ static script_analysis *analyze_package(const script_package_options *options, b
     }
     a.catalog_view.types = a.catalog_types;
     a.catalog = &a.catalog_view;
+    for (int i = 0; i < count; i++) {
+        script_analyzer_math_prepare(&a, ts_tree_root_node(documents[i].syntax->tree));
+    }
     if (!script_analyzer_package_metadata(&a)) {
         return finish_analysis(&a, true, false);
     }
@@ -491,6 +502,9 @@ static script_analysis *analyze_package(const script_package_options *options, b
         asetlen(out->diagnostics, reported);
     } else {
         script_analyzer_callable_definitions(&a, false);
+    }
+    if (!declarations) {
+        script_analyzer_generic_materialize(&a);
     }
     return finish_analysis(&a, declarations, true);
 }

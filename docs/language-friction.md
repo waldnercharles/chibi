@@ -315,6 +315,17 @@ by code: `48` for `'0'`, `46` for `'.'`, `101` for `'e'`; `core:strings` writes
 `ByteAt(path, index) == 47` for `'/'` and tests `c >= 65 && c <= 90` (#503);
 the tokenizer writes `c == 34` for `'"'` (#518).
 
+Update (2026-10-27): stage one accepts nominal `char` parameters, ordinary and
+named results, and locals. `char(integer)` checks Unicode scalar validity
+before narrowing; a `char` widens to `int`, `u32`, `i64` or `u64`, and explicit
+integer conversions extract its value. Exact decimal literals such as
+`char(65.0)` take the same integer context as stage zero. Character literals,
+char arithmetic, generic native results retaining char, char container
+elements, fields, payloads, pointers, optionals, parameter defaults and typed
+constants remain unsupported. Untyped
+compound decimal expressions such as `char(64.0 + 1.0)` and projecting a named
+char result after widening it to an integer also remain unsupported.
+
 - C, C++, C#, Odin and Zig have `'0'`; Rust has `'0'` and `b'0'`; Python uses
   `ord("0")`.
 
@@ -543,7 +554,7 @@ Suggestion: once `char` exists (see [No character literals](#no-character-litera
 `for c, i in s` yields a `char` and its byte offset, as Odin's decoding loop,
 then a `core:utf8` package written in Chibi.
 
-### No procedure values
+### Passing functions into synchronous algorithms
 
 Language. Odin builds `trim_space` and `trim` on `trim_left_proc`,
 `index_proc` and `fields_proc`, which take a procedure. `core:strings` repeats
@@ -553,7 +564,25 @@ each loop instead and leaves the `_proc` API out.
   types and `comptime` parameters; Rust `fn` pointers and closures; C#, F#,
   TypeScript, Python and Ruby lambdas.
 
-Suggestion: non-capturing procedure-typed parameters, as Odin's `proc` values.
+Decision (owner, 2026-10-27): first export generic package functions, then accept
+named functions and capture-free inline functions as synchronous, non-escaping
+arguments. The local implementation is under validation; this entry does not
+claim a merged SDK or both compiler stages passing.
+
+Use `predicate: fn(value: T) -> bool` to state the required signature. A caller
+can pass a named function or `(value: int) => value > 0` directly as an argument.
+Existing named declarations express reusable callbacks, but neither inference
+nor a named declaration describes a callable parameter's input/result contract.
+That is why this stage adds a callable type and inline argument form. It does
+not add stored callback values or a capture lifetime API.
+
+The compiler resolves the callback during specialization and emits direct
+calls. It still propagates the callback's effects. Passing functions therefore
+does not promise purity, full inlining, or allocation-free sorting. Initial
+inline functions cannot capture runtime locals; callable parameters cannot be
+returned, stored, queued or passed to an unknown host. Later capture support
+must preserve the already selected shared mutable bindings. See
+[passing functions](code-language.md#passing-functions) for the current scope.
 
 ### Stage one's scoped pointer parameters reach locals and fields only
 
@@ -841,6 +870,14 @@ Suggestion: let a host register its natives as a package (`host:build`) that
 programs import like `core:strings`, through the same import namespace so
 locals shadow it; look catalog names up exactly; and use one case convention
 for package members.
+
+Clock-first foundation: ordinary source-backed `host:` packages can wrap selected canonical kernels,
+with exact private kernel lookup in the owning package and normal lexical
+imports for callers. Registration and runtime grants are separate. Both compiler
+stages preserve the kernel identity, ABI and effects; no prepared-format change
+is needed. The public clock API awaits result parity owned by the results
+workstream. Native-only declarations and conversion of `build.*` remain open.
+See the [host-package contract](host-packages.md).
 
 ## Ordinary nouns are reserved, and the build host doesn't say where
 

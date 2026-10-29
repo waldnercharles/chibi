@@ -644,7 +644,8 @@ uint64_t script_analyzer_component_target(const script_analysis *out, int index)
     int remaining = acount(out->expressions);
     while (index >= 0 && remaining--) {
         const script_expression *e = &out->expressions[index];
-        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_DEREFERENCE) {
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_DEREFERENCE ||
+            (e->kind == SCRIPT_EXPR_MATH && e->math_op == SCRIPT_MATH_SWIZZLE)) {
             if (e->read || e->write || e->type.container != PIN_CONTAINER_SINGLE) {
                 return 0;
             }
@@ -679,7 +680,8 @@ bool script_analyzer_writes_external(const script_analysis *out, int index)
             e->kind == SCRIPT_EXPR_COMPONENT) {
             return true;
         }
-        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX) {
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX ||
+            (e->kind == SCRIPT_EXPR_MATH && e->math_op == SCRIPT_MATH_SWIZZLE)) {
             index = e->left;
             continue;
         }
@@ -895,6 +897,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         result.expression = script_analyzer_expression(a, target, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
         script_expression address = a->out->expressions[result.expression];
+        (void)script_analyzer_math_write(a, target, &address);
+        result.op = script_analyzer_operator_node(a, script_analyzer_field(node, "operator"));
+        bool compound_math = result.op != SCRIPT_OP_NONE &&
+                             script_math_of(a->catalog, address.type) >= SCRIPT_MATH_VEC2;
         if (!address.writable) {
             script_analyzer_diagnostic(a, target, "Assignment requires a writable value");
         }
@@ -903,7 +909,9 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             script_analyzer_field(node, "value"),
             address.type
         );
-        script_analyzer_require_values(a, node, result.expression, result.second);
+        if (!compound_math) {
+            script_analyzer_require_values(a, node, result.expression, result.second);
+        }
         if (address.kind == SCRIPT_EXPR_MEMBER && address.left >= 0) {
             script_type owner = script_analyzer_expr_type(a, address.left);
             const script_catalog_type
@@ -941,7 +949,9 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 .effects = address.effects |
                            script_analyzer_expr_effects(a, result.second)
             };
-            if (script_analyzer_resolve_operator(a, node, script_analyzer_field(node, "operator"), &operation)) {
+            if (script_analyzer_math_operator(a, node, &operation) ||
+                script_analyzer_resolve_operator(a, node, script_analyzer_field(node, "operator"), &operation)) {
+                script_analyzer_require(a, node, address.type, operation.type);
                 result.second = script_analyzer_expr_add(a, operation);
                 result.op = SCRIPT_OP_NONE;
             } else {
@@ -1312,8 +1322,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
     }
     if (script_analyzer_is(node, "return_statement")) {
         result.kind = SCRIPT_STMT_RETURN;
-        script_function *function = a->function >= 0 ? &a->out->functions[a->function]
-                                                     : NULL;
+        int result_function = a->function;
+        script_function *function = result_function >= 0
+                                      ? &a->out->functions[result_function]
+                                      : NULL;
         if (!function) {
             script_analyzer_diagnostic(a, node, "Return requires a callable body");
             return script_analyzer_statement_add(a, result);
@@ -1323,7 +1335,8 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         while (function->parent >= 0 &&
                (function->kind == SCRIPT_FUNCTION_MACRO_ENTRY ||
                 function->kind == SCRIPT_FUNCTION_CONTINUATION)) {
-            function = &a->out->functions[function->parent];
+            result_function = function->parent;
+            function = &a->out->functions[result_function];
         }
         TSNode values = script_analyzer_field(node, "value"),
                outcome = script_analyzer_field(node, "outcome");
@@ -1371,6 +1384,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                              ? a->out->symbols[function->results[parameter]].type
                              : script_analyzer_bad_type();
                 int expr = script_analyzer_expression(a, value, type);
+                function = &a->out->functions[result_function];
                 script_analyzer_require(a, value, type, script_analyzer_expr_type(a, expr));
                 if (type.flags & SCRIPT_TYPE_UNTYPED) {
                     infer_type(a, function->results[parameter], expr, value);

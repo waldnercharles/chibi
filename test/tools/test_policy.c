@@ -299,14 +299,14 @@ static const char driver_routes
          "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
          "    print(Path(command[0]).name, command[-1])\n"
          "    sys.exit(0)\n"
-         /* Main CPU/Wasm groups own unique selectors; Release chibi_ctl, chibi
+         /* Main CPU/Wasm groups own unique selectors; Release chibi
           * and chibi-compile users belong to the target that builds them. */
          "if sys.argv[2] == 'misplaced-selectors':\n"
          "    names = [n for key in ('native', 'materials', 'projects', "
          "'language', 'wasm')\n"
          "             for n in policy.GROUPS[key]]\n"
          "    ctl = {n for n, command in policy.TOOLS.items()\n"
-         "           if any(Path(a).name in ('chibi_ctl', 'chibi', "
+         "           if any(Path(a).name in ('chibi', "
          "'chibi-compile') for a in command[1:])}\n"
          "    print(' '.join(sorted({n for n in names if names.count(n) > 1} "
          "|\n"
@@ -379,8 +379,7 @@ static const char driver_ci_ready_setup[] =
     "    request = sys.argv[5]\n"
     "    binaries = ['build/test/tools/test_tools', "
     "'build/test/language/test_language',\n"
-    "                'build-release/bin/chibi_ctl', "
-    "'build-release/sdk/chibi',\n"
+    "                'build-release/sdk/chibi',\n"
     "                'build-release/sdk/chibi-compile']\n"
     "    for binary in binaries:\n"
     "        path = root / binary\n"
@@ -395,11 +394,10 @@ static const char driver_ci_ready_setup[] =
     "        'tools/test_policy.py) test \"$2\" = group; step=$3; '\n"
     "        'test \"$CHIBI_TOOLS_BUILD_DIR\" = build/test/tools; '\n"
     "        'test \"$CHIBI_LANGUAGE_BUILD_DIR\" = build/test/language; '\n"
-    "        'if [ \"$step\" = projects ]; then test \"$CHIBI_CTL\" = "
-    "build-release/bin/chibi_ctl; '\n"
-    "        'test \"$CHIBI_CLI\" = build-release/sdk/chibi; '\n"
+    "        'if [ \"$step\" = projects ]; then "
+    "test \"$CHIBI_CLI\" = build-release/sdk/chibi; '\n"
     "        'test \"$CHIBI_COMPILE\" = build-release/sdk/chibi-compile; '\n"
-    "        'else test -z \"${CHIBI_CTL-}${CHIBI_CLI-}${CHIBI_COMPILE-}\"; "
+    "        'else test -z \"${CHIBI_CLI-}${CHIBI_COMPILE-}\"; "
     "fi; '\n"
     "        'if [ \"$step\" = language ] || [ \"$step\" = projects ]; then "
     "test \"$CHIBI_LLVM_"
@@ -1840,14 +1838,10 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     }
     REQUIRE(run_group("projects") == 0);
     char *output = tool_read(commands);
-    const char
-        *expected = "--mesh-files\n--model-import\n--validate-project\n"
-                    "--prototype-expansion\n--controller\n--feature-coverage\n"
-                    "--render-fixture\n--material-bake\n--environment-"
-                    "authoring\n"
-                    "--terrain-checkpoint\n--terrain-storage-commands\n"
-                    "--terrain-playable\n--published-docs\n--chibi-cli\n"
-                    "--native-build\n";
+    const char *expected = "--mesh-files\n--model-import\n"
+                           "--terrain-checkpoint\n"
+                           "--terrain-playable\n--published-docs\n--chibi-cli\n"
+                           "--native-build\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);
@@ -1855,20 +1849,9 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     REQUIRE(run_group("native") == 0);
     output = tool_read(commands);
     bool separate = output && *output && !strstr(output, "benchmark");
-    const char *selectors[] = { "--mesh-files\n",
-                                "--model-import\n",
-                                "--validate-project\n",
-                                "--prototype-expansion\n",
-                                "--controller\n",
-                                "--feature-coverage\n",
-                                "--render-fixture\n",
-                                "--material-bake\n",
-                                "--environment-authoring\n",
-                                "--terrain-checkpoint\n",
-                                "--terrain-storage-commands\n",
-                                "--published-docs\n",
-                                "--chibi-cli\n",
-                                "--native-build\n" };
+    const char *selectors[] = { "--mesh-files\n",         "--model-import\n",
+                                "--terrain-checkpoint\n", "--published-docs\n",
+                                "--chibi-cli\n",          "--native-build\n" };
     for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
         separate = !strstr(output, selectors[i]);
     }
@@ -1981,7 +1964,7 @@ TEST_CASE(benchmark_routes_remain_explicit)
     return true;
 }
 
-TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects)
+TEST_CASE(group_selectors_are_unique_and_cli_users_are_projects)
 {
     REQUIRE(run("misplaced-selectors", "-") == 0);
     char *output = tool_read(logpath);
@@ -2293,7 +2276,7 @@ TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage)
         free(output);
         REQUIRE(exact);
     }
-    for (int missing = 0; missing < 5; missing++) {
+    for (int missing = 0; missing < 4; missing++) {
         char request[32];
         snprintf(request, sizeof request, "missing:%d", missing);
         REQUIRE(run("ci-ready-groups", request) == 0);
@@ -2307,7 +2290,7 @@ TEST_CASE(ci_groups_reuse_ready_drivers_and_keep_coverage)
 
 static bool ci_initial_build_profile(bool instrumented, bool cmake)
 {
-    const char *targets = "targets=chibi,chibi-compile,chibi-player,chibi_ctl,"
+    const char *targets = "targets=chibi,chibi-compile,chibi-player,"
                           "test_tools,test_language";
     const char *profile = instrumented ? "sanitizer" : "debug";
     const char *sanitizer = instrumented ? "ON" : "OFF";
@@ -2338,7 +2321,7 @@ static bool ci_initial_build_profile(bool instrumented, bool cmake)
                             : fail == 2 || fail == 3 || fail >= 5;
         char expected[4096] = "";
         for (int job = 0; job < 2; job++) {
-            strcat(expected, "release-first=True\nrelease-targets=chibi_ctl chibi ");
+            strcat(expected, "release-first=True\nrelease-targets=chibi ");
             if (!job) {
                 strcat(expected, "chibi-build-host ");
             }
@@ -3893,7 +3876,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
     RUN_TEST_CASE(material_group_does_not_run_benchmarks);
     RUN_TEST_CASE(benchmark_routes_remain_explicit);
-    RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
+    RUN_TEST_CASE(group_selectors_are_unique_and_cli_users_are_projects);
     RUN_TEST_CASE(language_shard_producer_selects_verified_full_sanitizer_profile);
     RUN_TEST_CASE(language_shards_keep_exact_manifest_and_serial_fallback);
     RUN_TEST_CASE(language_shard_cli_is_serial_and_propagates_failure);

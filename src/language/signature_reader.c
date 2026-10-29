@@ -307,12 +307,19 @@ static script_type type(reader *r, TSNode node)
     if (ts_node_is_null(node)) {
         return (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
     }
+    if (is(node, "callable_type")) {
+        diagnostic(r, node, "Callable types are supported only on synchronous function parameters");
+        return (script_type){ .flags = SCRIPT_TYPE_ERROR };
+    }
     if (is(node, "type_application")) {
         return application(r, node);
     }
     if (is(node, "type")) {
         for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
             TSNode child = ts_node_named_child(node, i);
+            if (is(child, "callable_type")) {
+                return type(r, child);
+            }
             if (is(child, "pointer_type")) {
                 script_type target = type(r, field(child, "target"));
                 if (target.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {

@@ -594,10 +594,9 @@ and the managed-pointer dependency. This remains unpublished draft work.
   and equivalence gate recorded there.
 - Read [`docs/testing.md`](docs/testing.md) before adding or running checks.
   Select coverage from the affected contracts and report what actually ran.
-- Read the current language architecture and contracts before compiler work:
-  [`docs/code-language.md`](docs/code-language.md),
-  [`docs/language-contracts/v1.md`](docs/language-contracts/v1.md), and the live
-  sources under `src/language/`.
+- Read the current language architecture before compiler work:
+  [`docs/code-language.md`](docs/code-language.md) and the live sources under
+  `src/language/`.
 
 These documents explain existing contracts. This file owns toolchain milestone
 order, current status, and the next action; the package library program linked
@@ -1104,10 +1103,7 @@ fresh relocatable prefix. Private directory reservation and publication refuse
 existing paths. The graph's explicit profile emits commands without toolchain
 discovery. This working slice now includes main `5c28191b3e` and its ABI20
 compiler resources; it does not regenerate the bootstrap. The macOS packaging,
-host, graph parity and five required groups pass. The reviewed source trees,
-format-only refresh, binary identities, reserved files, Linux recipe and
-remaining full-SDK/platform gates are in
-[`docs/design/graph-sdk-packaging.md`](docs/design/graph-sdk-packaging.md).
+host, graph parity and five required groups pass.
 
 Status: ready (owner decision, 2026-10-21). M5 is complete on macOS arm64 and
 the 32-bit Wasm host; its Linux x86_64 and Windows x64 bootstrap runs stay an

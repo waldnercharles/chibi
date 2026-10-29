@@ -2,7 +2,6 @@
 
 The recording proof and private real-process host use existing Chibi syntax on
 bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
-`PLAN.md` owns milestone status and current validation evidence.
 
 ## First increment
 
@@ -255,11 +254,11 @@ Linux uses the same default graph for native products and the full
 tooling/language test drivers. `make build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `ASSET_GENERATOR_HOSTS=DIR` names other hosts. For a fast Debug O1 build with Release generators:
 
 ```sh
-make build-release BUILD_TARGET='chibi chibi_ctl chibi-build-host chibi-compiler-host'
+make build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'
 make build BUILD_PROFILE=debug BUILD_DEBUG_OPTIMIZATION=1 \
   BUILD_DEBUG_FRAME_POINTERS=on BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
   ASSET_GENERATOR_HOSTS=build-release/sdk \
-  BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language'
+  BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language'
 ```
 
 Use the existing Linux development prerequisites and pinned third-party archive;
@@ -408,8 +407,8 @@ deadline still bounds the time.
 
 ## Build graph (M6)
 
-The build graph replaces CMake's internal build graph one target at a time
-(PLAN.md M6). Its library is the `graph:` collection in `tools/graph`, and
+The build graph replaces CMake's internal build graph one target at a time.
+Its library is the `graph:` collection in `tools/graph`, and
 `tools/toolchain/Graph.chibi` is the program that runs it:
 
 ```sh
@@ -656,7 +655,7 @@ Windows keeps CMake: the build host has no Windows process support yet.
    compiler's own workload ruled it out for now: SLJIT's generated code was
    6.2% of stage one's samples while it compiled the compiler, and the rest
    was C runtime value copies and per-call resets that an LLVM backend would
-   still call (`PLAN.md` M5).
+   still call.
 
 ## Testing and library replacement
 
@@ -692,8 +691,8 @@ review before any reuse.
 
 ## Private compiler binary handoff
 
-The raw-syntax/binary transport increment passes its selectors on macOS (see
-`PLAN.md`). The contracts below are not a self-hosting completion claim.
+The contracts below describe the private compiler transport. They do not
+establish self-hosting completion.
 
 The existing raw parser bridge now retains aligned Tree-sitter named/extra flags
 and a syntax root separate from the document's routing root. Its private native
@@ -822,8 +821,7 @@ folder). It runs in two steps:
 
 `tools/compiler/bootstrap.kdl` is the sources' bootstrap contract. `version` is
 the bootstrap version a compiler built from them has. `minimum` is the oldest
-version that can compile them. Language dependencies follow the two-step rule in
-`PLAN.md` M5:
+version that can compile them. Update language dependencies in two steps:
 1. When the compiler gains a feature, raise `version` and produce an artifact.
 2. Raise `minimum` only once the sources use that feature.
 
@@ -970,8 +968,8 @@ To rewrite the seed:
    revision without `-dirty`.
 2. Commit `tools/compiler/bootstrap` together with the change that needs it.
 
-The final normal installed workflow remains subject to `PLAN.md`: it must
-compile Chibi and drive build/link with `cmake`, `clang` and `gcc` executables
+The final installed workflow must compile Chibi and drive build/link with
+`cmake`, `clang` and `gcc` executables
 unavailable, including hidden or renamed equivalents. Explicit platform
 assemblers/linkers, SDKs, native backends and runtime libraries may remain behind
 narrow bindings. Current native tools remain construction/recovery inputs during

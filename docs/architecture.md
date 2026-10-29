@@ -161,5 +161,4 @@ and platform contracts must agree. See [native packages](native-package.md) and
 These are implementation contracts, not a claim that every product path has
 passed functional acceptance. Installed-consumer builds establish dependency
 boundaries; package checks establish integrity. Rendered player behavior, Studio
-interaction and browser execution require their own reviewed captures. Current
-evidence and outstanding requirements are tracked in [PLAN](../PLAN.md).
+interaction and browser execution require their own reviewed captures.

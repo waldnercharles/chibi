@@ -478,6 +478,124 @@ TEST_CASE(language_callable_types_entries_and_results)
     return true;
 }
 
+TEST_CASE(language_callable_arguments_keep_declarations_and_expression_boundaries)
+{
+    parse(
+        "package callbacks\n"
+        "pub Identity :: (value: $T) -> T { return value; }\n"
+        "Apply :: (value: int, transform: fn(value: int) -> int) -> int {\n"
+        "    return transform(value);\n"
+        "}\n"
+        "Main :: () -> int {\n"
+        "    result := Apply(4, (value: int) => value * 2 + 1);\n"
+        "    block := Apply(4, fn(value: int) -> int { return value + 1; });\n"
+        "    return Apply(transform: (value: int) => value < 5, value: 4);\n"
+        "}\n"
+    );
+    REQUIRE(!original->diagnostic_count);
+    TSNode root = ts_tree_root_node(original->tree);
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(root, 1)), "function_declaration"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(root, 2)), "function_declaration"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(root, 3)), "function_declaration"));
+    REQUIRE(!ts_node_is_null(find_node(root, "callable_type", "fn(value: int) -> int")));
+    TSNode arrow = find_node(root, "lambda_expression", "(value: int) => value * 2 + 1");
+    REQUIRE(!ts_node_is_null(arrow));
+    TSNode body = field(arrow, "body");
+    REQUIRE(!strcmp(ts_node_type(body), "callable_body"));
+    TSNode returned = ts_node_named_child(body, 0);
+    REQUIRE(!strcmp(ts_node_type(returned), "return_statement"));
+    REQUIRE(node_text(field(field(returned, "value"), "operator"), "+"));
+    REQUIRE(node_text(field(field(field(returned, "value"), "left"), "operator"), "*"));
+    TSNode named = find_node(root, "named_argument", "transform: (value: int) => value < 5");
+    REQUIRE(!ts_node_is_null(named));
+    REQUIRE(!strcmp(ts_node_type(field(named, "value")), "lambda_expression"));
+    TSNode next = ts_node_next_named_sibling(named);
+    REQUIRE(node_text(next, "value: 4"));
+    REQUIRE(!ts_node_is_null(
+        find_node(root, "lambda_expression", "fn(value: int) -> int { return value + 1; }")
+    ));
+    return true;
+}
+
+TEST_CASE(language_callable_arguments_preserve_view_and_range_syntax)
+{
+    parse(
+        "package callbacks\n"
+        "Read :: (window: view int[], accept: fn(value: int) -> bool) -> bool "
+        "{\n"
+        "    return accept(window[0]);\n"
+        "}\n"
+        "Use :: (owner: ^(int[])) {\n"
+        "    consume(owner.view(0..<2), (value: int) => value > 0);\n"
+        "}\n"
+    );
+    REQUIRE(!original->diagnostic_count);
+    TSNode root = ts_tree_root_node(original->tree);
+    TSNode read = ts_node_named_child(root, 1);
+    REQUIRE(!strcmp(ts_node_type(read), "function_declaration"));
+    TSNode window = ts_node_named_child(field(read, "parameters"), 0);
+    REQUIRE(node_text(field(window, "type"), "view int[]"));
+    TSNode range = find_node(root, "range_expression", "0..<2");
+    REQUIRE(!ts_node_is_null(range));
+    REQUIRE(node_text(field(range, "start"), "0"));
+    REQUIRE(node_text(field(range, "end"), "2"));
+    TSNode method = find_node(root, "member_expression", "owner.view");
+    REQUIRE(!ts_node_is_null(method));
+    REQUIRE(node_text(field(method, "member"), "view"));
+    REQUIRE(!ts_node_is_null(find_node(root, "lambda_expression", "(value: int) => value > 0")));
+    return true;
+}
+
+TEST_CASE(language_callable_arguments_format_without_changing_boundaries)
+{
+    const char
+        *source = "package callbacks\n"
+                  "pub Apply::(value:$T,transform:fn(value:T)->T)->T{return "
+                  "transform(value);}\n"
+                  "Main::()->int{\n"
+                  "a:=Apply(4,(value:int)=>value*2+1); // keep this comment\n"
+                  "b:=Apply(4,(value:int){return value+1;});\n"
+                  "return Apply(transform:fn(value:int)->int{return "
+                  "value;},value:4);\n"
+                  "}\n";
+    const authoring_format_options options[] = {
+        authoring_format_defaults(),
+        { .indent_width = 2, .preferred_width = 80 },
+        { .indent_width = 4, .preferred_width = 40, .use_tabs = true },
+    };
+    parse(source);
+    REQUIRE(!original->diagnostic_count);
+    for (int mode = 0; mode < 3; mode++) {
+        char error[192] = { 0 };
+        formatted_text = authoring_source_format_with_options(original, &options[mode], NULL, error, sizeof error);
+        if (!formatted_text) {
+            fprintf(pu_errors(), "Callable formatting mode %d: %s\n", mode, error);
+        }
+        REQUIRE(formatted_text);
+        REQUIRE(strstr(formatted_text, "// keep this comment"));
+        fresh = script_parse(formatted_text);
+        REQUIRE(!fresh->diagnostic_count);
+        TSNode main = ts_node_named_child(ts_tree_root_node(fresh->tree), 2);
+        TSNode first = ts_node_named_child(field(main, "body"), 0);
+        TSNode arguments = field(field(first, "value"), "arguments");
+        TSNode arrow = ts_node_named_child(arguments, 1);
+        REQUIRE(!strcmp(ts_node_type(arrow), "lambda_expression"));
+        TSNode returned = ts_node_named_child(field(arrow, "body"), 0);
+        TSNode expression = field(returned, "value");
+        REQUIRE(!strcmp(ts_node_type(expression), "binary_expression"));
+        REQUIRE(!strcmp(ts_node_type(field(expression, "left")), "binary_expression"));
+        REQUIRE(fresh->text[script_node_range(field(expression, "operator")).start] == '+');
+        reformatted_text = authoring_source_format_with_options(fresh, &options[mode], NULL, error, sizeof error);
+        REQUIRE(reformatted_text && !strcmp(formatted_text, reformatted_text));
+        script_syntax_free(fresh);
+        fresh = NULL;
+        free(formatted_text);
+        free(reformatted_text);
+        formatted_text = reformatted_text = NULL;
+    }
+    return true;
+}
+
 TEST_CASE(language_system_queries_and_control_flow)
 {
     parse(
@@ -1010,6 +1128,9 @@ void test_language_syntax()
     RUN_TEST_CASE(language_keywords_are_contextual_data_member_names);
     RUN_TEST_CASE(language_not_callable_and_unary_spellings_disambiguate);
     RUN_TEST_CASE(language_callable_types_entries_and_results);
+    RUN_TEST_CASE(language_callable_arguments_keep_declarations_and_expression_boundaries);
+    RUN_TEST_CASE(language_callable_arguments_preserve_view_and_range_syntax);
+    RUN_TEST_CASE(language_callable_arguments_format_without_changing_boundaries);
     RUN_TEST_CASE(language_system_queries_and_control_flow);
     RUN_TEST_CASE(language_nested_typed_records_and_explicit_labels);
     RUN_TEST_CASE(language_definitions_unions_and_type_patterns);

@@ -1,5 +1,6 @@
 #include "authoring/source_presentation_internal.h"
 #include "graph/authoring/graph_edit.h"
+#include "language/math_types.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -32,6 +33,29 @@ static const char *expression_name(source_projection *p, const script_expression
         case SCRIPT_EXPR_SYMBOL: return "Value";
         case SCRIPT_EXPR_UNARY:
         case SCRIPT_EXPR_BINARY: return operator_name(e->op);
+        case SCRIPT_EXPR_MATH:
+            if (e->math_op == SCRIPT_MATH_OPERATOR) {
+                return operator_name(e->op);
+            }
+            if (e->math_op == SCRIPT_MATH_SWIZZLE) {
+                return "Swizzle";
+            }
+            if (e->math_op == SCRIPT_MATH_CONSTRUCT) {
+                for (int kind = SCRIPT_MATH_VEC2; kind <= SCRIPT_MATH_MAT4; kind++) {
+                    const char *name = script_math_name(kind);
+                    if (e->type.nominal == script_catalog_id("type", name)) {
+                        return name;
+                    }
+                }
+                return "Construct";
+            }
+            switch (e->math_op) {
+#define MATH_NAME(OP, NAME, ARITY)                                             \
+    case SCRIPT_MATH_##OP: return NAME;
+                SCRIPT_MATH_FUNCTIONS(MATH_NAME)
+#undef MATH_NAME
+                default: assert(false); return "Math";
+            }
         case SCRIPT_EXPR_CAST: return "Cast";
         case SCRIPT_EXPR_ADDRESS: return "Address";
         case SCRIPT_EXPR_DEREFERENCE: return "Dereference";

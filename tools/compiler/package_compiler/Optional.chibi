@@ -190,9 +190,9 @@ DeclareSequenceCollections :: (types: TypeDecl[], depth: int, package: int) -> T
     index: int = 0;
     while (index < length(types)) {
         item := types[index];
-        if (item.kind == RecordDecl || item.kind == UnionDecl || item.kind == NativeDecl || item.kind == 6) {
+        if (item.kind == RecordDecl || item.kind == MathDecl || item.kind == UnionDecl || item.kind == NativeDecl || item.kind == 6) {
             item_storage := item.storage;
-            if (item.kind == RecordDecl) {
+            if (item.kind == RecordDecl || item.kind == MathDecl) {
                 item_storage = StructStorage;
             }
             if (item.kind == UnionDecl) {
@@ -332,9 +332,9 @@ DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
     while (index < length(types)) {
         item := types[index];
         array: ValueType = {storage: 0, container: 1, record: index};
-        if (item.kind == RecordDecl || item.kind == UnionDecl || item.kind == NativeDecl) {
+        if (item.kind == RecordDecl || item.kind == MathDecl || item.kind == UnionDecl || item.kind == NativeDecl) {
             array.storage = item.storage;
-            if (item.kind == RecordDecl) {
+            if (item.kind == RecordDecl || item.kind == MathDecl) {
                 array.storage = StructStorage;
             }
             if (item.kind == UnionDecl) {

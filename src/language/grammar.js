@@ -124,6 +124,8 @@ module.exports = grammar({
     [$._common_declaration, $._statement],
     [$._single_type],
     [$.parameter, $.type_name],
+    [$.parameter, $.type_name, $._expression],
+    [$.parameter, $._member_name],
     [$.parameter, $.type_binder],
     [$.type_name],
     [$.record_declaration, $._name],
@@ -415,7 +417,16 @@ module.exports = grammar({
       field("map", $.map_type),
       $.pointer_type,
       $.parenthesized_type,
+      $.callable_type,
     ),
+    callable_type: ($) => seq("fn", field("parameters", $.parameter_list),
+      optional(seq("->", field("results", choice($.parameter_list, $.type))))),
+    lambda_expression: ($) => prec.right(0, seq(optional("fn"),
+      field("parameters", $.parameter_list),
+      optional(seq("->", field("results", choice($.parameter_list, $._signature_type)))),
+      field("body", choice($.callable_body, alias($._lambda_arrow_body, $.callable_body))))),
+    _lambda_arrow_body: ($) => alias($.lambda_return, $.return_statement),
+    lambda_return: ($) => prec.right(-1, seq("=>", field("value", $._expression))),
     pointer_type: ($) => seq("^", field("target", alias($._type_primary, $.type))),
     parenthesized_type: ($) => seq("(", field("type", $.type), ")"),
     // `[string: int]` maps keys of one type to values of another.
@@ -621,14 +632,14 @@ module.exports = grammar({
       seq(
         "(",
         optional(
-          comma(choice($.named_argument, $.typed_argument, $.range_expression, $._expression)),
+          comma(choice($.named_argument, $.typed_argument, $.range_expression, $.lambda_expression, $._expression)),
         ),
         ")",
       ),
     named_argument: ($) =>
       // A bare identifier after ':' is a value. Type annotations with '=' or
       // 'from'/'split' remain unambiguous even when the value is also a type name.
-      prec.dynamic(1, seq(field("name", $.argument_name), ":", field("value", $._expression))),
+      prec.dynamic(1, seq(field("name", $.argument_name), ":", field("value", choice($.lambda_expression, $._expression)))),
     typed_argument: ($) =>
       prec.dynamic(2, seq(
         field("name", $.argument_name),

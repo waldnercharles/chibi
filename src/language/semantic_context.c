@@ -385,7 +385,7 @@ void script_analyzer_require_values(analyzer *a, TSNode node, int target, int va
 }
 script_named_facts script_analyzer_named_facts(const analyzer *a)
 {
-    return (script_named_facts){
+    script_named_facts facts = {
         .lexical = script_lexical_view(a->out, acount(a->out->symbols)),
         .catalog = a->catalog,
         .native = a->native,
@@ -398,6 +398,12 @@ script_named_facts script_analyzer_named_facts(const analyzer *a)
         .uses = a->out->uses,
         .use_count = acount(a->out->uses)
     };
+    const imported_environment *environment = script_analyzer_environment(a);
+    if (environment) {
+        facts.lexical.identity = environment->environment->identity;
+        facts.package_scope = environment->scope;
+    }
+    return facts;
 }
 static script_type named_resolution(analyzer *a, script_named_resolution result)
 {
@@ -433,6 +439,14 @@ void script_analyzer_generic_types(analyzer *a, TSNode node, script_signature_ge
 {
     if (ts_node_is_null(node)) {
         return;
+    }
+    if (script_analyzer_is(node, "type_name")) {
+        char *name = script_analyzer_name_copy(a, node);
+        script_math_kind kind = script_math_named(name);
+        free(name);
+        if (kind) {
+            (void)script_analyzer_math_type(a, node, kind);
+        }
     }
     /* The reader constructs `task(T)` itself; T may hold applications. */
     if (script_analyzer_is(node, "type_application") &&

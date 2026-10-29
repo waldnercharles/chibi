@@ -40,7 +40,8 @@ typedef struct
     script_range declaration;
     int scope, initializer, function;
     bool writable, disabled, resolving, outcome;
-    bool pub;         /* Package declaration other packages import. */
+    bool pub;              /* Package declaration other packages import. */
+    bool callable_binding; /* Specialization-only alias, never a stored value. */
     bool addressed;   /* A managed cell owns this local from its declaration. */
     bool boxed;       /* A task keeps this local by reference. */
     bool mixed_tasks; /* Holds tasks of different functions. */
@@ -106,6 +107,7 @@ typedef enum
     SCRIPT_EXPR_ARRAY_MUTATE,
     SCRIPT_EXPR_QUERY,
     SCRIPT_EXPR_QUERY_FIELD,
+    SCRIPT_EXPR_MATH,
 } script_expression_kind;
 typedef enum
 {
@@ -140,6 +142,62 @@ typedef enum
     SCRIPT_OP_BIT_NOT,
     SCRIPT_OP_COALESCE,
 } script_operator;
+
+// clang-format off
+#define SCRIPT_MATH_FUNCTIONS(X) \
+    X(ABS, "abs", 1) \
+    X(SIGN, "sign", 1) \
+    X(FLOOR, "floor", 1) \
+    X(CEIL, "ceil", 1) \
+    X(ROUND, "round", 1) \
+    X(FRACT, "fract", 1) \
+    X(SQRT, "sqrt", 1) \
+    X(EXP, "exp", 1) \
+    X(EXP2, "exp2", 1) \
+    X(LOG, "log", 1) \
+    X(LOG2, "log2", 1) \
+    X(SIN, "sin", 1) \
+    X(COS, "cos", 1) \
+    X(TAN, "tan", 1) \
+    X(ASIN, "asin", 1) \
+    X(ACOS, "acos", 1) \
+    X(ATAN, "atan", 1) \
+    X(SATURATE, "saturate", 1) \
+    X(MOD, "mod", 2) \
+    X(MIN, "min", 2) \
+    X(MAX, "max", 2) \
+    X(POW, "pow", 2) \
+    X(ATAN2, "atan2", 2) \
+    X(STEP, "step", 2) \
+    X(CLAMP, "clamp", 3) \
+    X(MIX, "mix", 3) \
+    X(SMOOTHSTEP, "smoothstep", 3) \
+    X(LENGTH, "length", 1) \
+    X(DISTANCE, "distance", 2) \
+    X(DOT, "dot", 2) \
+    X(CROSS, "cross", 2) \
+    X(REFLECT, "reflect", 2) \
+    X(REFRACT, "refract", 3) \
+    X(TRANSPOSE, "transpose", 1) \
+    X(DETERMINANT, "determinant", 1) \
+    X(MATRIX_COMP_MULT, "matrix_comp_mult", 2) \
+    X(QUAT_CONJUGATE, "quat_conjugate", 1) \
+    X(NORMALIZE, "normalize", 1) \
+    X(NORMALIZE_OR, "normalize_or", 2) \
+    X(NORMALIZE_OR_ZERO, "normalize_or_zero", 1) \
+    X(INVERSE, "inverse", 1) \
+    X(QUAT_NORMALIZE, "quat_normalize", 1)
+// clang-format on
+
+typedef enum
+{
+    SCRIPT_MATH_CONSTRUCT,
+    SCRIPT_MATH_SWIZZLE,
+    SCRIPT_MATH_OPERATOR,
+#define MATH_FUNCTION(OP, NAME, ARITY) SCRIPT_MATH_##OP,
+    SCRIPT_MATH_FUNCTIONS(MATH_FUNCTION)
+#undef MATH_FUNCTION
+} script_math_op;
 typedef struct
 {
     int value, parameter;
@@ -172,6 +230,10 @@ typedef struct
     uint64_t *pattern_tags;
     int pattern_tag_count;
     behavior_cast_mode conversion; /* SCRIPT_EXPR_CAST range policy. */
+    script_math_op math_op;
+    unsigned char swizzle[4];
+    int swizzle_count;
+    int projection; /* One-based logical parent of a composed swizzle. */
 } script_expression;
 typedef enum
 {
@@ -307,6 +369,7 @@ typedef enum
     SCRIPT_PACKAGE_FUNCTION,
     SCRIPT_PACKAGE_TYPE,
     SCRIPT_PACKAGE_CONSTANT,
+    SCRIPT_PACKAGE_TEMPLATE,
 } script_package_export_kind;
 typedef struct
 {
@@ -317,6 +380,18 @@ typedef struct
     pin_value value; /* Constant payload; other kinds use metadata by ID. */
     const char *unit;
 } script_package_export;
+typedef struct script_package_import script_package_import;
+typedef struct
+{
+    const char *identity;
+    const script_package_document *documents;
+    int document_count;
+    const script_package_import *imports;
+    int import_count;
+    const script_package_export *bindings; /* Definition-site names, including private helpers. */
+    int binding_count;
+    void *owner; /* Opaque retained source-export owner. */
+} script_package_environment;
 typedef struct
 {
     const char *identity;
@@ -326,12 +401,14 @@ typedef struct
     /* Declarations without pub, named so a use can say why it fails. */
     const char *const *private_names;
     int private_count;
+    const script_package_environment *environment;
+    void *owner; /* Opaque source-export owner, or NULL for externally supplied views. */
 } script_package_exports;
 /* Whether exports' package declares member without pub. */
 bool script_package_private(const script_package_exports *, const char *member);
 #define SCRIPT_PRIVATE_MEMBER                                                  \
     "'%s' is private: declare it pub to use it from another package"
-typedef struct
+struct script_package_import
 {
     int document;
     script_range range; /* Import start through path token end; terminator excluded. */
@@ -341,7 +418,7 @@ typedef struct
      * their own independent lifetime and invalidation contract.
      * NULL only for self or blank imports. */
     const script_package_exports *exports;
-} script_package_import;
+};
 typedef struct
 {
     const script_package_document *documents;
@@ -350,6 +427,8 @@ typedef struct
     const script_catalog *native; /* The only ambient source-visible names. */
     const script_package_import *imports;
     int import_count;
+    const struct script_specialization_request *requests;
+    int request_count;
 } script_package_options;
 
 typedef struct
@@ -357,7 +436,7 @@ typedef struct
     char *path, *key, *text;
 } script_source_document;
 
-typedef struct
+typedef struct script_specialization_request
 {
     uint64_t id, template_id;
     const char *owner;
@@ -377,6 +456,7 @@ typedef struct
      * package text retains only the first document for legacy field ownership. */
     script_source_document *documents;
     int document_count;
+    int package_document_count; /* Original inputs; imported definition sources follow. */
     int package_scope; /* Shared package declaration scope; -1 for legacy roots. */
     arena constants;
     script_program_kind kind;

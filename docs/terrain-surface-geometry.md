@@ -1,23 +1,8 @@
 # Destruction-linked surface geometry
 
-## Approved 3D follow-up, 2026-10-16
+## Scene3D rendering
 
-The user approved moving the bounded Voidweaver fidelity study onto scene3d
-while retaining authoritative 2D destruction. The current game `PLAN.md` records
-the ordered plan and supersedes this document's earlier HRC-only choice.
-Implement explicit orthographic camera/rays, revision-owned terrain mesh
-submission, opening-preserving GI proxies and bounded shadow-aware fog. Existing
-scene3d probe GI already evaluates spotlight receiver illumination and bounce;
-do not duplicate that transport in HRC for this checkpoint. HRC remains available
-as the earlier comparison. Derived geometry/proxies are not simulation state.
-
-Captures must now be native 1920x1080 or larger, with explicit bounded execution.
-Measure warmed frame cost and cut spikes separately; resolution alone is not a
-performance target or acceptance result. Preserve the staged dependency snapshot
-and existing unrelated work. No package installation or publication is authorized.
-
-The first follow-up slice is now implemented. `Camera.orthographic` is additive
-and defaults false. `scene3d_terrain` reuses revision-owned material meshes and
+`Camera.orthographic` defaults false. `scene3d_terrain` reuses revision-owned material meshes and
 builds indirect proxies from occupied collision rectangles, capped at 4096.
 Actual mesh triangles remain shadow casters when their bounds contain a light.
 `IndirectOccluder.enabled=false` suppresses a concave mesh's enclosing GI box
@@ -31,16 +16,7 @@ keeps reduced-resolution fog behind foreground silhouettes. The empty-visible-
 geometry path still prepares offscreen shadow casters. Fog does not inject a
 second copy of spotlight illumination into GI.
 
-Focused verification passed nine CPU cases / 202 assertions and two GPU cases.
-The independent OrthographicSurfaces fixture validates and runs four CPU frames.
-Voidweaver's new scene validates, compiles and captures native 1920x1080 Metal
-frames with collision/cut/reset intact. Performance varied substantially between
-warmed runs, and visual parity is not accepted. Detailed evidence and the
-remaining rear-GI/composition work are in the game's `docs/3d-cave-checkpoint.md`.
-The older HRC sections below document the preceding checkpoint, not the new
-scene3d implementation.
-
-## Cutaway recess, 2026-10-16
+## Cutaway recess
 
 A straight contour extrusion shows only camera-facing caps under a side-on
 orthographic camera, so cave interiors read as a flat wall. `MaterialSurface3D`
@@ -67,21 +43,15 @@ rectangles; the recess surface casts direct shadows but does not occlude probe
 GI. In HRC 2D views a recess draws over open cells without changing transport.
 `--material-surface-mesh` covers cut recession, open wide cuts, chunk seams and
 the halo requirement, and smoothing; `--scene3d-terrain` covers cache revision
-on option changes with opening-preserving proxies. Voidweaver's evidence is in
-its `docs/evidence/recess-cutaway`.
+on option changes with opening-preserving proxies.
 
 ## Scope and acceptance
-
-Add real shallow mesh surfaces to material masks and aimed surface lighting to
-HRC. Voidweaver's retained basalt image is the visual target. Keep it open during
-iteration and compare actual native captures. A functioning mesh or a passing
-physics check does not establish reference fidelity.
 
 The live material mask remains the source of truth before and after this change.
 Cuts, collision, transport coverage and mesh boundaries consume the same
 published revision. Generated mesh buffers are derived state, never a second
 editable terrain or checkpoint payload. Game-specific geology, textures,
-composition and lighting values remain authored in Voidweaver.
+composition and lighting values remain authored.
 
 ## Chosen route
 
@@ -179,15 +149,7 @@ sculpting, but do not establish bit-identical CPU/GPU shading or visual fidelity
 The generic `PlanarSurfaces` specimen now binds `SurfaceDestructible` to
 `SurfaceRelief`, whose Height is `PartPosition.x * 0.05` and whose Normal remains
 the generated mesh normal. The CPU selector has analytical plane/normal,
-cross-chunk, carved-hole, depth-envelope and atomic failure cases. The coordinated
-build now passes; the six CPU cases passed under the supervisor in 1.051 seconds.
-The three GPU cache cases passed in 1.832 seconds, including actual raster height
-once, parameter edits, image reload/filter changes, reuse and rejection. The
-18-case spotlight selector passed in 1.053 seconds. The generic fixture formats
-and runs four CPU frames with no behavior failures. Voidweaver's additional
-source/channel/geometry, 34-asset validation, compilation, native capture and
-collision/cut/reset evidence is recorded in its `docs/grey-rock-study.md`.
-These focused results do not constitute full-suite, Studio or fidelity acceptance.
+cross-chunk, carved-hole, depth-envelope and atomic failure cases.
 
 ## Verification
 
@@ -199,44 +161,3 @@ with bounded hidden GPU readbacks. Build products separately from tests.
 The spotlight selector also checks zero-density compatibility, forward/rear
 empty-space scattering, thin blockers, cut openings, front-surface clipping
 and a source behind an opaque slab at the same projected pixel.
-
-In Voidweaver verify actual ship collision/traversal/reset and capture matched
-640x360 ambient-on/off/breached frames under the existing preview budget.
-Retain the first pass for comparison. No full suite, Studio, browser/device or
-performance acceptance is implied. The inherited ParitySlope formatter hold
-remains until its owner repairs it; do not suppress it.
-
-## Dependency and coordination
-
-Isolated checkout: `.worktrees/voidweaver-rock-surface/chibi`, branch
-`codex/voidweaver-rock-surface-20261016`. Dependency snapshot tree
-`4346e824d18b769c5c74cb5c8e7bc42bee977caf` contains all tracked and untracked
-environment-authoring changes, including the authored absorption correction.
-The original candidate is unmodified. Coordinate integration with thread
-`01a14208-7219-7ef3-9f03-86aa1b3ec729`; no commits, merges or publication are
-requested in this pass.
-
-## Checked candidate, 2026-10-16
-
-The controller/compiler/player and focused test executable build successfully
-with Debug, sanitizers off and warnings enabled. Increment C files use
-clang-format 22. No source warnings were reported in the final build; existing
-duplicate-library linker warnings remain.
-
-The supervised selectors `--material-surface-mesh`, `--material-mesh-cache`
-and `--hrc-spot` pass (0.154, 1.110 and 2.906 seconds respectively, excluding
-their outer wrapper). The last selector executes 18 bounded 64x64 GPU cases.
-The non-basalt PlanarSurfaces fixture formats and executes four CPU frames.
-Voidweaver validates, compiles and has matched native Metal on/off/cut captures;
-its collision/traversal/reset batch retains the expected 712-cell breach.
-See the game's `docs/engine-surface-pass.md` for exact artifact identities,
-images and remaining visual/performance limits. Full native/render suites were not run; no Studio, browser or packaged SDK acceptance ran.
-
-Initial failures were resolved: Metal does not accept the translated numeric
-`mix` with a boolean vector; equivalent numeric boundary arithmetic compiles.
-The cache test initially mistook half-float negative zero for absorption;
-it now checks numeric zero and independently checks the CPU hole. Scattering
-visibility now tests both endpoint slabs, unlike direct surface rays.
-
-The current images remain far below the reference. Surface geometry and
-destruction linkage are implemented, not photorealistic basalt acceptance.

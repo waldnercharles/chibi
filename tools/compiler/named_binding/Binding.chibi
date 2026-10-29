@@ -87,6 +87,9 @@ pub TypeAt :: (types: Type[], ids: u64[], index: int) -> Value {
                        IDAt(ids, type.nominal_slot), IDAt(ids, type.parameter_slot));
 }
 pub Builtin :: (name: string) -> Value {
+    if (name == "char") {
+        return Value.Typed(6, 0, 0, binding.ID("type", "char"), 0);
+    }
     if (name == "Cancelled") {
         return Value.Typed(18, 0, 512, 0x63616e63656c6c65, 0);
     }

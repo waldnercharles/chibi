@@ -2,6 +2,7 @@
 
 #include "authoring/native_bindings.h"
 #include "backend.h"
+#include "compiler_fixture.h"
 #include "execution/definition.h"
 #include "package_core_source.h"
 #include "runtime/arrays_definition.h"
@@ -15,11 +16,16 @@
 #endif
 #include "runtime/text_definition.h"
 #include "support/array.h"
+#include "support/file_io.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/value_format.h"
 
 #include <assert.h>
+#include <cute_math.h>
+#include <cute_math3d.h>
 #include <stdatomic.h>
+#include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -257,7 +263,12 @@ static void cleanup()
     native_capabilities_free(table);
     table = NULL;
 }
-static bool prepare_text(behavior_backend backend, const char *source, int expected)
+static bool prepare_text_with_provider(
+    behavior_backend backend,
+    const char *source,
+    int expected,
+    const char *provider
+)
 {
     cleanup();
     native_definition_pack packs[] = {
@@ -281,11 +292,12 @@ static bool prepare_text(behavior_backend backend, const char *source, int expec
         { "facts/Facts.chibi", source, strlen(source) },
         { "facts/A.chibi", FIRST, strlen(FIRST) },
         { "Root.chibi", TOP, strlen(TOP) },
+        { "algorithms/Algorithms.chibi", provider, provider ? strlen(provider) : 0 },
     };
     source_package_collection collections[] = { { "core", "/sdk/core" } };
     source_package_snapshot_options options = { .project_root = "/project",
                                                 .files = files,
-                                                .file_count = 5,
+                                                .file_count = provider ? 6 : 5,
                                                 .collections = collections,
                                                 .collection_count = 1 };
     script_lower_bindings bindings = authoring_native_bindings(table);
@@ -324,6 +336,11 @@ static bool prepare_text(behavior_backend backend, const char *source, int expec
     tests = package_tests_find(packages);
     REQUIRE(acount(tests) == expected);
     return true;
+}
+
+static bool prepare_text(behavior_backend backend, const char *source, int expected)
+{
+    return prepare_text_with_provider(backend, source, expected, NULL);
 }
 
 static bool prepare(behavior_backend backend)
@@ -489,28 +506,165 @@ TEST_CASE(package_tests_keep_results_and_failures_in_discovery_order)
     return true;
 }
 
+/* These authored consumers validate values and independent ordering/multiset
+ * oracles. The shader-shaped Remap case proves CPU helper composition only. */
+TEST_CASE(package_tests_run_generic_algorithms_with_callable_arguments)
+{
+    static const char provider[] =
+        "package algorithms\n"
+        "pub Any :: (values: $T[], predicate: fn(value: T) -> bool) -> bool {\n"
+        "    for (value in values) { if (predicate(value)) { return true; } }\n"
+        "    return false;\n"
+        "}\n"
+        "pub Sorted :: (values: $T[], less: fn(a: T, b: T) -> bool) -> T[] {\n"
+        "    result := values;\n"
+        "    i := 1;\n"
+        "    while (i < length(result)) {\n"
+        "        j := i;\n"
+        "        while (j > 0 && less(result[j], result[j - 1])) {\n"
+        "            previous := result[j - 1];\n"
+        "            result[j - 1] = result[j];\n"
+        "            result[j] = previous;\n"
+        "            j -= 1;\n"
+        "        }\n"
+        "        i += 1;\n"
+        "    }\n"
+        "    return result;\n"
+        "}\n"
+        "pub Remap :: (sample: $T, transform: fn(value: T) -> T) -> T {\n"
+        "    return transform(sample);\n"
+        "}\n";
+    static const char source[] =
+        "package facts\n"
+        "import algorithms \"../algorithms\"\n"
+        "Less :: (a: int, b: int) -> bool { return a < b; }\n"
+        "Positive :: (value: int) -> bool { return value > 0; }\n"
+        "Goal :: (value: string) -> bool { return value == \"goal\"; }\n"
+        "Gain :: (value: number) -> number { return value * 2; }\n"
+        "CheckInput :: (values: int[]) {\n"
+        "    assert(length(values) == 6);\n"
+        "    assert(values[0] == 3 && values[1] == 1 && values[2] == 2);\n"
+        "    assert(values[3] == 1 && values[4] == -4 && values[5] == 0);\n"
+        "}\n"
+        "Occurrences :: (values: int[], wanted: int) -> int {\n"
+        "    count := 0;\n"
+        "    for (value in values) { if (value == wanted) { count += 1; } }\n"
+        "    return count;\n"
+        "}\n"
+        "CheckPermutation :: (before: int[], ordered: int[]) {\n"
+        "    assert(length(before) == length(ordered));\n"
+        "    for (value in before) {\n"
+        "        assert(Occurrences(before, value) == Occurrences(ordered, "
+        "value));\n"
+        "    }\n"
+        "}\n"
+        "CheckOrder :: (values: int[], descending: bool) {\n"
+        "    for (i in 1..<length(values)) {\n"
+        "        if (descending) { assert(values[i - 1] >= values[i]); }\n"
+        "        if (!descending) { assert(values[i - 1] <= values[i]); }\n"
+        "    }\n"
+        "}\n"
+        "@test\nNamedSort :: () {\n"
+        "    values: int[] = [3, 1, 2, 1, -4, 0];\n"
+        "    ordered := algorithms.Sorted(values, Less);\n"
+        "    CheckInput(values); CheckOrder(ordered, false);\n"
+        "    CheckPermutation(values, ordered);\n"
+        "}\n"
+        "@test\nInlineReverseSort :: () {\n"
+        "    values: int[] = [3, 1, 2, 1, -4, 0];\n"
+        "    ordered := algorithms.Sorted(values, (a: int, b: int) => a > b);\n"
+        "    CheckInput(values); CheckOrder(ordered, true);\n"
+        "    CheckPermutation(values, ordered);\n"
+        "}\n"
+        "@test\nSortBoundaries :: () {\n"
+        "    empty: int[] = []; single: int[] = [7]; duplicates: int[] = [2, "
+        "2, 2];\n"
+        "    empty_result := algorithms.Sorted(empty, Less);\n"
+        "    single_result := algorithms.Sorted(single, Less);\n"
+        "    duplicate_result := algorithms.Sorted(duplicates, Less);\n"
+        "    assert(length(empty_result) == 0 && length(empty) == 0);\n"
+        "    assert(length(single_result) == 1 && single_result[0] == 7 && "
+        "single[0] == 7);\n"
+        "    CheckPermutation(duplicates, duplicate_result);\n"
+        "    CheckOrder(duplicate_result, false);\n"
+        "}\n"
+        "@test\nPredicates :: () {\n"
+        "    values: int[] = [-2, 0, 3]; empty: int[] = [];\n"
+        "    assert(algorithms.Any(values, Positive));\n"
+        "    assert(!algorithms.Any(values, (value: int) => value > 99));\n"
+        "    assert(!algorithms.Any(empty, Positive));\n"
+        "    words: string[] = [\"other\", \"goal\"];\n"
+        "    assert(algorithms.Any(words, Goal));\n"
+        "}\n"
+        "@test\nShaderHelperCPU :: () {\n"
+        "    sample: number = 0.25;\n"
+        "    assert(algorithms.Remap(sample, Gain) == 0.5);\n"
+        "    assert(algorithms.Remap(sample, (value: number) => value * value) "
+        "== 0.0625);\n"
+        "}\n";
+    enum
+    {
+        CONSUMERS = 5
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare_text_with_provider(backends[b], source, CONSUMERS + 2, provider));
+        for (int i = 0; i < CONSUMERS; i++) {
+            REQUIRE(tests[i + 2].parallel);
+        }
+        for (int run = 0; run < 2; run++) {
+            package_test_result results[CONSUMERS];
+            reverse_executor executor = { 0 };
+            task_system tasks = { 2, &executor, enqueue_reverse, finish_reverse };
+            package_tests_run(tests + 2, CONSUMERS, backends[b], BUDGET, run ? &tasks : NULL, results);
+            for (int i = 0; i < CONSUMERS; i++) {
+                if (!results[i].passed) {
+                    fprintf(
+                        stderr,
+                        "callable consumer %s:%d:%d: %s\n",
+                        tests[i + 2].name,
+                        results[i].failure.line,
+                        results[i].failure.column,
+                        results[i].failure.message
+                    );
+                }
+                REQUIRE(results[i].passed);
+            }
+        }
+    }
+    return true;
+}
+
 TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
 {
-    const char
-        source[] = "package facts\nimport marks \"core:marks\"\n"
-                   "Draw :: () -> number { return rand(); }\n"
-                   "@test\nDirect :: () { assert(rand() >= 0); }\n"
-                   "@test\nIndirect :: () { assert(Draw() >= 0); }\n"
-                   "@test\nImported :: () { assert(marks.Draw() >= 0); }\n"
-                   "@test\nLogs :: () { print_string(\"quiet\"); }\n"
-                   "@test\nLocal :: () { values: int[] = [1]; values[0] = 2; "
-                   "values.append(3); assert(values[0] == 2); }\n"
-                   "Helper :: () -> bool { return opaque(); }\n"
-                   "@test\nUnknown :: () { assert(opaque()); }\n"
-                   "@test\nUnknownHelper :: () { assert(Helper()); }\n"
-                   "@test\nUnknownImport :: () { assert(marks.Opaque()); }\n"
-                   "Depth :: (n: int) -> int { if (n == 0) { return 0; } "
-                   "return Depth(n - 1) + 1; }\n"
-                   "@test\nRecursive :: () { assert(Depth(3) == 3); }\n"
-                   "Grow :: (values: ^(int[])) { values^.append(2); }\n"
-                   "@test\nThrough :: () { values: int[] = [1]; Grow(&values); "
-                   "assert(values[0] == 1); }\n";
-    REQUIRE(prepare_text(BEHAVIOR_BYTECODE, source, 12));
+    const char source
+        [] = "package facts\nimport marks \"core:marks\"\n"
+             "Draw :: () -> number { return rand(); }\n"
+             "@test\nDirect :: () { assert(rand() >= 0); }\n"
+             "@test\nIndirect :: () { assert(Draw() >= 0); }\n"
+             "@test\nImported :: () { assert(marks.Draw() >= 0); }\n"
+             "@test\nLogs :: () { print_string(\"quiet\"); }\n"
+             "@test\nLocal :: () { values: int[] = [1]; values[0] = 2; "
+             "values.append(3); assert(values[0] == 2); }\n"
+             "Helper :: () -> bool { return opaque(); }\n"
+             "@test\nUnknown :: () { assert(opaque()); }\n"
+             "@test\nUnknownHelper :: () { assert(Helper()); }\n"
+             "@test\nUnknownImport :: () { assert(marks.Opaque()); }\n"
+             "Depth :: (n: int) -> int { if (n == 0) { return 0; } "
+             "return Depth(n - 1) + 1; }\n"
+             "@test\nRecursive :: () { assert(Depth(3) == 3); }\n"
+             "Grow :: (values: ^(int[])) { values^.append(2); }\n"
+             "@test\nThrough :: () { values: int[] = [1]; Grow(&values); "
+             "assert(values[0] == 1); }\n"
+             "@test\nViewRead :: () { values: int[] = [1]; owner := &values; "
+             "selected := owner.view(0..<1); if selected { "
+             "assert(length(selected) == 1); } }\n"
+             "@test\nLocalMath :: () { v := vec3(1, 2, 3); "
+             "v.yx = vec2(7, 8); assert(v == vec3(8, 7, 3)); }\n"
+             "SetMath :: (v: ^vec3) { v.yx = vec2(7, 8); }\n"
+             "@test\nThroughMath :: () { v := vec3(1, 2, 3); "
+             "SetMath(&v); assert(v == vec3(8, 7, 3)); }\n";
+    REQUIRE(prepare_text(BEHAVIOR_BYTECODE, source, 15));
     REQUIRE(tests[0].parallel && tests[1].parallel);
     for (int i = 2; i < 6; i++) {
         REQUIRE(!tests[i].parallel);
@@ -522,6 +676,10 @@ TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports)
     REQUIRE(tests[10].parallel);
     /* Appending through a pointer writes storage outside the function. */
     REQUIRE(!tests[11].parallel);
+    /* Language-value kernels still read through an explicit view's pointer. */
+    REQUIRE(!tests[12].parallel);
+    /* Swizzles change local values, while a pointer reaches external storage. */
+    REQUIRE(tests[13].parallel && !tests[14].parallel);
     return true;
 }
 
@@ -737,16 +895,87 @@ TEST_CASE(package_tests_overlap_with_private_storage_and_exclusive_barriers)
 }
 #endif
 
+/* Keep assertions in the authored packages. This adapter only supplies the
+ * real source files, core collection and native sqrt boundary to both VMs.
+ * The configured source root is independent of ccache's relative __FILE__. */
+static_assert(sizeof(float) == 4);
+static_assert(sizeof(CF_V2) == 8 && alignof(CF_V2) == alignof(float));
+static_assert(sizeof(CF_V3) == 12 && alignof(CF_V3) == alignof(float));
+static_assert(sizeof(CF_V4) == 16 && alignof(CF_V4) == alignof(float));
+static_assert(sizeof(CF_Quat) == 16 && alignof(CF_Quat) == alignof(float));
+static_assert(
+    offsetof(CF_Quat, x) == 0 && offsetof(CF_Quat, y) == 4 &&
+    offsetof(CF_Quat, z) == 8 && offsetof(CF_Quat, w) == 12
+);
+TEST_CASE(package_tests_builtin_math_contracts)
+{
+    static const struct
+    {
+        const char *path, *source;
+    } parts[] = {
+        { "math_types/Types.chibi", "tools/compiler/math_types/Types.chibi" },
+        { "math_types/Functions.chibi", "tools/compiler/math_types/Functions.chibi" },
+        { "math_types/Tests.chibi", "test/compiler_math/math_types/Tests.chibi" },
+        { "math_constants/Values.chibi", "tools/compiler/math_constants/Values.chibi" },
+        { "math_constants/Tests.chibi", "test/compiler_math/math_constants/Tests.chibi" },
+        { "math_layout/Layout.chibi", "tools/compiler/math_layout/Layout.chibi" },
+        { "math_layout/Tests.chibi", "test/compiler_math/math_layout/Tests.chibi" },
+    };
+    enum
+    {
+        PARTS = sizeof parts / sizeof *parts
+    };
+    char *texts[PARTS] = { 0 };
+    char paths[PARTS][128];
+    source_package_input files[PARTS + 1];
+    for (int i = 0; i < PARTS; i++) {
+        char path[4096];
+        int length = snprintf(
+            path,
+            sizeof path,
+            "%s/%s",
+            CHIBI_SOURCE_ROOT,
+            parts[i].source
+        );
+        REQUIRE(length > 0 && length < (int)sizeof path);
+        texts[i] = file_read_text(path);
+        if (!texts[i]) {
+            for (int n = 0; n < i; n++) {
+                free(texts[n]);
+            }
+            REQUIRE(texts[i]);
+        }
+        snprintf(paths[i], sizeof paths[i], "/compiler/%s", parts[i].path);
+        files[i] = (source_package_input){ paths[i], texts[i], strlen(texts[i]) };
+    }
+    files[PARTS] = (source_package_input){ "/sdk/core/strings/Strings.chibi",
+                                           (const char *)CORE_STRINGS_SOURCE,
+                                           sizeof CORE_STRINGS_SOURCE - 1 };
+    compiler_fixture fixture = { 0 };
+    const native_definition_pack math[] = { CORE_DEFINITION_PACK,
+                                            NATIVE_MATH_DEFINITION_PACK };
+    bool valid = compiler_fixture_prepare_packs(&fixture, files, PARTS + 1, math, 2);
+    bool passed = valid && compiler_fixture_tests(&fixture);
+    compiler_fixture_free(&fixture);
+    for (int i = 0; i < PARTS; i++) {
+        free(texts[i]);
+    }
+    REQUIRE(valid && passed);
+    return true;
+}
+
 void test_language_package_tests()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_tests_find_the_project_tests_in_order);
     RUN_TEST_CASE(package_tests_report_where_each_failure_stopped);
     RUN_TEST_CASE(package_tests_keep_results_and_failures_in_discovery_order);
+    RUN_TEST_CASE(package_tests_run_generic_algorithms_with_callable_arguments);
     RUN_TEST_CASE(package_tests_infer_serial_effects_across_calls_and_imports);
     RUN_TEST_CASE(package_tests_distinguish_argument_values_from_external_reads);
     RUN_TEST_CASE(package_tests_keep_native_access_guards);
     RUN_TEST_CASE(package_tests_allocate_managed_pointers);
+    RUN_TEST_CASE(package_tests_builtin_math_contracts);
 #ifdef CHIBI_PACKAGE_TEST_POOL
     RUN_TEST_CASE(package_tests_overlap_with_private_storage_and_exclusive_barriers);
 #endif

@@ -395,18 +395,23 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     }
     int found = (int)av_get_int(version);
     /* Checked first: another version's fields may mean something else. */
-    if (found < CHIBI_PROJECT_OLDEST_VERSION || found > CHIBI_PROJECT_VERSION) {
+    if (found < CHIBI_PROJECT_OLDEST_VERSION) {
         av_doc_free(document);
         snprintf(
             error,
             error_size,
-            "Project version %d needs %s build; this build opens version %d: "
-            "%s",
+            "Project version %d is older than version %d, the oldest this "
+            "build upgrades: %s; upgrade it with an older Chibi SDK's "
+            "chibi_ctl --project-root <root> --migrate, then open it here",
             found,
-            found > CHIBI_PROJECT_VERSION ? "a newer" : "an older",
-            CHIBI_PROJECT_VERSION,
+            CHIBI_PROJECT_OLDEST_VERSION,
             path
         );
+        return -1;
+    }
+    if (found > CHIBI_PROJECT_VERSION) {
+        av_doc_free(document);
+        snprintf(error, error_size, "Project version %d needs a newer build; this build opens version %d: %s", found, CHIBI_PROJECT_VERSION, path);
         return -1;
     }
     av_value *name_value = av_obj_get(root, "name");

@@ -584,8 +584,20 @@ Example :: library {
 }
 ```
 
-Authored record fields currently support scalar values. Arrays, unions and
-nested records are not available as authored record fields.
+Authored record fields can hold scalars, managed pointers, other records and
+arrays of scalars, non-null pointers or records. Initialize aggregate fields
+explicitly, including empty arrays. Aggregate field defaults, maps, unions and
+arrays whose elements are themselves containers remain deferred.
+
+Assignment copies a record's values. Mutating a copied record's nested fields or
+array elements leaves the original unchanged. Pointer fields keep their target
+identity when copied, so both records observe writes through the same pointer.
+Replacing one record's pointer field affects only that record.
+
+Records may refer to later record declarations. Recursive inline records and
+recursive container fields are rejected; recursive links through pointer fields
+remain supported. Aggregate records currently execute in the VM backends;
+unsupported LLVM native lowering reports its rejection explicitly.
 
 A tagged union stores one alternative at a time. An alternative can have a
 payload.

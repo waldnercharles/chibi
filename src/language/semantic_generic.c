@@ -763,6 +763,7 @@ static bool construct_record(
     }
     script_catalog_field *fields = NULL;
     type_field *shape = NULL;
+    bool deferred_layout = false;
     int old_scope = a->scope, old_function = a->function;
     a->scope = definition.scope;
     a->function = -1;
@@ -780,6 +781,18 @@ static bool construct_record(
         free(field_name);
         type_field layout;
         valid &= script_analyzer_record_field(a, member, type, owned_name, &layout);
+        const script_catalog_type *child = script_catalog_type_by_id(a->catalog, type.nominal);
+        if (type.storage == PIN_STRUCT && child && child->authored_record) {
+            if (!child->size || !child->layout) {
+                /* A specialization in a field can precede its child's
+                 * declaration. Resolve it after all fields are published. */
+                deferred_layout = true;
+            } else {
+                const pin_record *record = script_analyzer_record_layout_for_type(a, type, member);
+                layout.layout = record ? &record->type : NULL;
+                valid &= record != NULL;
+            }
+        }
         apush(
             fields,
             ((script_catalog_field){ .id = script_catalog_id("record-field", owned_name),
@@ -813,12 +826,12 @@ static bool construct_record(
             }
         }
     }
-    const pin_record *record = valid
+    const pin_record *record = valid && !deferred_layout
                                  ? pin_record_create(&a->out->constants, identity, id, shape, acount(shape))
                                  : NULL;
     a->scope = old_scope;
     a->function = old_function;
-    if (!record) {
+    if (!valid || (!record && !deferred_layout)) {
         script_analyzer_diagnostic(a, call, "Constructed record requires supported fixed-layout fields");
         free_bindings(bindings);
         free(identity);
@@ -830,23 +843,22 @@ static bool construct_record(
     int count = acount(fields);
     script_catalog_field *owned_fields = arena_alloc(&a->out->constants, (size_t)count * sizeof *owned_fields);
     for (int i = 0; i < count; i++) {
-        fields[i].offset = record->type.fields[i].offset;
+        fields[i].offset = record ? record->type.fields[i].offset : 0;
         owned_fields[i] = fields[i];
     }
     script_type type = { .storage = PIN_STRUCT, .nominal = id };
     script_analyzer_publish_type(
         a,
-        (script_catalog_type){
-            .id = id,
-            .name = own(a, identity),
-            .source_name = own(a, signature),
-            .type = type,
-            .fields = owned_fields,
-            .field_count = count,
-            .size = record->type.size,
-            .layout = record->layout,
-            .authored_record = true,
-            .error = script_analyzer_error_attribute(a, definition.node) }
+        (script_catalog_type){ .id = id,
+                               .name = own(a, identity),
+                               .source_name = own(a, signature),
+                               .type = type,
+                               .fields = owned_fields,
+                               .field_count = count,
+                               .size = record ? record->type.size : 0,
+                               .layout = record ? record->layout : 0,
+                               .authored_record = true,
+                               .error = script_analyzer_error_attribute(a, definition.node) }
     );
     apush(
         a->instances,

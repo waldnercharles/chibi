@@ -1,0 +1,146 @@
+package runtime_sdk_json
+
+import sdk "graph:sdk"
+import strings "core:strings"
+
+@test
+CanonicalManifest :: () {
+    pretty := " {\n \"products\": { \"chibi-player\": \"bin/chibi-player\" },\n \"build_id\": \"old\", \"files\": {}, \"manifest_format\": 1, \"kind\": \"runtime\"\n}\n";
+    expected := "{\"build_id\":\"old\",\"files\":{},\"kind\":\"runtime\",\"manifest_format\":1,\"products\":{\"chibi-player\":\"bin/chibi-player\"}}";
+    assert(sdk.JsonCanonical(pretty) == expected);
+    assert(sdk.JsonGet(pretty, "products") == "{\"chibi-player\":\"bin/chibi-player\"}");
+    assert(sdk.JsonGet(pretty, "missing") == "");
+    assert(sdk.JsonWithout(pretty, "build_id") == "{\"files\":{},\"kind\":\"runtime\",\"manifest_format\":1,\"products\":{\"chibi-player\":\"bin/chibi-player\"}}");
+    assert(sdk.JsonWithout(pretty, "missing") == expected);
+    keys := sdk.JsonKeys(pretty);
+    assert(length(keys) == 5 && keys[0] == "build_id" && keys[4] == "products");
+    assert(sdk.JsonObject(["z", "a"], [" [ true, null, -0 ] ", "\"value\""]) == "{\"a\":\"value\",\"z\":[true,null,0]}");
+    assert(sdk.JsonArray([" 2 ", "{\"b\":false,\"a\":null}"]) == "[2,{\"a\":null,\"b\":false}]");
+    items := sdk.JsonItems(" [ -0, {\"z\":2, \"a\":1}, \"\\u00e9\" ] ");
+    assert(length(items) == 3 && items[0] == "0" && items[1] == "{\"a\":1,\"z\":2}" && items[2] == "\"\\u00e9\"");
+    assert(sdk.JsonCanonical(sdk.JsonWithout(pretty, "build_id")) == sdk.JsonWithout(pretty, "build_id"));
+}
+
+@test
+CanonicalUnicode :: () {
+    assert(sdk.JsonQuote("é😀\"\\/\n\t\r") == "\"\\u00e9\\ud83d\\ude00\\\"\\\\/\\n\\t\\r\"");
+    assert(sdk.JsonCanonical("\"\\uD83D\\uDE00\\/\\u0061\"") == "\"\\ud83d\\ude00/a\"");
+    assert(sdk.JsonText("\"\\ud83d\\ude00\\u00e9\"") == "😀é");
+    assert(sdk.JsonCanonical("{\"𐀀\":1,\"\":2,\"é\":3,\"a\":4}") == "{\"a\":4,\"\\u00e9\":3,\"\\ue000\":2,\"\\ud800\\udc00\":1}");
+    nul := sdk.JsonText("\"a\\u0000b\"");
+    assert(strings.ByteLength(nul) == 3 && strings.ByteAt(nul, 1) == 0);
+    assert(sdk.JsonQuote(nul) == "\"a\\u0000b\"");
+    assert(sdk.JsonQuote(format_text("{:c}", int(127))) == "\"\\u007f\"");
+    controls := format_text("{:c}{:c}{:c}", int(8), int(12), int(31));
+    assert(sdk.JsonQuote(controls) == "\"\\b\\f\\u001f\"");
+    assert(sdk.JsonCanonical("{\"\\u0061\":1,\"a\":2}") == "");
+    assert(sdk.JsonCanonical("{\"é\":1,\"\\u00e9\":2}") == "");
+}
+
+@test
+CanonicalRejectsMalformed :: () {
+    invalid := ["", " ", "+1", "01", "-01", "-", "1.0", "1e2", "NaN", "Infinity", "true false",
+                "9223372036854775808", "-9223372036854775809", "[1,]", "[,1]", "[1 2]", "{\"a\":1,}",
+                "{\"a\":1 \"b\":2}", "{\"a\"}", "{1:2}", "{\"a\":1,\"a\":2}", "[{\"a\":1,\"a\":2}]",
+                "\"unterminated", "\"\\q\"", "\"\\u12x4\"", "\"\\u123\"", "\"\\ud800\"", "\"\\udc00\"",
+                "\"\\ud800x\"", "\"\\ud800\\u0041\"", "\"\\ud800\\ud800\"", "\"raw\nline\"", "\"a\"suffix"];
+    for (text in invalid) {
+        assert(sdk.JsonCanonical(text) == "");
+    }
+    invalid_utf8 := [format_text("{:c}", int(128)), format_text("{:c}{:c}", int(192), int(128)),
+                     format_text("{:c}{:c}{:c}", int(224), int(128), int(128)), format_text("{:c}{:c}{:c}", int(237), int(160), int(128)),
+                     format_text("{:c}{:c}{:c}{:c}", int(244), int(144), int(128), int(128)), format_text("{:c}{:c}", int(226), int(130))];
+    for (text in invalid_utf8) {
+        assert(sdk.JsonQuote(text) == "");
+        assert(sdk.JsonCanonical(format_text("\"{}\"", text)) == "");
+    }
+    assert(sdk.JsonCanonical("-0") == "0");
+    assert(sdk.JsonCanonical("9223372036854775807") == "9223372036854775807");
+    assert(sdk.JsonCanonical("-9223372036854775808") == "-9223372036854775808");
+    assert(sdk.JsonObject(["same", "same"], ["1", "2"]) == "");
+    assert(sdk.JsonObject(["missing"], []) == "");
+    assert(sdk.JsonObject(["invalid"], ["1.2"]) == "");
+    assert(sdk.JsonObject([format_text("{:c}", int(128))], ["1"]) == "");
+    assert(sdk.JsonArray(["false", "["]) == "");
+    assert(sdk.JsonGet("[]", "a") == "" && length(sdk.JsonKeys("[]")) == 0);
+    assert(length(sdk.JsonItems("{}")) == 0 && sdk.JsonWithout("[]", "a") == "");
+    assert(sdk.JsonText("true") == "" && sdk.JsonText("\"\"") == "");
+}
+
+@test
+CanonicalFields :: () {
+    fields := sdk.JsonFields(" {\"\\u00e9\": {\"z\":-0,\"a\":[true,\"😀\"]}, \"\\u0061\":null, \"😀\":\"\\u0000\"} ");
+    assert(length(fields) == 3);
+    assert(fields[0].key == "a" && fields[0].value == "null");
+    assert(fields[1].key == "é" && fields[1].value == "{\"a\":[true,\"\\ud83d\\ude00\"],\"z\":0}");
+    assert(fields[2].key == "😀" && fields[2].value == "\"\\u0000\"");
+    assert(length(sdk.JsonFields("{}")) == 0 && length(sdk.JsonFields("[]")) == 0);
+    for (invalid in ["", "{", "{\"a\"}", "{\"a\":}", "{\"a\":1,}", "{\"a\":1}x", "{\"a\":1,\"\\u0061\":2}", "{\"a\":{\"b\":1,\"b\":2}}", "{\"a\":1.0}"]) {
+        assert(length(sdk.JsonFields(invalid)) == 0);
+    }
+}
+
+@test
+CanonicalDepth :: () {
+    text := "0";
+    for (index in 0..<127) {
+        text = format_text("[{}]", text);
+    }
+    assert(sdk.JsonCanonical(text) == text);
+    assert(sdk.JsonCanonical(format_text("[{}]", text)) == "");
+    assert(sdk.JsonArray([text]) == "");
+    assert(sdk.JsonObject(["deep"], [text]) == "");
+    assert(length(sdk.JsonFields(format_text("{{\"deep\":{}}}", text))) == 0);
+}
+
+// Expected bytes come from Python json.dumps(sort_keys=True,
+// separators=(',', ':'), ensure_ascii=True) over the decoded input.
+@test
+PythonVectors :: () {
+    inputs := [
+        " {\n \"b\" : [1, 2,{\"z\":null,\"a\":true}] , \"a\":\"x\" }\n",
+        "{\"k\":\"café 雪 😀 \\u007f \\u0001 \\\" \\\\ \\/ \\b\\f\\n\\r\\t\"}",
+        "{\"é\":1,\"e\":2,\"😀\":3,\"￿\":4}",
+        "[-0, 0, -1, 9223372036854775807, -9223372036854775808]",
+        "\"é😀\\u007f\"",
+        "{}",
+        "[]",
+        "null",
+        "true",
+        "false",
+        "[[[[]]], {\"a\":{\"b\":{\"c\":[]}}}]",
+        "{\"a\":1,\"A\":2,\"_\":3,\"0\":4}",
+        "  [ 1 , \"two\" , [ 3 ] ]  "
+    ];
+    expected := [
+        "{\"a\":\"x\",\"b\":[1,2,{\"a\":true,\"z\":null}]}",
+        "{\"k\":\"caf\\u00e9 \\u96ea \\ud83d\\ude00 \\u007f \\u0001 \\\" \\\\ / \\b\\f\\n\\r\\t\"}",
+        "{\"e\":2,\"\\u00e9\":1,\"\\uffff\":4,\"\\ud83d\\ude00\":3}",
+        "[0,0,-1,9223372036854775807,-9223372036854775808]",
+        "\"\\u00e9\\ud83d\\ude00\\u007f\"",
+        "{}",
+        "[]",
+        "null",
+        "true",
+        "false",
+        "[[[[]]],{\"a\":{\"b\":{\"c\":[]}}}]",
+        "{\"0\":4,\"A\":2,\"_\":3,\"a\":1}",
+        "[1,\"two\",[3]]"
+    ];
+    for (index in 0..<length(inputs)) {
+        assert(sdk.JsonCanonical(inputs[index]) == expected[index]);
+    }
+}
+
+// The existing build host runs this entry. The native tools dispatcher can
+// call the same cases.
+Build :: () -> int {
+    CanonicalManifest();
+    CanonicalUnicode();
+    CanonicalRejectsMalformed();
+    CanonicalFields();
+    CanonicalDepth();
+    PythonVectors();
+    build.report("sdk-json: authored cases and Python vectors passed");
+    return 0;
+}

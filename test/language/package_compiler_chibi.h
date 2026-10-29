@@ -38,6 +38,7 @@ void test_language_package_compiler_chibi_actions();
 void test_language_package_compiler_chibi_behaviors_rest();
 void test_language_package_compiler_chibi_queries();
 void test_language_package_compiler_chibi_sharing();
+void test_language_package_compiler_chibi_records();
 void test_language_package_compiler_chibi_debug_free();
 void test_language_package_compiler_chibi_scalar();
 void test_language_package_compiler_chibi_native();

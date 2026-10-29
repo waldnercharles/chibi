@@ -1,6 +1,7 @@
 #include "language/nominal_binding.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "types/record.h"
 
 #include <stdio.h>
@@ -12,13 +13,15 @@ bool script_analyzer_record_field(analyzer *a, TSNode node, script_type type, co
     const script_catalog_type *nominal = script_catalog_type_by_id(a->catalog, type.nominal);
     *shape = (type_field){ .name = name,
                            .type = type.storage,
-                           .type_name = nominal ? nominal->name : NULL };
+                           .type_name = nominal ? nominal->name : NULL,
+                           .container = type.container };
     bool pointer = type.storage == PIN_POINTER &&
                    type.container == PIN_CONTAINER_SINGLE && !type.collection;
-    if (type.container != PIN_CONTAINER_SINGLE || type.collection ||
+    if ((type.container != PIN_CONTAINER_SINGLE && type.container != PIN_CONTAINER_ARRAY) ||
+        type.collection || type.storage == PIN_UNION ||
         (type.flags & ~(SCRIPT_TYPE_LITERAL | SCRIPT_TYPE_UNTYPED |
                         (pointer ? SCRIPT_TYPE_OPTIONAL : 0)))) {
-        script_analyzer_diagnostic(a, node, "Record fields require concrete nonoptional value layouts; collections and references are not supported");
+        script_analyzer_diagnostic(a, node, "Record fields require a concrete scalar, record, pointer or array type");
         return false;
     }
     return true; /* pin_record_create validates scalar/native nested physical layouts. */
@@ -128,7 +131,6 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
         }
         script_catalog_type definition = *found;
         script_catalog_field *fields = NULL;
-        type_field *shape = NULL;
         TSNode members = script_analyzer_field(node, "body");
         bool valid = true;
         for (uint32_t j = 0; j < script_analyzer_named_count(members); j++) {
@@ -171,6 +173,13 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
                                                                   ? pointer->name
                                                                   : NULL };
             } else if (field.has_default) {
+                if (field.type.container != PIN_CONTAINER_SINGLE ||
+                    field.type.storage == PIN_STRUCT) {
+                    script_analyzer_diagnostic(a, value, "Aggregate record fields require explicit initialization at construction");
+                    valid = false;
+                    apush(fields, field);
+                    continue;
+                }
                 int expression = script_analyzer_expression(a, value, field.type);
                 script_analyzer_require(a, value, field.type, script_analyzer_expr_type(a, expression));
                 const char *error = script_analyzer_scalar_constant(
@@ -188,17 +197,8 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
                 }
             }
             apush(fields, field);
-            apush(shape, layout);
         }
-        const pin_record *record = valid ? pin_record_create(
-                                               &a->out->constants,
-                                               definition.name,
-                                               definition.id,
-                                               shape,
-                                               acount(shape)
-                                           )
-                                         : NULL;
-        if (valid && !record) {
+        if (valid && !acount(fields)) {
             script_analyzer_diagnostic(a, node, "A record requires at least one valid field");
         }
         definition.field_count = acount(fields);
@@ -208,19 +208,136 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
                 (size_t)definition.field_count * sizeof *copy
             );
             memcpy(copy, fields, (size_t)definition.field_count * sizeof *copy);
-            if (record) {
-                for (int j = 0; j < definition.field_count; j++) {
-                    copy[j].offset = record->type.fields[j].offset;
-                }
-            }
             definition.fields = copy;
         }
-        if (record) {
-            definition.size = record->type.size;
-            definition.layout = record->layout;
-        }
+        definition.size = 0;
+        definition.layout = 0;
         script_analyzer_replace_type(a, definition);
-        afree(shape);
         afree(fields);
     }
+}
+
+/* Resolve after every document has published its fields. Array element edges
+ * participate too: recursive containers remain outside the language contract. */
+static const pin_record *record_layout(
+    analyzer *a,
+    int index,
+    unsigned char *states,
+    const pin_record **records,
+    TSNode site,
+    int depth
+)
+{
+    if (states[index] == 2) {
+        return records[index];
+    }
+    script_catalog_type definition = a->catalog->types[index];
+    if (states[index] == 1 || depth >= TYPE_MAX_NESTING) {
+        script_analyzer_diagnostic(
+            a,
+            site,
+            "Record '%s' has a recursive or too deeply nested value layout; "
+            "use a pointer for recursive links",
+            definition.source_name
+        );
+        return NULL;
+    }
+    if (states[index] == 3 || !definition.field_count) {
+        return NULL;
+    }
+    states[index] = 1;
+    type_field *shape = NULL;
+    bool valid = true;
+    for (int i = 0; i < definition.field_count; i++) {
+        const script_catalog_field *field = &definition.fields[i];
+        const script_catalog_type
+            *child = script_catalog_type_by_id(a->catalog, field->type.nominal);
+        type_field layout = { .name = field->name,
+                              .type = field->type.storage,
+                              .container = field->type.container,
+                              .type_name = child ? child->name : NULL };
+        if (field->type.storage == PIN_STRUCT && child && child->authored_record) {
+            const pin_record *nested = record_layout(
+                a,
+                (int)(child - a->catalog->types),
+                states,
+                records,
+                site,
+                depth + 1
+            );
+            if (!nested) {
+                valid = false;
+                break;
+            }
+            layout.layout = &nested->type;
+        }
+        apush(shape, layout);
+    }
+    const pin_record *record = valid ? pin_record_create(
+                                           &a->out->constants,
+                                           definition.name,
+                                           definition.id,
+                                           shape,
+                                           acount(shape)
+                                       )
+                                     : NULL;
+    afree(shape);
+    states[index] = record ? 2 : 3;
+    records[index] = record;
+    if (!record) {
+        if (valid) {
+            script_analyzer_diagnostic(
+                a,
+                site,
+                "Record '%s' has an unsupported field layout or exceeds the "
+                "metadata budget",
+                definition.source_name
+            );
+        }
+        return NULL;
+    }
+    script_catalog_field *fields = arena_alloc(
+        &a->out->constants,
+        (size_t)definition.field_count * sizeof *fields
+    );
+    memcpy(fields, definition.fields, (size_t)definition.field_count * sizeof *fields);
+    for (int i = 0; i < definition.field_count; i++) {
+        fields[i].offset = record->type.fields[i].offset;
+    }
+    definition.fields = fields;
+    definition.size = record->type.size;
+    definition.layout = record->layout;
+    script_analyzer_replace_type(a, definition);
+    return record;
+}
+
+void script_analyzer_record_layouts(analyzer *a, TSNode site)
+{
+    int count = a->catalog->type_count;
+    unsigned char *states = xcalloc((size_t)count, sizeof *states);
+    const pin_record **records = xcalloc((size_t)count, sizeof *records);
+    for (int i = 0; i < count; i++) {
+        const script_catalog_type *type = &a->catalog->types[i];
+        if (type->authored_record && type->field_count) {
+            record_layout(a, i, states, records, site, 0);
+        }
+    }
+    free(records);
+    free(states);
+}
+
+const pin_record *script_analyzer_record_layout_for_type(analyzer *a, script_type type, TSNode site)
+{
+    const script_catalog_type *definition = script_catalog_type_by_id(a->catalog, type.nominal);
+    if (!definition || !definition->authored_record) {
+        return NULL;
+    }
+    int index = (int)(definition - a->catalog->types);
+    int count = a->catalog->type_count;
+    unsigned char *states = xcalloc((size_t)count, sizeof *states);
+    const pin_record **records = xcalloc((size_t)count, sizeof *records);
+    const pin_record *record = record_layout(a, index, states, records, site, 0);
+    free(records);
+    free(states);
+    return record;
 }

@@ -1,6 +1,7 @@
 #define PICO_UNIT_IMPLEMENTATION
 #include "bounded_compiler_chibi.h"
 #include "compiler_fixture.h"
+#include "compositional_records.h"
 #include "effect_analysis_chibi.h"
 #include "package_compiler_chibi.h"
 #include "prepared_writer_chibi.h"
@@ -51,13 +52,10 @@ void test_language_symbol_references();
 void test_language_program();
 void test_language_program_session();
 void test_language_native_char_results();
-void test_language_migration34();
-void test_language_migration34_generic_repro();
 void test_language_retention();
 void test_language_capture();
 void test_language_query_program();
 void test_language_query_values();
-void test_language_query_migration();
 void test_language_query_boundary();
 void test_language_incremental();
 void test_language_operations();
@@ -180,6 +178,8 @@ int main(int argc, char **argv)
     bool outliner_projection = argc == 2 && !strcmp(argv[1], "--outliner-projection");
     bool row_array = argc == 2 && !strcmp(argv[1], "--row-array");
     bool record_runtime = argc == 2 && !strcmp(argv[1], "--record-runtime");
+    bool compositional_records = argc == 2 &&
+                                 !strcmp(argv[1], "--compositional-records");
     bool record_semantic = argc == 2 && !strcmp(argv[1], "--record-semantic");
     bool record_compatibility = argc == 2 &&
                                 !strcmp(argv[1], "--record-compatibility");
@@ -199,15 +199,11 @@ int main(int argc, char **argv)
     bool runtime_attribution_benchmark = argc == 2 &&
                                          !strcmp(argv[1], "--runtime-attribution-benchmark");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
-    bool migration34 = argc == 2 && !strcmp(argv[1], "--migration34");
-    bool migration34_generic_repro = argc == 2 &&
-                                     !strcmp(argv[1], "--migration34-generic-repro");
     bool native_char_results = argc == 2 && !strcmp(argv[1], "--native-char-results");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool query_values = argc == 2 && !strcmp(argv[1], "--query-values");
-    bool query_migration = argc == 2 && !strcmp(argv[1], "--query-migration");
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
     bool operations = argc == 2 && !strcmp(argv[1], "--operations");
     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
@@ -357,16 +353,16 @@ int main(int argc, char **argv)
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !compiler_artifact && !record_producer &&
          !execution && !execution_scope && !semantic && !inferred_arrays &&
-         !inferred_array_repro && !root_state && !benchmark && !activation_benchmark &&
-         !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
-         !record_publication && !record_publication_repro && !record_values &&
-         !record_document && !record_state && !record_services &&
-         !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !outliner_projection && !row_array && !record_runtime && !runtime_attribution &&
+         !inferred_array_repro && !root_state && !benchmark &&
+         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
+         !incremental_benchmark && !record_publication && !record_publication_repro &&
+         !record_values && !record_document && !record_state &&
+         !record_services && !record_compatibility && !record_semantic &&
+         !record_prepared_runtime && !outliner_projection && !row_array &&
+         !record_runtime && !compositional_records && !runtime_attribution &&
          !runtime_attribution_benchmark && !query_binding_benchmark &&
-         !scalar_read_benchmark && !packed_benchmark && !wasm && !migration34 &&
-         !migration34_generic_repro && !native_char_results && !program &&
-         !program_session && !query_program && !query_values && !query_migration &&
+         !scalar_read_benchmark && !packed_benchmark && !wasm && !native_char_results &&
+         !program && !program_session && !query_program && !query_values &&
          !incremental && !operations && !modules && !native_calls && !ranges &&
          !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
          !integer_shift_counts && !integer_shift_counts_authored && !package_graph &&
@@ -407,12 +403,12 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "
             "--execution | "
-            "--execution-scope | --semantic "
+            "--execution-scope | --semantic | --compositional-records "
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --program-session | "
             "--native-char-results | "
             "--query-program | --query-values | "
-            "--query-migration | --incremental | "
+            "--incremental | "
             "--operations | "
             "--modules | --native-calls | "
             "--ranges | --numeric-exact-core | --integer-semantics | "
@@ -481,7 +477,6 @@ int main(int argc, char **argv)
             "--scalar-read-benchmark | --packed-benchmark | --record-values | "
             "--record-semantic | --record-document | --record-services | "
             "--record-compatibility | --row-array | "
-            "--migration34 | --migration34-generic-repro | "
             "--outliner-projection | --record-publication | "
             "--record-publication-repro | "
             "--format [--corpus manifest] | --compiler-artifact-write "
@@ -519,6 +514,8 @@ int main(int argc, char **argv)
         test_language_record_prepared_runtime();
     } else if (record_runtime) {
         test_language_record_runtime();
+    } else if (compositional_records) {
+        test_language_compositional_records();
     } else if (record_semantic) {
         test_language_record_semantic();
     } else if (record_state) {
@@ -602,11 +599,8 @@ int main(int argc, char **argv)
         test_language_headless();
     } else if (query_values) {
         test_language_query_values();
-    } else if (query_migration) {
-        test_language_query_migration();
     } else if (query_program) {
         test_language_query_values();
-        test_language_query_migration();
         test_language_query_program();
         test_language_query_boundary();
         test_language_maps();
@@ -779,11 +773,6 @@ int main(int argc, char **argv)
         test_language_component_write_ir();
     } else if (scalarize) {
         test_language_scalarize();
-    } else if (migration34) {
-        test_language_migration34();
-        test_language_migration34_generic_repro();
-    } else if (migration34_generic_repro) {
-        test_language_migration34_generic_repro();
     } else if (native_char_results) {
         test_language_native_char_results();
     } else if (program) {

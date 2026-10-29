@@ -2087,3 +2087,51 @@ assertions in 3.1s and `language-signature-reader-chibi` 4 cases / 128,443
 assertions in 6.6s on macOS.
 It does not implement header composition, semantic phases, exports, lowering,
 artifact output or `Checked`, and makes no M5/self-hosting completion claim.
+
+## Runtime SDK construction and installation
+
+Summary: Build the native runtime SDK through the authored graph and install it through Chibi. Preserve installed consumer contracts and generate CMake import files only as interoperability metadata.
+
+### Context
+
+The isolated checkpoint starts from reflection PR #814 at `3cef6c2a`, based on accepted `79743c56`. Published #814/#818 remain frozen. Existing metadata-only WIP reproduced 71 public exports, 10 vendor exports, 293 owned headers and 632 resource/vendor files on macOS; its placeholder archives do not establish a usable SDK.
+
+`tools/toolchain/Graph.chibi` and `tools/graph/engine` already construct the runtime archives, generated reflection, fonts, headers and player. `sdk/CMakeLists.txt` and `tools/package_sdk.py` currently own independent SDK construction, installation, compiled provenance, package manifests and publication. Public CLI and integer migration work have separate owners.
+
+### System impact
+
+- Graph targets and their source/header ownership stay authoritative for construction.
+- `tools/graph/sdk` describes the installed runtime surface, vendor roles, resources and consumer metadata. Vendor-only interface exports do not become build targets.
+- A runtime-specific graph entry selects the graph-owned runtime closure and the standalone player explicitly; it must never fall through to the default all-targets build.
+- Installation reserves a sibling stage, verifies regular inputs and their provenance, writes relocatable metadata and package identities, rechecks inputs, then publishes. Fresh publication is exclusive; managed replacement uses two exclusive moves with rollback and retains recovery evidence if restoration fails. It is not an atomic exchange.
+- Downstream player packaging must accept the resulting existing runtime package contract without weakening its checks.
+
+### Preparation and dependencies
+
+1. Bring the previously validated `Contracts.chibi` and `CMake.chibi` into the SDK graph collection; canonicalize and review them.
+2. Add the runtime construction entry and strict options, reuse the existing profile/build lifecycle, and produce a commands-only selection proof without compiling SDK products.
+3. Implement Chibi-owned installation, canonical JSON identities and graph compile/link provenance using the existing file/process capabilities. Keep construction records separate from installed consumer metadata.
+4. Switch the supported runtime Make caller only after installer and package/consumer proof are complete. Remove that caller's CMake configure/build/install responsibility. Retain full SDK, Windows/web and installed consumer interoperability separately until covered.
+5. Coordinate the first real runtime SDK build after #801's isolated compiler writer/recovery candidate review. No competing heavy producer starts during source preparation.
+
+### Files
+
+- `tools/graph/sdk/Contracts.chibi`, `CMake.chibi`: runtime installed surface and generated compatibility files.
+- `tools/toolchain/Graph.chibi`: explicit runtime construction entry using the existing build lifecycle.
+- `tools/toolchain/RuntimeSDK.chibi` and focused SDK modules as needed: installation and package provenance.
+- `Makefile`: supported runtime caller cutover and removal of its construction/configuration/install commands.
+- `test/tools`: dispatcher-owned boundary checks; authored fixtures for expressible selection, metadata and installation behavior.
+
+### Verification
+
+Before the real producer slot: exact target selection, no compiler/parser/asset-compiler closure, commands-only dependency/flag mapping, invalid options before writes, metadata parity and canonical JSON vectors including UTF-8, installer path/symlink/overlap/failure boundaries with small fixtures. Reuse one dispatcher and compatible read-only host.
+
+At the coordinated producer slot: build actual runtime archives/player, verify graph records against inputs and installed bytes, package through the new route, configure/link C and C++ consumers outside the source tree, execute a source-free player, relocate the SDK, validate package/player identity with unchanged consumers, test cache reuse and transactional replacement/failure. Choose broader checks from the final diff and required contracts; report elapsed times and unrun platforms explicitly.
+
+### Deletion gates
+
+The supported `runtime-sdk-build`/`package-runtime-sdk` route must no longer configure/build/install `sdk/` through CMake or parse a CMake cache for its identity. Generated `lib/cmake/Chibi/*.cmake` remain for installed consumers. Shared `sdk/CMakeLists.txt`, full-SDK/web/Windows routes and Python player consumers cannot be deleted while they retain active callers. Document exact remaining callers after the cutover.
+
+### Status
+
+Source preparation is in progress on accepted `907b1fe0`. Existing WIP metadata is now in graph:sdk; construction entry/strict options, canonical JSON codec, graph evidence and staged installer are being prepared in parallel. Only commands-only and small codec/record/install fixtures may execute while the recovery archive owns the heavy IO slot. Actual SDK construction, installation acceptance and the caller cutover remain unproved; no new SDK, compiler seed or public CLI has been produced.

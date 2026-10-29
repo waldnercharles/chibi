@@ -4,6 +4,8 @@
 #include "authoring/source_collection.h"
 #include "backend.h"
 #include "compiler_fixture.h"
+#include "compositional_records.h"
+#include "compositional_records_source.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
@@ -20570,5 +20572,110 @@ void test_language_package_compiler_chibi_native_arguments()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(native_arguments_authored_contract);
+    pu_clear_setup();
+}
+
+TEST_CASE(package_compiler_compositional_records)
+{
+    REQUIRE(prepare());
+    /* The sample host names its root package facts. Change only the package
+     * declaration so both stages execute the authored fixture's assertions. */
+    const char *body = strchr(COMPOSITIONAL_RECORDS_SOURCE, '\n');
+    REQUIRE(body);
+    char source[sizeof COMPOSITIONAL_RECORDS_SOURCE + 16];
+    int used = snprintf(source, sizeof source, "package facts\n%s", body + 1);
+    REQUIRE(used > 0 && (size_t)used < sizeof source);
+    const sample s = { .name = "compositional records", .source = source, .game = true };
+    source_package_input inputs[SAMPLE_INPUTS];
+    int count = sample_inputs(&s, inputs);
+    const sample_call call = { .function = "Main", .arguments = "[]", .expected = "[0]" };
+    for (int b = 0; b < 2; b++) {
+        pin_value out;
+        REQUIRE(compile(b, true, false, false, inputs, count, COMPILE_BUDGET, &out));
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value);
+        if (value->tag == tag(b, "Rejected")) {
+            pin_value message, line, column;
+            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(&value->values[0], "line", &line));
+            REQUIRE(get(&value->values[0], "column", &column));
+            fprintf(
+                stderr,
+                "compositional stage one: %s at %d:%d\n",
+                pin_text(message).bytes,
+                line.i,
+                column.i
+            );
+        }
+        REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+        size_t length;
+        unsigned char *bytes = closure_bytes(value, &length);
+        arena_free(&detached);
+        bool passed = true;
+        for (int backend = 0; passed && backend < 2; backend++) {
+            passed = run(bytes, length, &call, backend);
+        }
+        free(bytes);
+        REQUIRE(passed);
+        const source_package_input rejected = {
+            "facts/Main.chibi",
+            COMPOSITIONAL_RECORD_ALIAS_REJECTION,
+            strlen(COMPOSITIONAL_RECORD_ALIAS_REJECTION)
+        };
+        REQUIRE(compile(b, false, false, false, &rejected, 1, COMPILE_BUDGET, &out));
+        value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
+        pin_value message;
+        REQUIRE(get(&value->values[0], "message", &message));
+        if (!strstr(pin_text(message).bytes, "Nullable pointer requires a presence guard")) {
+            fprintf(
+                stderr,
+                "compositional stage-one alias rejection: %s\n",
+                pin_text(message).bytes
+            );
+        }
+        REQUIRE(strstr(pin_text(message).bytes, "Nullable pointer requires a presence guard"));
+        arena_free(&detached);
+        char depth_source[4096];
+        for (int arrays = 0; arrays < 2; arrays++) {
+            for (int depth = 16; depth <= 17; depth++) {
+                REQUIRE(
+                    compositional_records_depth_source(depth_source, sizeof depth_source, depth, arrays)
+                );
+                const source_package_input input = { "facts/Main.chibi",
+                                                     depth_source,
+                                                     strlen(depth_source) };
+                REQUIRE(compile(b, false, false, false, &input, 1, COMPILE_BUDGET, &out));
+                value = out.ptr;
+                REQUIRE(out.type == PIN_UNION && value);
+                if (value->tag != tag(b, depth == 16 ? "Compiled" : "Rejected")) {
+                    fprintf(stderr, "compositional stage-one depth: backend=%d arrays=%d depth=%d\n", b, arrays, depth);
+                    if (value->tag == tag(b, "Rejected")) {
+                        REQUIRE(get(&value->values[0], "message", &message));
+                        fprintf(stderr, "%s\n", pin_text(message).bytes);
+                    }
+                }
+                REQUIRE(value->tag == tag(b, depth == 16 ? "Compiled" : "Rejected"));
+                arena_free(&detached);
+            }
+        }
+        REQUIRE(compositional_records_fanout_source(depth_source, sizeof depth_source));
+        const source_package_input fanout = { "facts/Main.chibi",
+                                              depth_source,
+                                              strlen(depth_source) };
+        REQUIRE(compile(b, false, false, false, &fanout, 1, COMPILE_BUDGET, &out));
+        value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
+        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(strstr(pin_text(message).bytes, "metadata work"));
+        arena_free(&detached);
+    }
+    return true;
+}
+
+void test_language_package_compiler_chibi_records()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compositional_records);
     pu_clear_setup();
 }

@@ -770,6 +770,32 @@ FieldSize :: (storage: int, target: Target) -> int {
     }
     return 1;
 }
+RecordFieldType :: (types: TypeDecl[], value: ValueType) -> bool {
+    if (value.container != 0 && value.container != ArrayContainer) {
+        return false;
+    }
+    if (value.storage == PointerStorage) {
+        return value.record >= 0 && types[value.record].kind == PointerDecl;
+    }
+    if (value.storage == StructStorage) {
+        return value.record >= 0 &&
+               (types[value.record].kind == RecordDecl || types[value.record].kind == NativeDecl);
+    }
+    return value.record < 0 && (Integer(value.storage) || Floating(value.storage) ||
+                                value.storage == BoolStorage || value.storage == TextStorage);
+}
+RecordFieldSize :: (field: TypeMember, types: TypeDecl[], target: Target) -> int {
+    if (field.container == ArrayContainer) {
+        return target.pointer_size;
+    }
+    if (field.storage == StructStorage) {
+        return types[field.record].size;
+    }
+    return FieldSize(field.storage, target);
+}
+// Matches the runtime's owned-layout preflight: descriptor and field visits
+// are counted per expanded occurrence, with root duplicate-name comparisons.
+RecordLayoutWorkLimit: int : 1048576;
 AlignTo :: (size: int, alignment: int) -> int {
     rest := size % alignment;
     if (rest == 0) {
@@ -883,22 +909,18 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         variant = NextMember(forest, variant);
                     }
                 } else {
-                    size: int = 0;
-                    alignment: int = 1;
                     item := FirstMember(forest, Field(forest, member, "body"));
                     while (item >= 0) {
                         field_name := Text(forest, text, Field(forest, item, "name"));
                         if (field_name == "") {
                             return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
                         }
-                        storage := ScalarStorage(Text(forest, text, Field(forest, item, "type")));
                         pointer_field := TypePointerNode(forest, Field(forest, item, "type")) >= 0;
                         initial := Field(forest, item, "value");
                         nullable_pointer := pointer_field && HasToken(forest, Field(forest, item, "type"), "?");
-                        if ((storage == 0 && !pointer_field) ||
-                            (initial >= 0 && !(nullable_pointer && Is(forest, initial, "nil")))) {
+                        if (initial >= 0 && !(nullable_pointer && Is(forest, initial, "nil"))) {
                             return Declarations.Failed(Diagnose(forest, item, file,
-                                                                "record field needs a number, bool or string type and no default"));
+                                                                "record field defaults require a nullable pointer and nil"));
                         }
                         at := declared.first;
                         while (at < length(members)) {
@@ -908,25 +930,17 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             }
                             at += 1;
                         }
-                        if (pointer_field) {
-                            storage = PointerStorage;
-                        }
-                        width := FieldSize(storage, target);
-                        size = AlignTo(size, width);
-                        field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
+                        // Names are published before their field types resolve, so
+                        // a field may name a later record in the package.
+                        field: TypeMember = {name: field_name, storage: 0, container: 0, record: -1, offset: 0,
                                              writable: true, c_string: false, constant: false, read: -1, read_key: ""};
                         members.append(field);
-                        size += width;
-                        if (width > alignment) {
-                            alignment = width;
-                        }
                         item = NextMember(forest, item);
                     }
                     if (length(members) == declared.first) {
                         return Declarations.Failed(Diagnose(forest, member, file, "record needs a field"));
                     }
                     declared.count = length(members) - declared.first;
-                    declared.size = AlignTo(size, alignment);
                     types.append(declared);
                 }
             }
@@ -977,27 +991,161 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         types = DeclareAddressPointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
     }
     types = DeclareSequenceOptionals(types, package);
-    // Resolve pointer fields after every record name and constructor exists,
-    // including self-referential nullable links.
+    // Resolve every field after names and type constructors exist. Pointer
+    // links carry identity but do not participate in inline layout cycles.
     for (file in files) {
         for (declaration in Members(forest, documents[file].syntax_root)) {
-            if (Is(forest, declaration, "record_declaration")) {
-                holder := FindType(types, package, Text(forest, documents[file].text, Field(forest, declaration, "name")));
-                index := types[holder].first;
-                for (field_node in Members(forest, Field(forest, declaration, "body"))) {
-                    field := members[index];
-                    if (field.storage == PointerStorage) {
-                        resolved := ReadType(forest, documents[file].text, &types, Aliases(links, file), package,
-                                             Field(forest, field_node, "type"));
-                        if (resolved.storage != PointerStorage || resolved.container != 0) {
-                            return Declarations.Failed(Diagnose(forest, field_node, file, "record pointer field type is invalid"));
-                        }
-                        field.record = resolved.record;
-                        members[index] = field;
-                    }
-                    index += 1;
+            if (!Is(forest, declaration, "record_declaration")) {
+                continue;
+            }
+            holder := FindType(types, package, Text(forest, documents[file].text, Field(forest, declaration, "name")));
+            index := types[holder].first;
+            for (field_node in Members(forest, Field(forest, declaration, "body"))) {
+                hidden := PrivateType(forest, documents[file].text, types, Aliases(links, file), package,
+                                      Field(forest, field_node, "type"));
+                if (hidden >= 0) {
+                    return Declarations.Failed(Diagnose(forest, hidden, file,
+                                                        PrivateMessage(Text(forest, documents[file].text, hidden))));
+                }
+                resolved := ReadType(forest, documents[file].text, &types, Aliases(links, file), package,
+                                     Field(forest, field_node, "type"));
+                if (!RecordFieldType(types, resolved)) {
+                    return Declarations.Failed(Diagnose(forest, field_node, file,
+                                                        "record fields require a scalar, pointer, record or array of those types"));
+                }
+                field := members[index];
+                field.storage = resolved.storage;
+                field.container = resolved.container;
+                field.record = resolved.record;
+                members[index] = field;
+                index += 1;
+            }
+        }
+    }
+    // Each type is solved once. Child summaries prevent repeated references
+    // from expanding recursively during size, alignment, depth and hash work.
+    record_alignments: int[] = [];
+    record_depths: int[] = [];
+    record_work: int[] = [];
+    record_needed: bool[] = [];
+    pending_records: int[] = [];
+    for (record_index in 0..<length(types)) {
+        record_alignments.append(0);
+        record_depths.append(0);
+        record_work.append(0);
+        needed := types[record_index].kind == RecordDecl;
+        record_needed.append(needed);
+        if (needed) {
+            pending_records.append(record_index);
+        }
+    }
+    // A native catalog may expose fields this compiler cannot read. Only
+    // native layouts reached by authored fields need complete source facts.
+    while (length(pending_records) > 0) {
+        record_index := pending_records[length(pending_records) - 1];
+        pending_records = slice(pending_records, 0, length(pending_records) - 1);
+        declared := types[record_index];
+        for (field_index in declared.first..<declared.first + declared.count) {
+            field := members[field_index];
+            if (field.storage == StructStorage && field.record >= 0 && field.record < length(types) &&
+                !record_needed[field.record]) {
+                record_needed[field.record] = true;
+                pending_records.append(field.record);
+            }
+        }
+    }
+    unresolved := true;
+    while (unresolved) {
+        unresolved = false;
+        progress := false;
+        for (record_index in 0..<length(types)) {
+            declared := types[record_index];
+            if (!record_needed[record_index] || record_alignments[record_index] != 0) {
+                continue;
+            }
+            ready := true;
+            depth: int = 1;
+            expanded_work := 1 + declared.count;
+            overflow := declared.count >= RecordLayoutWorkLimit;
+            for (field_index in declared.first..<declared.first + declared.count) {
+                field := members[field_index];
+                if (field.storage != StructStorage) {
+                    continue;
+                }
+                if (field.record < 0 || field.record >= length(types) || record_alignments[field.record] == 0) {
+                    ready = false;
+                    continue;
+                }
+                child_depth := 1 + record_depths[field.record];
+                if (child_depth > depth) {
+                    depth = child_depth;
+                }
+                if (record_work[field.record] > RecordLayoutWorkLimit - expanded_work) {
+                    overflow = true;
+                } else {
+                    expanded_work += record_work[field.record];
                 }
             }
+            if (!ready) {
+                unresolved = true;
+                continue;
+            }
+            comparisons := i64(declared.count) * i64(declared.count - 1) / 2;
+            if (overflow || comparisons > i64(RecordLayoutWorkLimit - expanded_work) || depth > 16) {
+                for (file in files) {
+                    if (declared.node >= 0 && Ancestor(forest, documents[file].syntax_root, declared.node)) {
+                        return Declarations.Failed(Diagnose(forest, declared.node, file,
+                                                            "record value layout exceeds the supported metadata work or nesting limit"));
+                    }
+                }
+                return Declarations.Failed({start: 0, end: 0, line: 1, column: 1, document: files[0],
+                                            message: "record value layout exceeds the supported metadata work or nesting limit"});
+            }
+            size: int = 0;
+            alignment: int = 1;
+            for (field_index in declared.first..<declared.first + declared.count) {
+                field := members[field_index];
+                step := FieldSize(field.storage, target);
+                if (field.container == ArrayContainer) {
+                    step = target.pointer_size;
+                } else if (field.storage == StructStorage) {
+                    step = record_alignments[field.record];
+                }
+                size = AlignTo(size, step);
+                if (declared.kind == RecordDecl) {
+                    field.offset = size;
+                    members[field_index] = field;
+                }
+                size += RecordFieldSize(field, types, target);
+                if (step > alignment) {
+                    alignment = step;
+                }
+            }
+            if (declared.kind == RecordDecl) {
+                declared.size = AlignTo(size, alignment);
+                declared.layout = LayoutHash(declared, members, types, target);
+                types[record_index] = declared;
+            }
+            record_alignments[record_index] = alignment;
+            record_depths[record_index] = depth;
+            record_work[record_index] = expanded_work;
+            progress = true;
+        }
+        if (unresolved && !progress) {
+            for (file in files) {
+                for (declaration in Members(forest, documents[file].syntax_root)) {
+                    if (Is(forest, declaration, "record_declaration")) {
+                        holder := FindType(types, package, Text(forest, documents[file].text,
+                                                                Field(forest, declaration, "name")));
+                        if (record_alignments[holder] == 0) {
+                            return Declarations.Failed(Diagnose(forest, declaration, file,
+                                                                "record has a recursive inline or array value layout; use a pointer for recursive links"));
+                        }
+                    }
+                }
+            }
+            return Declarations.Failed({start: 0, end: 0, line: 1, column: 1, document: files[0],
+                                        message: "record has a recursive inline or array value layout; use a pointer for recursive links"});
         }
     }
     // Payloads may name any type, so they resolve once every type is known.
@@ -1885,8 +2033,8 @@ HashText :: (hash: u64, text: string) -> u64 {
     }
     return HashBytes(out, 0, 1);
 }
-// The runtime's layout hash of a record: its size and field count, then each
-// field's name, offset, size, storage, string descriptor marker and absent type name.
+// The runtime's layout hash, including container markers and complete child
+// layouts while preserving the existing scalar field encoding.
 LayoutHash :: (record: TypeDecl, fields: TypeMember[], types: TypeDecl[], target: Target) -> u64 {
     hash: u64 = 1469598103934665603;
     hash = HashBytes(hash, u64(record.size), target.pointer_size);
@@ -1896,15 +2044,21 @@ LayoutHash :: (record: TypeDecl, fields: TypeMember[], types: TypeDecl[], target
         field := fields[at];
         hash = HashText(hash, field.name);
         hash = HashBytes(hash, u64(field.offset), target.pointer_size);
-        hash = HashBytes(hash, u64(FieldSize(field.storage, target)), target.pointer_size);
+        hash = HashBytes(hash, u64(RecordFieldSize(field, types, target)), target.pointer_size);
         hash = HashBytes(hash, u64(field.storage), 4);
-        if (field.storage == TextStorage) {
+        if (field.container != 0) {
+            hash = HashBytes(hash, u64(field.container), 4);
+        }
+        if (field.storage == TextStorage && field.container == 0) {
             hash = HashBytes(hash, 1, 1);
         }
-        if (field.storage == PointerStorage) {
+        if (field.storage == PointerStorage || field.storage == StructStorage) {
             hash = HashText(hash, types[field.record].type_name);
         } else {
             hash = HashText(hash, "");
+        }
+        if (field.storage == StructStorage) {
+            hash = HashBytes(hash, types[field.record].layout, 8);
         }
         at += 1;
     }
@@ -2436,6 +2590,18 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     fields: writer.Field[] = [];
     // Each record's layout and each variant's tag, as indices into `wide`, for
     // the types of this package and those it reaches; no others can occur.
+    requirement_indices: int[] = [];
+    requirement_count: int = 0;
+    for (declared in types) {
+        index: int = -1;
+        if ((source_mode || reachable[declared.package]) &&
+            (declared.kind == RecordDecl || declared.kind == NativeDecl || declared.kind == QueryDecl ||
+             (declared.kind == PointerDecl && declared.key == 0))) {
+            index = requirement_count;
+            requirement_count += 1;
+        }
+        requirement_indices.append(index);
+    }
     layouts: int[] = [];
     tags: int[] = [];
     for (declared in types) {
@@ -2465,7 +2631,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                 format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name));
             }
             wide.append(id);
-            wide.append(LayoutHash(declared, members, types, target));
+            wide.append(declared.layout);
             layouts[length(layouts) - 1] = length(wide) - 1;
             requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
                                                name: declared.type_name, size: declared.size, authored: true, first: length(fields),
@@ -2473,10 +2639,13 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             requirements.append(requirement);
             at := declared.first;
             while (at < declared.first + declared.count) {
-                // Record fields are integers, bools or strings, so none names a type or unit.
-                field: writer.Field = {name: members[at].name, kind: members[at].storage, type_name: "",
+                field: writer.Field = {name: members[at].name, kind: members[at].storage,
+                                       container: members[at].container, record: -1, type_name: "",
                                        has_type_name: false, unit: "", has_unit: false};
-                if (members[at].storage == PointerStorage) {
+                if (members[at].storage == StructStorage) {
+                    field.record = requirement_indices[members[at].record];
+                }
+                if (members[at].storage == PointerStorage || members[at].storage == StructStorage) {
                     field.type_name = types[members[at].record].type_name;
                     field.has_type_name = true;
                 }

@@ -104,7 +104,7 @@ static const script_diagnostic *diagnostic(const char *message)
     }
     return NULL;
 }
-/* Sixteen fixed sources, each parsed and analyzed once, without execution. */
+/* Fixed invalid sources, each parsed and analyzed once, without execution. */
 TEST_CASE(language_managed_pointers_reject_invalid_storage_and_types)
 {
     const struct
@@ -141,14 +141,6 @@ TEST_CASE(language_managed_pointers_reject_invalid_storage_and_types)
         { "L :: library { Take :: (p: ^(^int)) {} F :: () { x := 1; "
           "p: ^int? = &x; if p != nil { Take(&p); } } }",
           NULL },
-        { "L :: library { I :: struct { x: int; } O :: struct { inner: I; y: "
-          "int; } "
-          "F :: () { o: O = {inner: {x: 1}, y: 2}; p := &o; } }",
-          "Managed pointers require records without inline record fields" },
-        { "L :: library { I :: struct { x: int; } O :: struct { inner: I; y: "
-          "int; } "
-          "F :: () { o: O = {inner: {x: 1}, y: 2}; p := &o.y; } }",
-          "Managed pointers require records without inline record fields" },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         parse(cases[i].source);

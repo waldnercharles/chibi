@@ -107,12 +107,17 @@ static const char *construct_value(arena *storage, const pin_value *args, int co
             bool found = false;
             for (int j = 0; j < type->field_count; j++) {
                 const type_field *field = &type->fields[j];
+                pin_value expected = { .type = field->type,
+                                       .container = field->container,
+                                       .type_name = field->type_name,
+                                       .record = field->layout ? field->layout->carrier
+                                                               : NULL };
                 found |= args[i].type == PIN_U64 &&
                          args[i].container == PIN_CONTAINER_SINGLE &&
                          args[i].u64 == field->offset &&
                          args[i + 1].type == field->type &&
-                         args[i + 1].container == PIN_CONTAINER_SINGLE &&
-                         !args[i + 1].record;
+                         args[i + 1].container == field->container &&
+                         pin_value_layout_same(&expected, &args[i + 1]);
             }
             for (int j = 1; j < i; j += 2) {
                 if (args[j].u64 == args[i].u64) {
@@ -1243,8 +1248,15 @@ static bool field_at(const type_desc *layout, size_t offset, pin_value type)
         bool named = (type.type != PIN_STRUCT && type.type != PIN_POINTER) ||
                      (field->type_name && type.type_name &&
                       !strcmp(field->type_name, type.type_name));
+        if (field->layout && type.type == PIN_STRUCT) {
+            pin_value expected = { .type = field->type,
+                                   .container = field->container,
+                                   .type_name = field->type_name,
+                                   .record = field->layout->carrier };
+            named &= pin_value_layout_same(&expected, &type);
+        }
         if (field->offset == offset && field->type == type.type &&
-            type.container == PIN_CONTAINER_SINGLE && named) {
+            type.container == field->container && named) {
             return true;
         }
     }
@@ -1384,7 +1396,8 @@ static const type_field *reference_member_field(const language_reference *ref, p
                                             : pin_value_type(&type);
     for (int n = 0; data && layout && n < layout->field_count; n++) {
         const type_field *field = &layout->fields[n];
-        if (field->offset == path->offset && field->type == path->type.type) {
+        if (field->offset == path->offset && field->type == path->type.type &&
+            field->container == path->type.container) {
             return field;
         }
     }
@@ -1519,6 +1532,13 @@ static const char *array_mutate_place(arena *storage, const pin_value *args, int
         return "Array mutation place is unavailable";
     }
     memcpy(&target.ptr, data, sizeof target.ptr);
+    if (!owned_array(storage, &target)) {
+        if (persistent) {
+            pin_value_collection_release(&root);
+        }
+        return "Cannot retain array mutation place";
+    }
+    memcpy(data, &target.ptr, sizeof target.ptr);
     pin_value values[4] = { target, args[1] };
     for (int i = 2; i < count; i++) {
         values[i] = args[i];

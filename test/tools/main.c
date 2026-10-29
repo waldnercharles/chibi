@@ -109,6 +109,7 @@ void test_build_graph_programs(const char *host, const char *cmake_build);
 void test_build_graph_resources(const char *host, const char *cmake_build);
 #ifndef _WIN32
 void test_build_sdk(const char *host, const char *build, const char *third_party);
+void test_runtime_sdk(const char *host);
 #endif
 #endif
 void test_tool_desktop_dependencies();
@@ -378,9 +379,6 @@ void test_png_encoding();
 #ifdef CHIBI_TEST_PROJECT_DOCUMENT
 void test_project_document();
 #endif
-#ifdef CHIBI_TEST_PROJECT_DECLARATIONS
-void test_tool_project_declarations();
-#endif
 #ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
 void test_prototype_documents();
 void test_reference_index();
@@ -399,25 +397,15 @@ void test_field_library();
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
-    "--player-url",
-    "--audio-analysis",
-    "--audio-browser",
-    "--shader-webgpu",
-    "--asset-values",
-    "--ui-document",
-    "--text-files",
-    "--fmt",
-    "--particles",
-    "--png-encoding",
-    "--project-document",
-    "--project-declarations",
-    "--prototype-documents",
-    "--reference-index",
-    "--asset-source",
-    "--behavior-loader",
-    "--engine-clock",
-    "--preview-layout",
-    "--fields",
+    "--player-url",       "--audio-analysis",
+    "--audio-browser",    "--shader-webgpu",
+    "--asset-values",     "--ui-document",
+    "--text-files",       "--fmt",
+    "--particles",        "--png-encoding",
+    "--project-document", "--prototype-documents",
+    "--reference-index",  "--asset-source",
+    "--behavior-loader",  "--engine-clock",
+    "--preview-layout",   "--fields",
     "--player-clock",
 };
 
@@ -508,12 +496,6 @@ static bool run_document_suites(int argc, char **argv)
 #ifdef CHIBI_TEST_PROJECT_DOCUMENT
     if (selected(argc, argv, "--project-document")) {
         test_project_document();
-        return true;
-    }
-#endif
-#ifdef CHIBI_TEST_PROJECT_DECLARATIONS
-    if (selected(argc, argv, "--project-declarations")) {
-        test_tool_project_declarations();
         return true;
     }
 #endif
@@ -625,6 +607,18 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_build_sdk(argv[2], argv[3], argv[4]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--runtime-sdk")) {
+#if defined(CHIBI_TEST_BUILD_PROCESS) && !defined(_WIN32)
+        tool_init();
+        pu_display_time(true);
+        test_runtime_sdk(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else
@@ -1424,7 +1418,7 @@ int main(int argc, char **argv)
             "--player-clock | --audio-analysis | --audio-browser | "
             "--shader-webgpu | "
             "--player-url | "
-            "--png-encoding | --project-document | --project-declarations | "
+            "--png-encoding | --project-document | "
             "--prototype-documents | "
             "--reference-index | --asset-source | --behavior-loader | "
             "--engine-clock | --preview-layout | --fields]\n",

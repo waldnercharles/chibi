@@ -214,11 +214,6 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
         chibi_native_types chibi_text_source chibi_declared_components)
     chibi_sdk_contract(chibi_scenario_document "${CHIBI_SDK_ROOT}/src/assets"
         chibi_asset_values chibi_input_runtime chibi_native_types chibi_asset_text)
-    chibi_sdk_contract(chibi_project_format "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_native_capabilities chibi_project_compilation chibi_source_catalog chibi_source_presentation
-        chibi_authoring chibi_component_presentation chibi_scenario_document chibi_scene_document
-        chibi_prototype_document chibi_input_map chibi_declared_components
-        chibi_project_document chibi_asset_text chibi_support)
     chibi_sdk_contract(chibi_shader_preparation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_visual_catalog chibi_player chibi_asset_text chibi_json chibi_image_catalog)
     chibi_sdk_contract(chibi_project_compilation "${CHIBI_SDK_ROOT}/src/authoring"

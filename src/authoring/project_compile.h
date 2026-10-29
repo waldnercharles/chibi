@@ -34,9 +34,3 @@ int authoring_project_compile_modules(
  * worker budget). Call on the controlling thread, outside a pool submission.
  * 0 when every test passes, 1 for a failure, invalid package or worker setting. */
 int authoring_project_test(const char *root, const char *core);
-/* chibi doc: writes the site root/docs/site.kdl lists into root/build/docs:
- * each page's Markdown, package reference or grammar rendered and laid out by
- * the generator packages at generator_root (markdown, reference, grammar and
- * site), whose imports of core: resolve to core. Every path is absolute. 0
- * when every page was written, 1 otherwise. */
-int authoring_project_docs(const char *root, const char *generator_root, const char *core);

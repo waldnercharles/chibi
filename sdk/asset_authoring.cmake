@@ -35,19 +35,4 @@ chibi_sdk_headers(chibi_scenario_document PUBLIC assets/scenario_document.h)
 target_link_libraries(chibi_scenario_document PUBLIC chibi_asset_values chibi_input_runtime
     PRIVATE chibi_native_types chibi_asset_text)
 
-list(APPEND CHIBI_SDK_TARGETS chibi_scene_authoring chibi_asset_authoring chibi_scenario_document)
-
-# Canonical asset formatting, shared by chibi fmt and the automation controller.
-add_library(chibi_project_format STATIC "${CHIBI_SDK_ROOT}/src/authoring/project_format.c")
-add_library(Chibi::project_format ALIAS chibi_project_format)
-set_target_properties(chibi_project_format PROPERTIES EXPORT_NAME project_format)
-chibi_sdk_headers(chibi_project_format PUBLIC authoring/project_format.h)
-target_link_libraries(chibi_project_format PUBLIC chibi_native_capabilities
-    PRIVATE chibi_project_compilation chibi_source_catalog chibi_source_presentation chibi_authoring
-    chibi_component_presentation chibi_scenario_document chibi_scene_document chibi_prototype_document
- chibi_input_map chibi_declared_components chibi_project_document
-    chibi_asset_text chibi_support)
-list(APPEND CHIBI_SDK_TARGETS chibi_project_format)
-if(TARGET chibi-compile)
-    target_link_libraries(chibi-compile PRIVATE chibi_project_format)
-endif()
+list(APPEND CHIBI_SDK_TARGETS chibi_scene_authoring chibi_asset_authoring chibi_model_authoring chibi_scenario_document)

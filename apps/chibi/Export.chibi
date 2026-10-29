@@ -15,23 +15,6 @@ Listen :: (port: int) -> int {
     return listener
 }
 
-Document :: (options: Options) -> int {
-    if application.platform() == "Windows" {
-        Error("chibi doc cannot read package sources on Windows yet.")
-        return 2
-    }
-    root := Default(options.path, ".")
-    status := process.run([Compiler(), "--project-root", root, "--docs"])
-    if status != 0 || !options.serve {
-        return status
-    }
-    listener := Listen(options.port)
-    if listener < 0 {
-        return 1
-    }
-    return Serve(listener, Join([root, "/build/docs"]))
-}
-
 NativeLibraries :: (game: Project, llvm: string) -> string[] {
     share := files.resolve(Join([application.bin(), "/../share/chibi"]))
     tools := files.resolve(llvm)

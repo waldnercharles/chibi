@@ -1,4 +1,3 @@
-#include "authoring/source_format.h"
 #include "backend.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
@@ -33,7 +32,6 @@ static behavior_function_activation activation;
 static behavior_run_scope runs;
 static arena storage, escaped;
 static pin_value result, saved;
-static char *formatted, *again;
 static const script_catalog catalog;
 static const script_lower_bindings bindings;
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -70,13 +68,10 @@ static void cleanup()
     script_syntax_free(syntax);
     arena_free(&escaped);
     behavior_managed_heap_free(&heap);
-    free(formatted);
-    free(again);
     module = NULL;
     plan = NULL;
     analysis = NULL;
     syntax = NULL;
-    formatted = again = NULL;
     saved = (pin_value){ 0 };
 }
 static bool compile(const char *source, behavior_backend backend, bool reject_types)
@@ -572,30 +567,6 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
     }
     return true;
 }
-TEST_CASE(record_runtime_formatter_layout)
-{
-    static const char
-        input[] = "Rows :: "
-                  "library{Row::struct{key:string;label:string;depth:int=1;}}";
-    static const char expected[] = "Rows :: library {\n"
-                                   "    Row :: struct {\n"
-                                   "        key: string;\n"
-                                   "        label: string;\n"
-                                   "        depth: int = 1;\n"
-                                   "    }\n"
-                                   "}\n";
-    syntax = script_parse(input);
-    REQUIRE(!syntax->diagnostic_count);
-    char error[192];
-    formatted = authoring_source_format(syntax, error, sizeof error);
-    REQUIRE(formatted && !strcmp(formatted, expected));
-    script_syntax_free(syntax);
-    syntax = script_parse(formatted);
-    REQUIRE(!syntax->diagnostic_count);
-    again = authoring_source_format(syntax, error, sizeof error);
-    REQUIRE(again && !strcmp(formatted, again));
-    return true;
-}
 typedef struct
 {
     const type_desc *types;
@@ -783,7 +754,6 @@ void test_language_record_runtime()
     RUN_TEST_CASE(record_runtime_collects_during_call);
     RUN_TEST_CASE(record_runtime_fieldwise_equality);
     RUN_TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller);
-    RUN_TEST_CASE(record_runtime_formatter_layout);
     RUN_TEST_CASE(record_runtime_private_layout_lifetime);
     RUN_TEST_CASE(record_runtime_private_alias_identity);
     RUN_TEST_CASE(record_runtime_conflicting_private_layouts);

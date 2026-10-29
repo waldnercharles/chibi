@@ -1,7 +1,6 @@
 #include "assets/input_map.h"
 #include "authoring/native_bindings.h"
 #include "authoring/source_catalog.h"
-#include "authoring/source_minimize.h"
 #include "authoring/source_package_prepare.h"
 #include "backend.h"
 #include "ecs/ecs.h"

@@ -5,7 +5,6 @@ pub ShortBuffer: int : 2;
 
 // offset is the requested byte offset. InvalidOffset means it is negative or
 // beyond the buffer; ShortBuffer means too few bytes remain at that position.
-@error
 pub Error :: struct {
     kind: int;
     offset: int;

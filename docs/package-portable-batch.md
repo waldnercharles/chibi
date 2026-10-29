@@ -179,10 +179,9 @@ the original wire/bounds tests without dropping their unique assertions. The
 focused driver explicitly configures `CHIBI_TEST_ASSET_COMPILER_HOST=OFF`;
 asset-host integration is not covered by that build.
 
-Each of the five deferred packages marks its package-owned `Error` struct
-`@error` (Utf8, Endian, Hex, Base64 and slashpath). Callers acknowledge the
-final result by testing, reporting or returning it; no function marker is
-needed. Nine UTF-8 assertions check errors unconditionally, and Hex's rejection
+Each of the five deferred packages has a package-owned `Error` struct. Marking
+it `@error` (Utf8, Endian, Hex, Base64 and slashpath) waits for the checker in
+#813; callers already test the error. Nine UTF-8 assertions check errors unconditionally, and Hex's rejection
 helper checks the error before its data-length early return. All 65 cases and
 their existing oracles remain. The pass counts below predate `@error` and were
 not rerun with the combined error checker.

@@ -13,7 +13,6 @@ pub InvalidPadding: int : 3;
 pub NonCanonical: int : 4;
 pub OutputTooLarge: int : 5;
 
-@error
 pub Error :: struct {
     kind: int;
     offset: int;

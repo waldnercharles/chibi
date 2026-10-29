@@ -5,6 +5,10 @@ authoring packages. Studio is a separate repository that consumes these public
 targets. The deployed player accepts prepared projects; the compiler and
 controller prepare/inspect authored content before deployment.
 
+`sdk/VERSION` owns the SDK version. The Chibi graph's build identity and retained
+CMake SDK/config-version generation read that file. Changing it invalidates
+CMake configuration and updates the graph identity on the next build.
+
 The Make convenience profiles are complete native products:
 
 ```sh

@@ -315,11 +315,15 @@ else()
         "${CHIBI_LANGUAGE_TEST_ROOT}/src/support/sha256.c"
         PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 endif()
-option(CHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST
-    "Include the packaged asset service in the language test driver" ON)
 set_source_files_properties(package_tests.c PROPERTIES
     COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
-if(CHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST AND TARGET Chibi::asset_compiler_host)
+if(TARGET Chibi::asset_compiler_host)
+    set(portable_asset_source "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/portable-byte-asset/Build.chibi")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${portable_asset_source}")
+    file(READ "${portable_asset_source}" portable_asset_hex HEX)
+    string(REGEX REPLACE "(..)" "0x\\1," CHIBI_PORTABLE_ASSET_BYTES "${portable_asset_hex}")
+    configure_file(portable_asset_source.h.in
+        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/portable_asset_source.h" @ONLY)
     add_library(chibi_asset_compiler_consumer OBJECT asset_compiler_host.c)
     target_include_directories(chibi_asset_compiler_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_asset_compiler_consumer PRIVATE Chibi::asset_compiler_host Chibi::behavior_runtime
@@ -334,6 +338,7 @@ include(prepared_writer_chibi.cmake)
 include(shader_source_chibi.cmake)
 include(asset_packaging_chibi.cmake)
 include(package_compiler_chibi.cmake)
+include(package_portable.cmake)
 # W21's census of the compiler functions the native path cannot compile yet.
 target_sources(test_language PRIVATE native_census.c)
 set_source_files_properties(native_census.c

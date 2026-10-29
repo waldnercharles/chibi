@@ -68,7 +68,6 @@ struct source_catalog
     int edit_count;
     unsigned char *default_key;
     bool defaults_known;
-    bool migration;
 };
 static const char *own(source_catalog *c, const char *text)
 {
@@ -738,20 +737,11 @@ static void declared_types(source_catalog *c)
             if (!library_type_source(source->syntax)) {
                 continue;
             }
-            script_analysis *analysis = c->migration
-                                          ? script_analyze_migration_document(
-                                                source->syntax,
-                                                &c->view,
-                                                source->identity,
-                                                NULL,
-                                                0,
-                                                true
-                                            )
-                                          : script_declarations_document(
-                                                source->syntax,
-                                                &c->view,
-                                                source->identity
-                                            );
+            script_analysis *analysis = script_declarations_document(
+                source->syntax,
+                &c->view,
+                source->identity
+            );
             if (analysis->kind != SCRIPT_PROGRAM_LIBRARY || !analysis->type_count) {
                 script_analysis_free(analysis);
                 continue;
@@ -1666,21 +1656,13 @@ static script_analysis *analyze_requested(source_catalog *c, const source_catalo
         }
     }
     asort(requests, compare_requests);
-    script_analysis *analysis = c->migration ? script_analyze_migration_document(
-                                                   source->syntax,
-                                                   &c->view,
-                                                   source->identity,
-                                                   requests,
-                                                   acount(requests),
-                                                   false
-                                               )
-                                             : script_analyze_document_requested(
-                                                   source->syntax,
-                                                   &c->view,
-                                                   source->identity,
-                                                   requests,
-                                                   acount(requests)
-                                               );
+    script_analysis *analysis = script_analyze_document_requested(
+        source->syntax,
+        &c->view,
+        source->identity,
+        requests,
+        acount(requests)
+    );
     afree(requests);
     return analysis;
 }
@@ -1763,20 +1745,11 @@ static void discover_templates(source_catalog *c)
         bool changed = false;
         for (int i = 0; i < acount(c->sources); i++) {
             source_catalog_source *source = &c->sources[i];
-            script_analysis *analysis = c->migration
-                                          ? script_analyze_migration_document(
-                                                source->syntax,
-                                                &c->view,
-                                                source->identity,
-                                                NULL,
-                                                0,
-                                                true
-                                            )
-                                          : script_declarations_document(
-                                                source->syntax,
-                                                &c->view,
-                                                source->identity
-                                            );
+            script_analysis *analysis = script_declarations_document(
+                source->syntax,
+                &c->view,
+                source->identity
+            );
             changed |= export_templates(c, source, analysis);
             script_analysis_free(analysis);
         }
@@ -1956,13 +1929,11 @@ static source_catalog *build(
     const script_catalog *native,
     const source_catalog_edit *edits,
     int edit_count,
-    bool replace,
-    bool migration
+    bool replace
 )
 {
     assert(root && native && edit_count >= 0 && (!edit_count || edits));
     source_catalog *c = xcalloc(1, sizeof *c);
-    c->migration = migration;
     size_t root_length = strlen(root);
     while (root_length && root[root_length - 1] == '/') {
         root_length--;
@@ -2058,19 +2029,8 @@ static source_catalog *build(
     declared_types(c);
     for (int i = 0; i < acount(c->sources); i++) {
         source_catalog_source *source = &c->sources[i];
-        script_analysis *a = c->migration ? script_analyze_migration_document(
-                                                source->syntax,
-                                                &c->view,
-                                                source->identity,
-                                                NULL,
-                                                0,
-                                                true
-                                            )
-                                          : script_declarations_document(
-                                                source->syntax,
-                                                &c->view,
-                                                source->identity
-                                            );
+        script_analysis
+            *a = script_declarations_document(source->syntax, &c->view, source->identity);
         source->declarations = a;
         for (int j = 0; !a->request_count && j < a->diagnostic_count; j++) {
             error(c, source->path, a->diagnostics[j].range, a->diagnostics[j].message);
@@ -2151,11 +2111,7 @@ static source_catalog *build(
 }
 source_catalog *source_catalog_new(const char *root, const script_catalog *native)
 {
-    return build(root, native, NULL, 0, false, false);
-}
-source_catalog *source_catalog_new_for_migration(const char *root, const script_catalog *native)
-{
-    return build(root, native, NULL, 0, false, true);
+    return build(root, native, NULL, 0, false);
 }
 source_catalog *source_catalog_edited(
     const char *root,
@@ -2164,7 +2120,7 @@ source_catalog *source_catalog_edited(
     int count
 )
 {
-    return build(root, native, edits, count, false, false);
+    return build(root, native, edits, count, false);
 }
 source_catalog *source_catalog_replaced(
     const char *root,
@@ -2173,7 +2129,7 @@ source_catalog *source_catalog_replaced(
     int count
 )
 {
-    return build(root, native, sources, count, true, false);
+    return build(root, native, sources, count, true);
 }
 const script_catalog *source_catalog_view(const source_catalog *c)
 {
@@ -2239,8 +2195,7 @@ static script_catalog compatibility_view(
 bool source_catalog_same(const source_catalog *a, const source_catalog *b)
 {
     int bytes = acount(a->default_key);
-    if (a->migration != b->migration || !a->defaults_known ||
-        !b->defaults_known || bytes != acount(b->default_key) ||
+    if (!a->defaults_known || !b->defaults_known || bytes != acount(b->default_key) ||
         (bytes && memcmp(a->default_key, b->default_key, (size_t)bytes))) {
         return false;
     }

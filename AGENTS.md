@@ -18,7 +18,7 @@ The owner's top priority is replacing C, C++ and CMake with Chibi as fast as pos
 - Keep debugging UI, capture/scenario tooling, in clearly named modules and separate build targets where practical. Tooling consumes explicit runtime inspection/control APIs; shared runtime code stays independent of tooling and editor UI.
 - Author assets by editing their KDL and `.chibi` files directly. Read existing sources and reflected capabilities first; format and validate changed assets through `chibi`, then inspect or run a bounded scenario. See `docs/runtime-authoring.md`.
 - Graph legibility: when authoring, reviewing, or cleaning up a behavior, shader, or field graph, follow `.claude/skills/chibi-graph-legibility/SKILL.md`.
-- Declarative assets use KDL. Behaviors, callable libraries, and systems use readable `.chibi` as their complete executable source; graph layout and debug metadata are optional. After hand-editing assets, run `chibi fmt` and the relevant canonicality check; `make test` alone does not cover asset canonicality.
+- Declarative assets use KDL. Behaviors, callable libraries, and systems use readable `.chibi` as their complete executable source; graph layout and debug metadata are optional. After hand-editing assets, run `chibi check`.
 - Language design: before adding syntax, check whether the compiler can infer the feature or a form the language already has can express it. For example, a map keyed by a small enum is stored densely instead of adding enum-indexed array syntax. Propose new syntax only when neither works, and say why in the proposal (`docs/language-friction.md`).
 - Navigation and refactoring (find references, rename, go to definition, call hierarchy, hover): implement each in shared SDK authoring modules and expose it through Studio. `docs/authoring-navigation.md` tracks each feature's status.
 - Validate engine generalizations with another scene or prototype that uses different content and omits the motivating game's mechanics.
@@ -45,7 +45,7 @@ The owner's top priority is replacing C, C++ and CMake with Chibi as fast as pos
 - Work autonomously. Ask only when a choice changes the goal, an output the owner will notice, or something that can't be undone; otherwise pick the reasonable default, say which, and keep going.
 - Fix root causes. Speed toward the C exit beats preserving existing behavior; fix a red `main` before starting new work.
 - When checks need a re-run (for example after a dependency merged), label the PR `ci-rerun`; label it `ci-seed` to build, publish and pin new compiler runtime seeds on its branch (pull before pushing again). See [starting CI with labels](docs/testing.md#starting-ci-with-labels).
-- Recipes for adding a component, a native script function, a test scene and a project migration are in `.claude/skills/chibi-recipes/SKILL.md`.
+- Recipes for adding a component, a native script function, a test scene and a project format change are in `.claude/skills/chibi-recipes/SKILL.md`.
 
 ## Before every commit
 
@@ -53,7 +53,7 @@ The owner's top priority is replacing C, C++ and CMake with Chibi as fast as pos
 2. Add or update an authored `@test` for every expressible behavior change, or a pico_unit case for a native boundary, through the dispatcher that owns the area (`test/tools` or `test/language`). A fix needs a case that failed before it.
    A new component, native function or event is also used in a `test/fixtures/feature-coverage` scene, or listed in its `coverage-gaps.txt` with a reason (see [feature coverage](docs/testing.md#feature-coverage)).
 3. Build what changed and run a focused selector if it's quick; CI on `main` runs the full groups.
-4. Format. The pre-commit hook (`.githooks/pre-commit`, installed by configure) runs clang-format 22 on staged C sources; `make check-format` checks everything. Format hand-edited assets with `chibi fmt`.
+4. Format. The pre-commit hook (`.githooks/pre-commit`, installed by configure) runs clang-format 22 on staged C sources; `make check-format` checks everything.
 5. Commit messages say what changed and why, in the imperative.
 
 ## Review guidelines

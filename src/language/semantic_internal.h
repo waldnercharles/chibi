@@ -100,7 +100,7 @@ typedef struct
     TSNode awaited; /* The call an enclosing await applies to. */
     TSNode changing; /* The array method call a statement makes, which may change its array. */
     int scope, function, loops, depth;
-    bool declarations_only, migration_import;
+    bool declarations_only;
     bool query;            /* Analyzing an ordered query header. */
     int query_description; /* Active one-based description. */
 } analyzer;

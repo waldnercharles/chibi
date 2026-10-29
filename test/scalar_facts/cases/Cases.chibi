@@ -497,6 +497,12 @@ Trace :: (rows: facts.Row[]) -> string {
     }
     return trace;
 }
+// An independent integer semantic oracle for focused producer regressions
+// whose sources are not entries in the broad authored corpus.
+pub Value :: (rows: facts.Row[]) -> i64 {
+    empty: i64[] = [];
+    return Evaluate(rows, Heads(rows), 0, empty);
+}
 // Positive when the producer's rows are the case's expected result.
 pub Check :: (rows: facts.Row[]) -> int {
     cases := Cases();

@@ -256,6 +256,39 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
         mark_test(a, node, header.function);
     }
 }
+int script_analyzer_lambda(analyzer *a, TSNode node)
+{
+    script_range range = script_analyzer_range(a, node);
+    for (int i = 0; i < acount(a->out->functions); i++) {
+        const script_function *existing = &a->out->functions[i];
+        if (existing->range.document == range.document &&
+            existing->range.start == range.start && existing->scope >= 0 &&
+            a->out->scopes[existing->scope].parent == a->scope) {
+            return i;
+        }
+    }
+    int function = acount(a->out->functions);
+    script_analyzer_declare_function(a, node);
+    if (function == acount(a->out->functions)) {
+        return -1;
+    }
+    int body = acount(a->bodies) - 1;
+    a->bodies[body].state = BODY_ACTIVE;
+    int old_loops = a->loops;
+    narrowing *old_narrowed = a->narrowed;
+    TSNode old_awaited = a->awaited;
+    a->loops = 0;
+    a->narrowed = NULL;
+    a->awaited = (TSNode){ 0 };
+    script_analyzer_callable_definition(a, function, script_analyzer_field(node, "body"));
+    script_analyzer_function_type(a, function);
+    a->bodies[body].state = BODY_DONE;
+    afree(a->narrowed);
+    a->narrowed = old_narrowed;
+    a->awaited = old_awaited;
+    a->loops = old_loops;
+    return function;
+}
 static uint64_t query_relationship_id(const analyzer *a, const char *name)
 {
     if (!strcmp(name, "ChildOf")) {

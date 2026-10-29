@@ -30,10 +30,6 @@ input slot once. Inspection uses the existing instrumented compiled blocks.
 Mixed types, conversions, host reads and other unsupported operations keep their
 regular compiled implementation. WASM continues to use behavior bytecode.
 
-See [measured numeric-region results](research/behavior-numeric-performance.md).
-The measured improvement is specific to eligible computation; the Arena trial
-has not demonstrated a whole-scene speedup.
-
 Synchronous scalar event and effectful function entries can use a whole-function
 program, including branches, Sequence, WhileLoop, ForLoop, ForLoopWithBreak, Break, variable access, scalar event
 and function arguments, multiple returns, Min/Max, F32/F64 coercion and inlined
@@ -51,8 +47,6 @@ Native loops retain scalar state in registers and use explicit branches; portabl
 bytecode and emitted C execute the same lowered control flow. Static continuation
 records preserve pending loop/Sequence frames in budget and Break diagnostics.
 Numeric edge conversions use the same compiled saturating casts as explicit nodes.
-See [loop parity and performance results](research/whole-loops.md); the loop
-microbenchmark still exceeds the advisory native/C target.
 
 Random Real, Random Range Real and Random Range Vector lower into whole bodies.
 The existing RNG stays an explicit C call; conversions, bounds checks, vector
@@ -61,8 +55,7 @@ multiply-add. Targets with wider `long double` retain an explicit range kernel
 for scalar precision. Unused vector coordinates and pure-function returns keep
 their random draws, while repeated node reads share a computed value. Watches
 and stepping retain the same sequence. VM operand-presence flags are computed
-once after lowering and fit existing instruction padding. See
-[random coverage, parity and measured performance](research/whole-random.md).
+once after lowering and fit existing instruction padding.
 
 Synchronous whole functions can borrow array arguments and variables when the
 complete body cannot mutate them. ForEach and ForEachWithBreak emit direct
@@ -77,9 +70,6 @@ mutable variable before the body can replace it. Array creation, mutation and
 comparison now use explicit owned-value C calls within whole bodies. Borrowed-array operations
 add no array helper or iteration allocation. Activation argument copies remain
 outside the whole-function body.
-See [array measurements](research/whole-arrays.md).
-See [owned-array coverage and measurements](research/whole-owned-arrays.md).
-See [array-operation coverage and measurements](research/whole-array-ops.md).
 
 Make Array, Add, Add Unique, Append, Set Array Elem, Insert, Remove Index,
 Remove Item, Clear, Reverse, Swap, Resize and Identical use named C adapters.
@@ -91,7 +81,7 @@ checks and element loads. Helper errors retain their source node and pin.
 Eligible synchronous Tick batches now provide reusable invocation arenas for
 owned values. On failure, the captured activation takes ownership of the arena
 before the next row reuses the binding. Persistent managed stores retain
-instance-owned snapshots. See [owned Tick batching](research/owned-tick-batches.md).
+instance-owned snapshots.
 
 Contains and Find now lower to typed search loops over numeric, boolean, enum,
 handle, string and name elements. Numeric equality compares the value rather
@@ -101,8 +91,7 @@ explicit text helper; numeric searches use direct loads and comparisons with no
 runtime helper. Indexed addresses and field branches have native lowering, and
 loop invariants use saved registers while expression temporaries retain scratch
 registers. Null-array metadata, nested pure-call traversals and repeated
-breakpoints preserve the oracle's inspection behavior. See
-[search parity and measurements](research/whole-search.md).
+breakpoints preserve the oracle's inspection behavior.
 
 `Find Entities With Component` supports whole-function execution with a constant
 component key. A typed `node_query_fn` produces an owned handle snapshot through
@@ -115,7 +104,7 @@ results survive release of query storage. General compiled execution still
 handles excluded shapes. Raw native/generated-C
 entry callers use `behavior_function_prepare_host` and
 `behavior_function_release_host`; `behavior_function_run` owns this lifecycle
-by default. See [query measurements and coverage](research/whole-queries.md).
+by default.
 
 `Find Nearest Entity` uses a fixed `node_host_call_fn` signature with borrowed
 scalar/plain-struct arguments and caller-owned result backing. Generated code
@@ -125,8 +114,7 @@ pooled activations and ordered batches reuse these banks; bindings refresh for
 each instance. Synchronous and waiting bodies have instrumented variants for
 source stepping, watches, traversals and logical child inspection. Failed batches
 materialize their saved activation without rerunning the query. Standalone pure
-calls still use temporary host and activation storage. See
-[nearest-query measurements and parity](research/whole-nearest.md).
+calls still use temporary host and activation storage.
 
 `Set Material Parameter` uses the same typed host-call ABI for synchronous
 effects. Scalar and plain-vector payloads, borrowed string arguments and dynamic
@@ -134,8 +122,7 @@ error messages retain their source diagnostics. Generated code prepares the
 arguments directly and calls the C material service. It never calls the custom
 flow callback. The service cannot invalidate component or behavior storage;
 its host-sink access metadata keeps parallel scheduling conservative. Successful
-ordered batches reuse argument banks and avoid per-entity activations. See
-[material-write measurements and parity](research/whole-material.md).
+ordered batches reuse argument banks and avoid per-entity activations.
 
 `Send Event` with scalar payloads and `Destroy Entity` use a synchronous
 `node_command_fn` ABI in whole bodies. SLJIT emits argument computation, typed
@@ -149,9 +136,12 @@ Scalar values retain their actual type names through arguments, locals,
 arithmetic, coercions, array elements, returns and persistent variables. Borrowed
 names are interned before persistent stores. Canonical query element names and
 proven constant locals avoid redundant ownership calls. Arbitrary caller names
-still get owned storage. See [command measurements and parity](research/whole-commands.md).
+still get owned storage.
 
-
+Integer operations lower to native instructions with shared division/remainder,
+saturating casts and pure-call error source scopes. They introduce no runtime C
+helpers. The general compiled executor still handles excluded bodies, including
+instrumented ones.
 
 Native floating-point arithmetic and loads/stores use allocated registers
 directly. Loop locals use saved floating-point registers where available, including
@@ -174,7 +164,7 @@ names pass through an explicit ownership callback before publication in the
 variable. Backing storage survives null assignment, compatible hot apply and
 pool reuse. Managed structs keep their existing arena ownership and general
 compiled execution. Copying a variable retains a snapshot independently of later
-assignment or instance destruction. See [store acceptance](research/whole-stores.md).
+assignment or instance destruction.
 
 Reflected component Get, Has, Set and field Set now lower into checked native
 loads/stores, including explicit entity targets, Self/default-Self handles and
@@ -185,15 +175,12 @@ paths reuse validated addresses and forward local snapshots through typed slots;
 field values still reflect intervening writes. No node evaluator, component C
 accessor or temporary full-component allocation is required by these bodies.
 Managed component fields remain excluded. Custom component readers without an ECS
-execution view retain the general compiled callback path. See
-[component measurements and acceptance](research/whole-components.md).
-
+execution view retain the general compiled callback path.
 
 Mixed F32/F64 arithmetic preserves the language's subnormal rules. Floating-point
 Modulo, Atan2 and robust vector normalization call platform `fmodf`, `fmod`,
 `atan2f` and `hypot` directly from generated code. They do not call node evaluators.
-These calls use the same scalar ABI as generated C. See
-[aggregate measurements and acceptance](research/whole-aggregates.md).
+These calls use the same scalar ABI as generated C.
 
 Straight paths through multiple frames also have a guarded variant. The guard
 checks root/child budgets and call-depth limits before effects occur; the variant
@@ -207,15 +194,6 @@ that record source-node values and traversal history. Their logical child frames
 also preserve argument and error snapshots. Other instrumented bodies still use
 the general compiled path. Extending inspection to every whole body remains part
 of the migration.
-
-See [whole-function and scheduler measurements](research/whole-function-performance.md)
-for the initial generated-C performance gates and queue benchmarks. The catalog
-now has 21 eligible events out of 33 and 24 eligible effectful function
-bodies out of 31.
-All 39 pure local functions now have independently compiled bodies, as do
-all four linked library functions.
-These counts describe complete entries, not how many individual arithmetic
-expressions compile. The strict catalog audit distinguishes the counts.
 
 Activations retain compiled block indices, live slot storage, function children,
 owned loop snapshots and wait state. Source nodes are recovered from the program
@@ -244,63 +222,11 @@ parity and diagnostic tests.
 
 ## Validation
 
-- `make test` runs the native backend smoke, existing regression suite, additional
-  native/bytecode/oracle behavior checks, scene documents and headless app smoke.
-- `build/test_suite --behavior-parity` runs linked-function and debugger contracts
-  against bytecode and the oracle, plus gameplay checks in both hosts. Encounter
-  snapshots compare reflected component values frame by frame across all three
-  backends through spawning, damage and death. Generated prototype identity tags
-  are compared by presence because independent loads assign process-local IDs.
-- `build/test_suite --compiled-arena` loads Arena3D, fires, simulates and restarts
-  through SLJIT and bytecode. It checks every live attachment's backend and asserts
-  zero oracle calls. Gameplay simulation fixtures make the same oracle assertion.
-- A native configuration with `CHIBI_ENABLE_SJLIT=OFF` runs
-  `check-behavior-backend` or `test_suite --backend-unavailable` to verify a hard
-  diagnostic and zero interpreter calls.
-- `make web` builds the app and runs an Emscripten/Node backend smoke covering an
-  event, yield, resume, variables, loops and nested whole-function arguments,
-  conversions, Min/Max, returns, nested pure bodies and fixed-layout aggregate arguments/results
-  without callee runtime allocation, plus persistent plain struct writes through
-  nested calls and loops, nested query snapshots, direct command calls and typed
-  host data calls with reused pooled/batched storage. It asserts bytecode execution,
-  SLJIT unavailability and zero oracle calls.
-
-The existing runtime tests cover local/library calls, managed values, loops,
-structural host waits, cancellation, hot apply, event ordering, watches and
-stepping. The existing gameplay tests cover contacts, damage, death, experience,
-restart and preview behavior. These are semantic checks, not a benchmark.
-
-Verified on September 12, 2026: `make test`, `make build`, `make web`,
-`test_suite --behavior-parity`, `test_suite --compiled-arena`, and the native
-no-JIT smoke target all passed. Arena3D reported 63 live behavior instances for
-each compiled backend, with zero oracle calls through firing and restart.
-
-The [remaining whole-function migration](research/behavior-completion.md) lists
-the unresolved language/runtime work and the strict catalog coverage command.
-Backend parity passes do not imply that this coverage gate passes.
-
-[Whole-function call measurements](research/whole-function-calls.md) cover the
-typed argument/return ABI, generated-C comparison and paired scheduler/Arena runs.
-The subsequent [call-inlining measurements](research/whole-function-inline.md)
-cover logical frames, stored outputs and guarded optimization.
-
-[Tick profiling and frame reuse](research/tick-profiling.md) documents the new
-execution/setup measurements, bounded call-frame storage, stress results and
-remaining compiler work.
-
-[Pure-function body measurements](research/whole-pure-functions.md) cover independent
-publication, direct execution inside general compiled events, expanded coverage
-gates and paired Arena results.
-
-[Whole-function math calls](research/whole-math-calls.md) documents direct
-transcendental calls, register preservation, helper-free Clamp, expanded parity
-and the generated-C math benchmark.
-
-[Whole-function integer operations](research/whole-integers.md) covers native
-integer instructions, shared division/remainder, saturating casts, pure-call
-error source scopes and generated-C acceptance. Integer language operations
-introduce no runtime C helpers. The general compiled executor still handles
-excluded bodies, including instrumented ones.
+Use the selectors in [test iteration](testing.md) for current commands and
+build requirements. Focused runtime checks include `whole-alias`,
+`whole-integer`, `whole-conversion`, `whole-select`, `whole-math` and `owned-tick`.
+Choose checks for the affected lowering, ownership and scheduling contracts;
+backend parity alone does not establish complete whole-function coverage.
 
 ## Struct identity conversions
 
@@ -310,7 +236,6 @@ return value. Whole-function lowering checks the scalar field layout and reuses
 typed slots for both explicit nodes and conversion edges. Native execution emits
 no conversion helper or intermediate allocation. System native lowering also
 requires this annotation; compatible layouts alone do not imply identity.
-See [measurements and parity coverage](research/whole-aliases.md).
 
 ## Query reuse during ordered broadcasts
 
@@ -325,8 +250,7 @@ read current positions, retirement and exclusions and compute exact distances.
 This optimization is automatic for authored Enemy Tick. It is independent of
 whether its body runs as SLJIT or bytecode. It does not cache final nearest
 results or permit changes to observable event order. Query counters are opt-in
-through the runtime inspection API. Scaling and remaining capacity/memory limits
-are tracked in [the completion criteria](research/behavior-completion.md).
+through the runtime inspection API.
 
 Within one unobserved whole-function execution, the shared compiler also reuses
 the result of a contextual data node declared `node_host_call.reusable` when a
@@ -340,8 +264,7 @@ back edges and waits stop result reuse. Checked world/entity/component addresses
 can survive field writes along a proven path; field values are still loaded
 again. Nothing moves ahead of its first checked access. Inspection retains the
 original program so stepping can observe changes made while paused, and actual
-continuations retain their saved slots. See [branch-read results](research/branch-reads.md).
-
+continuations retain their saved slots.
 
 ## ECS growth and activation storage
 
@@ -368,9 +291,6 @@ sequence snapshot through that index, preserving order across nested attachment
 changes. The prepared Tick schedule described below now supplies the native
 outer loop.
 
-Scale measurements and remaining limits are in
-[the capacity and memory report](research/arena-capacity.md).
-
 The behavior world also indexes attachments with nonempty activation queues.
 Pumping and paused-state inspection skip idle attachments. Empty/nonempty queue
 notifications maintain membership, including waits, debug holds, cancellation
@@ -380,9 +300,7 @@ performance assertions. Attached instances borrow their world's simulation clock
 so advancing time and delta time performs constant work regardless of attachment
 count. Standalone instances retain independent clocks. Activations snapshot their
 start time and delta time; waits still read the current clock where their
-contracts require it. Pool release detaches the borrowed clock. See
-[pending-queue measurements and lifecycle checks](research/pending-queues.md) and
-[shared-clock measurements](research/shared-clock.md).
+contracts require it. Pool release detaches the borrowed clock.
 
 ## Prepared Tick updates
 
@@ -417,15 +335,13 @@ preserving attachment order within an entity. Large spans also validate rows
 and refresh their private bindings on workers. Every validation task joins
 before any behavior effects; a blocked row returns the whole span to the normal
 scheduler. Small spans validate on the calling thread to avoid extra task
-overhead. See [parallel validation and the independent-C comparison](research/parallel-validation.md).
+overhead.
 
 `behavior_last_update` distinguishes prepared executions, native outer-loop
 executions and rows handled by normal dispatch. Profiling deliberately uses the
 prepared C loop with compiled bodies; unprofiled native spans contain no timing
 callbacks. `behavior_set_native_update` selects the C outer loop for compiler
 comparisons. The named-event and debugger APIs remain unchanged.
-
-See [Tick update measurements and remaining storage work](research/tick-updates.md).
 
 Detailed behavior profiling is now opt-in. Normal Play uses the uninstrumented
 update loop; the editor enables detailed timers while Performance is visible
@@ -436,32 +352,27 @@ Whole Emit Particles and Emit Directed Particles bodies call explicit native
 particle entry points with preallocated typed argument banks. Optional
 `node_host_call.missing_service` guards preserve service checks before evaluating
 inputs. Native code emits the pointer check directly; bytecode and generated C
-retain the same ordering. See [particle parity and measurements](research/whole-particles.md).
+retain the same ordering.
 
 Whole managed structs now flatten nested scalar and string/name fields. Mutable
 string snapshots retain at local/result boundaries, persistent assignments use
 an owned typed-value helper, and component writes retain strings in the ECS
 world before native field stores. Managed debugger watches own their snapshots.
 Allocating ownership operations currently exclude prepared Tick batching.
-See [managed-value parity, measurements and remaining ownership work](research/whole-managed.md).
 
 Persistent managed writes now copy into a spare per-variable arena, then publish
 the result and reset the previous arena. Each array element is copied once.
 Warmed writes can reuse backing blocks while preserving self-assignment, borrowed
-slices, errors and hot-apply reordering. Pool release frees both arenas. See
-[storage reuse measurements and memory tradeoff](research/managed-reuse.md).
+slices, errors and hot-apply reordering. Pool release frees both arenas.
 
 Explicit `To Name` nodes and edge conversions now lower into whole bodies,
 including null-to-empty normalization and owned results. The native path uses
 the existing arena-copy helper for string retention. SpawnTelegraph.Tick now
-qualifies for whole-function execution. See [conversion parity and Arena
-measurements](research/whole-names.md).
+qualifies for whole-function execution.
 
-The historical Visual Reaction and Scene Rhythm lowering experiments are
-recorded in [visual reaction measurements](research/whole-reaction.md) and
-[rhythm/reflection measurements](research/whole-rhythm-reflection.md). Both
-specialized runtime features have been retired. Generic visual transforms,
-simulation time, math and tasks remain available to authored behaviors.
+The specialized Visual Reaction and Scene Rhythm runtime features have been
+retired. Generic visual transforms, simulation time, math and tasks remain
+available to authored behaviors.
 
 Reflection automatically emits compiled native-call adapters for eligible pure
 `NODE_READ` functions with supported value signatures. The adapter calls C with
@@ -471,21 +382,16 @@ Raw string outputs are not inferred to be safe. Reflected component field/layout
 metadata already drives generic component lowering. Complex native functions can
 therefore stay C helpers while arithmetic and control flow remain directly lowered.
 
-All current authored entries now pass `--whole-function-audit`, which also runs
-in `make test`. This includes complex geometry through generated native adapters;
-it does not mean their implementation is expanded into SLJIT. See the
-[rhythm/reflection results and limitations](research/whole-rhythm-reflection.md).
-
 The four registered Set operations also compile as whole bodies. Construction
 and insertion call explicit owned-value C helpers; length is a direct load and
 membership uses typed search loops or managed-struct equality helpers. Lowered
 container metadata preserves Set identity through frames, stores, returns and
-inspection. See [Set semantics, coverage and performance limits](research/whole-sets.md).
+inspection.
 
 Switch Int/Enum/String/Name now lower into whole-function comparisons and
 branches, with source inspection through loops, calls and waits. Short constant
 text labels compare directly in SLJIT; longer and dynamic equality calls use the
-native helper. See [Switch parity and measured comparison](research/whole-switches.md).
+native helper.
 Effectful recursive calls also preserve active loop state across calls and host
 waits. Re-entering the same active loop node within one invocation remains
 unsupported by whole-function lowering.
@@ -493,9 +399,8 @@ unsupported by whole-function lowering.
 DoOnce, DoN, FlipFlop and Gate now use fixed per-instance slots and direct compiled
 flag/counter operations. Publication supplies slot indices; compatible hot apply
 remaps values by node ID and pooling resets them. Ordinary, batched and prepared
-Tick execution bind the same bank. See [persistent state semantics and coverage](research/whole-state.md).
+Tick execution bind the same bank.
 
 MultiGate now uses the same fixed state bank through an explicit C selection
 helper. Inputs and output branches remain compiled. Masks stay independent across
-hot apply and pooling, including prepared Tick execution. See
-[MultiGate coverage and helper measurements](research/whole-multigate.md).
+hot apply and pooling, including prepared Tick execution.

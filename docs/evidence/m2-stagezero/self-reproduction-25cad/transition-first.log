@@ -1,2 +1,0 @@
-compiler-host bytecode=0 sljit=23550191 wasm=0 fallback=0 overflow=0
-Test command wall time: 4.125s; includes in-test fixture setup; external configuration/build excluded.

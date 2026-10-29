@@ -1,5 +1,0 @@
-scale_setup backend=SLJIT entities=20000 attachments=100000 setup_ms=132.627 peak_rss_mb=222.422 peak_growth_mb=207.203
-scale_queries searches=1280000 world_candidates=640032 matching_candidates=1280000 cache_builds=32
-scale backend=SLJIT entities=20000 frames=32 profile=1 tick_p50_ms=10.977000 tick_p95_ms=13.435000 ns_per_entity=548.850 batches=1600000 checksum=-1436829.659477234 peak_rss_mb=225.297 oracle_calls=0
-scale_profile backend=SLJIT behavior=EnemyBehavior event=Tick exec_ms=1.098562 setup_ms=0.699000 dispatches=640000
-scale_profile backend=SLJIT behavior=CombatFeedback event=Tick exec_ms=0.422406 setup_ms=1.204594 dispatches=640000

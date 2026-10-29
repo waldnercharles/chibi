@@ -7,6 +7,17 @@ It is off by default; pico's output, assertions, hooks and CPU-time reporting ar
 The vendor header is unchanged. Both the CMake and authored Graph source lists
 include the test-only wrapper.
 
+Linux projects also set the separate `CHIBI_TEST_NATIVE_BUILD_TIMINGS` opt-in to
+that directory. The native-build suite claims a private `native-cache-*` child
+directory there for the existing build-host trace. Only the cache case's three
+unchanged CLI calls receive `CHIBI_BUILD_TIMINGS` alongside their empty `PATH`;
+all other child environments remain unchanged. Without this explicit test opt-in,
+even an inherited `CHIBI_BUILD_TIMINGS` is not forwarded. Sink failures leave the
+case untraced. The cold O0, up-to-date O0 and emitter-reusing O2 calls separate
+emitter preparation from repeated driver preparation without changing caches,
+assertions or deadlines. See [build-host timing](../.github/native-build-timings.md)
+for the bounded, argument-free trace schema. Traces stay in the existing artifact.
+
 Each process creates a unique mode-0600 file with a version header and columns
 `event`, `ordinal`, `case`, `wall_ns`. Match a `begin` to an `end` within the same
 file by ordinal, not case name: names may repeat. Begin records are flushed before

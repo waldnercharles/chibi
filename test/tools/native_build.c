@@ -31,7 +31,40 @@
 static char suite[256], built[1024], sdk[1024], launcher[1024], game[1024],
     tools[1024], output[65536], errors[65536];
 static char *stage_tool;
+static char *cache_trace;
 static chibi_process_capture_result status;
+
+/* A suite-owned trace directory, retained with the opt-in timing artifact. */
+static char *trace_environment(const char *parent)
+{
+    if (!parent || !*parent) {
+        return NULL;
+    }
+    char folder[1024];
+    int size = snprintf(folder, sizeof folder, "%s/native-cache-XXXXXX", parent);
+    if (size < 0 || (size_t)size >= sizeof folder || !mkdtemp(folder)) {
+        fprintf(stderr, "native build: timing sink unavailable; case remains untraced\n");
+        return NULL;
+    }
+    char *resolved = realpath(folder, NULL);
+    if (!resolved) {
+        rmdir(folder);
+        fprintf(stderr, "native build: timing sink unavailable; case remains untraced\n");
+        return NULL;
+    }
+    size_t length = sizeof "CHIBI_BUILD_TIMINGS=" + strlen(resolved);
+    char *environment = xmalloc(length);
+    snprintf(environment, length, "CHIBI_BUILD_TIMINGS=%s", resolved);
+    free(resolved);
+    return environment;
+}
+
+static void build_environment(const char *trace, const char *environment[3])
+{
+    environment[0] = "PATH=";
+    environment[1] = trace;
+    environment[2] = NULL;
+}
 
 static void path(char out[1024], const char *base, const char *name)
 {
@@ -126,7 +159,7 @@ enum
 
 /* Runs `chibi build --native` with `options`, up to MAX_OPTIONS and ended by
  * NULL, an empty PATH and no CHIBI_LLVM_BIN. */
-static int build_with(const char *program, const char *const *options, const char *llvm)
+static int build_using(const char *program, const char *const *options, const char *llvm, const char *trace)
 {
     chibi_process_output out = { .data = output, .capacity = sizeof output };
     chibi_process_output err = { .data = errors, .capacity = sizeof errors };
@@ -139,16 +172,29 @@ static int build_with(const char *program, const char *const *options, const cha
     argv[at++] = "--llvm";
     argv[at++] = llvm;
     argv[at] = game;
-    const char *envp[] = { "PATH=", NULL };
+    const char *envp[3];
+    build_environment(trace, envp);
     status = chibi_process_capture(program, argv, suite, envp, chibi_process_now() + 120, NULL, &out, &err);
     assert(status.error == CHIBI_PROCESS_OK);
     return status.status;
+}
+
+static int build_with(const char *program, const char *const *options, const char *llvm)
+{
+    return build_using(program, options, llvm, NULL);
 }
 
 static int build(const char *program, const char *mode, const char *llvm)
 {
     const char *options[] = { mode, NULL };
     return build_with(program, options, llvm);
+}
+
+/* Only the cache case's three calls may receive the explicit diagnostic opt-in. */
+static int cache_build(const char *program, const char *mode, const char *llvm)
+{
+    const char *options[] = { mode, NULL };
+    return build_using(program, options, llvm, cache_trace);
 }
 
 /* The program path the launcher printed last, as "native: PATH". */
@@ -215,7 +261,7 @@ static const char *const
 TEST_CASE(native_build_links_a_program_and_reuses_it)
 {
     reset("cache", SOURCE);
-    REQUIRE(build(launcher, "-O0", tools) == 0);
+    REQUIRE(cache_build(launcher, "-O0", tools) == 0);
     char program[1024], trace[1024], receipt[1024];
     REQUIRE(only("O0-", "", program));
     path(receipt, program, "receipt.txt");
@@ -227,14 +273,88 @@ TEST_CASE(native_build_links_a_program_and_reuses_it)
     REQUIRE(!access(program, X_OK) && strstr(errors, program));
     path(trace, tools, "llc.argv");
     REQUIRE(!unlink(trace));
-    REQUIRE(build(launcher, "-O0", tools) == 0 && strstr(errors, "is up to date"));
+    REQUIRE(cache_build(launcher, "-O0", tools) == 0 && strstr(errors, "is up to date"));
     REQUIRE(!exists(trace));
     char *after = tool_read(receipt);
     REQUIRE(after && !strcmp(before, after));
     free(after);
     free(before);
-    REQUIRE(build(launcher, "-O2", tools) == 0 && count("O2-") == 1 && count("O0-") == 1);
+    REQUIRE(cache_build(launcher, "-O2", tools) == 0 && count("O2-") == 1 && count("O0-") == 1);
     REQUIRE(count("emitter-") == 1);
+    return true;
+}
+
+TEST_CASE(native_build_timings_are_owned_and_explicit)
+{
+    const char *environment[3];
+    build_environment(NULL, environment);
+    REQUIRE(!strcmp(environment[0], "PATH=") && !environment[1] && !environment[2]);
+    REQUIRE(!trace_environment(NULL) && !trace_environment(""));
+    char absent[1024];
+    path(absent, suite, "absent");
+    REQUIRE(!trace_environment(absent));
+    char long_parent[1024];
+    memset(long_parent, 'x', sizeof long_parent - 1);
+    long_parent[sizeof long_parent - 1] = 0;
+    REQUIRE(!trace_environment(long_parent));
+    char *first = trace_environment(suite), *second = trace_environment(suite);
+    REQUIRE(first && second && strcmp(first, second));
+    const char *prefix = "CHIBI_BUILD_TIMINGS=";
+    REQUIRE(!strncmp(first, prefix, strlen(prefix)) && !strncmp(second, prefix, strlen(prefix)));
+    char *owner = realpath(suite, NULL);
+    REQUIRE(owner);
+    REQUIRE(
+        !strncmp(first + strlen(prefix), owner, strlen(owner)) &&
+        !strncmp(first + strlen(prefix) + strlen(owner), "/native-cache-", strlen("/native-cache-"))
+    );
+    REQUIRE(
+        !strncmp(second + strlen(prefix), owner, strlen(owner)) &&
+        !strncmp(second + strlen(prefix) + strlen(owner), "/native-cache-", strlen("/native-cache-"))
+    );
+    free(owner);
+    struct stat info;
+    REQUIRE(!stat(first + strlen(prefix), &info) && (info.st_mode & 0777) == 0700);
+    REQUIRE(!stat(second + strlen(prefix), &info) && (info.st_mode & 0777) == 0700);
+    build_environment(first, environment);
+    REQUIRE(!strcmp(environment[0], "PATH=") && environment[1] == first && !environment[2]);
+    build_environment(NULL, environment);
+    REQUIRE(!strcmp(environment[0], "PATH=") && !environment[1] && !environment[2]);
+    char probe[1024];
+    path(probe, suite, "timing-environment.sh");
+    tool_write(probe, "#!/bin/sh\nprintf 'PATH=%s\\nTRACE=%s\\n' \"$PATH\" \"${CHIBI_BUILD_TIMINGS-unset}\"\n");
+    REQUIRE(!chmod(probe, 0700));
+    const char *previous = getenv("CHIBI_BUILD_TIMINGS");
+    char *saved_environment = previous ? xstrdup(previous) : NULL;
+    char *saved_trace = cache_trace;
+    assert(!setenv("CHIBI_BUILD_TIMINGS", "/must-not-inherit", 1));
+    cache_trace = NULL;
+    int cold = cache_build(probe, "-O0", "/llvm");
+    char *cold_output = xstrdup(output);
+    cache_trace = first;
+    int plain = build(probe, "-O0", "/llvm");
+    char *plain_output = xstrdup(output);
+    int traced = cache_build(probe, "-O0", "/llvm");
+    char *traced_output = xstrdup(output);
+    cache_trace = saved_trace;
+    assert(
+        saved_environment ? !setenv("CHIBI_BUILD_TIMINGS", saved_environment, 1)
+                          : !unsetenv("CHIBI_BUILD_TIMINGS")
+    );
+    free(saved_environment);
+    REQUIRE(!cold && !plain && !traced);
+    REQUIRE(!strcmp(cold_output, "PATH=\nTRACE=unset\n") && !strcmp(plain_output, cold_output));
+    size_t size = strlen(first) + 32;
+    char *expected = xmalloc(size);
+    snprintf(expected, size, "PATH=\nTRACE=%s\n", first + strlen(prefix));
+    REQUIRE(!strcmp(traced_output, expected));
+    free(expected);
+    free(traced_output);
+    free(plain_output);
+    free(cold_output);
+    REQUIRE(!unlink(probe));
+    REQUIRE(!rmdir(first + strlen(prefix)) && !rmdir(second + strlen(prefix)));
+    free(first);
+    free(second);
     return true;
 }
 
@@ -1074,6 +1194,8 @@ void test_native_build(const char *binary)
     stage_tool = tool_read(CHIBI_SOURCE_ROOT "/test/native_aot/driver/fixtures/stage-tool.sh");
     assert(stage_tool);
     relocate(binary);
+    cache_trace = trace_environment(getenv("CHIBI_TEST_NATIVE_BUILD_TIMINGS"));
+    RUN_TEST_CASE(native_build_timings_are_owned_and_explicit);
     RUN_TEST_CASE(native_build_links_a_program_and_reuses_it);
     RUN_TEST_CASE(native_build_adds_line_tables_with_g);
     RUN_TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back);
@@ -1084,10 +1206,12 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     RUN_TEST_CASE(native_export_ships_libraries_the_player_binds);
+    free(cache_trace);
+    cache_trace = NULL;
     free(stage_tool);
     tool_remove_tree(suite);
 #else
     (void)binary;
-    fprintf(stderr, "native build: ten Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
+    fprintf(stderr, "native build: eleven Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
 #endif
 }

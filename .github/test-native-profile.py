@@ -184,17 +184,30 @@ class ProfileTests(unittest.TestCase):
                 parity = block.index('python3 tools/test_policy.py tool build-graph-debug-optimization')
                 self.assertLess(verify, reference)
                 self.assertLess(reference, parity)
-        self.assertNotIn('continue-on-error:', text.split('  native:\n')[1].split('  windows:\n')[0])
+        diagnostics = ['Capture macOS facade identities', 'Preserve macOS facade identities']
+        optional = []
+        native_jobs = text.split('  native:\n', 1)[1].split('  windows:\n', 1)[0]
+        for step in native_jobs.split('\n      - '):
+            if 'continue-on-error:' not in step:
+                continue
+            name = step.splitlines()[0].removeprefix('name: ')
+            self.assertIn(name, diagnostics)
+            self.assertEqual(step.count('continue-on-error:'), 1)
+            self.assertIn('\n        continue-on-error: true\n', step)
+            optional.append(name)
+        self.assertEqual(optional, diagnostics)
 
     def test_linux_projects_keep_private_case_timings(self):
         text = (ROOT / '.github/workflows/ci.yml').read_text()
         for job, following in (('native', 'native-macos'), ('native-macos', 'windows')):
             block = text.split(f'  {job}:\n', 1)[1].split(f'\n  {following}:\n', 1)[0]
             selectors = block.split('- name: Native, material, project and language selectors', 1)[1].split('      - name:', 1)[0]
-            timed = [line.strip() for line in selectors.splitlines() if 'CHIBI_TEST_TIMINGS' in line]
+            timed = [line.strip() for line in selectors.splitlines()
+                     if 'CHIBI_TEST_TIMINGS' in line or 'CHIBI_TEST_NATIVE_BUILD_TIMINGS' in line]
             if job == 'native':
                 self.assertEqual(timed, [
                     'CHIBI_TEST_TIMINGS="$RUNNER_TEMP/case-timings" '
+                    'CHIBI_TEST_NATIVE_BUILD_TIMINGS="$RUNNER_TEMP/case-timings" '
                     'CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi '
                     'CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin '
                     'python3 tools/test_policy.py group projects'])

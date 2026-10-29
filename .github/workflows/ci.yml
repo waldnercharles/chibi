@@ -147,7 +147,7 @@ jobs:
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           python3 tools/test_policy.py group native
           python3 tools/test_policy.py group materials
-          CHIBI_TEST_TIMINGS="$RUNNER_TEMP/case-timings" CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
+          CHIBI_TEST_TIMINGS="$RUNNER_TEMP/case-timings" CHIBI_TEST_NATIVE_BUILD_TIMINGS="$RUNNER_TEMP/case-timings" CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
           CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group language
       - name: Keep the macOS and Windows native modules
         uses: actions/upload-artifact@v4
@@ -222,9 +222,29 @@ jobs:
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the Debug builds use.
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+        id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
         run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
+      # Keep the actual failed input. A success has already replaced input.json
+      # with packaging input; the collector labels that role explicitly.
+      - name: Capture macOS facade identities
+        if: always() && (steps.release-build.outcome == 'success' || steps.release-build.outcome == 'failure')
+        continue-on-error: true
+        run: >-
+          python3 .github/capture-facade.py --source-root "$GITHUB_WORKSPACE"
+          --build "$GITHUB_WORKSPACE/build-release"
+          --output "$RUNNER_TEMP/facade-capture"
+          --expected-revision "$GITHUB_SHA"
+      - name: Preserve macOS facade identities
+        if: always() && (steps.release-build.outcome == 'success' || steps.release-build.outcome == 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-facade-identities-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/facade-capture/
+          if-no-files-found: warn
+          retention-days: 7
       # The Release build host runs the outer Build and Graph programs, which
       # plan the selected Debug build. Release hosts also generate the asset
       # compiler resource; products and test drivers retain the selected profile.

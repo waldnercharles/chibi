@@ -524,5 +524,9 @@ static const char *select_owned(arena *storage, const pin_value *inputs, int cou
 NATIVE_ARRAY_OPERATIONS_WITH_ADD(CALL, ADD)
 #undef ADD
 #undef CALL
-/* Array callbacks borrow current values and publish independent logical owners. */
-const node_access NATIVE_ARRAY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+/* Argument-only value operations: no service, world or invocation state.
+ * Results have independent logical owners; explicit pointer targets keep their
+ * identity and are never dereferenced here. Reading an argument's live view
+ * observes its backing storage, which the compiler records at the call site.
+ * language_values/owned_result describe the value boundary, not these effects. */
+const node_access NATIVE_ARRAY_ACCESS = { .flags = NODE_EFFECT_PURE };

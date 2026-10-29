@@ -157,28 +157,3 @@ bool material_field_bake_rows_text(
     afree(parameters);
     return valid;
 }
-material_field_session *material_field_session_new_text(
-    const material_fields *fields,
-    const char *name,
-    const char *text,
-    unsigned seed,
-    const task_system *tasks,
-    char *error,
-    size_t size
-)
-{
-    field_parameter *parameters = NULL;
-    if (!prepare_parameters(fields, name, text, &parameters, error, size)) {
-        return NULL;
-    }
-    material_field_session *session = material_field_session_new(
-        fields,
-        name,
-        (field_context){ seed, parameters, acount(parameters) },
-        tasks,
-        error,
-        size
-    );
-    afree(parameters);
-    return session;
-}

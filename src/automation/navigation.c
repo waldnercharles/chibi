@@ -693,29 +693,3 @@ void automation_add_use_counts(const navigation *nav, int asset, yyjson_mut_doc 
 }
 
 /* ---------- Shared with rename and delete ---------- */
-
-int automation_select_symbol(
-    const navigation *nav,
-    yyjson_val *request,
-    reference_symbol *symbol,
-    char *error,
-    size_t error_size
-)
-{
-    return select_symbol(nav, request, symbol, error, error_size);
-}
-
-void automation_add_use(
-    const navigation *nav,
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *object,
-    const reference *r,
-    bool asset
-)
-{
-    yyjson_mut_obj_add_str(doc, object, "role", ROLES[r->role]);
-    if (asset) {
-        add_asset(nav, doc, object, r->source, false);
-    }
-    add_within(doc, object, r);
-}

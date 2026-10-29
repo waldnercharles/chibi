@@ -37,8 +37,6 @@ typedef struct
 {
     uint64_t searches, world_candidates, matching_candidates, cache_builds;
 } entity_query_profile;
-void entities_profile_queries(entities *entities, bool enabled);
-entity_query_profile entities_query_profile(const entities *entities);
 /* Replace a caller-owned core array with live host-spawned handles in spawn order. */
 void entities_copy_live(const entities *entities, ecs_entity **out);
 bool entities_owns(const entities *entities, ecs_entity entity);
@@ -72,11 +70,5 @@ bool entities_initializing(const entities *entities);
  * waiting on authored time or the debugger; a runaway chain returns a budget
  * error. Does not dispatch ordinary events. */
 int entities_flush_initializers(entities *entities, double monotonic_time);
-
-/* Snapshot category membership and positions before concurrent nearest reads.
- * No transform/collider or structural writes are allowed until end. */
-unsigned entities_query_categories(const behavior_function *function);
-bool entities_parallel_begin(entities *entities, unsigned categories);
-void entities_parallel_end(entities *entities);
 
 #endif

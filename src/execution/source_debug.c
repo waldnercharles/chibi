@@ -34,13 +34,3 @@ behavior_source_point behavior_function_source_point_at(const behavior_function 
     assert(f && index >= 0 && index < acount(f->source_points));
     return f->source_points[index];
 }
-int behavior_function_source_watch_count(const behavior_function *f)
-{
-    assert(f);
-    return acount(f->source_watches);
-}
-behavior_source_watch behavior_function_source_watch_at(const behavior_function *f, int index)
-{
-    assert(f && index >= 0 && index < acount(f->source_watches));
-    return f->source_watches[index];
-}

@@ -38,12 +38,10 @@ bool ui_document_prepared_read_budget(
  * failure keeps caller ownership. Exchange cannot fail; the exchanged-out
  * catalog retains old document addresses until the host retires that catalog. */
 typedef struct ui_documents ui_documents;
-ui_documents *ui_documents_new();
 /* active=false creates an empty retirement shell; active=true is authoritative
  * even when empty. Budget failures leave caller ownership/remainder unchanged. */
 ui_documents *ui_documents_new_budget(size_t *remaining, bool active);
 bool ui_documents_add_owned_budget(ui_documents *, prepared_ui_document *, size_t *remaining);
-bool ui_documents_add_owned(ui_documents *, prepared_ui_document *);
 void ui_documents_exchange(ui_documents *);
 void ui_documents_free(ui_documents *);
 const ui_documents *ui_documents_current();

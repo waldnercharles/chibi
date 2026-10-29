@@ -17,9 +17,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_link_options(-sSTACK_SIZE=1048576)
 endif()
 
-option(CHIBI_ENABLE_PERFORMANCE_TESTS
-       "Run timing-sensitive performance checks in the test suite" OFF)
-
 if(CMAKE_HOST_APPLE AND CMAKE_OSX_SYSROOT)
     set(CHIBI_SDKROOT "${CMAKE_OSX_SYSROOT}")
 elseif(CMAKE_HOST_APPLE)

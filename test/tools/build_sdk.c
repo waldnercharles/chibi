@@ -18,7 +18,7 @@
 #define SDK_PATH 4096
 #define SDK_MANIFEST "share/chibi/compiler-tools.tsv"
 /* Each packaging or bootstrap operation may compile the compiler twice. */
-#define SDK_RUN_SECONDS 120
+#define SDK_RUN_SECONDS 300
 
 static char host_path[SDK_PATH], build_path[SDK_PATH], archive_path[SDK_PATH];
 static char suite[SDK_PATH], log_path[SDK_PATH];
@@ -267,7 +267,7 @@ static int install_from(const char *source_root, const char *build, const char *
         "--entry",
         "CompilerTools",
         "--timeout-ms",
-        "120000",
+        "240000",
         "--",
         "--build",
         build,

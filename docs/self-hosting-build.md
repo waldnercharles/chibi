@@ -768,7 +768,11 @@ the remaining declaration and native-binding contracts move.
 ## Bootstrap artifact
 
 The recovery artifact of the stage-one package compiler is checked in at
-`tools/compiler/bootstrap`, as Zig checks in `stage1/zig1.wasm`.
+`tools/compiler/bootstrap`, as Zig checks in `stage1/zig1.wasm`. It is a seed,
+not a snapshot of the current sources: it has to load on the pinned runtime and
+compile the sources on disk, and nothing else ties it to them. The compiler
+reaches its fixed point from the seed (see below), so compiler changes do not
+queue behind a regenerated artifact.
 `make bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
 folder). It runs in two steps:
 
@@ -795,7 +799,10 @@ folder). It runs in two steps:
 - `entry`: `CompileClosure`'s entry ID.
 - `closure`: its file, length and SHA-256.
 - `project` and `core`: the virtual roots Compile saw.
-- `sources`: each source in Compile's order, with its length and SHA-256.
+- `sources`: each source the seed compiled, in Compile's order, with its length
+  and SHA-256. This records where the seed came from. Recovery takes the
+  sources to compile from `tools/compiler/asset_compiler/CompilerSources.txt`
+  and uses the record only to tell whether they changed.
 - `target`: Compile's last six arguments, copied verbatim. These are the external
   inputs:
   - the value layout (`Target`);
@@ -818,27 +825,36 @@ with its own message:
 - a manifest format it doesn't read;
 - a version older than the sources' minimum;
 - a closure other than the recorded one;
-- a missing source, or a package folder holding a `.chibi` file the manifest
-  doesn't record;
+- a listed source that is missing, or a package folder holding a `.chibi` file
+  that `asset_compiler/CompilerSources.txt` does not list, because a package
+  compiles only the files it is given;
 - a target other than the host's own (`compiler_host_target_json`), compared
   in full: value layout, prepared ABI, instruction names, natives, their
   ports and native identities.
 
-It then compiles the recorded sources from disk with the artifact:
-- If they are the recorded sources, the result must be the artifact's own bytes.
-- If they changed, the compiler it produces must compile them to itself, which
-  takes a second compile.
+It then compiles the listed sources from disk with the artifact:
+- If they are the sources the artifact recorded, the result must be the
+  artifact's own bytes.
+- If they differ from the record (edited, added, removed or reordered), the
+  artifact is only the seed, as zig1 is Zig's. It compiles the sources to stage
+  one, and stage one compiles them to stage two. When the two are the same
+  bytes, the compiler has reached its fixed point. When they differ, because
+  the sources changed how the compiler generates code, stage two compiles them
+  to stage three, which must be stage two's bytes. The fixed point is the
+  recovered compiler. The seed's own code generation never has to match the
+  sources', and the sources never have to match the seed's record.
 
 The in-process `compiler_bootstrap_load` API uses the same validation but loads
-matching source hashes directly. Changed sources take the two-compile recovery
-path and return the recovered compiler as an owned host. This API writes no
+matching source hashes directly. Changed sources take the recovery path above
+and return the recovered compiler as an owned host. This API writes no
 files, including when an output path is present in its options; the CLI check
 above still performs the reproduction proof and can write `--recover FILE`.
 
 `make test-recovery` exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and runs that check with the Release host. On macOS arm64 the
-check takes one compile, about 11 s, or two when the sources changed, about
-26 s; the whole selector takes about 18 s.
+check takes one compile, about 11 s, two when the sources changed, about
+26 s, or three when they also changed the generated code; the whole selector
+takes about 18 s.
 
 A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
 `chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
@@ -888,7 +904,10 @@ hashes continue to identify the original seed's provenance. It then invokes
 the runtime with `--bootstrap stage1` to produce stage two. This second
 process loads and executes the compiler just built, and the outputs must have
 identical hashes. Each invocation also performs the recovery checks above,
-including an internal fixed-point compile when recorded sources changed.
+including the fixed-point compiles when the sources differ from the record.
+The proof therefore checks the self-hosting fixed point of the current
+sources, not that they match the checked seed. The scalar regression that
+follows runs with that fixed-point compiler.
 
 Each job uploads both compiler stages, their SHA-256 hashes, logs and JSON evidence
 with seed/runtime identities, input inventory, revision, platform, cleared
@@ -910,19 +929,34 @@ change that needed it. Routine compiler self-builds continue to consume the
 pinned release. The initial runtime seeds
 were produced by the predecessor recovery workflow at the recorded revision.
 
-Rewrite the artifact only when it can no longer recover the compiler:
-- when `minimum` rises past its version;
-- when the host's target changes;
+Rewrite the seed only when it can no longer compile the sources on disk or no
+longer loads on the pinned runtime, and then in a PR of its own or in the one
+change that needs it:
+- when `minimum` rises past its version, which is when the sources start to
+  use a language feature the seed cannot compile;
+- when the host's target changes, which moves the pinned runtime with it;
 - when the prepared payload or semantic version changes, even if layout and
-  instruction names remain unchanged;
-- when a compiler package gains or loses a source file, because recovery
-  compiles the files the manifest records;
-- when the compiler emits other code for its own sources, because the first
-  compile is the artifact's code generation: the compiler it builds compiles
-  the sources to other bytes than its own, and recovery fails.
+  instruction names remain unchanged.
 
-Any other change to the contents of recorded sources needs no new artifact,
-because recovery reaches the fixpoint in a second compile. To rewrite it:
+Adding or removing a source file, editing sources, and changing the code the
+compiler generates for itself need no new seed. A new file needs a line in
+`tools/compiler/asset_compiler/CompilerSources.txt`.
+
+A language feature takes two PRs, as in Zig, where a feature lands before
+`zig1.wasm` is rebuilt and only then do `stage2` sources use it:
+1. Add the feature to the compiler and raise `version` in
+   `tools/compiler/bootstrap.kdl`. The compiler sources themselves must not use
+   the feature yet, because the checked seed cannot compile it. Run
+   `make bootstrap-artifact` and commit the seed with this change.
+2. Use the feature in the compiler sources and raise `minimum` to that
+   `version`. The seed from step 1 compiles them.
+
+To tell whether a compiler PR needs a seed refresh, run `make bootstrap-recover`
+(or `make test-recovery`) on its head merged with `main`. If recovery reports
+that the seed cannot compile a source, the sources use something the seed
+lacks: move that use to a later PR or refresh the seed first.
+
+To rewrite the seed:
 1. Run `make bootstrap-artifact` on a clean tree, so that it records a
    revision without `-dirty`.
 2. Commit `tools/compiler/bootstrap` together with the change that needs it.

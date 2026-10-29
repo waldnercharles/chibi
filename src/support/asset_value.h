@@ -85,7 +85,6 @@ bool av_obj_set(av_doc *doc, av_value *obj, const char *key, av_value *value);
 bool av_obj_add_val(av_doc *doc, av_value *obj, const char *key, av_value *value);
 bool av_obj_remove_key(av_value *obj, const char *key);
 bool av_obj_remove_str(av_value *obj, const char *key);
-bool av_obj_replace(av_value *obj, av_value *key, av_value *value);
 av_value *av_obj_key_at(const av_value *obj, size_t index);
 av_value *av_obj_value_at(const av_value *obj, size_t index);
 av_value *av_obj_add_obj(av_doc *doc, av_value *obj, const char *key);

@@ -63,8 +63,6 @@ int execution_program_owner_count(const execution_program *);
 uint64_t execution_program_owner_at(const execution_program *, int);
 int behavior_function_source_point_count(const behavior_function *);
 behavior_source_point behavior_function_source_point_at(const behavior_function *, int);
-int behavior_function_source_watch_count(const behavior_function *);
-behavior_source_watch behavior_function_source_watch_at(const behavior_function *, int);
 execution_inspector *execution_inspector_retain(execution_inspector *);
 void execution_inspector_free(execution_inspector *);
 execution_debug_cursor execution_inspector_cursor(const execution_inspector *);
@@ -82,7 +80,6 @@ execution_debug_frame execution_inspector_owner_frame_at(const execution_inspect
 int execution_inspector_watch_count(const execution_inspector *);
 const execution_debug_watch *execution_inspector_watch_at(const execution_inspector *, int);
 int execution_inspector_frame_count(const execution_inspector *);
-execution_debug_frame execution_inspector_frame_at(const execution_inspector *, int);
 int execution_inspector_activity_count(const execution_inspector *);
 execution_debug_activity execution_inspector_activity_at(const execution_inspector *, int);
 uint64_t execution_inspector_activity_dropped(const execution_inspector *);

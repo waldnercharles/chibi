@@ -3,6 +3,7 @@
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "execution/function.h"
+#include "portable_asset_source.h"
 #include "support/array.h"
 #include "support/asset_value.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -171,6 +172,45 @@ TEST_CASE(asset_source_public_scene_build_and_reuse)
         REQUIRE(!behavior_execution_scope_active());
         av_doc_free(document);
         document = NULL;
+    }
+    return true;
+}
+TEST_CASE(asset_source_public_byte_libraries_reach_owned_document)
+{
+    asset_compiler_options config = options();
+    asset_compiler_diagnostic error;
+    document = asset_source_read(
+        PORTABLE_ASSET_SOURCE,
+        "/project/portable-byte-asset/Build.chibi",
+        &config,
+        &error
+    );
+    if (!document) {
+        fprintf(
+            stderr,
+            "portable byte asset: %s:%d:%d %s\n",
+            error.source,
+            error.line,
+            error.column,
+            error.message
+        );
+    }
+    REQUIRE(document && !error.message[0]);
+    asset_source_release_thread();
+    REQUIRE(!behavior_execution_scope_active());
+    const av_value *root = av_doc_root(document);
+    REQUIRE(av_is_obj(root) && av_obj_size(root) == 8);
+    static const struct
+    {
+        const char *name;
+        uint64_t value;
+    } expected[] = { { "size", 3 },           { "nul", 0 },
+                     { "retainedhead", 65 },  { "mutatedhead", 90 },
+                     { "bits", 8 },           { "fnv", 0x4F9F2CAB },
+                     { "adler", 0x11E60398 }, { "crc", 0xCBF43926 } };
+    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
+        const av_value *field = av_obj_get(root, expected[i].name);
+        REQUIRE(av_is_uint(field) && av_get_uint(field) == expected[i].value);
     }
     return true;
 }
@@ -488,6 +528,7 @@ void test_language_asset_compiler_host()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(asset_source_keeps_the_16_mib_source_bound);
     RUN_TEST_CASE(asset_source_public_scene_build_and_reuse);
+    RUN_TEST_CASE(asset_source_public_byte_libraries_reach_owned_document);
     RUN_TEST_CASE(asset_source_authored_validation_rejects_duplicate_field);
     RUN_TEST_CASE(asset_source_malformed_build_reports_position);
     RUN_TEST_CASE(asset_source_native_scene_values_own_their_storage);

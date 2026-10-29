@@ -499,6 +499,33 @@ const node_host_call NATIVE_TEXT_BYTE_LENGTH_CALL = { .value = text_byte_length_
 const node_host_call NATIVE_TEXT_BYTE_AT_CALL = { .value = text_byte_at_call };
 const node_host_call NATIVE_TEXT_SLICE_CALL = { .value = text_slice_call };
 const node_host_call NATIVE_TEXT_BYTES_CALL = { .value = text_bytes_call };
+static const char *text_from_bytes_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    if (count != 1 || arguments[0].type != PIN_U8 ||
+        arguments[0].container != PIN_CONTAINER_ARRAY) {
+        return "Text From Bytes requires a u8 array";
+    }
+    const pin_array *bytes = arguments[0].ptr;
+    if (!bytes) {
+        return pin_value_text(storage, result, "", 0);
+    }
+    if (!pin_array_valid(bytes) || bytes->element_type != PIN_U8) {
+        return "Invalid Text From Bytes array";
+    }
+    if (bytes->stride == 1) {
+        return pin_value_text(storage, result, bytes->data, (size_t)bytes->count);
+    }
+    char *data = arena_alloc(storage, (size_t)bytes->count + 1);
+    for (int index = 0; index < bytes->count; index++) {
+        pin_value value = pin_array_get(bytes, index);
+        if (value.type != PIN_U8 || value.container != PIN_CONTAINER_SINGLE) {
+            return "Invalid Text From Bytes element";
+        }
+        data[index] = (char)value.u8;
+    }
+    return pin_value_text(storage, result, data, (size_t)bytes->count);
+}
+const node_host_call NATIVE_TEXT_FROM_BYTES_CALL = { .value = text_from_bytes_call };
 #define SNAPSHOT(KEY, FN, VARIADIC)                                                                       \
     static const char *KEY##_snapshot(arena *storage, const pin_value *inputs, int count, pin_value *out) \
     {                                                                                                     \

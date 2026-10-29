@@ -1,9 +1,7 @@
 #include "assets/project.h"
 #include "authoring/project_compile.h"
-#include "authoring/project_format.h"
 #include "authoring/project_prepare.h"
 #include "authoring/source_catalog.h"
-#include "graph/model/registry.h"
 #include "runtime/component_catalog.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
@@ -11,53 +9,22 @@
 #include "toolchain/compiler_target.h"
 #include "types/catalog.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 /* Explicit final application composition, shared with the prepared player. */
-static bool additional_pack(int index)
-{
-    const registry_pack *pack = registry_pack_at(index);
-    if ((!pack->type_count && !pack->enum_count) ||
-        (pack->types == TYPE_PACK.types && pack->enums == TYPE_PACK.enums &&
-         pack->type_count == TYPE_PACK.type_count &&
-         pack->enum_count == TYPE_PACK.enum_count)) {
-        return false;
-    }
-    for (int i = 0; i < index; i++) {
-        const registry_pack *previous = registry_pack_at(i);
-        if (pack->types == previous->types && pack->enums == previous->enums &&
-            pack->type_count == previous->type_count &&
-            pack->enum_count == previous->enum_count) {
-            return false;
-        }
-    }
-    return true;
-}
 int type_catalog_pack_count()
 {
-    int count = 1;
-    for (int i = 0; i < registry_pack_count(); i++) {
-        count += additional_pack(i);
-    }
-    return count;
+    return 1;
 }
 type_catalog_pack type_catalog_pack_at(int index)
 {
-    if (!index) {
-        return TYPE_PACK;
-    }
-    for (int i = 0; index > 0 && i < registry_pack_count(); i++) {
-        if (additional_pack(i) && !--index) {
-            const registry_pack *pack = registry_pack_at(i);
-            return (
-                type_catalog_pack
-            ){ pack->types, pack->type_count, pack->enums, pack->enum_count };
-        }
-    }
-    abort();
+    assert(index == 0);
+    (void)index;
+    return TYPE_PACK;
 }
 static int usage(const char *program)
 {
@@ -65,9 +32,7 @@ static int usage(const char *program)
         stderr,
         "Usage: %s --project-root PATH (--output FILE [--modules FILE | "
         "--resources-only] | "
-        "--check [--explain-costs [--json]] | --test | "
-        "--format [--check] | "
-        "--docs | --stage-one-input "
+        "--check [--explain-costs [--json]] | --test | --stage-one-input "
         "FILE) [--scene PATH]\n",
         program
     );
@@ -78,16 +43,6 @@ static int usage(const char *program)
 static int test(const char *)
 {
     fprintf(stderr, "This compiler prepares browser exports; it runs no tests\n");
-    return 2;
-}
-static int format(const char *, bool)
-{
-    fprintf(stderr, "This compiler prepares browser exports; it formats nothing\n");
-    return 2;
-}
-static int docs(const char *)
-{
-    fprintf(stderr, "This compiler prepares browser exports; it writes no documentation\n");
     return 2;
 }
 #else
@@ -124,57 +79,6 @@ static int test(const char *project)
     free(core);
     free(root);
     return status;
-}
-/* Writes the documentation site of the root at project with the SDK's site
- * generator. */
-static int docs(const char *project)
-{
-    char *root = realpath(project, NULL);
-    if (!root) {
-        fprintf(stderr, "%s: %s\n", project, strerror(errno));
-        return 1;
-    }
-    char *generator = shared("docs", "site generator");
-    char *core = generator ? core_collection() : NULL;
-    int status = core ? authoring_project_docs(root, generator, core) : 1;
-    free(core);
-    free(generator);
-    free(root);
-    return status;
-}
-/* Formats the package sources below a folder that holds no project.kdl. */
-static int format_packages(const char *folder, bool check)
-{
-    char *root = realpath(folder, NULL);
-    if (!root) {
-        fprintf(stderr, "%s: %s\n", folder, strerror(errno));
-        return 1;
-    }
-    int differing = authoring_packages_format(root, check);
-    free(root);
-    return differing < 0 || (check && differing) ? 1 : 0;
-}
-/* Formats the project's assets with the composition chibi build uses, or the
- * package sources below a folder without a project.kdl; with check only
- * reports what differs. Fails for a project at another version, an asset that
- * differs under check, an invalid one or a failed write. */
-static int format(const char *project, bool check)
-{
-    if (chibi_project_package_folder(project)) {
-        return format_packages(project, check);
-    }
-    char error[512] = { 0 };
-    chibi_project opened = { 0 };
-    bool current = !chibi_project_open(&opened, project, error, sizeof error);
-    chibi_project_free(&opened);
-    authoring_application application;
-    if (!current || !authoring_application_begin(&application, error, sizeof error)) {
-        fprintf(stderr, "format: %s\n", error);
-        return 1;
-    }
-    int differing = authoring_project_format(project, application.native, check);
-    authoring_application_end(&application);
-    return differing < 0 || (check && differing) ? 1 : 0;
 }
 #endif
 static bool write_text(const char *path, const char *text)
@@ -275,15 +179,13 @@ static int assemble(const char *project, const char *closure, const char *output
     free(bytes);
     return status;
 }
-/* --check prepares the project without writing anything;
- * --test runs its package tests; --format rewrites its assets canonically, or
- * with --check reports the ones that are not; --docs writes its documentation
- * site. */
+/* --check prepares the project without writing anything; --test runs its
+ * package tests. */
 int main(int argc, char **argv)
 {
     const char *project = NULL, *scene = NULL, *output = NULL, *target = NULL,
                *modules = NULL;
-    bool check = false, tests = false, formats = false, site = false, resources = false;
+    bool check = false, tests = false, resources = false;
     bool explain = false, json = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
@@ -304,14 +206,6 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--test") && !tests) {
             tests = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--format") && !formats) {
-            formats = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--docs") && !site) {
-            site = true;
             continue;
         }
         if (!strcmp(argv[i], "--resources-only") && !resources) {
@@ -343,13 +237,12 @@ int main(int argc, char **argv)
         }
         return usage(argv[0]);
     }
-    int modes = (check && !formats) + tests + formats + site +
-                (output != NULL) + (target != NULL);
+    int modes = check + tests + (output != NULL) + (target != NULL);
     if (!project || !*project || modes != 1 || (output && !*output) ||
-        (target && !*target) || ((tests || formats || site || target) && scene) ||
+        (target && !*target) || ((tests || target) && scene) ||
         (modules && (!output || !*modules || scene)) ||
-        (resources && (!output || modules || scene)) ||
-        (explain && (!check || formats)) || (json && !explain)) {
+        (resources && (!output || modules || scene)) || (explain && !check) ||
+        (json && !explain)) {
         return usage(argv[0]);
     }
     if (resources) {
@@ -361,14 +254,8 @@ int main(int argc, char **argv)
     if (target) {
         return stage_one_input(project, target);
     }
-    if (site) {
-        return docs(project);
-    }
     if (tests) {
         return test(project);
-    }
-    if (formats) {
-        return format(project, check);
     }
     if (explain) {
         return authoring_project_explain_costs(project, scene, json);

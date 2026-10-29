@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Offline CI wiring/identity checks; does not claim real compiler cache hits."""
 import importlib.util
-import os
 from pathlib import Path
 import tempfile
 import subprocess
-import textwrap
 from unittest.mock import patch
 import unittest
 
@@ -137,23 +135,15 @@ class CacheTests(unittest.TestCase):
 
     def test_workflow_cache_scope(self):
         workflow = (cache.ROOT / '.github/workflows/ci.yml').read_text()
-        # Two compiler-object caches and four compiled-asset-compiler caches.
-        self.assertEqual(workflow.count('uses: actions/cache/restore@v4'), 6)
+        # Two compiler-object caches and three compiled-asset-compiler caches.
+        self.assertEqual(workflow.count('uses: actions/cache/restore@v4'), 5)
         self.assertEqual(workflow.count('uses: actions/cache/save@v4'), 4)
         asset_guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'"
         self.assertEqual(workflow.count(asset_guard), 2)
-        self.assertEqual(workflow.count('path: .chibi/asset-compiler-cache'), 6)
-        self.assertNotIn('path: engine/.chibi/asset-compiler-cache', workflow)
-        self.assertEqual(workflow.count('key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}'), 6)
-        self.assertEqual(workflow.count('restore-keys: asset-compiler-v2-${{ runner.os }}-'), 4)
+        self.assertEqual(workflow.count('path: .chibi/asset-compiler-cache'), 5)
+        self.assertEqual(workflow.count('key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}'), 5)
+        self.assertEqual(workflow.count('restore-keys: asset-compiler-v2-${{ runner.os }}-'), 3)
         self.assertNotIn('key: asset-compiler-${{ runner.os }}-', workflow)
-        studio = workflow.split('\n  studio:\n', 1)[1].split('\n  format:\n', 1)[0]
-        restore = studio.index('path: .chibi/asset-compiler-cache')
-        stage = studio.index('name: Stage the compiled asset compiler in the engine checkout', restore)
-        package = studio.index('name: Package the SDK', stage)
-        self.assertLess(restore, stage)
-        self.assertLess(stage, package)
-        self.assertIn('cp -R "$GITHUB_WORKSPACE/.chibi/asset-compiler-cache" .chibi/', studio[stage:package])
         self.assertNotIn('key: ${{ steps.ccache-config.outputs.compatibility-prefix }}', workflow)
         self.assertNotIn('pull_request_target:', workflow)
         guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'"
@@ -161,23 +151,6 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(workflow.count('path: ${{ env.CCACHE_DIR }}'), 4)
         self.assertEqual(workflow.count('key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}'), 4)
         self.assertEqual(workflow.count('restore-keys: |\n            ${{ steps.ccache-config.outputs.prefix }}-\n            ${{ steps.ccache-config.outputs.compatibility-prefix }}-'), 2)
-
-    def test_studio_asset_cache_staging(self):
-        workflow = (cache.ROOT / '.github/workflows/ci.yml').read_text()
-        step = workflow.split('name: Stage the compiled asset compiler in the engine checkout\n', 1)[1]
-        script = textwrap.dedent(step.split('run: |\n', 1)[1].split('      - name:', 1)[0])
-        engine = self.root / 'engine'
-        engine.mkdir()
-        env = dict(os.environ, GITHUB_WORKSPACE=str(self.root))
-        subprocess.run(['sh', '-eu', '-c', script], cwd=engine, env=env, check=True)
-        self.assertFalse((engine / '.chibi/asset-compiler-cache').exists())
-        restored = self.root / '.chibi/asset-compiler-cache'
-        restored.mkdir(parents=True)
-        product = restored / 'digest'
-        product.write_bytes(b'compiled\0product')
-        subprocess.run(['sh', '-eu', '-c', script], cwd=engine, env=env, check=True)
-        self.assertEqual((engine / '.chibi/asset-compiler-cache/digest').read_bytes(), product.read_bytes())
-        self.assertEqual(product.read_bytes(), b'compiled\0product')
 
 
 if __name__ == '__main__':

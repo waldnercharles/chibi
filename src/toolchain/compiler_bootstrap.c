@@ -227,6 +227,18 @@ static unsigned char *compile(
         return out.bytes;
     }
     free(out.bytes);
+    if (!called && out.source.present) {
+        snprintf(
+            error,
+            error_size,
+            "the compiler failed: %s at %s:%d:%d",
+            out.diagnostic,
+            out.source.asset,
+            out.source.line,
+            out.source.column
+        );
+        return NULL;
+    }
     if (!called) {
         snprintf(error, error_size, "the compiler failed: %s", out.diagnostic);
         return NULL;

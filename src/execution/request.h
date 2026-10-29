@@ -45,7 +45,6 @@ typedef struct
  * after cancellation. Detachment drops the producer reference and makes later
  * completion fail without touching the retired activation. */
 flow_host_request *execution_request_new(const execution_request_sink *, void *owner, uint64_t entity);
-uint64_t execution_request_entity(const flow_host_request *);
 const void *execution_request_owner(const flow_host_request *);
 execution_owner_state execution_request_state(const flow_host_request *);
 bool execution_request_owner_valid(const flow_host_request *);

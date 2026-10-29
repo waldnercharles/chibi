@@ -40,7 +40,6 @@ typedef struct graph_optimize_report
 } graph_optimize_report;
 
 graph_optimize_options graph_optimize_defaults();
-const char *graph_optimize_skip_name(graph_optimize_skip_reason reason);
 void graph_optimize_report_free(graph_optimize_report *report);
 /* Analyzes each source fanout before changing any of it. Does not arrange or
  * own history. Dry runs execute identical passes on a private graph copy. */

@@ -453,15 +453,7 @@ behavior_value_kind behavior_function_kind(const behavior_function *f, behavior_
     assert(index < acount(values));
     return values[index];
 }
-bool behavior_function_observed(const behavior_function *function)
-{
-    return function->edges || function->watches || function->source_watches;
-}
 
-bool behavior_function_has_invocations(const behavior_function *function)
-{
-    return function->calls != NULL;
-}
 void behavior_function_free(behavior_function *f)
 {
     if (!f) {
@@ -519,16 +511,6 @@ void behavior_function_free(behavior_function *f)
     afree(f->command_results);
     arena_free(&f->owned);
     free(f);
-}
-bool behavior_function_compile_system(behavior_function *f)
-{
-    assert(f && f->batchable && f->artifact->code && !f->artifact->system_code);
-    f->artifact->system_code = behavior_function_jit_system(f);
-    return f->artifact->system_code != NULL;
-}
-void *behavior_function_system_entry(const behavior_function *f)
-{
-    return f->artifact->system_code;
 }
 static bool compile_artifact(behavior_function *f)
 {
@@ -637,10 +619,6 @@ void *behavior_function_entry(const behavior_function *f)
 bool behavior_function_interpreted(const behavior_function *f)
 {
     return f->artifact->interpreted;
-}
-bool behavior_function_pure_depth(const behavior_function *f, unsigned depth)
-{
-    return !f->pure_depth_limit || depth < f->pure_depth_limit;
 }
 int behavior_function_source_count(const behavior_function *f)
 {
@@ -1015,11 +993,6 @@ void behavior_function_prepare_results(const behavior_function *f, pin_value *re
         pin_arena_trace_struct(storage, data, pin_value_type(&value));
         results[r.index] = value;
     }
-}
-
-const behavior_function_source *behavior_function_stack_at(const behavior_function *f, int stack)
-{
-    return &f->stacks[stack];
 }
 
 size_t behavior_function_watch_size(const behavior_function *f)
@@ -1537,44 +1510,6 @@ static const char *managed_scan(
 static const char *managed_value_error(behavior_managed_heap *heap, const pin_value *value, bool restricted)
 {
     return managed_scan(heap, value, restricted, NULL);
-}
-const char *behavior_function_import_arguments(behavior_function_context *context)
-{
-    unsigned arrays = 0;
-    for (int i = 0; i < context->argument_count; i++) {
-        const pin_value *value = &context->arguments[i];
-        if (value->container == PIN_CONTAINER_SINGLE &&
-            value->type != PIN_STRUCT && value->type != PIN_UNION) {
-            continue;
-        }
-        const char *error = managed_scan(NULL, value, false, &arrays);
-        if (error) {
-            return error;
-        }
-    }
-    if (!arrays) {
-        return NULL;
-    }
-    arena *storage = array_storage(context);
-    if (!storage) {
-        return context->error_message;
-    }
-    behavior_managed_heap *heap = managed_owner(context->managed_heap);
-    for (int i = 0; i < context->argument_count; i++) {
-        const char *error = managed_value_error(heap, &context->arguments[i], (arrays & 2u) != 0);
-        if (error) {
-            return error;
-        }
-    }
-    if (!(arrays & 2u)) {
-        return NULL;
-    }
-    pin_value *arguments = arena_alloc(storage, (size_t)context->argument_count * sizeof *arguments);
-    if (pin_values_array_promote(storage, arguments, context->arguments, context->argument_count)) {
-        return "Cannot import dynamic array arguments";
-    }
-    context->arguments = arguments;
-    return NULL;
 }
 const char *behavior_function_validate_value(behavior_function_context *context, const pin_value *value)
 {

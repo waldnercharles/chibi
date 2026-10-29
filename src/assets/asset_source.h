@@ -40,9 +40,6 @@ typedef struct
     asset_source_completion *items;
 } asset_source_completions;
 
-/* Independent highlighting for incomplete declarative KDL source.
- * The caller frees the returned array with afree. */
-asset_source_span *asset_source_highlight(const char *text);
 asset_source *asset_source_parse(const char *text);
 void asset_source_free(asset_source *source);
 void asset_source_position(const asset_source *source, int offset, int *line, int *column);

@@ -124,15 +124,6 @@ void scene_document_set_ui(scene_document *document, const char *ui)
     document->ui = ui && ui[0] ? xstrdup(ui) : NULL;
 }
 
-int scene_document_set_perspective(scene_document *document, bool perspective)
-{
-    if (!document) {
-        return -1;
-    }
-    document->perspective = perspective;
-    return 0;
-}
-
 static int child_named(const scene_document *document, int parent, const char *name, size_t length)
 {
     for (int i = parent + 1; i < acount(document->entities); i++) {

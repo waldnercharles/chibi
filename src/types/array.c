@@ -1211,18 +1211,6 @@ int pin_array_snapshot_items(arena *a, const pin_record *record, pin_value *out,
     return snapshot_items(a, record, out, items, count);
 }
 
-int pin_array_snapshot_owned_items(
-    arena *a,
-    const pin_record *record,
-    pin_value *out,
-    const pin_value *items,
-    int count
-)
-{
-    assert(count >= 0 && (!count || (out && items)));
-    return snapshot_items(a, record, out, items, count);
-}
-
 pin_value pin_array_add(const pin_value *inputs, int count, arena *a)
 {
     const pin_array *source = inputs && count == 2 && inputs[0].container == PIN_CONTAINER_ARRAY

@@ -23,19 +23,6 @@ graph_optimize_options graph_optimize_defaults()
                                      .local_aliases = true };
 }
 
-const char *graph_optimize_skip_name(graph_optimize_skip_reason reason)
-{
-    static const char *names[] = { "debug_state",
-                                   "unsupported_conversion",
-                                   "conflicting_dormant_binding",
-                                   "ambiguous_source_semantics",
-                                   "unavailable_backend",
-                                   "unsupported_pin",
-                                   "custom_wire_route" };
-    assert(reason >= 0 && reason < GRAPH_OPTIMIZE_SKIP_COUNT);
-    return names[reason];
-}
-
 void graph_optimize_report_free(graph_optimize_report *report)
 {
     afree(report->skipped);

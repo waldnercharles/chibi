@@ -4,10 +4,6 @@
 #include "authoring/preview.h"
 #include "authoring/prototype_preview.h"
 
-/* Prepare only native shader/model/field/event declarations. No executable
- * source is registered or run. */
-int authoring_graph_fixtures_prepare(preview_world *, const char *content_root);
-
 /* Loads the canonical behavior fixtures used by the shipped app and headless
  * authoring sessions. Native KDL render assets load in dependency order;
  * executable sources prepare as one complete collection. With a preview, its

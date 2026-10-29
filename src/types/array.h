@@ -117,15 +117,6 @@ int pin_array_snapshot_copy(arena *, pin_array *out, int to, const pin_array *it
  * per range, and that each original source layout matches it. Items already
  * copied on failure must be abandoned with the unpublished destination array. */
 int pin_array_snapshot_items(arena *, const pin_record *, pin_value *out, const pin_value *items, int count);
-/* As above for an array the arena already owns, whose layout ownership was
- * established when the array was made, so no ownership walk repeats. */
-int pin_array_snapshot_owned_items(
-    arena *,
-    const pin_record *,
-    pin_value *out,
-    const pin_value *items,
-    int count
-);
 /* Fixed-size typed zero values, owned by the arena. */
 pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count);
 /* Retain a value: managed dynamic objects/views preserve identity; other

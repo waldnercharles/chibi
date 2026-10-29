@@ -159,7 +159,6 @@ int graph_exec_input_count(const graph *g, const node *n, int pin);
 int graph_exec_output_target(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin);
 /* Counts all edges, including invalid fan-out; first is borrowed until mutation. */
 int graph_exec_output_edges(const graph *g, const node *n, int pin, const edge **first);
-int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin);
 
 node *graph_node_by_id(const graph *g, uint64_t id);
 const pin_spec *graph_pin_by_id(const node *n, uint64_t id, int *is_output, int *index);

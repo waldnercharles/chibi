@@ -236,14 +236,6 @@ if(TARGET chibi)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/packages/core/${source}"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
     endforeach()
-    foreach(source markdown/Markdown.chibi site/Site.chibi reference/Reference.chibi grammar/Grammar.chibi)
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/docs/${source}"
-            "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/${source}" COPYONLY)
-    endforeach()
-    foreach(source compiler_syntax/Syntax.chibi syntax_diagnostics/Diagnostics.chibi)
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/compiler/${source}"
-            "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/${source}" COPYONLY)
-    endforeach()
     add_custom_target(chibi_build_shaders
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/shaders")

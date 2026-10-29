@@ -13,3 +13,12 @@ Editing, rename, completion/hover/highlighting and prototype-source editing for 
 - `src/authoring/source_rename*`: rename plans.
 - `src/authoring/source_prototype_edit*`: prototype source edits.
 - `test/authoring/source_edit.c`: their test.
+
+## Source formatter and documentation site (authoring)
+
+`chibi fmt` / `chibi-compile --format` and `chibi doc` / `chibi-compile --docs` ran on the C front end. They are archived while the compiler moves to Chibi.
+
+- `src/authoring/project_format*`, `source_format*`, `source_minimize*`, `source_refactor_text*`: canonical formatting of project assets and package sources.
+- `src/authoring/project_docs.c`: the site runner, cut from `project_compile.c`.
+- `tools/docs/`: the Chibi site generator (Markdown, reference, grammar, site).
+- `test/language/format.c`, `test/language/docs_markdown*`, `test/tools/published_docs.c`: their tests.

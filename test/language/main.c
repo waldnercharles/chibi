@@ -106,7 +106,6 @@ void test_language_package_portable();
 void test_language_package_portable_compiler();
 void test_language_package_tests();
 void test_language_argument_effects_chibi();
-void test_language_docs_markdown();
 void test_language_scalarize();
 void test_language_component_write();
 void test_language_component_write_source();
@@ -123,7 +122,6 @@ void test_language_binding_schedule();
 void test_language_activation_cache();
 void test_language_headless();
 void test_language_build_workflow();
-void test_language_format();
 void test_language_root_state();
 void test_language_navigation();
 void test_language_publication();
@@ -134,7 +132,6 @@ void test_language_text_format();
 void test_graph_model();
 void test_graph_authoring();
 void test_model_runtime();
-void test_language_format_corpus(const char *manifest);
 void test_language_prepared_write(const char *directory);
 void test_language_compiler_artifact_write(const char *directory);
 void test_language_record_producer(const char *directory);
@@ -158,7 +155,6 @@ int main(int argc, char **argv)
     if (argc == 3 && !strcmp(argv[1], "--stack-overflow-child")) {
         return test_language_stack_overflow_child(argv[2]);
     }
-    bool format = (argc == 2 || argc == 4) && !strcmp(argv[1], "--format");
     bool record_producer = argc == 3 && !strcmp(argv[1], "--record-produce");
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
     bool compiler_artifact = argc == 3 &&
@@ -338,7 +334,6 @@ int main(int argc, char **argv)
     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
     bool argument_effects_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--argument-effects-chibi");
-    bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
@@ -359,8 +354,7 @@ int main(int argc, char **argv)
     bool graph_model = argc == 2 && !strcmp(argv[1], "--graph-model");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
-    if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !compiler_artifact && !record_producer && !execution &&
+    if ((!prepared && !compiler_artifact && !record_producer && !execution &&
          !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
          !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
          !borrow_benchmark && !incremental_benchmark && !record_publication &&
@@ -396,14 +390,14 @@ int main(int argc, char **argv)
          !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
-         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
-         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
-         !package_resolution && !package_imports && !host_packages &&
-         !host_packages_compiler && !package_files && !package_core &&
-         !package_math && !package_math_benchmark && !package_portable &&
-         !package_portable_compiler && !package_tests && !argument_effects_chibi &&
-         !docs_markdown && !component_write && !component_write_layout &&
+         !snapshot_reader_chibi && !callable_headers_chibi &&
+         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
+         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
+         !package_execution && !package_resolution && !package_imports &&
+         !host_packages && !host_packages_compiler && !package_files &&
+         !package_core && !package_math && !package_math_benchmark &&
+         !package_portable && !package_portable_compiler && !package_tests &&
+         !argument_effects_chibi && !component_write && !component_write_layout &&
          !scalarize && !borrow && !reductions && !binding_schedule &&
          !activation_cache && !headless && !build_workflow && !navigation &&
          !publication && !field_runtime && !prototype && !ui_authoring &&
@@ -470,7 +464,7 @@ int main(int argc, char **argv)
             "--package-files | --package-core | "
             "--package-math | --package-math-benchmark | --package-portable | "
             "--package-portable-compiler | "
-            "--package-tests | --argument-effects-chibi | --docs-markdown | "
+            "--package-tests | --argument-effects-chibi | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -492,7 +486,7 @@ int main(int argc, char **argv)
             "--record-compatibility | --row-array | "
             "--outliner-projection | --record-publication | "
             "--record-publication-repro | "
-            "--format [--corpus manifest] | --compiler-artifact-write "
+            "--compiler-artifact-write "
             "directory | --prepared-write "
             "directory\n",
             argv[0]
@@ -590,11 +584,6 @@ int main(int argc, char **argv)
         test_language_publication();
     } else if (root_state) {
         test_language_root_state();
-    } else if (format) {
-        test_language_format();
-        if (corpus) {
-            test_language_format_corpus(argv[3]);
-        }
     } else if (prepared) {
         test_language_prepared_write(argv[2]);
     } else if (compiler_artifact) {
@@ -754,8 +743,6 @@ int main(int argc, char **argv)
         test_language_package_tests();
     } else if (argument_effects_chibi) {
         test_language_argument_effects_chibi();
-    } else if (docs_markdown) {
-        test_language_docs_markdown();
     } else if (package_files) {
         test_language_package_files();
     } else if (package_graph_chibi) {

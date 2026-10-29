@@ -1278,9 +1278,10 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
                     : NULL;
     /* The private parser belongs to the generator, never to validated examples. */
     const native_definition_pack parser[] = { COMPILER_SYNTAX_DEFINITION_PACK };
-    native_capabilities *render_native = native
-                                           ? host_native_standalone_catalog_new(parser, 1, error, sizeof error)
-                                           : NULL;
+    native_capabilities *
+        render_native = native
+                          ? host_native_standalone_catalog_new(NULL, 0, parser, 1, error, sizeof error)
+                          : NULL;
     authoring_packages *packages = NULL;
     if (render_native) {
         source_package_collection collections[] = { { "core", core } };

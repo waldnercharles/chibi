@@ -523,6 +523,7 @@ RuntimeAssemble :: (root: string, build_dir: string, third_party: string, output
     return 0;
 }
 
+// The dependency archive is the one the build recorded unless one is named.
 RuntimePackage :: () -> int {
     arguments := build.arguments();
     for (index in 0..<length(arguments)) {
@@ -532,10 +533,16 @@ RuntimePackage :: () -> int {
             return 2;
         }
     }
-    if (length(arguments) != 6) {
-        RuntimeFail("runtime package requires --build, --third-party and --output");
+    build_dir := RuntimeOption(arguments, "--build");
+    third_party := RuntimeOption(arguments, "--third-party");
+    if (third_party == "" && length(arguments) == 4) {
+        configuration := sdk.JsonCanonical(build.read_file(RuntimeJoin([build_dir, "/sdk/runtime-build.json"])));
+        third_party = sdk.JsonText(sdk.JsonGet(sdk.JsonGet(configuration, "profile"), "third_party"));
+    }
+    if ((length(arguments) != 6 && length(arguments) != 4) || build_dir == "" || third_party == "" ||
+        RuntimeOption(arguments, "--output") == "") {
+        RuntimeFail("runtime package requires --build and --output, and --third-party unless the build recorded one");
         return 2;
     }
-    return RuntimeAssemble(build.root(), RuntimeOption(arguments, "--build"), RuntimeOption(arguments, "--third-party"),
-                           RuntimeOption(arguments, "--output"));
+    return RuntimeAssemble(build.root(), build_dir, third_party, RuntimeOption(arguments, "--output"));
 }

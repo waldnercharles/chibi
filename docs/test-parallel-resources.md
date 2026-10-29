@@ -181,11 +181,6 @@ Shared dependencies and less obvious paths were included in this audit:
   per-process SLJIT compilers and generated code. The configured
   `SLJIT_WX_EXECUTABLE_ALLOCATOR=1` uses anonymous process-owned mappings on
   Linux/macOS, not shared diagnostic files or a persistent compiler cache.
-- The adjacent `language-migration34-generic-repro` remains **exclusive**: its
-  `generic_version_34_cross_file_collisions_preserve_project` creates and mutates
-  a unique project under hardcoded `/tmp`, outside runner-owned TMPDIR cleanup.
-  This extension does not move any work across that barrier or admit the broader
-  migration selector.
 
 The pico_unit policy regression substitutes native rendezvous workers for each
 new selector and existing `language-asset-packaging-chibi`, preserving their real
@@ -204,6 +199,25 @@ NULL-output bootstrap recovery paths are unchanged. This introduces no new
 shared file/cache/process resources. Allocation and compiler behavior did
 change, so prior-head engine results are not integration validation; rerun the
 current combined candidate rather than treating the old CI as current evidence.
+
+## Migration selector extension (source baseline `51650ccf`)
+
+`language-migration34-generic-repro` also joins the process allowlist. Its literal
+source migration and bytecode/SLJIT checks keep syntax, compiler, execution and
+fixture state process-private. It has no inner worker pool or subprocesses.
+`generic_version_34_cross_file_collisions_preserve_project` writes only beneath
+a unique `${TMPDIR:-/tmp}/chibi-number-bindings-XXXXXX` directory. Project files,
+content and migration staging files stay below that root; no checked-in source
+or persistent cache is mutated. The runner therefore owns residual files after
+failure or cancellation. Standalone runs retain the `/tmp` fallback.
+
+Native regressions check unique private roots, parent ownership and independent
+cleanup. The policy regression requires this selector to overlap with an audited
+peer while retaining distinct runner-owned scratch and removing both directories
+after completion. The original migration cases, selector ordering, deadlines,
+operation bounds, worker cap and memory admission are unchanged. The neighboring
+`language-native-census-flattening` remains unaudited and exclusive. These checks
+establish isolation and admission, not a measured hosted CI speedup.
 
 ## Native C case pool
 

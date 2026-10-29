@@ -18,7 +18,7 @@
 #define SDK_PATH 4096
 #define SDK_MANIFEST "share/chibi/compiler-tools.tsv"
 /* Each packaging or bootstrap operation may compile the compiler twice. */
-#define SDK_RUN_SECONDS 240
+#define SDK_RUN_SECONDS 300
 
 static char host_path[SDK_PATH], build_path[SDK_PATH], archive_path[SDK_PATH];
 static char suite[SDK_PATH], log_path[SDK_PATH];

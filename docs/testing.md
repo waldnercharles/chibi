@@ -2631,6 +2631,11 @@ average of 4.
 two-page site with the installed generator. It takes about three seconds and starts no
 player.
 
+`python3 tools/test_policy.py tool runtime-sdk` takes the private build host and selects the
+authored runtime SDK checks: canonical JSON against the Python manifest encoder, and on
+macOS the installer's verify, replace and rollback paths plus graph record, tool and
+configuration evidence over synthetic records. No engine library, SDK or package is built.
+
 `build-process`, `build-toolchain`, M0's `chibi-cli` and `chibi-cli-installed` remain focused routes. The complete
 `make test-tools` group builds a runtime-only tooling driver and does not build
 the private host or public launcher. Route registration does not add either

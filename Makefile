@@ -176,16 +176,22 @@ graph-reference:
 build-debug:
 	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_PROFILE=debug BUILD_TARGET="$(BUILD_TARGET)"
 
-.PHONY: sdk-reflect-build sdk-build sdk-install package-sdk runtime-sdk-build package-runtime-sdk
-ifneq ($(filter Linux Darwin,$(shell uname -s)),)
-sdk-reflect-build:
-	@host="$(BUILD_HOST)"; \
+# The private build host that runs the authored SDK programs: the build's own, or
+# the one cold recovery constructs beside the reflection build.
+define SDK_GRAPH_HOST
+host="$(BUILD_HOST)"; \
 	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
 		host="$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"; \
 		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
 			$(MAKE) sdk-reflect-bootstrap || exit $$?; \
 		fi; \
-	fi; \
+	fi;
+endef
+
+.PHONY: sdk-reflect-build sdk-build sdk-install package-sdk runtime-sdk-build package-runtime-sdk
+ifneq ($(filter Linux Darwin,$(shell uname -s)),)
+sdk-reflect-build:
+	@$(SDK_GRAPH_HOST) \
 	$(QUIET) build-sdk-reflect -- env CCACHE_BASEDIR="$(CURDIR)" "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry SDKReflect --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(SDK_REFLECT_PATH)" --jobs "$(JOBS)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(SDK_REFLECT_LLVM_ROOT)",) -- $(NATIVE_TOOLCHAIN_FLAGS)
 
 # Cold recovery constructs only the host that runs the authored graph. Remove
@@ -212,12 +218,25 @@ sdk-install: sdk-build
 package-sdk: sdk-build
 	@python3 tools/package_sdk.py --build "$(SDK_BUILD_DIR)" --output "$(SDK_PREFIX)" --kind sdk
 
+ifeq ($(shell uname -s),Darwin)
+# The macOS runtime SDK is constructed by the Chibi graph and installed by
+# tools/toolchain/RuntimeSDK.chibi. Linux keeps the CMake route below.
+runtime-sdk-build: sdk-reflect-build
+	@$(SDK_GRAPH_HOST) \
+	$(QUIET) third-party -- "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(RUNTIME_SDK_BUILD_DIR)" && \
+	$(QUIET) build-runtime-sdk -- env CCACHE_BASEDIR="$(CURDIR)" "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry RuntimeSDK --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RUNTIME_SDK_BUILD_DIR))" --reflect "$(SDK_REFLECT_PATH)/reflect" --jobs "$(JOBS)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(SDK_REFLECT_LLVM_ROOT)",) -- $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS)
+
+package-runtime-sdk: runtime-sdk-build
+	@$(SDK_GRAPH_HOST) \
+	$(QUIET) package-runtime-sdk -- "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source tools/toolchain/RuntimeSDK.chibi --core packages/core --collection graph=tools/graph --entry RuntimePackage --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RUNTIME_SDK_BUILD_DIR))" --output "$(abspath $(RUNTIME_SDK_PREFIX))"
+else
 runtime-sdk-build: sdk-reflect-build
 	@$(QUIET) configure-runtime-sdk -- sh tools/configure.sh sdk-native "$(RUNTIME_SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=OFF -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(SDK_REFLECT_PATH)/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 	@$(QUIET) build-runtime-sdk -- cmake --build "$(RUNTIME_SDK_BUILD_DIR)" --parallel $(JOBS)
 
 package-runtime-sdk: runtime-sdk-build
 	@python3 tools/package_sdk.py --build "$(RUNTIME_SDK_BUILD_DIR)" --output "$(RUNTIME_SDK_PREFIX)" --kind runtime
+endif
 
 controller-build:
 	@$(MAKE) build BUILD_TARGET=chibi_ctl

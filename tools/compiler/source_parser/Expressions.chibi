@@ -17,7 +17,12 @@ ProductPower: int : 11;
 
 // The binding power of the binary operator at the cursor, or 0.
 BinaryPower :: (c: ^Cursor, n: ^(Node[])) -> int {
-    token := Cur(c, n);
+    token := c.token;
+    // Most tokens that end an operand are punctuation below, between or above
+    // the operators' kinds.
+    if (token < tk.Add || (token > tk.GtEq && token < tk.As) || (token > tk.In && token != tk.Coalesce)) {
+        return 0;
+    }
     if (token == tk.CmpOr || token == tk.OrKeyword) {
         return OrPower;
     }
@@ -66,7 +71,7 @@ ParseBinary :: (c: ^Cursor, n: ^(Node[]), least: int) -> int {
         if (power == 0 || power < least) {
             break;
         }
-        token := Cur(c, n);
+        token := c.token;
         if (token == tk.Is) {
             left = ParseIs(c, n, left);
         } else if (token == tk.As) {
@@ -102,8 +107,9 @@ ParseBinary :: (c: ^Cursor, n: ^(Node[]), least: int) -> int {
 // that closes type arguments, so it may end the statement there; the grammar
 // continues the expression.
 SkipSpuriousEnd :: (c: ^Cursor, n: ^(Node[])) {
-    if (Cur(c, n) == tk.Semicolon && n^[c.pos].hidden) {
+    if (c.token == tk.Semicolon && n^[c.pos].hidden) {
         c.pos += 1;
+        c.token = n^[c.pos].token;
     }
 }
 
@@ -113,12 +119,12 @@ ParseIs :: (c: ^Cursor, n: ^(Node[]), left: int) -> int {
     Add(n, test, left, "value");
     Take(c, n, test, "");
     Accept(c, n, test, tk.NotKeyword, "negated");
-    if (Cur(c, n) == tk.Period) {
+    if (c.token == tk.Period) {
         Add(n, test, ParseVariantPattern(c, n), "type");
     } else {
         Add(n, test, ParseType(c, n), "type");
     }
-    if (!c.failed && IsName(Cur(c, n)) && !StartsOperator(c, n)) {
+    if (!c.failed && IsName(c.token) && !StartsOperator(c, n)) {
         TakeName(c, n, test, "binding");
     }
     return test;
@@ -126,7 +132,7 @@ ParseIs :: (c: ^Cursor, n: ^(Node[]), left: int) -> int {
 
 // A name at the cursor that is a word operator rather than a binding.
 StartsOperator :: (c: ^Cursor, n: ^(Node[])) -> bool {
-    token := Cur(c, n);
+    token := c.token;
     return token == tk.NotKeyword && Peek(c, n, 1) == tk.In;
 }
 
@@ -135,10 +141,10 @@ ParseVariantPattern :: (c: ^Cursor, n: ^(Node[])) -> int {
     pattern := New(n, "variant_pattern");
     Expect(c, n, pattern, tk.Period, "");
     TakeName(c, n, pattern, "name");
-    if (!c.failed && Cur(c, n) == tk.OpenParen) {
+    if (!c.failed && c.token == tk.OpenParen) {
         bindings := New(n, "pattern_bindings");
         Take(c, n, bindings, "");
-        while (!c.failed && Cur(c, n) != tk.CloseParen) {
+        while (!c.failed && c.token != tk.CloseParen) {
             TakeName(c, n, bindings, "");
             if (!Accept(c, n, bindings, tk.Comma, "")) {
                 break;
@@ -151,7 +157,7 @@ ParseVariantPattern :: (c: ^Cursor, n: ^(Node[])) -> int {
 }
 
 ParseUnary :: (c: ^Cursor, n: ^(Node[])) -> int {
-    token := Cur(c, n);
+    token := c.token;
     if (token == tk.Not || token == tk.Sub || token == tk.Add || token == tk.Complement ||
         (token == tk.NotKeyword && !NamesCall(c, n))) {
         unary := New(n, "unary_expression");
@@ -173,7 +179,7 @@ ParseUnary :: (c: ^Cursor, n: ^(Node[])) -> int {
     }
     left := ParsePrimary(c, n);
     while (!c.failed) {
-        token = Cur(c, n);
+        token = c.token;
         if (token == tk.Period) {
             member := New(n, "member_expression");
             Add(n, member, left, "object");
@@ -221,7 +227,7 @@ IsCallTarget :: (kind: string) -> bool {
 // An index or an argument that may be a half-open range.
 ParseIndexValue :: (c: ^Cursor, n: ^(Node[])) -> int {
     first := ParseBinary(c, n, OrPower);
-    if (c.failed || Cur(c, n) != tk.HalfOpenRange) {
+    if (c.failed || c.token != tk.HalfOpenRange) {
         return first;
     }
     span := New(n, "range_expression");
@@ -232,7 +238,7 @@ ParseIndexValue :: (c: ^Cursor, n: ^(Node[])) -> int {
 }
 
 ParsePrimary :: (c: ^Cursor, n: ^(Node[])) -> int {
-    token := Cur(c, n);
+    token := c.token;
     if (IsName(token)) {
         name := Take(c, n, -1, "");
         n^[name].kind = "identifier";
@@ -291,7 +297,7 @@ ParseEmit :: (c: ^Cursor, n: ^(Node[])) -> int {
     n^[first].kind = "identifier";
     n^[first].named = true;
     target := first;
-    while (!c.failed && Cur(c, n) == tk.Period) {
+    while (!c.failed && c.token == tk.Period) {
         member := New(n, "member_expression");
         Add(n, member, target, "object");
         Take(c, n, member, "");
@@ -313,14 +319,14 @@ ParseCollection :: (c: ^Cursor, n: ^(Node[])) -> int {
         return empty;
     }
     open := Take(c, n, -1, "");
-    if (Cur(c, n) == tk.CloseBracket) {
+    if (c.token == tk.CloseBracket) {
         array := New(n, "array_expression");
         Add(n, array, open, "");
         Take(c, n, array, "");
         return array;
     }
     first := ParseBinary(c, n, OrPower);
-    if (!c.failed && Cur(c, n) == tk.Colon) {
+    if (!c.failed && c.token == tk.Colon) {
         map := New(n, "map_expression");
         Add(n, map, open, "");
         row := New(n, "map_entry");
@@ -329,7 +335,7 @@ ParseCollection :: (c: ^Cursor, n: ^(Node[])) -> int {
         Add(n, row, ParseBinary(c, n, OrPower), "value");
         Add(n, map, row, "");
         while (!c.failed && Accept(c, n, map, tk.Comma, "")) {
-            if (Cur(c, n) == tk.CloseBracket) {
+            if (c.token == tk.CloseBracket) {
                 break;
             }
             row = New(n, "map_entry");
@@ -345,7 +351,7 @@ ParseCollection :: (c: ^Cursor, n: ^(Node[])) -> int {
     Add(n, array, open, "");
     Add(n, array, first, "");
     while (!c.failed && Accept(c, n, array, tk.Comma, "")) {
-        if (Cur(c, n) == tk.CloseBracket) {
+        if (c.token == tk.CloseBracket) {
             break;
         }
         Add(n, array, ParseBinary(c, n, OrPower), "");
@@ -358,7 +364,7 @@ ParseCollection :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseStructLiteral :: (c: ^Cursor, n: ^(Node[])) -> int {
     literal := New(n, "struct_expression");
     Take(c, n, literal, "");
-    while (!c.failed && Cur(c, n) != tk.CloseBrace) {
+    while (!c.failed && c.token != tk.CloseBrace) {
         field := New(n, "struct_field");
         TakeMember(c, n, field, "name");
         Expect(c, n, field, tk.Colon, "");
@@ -376,9 +382,9 @@ ParseStructLiteral :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseArguments :: (c: ^Cursor, n: ^(Node[])) -> int {
     list := New(n, "argument_list");
     Expect(c, n, list, tk.OpenParen, "");
-    while (!c.failed && Cur(c, n) != tk.CloseParen) {
+    while (!c.failed && c.token != tk.CloseParen) {
         named := -1;
-        if (IsMember(Cur(c, n))) {
+        if (IsMember(c.token)) {
             following := SkipArgumentName(n, c.pos, c.final);
             if (following > 0 && n^[following].token == tk.Colon) {
                 named = following;
@@ -388,7 +394,7 @@ ParseArguments :: (c: ^Cursor, n: ^(Node[])) -> int {
             Add(n, list, ParseNamedArgument(c, n, named), "");
         } else {
             value := ParseBinary(c, n, OrPower);
-            if (!c.failed && Cur(c, n) == tk.HalfOpenRange) {
+            if (!c.failed && c.token == tk.HalfOpenRange) {
                 span := New(n, "range_expression");
                 Add(n, span, value, "start");
                 Take(c, n, span, "");
@@ -430,7 +436,7 @@ ParseNamedArgument :: (c: ^Cursor, n: ^(Node[]), colon: int) -> int {
     argument := New(n, kind);
     name := New(n, "argument_name");
     TakeMember(c, n, name, "");
-    while (!c.failed && Cur(c, n) == tk.Period) {
+    while (!c.failed && c.token == tk.Period) {
         Take(c, n, name, "");
         TakeMember(c, n, name, "");
     }
@@ -441,7 +447,7 @@ ParseNamedArgument :: (c: ^Cursor, n: ^(Node[]), colon: int) -> int {
         return argument;
     }
     Add(n, argument, ParseType(c, n), "type");
-    if (Cur(c, n) == tk.From || Cur(c, n) == tk.Split) {
+    if (c.token == tk.From || c.token == tk.Split) {
         Take(c, n, argument, "");
         Add(n, argument, ParseBinary(c, n, OrPower), "source");
         if (Accept(c, n, argument, tk.Eq, "")) {

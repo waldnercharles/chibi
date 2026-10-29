@@ -81,7 +81,7 @@ Construct :: (text: string, kinds: int[], starts: int[], ends: int[], rows: int[
         }
         index += 1;
     }
-    cursor: Cursor = {text: text, pos: 0, final: length(nodes) - 1, failed: false, message: "",
+    cursor: Cursor = {text: text, pos: 0, token: nodes[0].token, final: length(nodes) - 1, failed: false, message: "",
                       at: 0, stop: 0, row: 0, column: 0};
     root := ParseSourceFile(&cursor, &nodes);
     if (cursor.failed) {
@@ -149,60 +149,52 @@ Insert :: (n: ^(Node[]), owner: int, comment: int) {
     }
 }
 
-// The first child of `node` that the tree shows, from `child` on.
-Visible :: (nodes: Node[], child: int) -> int {
-    while (child >= 0 && nodes[child].hidden) {
-        child = nodes[child].next;
-    }
-    return child;
-}
-
 // Rows in pre-order, as Tree-sitter's cursor walk lists them, without the
-// hidden terminators.
+// hidden terminators. One walk fills the rows; a node's next sibling is
+// patched in when the walk reaches it.
 Emit :: (nodes: Node[], root: int) -> Tree {
-    order: int[] = [];
-    place := resize([int(0)], length(nodes));
-    current := root;
-    while (current >= 0) {
-        place[current] = length(order);
-        order.append(current);
-        next := Visible(nodes, nodes[current].first);
-        climbing := current;
-        while (next < 0 && climbing != root) {
-            next = Visible(nodes, nodes[climbing].next);
-            climbing = nodes[climbing].parent;
-        }
-        current = next;
-    }
     rows: syntax.Node[] = [];
     fields: string[] = [];
     named: bool[] = [];
     extras: bool[] = [];
-    index: int = 0;
-    while (index < length(order)) {
-        node := nodes[order[index]];
+    place := resize([int(0)], length(nodes));
+    current := root;
+    while (current >= 0) {
+        index := length(rows);
+        place[current] = index;
         parent: int = -1;
-        if (node.parent >= 0) {
-            parent = place[node.parent];
+        if (nodes[current].parent >= 0) {
+            parent = place[nodes[current].parent];
         }
-        first := Visible(nodes, node.first);
-        following := Visible(nodes, node.next);
+        first := nodes[current].first;
+        while (first >= 0 && nodes[first].hidden) {
+            first = nodes[first].next;
+        }
         first_child: int = -1;
         if (first >= 0) {
-            first_child = place[first];
+            first_child = index + 1;
         }
-        next_sibling: int = -1;
-        if (following >= 0 && node.parent >= 0) {
-            next_sibling = place[following];
-        }
-        rows.append({kind: node.kind, start: node.start, end: node.end, row: node.row,
-                     column: node.column, parent: parent, first_child: first_child,
-                     next_sibling: next_sibling, error: node.error, missing: node.missing,
+        rows.append({kind: nodes[current].kind, start: nodes[current].start, end: nodes[current].end,
+                     row: nodes[current].row, column: nodes[current].column, parent: parent,
+                     first_child: first_child, next_sibling: -1, error: false, missing: false,
                      has_error: false});
-        fields.append(node.field);
-        named.append(node.named);
-        extras.append(node.extra);
-        index += 1;
+        fields.append(nodes[current].field);
+        named.append(nodes[current].named);
+        extras.append(nodes[current].extra);
+        next := first;
+        climbing := current;
+        while (next < 0 && climbing != root) {
+            next = nodes[climbing].next;
+            while (next >= 0 && nodes[next].hidden) {
+                next = nodes[next].next;
+            }
+            if (next >= 0) {
+                rows[place[climbing]].next_sibling = index + 1;
+            } else {
+                climbing = nodes[climbing].parent;
+            }
+        }
+        current = next;
     }
     return Tree.Parsed(rows, fields, named, extras, 0);
 }

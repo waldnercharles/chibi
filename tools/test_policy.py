@@ -639,6 +639,7 @@ PARALLEL_RESOURCES = {
     name: frozenset() for name in (
         'language-package-compiler-chibi-behaviors',
         'language-package-compiler-chibi-behaviors-rest',
+        'language-migration34-generic-repro',
         'language-integer-semantics',
         'language-integer-shift-counts',
         'language-integer-shift-counts-authored',

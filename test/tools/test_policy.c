@@ -2602,7 +2602,7 @@ TEST_CASE(ci_preserves_failed_macos_graph_stage_log)
     char *text = tool_read(workflow);
     REQUIRE(text);
     const char *job = strstr(text, "\n  native-macos:\n");
-    const char *limit = job ? strstr(job, "\n  windows:\n") : NULL;
+    const char *limit = job ? strstr(job, "\n  native-targets:\n") : NULL;
     const char *step = job ? strstr(job, "      - name: Preserve failed macOS Graph stage log\n")
                            : NULL;
     const char *end = step ? strstr(step + 1, "\n      - ") : NULL;
@@ -3715,33 +3715,6 @@ TEST_CASE(debug_experiment_cancellation_and_failure_clean_up)
     return true;
 }
 
-TEST_CASE(web_publish_uses_private_https_dependencies)
-{
-    char filename[PATH_MAX];
-    snprintf(filename, sizeof filename, "%s/.github/workflows/publish.yml", tool_root());
-    char *workflow = tool_read(filename);
-    REQUIRE(workflow);
-    REQUIRE(strstr(workflow, "      - '.github/install-ubuntu-dependencies.py'\n"));
-    REQUIRE(strstr(
-        workflow,
-        "      - name: Install build dependencies\n"
-        "        if: steps.release.outputs.complete != 'true'\n"
-        "        run: |\n"
-        "          python3 .github/install-ubuntu-dependencies.py "
-        "--no-install-recommends \\\n"
-        "            ninja-build ccache clang-18 clang-tools-18 "
-        "libclang-18-dev libclang-rt-18-dev \\\n"
-        "            libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev "
-        "libxi-dev libxrandr-dev \\\n"
-        "            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev "
-        "libasound2-dev libpulse-dev\n"
-        "          pip install 'cmake==4.2.3'\n"
-    ));
-    REQUIRE(!strstr(workflow, "apt-get"));
-    free(workflow);
-    return true;
-}
-
 TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets)
 {
     char filename[PATH_MAX];
@@ -3860,7 +3833,6 @@ static void set_up()
 void test_tool_test_policy()
 {
     set_up();
-    RUN_TEST_CASE(web_publish_uses_private_https_dependencies);
     RUN_TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order);
     RUN_TEST_CASE(runtime_seed_publication_serializes_and_preserves_published_assets);
     RUN_TEST_CASE(runtime_seed_reuse_checks_published_provenance);

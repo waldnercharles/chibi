@@ -883,14 +883,12 @@ seconds with ASan/UBSan.
 declares the 32K zlib window it references and round-trips the pixels. No
 window or GPU; 3 assertions in 0.07 seconds with ASan/UBSan.
 
-`--project-document` runs eight cases: manifests newer than this build are
-refused; a manifest older than `CHIBI_PROJECT_OLDEST_VERSION` fails with an
-error naming that version and how to upgrade it with an older SDK, and stays
-unchanged; a new project opens with an empty start scene and is never written
-over; the language and material contract fixture projects resolve their own
-content; three cases cover the version 38→39 step that retires rhythm and
-visual motion; and a rerun after finalization failed resumes after the step
-that finished. Temporary projects only.
+`--project-document` runs four cases: manifests newer than this build are
+refused; a manifest older than `CHIBI_PROJECT_VERSION` fails with an error
+naming that version and how to upgrade it, and stays unchanged; a new project
+opens with an empty start scene and is never written over; and the language
+and material contract fixture projects resolve their own content. Temporary
+projects only.
 
 A fresh full compiler/native/desktop SDK from that same source passed independent
 package/relocation and current controller/Studio consumer-link verification.

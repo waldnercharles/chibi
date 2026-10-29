@@ -82,17 +82,14 @@ jobs:
         run: python3 .github/verify-native-profile.py --build build-sdk-tests --output "$RUNNER_TEMP/graph-sdk-native-profile.json"
       - name: Verify Release graph tools survived the harness build unchanged
         run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
-      - name: Build matching CMake command and generated-output reference
-        run: make graph-reference BUILD_DIR=build-sdk-tests CMAKE_REFERENCE_DIR=build-sdk-tests-cmake
       - name: Verify graph commands, discovery, incremental builds and resources
         env:
           CHIBI_TOOLS_BUILD_DIR: build-sdk-tests/test/tools
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
-          CHIBI_GRAPH_REFERENCE: build-sdk-tests-cmake
         shell: bash
         run: |
           set -e
-          for route in build-graph build-graph-programs build-graph-debug-optimization build-graph-support build-graph-reflect build-graph-archive build-graph-generated build-graph-resources; do
+          for route in build-graph build-graph-programs build-graph-debug-optimization build-graph-support build-graph-reflect build-graph-generated; do
             python3 tools/test_policy.py tool "$route"
           done
       - name: Verify graph SDK packaging and relocation

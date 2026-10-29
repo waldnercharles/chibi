@@ -84,7 +84,7 @@ Export :: (options: Options) -> int {
             return 2
         }
     }
-    game := ReadProject(options.path, true)
+    game := ReadProject(options.path)
     if !game.valid {
         return 2
     }
@@ -104,7 +104,7 @@ Web :: (options: Options) -> int {
         Error("chibi web cannot serve on Windows yet; use chibi export --web.")
         return 2
     }
-    game := ReadProject(options.path, true)
+    game := ReadProject(options.path)
     if !game.valid {
         return 2
     }

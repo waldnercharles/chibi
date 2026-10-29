@@ -372,7 +372,7 @@ Files :: (target: string) -> string[] {
         return ["src/language/syntax.c", "src/language/src/parser.c", "src/language/src/scanner.c"];
     }
     if (target == "chibi_project_document") {
-        return ["src/assets/project.c", "src/assets/project_migrate.c"];
+        return ["src/assets/project.c"];
     }
     if (target == "chibi_ui_authoring") {
         return [
@@ -597,8 +597,8 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi_project_compilation") {
         return [
-            "src/authoring/component_declarations.c", "src/authoring/project_open.c",
-            "src/authoring/project_prepare.c", "src/authoring/project_prepare_assets.c",
+            "src/authoring/component_declarations.c", "src/authoring/project_prepare.c",
+            "src/authoring/project_prepare_assets.c",
             "src/authoring/project_compile.c", "src/authoring/source_costs.c", "src/authoring/renderer_catalog.c",
             "src/authoring/prototype_prepare.c", "src/authoring/graph_sources.c",
             "src/authoring/native_graph_prepare.c", "src/authoring/source_graph_library.c",
@@ -869,7 +869,7 @@ Files :: (target: string) -> string[] {
             "test/tools/wasm_browser.c", "test/support/arena.c", "src/automation/execution_policy.c",
             "src/host/process.c", "third_party/yyjson/yyjson.c",
             "test/tools/native_aot_driver.c", "test/tools/build_process.c",
-            "test/tools/build_toolchain.c", "test/tools/build_graph.c", "test/tools/build_sdk.c", "test/tools/runtime_sdk.c",
+            "test/tools/build_graph.c", "test/tools/build_sdk.c", "test/tools/runtime_sdk.c",
             "test/tools/compiler_artifact.c", "test/tools/compiler_bootstrap.c",
             "test/tools/c_export.c", "test/tools/record_c_export.c", "test/tools/audio_analysis.c",
             "src/host/native_libraries.c", "test/tools/tilemap.c", "test/tools/shader_webgpu.c", "test/tools/published_docs.c",
@@ -1190,7 +1190,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["language/syntax.h"];
     }
     if (target == "chibi_project_document") {
-        return ["assets/project.h", "assets/project_migrate.h"];
+        return ["assets/project.h"];
     }
     if (target == "chibi_ui_authoring") {
         return ["assets/ui_events.h", "assets/ui_source.h"];
@@ -1328,7 +1328,7 @@ pub PublicHeaders :: (target: string) -> string[] {
     if (target == "chibi_project_compilation") {
         return [
             "authoring/component_declarations.h", "authoring/material_prepare.h",
-            "authoring/project_compile.h", "authoring/project_open.h", "authoring/project_prepare.h",
+            "authoring/project_compile.h", "authoring/project_prepare.h",
             "authoring/prototype_prepare.h", "authoring/renderer_catalog.h", "authoring/scene_prepare.h",
             "authoring/sound_prepare.h", "authoring/source_graph_library.h", "authoring/source_costs.h"
         ];

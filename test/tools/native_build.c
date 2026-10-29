@@ -327,7 +327,10 @@ TEST_CASE(native_build_adds_line_tables_with_g)
     REQUIRE(build(launcher, "-O0", tools) == 0 && strstr(errors, "is up to date"));
     REQUIRE(build_with(launcher, lines, tools) == 0 && count("O0-") == 3 && any_ir(file));
     const char *twice[] = { "-g", "-g", NULL };
-    REQUIRE(build_with(launcher, twice, tools) == 2 && strstr(errors, "Invalid build option: -g"));
+    REQUIRE(
+        build_with(launcher, twice, tools) == 2 &&
+        strstr(errors, "Invalid build option; use --help.")
+    );
     return true;
 }
 
@@ -508,7 +511,7 @@ TEST_CASE(native_build_links_macos_and_windows_programs)
                             NULL };
     REQUIRE(
         build_with(launcher, twice, tools) == 2 &&
-        strstr(errors, "Invalid build option: --target")
+        strstr(errors, "Invalid build option; use --help.")
     );
     REQUIRE(count("O0-") == 2);
     return true;

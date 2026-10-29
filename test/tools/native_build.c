@@ -32,6 +32,11 @@ static char suite[256], built[1024], sdk[1024], launcher[1024], game[1024],
     tools[1024], output[65536], errors[65536];
 static char *stage_tool;
 static chibi_process_capture_result status;
+static char emitter_seed[1024], emitter_name[64];
+static char *emitter_bytes;
+static size_t emitter_size;
+static struct stat emitter_copy;
+static bool emitter_ready;
 
 static void path(char out[1024], const char *base, const char *name)
 {
@@ -200,6 +205,9 @@ static int count(const char *prefix)
     DIR *listing = opendir(folder);
     int found = 0;
     for (struct dirent *entry; listing && (entry = readdir(listing));) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+            continue;
+        }
         found += !strncmp(entry->d_name, prefix, strlen(prefix));
     }
     if (listing) {
@@ -211,6 +219,115 @@ static int count(const char *prefix)
 static const char *const
     SOURCE = "package scalar\nMain :: () -> int {\n    return Twice(21);\n}\n"
              "Twice :: (x: int) -> int {\n    return x * 2;\n}\n";
+
+/* Compare the entire binary artifact, including bytes after any NUL. */
+static bool same_emitter(const char *file)
+{
+    struct stat info;
+    if (lstat(file, &info) || !S_ISREG(info.st_mode) ||
+        (size_t)info.st_size != emitter_size) {
+        return false;
+    }
+    char *bytes = tool_read(file);
+    bool same = bytes && !memcmp(bytes, emitter_bytes, emitter_size);
+    free(bytes);
+    return same;
+}
+
+/* Suite-owned setup, not the result of a test. Generate the exact cache key
+ * with this relocated SDK and the ordinary cold CLI, then keep only its
+ * emitter. The original cold cache/error/real-LLVM/export cases stay cold. */
+static bool prepare_emitter_seed()
+{
+    reset("emitter-seed", SOURCE);
+    char generated[1024], folder[1024];
+    path(folder, suite, "emitter-seed");
+    bool ready = build(launcher, "-O0", tools) == 0 && count("emitter-") == 1 &&
+                 only("emitter-", ".chibip", generated);
+    if (ready) {
+        const char *name = strrchr(generated, '/') + 1;
+        struct stat info;
+        ready = strlen(name) == 31 && strspn(name + 8, "0123456789abcdef") == 16 &&
+                !lstat(generated, &info) && S_ISREG(info.st_mode) &&
+                info.st_size > 0;
+        if (ready) {
+            strcpy(emitter_name, name);
+            emitter_size = (size_t)info.st_size;
+            emitter_bytes = tool_read(generated);
+            path(emitter_seed, suite, emitter_name);
+            assert(!rename(generated, emitter_seed));
+            ready = emitter_bytes && same_emitter(emitter_seed);
+        }
+    }
+    if (!ready) {
+        fprintf(stderr, "native build: cannot prepare emitter seed\n%s", errors);
+    }
+    tool_remove_tree(folder);
+    return ready;
+}
+
+static bool separate_files(const char *left, const char *right)
+{
+    struct stat a, b;
+    return !lstat(left, &a) && !lstat(right, &b) && S_ISREG(a.st_mode) &&
+           S_ISREG(b.st_mode) && (a.st_dev != b.st_dev || a.st_ino != b.st_ino);
+}
+
+/* A wrong-name clone must not silently compile a second emitter. Also keep
+ * the original inode and every byte: publishing a replacement is not reuse. */
+static bool reused_emitter()
+{
+    char found[1024], expected[1024], folder[1024];
+    struct stat info;
+    path(folder, game, "build/native");
+    path(expected, folder, emitter_name);
+    return emitter_ready && count("emitter-") == 1 &&
+           only("emitter-", ".chibip", found) && !strcmp(found, expected) &&
+           !lstat(found, &info) && info.st_dev == emitter_copy.st_dev &&
+           info.st_ino == emitter_copy.st_ino && same_emitter(found) &&
+           same_emitter(emitter_seed);
+}
+
+/* Opt in only after reset: case directories and tools remain private. Copy
+ * no output, receipt or work directory. A temporary second copy witnesses
+ * an in-place mutation, then the case copy is restored before any CLI runs. */
+static bool copy_emitter()
+{
+    if (!emitter_ready || !same_emitter(emitter_seed)) {
+        return false;
+    }
+    directory(game, "build");
+    directory(game, "build/native");
+    char folder[1024], copied[1024], peer[1024];
+    path(folder, game, "build/native");
+    path(copied, folder, emitter_name);
+    path(peer, suite, "emitter-peer.chibip");
+    copy(emitter_seed, copied);
+    copy(emitter_seed, peer);
+    bool independent = separate_files(emitter_seed, copied) &&
+                       separate_files(emitter_seed, peer) &&
+                       separate_files(copied, peer);
+    if (independent) {
+        FILE *file = fopen(copied, "r+b");
+        assert(file);
+        int first = fgetc(file);
+        assert(first != EOF && !fseek(file, 0, SEEK_SET));
+        assert(fputc(first ^ 0xff, file) != EOF && !fflush(file));
+        independent = !same_emitter(copied) && same_emitter(emitter_seed) &&
+                      same_emitter(peer);
+        assert(!fseek(file, 0, SEEK_SET) && fputc(first, file) != EOF);
+        assert(!fclose(file));
+    }
+    assert(!unlink(peer));
+    assert(!lstat(copied, &emitter_copy));
+    return independent && count("") == 1 && reused_emitter();
+}
+
+TEST_CASE(native_build_prepared_its_emitter_seed)
+{
+    REQUIRE(emitter_ready);
+    return true;
+}
 
 TEST_CASE(native_build_links_a_program_and_reuses_it)
 {
@@ -293,7 +410,9 @@ static bool any_ir(const char *text)
 TEST_CASE(native_build_adds_line_tables_with_g)
 {
     reset("lines", SOURCE);
+    REQUIRE(copy_emitter());
     REQUIRE(build(launcher, "-O0", tools) == 0);
+    REQUIRE(reused_emitter());
     const char *lines[] = { "-O0", "-g", NULL };
     REQUIRE(build_with(launcher, lines, tools) == 0 && count("O0-") == 2);
     REQUIRE(build_with(launcher, lines, tools) == 0 && strstr(errors, "is up to date"));
@@ -328,13 +447,16 @@ TEST_CASE(native_build_adds_line_tables_with_g)
     REQUIRE(build_with(launcher, lines, tools) == 0 && count("O0-") == 3 && any_ir(file));
     const char *twice[] = { "-g", "-g", NULL };
     REQUIRE(build_with(launcher, twice, tools) == 2 && strstr(errors, "Invalid build option: -g"));
+    REQUIRE(reused_emitter());
     return true;
 }
 
 TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back)
 {
     reset("rejection", SOURCE);
+    REQUIRE(copy_emitter());
     REQUIRE(build(launcher, "-O0", tools) == 0);
+    REQUIRE(reused_emitter());
     char prior[1024], receipt[1024];
     REQUIRE(only("O0-", "", prior));
     path(receipt, prior, "receipt.txt");
@@ -371,6 +493,7 @@ TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back)
     REQUIRE(build(launcher, "-O0", tools) == 0 && count("O0-") == 2);
     path(receipt, prior, "receipt.txt");
     REQUIRE(exists(receipt));
+    REQUIRE(reused_emitter());
     return true;
 }
 
@@ -433,8 +556,10 @@ static bool traced(const char *name, const char *expected)
 TEST_CASE(native_build_links_macos_and_windows_programs)
 {
     reset("targets", SOURCE);
+    REQUIRE(copy_emitter());
     const char *mac[] = { "-O0", "--target", "aarch64-apple-darwin", NULL };
     REQUIRE(build_with(launcher, mac, tools) == 0);
+    REQUIRE(reused_emitter());
     char program[1024], folder[1024], expected[8192];
     REQUIRE(printed(program) && only("O0-", "", folder));
     snprintf(expected, sizeof expected, "%s/program", folder);
@@ -511,14 +636,17 @@ TEST_CASE(native_build_links_macos_and_windows_programs)
         strstr(errors, "Invalid build option: --target")
     );
     REQUIRE(count("O0-") == 2);
+    REQUIRE(reused_emitter());
     return true;
 }
 
 TEST_CASE(native_build_refuses_what_an_interrupted_build_left)
 {
     reset("interrupted", SOURCE);
+    REQUIRE(copy_emitter());
     write_at(tools, "action", "terminate\n");
     REQUIRE(build(launcher, "-O0", tools) != 0 && strstr(errors, "build process cancelled"));
+    REQUIRE(reused_emitter());
     char work[1024], partial[1024], object[1024];
     REQUIRE(only("O0-", ".work", work) && only("O0-", ".partial", partial));
     REQUIRE(count("O0-") == 2);
@@ -534,6 +662,7 @@ TEST_CASE(native_build_refuses_what_an_interrupted_build_left)
     tool_remove_tree(work);
     tool_remove_tree(partial);
     REQUIRE(build(launcher, "-O0", tools) == 0 && count("O0-") == 1);
+    REQUIRE(reused_emitter());
     return true;
 }
 
@@ -542,7 +671,9 @@ TEST_CASE(native_build_refuses_what_an_interrupted_build_left)
 TEST_CASE(native_build_refuses_an_incomplete_output)
 {
     reset("incomplete", SOURCE);
+    REQUIRE(copy_emitter());
     REQUIRE(build(launcher, "-O0", tools) == 0);
+    REQUIRE(reused_emitter());
     char output_folder[1024], program[1024], receipt[1024];
     REQUIRE(only("O0-", "", output_folder));
     path(program, output_folder, "program");
@@ -569,6 +700,7 @@ TEST_CASE(native_build_refuses_an_incomplete_output)
     REQUIRE(count("O0-") == 1 && exists(output_folder));
     tool_remove_tree(output_folder);
     REQUIRE(build(launcher, "-O0", tools) == 0 && count("O0-") == 1);
+    REQUIRE(reused_emitter());
     return true;
 }
 
@@ -1074,6 +1206,8 @@ void test_native_build(const char *binary)
     stage_tool = tool_read(CHIBI_SOURCE_ROOT "/test/native_aot/driver/fixtures/stage-tool.sh");
     assert(stage_tool);
     relocate(binary);
+    emitter_ready = prepare_emitter_seed();
+    RUN_TEST_CASE(native_build_prepared_its_emitter_seed);
     RUN_TEST_CASE(native_build_links_a_program_and_reuses_it);
     RUN_TEST_CASE(native_build_adds_line_tables_with_g);
     RUN_TEST_CASE(native_build_keeps_prior_programs_and_never_falls_back);
@@ -1084,10 +1218,13 @@ void test_native_build(const char *binary)
     RUN_TEST_CASE(native_build_runs_with_llvm_and_no_c_compiler);
     RUN_TEST_CASE(native_build_links_other_targets_with_llvm);
     RUN_TEST_CASE(native_export_ships_libraries_the_player_binds);
+    free(emitter_bytes);
+    emitter_bytes = NULL;
+    emitter_ready = false;
     free(stage_tool);
     tool_remove_tree(suite);
 #else
     (void)binary;
-    fprintf(stderr, "native build: ten Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
+    fprintf(stderr, "native build: eleven Linux x86-64 cases unexecuted on this platform; the driver admits only that target\n");
 #endif
 }

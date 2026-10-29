@@ -1479,9 +1479,9 @@ TEST_CASE(private_embed_file_writes_cmake_byte_arrays)
     return true;
 }
 
-/* The current compiler rejects direct and indirect yield before execution.
- * Host runtime guards remain a boundary; this does not invoke their callbacks. */
-TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation)
+/* Yield and task syntax compile; private execution guards reject suspension
+ * and task creation before any process step starts. */
+TEST_CASE(private_programs_reject_yield_and_unawaited_tasks)
 {
     static const char *sources[] = {
         "package waits\nBuild :: () -> int { yield; return 0; }",
@@ -1489,8 +1489,8 @@ TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation)
         "return 0; }",
     };
     static const char *diagnostics[] = {
-        "unsupported syntax 'yield_statement'",
-        "unsupported syntax 'yield_statement'",
+        "a build program cannot wait",
+        "a build program cannot start a task",
     };
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < 2; i++) {
@@ -1515,10 +1515,7 @@ TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation)
             }
             REQUIRE(!ran);
             REQUIRE(!strcmp(result.diagnostic, diagnostics[i]));
-            REQUIRE(
-                !result.steps && !result.counts.bytecode_entries &&
-                !result.counts.sljit_entries
-            );
+            REQUIRE(!result.steps && primitive_backend(&result, options.backend));
         }
     }
     return true;
@@ -2672,7 +2669,7 @@ static void build_process(const char *worker, const char *host, build_process_ca
     RUN_TEST_CASE(private_programs_import_named_collections);
     RUN_TEST_CASE(private_programs_allocate_managed_pointers);
     RUN_TEST_CASE(private_embed_file_writes_cmake_byte_arrays);
-    RUN_TEST_CASE(private_programs_reject_direct_and_indirect_yield_during_compilation);
+    RUN_TEST_CASE(private_programs_reject_yield_and_unawaited_tasks);
     RUN_TEST_CASE(private_runtime_failures_name_their_cause);
     RUN_TEST_CASE(private_started_steps_run_together);
     RUN_TEST_CASE(private_waits_take_output_in_wait_order);

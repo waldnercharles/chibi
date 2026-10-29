@@ -132,9 +132,9 @@ then loads its prepared closure through the runtime-only native linker. This
 replaces `authoring_packages_prepare` and C semantic preparation in the build-host
 path. Native services still provide raw syntax facts, I/O, linking and execution.
 
-Direct or indirect `yield` currently fails during compilation with
-`unsupported syntax 'yield_statement'`. The host retains its runtime suspension
-and task guards as an execution boundary.
+The prepared compiler supports `yield` and task calls. The private host rejects
+direct suspension with `a build program cannot wait` and an unawaited task call
+with `a build program cannot start a task`.
 
 Compiler inputs are separate from the build program's imports:
 

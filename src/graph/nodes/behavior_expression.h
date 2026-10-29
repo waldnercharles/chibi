@@ -37,13 +37,6 @@ int behavior_expression_refresh_mode(
     graph_expression_mode mode,
     behavior_expression_error *error
 );
-/* Source lowering calls this after feeding a fresh assignment's writable
- * operand. Existing native graphs keep their explicitly authored Result. */
-int behavior_expression_infer_assignment_result(
-    behavior_asset *asset,
-    node *call,
-    behavior_expression_error *error
-);
 int behavior_expression_set(
     behavior_asset *asset,
     node *call,

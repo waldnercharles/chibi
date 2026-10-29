@@ -185,59 +185,6 @@ void entities_query_scope(entities *entities, const behavior_function *function)
     }
     entities->query_scope = stable;
 }
-bool entities_parallel_begin(entities *entities, unsigned categories)
-{
-    if (!entities || !categories) {
-        return true;
-    }
-    assert(!entities->parallel_queries);
-    if (entities->profile_queries) {
-        return false;
-    }
-    for (int i = 0; i < 32; i++) {
-        aclear(entities->parallel_candidates[i]);
-    }
-    ecs_component_id components[] = { COMPONENT_Transform.id, COMPONENT_Collider.id };
-    ecs_query query;
-    if (ecs_query_begin(entities->world, &query, components, 2) == ECS_OK) {
-        ecs_entity entity;
-        while (ecs_query_next(&query, &entity)) {
-            unsigned matching = Collider_get_const(entities->world, entity)->category &
-                                categories;
-            if (!matching || entities_is_retiring(entities, entity)) {
-                continue;
-            }
-            CF_V2 position = transform_world_2d(entities->world, entity).position;
-            if (!isfinite(position.x) || !isfinite(position.y)) {
-                continue;
-            }
-            nearest_target target = { position, ecs_entity_to_u64(entity) };
-            while (matching) {
-                int bit = __builtin_ctz(matching);
-                apush(entities->parallel_candidates[bit], target);
-                matching &= matching - 1;
-            }
-        }
-        ecs_query_end(&query);
-    }
-    entities->parallel_queries = true;
-    return true;
-}
-void entities_parallel_end(entities *entities)
-{
-    if (entities) {
-        entities->parallel_queries = false;
-    }
-}
-void entities_profile_queries(entities *entities, bool enabled)
-{
-    entities->profile_queries = enabled;
-    entities->query_profile = (entity_query_profile){ 0 };
-}
-entity_query_profile entities_query_profile(const entities *entities)
-{
-    return entities->query_profile;
-}
 
 static void release_request(spawn_request *request)
 {
@@ -1184,11 +1131,6 @@ static const char *nearest_entity_data(void *service, const pin_value *inputs, p
 const node_host_call ENTITY_NEAREST_CALL = { .service = "game.entities",
                                              .invoke = nearest_entity_data,
                                              .reusable = true };
-
-unsigned entities_query_categories(const behavior_function *function)
-{
-    return behavior_function_host_mask(function, &ENTITY_NEAREST_CALL, 2);
-}
 
 const node_access ENTITY_QUERY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 static const uint64_t *const nearest_reads[] = { &COMPONENT_Transform.id,

@@ -249,7 +249,7 @@ Files :: (target: string) -> string[] {
             "src/execution/artifact.c", "src/execution/backend.c", "src/execution/borrow.c",
             "src/execution/c.c", "src/execution/call.c", "src/execution/component.c",
             "src/execution/ecs_reader.c", "src/execution/function.c", "src/execution/function_builder.c",
-            "src/execution/fusion.c", "src/execution/host.c", "src/execution/inputs.c",
+            "src/execution/host.c", "src/execution/inputs.c",
             "src/execution/integer_report.c", "src/execution/intrinsics.c", "src/execution/query.c", "src/execution/map_intrinsics.c", "src/execution/jit.c",
             "src/execution/jit_component.c", "src/execution/jit_host_call.c", "src/execution/jit_integer.c",
             "src/execution/jit_memory.c", "src/execution/jit_registers.c", "src/execution/jit_suspend.c",

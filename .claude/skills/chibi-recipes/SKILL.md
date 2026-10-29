@@ -67,21 +67,15 @@ The smallest complete example is Play Sound:
 2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
    of `- name=... prototype=...`) and the prototypes it uses. A scenario in
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
-3. Format and validate: `build/bin/chibi_ctl --project-root <root> --format`,
-   then a `validate_asset` request per changed asset.
-4. Run it bounded. A scene:
-   `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Scene>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
-   A scenario, which supplies its own scene, frames and input:
-   `printf '%s\n' '{"contract":1,"operation":"run_scenario","scenario":"<Name>"}' | build/bin/chibi_ctl --project-root <root>`
-   Check `behavior_failures` and the state evidence. Choose enough frames to
-   exercise the scenario.
+3. Format and validate: `chibi fmt <root>`, then `chibi check <root>`.
+4. Run it bounded with the project's `@test` functions (`chibi test <root>`) or
+   a scenario through `make agent-test`. Choose enough frames to exercise the
+   scenario.
 
 ## Change saved projects (migration)
 
 Opening a project saved at an older version (`chibi_project_open`) upgrades
-it in place, and `chibi_ctl --migrate` does the same explicitly. The
-`validate_project` operation refuses an older project until one of them has
-run. There are no compatibility aliases (see the first rule in `AGENTS.md`).
+it in place, and `chibi check` refuses an older project until it has been opened. There are no compatibility aliases (see the first rule in `AGENTS.md`).
 
 Bump the version only when you can name a project in this repository or
 `chibi-studio` that would otherwise load wrong or fail, and the step would
@@ -100,10 +94,9 @@ fix a hand-made project.
 2. Cover the step with a pico_unit case that migrates a small old-format
    source and checks the result (see `project_retirement_migrates_owned_values_and_preserves_shader_wires`
    in `test/authoring/project_document.c`).
-3. Migrate every project in this repository with
-   `build/bin/chibi_ctl --project-root <root> --migrate`: every `project.kdl`
-   under `test/fixtures`.
-4. Run `chibi_ctl --format` on each migrated project and compile it with
+3. Migrate every project in this repository by opening it (`chibi build <root>`):
+   every `project.kdl` under `test/fixtures`.
+4. Run `chibi fmt` on each migrated project and compile it with
    `chibi-compile` to prove it still loads.
 
 Don't open version-bump PRs in other repositories (`chibi-studio`, games).

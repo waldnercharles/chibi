@@ -47,7 +47,6 @@ void test_language_maps();
 void test_language_iteration();
 void test_language_generic();
 void test_language_source_assets();
-void test_language_source_prototype_edits();
 void test_language_symbol_references();
 void test_language_program();
 void test_language_program_session();
@@ -355,8 +354,6 @@ int main(int argc, char **argv)
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
     bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
     bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
-    bool source_prototype_edits = argc == 2 &&
-                                  !strcmp(argv[1], "--source-prototype-edits");
     bool model_runtime = argc == 2 && !strcmp(argv[1], "--model-runtime");
     bool graph_authoring = argc == 2 && !strcmp(argv[1], "--graph-authoring");
     bool graph_model = argc == 2 && !strcmp(argv[1], "--graph-model");
@@ -406,10 +403,10 @@ int main(int argc, char **argv)
          !host_packages_compiler && !package_files && !package_core &&
          !package_math && !package_math_benchmark && !package_portable &&
          !package_portable_compiler && !package_tests && !argument_effects_chibi &&
-         !docs_markdown && !component_write && !component_write_layout && !scalarize &&
-         !borrow && !reductions && !binding_schedule && !activation_cache &&
-         !headless && !build_workflow && !navigation && !publication &&
-         !field_runtime && !prototype && !source_prototype_edits && !ui_authoring &&
+         !docs_markdown && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -485,7 +482,7 @@ int main(int argc, char **argv)
             "--headless | --build-workflow | "
             "--navigation | "
             "--publication | "
-            "--field-runtime | --prototype-document | --source-prototype-edits "
+            "--field-runtime | --prototype-document "
             "| --ui-authoring | "
             "--text-format | --graph-model | --graph-authoring | "
             "--model-runtime | --runtime-attribution | "
@@ -580,13 +577,6 @@ int main(int argc, char **argv)
         test_language_text_format();
     } else if (ui_authoring) {
         test_ui_authoring();
-    } else if (source_prototype_edits) {
-#ifdef CHIBI_TEST_SOURCE_ASSETS
-        test_language_source_prototype_edits();
-#else
-        fprintf(stderr, "source-prototype-edits requires CHIBI_TEST_SOURCE_ASSETS\n");
-        return 1;
-#endif
     } else if (prototype) {
         test_prototype_document();
 #ifdef CHIBI_TEST_SOURCE_ASSETS

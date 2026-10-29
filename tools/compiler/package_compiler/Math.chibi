@@ -8,8 +8,8 @@ import strings "core:strings"
 
 // Compiler-private kind, separate from char14 and collection/optional12..13.
 MathDecl: int : 15;
-MathCall: int : 8;
-MathFunctionCall: int : 9;
+MathCall: int : 90;
+MathFunctionCall: int : 91;
 MathCapturePhase: int : 77;
 MathAssignBegin: int : 72;
 MathAssignSnapshot: int : 73;

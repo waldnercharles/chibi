@@ -82,7 +82,7 @@ static bool prepare()
 static bool differential(const char *label, const char *text)
 {
     size_t size = strlen(text) + 1;
-    int budget = getenv("CHIBI_PARSER_BUDGET") ? atoi(getenv("CHIBI_PARSER_BUDGET")) : (int)(size * STEPS_PER_BYTE) + 100000;
+    int budget = (int)(size * STEPS_PER_BYTE) + 100000;
     for (int b = 0; b < BACKENDS; b++) {
         arena_free(&input);
         arena_free(&detached);
@@ -93,7 +93,7 @@ static bool differential(const char *label, const char *text)
                                    const pin_string
                                ){ .bytes = copy, .length = (uint32_t)strlen(copy) } },
                   output = { 0 };
-        bool called = compiler_fixture_call(&fixture, b, IDENTITY, getenv("CHIBI_PARSER_ENTRY") ? getenv("CHIBI_PARSER_ENTRY") : "Differ", &argument, 1, budget, &detached, &output);
+        bool called = compiler_fixture_call(&fixture, b, IDENTITY, "Differ", &argument, 1, budget, &detached, &output);
         if (!called) {
             fprintf(stderr, "%s (backend %d): the comparison did not finish\n", label, b);
         }

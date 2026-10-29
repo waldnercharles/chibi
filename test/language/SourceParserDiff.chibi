@@ -1,7 +1,6 @@
 package source_parser_diff
 
 import parser "project:source_parser"
-import tok "project:source_tokenizer"
 
 // The authored parser's tree against Tree-sitter's for `text`: "" when they
 // are the same, otherwise the first difference. Text Tree-sitter rejects only
@@ -51,25 +50,5 @@ pub Differ :: (text: string) -> string {
                 index += 1;
             }
             return "";
-    }
-}
-
-pub Tokens :: (text: string) -> string {
-    scanned := tok.Tokenize(text);
-    switch scanned {
-        case .Scanned(kinds, starts, ends, rows, columns, errors, offsets, error_rows, error_columns):
-            return format_text("{}", length(kinds));
-    }
-}
-
-pub Checked :: (text: string) -> string {
-    return format_text("{}", length(parser.Diagnose(text)));
-}
-
-pub Parsed :: (text: string) -> string {
-    tree := parser.Parse(text);
-    switch tree {
-        case .Parsed(nodes, fields, named, extras, root):
-            return format_text("{}", length(nodes));
     }
 }

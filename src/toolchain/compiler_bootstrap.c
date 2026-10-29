@@ -21,8 +21,8 @@
 
 /* The manifest format this host reads and writes. */
 #define BOOTSTRAP_FORMAT 1
-/* Instructions one compile of the compiler sources may run. */
-#define BOOTSTRAP_BUDGET 2000000000u
+/* Instructions one compile of the compiler sources may run (fits 32-bit uintptr_t). */
+#define BOOTSTRAP_BUDGET 4000000000u
 #define CLOSURE_FILE "compiler.chibip"
 #define MANIFEST_FILE "bootstrap.json"
 #define CONTRACT_FILE "bootstrap.kdl"
@@ -227,6 +227,18 @@ static unsigned char *compile(
         return out.bytes;
     }
     free(out.bytes);
+    if (!called && out.source.present) {
+        snprintf(
+            error,
+            error_size,
+            "the compiler failed: %s at %s:%d:%d",
+            out.diagnostic,
+            out.source.asset,
+            out.source.line,
+            out.source.column
+        );
+        return NULL;
+    }
     if (!called) {
         snprintf(error, error_size, "the compiler failed: %s", out.diagnostic);
         return NULL;

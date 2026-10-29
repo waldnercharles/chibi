@@ -57,7 +57,7 @@ elseif(UNIX AND NOT EMSCRIPTEN)
 endif()
 
 
-set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c shader_preview.c
+set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c
     shader_publish.c screenshot.c material.c material_lod.c material_mesh.c material_height.c spot_lights.c shader_images.c
     shader_program.c fog.c material_raster.c fluid_raster.c
     reflections.c radiance.c post_2d.c gpu_timing.c viewport.c audio.c audio_input.c audio_web.c geometry_2d.c grid_2d.c

@@ -756,13 +756,7 @@ pub VendorHeader :: (path: string) -> bool {
 pub ResourceEntries :: () -> string[] {
     return [
         "share/chibi/core/strings/Strings.chibi=@source/packages/core/strings/Strings.chibi",
-        "share/chibi/docs/compiler_syntax/Syntax.chibi=@source/tools/compiler/compiler_syntax/Syntax.chibi",
-        "share/chibi/docs/grammar/Grammar.chibi=@source/tools/docs/grammar/Grammar.chibi",
-        "share/chibi/docs/markdown/Markdown.chibi=@source/tools/docs/markdown/Markdown.chibi",
-        "share/chibi/docs/reference/Reference.chibi=@source/tools/docs/reference/Reference.chibi",
         "share/chibi/docs/sdk.md=@source/sdk/README.md",
-        "share/chibi/docs/site/Site.chibi=@source/tools/docs/site/Site.chibi",
-        "share/chibi/docs/syntax_diagnostics/Diagnostics.chibi=@source/tools/compiler/syntax_diagnostics/Diagnostics.chibi",
         "share/chibi/licenses/chibi/COPYING.EXAMPLES=@source/COPYING.EXAMPLES",
         "share/chibi/licenses/chibi/COPYING.LESSER=@source/COPYING.LESSER",
         "share/chibi/licenses/chibi/COPYING=@source/COPYING",

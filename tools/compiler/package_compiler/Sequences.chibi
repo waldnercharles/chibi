@@ -650,6 +650,14 @@ SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                             [PlaceVisit(Field(forest, item.node, "expression"))], 0, NoValue(), NoValue(), []);
     }
     if (node.kind == "dereference_expression") {
+        operand := Unparenthesized(forest, Field(forest, item.node, "operand"));
+        if (Is(forest, operand, "identifier")) {
+            scoped := Lookup(names, Text(forest, text, operand));
+            if (scoped >= 0 && names[scoped].place == ReferencePlace) {
+                return Step.Emitted([], [], [], [], [], [], [], [], [PlaceVisit(operand)],
+                                    0, NoValue(), NoValue(), []);
+            }
+        }
         // Stage zero marks a pointer it follows to reach an element or field.
         points: Code[] = [];
         if (Is(forest, node.parent, "index_expression") || Is(forest, node.parent, "member_expression")) {
@@ -806,6 +814,9 @@ SequenceJoined :: (prefix: Step, suffix: Step) -> Step {
 // which is all a drop releases. A record reaches one only through a union
 // field. A type met again on the way may hold one.
 HoldsCollection :: (types: TypeDecl[], members: TypeMember[], record: int, visiting: int[]) -> bool {
+    if (MathKind(types, record) != 0) {
+        return false;
+    }
     for (seen in visiting) {
         if (seen == record) {
             return true;
@@ -823,7 +834,7 @@ HoldsCollection :: (types: TypeDecl[], members: TypeMember[], record: int, visit
         }
         return false;
     }
-    if (declared.kind != RecordDecl && declared.kind != VariantDecl) {
+    if (declared.kind != RecordDecl && declared.kind != VariantDecl && declared.kind != MathDecl) {
         return true;
     }
     index := declared.first;

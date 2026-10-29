@@ -109,14 +109,13 @@ static script_analysis *analyze(
     const char *key,
     bool complete,
     const script_specialization_request *requests,
-    int request_count,
-    bool migration
+    int request_count
 )
 {
     assert(syntax && syntax->tree && catalog);
     script_syntax *recovered = script_analyzer_recovery_syntax(syntax);
     if (recovered) {
-        script_analysis *out = analyze(recovered, catalog, declarations, key, false, requests, request_count, migration);
+        script_analysis *out = analyze(recovered, catalog, declarations, key, false, requests, request_count);
         script_analyzer_recovery_restore(out, syntax);
         script_syntax_free(recovered);
         return out;
@@ -137,14 +136,14 @@ static script_analysis *analyze(
                    .package_scope = -1,
                    .declarations_only = declarations,
                    .requested = requests,
-                   .requested_count = request_count,
-                   .migration_import = migration };
+                   .requested_count = request_count };
     a.catalog_view = *catalog;
     for (int i = 0; i < catalog->type_count; i++) {
         apush(a.catalog_types, catalog->types[i]);
     }
     a.catalog_view.types = a.catalog_types;
     a.catalog = &a.catalog_view;
+    script_analyzer_math_prepare(&a, ts_tree_root_node(syntax->tree));
     for (int i = 0; i < syntax->diagnostic_count; i++) {
         apush(out->diagnostics, syntax->diagnostics[i]);
     }
@@ -247,7 +246,7 @@ static script_analysis *analyze(
 
 script_analysis *script_analyze(const script_syntax *syntax, const script_catalog *catalog)
 {
-    return analyze(syntax, catalog, false, NULL, true, NULL, 0, false);
+    return analyze(syntax, catalog, false, NULL, true, NULL, 0);
 }
 script_analysis *script_analyze_document(
     const script_syntax *syntax,
@@ -256,7 +255,7 @@ script_analysis *script_analyze_document(
 )
 {
     assert(key && key[0]);
-    return analyze(syntax, catalog, false, key, true, NULL, 0, false);
+    return analyze(syntax, catalog, false, key, true, NULL, 0);
 }
 script_analysis *script_analyze_document_requested(
     const script_syntax *syntax,
@@ -267,23 +266,11 @@ script_analysis *script_analyze_document_requested(
 )
 {
     assert(key && key[0] && count >= 0 && (!count || requests));
-    return analyze(syntax, catalog, false, key, true, requests, count, false);
-}
-script_analysis *script_analyze_migration_document(
-    const script_syntax *syntax,
-    const script_catalog *catalog,
-    const char *key,
-    const script_specialization_request *requests,
-    int count,
-    bool declarations
-)
-{
-    assert(key && key[0] && count >= 0 && (!count || requests));
-    return analyze(syntax, catalog, declarations, key, true, requests, count, true);
+    return analyze(syntax, catalog, false, key, true, requests, count);
 }
 script_analysis *script_declarations(const script_syntax *syntax, const script_catalog *catalog)
 {
-    return analyze(syntax, catalog, true, NULL, true, NULL, 0, false);
+    return analyze(syntax, catalog, true, NULL, true, NULL, 0);
 }
 script_analysis *script_declarations_document(
     const script_syntax *syntax,
@@ -292,7 +279,7 @@ script_analysis *script_declarations_document(
 )
 {
     assert(key && key[0]);
-    return analyze(syntax, catalog, true, key, true, NULL, 0, false);
+    return analyze(syntax, catalog, true, key, true, NULL, 0);
 }
 const script_source_document *script_analysis_document(const script_analysis *out, int document)
 {
@@ -389,6 +376,9 @@ static script_analysis *analyze_package(const script_package_options *options, b
     }
     a.catalog_view.types = a.catalog_types;
     a.catalog = &a.catalog_view;
+    for (int i = 0; i < count; i++) {
+        script_analyzer_math_prepare(&a, ts_tree_root_node(documents[i].syntax->tree));
+    }
     if (!script_analyzer_package_metadata(&a)) {
         return finish_analysis(&a, true, false);
     }

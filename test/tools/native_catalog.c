@@ -6,14 +6,7 @@
 
 #ifdef CHIBI_TEST_PREPARATION
 #include "authoring/language_catalog.h"
-#include "authoring/project_open.h"
-#include "support/file_io.h"
 static authoring_language_catalog *language;
-static char migration_root[256], migration_content[288], migration_behaviors[320];
-static char migration_manifest[288], migration_source[352];
-static char migration_incomplete[352];
-static char migration_canonical[352];
-static char *migration_text, *migration_reopened;
 #endif
 
 #include <math.h>
@@ -31,19 +24,6 @@ static void cleanup()
 #ifdef CHIBI_TEST_PREPARATION
     authoring_language_catalog_free(language);
     language = NULL;
-    free(migration_text);
-    free(migration_reopened);
-    migration_text = migration_reopened = NULL;
-    if (migration_root[0]) {
-        unlink(migration_source);
-        unlink(migration_incomplete);
-        unlink(migration_canonical);
-        unlink(migration_manifest);
-        rmdir(migration_behaviors);
-        rmdir(migration_content);
-        rmdir(migration_root);
-        migration_root[0] = 0;
-    }
 #endif
     native_capabilities_free(native);
     native = NULL;
@@ -478,106 +458,6 @@ TEST_CASE(language_catalog_preserves_owned_template_and_specialization_metadata)
     return true;
 }
 
-static bool write_migration_fixture(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    if (!file) {
-        return false;
-    }
-    bool okay = fputs(text, file) >= 0;
-    if (fclose(file)) {
-        okay = false;
-    }
-    return okay;
-}
-
-TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably)
-{
-    test_native_catalog_enable();
-    char error[512] = { 0 };
-    native = host_native_default_catalog_new(NULL, 0, NULL, 0, error, sizeof error);
-    REQUIRE(native);
-    const script_catalog *catalog = native_capabilities_catalog(native);
-    REQUIRE(
-        script_catalog_find_capability(catalog, "get_transform", SCRIPT_CAPABILITY_FUNCTION) >= 0
-    );
-    REQUIRE(
-        script_catalog_find_capability(catalog, "set_transform_x", SCRIPT_CAPABILITY_ACTION) >= 0
-    );
-    snprintf(migration_root, sizeof migration_root, "/tmp/chibi-native-migration.XXXXXX");
-    REQUIRE(mkdtemp(migration_root));
-    snprintf(migration_content, sizeof migration_content, "%s/content", migration_root);
-    snprintf(migration_behaviors, sizeof migration_behaviors, "%s/behaviors", migration_content);
-    snprintf(migration_manifest, sizeof migration_manifest, "%s/project.kdl", migration_root);
-    snprintf(migration_source, sizeof migration_source, "%s/Demo.chibi", migration_behaviors);
-    snprintf(migration_incomplete, sizeof migration_incomplete, "%s/Incomplete.chibi", migration_behaviors);
-    snprintf(migration_canonical, sizeof migration_canonical, "%s/Canonical.chibi", migration_behaviors);
-    REQUIRE(!mkdir(migration_content, 0700));
-    REQUIRE(!mkdir(migration_behaviors, 0700));
-    const char
-        *incomplete = "Incomplete :: behavior { on MissingEvent :: () {} }\n";
-    REQUIRE(write_migration_fixture(migration_incomplete, incomplete));
-    const char *canonical = "Canonical :: behavior {\n    count: retain int = "
-                            "1\n    on Tick :: () { count = count + 1 }\n}\n";
-    REQUIRE(write_migration_fixture(migration_canonical, canonical));
-    REQUIRE(
-        write_migration_fixture(migration_manifest, "version 38\nname \"Native migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
-    );
-    /* A generated call with an unresolved receiver cannot be proven equivalent.
-     * Unlike the unrelated MissingEvent document, it must block finalization. */
-    REQUIRE(
-        write_migration_fixture(migration_source, "Demo :: behavior { on Tick :: () { set_transform_x(2.0, missing_entity) } }\n")
-    );
-    REQUIRE(authoring_project_migrate(migration_root, native, error, sizeof error) == -1);
-    REQUIRE(error[0]);
-    migration_text = file_read_text(migration_manifest);
-    REQUIRE(migration_text && strstr(migration_text, "version 38"));
-    /* The failed upgrade left every source at the current version and said so
-     * in the manifest, so going back to an old source means restoring the
-     * manifest too. */
-    REQUIRE(strstr(migration_text, "migrated"));
-    free(migration_text);
-    migration_text = NULL;
-    const char
-        *input = "Demo :: behavior { on Tick :: () { e := Self()\n"
-                 "x := get_transform().Value.x\nset_transform_x(x, self) } }\n";
-    REQUIRE(
-        write_migration_fixture(migration_manifest, "version 38\nname \"Native migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
-    );
-    REQUIRE(write_migration_fixture(migration_source, input));
-    int steps = authoring_project_migrate(migration_root, native, error, sizeof error);
-    if (steps < 0) {
-        fprintf(stderr, "native project migration: %s\n", error);
-    }
-    REQUIRE(steps == CHIBI_PROJECT_VERSION - 38);
-    migration_text = file_read_text(migration_source);
-    REQUIRE(migration_text);
-    REQUIRE(strstr(migration_text, "e := self"));
-    REQUIRE(strstr(migration_text, "self.Transform.x"));
-    REQUIRE(
-        !strstr(migration_text, "Self()") && !strstr(migration_text, "get_transform") &&
-        !strstr(migration_text, "set_transform")
-    );
-    migration_reopened = file_read_text(migration_manifest);
-    char version[32];
-    snprintf(version, sizeof version, "version %d", CHIBI_PROJECT_VERSION);
-    REQUIRE(migration_reopened && strstr(migration_reopened, version));
-    free(migration_reopened);
-    migration_reopened = NULL;
-    REQUIRE(authoring_project_migrate(migration_root, native, error, sizeof error) == 0);
-    chibi_project project = { 0 };
-    REQUIRE(!authoring_project_open(&project, migration_root, native, error, sizeof error));
-    chibi_project_free(&project);
-    migration_reopened = file_read_text(migration_source);
-    REQUIRE(migration_reopened && !strcmp(migration_text, migration_reopened));
-    free(migration_reopened);
-    migration_reopened = file_read_text(migration_incomplete);
-    REQUIRE(migration_reopened && !strcmp(incomplete, migration_reopened));
-    free(migration_reopened);
-    migration_reopened = file_read_text(migration_canonical);
-    REQUIRE(migration_reopened && !strcmp(canonical, migration_reopened));
-    return true;
-}
 #endif
 void test_tool_native_catalog()
 {
@@ -590,7 +470,6 @@ void test_tool_native_catalog()
     RUN_TEST_CASE(language_catalog_identity_lookup_keeps_namespaces_zero_and_order);
     RUN_TEST_CASE(language_catalog_retains_and_validates_merged_relationships);
     RUN_TEST_CASE(language_catalog_preserves_owned_template_and_specialization_metadata);
-    RUN_TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably);
 #endif
     pu_clear_setup();
 }

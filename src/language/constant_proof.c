@@ -68,6 +68,23 @@ static bool compile_time_value(
             valid = compile_time_value(analysis, proofs, generation, value->left, depth + 1, steps, scalar) &&
                     compile_time_value(analysis, proofs, generation, value->right, depth + 1, steps, scalar);
             break;
+        case SCRIPT_EXPR_MATH:
+            valid = (value->left < 0 ||
+                     compile_time_value(analysis, proofs, generation, value->left, depth + 1, steps, false)) &&
+                    (value->right < 0 ||
+                     compile_time_value(analysis, proofs, generation, value->right, depth + 1, steps, false));
+            for (int i = 0; valid && i < value->argument_count; i++) {
+                valid = compile_time_value(
+                    analysis,
+                    proofs,
+                    generation,
+                    value->arguments[i].value,
+                    depth + 1,
+                    steps,
+                    false
+                );
+            }
+            break;
         case SCRIPT_EXPR_ARRAY:
         case SCRIPT_EXPR_MAP:
         case SCRIPT_EXPR_STRUCT:

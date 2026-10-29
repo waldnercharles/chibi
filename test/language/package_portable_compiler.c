@@ -27,8 +27,8 @@
 /* The authored public consumer is compiled by the current authored compiler. Its target is
  * the public text/array/core catalog, independently of the compiler seed's
  * private text profile. Only the produced closure is loaded for execution.
- * All five new packages are imported through their final public APIs, including
- * scalar/byte operations, binary preservation and independent value copies. */
+ * All ten new packages are imported through their final public APIs, including
+ * named outputs, nil errors and typed failures with no partial codec output. */
 
 enum
 {
@@ -46,7 +46,7 @@ static behavior_managed_heap managed;
 static behavior_function_activation activation;
 static behavior_function_context context;
 static pin_value output;
-static compiler_fixture metadata[5];
+static compiler_fixture metadata[10];
 static char *saved_workers;
 static bool workers_changed;
 static const struct
@@ -55,10 +55,15 @@ static const struct
     int tests;
 } tested_packages[] = {
     { "bytes", "project:bytes", 6 },
+    { "encoding/endian", "project:encoding/endian", 8 },
+    { "utf8", "project:utf8", 10 },
+    { "path/slashpath", "project:path/slashpath", 11 },
     { "math/bits", "project:math/bits", 7 },
     { "hash/fnv", "project:hash/fnv", 3 },
     { "hash/adler32", "project:hash/adler32", 4 },
     { "hash/crc32", "project:hash/crc32", 3 },
+    { "encoding/hex", "project:encoding/hex", 6 },
+    { "encoding/base64", "project:encoding/base64", 7 },
 };
 
 static void finish_call()
@@ -85,7 +90,7 @@ static void cleanup()
     saved_workers = NULL;
     workers_changed = false;
     finish_call();
-    for (int p = 0; p < 5; p++) {
+    for (int p = 0; p < 10; p++) {
         compiler_fixture_free(&metadata[p]);
     }
     if (packages) {
@@ -338,7 +343,7 @@ static bool run_consumer(behavior_backend backend)
             status
         );
     }
-    REQUIRE(status == FLOW_OK && context.returned && output.i == 5);
+    REQUIRE(status == FLOW_OK && context.returned && output.i == 10);
     REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
     REQUIRE(!runs.counts.size_bytecode_fallbacks);
     REQUIRE(
@@ -364,14 +369,14 @@ TEST_CASE(portable_public_consumer_compiles_with_authored_compiler)
 static bool prepare_test_metadata()
 {
     static const source_package_input sources[] = { PORTABLE_SOURCE_INPUTS };
-    REQUIRE(sizeof sources / sizeof *sources == 10);
+    REQUIRE(sizeof sources / sizeof *sources == 20);
     const native_definition_pack core[] = { CORE_DEFINITION_PACK };
     int total = 0;
-    for (int p = 0; p < 5; p++) {
+    for (int p = 0; p < 10; p++) {
         source_package_input files[3];
         int count = 0;
         size_t prefix = strlen(tested_packages[p].path);
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 20; i++) {
             if (!strncmp(sources[i].path, tested_packages[p].path, prefix) &&
                 sources[i].path[prefix] == '/') {
                 REQUIRE(count < 2);
@@ -393,7 +398,7 @@ static bool prepare_test_metadata()
         }
         total += tested_packages[p].tests;
     }
-    REQUIRE(total == 23);
+    REQUIRE(total == 65);
     return true;
 }
 
@@ -454,11 +459,11 @@ TEST_CASE(portable_adjacent_tests_run_through_both_authored_compiler_backends)
     REQUIRE(!setenv("CHIBI_TEST_WORKERS", "1", 1));
     workers_changed = true;
     static const source_package_input sources[] = { PORTABLE_SOURCE_INPUTS };
-    source_package_input files[11];
-    for (int i = 0; i < 10; i++) {
+    source_package_input files[21];
+    for (int i = 0; i < 20; i++) {
         files[i] = sources[i];
     }
-    files[10] = (source_package_input){ "/sdk/core/strings/Strings.chibi",
+    files[20] = (source_package_input){ "/sdk/core/strings/Strings.chibi",
                                         CORE_STRINGS_SOURCE,
                                         sizeof CORE_STRINGS_SOURCE - 1 };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -466,7 +471,7 @@ TEST_CASE(portable_adjacent_tests_run_through_both_authored_compiler_backends)
         REQUIRE(package_compiler_closure(
             compiler_backend,
             files,
-            11,
+            21,
             COMPILE_BUDGET,
             &closure.bytes,
             &closure.length
@@ -474,16 +479,16 @@ TEST_CASE(portable_adjacent_tests_run_through_both_authored_compiler_backends)
         for (int backend = 0; backend < 2; backend++) {
             uint64_t root = 0;
             REQUIRE(load_closure(backends[backend], &root));
-            // Check all five project modules before executing any test bodies.
-            for (int p = 0; p < 5; p++) {
+            // Check all ten project modules before executing any test bodies.
+            for (int p = 0; p < 10; p++) {
                 REQUIRE(project_module(tested_packages[p].identity));
             }
             int executed = 0;
-            for (int p = 0; p < 5; p++) {
+            for (int p = 0; p < 10; p++) {
                 REQUIRE(run_authored_package(p, backend));
                 executed += tested_packages[p].tests;
             }
-            REQUIRE(executed == 23);
+            REQUIRE(executed == 65);
             fprintf(
                 pu_output(),
                 "Stage-one compiler %s -> target %s: %d authored tests\n",

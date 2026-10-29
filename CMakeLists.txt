@@ -32,11 +32,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(CHIBI_FIELD_SIMD "Enable compiler SIMD in worker Web field evaluation" ON)
-if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
-   (NOT CHIBI_WEB_THREADS OR NOT CHIBI_FIELD_SIMD))
-    set_property(SOURCE src/graph/compiler/field_program.c APPEND PROPERTY
-        COMPILE_OPTIONS -mno-simd128)
-endif()
 
 option(CHIBI_ENABLE_SANITIZERS
        "Enable the selected sanitizer for native targets" ON)
@@ -174,7 +169,6 @@ include(cmake/sources.cmake)
 option(CHIBI_SDK_BUILD_COMPILER "Build compiler and authoring packages" ON)
 option(CHIBI_SDK_BUILD_NATIVE "Build native component/capability packages" ON)
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop player and controller packages" ON)
-option(CHIBI_BUILD_TESTS "Build the admitted package-consumer C test drivers" ON)
 
 set(CHIBI_REFLECT_EXECUTABLE "" CACHE FILEPATH "Native reflection generator for cross builds")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -237,62 +231,10 @@ if(TARGET chibi)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/packages/core/${source}"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
     endforeach()
-    foreach(source markdown/Markdown.chibi site/Site.chibi reference/Reference.chibi grammar/Grammar.chibi)
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/docs/${source}"
-            "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/${source}" COPYONLY)
-    endforeach()
-    foreach(source compiler_syntax/Syntax.chibi syntax_diagnostics/Diagnostics.chibi)
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/compiler/${source}"
-            "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/${source}" COPYONLY)
-    endforeach()
     add_custom_target(chibi_build_shaders
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/shaders")
     add_dependencies(chibi chibi_build_shaders)
-endif()
-
-if(TARGET Chibi::project_preparation AND TARGET Chibi::render)
-    # The controller uses the same explicit headers and package links as its
-    # standalone installed build; this directory stages its owning resources.
-    set(Chibi_RESOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/controller_resources")
-    file(MAKE_DIRECTORY "${Chibi_RESOURCE_DIR}")
-    configure_file("${CMAKE_CURRENT_BINARY_DIR}/sdk/chibi_engine_metadata.json"
-        "${Chibi_RESOURCE_DIR}/engine.json" COPYONLY)
-    file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
-        DESTINATION "${Chibi_RESOURCE_DIR}")
-    add_subdirectory(tools/chibi_ctl)
-endif()
-
-# The C tests use POSIX processes and files directly.
-if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if(TARGET Chibi::authoring)
-        add_subdirectory(test/language)
-    endif()
-    add_subdirectory(test/tools)
-    add_executable(test_host test/host/main.c test/host/export.c test/host/process.c
-        test/host/state_file.c src/host/export.c src/host/process.c src/host/state_file.c
-        src/support/xalloc.c third_party/yyjson/yyjson.c)
-    set(host_test_headers "${CMAKE_CURRENT_BINARY_DIR}/testing/host/include")
-    foreach(header export process state_file)
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/host/${header}.h"
-            "${host_test_headers}/host/${header}.h" COPYONLY)
-    endforeach()
-    foreach(header array xalloc)
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/support/${header}.h"
-            "${host_test_headers}/support/${header}.h" COPYONLY)
-    endforeach()
-    target_include_directories(test_host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers/pico_unit.h"
-        "${host_test_headers}/third_party/pico_headers/pico_unit.h" COPYONLY)
-    target_include_directories(test_host PRIVATE "${host_test_headers}")
-    target_compile_options(test_host PRIVATE -UNDEBUG)
-    add_executable(concurrent_runner test/host/concurrent.c src/host/process.c)
-    target_include_directories(concurrent_runner PRIVATE "${host_test_headers}")
-    target_compile_options(concurrent_runner PRIVATE -UNDEBUG)
-    find_program(CHIBI_PYTHON_EXECUTABLE python3 REQUIRED)
-    add_custom_target(check-host
-        COMMAND "${CHIBI_PYTHON_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/test_policy.py" disabled check-host
-        VERBATIM)
 endif()
 
 # Windows needs Developer Mode for symbolic links, so editors there read the

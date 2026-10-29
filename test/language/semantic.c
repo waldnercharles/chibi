@@ -99,6 +99,63 @@ static const script_diagnostic *diagnostic(const char *message)
     }
     return NULL;
 }
+TEST_CASE(language_math_rejects_malformed_native_result_layouts)
+{
+    uint64_t id = script_catalog_id("type", "vec3");
+    script_catalog_field bad_fields[] = {
+        { .id = script_catalog_id("field", "vec3.x"),
+          .name = "x",
+          .type = { .storage = PIN_F32 },
+          .writable = true },
+        { .id = script_catalog_id("field", "vec3.y"),
+          .name = "y",
+          .type = { .storage = PIN_F32 },
+          .offset = sizeof(float),
+          .writable = true },
+    };
+    script_catalog_type bad_type = { .id = id,
+                                     .name = "vec3",
+                                     .source_name = "vec3",
+                                     .type = { .storage = PIN_STRUCT, .nominal = id },
+                                     .fields = bad_fields,
+                                     .field_count = 2,
+                                     .size = 2 * sizeof(float) };
+    script_catalog_parameter result = { .name = "value",
+                                        .type = { .storage = PIN_STRUCT,
+                                                  .nominal = id } };
+    script_catalog_capability get = { .id = script_catalog_id("capability", "NativeGet"),
+                                      .name = "NativeGet",
+                                      .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                      .results = &result,
+                                      .result_count = 1,
+                                      .pure = true };
+    script_catalog bad = { .types = &bad_type,
+                           .type_count = 1,
+                           .capabilities = &get,
+                           .capability_count = 1 };
+    const char *const cases[] = {
+        "L :: library { F :: () { v := NativeGet(); got := v.z; } }",
+        "L :: library { F :: () { v := NativeGet(); got := v.yx; } }",
+        "L :: library { F :: () { v := NativeGet(); got := length(v); } }",
+        "L :: library { F :: () { v := NativeGet(); got := dot(v, v); } }",
+        "L :: library { F :: () { v := NativeGet(); got := v == v; } }",
+        "L :: library { F :: () { v := NativeGet(); got := vec4(v, 1); } }",
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        cleanup();
+        syntax = script_parse(cases[i]);
+        analysis = script_analyze(syntax, &bad);
+        bool parsed = !syntax->diagnostic_count;
+        bool rejected = !analysis->valid;
+        bool diagnosed = diagnostic("Built-in math type 'vec3' has an incompatible host layout") !=
+                         NULL;
+        /* The borrowed local catalog and fields remain live through teardown,
+         * including when an assertion below reports a regression. */
+        cleanup();
+        REQUIRE(parsed && rejected && diagnosed);
+    }
+    return true;
+}
 /* Fixed invalid sources, each parsed and analyzed once, without execution. */
 TEST_CASE(language_managed_pointers_reject_invalid_storage_and_types)
 {
@@ -1409,6 +1466,14 @@ TEST_CASE(language_character_literals_take_their_type_from_context)
     REQUIRE(!analysis->valid);
     parse("L :: library { F :: () -> f64 { return 'a'; } }");
     REQUIRE(diagnostic("A character literal needs an integer or char type"));
+    return true;
+}
+TEST_CASE(language_math_components_require_explicit_character_conversion)
+{
+    parse("L :: library { F :: (value: char) -> vec3 { return vec3(value); } }");
+    REQUIRE(diagnostic("Math components require f32 scalar values"));
+    parse("L :: library { F :: (value: char) -> vec3 { return vec3(f32(int(value))); } }");
+    REQUIRE(!analysis->diagnostic_count);
     return true;
 }
 TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
@@ -2788,6 +2853,8 @@ TEST_CASE(language_approved_float_conversion_admission)
 void test_language_semantic()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(language_math_rejects_malformed_native_result_layouts);
+    RUN_TEST_CASE(language_math_components_require_explicit_character_conversion);
     RUN_TEST_CASE(language_approved_float_conversion_admission);
     RUN_TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches);
     RUN_TEST_CASE(language_cancelled_builtin_cannot_be_shadowed);

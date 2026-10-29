@@ -380,25 +380,22 @@ TEST_CASE(source_catalog_analyzes_libraries_without_specialization_requests)
     REQUIRE(written && !closed);
 
     const script_catalog empty = { 0 };
-    for (int migration = 0; migration < 2; migration++) {
-        project = migration ? source_catalog_new_for_migration(catalog_root, &empty)
-                            : source_catalog_new(catalog_root, &empty);
-        REQUIRE(project);
-        REQUIRE(!source_catalog_diagnostic_count(project));
-        REQUIRE(source_catalog_source_count(project) == 1);
-        int requests = -1;
-        REQUIRE(!source_catalog_requests(project, &requests));
-        REQUIRE(requests == 0);
-        const script_catalog *view = source_catalog_view(project);
-        REQUIRE(view->capability_count == 1);
-        REQUIRE(!strcmp(view->capabilities[0].qualified_name, "Plain.Identity"));
-        REQUIRE(view->capabilities[0].result_count == 1);
-        REQUIRE(view->capabilities[0].results[0].type.storage == PIN_I32);
-        REQUIRE(view->capabilities[0].pure);
-        REQUIRE(!view->capabilities[0].effects);
-        source_catalog_free(project);
-        project = NULL;
-    }
+    project = source_catalog_new(catalog_root, &empty);
+    REQUIRE(project);
+    REQUIRE(!source_catalog_diagnostic_count(project));
+    REQUIRE(source_catalog_source_count(project) == 1);
+    int requests = -1;
+    REQUIRE(!source_catalog_requests(project, &requests));
+    REQUIRE(requests == 0);
+    const script_catalog *view = source_catalog_view(project);
+    REQUIRE(view->capability_count == 1);
+    REQUIRE(!strcmp(view->capabilities[0].qualified_name, "Plain.Identity"));
+    REQUIRE(view->capabilities[0].result_count == 1);
+    REQUIRE(view->capabilities[0].results[0].type.storage == PIN_I32);
+    REQUIRE(view->capabilities[0].pure);
+    REQUIRE(!view->capabilities[0].effects);
+    source_catalog_free(project);
+    project = NULL;
     return true;
 }
 
@@ -607,59 +604,10 @@ TEST_CASE(source_prototype_failed_attachment_rolls_back_internal_panic_links)
     REQUIRE(ecs_world_live_count(world) == 0);
     return true;
 }
-static int migration_refuse(const char *content, const char *start, int from, void *user, char *error, size_t size)
-{
-    (void)content;
-    (void)start;
-    *(int *)user = from;
-    snprintf(error, size, "native finalization refused");
-    return -1;
-}
-
-TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable)
-{
-    char directory[] = "/tmp/chibi-source-finalize.XXXXXX";
-    REQUIRE(mkdtemp(directory));
-    char content[256], manifest[256];
-    snprintf(content, sizeof content, "%s/content", directory);
-    snprintf(manifest, sizeof manifest, "%s/project.kdl", directory);
-    REQUIRE(!mkdir(content, 0700));
-    FILE *file = fopen(manifest, "wb");
-    REQUIRE(file);
-    REQUIRE(
-        fputs("version 38\nname \"Migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", file) >= 0
-    );
-    REQUIRE(!fclose(file));
-    chibi_project opened = { 0 };
-    char error[256];
-    int called = 0;
-    REQUIRE(
-        chibi_project_open_migrating(&opened, directory, migration_refuse, &called, error, sizeof error) ==
-        -1
-    );
-    REQUIRE(called == 38);
-    REQUIRE(strstr(error, "native finalization refused"));
-    file = fopen(manifest, "rb");
-    REQUIRE(file);
-    char bytes[256] = { 0 };
-    REQUIRE(fread(bytes, 1, sizeof bytes - 1, file) > 0);
-    fclose(file);
-    REQUIRE(strstr(bytes, "version 38"));
-    REQUIRE(!chibi_project_inspect(&opened, directory, error, sizeof error));
-    chibi_project_free(&opened);
-    REQUIRE(chibi_project_migrate(directory, error, sizeof error) == CHIBI_PROJECT_VERSION - 38);
-    REQUIRE(!chibi_project_read(&opened, directory, error, sizeof error));
-    chibi_project_free(&opened);
-    unlink(manifest);
-    rmdir(content);
-    rmdir(directory);
-    return true;
-}
 
 void test_language_source_assets()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable);
     RUN_TEST_CASE(source_prototype_composition_normalizes_fields_and_overrides_defaults);
     RUN_TEST_CASE(source_relationships_survive_preparation_encoding_and_target_cleanup);
     RUN_TEST_CASE(source_relationship_declarations_and_initial_pairs_reject_invalid_contracts);

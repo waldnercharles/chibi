@@ -105,7 +105,8 @@ typedef enum
     BASE_SAMPLES,
     TYPE_SAMPLES,
     IMPORT_SAMPLES,
-    COLLECTION_SAMPLES
+    COLLECTION_SAMPLES,
+    MATH_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
  * `library` is package lib when present, and `core` adds core:strings.
@@ -152,6 +153,7 @@ typedef struct
     const char *message;
     const char *oracle_message;
     int line, column, project_modules;
+    int oracle_line, oracle_column;
     int specializations;
 } sample;
 static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
@@ -4710,6 +4712,362 @@ enum
 {
     SAMPLES = sizeof samples / sizeof *samples
 };
+/* Source-level contracts use literal answers. They do not ask the constant
+ * evaluator or either compiler to calculate the expected result. */
+static const sample math_samples[] = {
+    { .name = "math unary and matrix arithmetic retain their shapes",
+      .source = "package facts\nCheck :: () -> bool { v := vec2(1, -2); "
+                "return -v == vec2(-1, 2) && v != vec2(0) && mat2(1) != "
+                "mat2(0) && "
+                "(mat2(1) + mat2(2)) * v == vec2(3, -6) && "
+                "((mat2(4) - mat2(2)) / 2) * v == v && "
+                "(-mat2(1)) * v == -v && (2 * mat2(1)) * v == v * 2; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math sign saturate and round use scalar component rules",
+      .source = "package facts\nCheck :: () -> bool { "
+                "return sign(vec3(-2, 0, 3)) == vec3(-1, 0, 1) && "
+                "saturate(vec3(-1, 0.5, 2)) == vec3(0, 0.5, 1) && "
+                "round(vec3(0.5, 1.5, -2.5)) == vec3(1, 2, -3); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math modulo follows divisor sign and powers preserve order",
+      .source = "package facts\nCheck :: () -> bool { "
+                "return mod(vec2(-3, 3), 2) == vec2(1, 1) && "
+                "mod(vec2(-3, 3), -2) == vec2(-1, -1) && "
+                "pow(vec3(2, 3, 4), 2) == vec3(4, 9, 16) && "
+                "sqrt(vec3(4, 9, 16)) == vec3(2, 3, 4); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math exponential and logarithm functions keep f32 results",
+      .source = "package facts\nCheck :: () -> bool { "
+                "a := exp(vec2(0, 1)); b := log(vec2(1, 2.7182818)); "
+                "return a.x == 1.0 && abs(a.y - 2.7182818) < 0.000001 && "
+                "b.x == 0.0 && abs(b.y - 1.0) < 0.000001 && "
+                "exp2(vec3(-1, 0, 1)) == vec3(0.5, 1, 2) && "
+                "log2(vec3(0.5, 1, 4)) == vec3(-1, 0, 2); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math trigonometric functions use radians and atan2 y x order",
+      .source = "package facts\nCheck :: () -> bool { "
+                "a := sin(vec2(0, 1.5707963)); b := cos(vec2(0, 1.5707963)); "
+                "c := atan2(vec2(0, 1), vec2(1, 0)); "
+                "return a.x == 0.0 && abs(a.y - 1.0) < 0.000001 && "
+                "b.x == 1.0 && abs(b.y) < 0.000001 && c.x == 0.0 && "
+                "abs(c.y - 1.5707963) < 0.000001 && "
+                "tan(vec2(0)) == vec2(0) && asin(vec2(0)) == vec2(0) && "
+                "acos(vec2(1)) == vec2(0) && atan(vec2(0)) == vec2(0); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math pointer receiver calls run once before the rhs",
+      .source = "package facts\n"
+                "Pick :: (v: ^vec3, calls: ^int) -> ^vec3 { "
+                "calls^ = calls^ * 10 + 1; return v; }\n"
+                "Right :: (calls: ^int) -> vec2 { calls^ = calls^ * 10 + 2; "
+                "return vec2(7, 8); }\n"
+                "Check :: () -> (calls: int, x: number, y: number, z: number) "
+                "{ "
+                "v := vec3(1, 2, 3); total: int = 0; Pick(&v, &total).yx = "
+                "Right(&total); "
+                "return (total, v.x, v.y, v.z); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[12,8.0,7.0,3.0]" } } },
+    { .name = "math swizzles preserve copied map values",
+      .source = "package facts\n"
+                "Check :: () -> (x: number, y: number, z: number, sx: number, "
+                "sy: number, sz: number) { "
+                "rows: [int: vec3] = [1: vec3(1, 2, 3)]; "
+                "before := rows; rows[1].yx = rows[1].xy; "
+                "return (rows[1].x, rows[1].y, rows[1].z, before[1].x, "
+                "before[1].y, before[1].z); }\n",
+      .calls = { { .function = "Check",
+                   .arguments = "[]",
+                   .expected = "[2.0,1.0,3.0,1.0,2.0,3.0]" } } },
+    { .name = "math constructor splats concatenation and function returns",
+      .source = "package facts\n"
+                "Foo :: () -> vec3 { return vec3(2, 4, 8); }\n"
+                "Check :: () -> bool { v := Foo(); a := vec4(v.xy, v.z, 16); "
+                "b := vec3(3); c := vec4(vec2(1, 2), vec2(3, 4)); "
+                "return v == vec3(2, 4, 8) && a == vec4(2, 4, 8, 16) && "
+                "b == vec3(3, 3, 3) && c == vec4(1, 2, 3, 4); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math explicit f64 narrowing rounds at f32 width",
+      .source = "package facts\n"
+                "Check :: () -> bool { wide: f64 = 16777217.0; "
+                "v := vec3(f32(wide), 2, 3); return v.x == 16777216.0 && "
+                "v.y == 2.0 && v.z == 3.0; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math broadcasts preserve subtraction and division order",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec3(2, 4, 8); "
+                "return 2 - v == vec3(0, -2, -6) && v - 2 == vec3(0, 2, 6) && "
+                "16 / v == vec3(8, 4, 2) && v / 2 == vec3(1, 2, 4) && "
+                "2 + v == vec3(4, 6, 10) && v * 2 == vec3(4, 8, 16) && "
+                "v * vec3(3, 2, 1) == vec3(6, 8, 8); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math swizzle writes snapshot aliased values",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); "
+                "v.xy = v.yx; a := v.xxy; v.ba = v.rb; "
+                "return v == vec4(2, 1, 2, 3) && a == vec3(2, 2, 1); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math compound swizzles preserve untouched components",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); "
+                "v.yx += vec2(5, 6); v.zw *= 2; "
+                "return v == vec4(7, 7, 6, 8); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math swizzles write through pointers and array elements",
+      .source = "package facts\n"
+                "Set :: (p: ^vec3) { p.yx = vec2(7, 8); }\n"
+                "Check :: () -> bool { v := vec3(1, 2, 3); Set(&v); "
+                "rows: vec3[] = [vec3(2, 4, 6), vec3(8, 10, 12)]; "
+                "rows[0].yx = rows[0].xy; return v == vec3(8, 7, 3) && "
+                "rows[0] == vec3(4, 2, 6) && rows[1] == vec3(8, 10, 12); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math swizzle receiver and rhs execute once in source order",
+      .source = "package facts\n"
+                "Index :: (calls: ^int) -> int { calls^ = calls^ * 10 + 1; "
+                "return 0; }\n"
+                "Right :: (rows: ^(vec4[]), calls: ^int) -> vec2 { "
+                "calls^ = calls^ * 10 + 2; rows^[0].w = 9; return rows^[0].yx; "
+                "}\n"
+                "Check :: () -> bool { calls: int = 0; "
+                "rows: vec4[] = [vec4(1, 2, 3, 4), vec4(5, 6, 7, 8)]; "
+                "rows[Index(&calls)].xy = Right(&rows, &calls); return calls "
+                "== 12 && "
+                "rows[0] == vec4(2, 1, 3, 9) && rows[1] == vec4(5, 6, 7, 8); "
+                "}\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math column matrix products do not commute",
+      .source = "package facts\n"
+                "Check :: () -> bool { a := mat2(vec2(1, 2), vec2(0, 1)); "
+                "b := mat2(2, 0, 0, 3); v := vec2(1, 1); "
+                "left := (a * b) * v; right := (b * a) * v; "
+                "return left == vec2(2, 7) && right == vec2(2, 9) && "
+                "a * (b * v) == left && mat2(1) * v == v; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math homogeneous matrix columns carry translations",
+      .source = "package facts\n"
+                "Check :: () -> bool { translate := mat3(1, 0, 0, 0, 1, 0, 5, "
+                "7, 1); "
+                "scale := mat3(2, 0, 0, 0, 3, 0, 0, 0, 1); v := vec3(2, 3, 1); "
+                "return (translate * scale) * v == vec3(9, 16, 1) && "
+                "(scale * translate) * v == vec3(14, 30, 1) && "
+                "mat4(1) * vec4(v, 1) == vec4(2, 3, 1, 1); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math quaternion Hamilton products retain their order",
+      .source = "package facts\n"
+                "Check :: () -> bool { x := quat(1, 0, 0, 0); y := quat(0, 1, "
+                "0, 0); "
+                "return x * y == quat(0, 0, 1, 0) && y * x == quat(0, 0, -1, "
+                "0) && "
+                "x * x == quat(0, 0, 0, -1) && quat(0, 0, 0, 1) * y == y; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math constructor refuses excess components",
+      .source = "package facts\nBad :: () -> vec2 { return vec2(1, 2, 3); }\n",
+      .message = "vec2 needs 2 components; these arguments supply 3",
+      .line = 2,
+      .column = 28,
+      .oracle_message = "vec2 needs 2 components; these arguments supply 3",
+      .oracle_line = 2,
+      .oracle_column = 32 },
+    { .name = "math constructor refuses implicit f64 narrowing",
+      .source = "package facts\nBad :: (wide: f64) -> vec3 { return "
+                "vec3(wide); }\n",
+      .message = "math components require explicit f32(value) narrowing from "
+                 "f64",
+      .line = 2,
+      .column = 37,
+      .oracle_message = "Math components require explicit f32(value) narrowing "
+                        "from f64",
+      .oracle_line = 2,
+      .oracle_column = 42 },
+    { .name = "math writable swizzles refuse duplicate destinations",
+      .source = "package facts\nBad :: () { v := vec3(1, 2, 3); v.xx = vec2(4, "
+                "5); }\n",
+      .message = "a writable swizzle cannot repeat a destination component",
+      .line = 2,
+      .column = 33,
+      .oracle_message = "A writable swizzle cannot repeat a destination "
+                        "component",
+      .oracle_line = 2,
+      .oracle_column = 33 },
+    { .name = "math read swizzles refuse mixed component alphabets",
+      .source = "package facts\nBad :: () -> vec2 { v := vec3(1, 2, 3); return "
+                "v.xr; }\n",
+      .message = "a swizzle cannot mix xyzw and rgba components",
+      .line = 2,
+      .column = 48,
+      .oracle_message = "A swizzle uses one of xyzw or rgba without mixing "
+                        "them",
+      .oracle_line = 2,
+      .oracle_column = 50 },
+    { .name = "math vector operands require the same width",
+      .source = "package facts\nBad :: () -> vec2 { return vec2(1) + vec3(1); "
+                "}\n",
+      .message = "cannot apply + to vec2 and vec3",
+      .line = 2,
+      .column = 28,
+      .oracle_message = "Cannot combine vec2 and vec3 with this math operator",
+      .oracle_line = 2,
+      .oracle_column = 28 },
+    { .name = "math vector matrix multiplication states its convention",
+      .source = "package facts\nBad :: () -> vec2 { return vec2(1) * mat2(1); "
+                "}\n",
+      .message = "a matrix multiplies a column vector on its right; write "
+                 "matrix * vector",
+      .line = 2,
+      .column = 28,
+      .oracle_message = "A matrix multiplies a column vector on its right; "
+                        "write matrix * vector",
+      .oracle_line = 2,
+      .oracle_column = 28 },
+    { .name = "math quaternion rotation waits for recoverable results",
+      .source = "package facts\nBad :: () -> vec3 { return quat(0, 0, 0, 1) * "
+                "vec3(1, 0, 0); }\n",
+      .message = "quaternion rotation requires the recoverable math result "
+                 "contract",
+      .line = 2,
+      .column = 28,
+      .oracle_message = "Quaternion rotation requires the recoverable math "
+                        "result adapter",
+      .oracle_line = 2,
+      .oracle_column = 28 },
+    { .name = "math matrix representation stays private",
+      .source = "package facts\nBad :: () -> number { m := mat2(1); return "
+                "m.c0r0; }\n",
+      .message = "matrix storage fields are internal; use matrix operations",
+      .line = 2,
+      .column = 44,
+      .oracle_message = "Matrix storage fields are internal; use matrix "
+                        "operations",
+      .oracle_line = 2,
+      .oracle_column = 46 },
+    { .name = "math dot and cross have independent scalar and handedness "
+              "answers",
+      .source = "package facts\n"
+                "Check :: () -> bool { a := vec3(1, 2, 3); b := vec3(4, 5, 6); "
+                "return dot(a, b) == 32.0 && cross(a, b) == vec3(-3, 6, -3) && "
+                "cross(b, a) == vec3(3, -6, 3); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math length and distance use three four five triangles",
+      .source = "package facts\n"
+                "Check :: () -> bool { return length(vec2(3, 4)) == 5.0 && "
+                "length(vec3(0, 3, 4)) == 5.0 && length(vec4(0, 0, 3, 4)) == "
+                "5.0 && "
+                "distance(vec3(1, 2, 3), vec3(4, 6, 3)) == 5.0; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math absolute bounds and clamp broadcast scalar arguments",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec3(-2, 0.5, 3); "
+                "return abs(v) == vec3(2, 0.5, 3) && min(v, 1) == vec3(-2, "
+                "0.5, 1) && "
+                "max(0, v) == vec3(0, 0.5, 3) && clamp(v, 0, 1) == vec3(0, "
+                "0.5, 1); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math mix accepts scalar and component weights",
+      .source = "package facts\n"
+                "Check :: () -> bool { return "
+                "mix(vec3(0, 2, 4), vec3(8, 10, 12), 0.25) == vec3(2, 4, 6) && "
+                "mix(vec3(0), vec3(8), vec3(0, 0.5, 1)) == vec3(0, 4, 8); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math step takes edge before value and includes the edge",
+      .source = "package facts\n"
+                "Check :: () -> bool { return step(2.0, 1.0) == 0.0 && "
+                "step(2.0, 2.0) == 1.0 && "
+                "step(0.5, vec3(0.25, 0.5, 0.75)) == vec3(0, 1, 1) && "
+                "step(vec3(0.25, 0.5, 0.75), 0.5) == vec3(1, 1, 0); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math smoothstep clamps values outside its edges",
+      .source = "package facts\n"
+                "Check :: () -> bool { return "
+                "smoothstep(0, 1, vec4(-1, 0, 0.5, 2)) == vec4(0, 0, 0.5, 1); "
+                "}\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math floor ceil and fract agree on negative fractions",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec3(-1.25, 1.75, 2); "
+                "return floor(v) == vec3(-2, 1, 2) && ceil(v) == vec3(-1, 2, "
+                "2) && "
+                "fract(v) == vec3(0.75, 0.75, 0); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math reflect and refract distinguish total internal reflection",
+      .source = "package facts\n"
+                "Check :: () -> bool { normal := vec3(0, 1, 0); "
+                "return reflect(vec3(1, -1, 0), normal) == vec3(1, 1, 0) && "
+                "refract(vec3(0, -1, 0), normal, 0.5) == vec3(0, -1, 0) && "
+                "refract(vec3(1, 0, 0), normal, 2) == vec3(0); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math transpose and determinant use column order",
+      .source = "package facts\n"
+                "Check :: () -> bool { a := mat2(1, 2, 3, 4); "
+                "b := mat3(1, 0, 0, 2, 3, 0, 4, 5, 6); "
+                "return transpose(a) == mat2(1, 3, 2, 4) && determinant(a) == "
+                "-2.0 && "
+                "transpose(b) == mat3(1, 2, 4, 0, 3, 5, 0, 0, 6) && "
+                "determinant(b) == 18.0; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math matrix component multiplication is distinct from "
+              "composition",
+      .source = "package facts\n"
+                "Check :: () -> bool { a := mat2(1, 2, 3, 4); b := mat2(5, 6, "
+                "7, 8); "
+                "return matrix_comp_mult(a, b) == mat2(5, 12, 21, 32) && "
+                "a * b == mat2(23, 34, 31, 46); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math quaternion conjugation negates the imaginary components",
+      .source = "package facts\n"
+                "Check :: () -> bool { q := quat(1, 2, 3, 4); "
+                "return quat_conjugate(q) == quat(-1, -2, -3, 4) && "
+                "quat_conjugate(quat_conjugate(q)) == q; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math normalization handles zero and large finite directions",
+      .source = "package facts\n"
+                "Check :: () -> bool { zero := normalize_or_zero(vec3(0)); "
+                "unit := normalize_or_zero(vec3(3e30, 4e30, 0)); "
+                "return zero == vec3(0) && unit.x > 0.599999 && unit.x < "
+                "0.600001 && "
+                "unit.y > 0.799999 && unit.y < 0.800001 && unit.z == 0.0; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math binary left operand is captured before a mutating rhs",
+      .source = "package facts\n"
+                "Mutate :: (p: ^vec3) -> vec3 { p^ = vec3(10, 20, 30); return "
+                "vec3(4, 5, 6); }\n"
+                "Check :: () -> bool { v := vec3(1, 2, 3); sum := v + "
+                "Mutate(&v); "
+                "return sum == vec3(5, 7, 9) && v == vec3(10, 20, 30); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math constructor arguments are captured before later mutation",
+      .source = "package facts\n"
+                "Mutate :: (p: ^vec4) -> vec2 { p^ = vec4(10, 20, 30, 40); "
+                "return vec2(5, 6); }\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); made := "
+                "vec4(v.xy, Mutate(&v)); "
+                "return made == vec4(1, 2, 5, 6) && v == vec4(10, 20, 30, 40); "
+                "}\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math function arguments are captured before later mutation",
+      .source = "package facts\n"
+                "Mutate :: (p: ^vec3) -> vec3 { p^ = vec3(10, 20, 30); return "
+                "vec3(4, 5, 6); }\n"
+                "Check :: () -> bool { v := vec3(1, 2, 3); product := dot(v, "
+                "Mutate(&v)); "
+                "return product == 32.0 && v == vec3(10, 20, 30); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math nested swizzles compose their destination components",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); v.yx.xy = "
+                "vec2(7, 8); "
+                "picked := v.wzyx.yx; v.wzyx.yx = v.xy; "
+                "return picked == vec2(3, 4) && v == vec4(8, 7, 8, 7); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "math compound swizzles snapshot selected fields and retain rhs "
+              "side effects",
+      .source = "package facts\n"
+                "Right :: (p: ^vec4) -> vec2 { p^ = vec4(100, 200, 30, 40); "
+                "return vec2(5, 6); }\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); v.xy += "
+                "Right(&v); "
+                "return v == vec4(6, 8, 30, 40); }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+
+};
+
 static compiler_fixture fixture, oracle, consumer, corpus;
 /* The compiler host's natives, and those with the core pack a game links,
  * which declares assert. */
@@ -4821,7 +5179,9 @@ static pin_value rows(const pin_value *items, int count, pin_type type, const pi
                         .type_name = shape ? shape->type.name : NULL };
 }
 /* The data functions the compiler host links: no flow, outcomes or
- * suspension. */
+ * suspension. It links the compiler's text profile, which the compiler is
+ * compiled for; a game links the public text pack, which also converts bytes
+ * to text. */
 static bool natives(int b, bool game, bool probe, pin_value *out)
 {
     if (linked_tables[game][probe][b][0].ptr) {
@@ -4829,15 +5189,15 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         return true;
     }
     if (!linked[game][probe]) {
-        const native_definition_pack packs[] = {
-            NATIVE_TEXT_DEFINITION_PACK,   NATIVE_ARRAY_DEFINITION_PACK,
-            COMPILER_JSON_DEFINITION_PACK, COMPILER_SYNTAX_DEFINITION_PACK,
-            CORE_DEFINITION_PACK,          CSTRING_PACK
-        };
+        const native_definition_pack packs[] = { game ? NATIVE_TEXT_DEFINITION_PACK
+                                                      : NATIVE_COMPILER_TEXT_DEFINITION_PACK,
+                                                 NATIVE_ARRAY_DEFINITION_PACK,
+                                                 COMPILER_JSON_DEFINITION_PACK,
+                                                 COMPILER_SYNTAX_DEFINITION_PACK };
         char error[256];
         native_definition_pack selected[7];
-        int count = 4;
-        memcpy(selected, packs, (size_t)count * sizeof *selected);
+        int count = (int)(sizeof packs / sizeof *packs);
+        memcpy(selected, packs, sizeof packs);
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
             selected[count++] = NATIVE_MATH_DEFINITION_PACK;
@@ -7014,15 +7374,40 @@ static bool char_failures_use_data_status(const unsigned char *bytes, size_t len
     REQUIRE(checked > 0);
     return true;
 }
-static bool run_samples(sample_group group, int b)
+static bool math_rejects_at_source(const sample *s)
+{
+    const authoring_package *root;
+    authoring_packages *packages = oracle_packages(s, &root);
+    bool same = !authoring_packages_valid(packages) && root->diagnostic_count > 0;
+    if (same) {
+        const script_diagnostic *diagnostic = &root->diagnostics[0];
+        same = !strcmp(diagnostic->message, s->oracle_message) &&
+               diagnostic->range.line == s->oracle_line &&
+               diagnostic->range.column == s->oracle_column;
+        if (!same) {
+            fprintf(
+                stderr,
+                "stage zero math %s: %s at %d:%d\n",
+                s->name,
+                diagnostic->message,
+                diagnostic->range.line,
+                diagnostic->range.column
+            );
+        }
+    }
+    authoring_packages_free(packages);
+    REQUIRE(same);
+    return true;
+}
+static bool run_sample_table(sample_group group, int b, const sample *table, int table_count)
 {
     REQUIRE(prepare_backends(1u << b));
     if (group == BASE_SAMPLES && b == 0) {
         REQUIRE(rejects_malformed_effects());
     }
-    for (int i = 0; i < (int)SAMPLES; i++) {
-        const sample *s = &samples[i];
-        if (s->group != group) {
+    for (int i = 0; i < table_count; i++) {
+        const sample *s = &table[i];
+        if (group != MATH_SAMPLES && s->group != group) {
             continue;
         }
         source_package_input inputs[SAMPLE_INPUTS];
@@ -7087,6 +7472,9 @@ static bool run_samples(sample_group group, int b)
                 );
             }
             REQUIRE(!strcmp(pin_text(message).bytes, s->message) && position);
+            if (group == MATH_SAMPLES) {
+                REQUIRE(math_rejects_at_source(s));
+            }
             arena_free(&detached);
             continue;
         }
@@ -7131,9 +7519,22 @@ static bool run_samples(sample_group group, int b)
         for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = call_sample(s, bytes, length, &s->calls[c], backend);
+                if (!ran && group == MATH_SAMPLES) {
+                    fprintf(stderr, "math stage-one compiler=%d target-vm=%d\n", b, backend);
+                }
             }
-            ran = ran &&
-                  (b || call_sample(s, expected, expected_length, &s->calls[c], 0));
+            if (ran && !b) {
+                ran = call_sample(s, expected, expected_length, &s->calls[c], 0);
+                if (!ran && group == MATH_SAMPLES) {
+                    fprintf(stderr, "math stage-zero oracle target-vm=0\n");
+                }
+            }
+            if (ran && !b && group == MATH_SAMPLES) {
+                ran = call_sample(s, expected, expected_length, &s->calls[c], 1);
+                if (!ran) {
+                    fprintf(stderr, "math stage-zero oracle target-vm=1\n");
+                }
+            }
         }
         ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
         if (ran && s->update_order) {
@@ -7171,6 +7572,10 @@ static bool run_samples(sample_group group, int b)
         REQUIRE(ran);
     }
     return true;
+}
+static bool run_samples(sample_group group, int b)
+{
+    return run_sample_table(group, b, samples, (int)SAMPLES);
 }
 /* Without debugger points and watches, a closure's functions have none, and
  * its loops and branches still run as they do with them. */
@@ -7502,6 +7907,16 @@ TEST_CASE(package_compiler_builds_runnable_packages_compiled)
 {
     return run_samples(BASE_SAMPLES, 1);
 }
+TEST_CASE(package_compiler_builtin_math_source_contracts)
+{
+    enum
+    {
+        COUNT = sizeof math_samples / sizeof *math_samples
+    };
+    REQUIRE(run_sample_table(MATH_SAMPLES, 0, math_samples, COUNT));
+    cleanup();
+    return run_sample_table(MATH_SAMPLES, 1, math_samples, COUNT);
+}
 TEST_CASE(package_compiler_builds_runnable_typed_packages)
 {
     return run_samples(TYPE_SAMPLES, 0);
@@ -7759,25 +8174,47 @@ static int copying_functions(const execution_module_plan *p)
     }
     return copying;
 }
-TEST_CASE(package_compiler_compiles_itself)
+static const source_package_input bootstrap_files[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
+enum
 {
-    REQUIRE(prepare());
-    const source_package_input files[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
-    enum
-    {
-        FILES = sizeof files / sizeof *files
-    };
+    BOOTSTRAP_FILES = sizeof bootstrap_files / sizeof *bootstrap_files
+};
+static int bootstrap_inputs(source_package_input inputs[BOOTSTRAP_FILES])
+{
     /* Compile's root package is its first file's: the package compiler's. */
-    source_package_input inputs[FILES];
     int count = 0;
     for (int pass = 0; pass < 2; pass++) {
-        for (int i = 0; i < FILES; i++) {
-            bool own = !strncmp(files[i].path, "package_compiler/", 17);
+        for (int i = 0; i < BOOTSTRAP_FILES; i++) {
+            bool own = !strncmp(bootstrap_files[i].path, "package_compiler/", 17);
             if (own == !pass) {
-                inputs[count++] = files[i];
+                inputs[count++] = bootstrap_files[i];
             }
         }
     }
+    return count;
+}
+bool package_compiler_bootstrap_source_order(const char *inventory, size_t length)
+{
+    source_package_input inputs[BOOTSTRAP_FILES];
+    int count = bootstrap_inputs(inputs);
+    for (int i = 0; i < count; i++) {
+        const char *end = memchr(inventory, '\n', length);
+        size_t line_length = end ? (size_t)(end - inventory) : length;
+        const char *path = inputs[i].path;
+        if (line_length != strlen(path) || memcmp(inventory, path, line_length)) {
+            return false;
+        }
+        size_t consumed = line_length + (end != NULL);
+        inventory += consumed;
+        length -= consumed;
+    }
+    return length == 0;
+}
+TEST_CASE(package_compiler_compiles_itself)
+{
+    REQUIRE(prepare());
+    source_package_input inputs[BOOTSTRAP_FILES];
+    int count = bootstrap_inputs(inputs);
     pin_value args[ARGUMENTS], out;
     REQUIRE(arguments(1, false, inputs, count, args));
     /* The compiler is compiled without debugger points and watches, which
@@ -9396,6 +9833,378 @@ static bool catalog_compile(
 )
 {
     return catalog_compile_native(b, catalog, NULL, identity, source, entry, out);
+}
+typedef struct
+{
+    float x, y, z;
+} native_math_vector;
+static const type_field native_math_fields[] = {
+    { .name = "x",
+      .type = PIN_F32,
+      .offset = offsetof(native_math_vector, x),
+      .size = sizeof(float) },
+    { .name = "y",
+      .type = PIN_F32,
+      .offset = offsetof(native_math_vector, y),
+      .size = sizeof(float) },
+    { .name = "z",
+      .type = PIN_F32,
+      .offset = offsetof(native_math_vector, z),
+      .size = sizeof(float) },
+};
+static const type_desc native_math_type = { .name = "vec3",
+                                            .size = sizeof(native_math_vector),
+                                            .fields = native_math_fields,
+                                            .field_count = 3 };
+static int native_math_calls;
+static const char *native_math_get(void *, const pin_value *, pin_value *results)
+{
+    if (results[0].type != PIN_STRUCT ||
+        results[0].container != PIN_CONTAINER_SINGLE || !results[0].type_name ||
+        strcmp(results[0].type_name, "vec3") || !results[0].ptr) {
+        return "native math result header or backing differs";
+    }
+    *(native_math_vector *)results[0].ptr = (native_math_vector){ 0, 1.5707963f, -1.5707963f };
+    native_math_calls++;
+    return NULL;
+}
+static const node_host_call native_math_call = { .invoke = native_math_get };
+typedef struct
+{
+    native_capabilities *native;
+    script_syntax *syntax;
+    script_analysis *analysis;
+    execution_module_plan *plan;
+    execution_module *expected[2], *actual;
+    unsigned char *bytes;
+    package_module *modules;
+    int module_count;
+} native_math_fixture;
+static bool native_math_play(execution_module *module, int backend, bool pressure)
+{
+    REQUIRE(execution_module_function_count(module) == (pressure ? 2 : 1));
+    const behavior_function *body = execution_module_function_at(module, 0).body;
+    REQUIRE(!pressure || acount(body->calls) > 0);
+    arena storage = { 0 };
+    behavior_function_activation activation = { 0 };
+    behavior_function_activation_init(body, &activation);
+    behavior_managed_heap heap;
+    behavior_managed_heap_init(&heap);
+    if (pressure) {
+        /* The first outlined call must collect real discarded storage. */
+        heap.call_collection_bytes = 1;
+        (void)arena_alloc(&heap.storage, 4096);
+    }
+    pin_value output = { .type = PIN_I32 };
+    behavior_function_prepare_results(body, &output, &storage);
+    behavior_function_context context = { .activation = &activation,
+                                          .managed_heap = &heap,
+                                          .results = &output,
+                                          .budget = TARGET_BUDGET };
+    behavior_function_bind_storage(&context, pressure ? &heap.storage : &storage);
+    native_math_calls = 0;
+    bool bound = behavior_function_bind(body, &context, NULL, 0);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    uint64_t marks = arena_collect_marks();
+    int status = bound ? behavior_function_run(body, &context, backend != 0)
+                       : FLOW_ERR_ARGUMENT;
+    uint64_t marked = arena_collect_marks() - marks;
+    behavior_run_scope_end(&runs);
+    bool valid = status == FLOW_OK && context.returned && output.i == 63 &&
+                 native_math_calls == 3;
+    if (!valid) {
+        fprintf(
+            stderr,
+            "native math result: status%d mask0x%x expected0x3f calls%d\n",
+            status,
+            (unsigned)output.i,
+            native_math_calls
+        );
+    }
+    if (pressure) {
+        fprintf(
+            pu_output(),
+            "native math pressure %s: %" PRIu64
+            " collection marks, mask0x%x, calls%d\n",
+            behavior_backend_name(execution_module_backend(module)),
+            marked,
+            (unsigned)output.i,
+            native_math_calls
+        );
+    }
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
+    arena_free(&storage);
+    REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
+    REQUIRE(backend != 0 || runs.counts.bytecode_entries > 0);
+    if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_SLJIT) {
+        REQUIRE(runs.counts.sljit_entries > 0 && !runs.counts.bytecode_entries);
+    }
+    if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_WASM) {
+        REQUIRE(runs.counts.wasm_entries > 0 && !runs.counts.bytecode_entries);
+    }
+    REQUIRE(!pressure || marked > 0);
+    REQUIRE(valid);
+    return true;
+}
+static bool native_math_results(native_math_fixture *test)
+{
+    static const type_desc *const reflected[] = { &native_math_type };
+    static const type_catalog_pack reflected_pack = { .types = reflected,
+                                                      .type_count = 1 };
+    publish_project(&reflected_pack);
+    uint64_t id = script_catalog_id("type", "vec3");
+    script_catalog_field fields[3];
+    for (int i = 0; i < 3; i++) {
+        char name[16];
+        snprintf(name, sizeof name, "vec3.%s", native_math_fields[i].name);
+        fields[i] = (script_catalog_field){ .id = script_catalog_id("field", name),
+                                            .name = native_math_fields[i].name,
+                                            .type = { .storage = PIN_F32 },
+                                            .offset = native_math_fields[i].offset,
+                                            .writable = true };
+    }
+    uint64_t entity = script_catalog_id("type", "ecs.entity");
+    script_catalog_type types[] = {
+        { .id = id,
+          .name = "vec3",
+          .source_name = "vec3",
+          .type = { .storage = PIN_STRUCT, .nominal = id },
+          .fields = fields,
+          .field_count = 3,
+          .size = sizeof(native_math_vector),
+          .layout = type_layout_hash(&native_math_type) },
+        { .id = entity,
+          .name = "ecs.entity",
+          .source_name = "entity",
+          .type = { .storage = PIN_HANDLE, .nominal = entity },
+          .size = sizeof(uint64_t) },
+    };
+    script_catalog_parameter output = { .name = "value",
+                                        .type = { .storage = PIN_STRUCT,
+                                                  .nominal = id } };
+    script_catalog_capability get = { .id = script_catalog_id("capability", "GetVec3"),
+                                      .name = "GetVec3",
+                                      .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                      .results = &output,
+                                      .result_count = 1,
+                                      .completion_outcome = -1,
+                                      .effects = SCRIPT_EFFECT_HOST };
+    script_catalog catalog = { .types = types,
+                               .type_count = 2,
+                               .capabilities = &get,
+                               .capability_count = 1,
+                               .entity_type = entity };
+    native_capability_binding binding = { .id = get.id,
+                                          .call = &native_math_call,
+                                          .access = &HOST_ACCESS };
+    const type_desc *layouts[] = { &native_math_type };
+    native_capability_pack pack = { .catalog = &catalog,
+                                    .bindings = &binding,
+                                    .binding_count = 1,
+                                    .layouts = layouts,
+                                    .layout_count = 1 };
+    const native_definition_pack definitions[] = { NATIVE_ARRAY_DEFINITION_PACK,
+                                                   NATIVE_MATH_DEFINITION_PACK };
+    char error[256] = { 0 };
+    test->native = native_capabilities_from_definition_packs(&pack, 1, definitions, 2, error, sizeof error);
+    if (!test->native) {
+        fprintf(stderr, "native math catalog: %s\n", error);
+    }
+    REQUIRE(test->native);
+    const script_catalog *native = native_capabilities_catalog(test->native);
+    const char *identity = "NativeMath";
+    /* Quarter turns avoid assuming a new precision contract for the VM's
+     * deterministic trig approximation. */
+    const char *source = "NativeMath :: library {\n"
+                         "    Check :: () -> int {\n"
+                         "        direct := length(GetVec3());\n"
+                         "        selected := length(GetVec3().yx);\n"
+                         "        wave := sin(GetVec3());\n"
+                         "        mask: int = 0;\n"
+                         "        if direct > 2.221440 && direct < 2.221443 { "
+                         "mask |= 1; }\n"
+                         "        if selected > 1.570795 && selected < "
+                         "1.570798 { mask |= 2; }\n"
+                         "        if wave.x == 0.0 { mask |= 4; }\n"
+                         "        if wave.y > 0.999999 && wave.y < 1.000001 { "
+                         "mask |= 8; }\n"
+                         "        if wave.z > -1.000001 && wave.z < -0.999999 "
+                         "{ mask |= 16; }\n"
+                         "        p := &wave; p.yx = p.xy;\n"
+                         "        if wave.x > 0.999999 && wave.x < 1.000001 && "
+                         "wave.y == 0.0 &&\n"
+                         "           wave.z > -1.000001 && wave.z < -0.999999 "
+                         "{ mask |= 32; }\n"
+                         "        return mask;\n"
+                         "    }\n"
+                         "}\n";
+    /* The swizzle location and old components stay live across the outlined
+     * RHS call, which overwrites both selected and untouched components. */
+    const char *pressure_source =
+        "NativeMath :: library {\n"
+        "    Check :: () -> int {\n"
+        "        direct := length(GetVec3());\n"
+        "        selected := length(GetVec3().yx);\n"
+        "        wave := sin(GetVec3());\n"
+        "        mask: int = 0;\n"
+        "        if direct > 2.221440 && direct < 2.221443 { mask |= 1; }\n"
+        "        if selected > 1.570795 && selected < 1.570798 { mask |= 2; }\n"
+        "        if wave.x == 0.0 { mask |= 4; }\n"
+        "        if wave.y > 0.999999 && wave.y < 1.000001 { mask |= 8; }\n"
+        "        if wave.z > -1.000001 && wave.z < -0.999999 { mask |= 16; }\n"
+        "        p := &wave; p.xy += PressureRight(p);\n"
+        "        if wave.x == 5.0 && wave.y == 7.0 && wave.z == 9.0 { mask |= "
+        "32; }\n"
+        "        return mask;\n"
+        "    }\n"
+        "    PressureRight :: (p: ^vec3) -> vec2 {\n"
+        "        p^ = vec3(100, 200, 9); return vec2(5, 6);\n"
+        "    }\n"
+        "}\n";
+    const char *variants[] = { source, pressure_source };
+    REQUIRE(prepare());
+    for (int pressure = 0; pressure < 2; pressure++) {
+        source = variants[pressure];
+        test->syntax = script_parse(source);
+        test->analysis = script_analyze(test->syntax, native);
+        for (int i = 0; i < test->analysis->diagnostic_count; i++) {
+            const script_diagnostic *diagnostic = &test->analysis->diagnostics[i];
+            fprintf(
+                stderr,
+                "native math C analysis %d:%d: %s\n",
+                diagnostic->range.line,
+                diagnostic->range.column,
+                diagnostic->message
+            );
+        }
+        REQUIRE(test->analysis->valid);
+        script_lower_bindings bindings = authoring_native_bindings(test->native);
+        for (int backend = 0; backend < 2; backend++) {
+            test->plan = script_lower(test->analysis, native, &bindings);
+            for (int i = 0; test->plan && i < test->plan->diagnostic_count; i++) {
+                const execution_module_diagnostic *diagnostic = &test->plan->diagnostics[i];
+                fprintf(
+                    stderr,
+                    "native math C lowering %d:%d: %s\n",
+                    diagnostic->range.line,
+                    diagnostic->range.column,
+                    diagnostic->message
+                );
+            }
+            REQUIRE(test->plan && !test->plan->diagnostic_count);
+            test->expected[backend] = execution_module_finish(
+                &test->plan,
+                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+                error,
+                sizeof error
+            );
+            REQUIRE(
+                test->expected[backend] &&
+                native_math_play(test->expected[backend], backend, pressure != 0)
+            );
+        }
+        native_prepared_context context = { .native = test->native };
+        execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+        for (int b = 0; b < 2; b++) {
+            pin_value out;
+            REQUIRE(
+                catalog_compile_sources_native(b, native, test->native, &identity, &source, 1, "CompileBehaviorsWithCatalog", &out)
+            );
+            const pin_array *array = out.ptr;
+            bool compiled = array && array->count;
+            if (!compiled) {
+                arena_free(&detached);
+                REQUIRE(catalog_compile_sources_native(
+                    b,
+                    native,
+                    test->native,
+                    &identity,
+                    &source,
+                    1,
+                    "BehaviorRejectionWithCatalog",
+                    &out
+                ));
+                fprintf(
+                    stderr,
+                    "native math compiler%d rejected: %s\n",
+                    b,
+                    pin_text(out).bytes
+                );
+            }
+            REQUIRE(compiled);
+            size_t length = (size_t)array->count;
+            test->bytes = xmalloc(length);
+            for (size_t i = 0; i < length; i++) {
+                test->bytes[i] = array->items[i].u8;
+            }
+            arena_free(&detached);
+            uint64_t root;
+            test->modules = compiler_artifact_rows(
+                test->bytes,
+                length,
+                &test->module_count,
+                &root,
+                error,
+                sizeof error
+            );
+            REQUIRE(
+                test->modules && test->module_count == 1 &&
+                root == execution_module_id(test->expected[0])
+            );
+            for (int backend = 0; backend < 2; backend++) {
+                test->actual = execution_prepared_read(
+                    test->modules[0].data,
+                    test->modules[0].length,
+                    &linker,
+                    backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+                    error,
+                    sizeof error
+                );
+                REQUIRE(
+                    test->actual &&
+                    same_declarations(test->expected[backend], test->actual) &&
+                    same_points(test->expected[backend], test->actual) &&
+                    same_watches(test->expected[backend], test->actual)
+                );
+                REQUIRE(native_math_play(test->actual, backend, pressure != 0));
+                execution_module_free(test->actual);
+                test->actual = NULL;
+            }
+            compiler_artifact_rows_free(test->modules, test->module_count);
+            test->modules = NULL;
+            test->module_count = 0;
+            free(test->bytes);
+            test->bytes = NULL;
+        }
+        for (int backend = 0; backend < 2; backend++) {
+            execution_module_free(test->expected[backend]);
+            test->expected[backend] = NULL;
+        }
+        script_analysis_free(test->analysis);
+        test->analysis = NULL;
+        script_syntax_free(test->syntax);
+        test->syntax = NULL;
+    }
+    return true;
+}
+TEST_CASE(package_compiler_builtin_math_native_results)
+{
+    native_math_fixture test = { 0 };
+    bool valid = native_math_results(&test);
+    execution_module_free(test.actual);
+    execution_module_free(test.expected[0]);
+    execution_module_free(test.expected[1]);
+    execution_module_plan_free(test.plan);
+    script_analysis_free(test.analysis);
+    script_syntax_free(test.syntax);
+    compiler_artifact_rows_free(test.modules, test.module_count);
+    free(test.bytes);
+    native_capabilities_free(test.native);
+    publish_project(NULL);
+    return valid;
 }
 static bool catalog_export_rejects(const script_catalog *catalog)
 {
@@ -20951,6 +21760,8 @@ void test_language_package_compiler_chibi()
 void test_language_package_compiler_chibi_types()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builtin_math_native_results);
+    RUN_TEST_CASE(package_compiler_builtin_math_source_contracts);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
     RUN_TEST_CASE(package_compiler_rejects_invalid_char_conversions);
     RUN_TEST_CASE(package_compiler_rejects_deferred_char_forms);
@@ -20958,6 +21769,12 @@ void test_language_package_compiler_chibi_types()
     RUN_TEST_CASE(package_compiler_defers_generic_char_native_results);
     RUN_TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions);
     RUN_TEST_CASE(package_compiler_resolves_library_primitive_names);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_math_native()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builtin_math_native_results);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_imports()

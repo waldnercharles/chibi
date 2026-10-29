@@ -20,7 +20,6 @@
 #include "execution/scalar.h"
 #include "execution/service.h"
 #include "execution/status.h"
-#include "graph/shader/shader_graph.h"
 #include "runtime/arrays.h"
 #include "runtime/behaviors/package.h"
 #include "support/arena.h"
@@ -77,30 +76,20 @@ static const type_desc narrow_enum_type = { .name = "fixture.narrow_enum",
 static const type_desc *const types[] = { &box_type, &c_text_type, &narrow_enum_type };
 type_catalog_pack test_program_types();
 type_catalog_pack test_reductions_types();
-type_catalog_pack test_graph_model_types();
 
 int type_catalog_pack_count()
 {
-    return 5;
+    return 3;
 }
 
 type_catalog_pack type_catalog_pack_at(int index)
 {
-    assert(index >= 0 && index < 5);
-    if (index == 4) {
+    assert(index >= 0 && index < 3);
+    if (index == 2) {
         return test_reductions_types();
     }
     if (index == 1) {
         return test_program_types();
-    }
-    if (index == 2) {
-        return test_graph_model_types();
-    }
-    if (index == 3) {
-        return (type_catalog_pack){ .types = SHADER_PACK.types,
-                                    .type_count = SHADER_PACK.type_count,
-                                    .enums = SHADER_PACK.enums,
-                                    .enum_count = SHADER_PACK.enum_count };
     }
     return (type_catalog_pack){ .types = types, .type_count = 3 };
 }

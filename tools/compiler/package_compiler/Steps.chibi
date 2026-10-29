@@ -1673,6 +1673,13 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return ComponentReadStep([], types, Component(types, member), false, object.slot, [], ops, target, at,
                                      node);
         }
+        if (Single(object, StructStorage) && MathKind(types, object.record) != 0) {
+            effects := MathLocationEffects(forest, text, types, members, callables, natives, ports, names, package,
+                                           Field(forest, item.node, "object")) & ReadEffect;
+            return PointerPrefix(code, slots,
+                                 EffectsStep(MathMemberStep(forest, document, types, members, object, member,
+                                                            ops, target, at, node), effects));
+        }
         found: int = -1;
         if (Single(object, StructStorage) ||
             (object.container == 0 && object.record >= 0 && types[object.record].kind == NativeDecl)) {
@@ -2579,6 +2586,15 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
+    if (item.phase == 1 && item.c == MathCall) {
+        return MathConstructStep(forest, text, document, types, members, constants, names, package,
+                                 slice(values, top - item.b, item.b), item.a, item.b, ops, target, at, node);
+    }
+    if (item.phase == 1 && item.c == MathFunctionCall) {
+        name := Text(forest, text, Field(forest, item.node, "function"));
+        return MathFunctionStep(forest, text, document, types, members, constants, names, package,
+                                name, slice(values, top - item.b, item.b), item.b, ops, target, at, node);
+    }
     if (item.phase == 0) {
         callee := Field(forest, item.node, "function");
         hidden := PrivateAccess(forest, text, callables, types, constants, names, package, callee);
@@ -2688,6 +2704,43 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         found := CalledFunction(forest, text, callables, natives, names, package, item.node);
         if (qualified_native) {
             callee_name = native_name;
+        }
+        math_kind := MathName(callee_name);
+        if (qualifier < 0 && found == -1 && math_kind != 0) {
+            count: int = 0;
+            for (argument in Members(forest, Field(forest, item.node, "arguments"))) {
+                if (Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument") ||
+                    Is(forest, argument, "reference_argument")) {
+                    return Fail(forest, argument, document, "built-in math constructors take positional arguments");
+                }
+                next.extend([Visit(argument), Resume(argument, MathCapturePhase, 0, 0)]);
+                count += 1;
+            }
+            finish := Resume(item.node, 1, MathRecord(types, math_kind), count);
+            finish.c = MathCall;
+            next.append(finish);
+            return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+        }
+        if (qualifier < 0 && found == -1 && MathFunctionName(callee_name) &&
+            (callee_name == "step" || FindNative(natives, callee_name) < 0 ||
+             MathArguments(forest, text, types, members, callables, natives, ports, names, package, item.node))) {
+            positional := true;
+            arguments := Members(forest, Field(forest, item.node, "arguments"));
+            for (argument in arguments) {
+                if (Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument") ||
+                    Is(forest, argument, "reference_argument")) {
+                    positional = false;
+                }
+            }
+            if (positional) {
+                for (argument in arguments) {
+                    next.extend([Visit(argument), Resume(argument, MathCapturePhase, 0, 0)]);
+                }
+                finish := Resume(item.node, 1, 0, length(arguments));
+                finish.c = MathFunctionCall;
+                next.append(finish);
+                return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+            }
         }
         if (found == -2) {
             return Fail(forest, callee, document, format_text("Ambiguous function '{}'", callee_name));

@@ -86,6 +86,23 @@ Ops :: struct {
     ne: int;
     cast: int;
     select: int;
+    math_abs: int;
+    math_min: int;
+    math_max: int;
+    math_sqrt: int;
+    math_floor: int;
+    math_ceil: int;
+    math_round: int;
+    math_exp: int;
+    math_log: int;
+    math_pow: int;
+    math_sin: int;
+    math_cos: int;
+    math_tan: int;
+    math_asin: int;
+    math_acos: int;
+    math_atan: int;
+    math_atan2: int;
     variable: int;
     store: int;
     store_value: int;
@@ -461,6 +478,23 @@ ResolveOps :: (names: string[], debug: bool) -> Ops {
             shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
+            math_abs: Ordinal(names, "ABS"),
+            math_min: Ordinal(names, "MIN"),
+            math_max: Ordinal(names, "MAX"),
+            math_sqrt: Ordinal(names, "SQRT"),
+            math_floor: Ordinal(names, "FLOOR"),
+            math_ceil: Ordinal(names, "CEIL"),
+            math_round: Ordinal(names, "ROUND"),
+            math_exp: Ordinal(names, "EXP"),
+            math_log: Ordinal(names, "LOG"),
+            math_pow: Ordinal(names, "POW"),
+            math_sin: Ordinal(names, "SIN"),
+            math_cos: Ordinal(names, "COS"),
+            math_tan: Ordinal(names, "TAN"),
+            math_asin: Ordinal(names, "ASIN"),
+            math_acos: Ordinal(names, "ACOS"),
+            math_atan: Ordinal(names, "ATAN"),
+            math_atan2: Ordinal(names, "ATAN2"),
             store: Ordinal(names, "STORE"), store_value: Ordinal(names, "STORE_VALUE"),
             owner: Ordinal(names, "OWNER"), query_variable: Ordinal(names, "QUERY_VARIABLE"), convert: Ordinal(names, "CONVERT"),
             source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH"),
@@ -899,6 +933,13 @@ pub Declare :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
     types: TypeDecl[] = [];
     members: TypeMember[] = [];
     constants: ConstDecl[] = [];
+    switch DeclareMath(forest, documents, types, members, target) {
+        case .Failed(message):
+            return Declarations.Failed({start: 0, end: 0, line: 1, column: 1, document: 0, message: message});
+        case .Read(math_types, math_members):
+            types = math_types;
+            members = math_members;
+    }
     for (package in order) {
         files := slice(files_of, packages[package].member_start, packages[package].member_count);
         switch DeclarePackage(forest, documents, files, package, packages[package].name, links, target, callables,
@@ -2685,13 +2726,21 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     fields: writer.Field[] = [];
     // Each record's layout and each variant's tag, as indices into `wide`, for
     // the types of this package and those it reaches; no others can occur.
+    // Shared types, such as char, the math types and game natives, belong to
+    // no package; a math type is written only where this module uses it. A
+    // requirement's index counts the requirements the loop below writes first.
+    assembled: bool[] = [];
     requirement_indices: int[] = [];
     requirement_count: int = 0;
-    for (declared in types) {
+    for declared, at in types {
+        kept := declared.kind != BuiltinScalarDecl &&
+                (source_mode || declared.package < 0 || reachable[declared.package]) &&
+                (declared.kind != MathDecl || MathRequired(at, types, callables, params, prepared, package) ||
+                 MathStateRequired(at, types, kept_states));
+        assembled.append(kept);
         index: int = -1;
-        if ((source_mode || reachable[declared.package]) &&
-            (declared.kind == RecordDecl || declared.kind == NativeDecl || declared.kind == QueryDecl ||
-             (declared.kind == PointerDecl && declared.key == 0))) {
+        if (kept && (declared.kind == RecordDecl || declared.kind == MathDecl || declared.kind == NativeDecl ||
+                     declared.kind == QueryDecl || (declared.kind == PointerDecl && declared.key == 0))) {
             index = requirement_count;
             requirement_count += 1;
         }
@@ -2702,12 +2751,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     for (declared in types) {
         layouts.append(int(0));
         tags.append(int(0));
-        if (declared.kind == BuiltinScalarDecl) { continue; }
         if (declared.kind == OptionalComponentDecl) {
             layouts[length(layouts) - 1] = layouts[declared.parent];
             continue;
         }
-        if (!source_mode && !reachable[declared.package]) {
+        if (!assembled[length(layouts) - 1]) {
             continue;
         }
         if (declared.kind == VariantDecl) {
@@ -2720,9 +2768,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             }
             wide.append(tag);
             tags[length(tags) - 1] = length(wide) - 1;
-        } else if (declared.kind == RecordDecl) {
+        } else if (declared.kind == RecordDecl || declared.kind == MathDecl) {
             id := declared.id;
-            if (!source_mode) {
+            if (!source_mode && declared.kind != MathDecl) {
                 id = binding.ID("package-symbol",
                                 format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name));
             }

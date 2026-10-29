@@ -13,7 +13,11 @@ $output = $args[0]
 $fixtureRoot = $output
 $digestPath = [IO.Path]::Combine($output, 'digest[☃].bin')
 [IO.File]::WriteAllBytes($digestPath, [byte[]]@())
-Write-Host ('digest-empty=' + (Digest $digestPath))
+Trace-Transport 'empty-file-ready'
+$emptyDigest = Digest $digestPath
+Trace-Transport 'empty-digest-ready'
+Write-Host ('digest-empty=' + $emptyDigest)
+Trace-Transport 'first-host-output-done'
 [IO.File]::WriteAllBytes($digestPath, [byte[]]@(0,1,128,255,10,13))
 Write-Host ('digest-binary=' + (Digest $digestPath))
 $changedBytes = [byte[]]@(13,10,255,128,1,0)
@@ -31,7 +35,9 @@ catch { Write-Host 'digest-missing rejected' }
 try { $null = Digest $output; Write-Host 'digest-directory accepted' }
 catch { Write-Host 'digest-directory rejected' }
 $evidence = [ordered]@{ batch_members = @(); cases = @() }
+Trace-Transport 'digest-controls-done'
 $source = Join-Path $output 'transport.json'
+Trace-Transport 'first-path-ready'
 $text = ' [ [ {"text":"☃\\n\\\"[]","value":18446744073709551615} ], [true,1e-30], [] ] '
 [IO.File]::WriteAllText($source, $text, $utf8)
 $result = [pscustomobject]@{ Name = 'fixture'; Exit = 0; Stdout = $source; Stderr = '' }

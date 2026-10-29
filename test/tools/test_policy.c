@@ -1487,11 +1487,15 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
         REQUIRE(!getenv("GITHUB_ACTIONS"));
         return true;
     }
-    const char *phases[] = { "driver-ready",  "pwsh-start",     "fixture-enter",
-                             "split-start",   "split-done",     "join-done",
-                             "evidence-done", "singleton-done", "invalid-done",
-                             "counters-done", "corpus-start",   "corpus-done",
-                             "partial-start", "partial-done",   "pwsh-exit" };
+    const char *phases[] = {
+        "driver-ready",         "pwsh-start",         "fixture-enter",
+        "empty-file-ready",     "empty-digest-ready", "first-host-output-done",
+        "digest-controls-done", "first-path-ready",   "split-start",
+        "split-done",           "join-done",          "evidence-done",
+        "singleton-done",       "invalid-done",       "counters-done",
+        "corpus-start",         "corpus-done",        "partial-start",
+        "partial-done",         "pwsh-exit"
+    };
     const char *phase = output;
     for (int i = 0; i < (int)(sizeof phases / sizeof *phases); i++) {
         char expected[96];

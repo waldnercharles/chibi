@@ -176,9 +176,10 @@ PointerReadStep :: (types: TypeDecl[], pointer: Value, popped: int, ops: Ops, ta
         root: Root = {slot: at.slot + 2, storage: element.storage, container: element.container, record: element.record};
         roots.append(root);
     }
-    return CellSchemaStep(Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], popped,
-                                       Typed(at.slot + 2, element.storage, element.container, element.record), NoValue(), []),
-                          at.cell + 2, ops, target, at, node);
+    return EffectsStep(CellSchemaStep(Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], popped,
+                                                   Typed(at.slot + 2, element.storage, element.container, element.record),
+                                                   NoValue(), []),
+                                      at.cell + 2, ops, target, at, node), ReadEffect);
 }
 // Address expressions may infer a pointer without spelling its type. The
 // compiler's finite type universe supplies those constructor headers before

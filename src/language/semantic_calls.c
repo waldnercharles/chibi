@@ -1862,12 +1862,6 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     if (migrated_self(a, capability)) {
         result.effects &= ~(unsigned)SCRIPT_EFFECT_INVOCATION_READ;
     }
-    /* A language-value native reads only its arguments: owned ones are the
-     * caller's values, and an argument that holds a view adds its own read
-     * below. */
-    if (capability && capability->language_values) {
-        result.effects &= ~(unsigned)SCRIPT_EFFECT_READ;
-    }
     if (capability && a->out->kind == SCRIPT_PROGRAM_LIBRARY &&
         (capability->id == script_catalog_id("capability", "Self") ||
          (capability->component && capability->component_entity < 0))) {

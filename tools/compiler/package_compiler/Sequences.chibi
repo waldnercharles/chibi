@@ -156,10 +156,15 @@ SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     } else if (object.container != ArrayContainer && object.container != ViewContainer && !Single(object, TextStorage)) {
         return Fail(forest, receiver, document, "slice, view and clone need a string or array");
     }
+    observed: int = 0;
+    if (object.container == ViewContainer) {
+        observed = ReadEffect;
+    }
     if (operation == 3) {
         emitted := SequenceCallStep([object], SequenceLengthIntrinsic, Typed(-1, IntStorage, 0, -1),
                                     u64(0), false, 1, ops, target, at, node);
-        return CleanupSequenceValues(emitted, [object], ops, target, at, node);
+        return EffectsStep(CleanupSequenceValues(emitted, [object], ops, target, at, node),
+                           observed);
     }
     if (element.container != 0) {
         element.container = ArrayContainer;
@@ -184,7 +189,8 @@ SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, t
     arguments := slice(values, top - count, count);
     emitted := SequenceCallStep(arguments, intrinsic, result, OptionalTag(types, element),
                                 ranged, count, ops, target, at, node);
-    return CleanupSequenceValues(emitted, arguments, ops, target, at, node);
+    return EffectsStep(CleanupSequenceValues(emitted, arguments, ops, target, at, node),
+                       observed);
 }
 
 ArrayMutation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: ResolvedNative[],

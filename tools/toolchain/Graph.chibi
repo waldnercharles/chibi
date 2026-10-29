@@ -497,7 +497,7 @@ BuildLibrariesWithArguments :: (arguments: string[], runtime_sdk: bool) -> int {
     }
     if (build.platform() == "Linux") {
         for (target in selected) {
-            if ((target == "chibi-player" || target == "chibi_ctl" || target == "test_tools") &&
+            if ((target == "chibi-player" || target == "test_tools") &&
                 (!strings.HasPrefix(profile.opengl_library, "/") || !strings.HasPrefix(profile.glx_library, "/") ||
                  !strings.HasPrefix(profile.opengl_include, "/"))) {
                 build.report("graph: OpenGL development files not found; set --opengl-library, --glx-library and --opengl-include");

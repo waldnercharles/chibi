@@ -3,7 +3,6 @@ add_library(chibi_source_catalog STATIC
     "${CHIBI_SDK_ROOT}/src/authoring/language_catalog.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_catalog.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_asset.c"
-    "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_edit.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_asset_completion.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_catalog_snapshot.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_collection.c"
@@ -19,8 +18,7 @@ add_library(chibi_source_catalog STATIC
 add_library(Chibi::source_catalog ALIAS chibi_source_catalog)
 set_target_properties(chibi_source_catalog PROPERTIES EXPORT_NAME source_catalog)
 chibi_sdk_headers(chibi_source_catalog PUBLIC authoring/language_catalog.h
-    authoring/source_catalog.h authoring/source_collection.h authoring/source_asset.h
-    authoring/source_prototype_edit.h
+    authoring/source_catalog.h authoring/source_collection.h authoring/source_asset.h authoring/source_completion.h
     authoring/source_packages.h authoring/source_package_io.h authoring/source_package_snapshot.h authoring/source_package_files.h
     authoring/source_package_exports.h authoring/source_package_prepare.h authoring/package_tests.h)
 foreach(header source_catalog_snapshot source_prepare_internal source_package_syntax source_package_paths source_package_routes)
@@ -47,17 +45,14 @@ target_link_libraries(chibi_program PUBLIC chibi_source_catalog chibi_native_cap
 add_library(chibi_source_presentation STATIC)
 foreach(unit graph_expression presentation_schema source_presentation source_presentation_graph source_presentation_anchors
     source_presentation_values source_presentation_flow source_presentation_layout
-    source_presentation_details source_edit source_edit_selection source_edit_arguments
-    source_edit_capability source_edit_declarations source_edit_refactor source_edit_inline
-    source_edit_signature source_edit_binding source_minimize)
+    source_presentation_details source_minimize)
     target_sources(chibi_source_presentation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
 endforeach()
 add_library(Chibi::source_presentation ALIAS chibi_source_presentation)
 set_target_properties(chibi_source_presentation PROPERTIES EXPORT_NAME source_presentation)
-chibi_sdk_headers(chibi_source_presentation PUBLIC authoring/graph_expression.h authoring/presentation_schema.h authoring/source_presentation.h authoring/source_edit.h
+chibi_sdk_headers(chibi_source_presentation PUBLIC authoring/graph_expression.h authoring/presentation_schema.h authoring/source_presentation.h
     authoring/source_minimize.h)
-foreach(header source_presentation_internal source_presentation_anchors source_presentation_details
-    source_edit_internal source_edit_refactor_internal)
+foreach(header source_presentation_internal source_presentation_anchors source_presentation_details)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/source_presentation/authoring/${header}.h" COPYONLY)
 endforeach()

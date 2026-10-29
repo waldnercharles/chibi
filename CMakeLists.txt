@@ -246,18 +246,6 @@ if(TARGET chibi)
     add_dependencies(chibi chibi_build_shaders)
 endif()
 
-if(TARGET Chibi::project_preparation AND TARGET Chibi::render)
-    # The controller uses the same explicit headers and package links as its
-    # standalone installed build; this directory stages its owning resources.
-    set(Chibi_RESOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/controller_resources")
-    file(MAKE_DIRECTORY "${Chibi_RESOURCE_DIR}")
-    configure_file("${CMAKE_CURRENT_BINARY_DIR}/sdk/chibi_engine_metadata.json"
-        "${Chibi_RESOURCE_DIR}/engine.json" COPYONLY)
-    file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
-        DESTINATION "${Chibi_RESOURCE_DIR}")
-    add_subdirectory(tools/chibi_ctl)
-endif()
-
 # The C tests use POSIX processes and files directly.
 if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if(TARGET Chibi::authoring)
@@ -288,12 +276,6 @@ if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripte
     add_custom_target(check-host
         COMMAND "${CHIBI_PYTHON_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/test_policy.py" disabled check-host
         VERBATIM)
-    add_custom_target(check-generation
-        COMMAND ${CMAKE_COMMAND} "-DROOT=${CMAKE_SOURCE_DIR}"
-            "-DTEST_DIR=${CMAKE_BINARY_DIR}/tests/generation"
-            "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
-            -P "${CMAKE_SOURCE_DIR}/cmake/tests/generation.cmake"
-        DEPENDS concurrent_runner VERBATIM)
 endif()
 
 # Windows needs Developer Mode for symbolic links, so editors there read the

@@ -399,8 +399,7 @@ int main(int argc, char **argv)
          !scalarize && !borrow && !reductions && !binding_schedule &&
          !activation_cache && !headless && !build_workflow && !navigation &&
          !publication && !field_runtime && !prototype && !ui_authoring &&
-         !text_format && 
-         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !text_format && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --test-parallel | --syntax [--corpus manifest] | "

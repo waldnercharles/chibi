@@ -418,9 +418,6 @@ bool test_shader_parameters_active()
     return shader_parameters;
 }
 
-
-
-
 void test_tool_case_timings(const char *self);
 int tool_case_timing_probe(const char *mode);
 int tool_tty_echo_child(bool terminal);
@@ -1195,8 +1192,7 @@ int main(int argc, char **argv)
                 test_material_obstacles();
                 test_material_particle_index();
                 break;
-            case MATERIAL_ECS:
-                break;
+            case MATERIAL_ECS: break;
             case MATERIAL_BENCHMARK: test_material_benchmark(); break;
         }
         pu_print_stats();

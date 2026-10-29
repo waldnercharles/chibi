@@ -547,6 +547,36 @@ int program_service_call(
     return status;
 }
 
+int program_service_call_entry(
+    program_service *service,
+    uint64_t handle,
+    const char *name,
+    const authoring_program_call_options *options,
+    int *result
+)
+{
+    assert(name && result);
+    *result = 0;
+    program_entry *entry = find(service, handle);
+    if (!entry) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    int status = authoring_program_call_entry(entry->program, name, options, result);
+    if (status != FLOW_OK) {
+        session_error(entry);
+    } else {
+        free(entry->message);
+        entry->message = NULL;
+    }
+    return status;
+}
+
+bool program_service_has(program_service *service, uint64_t handle, const char *name)
+{
+    program_entry *entry = find(service, handle);
+    return entry && authoring_program_has(entry->program, name);
+}
+
 const char *program_service_diagnostic(const program_service *service, uint64_t handle)
 {
     program_entry *entry = find(service, handle);
@@ -670,6 +700,39 @@ static const char *native_call(
     return NULL;
 }
 
+static const char *native_call_entry(
+    const behavior_function_context *context,
+    void *user,
+    const pin_value *arguments,
+    pin_value *results
+)
+{
+    program_service *service = user;
+    arena_reset(&service->scratch);
+    const char *name = NULL;
+    const char *error = pin_text_cstring(&service->scratch, arguments[1], &name, NULL);
+    if (error) {
+        return error;
+    }
+    int value = 0;
+    const authoring_program_call_options options = { .caller = context->program };
+    results[0].i = program_service_call_entry(service, arguments[0].u64, name, &options, &value);
+    results[1].i = value;
+    return NULL;
+}
+
+static const char *native_has(void *user, const pin_value *arguments, pin_value *results)
+{
+    program_service *service = user;
+    arena_reset(&service->scratch);
+    const char *name = NULL;
+    const char *error = pin_text_cstring(&service->scratch, arguments[1], &name, NULL);
+    if (!error) {
+        results[0].b = program_service_has(service, arguments[0].u64, name);
+    }
+    return error;
+}
+
 static const char *native_diagnostic(void *user, const pin_value *arguments, pin_value *results)
 {
     program_service *service = user;
@@ -723,6 +786,12 @@ static const script_catalog_parameter handle_parameter = {
     .name = "program",
     .type = { .storage = PIN_HANDLE, .nominal = PROGRAM_TYPE }
 };
+static const script_catalog_parameter entry_parameters[] = {
+    { .name = "program", .type = { .storage = PIN_HANDLE, .nominal = PROGRAM_TYPE } },
+    { .name = "name", .type = { .storage = PIN_STR } }
+};
+static const script_catalog_parameter bool_result = { .name = "value",
+                                                      .type = { .storage = PIN_BOOL } };
 static const script_catalog_parameter int_result = { .name = "value",
                                                      .type = { .storage = PIN_I32 } };
 static const script_catalog_parameter text_result = { .name = "value",
@@ -737,7 +806,9 @@ static const script_catalog_parameter call_results[] = {
     X(3, "program.call", &handle_parameter, 1, call_results, 2, context, native_call)            \
     X(4, "program.diagnostic", &handle_parameter, 1, &text_result, 1, invoke, native_diagnostic) \
     X(5, "program.close", &handle_parameter, 1, NULL, 0, invoke, native_close)                   \
-    X(6, "program.test", open_parameters, 1, &int_result, 1, context, native_test)
+    X(6, "program.test", open_parameters, 1, &int_result, 1, context, native_test)               \
+    X(7, "program.call_entry", entry_parameters, 2, call_results, 2, context, native_call_entry) \
+    X(8, "program.has", entry_parameters, 2, &bool_result, 1, invoke, native_has)
 
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULTS, RESULT_COUNT, KIND, FUNCTION) \
     { .id = PROGRAM_CAPABILITY(ID),                                                    \

@@ -94,6 +94,12 @@ jobs:
       # validate-project runs chibi_ctl dozens of times, and published-docs and
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player.
+      - name: Restore the compiled asset compiler
+        id: asset-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .chibi/asset-compiler-cache
+          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
@@ -179,9 +185,17 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
+      - name: Save the compiled asset compiler from successful main builds
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .chibi/asset-compiler-cache
+          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
 
   native-macos:
     name: Engine build and native tests (macOS)
+    # PRs run Linux only; main, nightly and `ci-full`-labelled PRs run every platform.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci-full')
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -221,6 +235,12 @@ jobs:
       # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
       # chibi launcher target also builds chibi-compile and chibi-player, and
       # the Graph build adds the Release build host the Debug builds use.
+      - name: Restore the compiled asset compiler
+        id: asset-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .chibi/asset-compiler-cache
+          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
       - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
         id: release-build
         env:
@@ -316,6 +336,12 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
+      - name: Save the compiled asset compiler from successful main builds
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .chibi/asset-compiler-cache
+          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
 
   # The engine's test drivers do not build on Windows yet, so the Linux job
   # builds each module language-scalar-native runs for macOS arm64 and Windows
@@ -323,6 +349,8 @@ jobs:
   native-targets:
     name: Native scalar modules (${{ matrix.platform }})
     needs: native
+    # PRs run Linux only; main, nightly and `ci-full`-labelled PRs run every platform.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci-full')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
@@ -440,6 +468,8 @@ jobs:
 
   studio:
     name: Studio build and startup
+    # PRs run Linux only; main, nightly and `ci-full`-labelled PRs run every platform.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci-full')
     # Studio is public; the read-only workflow token can check it out for every PR.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -483,6 +513,11 @@ jobs:
           /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo /tmp/cmake/bin >> "$GITHUB_PATH"
           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Restore the compiled asset compiler
+        uses: actions/cache/restore@v4
+        with:
+          path: engine/.chibi/asset-compiler-cache
+          key: asset-compiler-${{ runner.os }}-${{ hashFiles('engine/tools/compiler/**', 'engine/packages/**', 'engine/tools/graph/asset_compiler/**') }}
       - name: Package the SDK
         run: make package-sdk SDK_PREFIX=dist/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Verify clean packaged SDK identity
@@ -603,6 +638,11 @@ jobs:
           "$RUNNER_TEMP/graph-sdk-build-tools/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           echo "$RUNNER_TEMP/graph-sdk-build-tools/bin" >> "$GITHUB_PATH"
           install -d -m 700 "$XDG_RUNTIME_DIR"
+      - name: Restore the compiled asset compiler
+        uses: actions/cache/restore@v4
+        with:
+          path: .chibi/asset-compiler-cache
+          key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
       - name: Build Release graph compiler and build hosts
         run: make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
       - name: Record Release graph tool identities

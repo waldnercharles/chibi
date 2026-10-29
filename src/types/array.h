@@ -125,7 +125,7 @@ pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int cou
 pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src);
 int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src);
 /* Retain managed fields in an already copied struct. Nested structs are inline;
- * only their strings need separate storage. Publish data only on success. */
+ * strings and collection shells retain their storage. Publish only on success. */
 int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data);
 int pin_struct_snapshot_fields_resolved(arena *, const type_desc *, void *, type_resolver);
 void pin_array_free(pin_array *array);

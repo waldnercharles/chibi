@@ -35,14 +35,43 @@ static const char *version_error(const char *version, char *error, size_t error_
 
 TEST_CASE(project_manifests_open_only_supported_versions)
 {
-    char older[32], newer[32], error[256];
-    snprintf(older, sizeof older, "version %d", CHIBI_PROJECT_OLDEST_VERSION - 1);
+    char newer[32], error[256];
     snprintf(newer, sizeof newer, "version %d", CHIBI_PROJECT_VERSION + 1);
-    bool valid = strstr(version_error(older, error, sizeof error), "needs an older build") &&
-                 strstr(version_error(newer, error, sizeof error), "needs a newer build") &&
+    bool valid = strstr(version_error(newer, error, sizeof error), "needs a newer build") &&
                  strstr(version_error("", error, sizeof error), "needs an integer version");
-    /* Project manifests open only from the oldest version this build upgrades. */
     REQUIRE(valid);
+    return true;
+}
+
+/* A project older than the oldest upgradable version names that version and
+ * the way to upgrade it, and its manifest stays as it was. */
+TEST_CASE(project_manifests_older_than_oldest_name_how_to_upgrade)
+{
+    char root[] = "/tmp/chibi-project-oldest-XXXXXX";
+    REQUIRE(mkdtemp(root));
+    char manifest[64], text[64], error[512] = { 0 }, expected[512];
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    snprintf(text, sizeof text, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_OLDEST_VERSION - 1);
+    FILE *file = fopen(manifest, "w");
+    REQUIRE(file && fputs(text, file) >= 0 && !fclose(file));
+    snprintf(
+        expected,
+        sizeof expected,
+        "Project version %d is older than version %d, the oldest this build "
+        "upgrades: %s; upgrade it with an older Chibi SDK's chibi_ctl "
+        "--project-root <root> --migrate, then open it here",
+        CHIBI_PROJECT_OLDEST_VERSION - 1,
+        CHIBI_PROJECT_OLDEST_VERSION,
+        manifest
+    );
+    int status = chibi_project_migrate(root, error, sizeof error);
+    char *after = text_file_read(manifest);
+    bool unchanged = after && !strcmp(after, text);
+    free(after);
+    unlink(manifest);
+    rmdir(root);
+    REQUIRE(status < 0 && !strcmp(error, expected));
+    REQUIRE(unchanged);
     return true;
 }
 
@@ -372,14 +401,69 @@ TEST_CASE(project_retirement_preserves_authored_component_types)
     return true;
 }
 
+static int fail_first_finalization(const char *, const char *, int, void *user, char *error, size_t size)
+{
+    int *calls = user;
+    if (!(*calls)++) {
+        snprintf(error, size, "finalization failed");
+        return -1;
+    }
+    return 0;
+}
+
+/* A rerun after finalization failed resumes after the step that finished:
+ * the manifest records the version the sources reached, and the rerun only
+ * finalizes, so a retired component written since stays. */
+TEST_CASE(project_migration_retry_resumes_after_finished_steps)
+{
+    retirement_write("content/Actor.kdl", "name \"Actor\"\ncomponents { Rhythm bpm=120; Transform x=7 y=9 }\n");
+    char error[256] = { 0 }, expected[160];
+    int calls = 0;
+    REQUIRE(
+        chibi_project_migrate_finalized(retirement_root, fail_first_finalization, &calls, error, sizeof error) <
+        0
+    );
+    REQUIRE(!strcmp(error, "finalization failed"));
+    snprintf(expected, sizeof expected, "version 38\nmigrated %d\nname \"Retirement\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    char *manifest = retirement_read("project.kdl"),
+         *actor = retirement_read("content/Actor.kdl");
+    REQUIRE(manifest && !strcmp(manifest, expected));
+    REQUIRE(actor && !strstr(actor, "Rhythm") && strstr(actor, "Transform"));
+    free(manifest);
+    free(actor);
+    const char *rewritten = "name \"Actor\"\ncomponents { Rhythm bpm=60 }\n";
+    retirement_write("content/Actor.kdl", rewritten);
+    int resumed = chibi_project_migrate_finalized(
+        retirement_root,
+        fail_first_finalization,
+        &calls,
+        error,
+        sizeof error
+    );
+    if (resumed != CHIBI_PROJECT_VERSION - 38) {
+        fprintf(stderr, "resumed %d: %s\n", resumed, error);
+    }
+    REQUIRE(resumed == CHIBI_PROJECT_VERSION - 38 && calls == 2);
+    actor = retirement_read("content/Actor.kdl");
+    REQUIRE(actor && !strcmp(actor, rewritten));
+    free(actor);
+    snprintf(expected, sizeof expected, "version %d\nname \"Retirement\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    manifest = retirement_read("project.kdl");
+    REQUIRE(manifest && !strcmp(manifest, expected));
+    free(manifest);
+    return true;
+}
+
 void test_project_document()
 {
     RUN_TEST_CASE(project_manifests_open_only_supported_versions);
+    RUN_TEST_CASE(project_manifests_older_than_oldest_name_how_to_upgrade);
     RUN_TEST_CASE(project_creation_writes_an_empty_start_scene);
     RUN_TEST_CASE(contract_projects_resolve_their_own_content);
     pu_setup(retirement_setup, retirement_cleanup);
     RUN_TEST_CASE(project_retirement_migrates_owned_values_and_preserves_shader_wires);
     RUN_TEST_CASE(project_retirement_preserves_authored_names_and_rejects_native_uses_before_writes);
     RUN_TEST_CASE(project_retirement_preserves_authored_component_types);
+    RUN_TEST_CASE(project_migration_retry_resumes_after_finished_steps);
     pu_clear_setup();
 }

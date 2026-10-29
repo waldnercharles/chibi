@@ -23,8 +23,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Twenty-three fixed prepared cases. The largest validation fixture has 128
- * fields and 256 shared headers, and the type lookup fixtures up to 512 types
+/* Twenty-five fixed prepared cases. The largest validation fixture has 128
+ * fields and 352 shared headers, and the type lookup fixtures up to 512 types
  * and 512 headers. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -374,6 +374,25 @@ static bool table_fields(const type_field *shape, int count)
                                        .size = r->type.size })
     );
     write_plan->type_count = 1;
+    /* Format 27 links each struct field to a requirement, so a native child
+     * is listed beside its parent. Its field owns the captured layout, as an
+     * authored record closes over a catalog descriptor. */
+    for (int i = 0; i < count; i++) {
+        const type_desc *native = shape[i].type == PIN_STRUCT
+                                    ? type_catalog_find(shape[i].type_name)
+                                    : NULL;
+        if (native) {
+            apush(
+                write_plan->types,
+                ((execution_type_requirement){ .id = 1000 + (uint64_t)i,
+                                               .storage = PIN_STRUCT,
+                                               .name = native->name,
+                                               .layout = type_layout_hash(native),
+                                               .size = native->size })
+            );
+            write_plan->type_count++;
+        }
+    }
     writer = (prepared_context){ .plan = write_plan };
     writer.wire.storage = &write_plan->storage;
     prepared_types(&writer);
@@ -383,6 +402,82 @@ static bool table_fields(const type_field *shape, int count)
 static bool table()
 {
     return table_fields(fields, 12);
+}
+/* Flat records and primitive-array records visit the same field metadata.
+ * Descriptor allocation bytes do not add another validation walk per header. */
+TEST_CASE(record_prepared_shared_flat_metadata_fits_default_write_work)
+{
+    enum
+    {
+        FIELD_COUNT = 128,
+        HEADER_COUNT = 352
+    };
+    char names[FIELD_COUNT][16];
+    type_field shape[FIELD_COUNT] = { 0 };
+    for (int i = 0; i < FIELD_COUNT; i++) {
+        snprintf(names[i], sizeof names[i], "field%03d", i);
+        shape[i] = (type_field){ .name = names[i], .type = PIN_I32 };
+    }
+    /* Modes 0 and 1 are flat. Mode 2 shares one nested record, which the writer
+     * validates once. Mode 3 lists a distinct alias in every header, so each
+     * needs its own validation and the default bound still ends the write. */
+    for (int mode = 0; mode < 4; mode++) {
+        shape[0] = (type_field){ .name = names[0], .type = PIN_I32 };
+        if (mode < 2) {
+            shape[0].container = mode ? PIN_CONTAINER_ARRAY : PIN_CONTAINER_SINGLE;
+            REQUIRE(table_fields(shape, FIELD_COUNT));
+        } else {
+            write_plan = execution_module_plan_new();
+            const pin_record *
+                child = pin_record_create(&write_plan->storage, "Rows.Child", 92, shape, FIELD_COUNT);
+            REQUIRE(child);
+            shape[0] = (type_field){ .name = names[0],
+                                     .type = PIN_STRUCT,
+                                     .type_name = child->type.name,
+                                     .layout = &child->type };
+            const pin_record *parent = pin_record_create(&write_plan->storage, "Rows.Row", 91, shape, FIELD_COUNT);
+            REQUIRE(parent);
+            const pin_record *records[] = { parent, child };
+            for (int i = 0; i < 2; i++) {
+                const pin_record *record = records[i];
+                apush(
+                    write_plan->types,
+                    ((execution_type_requirement){ .id = record->id,
+                                                   .storage = PIN_STRUCT,
+                                                   .name = record->type.name,
+                                                   .record = record,
+                                                   .layout = record->layout,
+                                                   .size = record->type.size })
+                );
+            }
+            write_plan->type_count = 2;
+            writer = (prepared_context){ .plan = write_plan };
+            writer.wire.storage = &write_plan->storage;
+            prepared_types(&writer);
+            REQUIRE(!writer.wire.error);
+        }
+        const pin_record *record = write_plan->types[0].record;
+        REQUIRE(record->frozen == (mode != 0));
+        pin_value header = { .type = PIN_STRUCT,
+                             .type_name = record->type.name,
+                             .record = record };
+        int count = 0;
+        for (; count < HEADER_COUNT && !writer.wire.error; count++) {
+            if (mode == 3) {
+                header.record = pin_record_snapshot(&producer, record);
+                REQUIRE(header.record && header.record != record);
+            }
+            prepared_value(&writer, &header);
+        }
+        if (mode < 3) {
+            REQUIRE(count == HEADER_COUNT && !writer.wire.error);
+        } else {
+            REQUIRE(count < HEADER_COUNT && writer.wire.error);
+            REQUIRE(strstr(writer.wire.error, "work limit"));
+        }
+        cleanup();
+    }
+    return true;
 }
 static bool read_table()
 {
@@ -395,6 +490,47 @@ static bool read_table()
                                     .storage = &read_plan->storage };
     prepared_types(&reader);
     REQUIRE(!reader.wire.error && read_plan->type_count == 1);
+    return true;
+}
+TEST_CASE(record_prepared_rejects_mismatched_authored_child_identity)
+{
+    const type_field scalar = { .name = "value", .type = PIN_I32 };
+    for (int mode = 0; mode < 2; mode++) {
+        write_plan = execution_module_plan_new();
+        const pin_record *
+            original = pin_record_create(&write_plan->storage, "Rows.Child", 92, &scalar, 1);
+        const pin_record *other = pin_record_create(&write_plan->storage, "Rows.Child", 93, &scalar, 1);
+        REQUIRE(original && other && original->layout == other->layout);
+        const type_field child = { .name = "child",
+                                   .type = PIN_STRUCT,
+                                   .type_name = original->type.name,
+                                   .layout = &original->type,
+                                   .container = mode ? PIN_CONTAINER_ARRAY
+                                                     : PIN_CONTAINER_SINGLE };
+        const pin_record *
+            parent = pin_record_create(&write_plan->storage, "Rows.Parent", 91, &child, 1);
+        REQUIRE(parent);
+        const pin_record *records[] = { parent, other };
+        for (int i = 0; i < 2; i++) {
+            const pin_record *record = records[i];
+            apush(
+                write_plan->types,
+                ((execution_type_requirement){ .id = record->id,
+                                               .storage = PIN_STRUCT,
+                                               .name = record->type.name,
+                                               .record = record,
+                                               .layout = record->layout,
+                                               .size = record->type.size })
+            );
+        }
+        write_plan->type_count = 2;
+        writer = (prepared_context){ .plan = write_plan };
+        writer.wire.storage = &write_plan->storage;
+        prepared_types(&writer);
+        REQUIRE(writer.wire.error);
+        REQUIRE(strstr(writer.wire.error, "child identity differs"));
+        cleanup();
+    }
     return true;
 }
 static bool shared_headers_module(char names[128][16])
@@ -776,13 +912,20 @@ static const type_catalog_pack writer_native_packs[] = {
     { .types = writer_native_first, .type_count = 1 },
     { .types = writer_native_replacement, .type_count = 1 }
 };
+/* The catalog holds one project pack, so replacing it clears it first. */
+static void use_native_pack(int index)
+{
+    type_catalog_set_project(NULL);
+    type_catalog_set_project(&writer_native_packs[index]);
+}
 TEST_CASE(record_prepared_writer_cached_alias_rechecks_native_catalog)
 {
     type_catalog_set_project(&writer_native_packs[0]);
     project_set = true;
     const type_field nested = { .name = "part",
                                 .type = PIN_STRUCT,
-                                .type_name = "RecordWriter.Native" };
+                                .type_name = "RecordWriter.Native",
+                                .layout = &writer_native_types[0] };
     REQUIRE(table_fields(&nested, 1));
     const pin_record *record = write_plan->types[0].record;
     const pin_record *alias = pin_record_snapshot(&producer, record);
@@ -797,7 +940,7 @@ TEST_CASE(record_prepared_writer_cached_alias_rechecks_native_catalog)
     header.type_name = alias->type.name;
     prepared_value(&writer, &header);
     REQUIRE(!writer.wire.error && !header.schema && !header.ptr);
-    type_catalog_set_project(&writer_native_packs[1]);
+    use_native_pack(1);
     /* The frozen alias is still internally valid. Its captured native child
      * is no longer the current same-name, same-size descriptor. */
     REQUIRE(pin_record_valid(alias) && !pin_record_fields_current(alias));
@@ -805,7 +948,7 @@ TEST_CASE(record_prepared_writer_cached_alias_rechecks_native_catalog)
     prepared_value(&writer, &header);
     REQUIRE(writer.wire.error && strstr(writer.wire.error, "incompatible"));
     REQUIRE(writer.wire.size == before);
-    type_catalog_set_project(&writer_native_packs[0]);
+    use_native_pack(0);
     REQUIRE(fresh_writer());
     prepared_value(&writer, &header);
     REQUIRE(!writer.wire.error && writer.wire.size);
@@ -818,7 +961,8 @@ TEST_CASE(record_prepared_writer_schema_keeps_native_layout_across_catalog_chang
     project_set = true;
     const type_field nested = { .name = "part",
                                 .type = PIN_STRUCT,
-                                .type_name = "RecordWriter.Native" };
+                                .type_name = "RecordWriter.Native",
+                                .layout = &writer_native_types[0] };
     REQUIRE(table_fields(&nested, 1));
     const pin_record *record = write_plan->types[0].record;
     pin_value original = { .type = PIN_STRUCT,
@@ -829,13 +973,13 @@ TEST_CASE(record_prepared_writer_schema_keeps_native_layout_across_catalog_chang
     REQUIRE(captured.record && captured.record != record && captured.record->frozen);
     REQUIRE(captured.schema && !captured.ptr);
     for (int cached = 0; cached < 2; cached++) {
-        type_catalog_set_project(&writer_native_packs[0]);
+        use_native_pack(0);
         REQUIRE(fresh_writer());
         if (cached) {
             prepared_value(&writer, &captured);
             REQUIRE(!writer.wire.error);
         }
-        type_catalog_set_project(&writer_native_packs[1]);
+        use_native_pack(1);
         REQUIRE(
             pin_record_valid(captured.record) &&
             !pin_record_fields_current(captured.record)
@@ -874,7 +1018,8 @@ TEST_CASE(record_prepared_writer_array_freshness_uses_outer_schema)
     project_set = true;
     const type_field nested = { .name = "part",
                                 .type = PIN_STRUCT,
-                                .type_name = "RecordWriter.Native" };
+                                .type_name = "RecordWriter.Native",
+                                .layout = &writer_native_types[0] };
     REQUIRE(table_fields(&nested, 1));
     const pin_record *record = write_plan->types[0].record;
     pin_value original = { .type = PIN_STRUCT,
@@ -896,7 +1041,7 @@ TEST_CASE(record_prepared_writer_array_freshness_uses_outer_schema)
     pin_value outer = captured;
     outer.container = PIN_CONTAINER_ARRAY;
     outer.ptr = &array;
-    type_catalog_set_project(&writer_native_packs[1]);
+    use_native_pack(1);
     REQUIRE(pin_record_valid(backing) && !pin_record_fields_current(backing));
     size_t before = writer.wire.size;
     prepared_value(&writer, &outer);
@@ -934,7 +1079,8 @@ TEST_CASE(record_prepared_owned_codec_retains_schema_after_native_retirement)
     project_set = true;
     const type_field nested = { .name = "part",
                                 .type = PIN_STRUCT,
-                                .type_name = "RecordWriter.Native" };
+                                .type_name = "RecordWriter.Native",
+                                .layout = &writer_native_types[0] };
     REQUIRE(table_fields(&nested, 1));
     const pin_record *record = write_plan->types[0].record;
     pin_value borrowed = { .type = PIN_STRUCT,
@@ -1449,10 +1595,10 @@ static bool table_image(int mode)
     const pin_record *r = write_plan->types[0].record;
     afree(w->data);
     *w = (execution_wire){ .storage = &write_plan->storage };
-    int types = mode == 8 || mode == 9 ? 2 : 1;
+    int types = mode == 8 || mode == 9 || mode == 18 ? 2 : 1;
     execution_wire_count(w, &types, 1);
     for (int t = 0; t < types; t++) {
-        uint64_t id = mode == 0 ? 0 : 91 + (mode == 9 && t ? 1 : 0);
+        uint64_t id = mode == 0 ? 0 : 91 + ((mode == 9 || mode == 18) && t ? 1 : 0);
         uint64_t layout = r->layout + (mode == 7);
         if (mode == 5) {
             type_field duplicate[12];
@@ -1464,7 +1610,7 @@ static bool table_image(int mode)
             REQUIRE(layout);
         }
         int kind = mode == 1 ? PIN_BOOL : PIN_STRUCT;
-        const char *name = mode == 8 && t ? "Rows.Other" : "Rows.Row";
+        const char *name = (mode == 8 || mode == 18) && t ? "Rows.Other" : "Rows.Row";
         size_t bytes = r->type.size + (mode == 6);
         execution_wire_u64(w, &id);
         execution_wire_u64(w, &layout);
@@ -1477,10 +1623,13 @@ static bool table_image(int mode)
         execution_wire_count(w, &count, 2);
         for (int i = 0; i < count; i++) {
             name = mode == 5 && i == 1 ? fields[0].name : fields[i].name;
-            kind = mode == 4 && i == 0 ? PIN_STRUCT : fields[i].type;
+            kind = (mode == 4 || mode >= 16) && i == 0 ? PIN_STRUCT : fields[i].type;
             execution_wire_string(w, &name);
             execution_wire_int(w, &kind);
             const char *type_name = r->type.fields[i].type_name;
+            if (mode >= 16 && i == 0) {
+                type_name = mode == 18 && !t ? "Rows.Other" : "Rows.Row";
+            }
             const char *unit = r->type.fields[i].unit;
             execution_wire_string(w, &type_name);
             execution_wire_string(w, &unit);
@@ -1489,6 +1638,14 @@ static bool table_image(int mode)
                 descriptor = !descriptor;
             }
             execution_wire_bool(w, &descriptor);
+            int container = mode == 14 && i == 0 ? PIN_CONTAINER_MAP
+                                                 : PIN_CONTAINER_SINGLE;
+            int child = mode == 15 && i == 0 ? 0 : -1;
+            if (mode >= 16 && i == 0) {
+                child = mode == 16 ? 0 : mode == 17 ? 1 : 1 - t;
+            }
+            execution_wire_int(w, &container);
+            execution_wire_int(w, &child);
         }
     }
     return true;
@@ -1496,7 +1653,9 @@ static bool table_image(int mode)
 TEST_CASE(record_prepared_table_rejections)
 {
     REQUIRE(table());
-    for (int mode = 0; mode < 14; mode++) {
+    /* Invalid containers, scalar child refs, self/out-of-range child refs and
+     * a two-type child cycle must all fail before publishing a layout. */
+    for (int mode = 0; mode < 19; mode++) {
         REQUIRE(table_image(mode));
         REQUIRE(!writer.wire.error);
         read_plan = execution_module_plan_new();
@@ -1951,6 +2110,8 @@ void test_language_record_prepared_runtime()
     RUN_TEST_CASE(record_prepared_scalar_owners);
     RUN_TEST_CASE(record_prepared_array_owners);
     RUN_TEST_CASE(record_prepared_shared_headers_fit_default_work);
+    RUN_TEST_CASE(record_prepared_shared_flat_metadata_fits_default_write_work);
+    RUN_TEST_CASE(record_prepared_rejects_mismatched_authored_child_identity);
     RUN_TEST_CASE(record_prepared_dependency_headers_fit_bounded_work);
     RUN_TEST_CASE(record_prepared_writer_revalidates_distinct_layouts_and_attempts);
     RUN_TEST_CASE(record_prepared_writer_resolver_owns_header_refusal);

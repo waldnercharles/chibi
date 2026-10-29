@@ -54,6 +54,13 @@ endforeach()
 configure_file(core_strings_tests_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/core_strings_tests_source.h" @ONLY)
 
+set(compositional_records_source "${CHIBI_LANGUAGE_TEST_ROOT}/test/language/fixtures/compositional_records/Values.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${compositional_records_source}")
+file(READ "${compositional_records_source}" compositional_records_hex HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_COMPOSITIONAL_RECORDS_BYTES "${compositional_records_hex}")
+configure_file(compositional_records_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/compositional_records_source.h" @ONLY)
+
 set(integer_arithmetic_source "${CHIBI_LANGUAGE_TEST_ROOT}/test/integer_arithmetic/Arithmetic.chibi")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${integer_arithmetic_source}")
 file(READ "${integer_arithmetic_source}" CHIBI_INTEGER_ARITHMETIC_HEX HEX)
@@ -267,8 +274,8 @@ target_link_libraries(test_behavior_consumer PRIVATE Chibi::behavior_runtime)
 target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 # The backend-specific fixtures inspect private activation storage. Other tests
 # continue to compile solely against their public SDK dependencies.
-set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_publication.c outliner_projection.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c query_values.c query_migration.c program.c capture.c maps.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
-add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c query_values.c query_migration.c incremental.c operations.c modules.c native_calls.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
+set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_publication.c outliner_projection.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c query_values.c program.c capture.c maps.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c query_values.c incremental.c operations.c modules.c native_calls.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 target_sources(test_language PRIVATE host_packages.c host_packages_compiler.c)
 target_link_libraries(test_language PRIVATE Chibi::host_clock)
 set_source_files_properties(host_packages_compiler.c
@@ -293,8 +300,12 @@ foreach(part TIME:packages/core/time/Time.chibi TIME_TEST:test/standard_library/
 endforeach()
 configure_file(host_packages_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/host_packages_source.h" @ONLY)
+
 # Package tests consume the owning SDK implementation; extraction stays private.
 target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_tests.c package_graph_chibi.c docs_markdown.c)
+target_sources(test_language PRIVATE compositional_records.c)
+set_source_files_properties(compositional_records.c
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_sources(test_language PRIVATE argument_effects_chibi.c)
 set_source_files_properties(argument_effects_chibi.c package_tests.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::tasks)
@@ -305,9 +316,9 @@ if(TARGET Chibi::task_pool_runtime)
     target_compile_definitions(test_language PRIVATE CHIBI_PACKAGE_TEST_POOL=1)
 endif()
 target_sources(test_language PRIVATE syntax_corpus.c syntax_chibi.c compiler_fixture.c package_syntax_chibi.c package_paths_chibi.c)
-target_sources(test_language PRIVATE source_tokenizer_chibi.c)
+target_sources(test_language PRIVATE source_tokenizer_chibi.c source_parser_chibi.c)
 # The tokenizer differential reads the checked-in sources at run time.
-set_source_files_properties(source_tokenizer_chibi.c
+set_source_files_properties(source_tokenizer_chibi.c source_parser_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
     COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
 target_sources(test_language PRIVATE package_routes_chibi.c package_snapshot_chibi.c)
@@ -432,11 +443,6 @@ foreach(root IN LISTS corpus_roots)
     file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CHIBI_LANGUAGE_TEST_ROOT}/${root}/*.chibi")
     list(APPEND corpus ${sources})
 endforeach()
-# These originals intentionally retain historical declarations for the dedicated
-# project_declarations.c migration checks; they are not canonical corpus inputs.
-list(REMOVE_ITEM corpus
-    "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/studio-declarations/OutlinerRows.chibi"
-    "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/studio-declarations/VirtualList.chibi")
 foreach(root IN LISTS CHIBI_LANGUAGE_CORPUS_PROJECTS)
     if(NOT IS_ABSOLUTE "${root}" OR NOT IS_DIRECTORY "${root}")
         message(FATAL_ERROR "Language corpus project must be an existing absolute directory: ${root}")

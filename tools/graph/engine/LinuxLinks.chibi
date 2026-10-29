@@ -179,7 +179,6 @@ pub LinuxLinks :: (target: string) -> string[] {
             "chibi_tilemap_runtime", "chibi_shader_runtime", "chibi_platform", "chibi_asset_text",
             "chibi_asset_json", "chibi_asset_text", "chibi_ui_document", "chibi_fmt", "chibi_particle_runtime",
             "chibi_platform", "chibi_project_document", "chibi_text_source", "chibi_asset_text",
-            "chibi_project_document", "chibi_language_syntax", "chibi_authoring", "chibi_json",
             "chibi_renderer", "chibi_shader_preparation", "chibi_graph_compilation", "chibi_graph_authoring",
             "chibi_project_preparation", "chibi_image_preparation", "chibi_model_authoring",
             "chibi_shader_preparation", "chibi_mesh_runtime", "chibi_graph_authoring",

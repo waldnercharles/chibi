@@ -165,6 +165,15 @@ The C API borrows it through `chibi_build_options.compiler`; reuse it sequential
 and reload it after compiler source edits. Release it with
 `chibi_build_compiler_free`.
 
+When changing the prepared format, the checked bootstrap cannot yet run on the
+new runtime. `make bootstrap-artifact` first builds the compiler-only SDK language
+driver with `CHIBI_SDK_BUILD_NATIVE=OFF`, `CHIBI_SDK_BUILD_DESKTOP=OFF` and
+`CHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF`. Native authoring depends on the
+generated asset service, so it is built after the matching bootstrap exists.
+The recovery driver omits that component and retains artifact validation.
+After regeneration the target builds the real asset compiler with the component
+enabled, its default, before SDK or product validation.
+
 Build-program compilation invokes `CompileClosureWithEffects`, or
 `CompileWithEffects` for rejection diagnostics. Their first twelve arguments
 match the existing `Compile`/`CompileClosure` bootstrap contract; argument thirteen
@@ -243,7 +252,7 @@ the graph's commands equal CMake's again.
 ### Linux native graph
 
 Linux uses the same default graph for native products and the full
-tooling/language test drivers. For a fast Debug O1 build with Release generators:
+tooling/language test drivers. `make build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `ASSET_GENERATOR_HOSTS=DIR` names other hosts. For a fast Debug O1 build with Release generators:
 
 ```sh
 make build-release BUILD_TARGET='chibi chibi_ctl chibi-build-host chibi-compiler-host'
@@ -598,7 +607,7 @@ identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 platform, processors and backends, and each of `ArtifactFormats`' versions
 with the SHA-256 of the sources and headers that own it. A target's
 `SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
-ROOT by absolute path, byte-sorted, without its `Unlisted` sources, as
+ROOT by absolute path, byte-sorted, as
 `test/language/CMakeLists.txt` writes the language corpus `test_language`
 reads.
 Every run
@@ -987,7 +996,7 @@ that their `.chibi-record` link records name:
 make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
 build-release/sdk/chibi-build-host --root "$PWD" \
   --source tools/toolchain/SDK.chibi --core packages/core \
-  --entry CompilerTools --timeout-ms 120000 -- \
+  --collection graph=tools/graph --entry CompilerTools --timeout-ms 120000 -- \
   --build "$PWD/build-release" --output "$PWD/dist/compiler-tools" \
   --third-party /absolute/path/to/the/pinned/archive
 ```

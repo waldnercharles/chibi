@@ -1,0 +1,114 @@
+package constructs
+
+import "project:other"
+import alias "core:strings"
+
+@test
+@other
+pub Check :: (a: int, b: int = 3, $T, c: [string: int], d: ^int, e: int[]?, f: view int[]) -> (x: int, y: bool) {
+    r := a + b * 2 - 1 / 3 % 4
+    s: int = (a << 2) >> 1
+    t := a < b and b <= a or not (a == b)
+    u := a != b && a >= b || a > b
+    v := a | b ^ c & d
+    w := a ?? b ?? c
+    k := m["a"]
+    k2 := m[1 ..< 3]
+    z := x not in y
+    q := x in y
+    cast := x as int
+    test := x is Foo
+    test2 := x is not Foo y
+    test3 := x is .Variant(p, q)
+    p := &a
+    p^ = 3
+    arr := [1, 2, 3,]
+    mp := ["a": 1, "b": 2]
+    em := [:]
+    lit := {a: 1, b: 2,}
+    flag := true
+    nothing := nil
+    ch := 'x'
+    f(a, b: 2, c.d: 3, e: int = 4, g: int from src, 1 ..< 2)
+    emit target.Event(1)
+    emit Event(2)
+    n := await task()
+    label:
+    goto label
+    delete m["a"]
+    cancel handle after 3
+    yield
+    reduce unordered total += 1
+    reduce min(best, value)
+    for i in 0 .. 10 {
+        continue
+    }
+    for i in 0 ..< n {
+        break
+    }
+    for < i in 0 .. 5 {
+    }
+    for (i in 0 .. 3) {
+    }
+    for k, &v in items {
+    }
+    for item in items {
+    }
+    while a < b {
+        a += 1
+        a -= 1
+        a *= 2
+        a /= 2
+        a %= 2
+        a &= 2
+        a |= 2
+        a ^= 2
+    }
+    switch x {
+        case .A(p, q): {
+            return
+        }
+        case 1:
+            a = 2
+            b = 3
+        case:
+            return .Ok (1, 2)
+    }
+    sequence {
+        branch {
+            a = 1
+        }
+        branch {
+            a = 2
+        }
+    }
+    if a {
+        return (1, 2)
+    } else if b {
+        return (a + b) * 2
+    } else {
+        return
+    }
+    return;
+}
+
+Point :: struct {
+    x: int = 0
+    y: int
+}
+
+pub Shape :: union {
+    Circle(radius: int) | Square(side: int) | "literal" | Plain
+}
+
+Gen :: struct (T: type) {
+    item: T
+}
+
+LIMIT :: 10
+typed: int : 5
+count := 0
+level: int = 3
+macro Helper (x: int) {
+    return
+}

@@ -288,6 +288,8 @@ void script_analyzer_publish_type(analyzer *, script_catalog_type);
 void script_analyzer_replace_type(analyzer *, script_catalog_type);
 void script_analyzer_record_types(analyzer *, TSNode);
 void script_analyzer_record_fields(analyzer *, TSNode);
+void script_analyzer_record_layouts(analyzer *, TSNode);
+const pin_record *script_analyzer_record_layout_for_type(analyzer *, script_type, TSNode);
 bool script_analyzer_compile_time_value(analyzer *, int, int *steps, bool scalar);
 const char *script_analyzer_scalar_constant(analyzer *, int, pin_type, pin_value *);
 void script_analyzer_check_constants(analyzer *);

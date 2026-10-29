@@ -1,0 +1,8 @@
+Lib :: library {
+    Rec :: struct {
+        a: int
+    }
+    Fn :: (a: int) -> m/s {
+        return a
+    }
+}

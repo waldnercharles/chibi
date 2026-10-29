@@ -1,0 +1,85 @@
+name: Temporary native emitter counts
+run-name: "Native emitter counts only · frozen 88c4f956"
+
+# One bounded experiment branch, not required CI or a permanent benchmark.
+on:
+  push:
+    branches: [codex/native-emitter-counts-20261029]
+    paths:
+      - .github/workflows/native-emitter-counts.yml
+      - .github/native-emitter-diagnostic.py
+      - .github/native_emitter_counts.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-emitter-counts-20261029
+  cancel-in-progress: false
+
+jobs:
+  count:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+    env:
+      CHIBI_CI_SANITIZERS: 'OFF'
+      CC: clang-18
+      CXX: clang++-18
+      GH_TOKEN: ${{ github.token }}
+      XDG_RUNTIME_DIR: /tmp/chibi-runtime
+      SDL_AUDIODRIVER: dummy
+      UBSAN_OPTIONS: halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: diagnostic
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          ref: 88c4f9564dbad4e6ae239d5de1f4ffbdde715504
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Select the ordinary fast CI native profile
+        run: python3 .github/native-profile.py
+      - name: Install the ordinary build dependencies and tracing tool
+        run: |
+          python3 .github/install-ubuntu-dependencies.py ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 strace \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv /tmp/cmake
+          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo /tmp/cmake/bin >> "$GITHUB_PATH"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Configure compiler cache
+        id: ccache-config
+        run: python3 .github/native-ccache.py
+      - name: Restore compiler objects without publishing a cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-config.outputs.prefix }}-${{ github.sha }}
+          restore-keys: |
+            ${{ steps.ccache-config.outputs.prefix }}-
+            ${{ steps.ccache-config.outputs.compatibility-prefix }}-
+      - name: Build the ordinary Release helpers
+        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Build the ordinary Debug O1 products and test drivers
+        run: make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Verify profile, assertions, runtime coverage and executed links
+        run: python3 .github/verify-native-profile.py
+      - name: Count one baseline and one candidate full suite
+        run: >-
+          python3 ../diagnostic/.github/native-emitter-diagnostic.py
+          "$PWD" "$RUNNER_TEMP/emitter-count-summary.json"
+      - name: Preserve only bounded count and identity summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: emitter-counts-${{ github.run_id }}
+          path: ${{ runner.temp }}/emitter-count-summary.json
+          if-no-files-found: error
+          retention-days: 7

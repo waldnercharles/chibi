@@ -1,0 +1,93 @@
+package encoding_hex
+
+import bytes "core:bytes"
+import strings "core:strings"
+
+// RFC 4648 base16, implemented directly from its encoding rules.
+// The encoding helpers use lowercase or the RFC's uppercase alphabet.
+// Every operation takes O(n) time. Encoding fills one byte buffer, then copies
+// it to an independent string. Decoding allocates only its output bytes.
+pub InvalidCharacter: int : 1;
+pub InvalidLength: int : 2;
+pub OutputTooLarge: int : 3;
+
+pub Error :: struct {
+    kind: int;
+    offset: int;
+}
+
+EncodedSize :: (count: int) -> int {
+    if (count < 0 || count > 1073741823) {
+        return -1;
+    }
+    return count * 2;
+}
+
+EncodeWithAlphabet :: (data: u8[], alphabet: string) -> (text: string, error: Error?) {
+    size := EncodedSize(length(data));
+    if (size < 0) {
+        failed: Error = {kind: OutputTooLarge, offset: -1};
+        return ("", failed);
+    }
+    out := resize([u8(0)], size);
+    index: int = 0;
+    while (index < length(data)) {
+        value := int(data[index]);
+        out[index * 2] = u8(strings.ByteAt(alphabet, value >> 4));
+        out[index * 2 + 1] = u8(strings.ByteAt(alphabet, value & 15));
+        index += 1;
+    }
+    return (bytes.ToString(out), nil);
+}
+
+Digit :: (value: int) -> int {
+    if (value >= 48 && value <= 57) {
+        return value - 48;
+    }
+    if (value >= 65 && value <= 70) {
+        return value - 65 + 10;
+    }
+    if (value >= 97 && value <= 102) {
+        return value - 97 + 10;
+    }
+    return -1;
+}
+
+// No prefixes, separators, whitespace or padding are accepted. Check digits
+// before checking pair completeness, reporting the first invalid byte. A
+// missing final digit reports the input length. Rejection returns no bytes.
+pub Decode :: (text: string) -> (data: u8[], error: Error?) {
+    size := strings.ByteLength(text);
+    index: int = 0;
+    while (index < size) {
+        if (Digit(strings.ByteAt(text, index)) < 0) {
+            failed: Error = {kind: InvalidCharacter, offset: index};
+            return ([], failed);
+        }
+        index += 1;
+    }
+    if (size % 2 != 0) {
+        failed: Error = {kind: InvalidLength, offset: size};
+        return ([], failed);
+    }
+    out := resize([u8(0)], size / 2);
+    index = 0;
+    while (index < size) {
+        high := Digit(strings.ByteAt(text, index));
+        low := Digit(strings.ByteAt(text, index + 1));
+        out[index / 2] = u8((high << 4) | low);
+        index += 2;
+    }
+    return (out, nil);
+}
+
+// Output size errors have offset -1. Allocation follows runtime policy.
+pub Encode :: (data: u8[]) -> (text: string, error: Error?) {
+    result := EncodeWithAlphabet(data, "0123456789abcdef");
+    return (result.text, result.error);
+}
+
+pub EncodeUpper :: (data: u8[]) -> (text: string, error: Error?) {
+    result := EncodeWithAlphabet(data, "0123456789ABCDEF");
+    return (result.text, result.error);
+}

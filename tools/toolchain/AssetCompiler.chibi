@@ -32,7 +32,7 @@ pub Build :: () -> int {
         build.report("usage: HOST OUTPUT_DIRECTORY [TARGET_JSON] [--compiler-timeout-ms=POSITIVE_MS]");
         return 2;
     }
-    compiler_timeout := "180000";
+    compiler_timeout := "600000";
     target_argument: int = -1;
     if (length(arguments) == 3) {
         if (strings.HasPrefix(arguments[2], "--compiler-timeout-ms")) {

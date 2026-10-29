@@ -373,7 +373,7 @@ TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity)
     tool_write(
         filename,
         "#!/bin/sh\nset -eu\n"
-        "if [ \"$1\" = --protocol-version ]; then echo 13; exit 0; fi\n"
+        "if [ \"$1\" = --protocol-version ]; then echo 14; exit 0; fi\n"
         "while [ $# -gt 0 ]; do\n"
         " if [ \"$1\" = --build ]; then\n"
         "  mkdir -p \"$2\"\n"
@@ -534,7 +534,7 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     const char
         *host = "#!/bin/sh\nset -eu\n"
                 "if [ \"$1\" = --protocol-version ]; then\n"
-                " if [ -f \"$0.old\" ]; then echo 12; else echo 13; fi\n "
+                " if [ -f \"$0.old\" ]; then echo 13; else echo 14; fi\n "
                 "exit 0\nfi\n"
                 "test \"$CCACHE_BASEDIR\" = \"$PWD\"\n"
                 "printf 'graph\\n' >> calls\n"

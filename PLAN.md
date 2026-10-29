@@ -777,7 +777,7 @@ entry. All four SDK/runtime/browser/player callers retain the same native host
 executable path. Windows retains `tools/reflect/CMakeLists.txt` with its restricted
 C-only SDK profile until its graph/process and dependency proof is available.
 The first host is still recovered through the compiler-only SDK CMake project
-when no protocol-13 host is available. `resource.cmake` remains a
+when no protocol-14 host is available. `resource.cmake` remains a
 live root-reference dependency. The responsibility/deletion map is in
 [`docs/toolchain-inventory.md`](docs/toolchain-inventory.md#cmake-retirement-boundaries-2026-10-28).
 Local macOS arm64 validation: clean graph reflection compiles 30 sources in

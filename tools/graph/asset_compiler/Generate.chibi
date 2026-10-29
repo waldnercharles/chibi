@@ -160,15 +160,27 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
     return true;
 }
 
-// A compiled product depends only on its request and the seed that compiles
-// it, so it is kept under their digest in `cache`: a build whose sources did
-// not change copies it instead of compiling the compiler's sources again.
-Key :: (seed: string, request: string) -> string {
-    return build.hash_text(Join([build.hash_file(seed), "\n", request]));
+// The seed calls native functions in the executing host, including its parser.
+// Target ABI facts do not identify those implementations. Hash the host bytes
+// as well as the seed and request before reusing a compiled product.
+Key :: (host: string, seed: string, request: string) -> string {
+    host = build.find_executable(host);
+    if (host == "") {
+        return "";
+    }
+    host_hash := build.hash_file(host);
+    seed_hash := build.hash_file(seed);
+    if (host_hash == "" || seed_hash == "") {
+        return "";
+    }
+    return build.hash_text(Join([host_hash, "\n", seed_hash, "\n", request]));
 }
 
 Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
             cache: string, timeout: string, inputs: string) -> bool {
+    if (key == "") {
+        return false;
+    }
     stored := Join([cache, "/", key]);
     if (build.file_exists(stored)) {
         return build.copy_file(stored, output);
@@ -205,6 +217,10 @@ Prune :: (cache: string, keep: string[]) {
 // a killed or crashed host may not publish them.
 pub Generate :: (root: string, host: string, folder: string, target: string, compiler_timeout: string) -> bool {
     build.report("asset compiler: entered generator");
+    host = build.find_executable(host);
+    if (host == "") {
+        return false;
+    }
     inventory := Inventory(root);
     records: string[] = [];
     stamps: string[] = [];
@@ -268,7 +284,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     cache := Join([root, "/.chibi/asset-compiler-cache"]);
     build.report("asset compiler: serialize facade request");
     facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target, true);
-    facade_key := Key(seed, facade_request);
+    facade_key := Key(host, seed, facade_request);
     kept := [facade_key];
     build.report("asset compiler: invoke facade compiler");
     if (!Product(host, seed, closure_entry, facade_request, facade_key, facade, cache, compiler_timeout, inputs)) {
@@ -282,7 +298,7 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     } else {
         build.report("asset compiler: serialize target request");
         target_request := Request("asset_compiler/Compile.chibi", paths, sources, target, true);
-        target_key := Key(seed, target_request);
+        target_key := Key(host, seed, target_request);
         kept.append(target_key);
         build.report("asset compiler: invoke target compiler");
         if (!Product(host, seed, closure_entry, target_request, target_key, artifact, cache, compiler_timeout, inputs)) {

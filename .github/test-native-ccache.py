@@ -141,6 +141,9 @@ class CacheTests(unittest.TestCase):
         asset_guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.asset-cache.outputs.cache-hit != 'true'"
         self.assertEqual(workflow.count(asset_guard), 2)
         self.assertEqual(workflow.count('path: .chibi/asset-compiler-cache'), 5)
+        self.assertEqual(workflow.count('key: asset-compiler-v2-${{ runner.os }}-${{ github.sha }}'), 5)
+        self.assertEqual(workflow.count('restore-keys: asset-compiler-v2-${{ runner.os }}-'), 3)
+        self.assertNotIn('key: asset-compiler-${{ runner.os }}-', workflow)
         self.assertNotIn('key: ${{ steps.ccache-config.outputs.compatibility-prefix }}', workflow)
         self.assertNotIn('pull_request_target:', workflow)
         guard = "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true'"

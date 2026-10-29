@@ -1092,6 +1092,62 @@ TEST_CASE(asset_generator_source_lists_bounded_ordered_phases)
     return true;
 }
 
+TEST_CASE(asset_compiler_cache_tracks_host_implementation)
+{
+    char generator[GRAPH_PATH], check[GRAPH_PATH], program[GRAPH_PATH],
+        work[GRAPH_PATH];
+    join(generator, CHIBI_SOURCE_ROOT, "tools/graph/asset_compiler/Generate.chibi");
+    join(check, CHIBI_SOURCE_ROOT, "test/tools/AssetCompilerCache.chibi");
+    char *source = tool_read(generator), *fixture = tool_read(check);
+    REQUIRE(source && fixture);
+    /* Exercise the private helpers, without adding public testing APIs. */
+    const char *body = strchr(fixture, '\n');
+    REQUIRE(body);
+    size_t size = strlen(source) + strlen(body) + 1;
+    char *combined = malloc(size);
+    assert(combined);
+    snprintf(combined, size, "%s%s", source, body);
+    join(program, suite, "AssetCompilerCache.chibi");
+    tool_write(program, combined);
+    free(combined);
+    free(fixture);
+    free(source);
+    join(work, suite, "asset-cache");
+    REQUIRE(!mkdir(work, 0700));
+    const char *argv[] = { host_path,
+                           "--root",
+                           CHIBI_SOURCE_ROOT,
+                           "--source",
+                           program,
+                           "--core",
+                           "packages/core",
+                           "--entry",
+                           "CacheCheck",
+                           "--timeout-ms",
+                           "30000",
+                           "--",
+                           work,
+                           NULL };
+    int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, 30);
+    char *log = tool_read(log_path);
+    REQUIRE(log);
+    fputs(log, stdout);
+    free(log);
+    REQUIRE(!status);
+    return true;
+}
+
+void test_asset_compiler_cache(const char *host)
+{
+    assert(strlen(host) < sizeof host_path);
+    strcpy(host_path, host);
+    strcpy(suite, "/tmp/chibi-asset-cache-XXXXXX");
+    assert(mkdtemp(suite));
+    join(log_path, suite, "cache.log");
+    RUN_TEST_CASE(asset_compiler_cache_tracks_host_implementation);
+    tool_remove_tree(suite);
+}
+
 TEST_CASE(discovery_without_a_compiler_driver)
 {
     char root[GRAPH_PATH], driver_root[GRAPH_PATH], driver[GRAPH_PATH],

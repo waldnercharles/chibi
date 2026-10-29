@@ -95,6 +95,7 @@ void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
 void test_build_graph(const char *host);
 void test_build_graph_link_response(const char *host);
+void test_asset_compiler_cache(const char *host);
 void test_build_graph_support(const char *host);
 void test_build_graph_reflect(const char *host);
 void test_build_graph_generated(const char *host);
@@ -466,11 +467,16 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if (argc == 3 && !strcmp(argv[1], "--build-graph-link-response")) {
+    if (argc == 3 && (!strcmp(argv[1], "--build-graph-link-response") ||
+                      !strcmp(argv[1], "--asset-compiler-cache"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
-        test_build_graph_link_response(argv[2]);
+        if (!strcmp(argv[1], "--asset-compiler-cache")) {
+            test_asset_compiler_cache(argv[2]);
+        } else {
+            test_build_graph_link_response(argv[2]);
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

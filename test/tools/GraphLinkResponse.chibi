@@ -80,6 +80,7 @@ Build :: () -> int {
     empty_command := c.LinkCommand(tools, empty_output, [object], empty_flags, []);
     direct_status := build.run(empty_command);
     response_status := c.Link(tools, empty_output, [object], empty_flags, []);
+    build.report(format_text("empty link: direct {0}, response {1}", direct_status, response_status));
     if (!Check((direct_status == 0 && response_status == 1) || (direct_status != 0 && response_status == -1),
         "empty argument transport changed driver semantics")) {
         return 25;
@@ -106,7 +107,6 @@ Build :: () -> int {
         "empty argument response cleanup failed")) {
         return 29;
     }
-    build.report(format_text("empty link: direct {0}, response {1}", direct_status, response_status));
 
     // Empty option operands must stay between their surrounding response runs.
     captured := tools;
@@ -119,11 +119,15 @@ Build :: () -> int {
     for (i in 0..<8) {
         operand_flags.append(build.join(["-L", search_dir], ""));
     }
-    operand_flags.extend(["-L", "", ""]);
+    operand_flags.extend(["-B", "", ""]);
     operand_direct := c.LinkCommand(tools, operand_output, [object], operand_flags, []);
     operand_command := c.LinkCommand(captured, operand_output, [object], operand_flags, []);
-    if (!Check(build.run(operand_direct) == 0 && c.Link(captured, operand_output, [object], operand_flags,
-        []) == 1 && build.run([operand_output]) == 37, "empty -L operand changed link semantics")) {
+    operand_direct_status := build.run(operand_direct);
+    operand_response_status := c.Link(captured, operand_output, [object], operand_flags, []);
+    build.report(format_text("empty -B operand: direct {0}, response {1}", operand_direct_status,
+        operand_response_status));
+    if (!Check(operand_direct_status == 0 && operand_response_status == 1 &&
+        build.run([operand_output]) == 37, "empty -B operand changed link semantics")) {
         return 32;
     }
     if (!TransportMatches(root, operand_command, 2)) {
@@ -163,14 +167,19 @@ Build :: () -> int {
         return 40;
     }
 
-    // Short runs must not grow into long response paths around many empties.
+    // Short runs test argument count and byte admission around many empties.
     tiny_output := build.join([quoted, "/many empty runs"], "");
     tiny_flags := slice(flags, 0, length(flags));
     for (i in 0..<64) {
-        tiny_flags.extend(["-L", ""]);
+        tiny_flags.extend(["-B", ""]);
     }
+    tiny_direct := c.LinkCommand(tools, tiny_output, [object], tiny_flags, []);
     tiny_command := c.LinkCommand(captured, tiny_output, [object], tiny_flags, []);
-    if (!Check(c.Link(captured, tiny_output, [object], tiny_flags, []) == 1 && build.run([tiny_output]) == 37 &&
+    tiny_direct_status := build.run(tiny_direct);
+    tiny_response_status := c.Link(captured, tiny_output, [object], tiny_flags, []);
+    build.report(format_text("tiny empty operands: direct {0}, response {1}", tiny_direct_status,
+        tiny_response_status));
+    if (!Check(tiny_direct_status == 0 && tiny_response_status == 1 && build.run([tiny_output]) == 37 &&
         TransportMatches(root, tiny_command, 64),
         "short empty-separated arguments changed admission or semantics")) {
         return 41;

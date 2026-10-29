@@ -2246,7 +2246,7 @@ TEST_CASE(link_response_files_preserve_commands_and_recover)
     REQUIRE(doc);
     arguments = yyjson_obj_get(yyjson_doc_get_root(doc), "arguments");
     bool retained_operand = yyjson_arr_size(arguments) == 16 &&
-                            !strcmp(yyjson_get_str(yyjson_arr_get(arguments, 10)), "-L") &&
+                            !strcmp(yyjson_get_str(yyjson_arr_get(arguments, 10)), "-B") &&
                             !strcmp(yyjson_get_str(yyjson_arr_get(arguments, 11)), "") &&
                             !strcmp(yyjson_get_str(yyjson_arr_get(arguments, 12)), "");
     yyjson_doc_free(doc);

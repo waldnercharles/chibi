@@ -3,6 +3,103 @@
 Run `chibi` from an installed SDK or use `build/sdk/chibi` in an engine checkout.
 The command finds the compiler, player and engine resources beside itself.
 
+## Run a program
+
+Create `Hello.chibi`:
+
+```chibi
+package hello
+
+Main :: () {
+    print_string("Hello, world!")
+}
+```
+
+Run it with either command:
+
+```sh
+chibi Hello.chibi
+chibi run Hello.chibi
+```
+
+The program prints `Hello, world!` and exits. The runner calls `Main` once.
+`Main` is an ordinary function; only the program runner calls it automatically.
+It must take no arguments and return either nothing or an `int` exit status
+from 0 to 255. Returning nothing means success, exit status 0.
+
+Read command-line arguments with `application.arguments()`. The returned
+`string[]` includes the resolved source file or package directory at index 0,
+followed by the arguments passed to the program. Replace the Hello World
+program's `Main` with this function:
+
+```chibi
+Main :: () {
+    arguments := application.arguments()
+    if length(arguments) > 1 {
+        print_string(arguments[1])
+    }
+}
+```
+
+Run this version with `chibi Hello.chibi -- Ada` to print `Ada`. `Main` still
+takes no parameters; `--` separates program arguments from command options.
+
+Every source file must start with `package NAME`. Running a file compiles only
+the selected file and the core library, so unrelated sibling files do not
+affect it. It can import SDK packages with `core:NAME`.
+
+When a program spans several files, run its package directory:
+
+```sh
+chibi .
+```
+
+This includes the package's sibling source files and supports local package
+imports with `project:NAME`, alongside `core:NAME` imports. A directory with
+`project.kdl` runs its game instead.
+
+With no path, `chibi run` finds the nearest `project.kdl` in or above the working
+directory. If there is none, it runs the package in the working directory.
+
+## Reload a program
+
+Add `--watch` to keep the process open after `Main` returns:
+
+```sh
+chibi --watch Hello.chibi
+chibi run --watch Hello.chibi
+chibi Hello.chibi --watch
+```
+
+Each accepted source change replaces the program and calls `Main` again.
+Use `retain` for a value that should survive those replacements:
+
+```chibi
+package hello
+
+Main :: () {
+    count: retain int = 0
+    count += 1
+    print_string(format_text("Run {}", count))
+}
+```
+
+The first call prints `Run 1`. Change the message to `"Reloaded {}"` and save;
+the next call prints `Reloaded 2`. The retained `count` keeps its value while
+ordinary locals initialize again. Changed retained types follow the existing
+[state conversion and reset rules](../code-language.md#behaviors-and-state).
+
+Invalid source, or a missing or invalid `Main`, reports diagnostics and keeps
+the last valid program and its state. A later valid edit replaces that version.
+File targets watch the selected source and core library. Directory targets also
+watch sibling files and local package sources. Use `chibi --watch .` for a
+program that spans several files.
+
+`Main` must finish synchronously; it cannot suspend or start tasks. Reloads
+apply between completed calls, so an edit cannot interrupt a busy `Main`.
+Press Ctrl-C to stop watching. `--watch` applies to standalone programs, not
+game projects.
+
 ## Build and run
 
 PROJECT is a project folder or its `project.kdl`. Without a path, these
@@ -13,6 +110,8 @@ chibi check /path/to/game
 chibi build /path/to/game
 chibi run /path/to/game
 ```
+
+`chibi /path/to/game` also runs a game folder containing `project.kdl`.
 
 `check` checks the project without writing files. `build` writes
 `.chibi/build/game.chibip`. `run` builds changed content and starts the player.
@@ -33,7 +132,7 @@ with the following files. Hold A or D to move the blue square.
 ### project.kdl
 
 ```kdl
-version 35
+version 39
 name "My Game"
 content "content"
 start_scene "scenes/Start.kdl"
@@ -41,7 +140,7 @@ start_scene "scenes/Start.kdl"
 
 The start scene path is relative to the content folder. The manifest version
 must match the project format printed by your chosen SDK's `chibi version`.
-This example uses format 33. Use an SDK that supports that format.
+This example uses format 39. Use an SDK that supports that format.
 
 ### content/scenes/Start.kdl
 
@@ -147,6 +246,49 @@ chibi test /path/to/packages
 The folder contains package files, rather than game behaviors or libraries.
 Tests import local packages with `project:NAME` and SDK packages with `core:NAME`.
 See [Testing](testing.md) for a complete example.
+
+## The CLI is a Chibi program
+
+[apps/chibi/Main.chibi](../../apps/chibi/Main.chibi) is an ordinary package
+entry point. The native [launcher](../../src/host/chibi_main.c) locates its
+installed source and the SDK's core library, then starts it through the same
+application host used by other programs. Argument parsing, command selection,
+output, build freshness and watch policy live in the authored package.
+
+From the engine checkout, run or test that package directly:
+
+```sh
+chibi apps/chibi -- version
+chibi test apps/chibi
+```
+
+The nested CLI receives its own argument vector through
+`application.arguments()`. Its tests run through the shared `program.test`
+service, with the same explicit application catalog and services. The CLI and
+other applications use the same program API.
+
+The [program service](../../src/authoring/program_service.h) has six operations:
+
+| Operation | Result |
+| --- | --- |
+| `program.open(path, entry, arguments)` | An owned program handle with a copied argument vector. Source errors are reported by `update`. |
+| `program.update(handle)` | `1` when a changed generation is accepted, `0` when unchanged, or `-1` for a new failure. |
+| `program.call(handle)` | Separate `status` and `result` values. Status 0 means execution succeeded; result is the authored integer return, or 0 for no return value. |
+| `program.diagnostic(handle)` | The current source or runtime diagnostic. |
+| `program.close(handle)` | Releases the session and its generations; a closed handle cannot name another program. |
+| `program.test(path)` | Runs package `@test` functions and returns 0 on success or 1 on failure. |
+
+An invalid update preserves the accepted program and retained state. A valid
+update uses the runtime's existing replacement and migration rules before the
+next call. Call failures and an authored nonzero return are separate results;
+hosts can report a diagnostic without confusing it with the program's exit
+value.
+
+Native hosts can use the exported [authoring/program.h](../../src/authoring/program.h)
+session API directly. It accepts package snapshots built from source buffers,
+an explicit native catalog and service bindings, and reports source-range
+diagnostics. A Studio integration can supply editor buffers through this
+boundary and consume its diagnostics without launching a command process.
 
 ## Build native programs
 
@@ -371,6 +513,6 @@ Each command accepts `--help`.
 Linux and macOS support all commands, except `build --native`, which runs on
 Linux only. It builds programs for Linux x86-64, macOS arm64 and Windows x64.
 
-TODO: Windows support for reading package sources in `test` and `doc`.
+TODO: Windows support for `doc`.
 
 TODO: Windows support for the local server in `web` and `doc --serve`.

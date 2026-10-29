@@ -7,6 +7,86 @@
 
 # Chibi toolchain consolidation and self-hosting
 
+## Ordinary Chibi CLI application and shared program sessions, 2026-10-28
+
+The owner approved making the public CLI an ordinary Chibi application with
+Main and a shared compiler/runtime interface. The isolated branch
+codex/chibi-main-app-20261028 started at 2c6d3ed5c and now includes accepted
+origin/main a253ef4b5, including SDK VERSION and compiler reachability changes.
+The original checkout and its tracked/untracked edits remain byte-identical.
+Earlier native and private authored-runner checkpoints are preserved under
+.chibi/main-runner-reload; ordinary-cli-pre-reachability-forward-port preserves
+the candidate before the latest accepted-main integration.
+
+apps/chibi owns all public command routing, argument validation, watching,
+retry, exit policy, game-cache decisions and subprocess construction. The SDK
+installs that package. chibi_main.c resolves app/core resources, starts the
+generic application host and returns Main's result. The private Run entry,
+runner pack and compiler --run bridge are removed. Program argv is ordinary
+application argv; chibi apps/chibi -- version runs the CLI through the same
+program service used for user Main functions.
+
+Chibi::program exposes owned immutable source snapshots, including editor
+buffers, candidate/accepted generations, structured diagnostics, transactional
+prepare/commit/discard and synchronous invocation. CLI and user programs share
+program.open/update/call/diagnostic/close/test. Existing compiler preparation and
+runtime replacement own compilation and retained-state migration. Invalid edits
+preserve accepted state; active/reentrant sessions reject mutation, caller and
+target heaps remain distinct, and catalogs/services outlive their sessions.
+Root invocation cooperates with authored cancellation policy; nested calls stay
+interruptible. Pure tests use an injected bounded executor and isolated runtime
+scopes, with no worker pool retained during compilation.
+
+Generic application services provide OS/file/process/network leaves. Typed SDK
+and project adapters expose facts and export operations without parsing argv.
+Owned child groups/jobs support parent-only interruption, escalation and cleanup.
+Terminal ownership is restored across suspension; Darwin foreground children
+start suspended until handoff so they cannot read before receiving the terminal.
+Export passes the same cancellation flag through compiler/native/sign/archive
+phases and checks before publishing; staging, listeners and temporary paths are
+cleaned before authored exit policy runs. Export-phase interruption returns the
+signal status; stopping an active preview server remains graceful.
+
+SDK/CMake/graph descriptions export program headers and dependencies and own the
+installed app/core resources. A compiler-only profile of the existing test_tools
+dispatcher isolates installed Chibi::program and explicit core dependencies.
+Studio's separate CMake change copies these resources with its embedded CLI.
+Its UI standalone Run flow is outside this increment. Windows source/path input
+now uses pinned Win32 handles, reparse/limit checks and public snapshot coverage.
+Compiler/application capabilities remain outside deployed game catalogs.
+
+Accepted-main integration preserved identity-based project diagnostics. Shared
+sessions already use package identities rather than public enumeration indices.
+A new regression places an unused invalid core package before the root, executes
+a required import, then checks a required-import error's source path while the
+accepted Main remains callable. Disk test sessions also cover unused invalid core.
+
+Validation on accepted a253ef4b5: native release build passes in 123.7s plus 1.8s
+for dependencies. Focused runtime/session coverage passes 280 cases / 22,420
+assertions in 1.564s summed process time. POSIX source/path/import coverage passes
+41 / 17,381 in 0.366s parallel outer wall time. Process boundary checks pass
+3 / 50 in 14.998s: parent-only SIGINT/SIGTERM, child/descendant cleanup, five
+terminal scenarios and Export/Web interruption with staging/temp/listener cleanup.
+Full CLI integration passes 35 / 524 in 39.041s. Both pre-fix binary controls
+still fail the expected stop/export oracles and clean their owned processes. SDK public-header consumer passes 1 / 13 in 0.409s;
+graph/CMake version/resource/staging parity passes 3 / 26 in 53.957s. The CLI runs
+its own seven authored tests and nested version output matches direct invocation.
+
+Strict MinGW syntax passes for twelve production files and the Windows fixture
+using actual staged include paths in 2.795s; no source-root include fallback.
+Clang-format22 and diff checks pass. Real Windows and Linux execution, broad
+aggregates, browser and Studio UI checks remain unrun. Native-build execution is
+Linux-only; macOS ran its portable argv-forwarding fixture, not Linux LLVM output.
+Studio resource copying passed its nine-file CMake fixture in 0.506s. The
+guide game example is current format39 and passes check plus fmt --check
+in 0.770s.
+
+Full public SDK construction, installation, relocation, isolated target linking
+and actual export startup remain acceptance gates before publication. Private
+compiler-tools packaging does not establish them. Record their final evidence
+with the reviewable candidate; no global SDK installation or new checked seed is
+authorized by this increment.
+
 ## Coordinated named struct results, 2026-10-22
 
 The next local setup slice extends the ABI20 authored compiler's existing

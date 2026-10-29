@@ -205,18 +205,8 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
             }
         }
     }
-    for (relative in Sources(Join([root, "/packages/core"]))) {
-        path := Join(["/sdk/core/", relative]);
-        found := false;
-        for (item in paths) {
-            if (item == path) {
-                found = true;
-            }
-        }
-        if (!found) {
-            paths.append(path);
-        }
-    }
+    // Compiler implementation dependencies are explicit in CompilerSources.txt.
+    // Public core sources are packaged below, without entering the seed target.
     bootstrap_paths := paths;
     bootstrap_sources := Read(root, bootstrap_paths);
     for (directory in ["asset_compiler", "asset_source", "asset_packaging"]) {
@@ -289,6 +279,23 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         if (!Invoke(host, compiler, closure_entry, inputs, Join([artifact, ".tmp"]), compiler_timeout) ||
             !build.rename(Join([artifact, ".tmp"]), artifact)) {
             return false;
+        }
+    }
+    // Keep the complete public library snapshot separate from compiler inputs.
+    // Retain original compiled source bytes so the final hash check still
+    // rejects a file changed during generation.
+    for (relative in Sources(Join([root, "/packages/core"]))) {
+        path := Join(["/sdk/core/", relative]);
+        found := false;
+        for (item in paths) {
+            if (item == path) {
+                found = true;
+            }
+        }
+        if (!found) {
+            captured := Read(root, [path]);
+            paths.append(path);
+            sources.append(captured[0]);
         }
     }
     library_paths: string[] = [];

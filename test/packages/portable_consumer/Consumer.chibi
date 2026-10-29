@@ -1,0 +1,71 @@
+package consumer
+
+import bytes "core:bytes"
+import strings "core:strings"
+import bits "core:math/bits"
+import fnv "core:hash/fnv"
+import adler "core:hash/adler32"
+import crc "core:hash/crc32"
+
+// Exercise every public operation against literal and binary answers.
+pub Check :: () -> int {
+    raw: u8[] = [65, 0, 255, 66];
+    text := bytes.ToString(raw);
+    assert(strings.ByteLength(text) == 4);
+    assert(strings.ByteAt(text, 0) == 65 && strings.ByteAt(text, 1) == 0);
+    assert(strings.ByteAt(text, 2) == 255 && strings.ByteAt(text, 3) == 66);
+    converted := bytes.FromString(text);
+    assert(bytes.Equal(converted, [65, 0, 255, 66]));
+    raw[0] = 90;
+    converted[3] = 90;
+    assert(strings.ByteAt(text, 0) == 65 && strings.ByteAt(text, 3) == 66);
+    assert(bytes.Compare([0, 255], [1, 0]) == -1);
+    assert(bytes.Compare([255], [128]) == 1);
+    assert(bytes.IndexByte([0, 255, 0], 255) == 1);
+    assert(bytes.LastIndexByte([0, 255, 0], 0) == 2);
+    assert(bytes.Index([1, 2, 1, 2, 1], [1, 2, 1]) == 0);
+    assert(bytes.LastIndex([1, 2, 1, 2, 1], [1, 2, 1]) == 2);
+    assert(bytes.Index([1, 2], []) == 0);
+    assert(bytes.LastIndex([1, 2], []) == 2);
+    assert(bytes.Contains([0, 255, 0], [255, 0]));
+    assert(!bytes.Contains([0, 255, 0], [1]));
+    assert(bytes.HasPrefix([0, 255, 0], [0, 255]));
+    assert(bytes.HasSuffix([0, 255, 0], [255, 0]));
+    assert(!bytes.HasPrefix([0, 255], [255]));
+    assert(!bytes.HasSuffix([0, 255], [0]));
+
+    assert(bits.CountOnes32(0x01010203) == 5);
+    assert(bits.CountOnes64(0x0101020304050607) == 13);
+    assert(bits.LeadingZeros32(0x00001000) == 19);
+    assert(bits.LeadingZeros64(0x0000000100000000) == 31);
+    assert(bits.TrailingZeros32(0x80001000) == 12);
+    assert(bits.TrailingZeros64(0x8000000100000000) == 32);
+    assert(bits.ByteSwap16(0x1234) == 0x3412);
+    assert(bits.ByteSwap32(0x12345678) == 0x78563412);
+    assert(bits.ByteSwap64(0x0123456789ABCDEF) == 0xEFCDAB8967452301);
+    assert(bits.Reverse32(0x01234567) == 0xE6A2C480);
+    assert(bits.Reverse64(0x0123456789ABCDEF) == 0xF7B3D591E6A2C480);
+    assert(bits.RotateLeft32(0x12345678, 4) == 0x23456781);
+    assert(bits.RotateRight32(0x12345678, 4) == 0x81234567);
+    assert(bits.RotateLeft64(0x0123456789ABCDEF, 8) == 0x23456789ABCDEF01);
+    assert(bits.RotateRight64(0x0123456789ABCDEF, 8) == 0xEF0123456789ABCD);
+
+    binary: u8[] = [0, 127, 128, 255, 0];
+    assert(fnv.Fnv1a32(binary) == 0x38C82FB7);
+    assert(fnv.Fnv1a64(binary) == 0x33D793C97C1AA7B7);
+    assert(fnv.Update32(fnv.Update32(0x811C9DC5, [0, 127]), [128, 255, 0]) == 0x38C82FB7);
+    assert(fnv.Update64(fnv.Update64(0xCBF29CE484222325, [0, 127]), [128, 255, 0]) == 0x33D793C97C1AA7B7);
+    assert(adler.Sum(binary) == 0x057F01FF);
+    assert(adler.Update(adler.Update(1, [0, 127]), [128, 255, 0]) == 0x057F01FF);
+    digits := bytes.FromString("123456789");
+    assert(crc.Ieee(digits) == 0xCBF43926);
+    assert(crc.UpdateIeee(crc.UpdateIeee(0, [49, 50, 51, 52]), [53, 54, 55, 56, 57]) == 0xCBF43926);
+    assert(bytes.Equal(binary, [0, 127, 128, 255, 0]));
+    return 5;
+}
+
+@test
+PublicImports :: () {
+    assert(Check() == 5);
+    return;
+}

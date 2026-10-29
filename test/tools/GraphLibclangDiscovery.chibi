@@ -96,3 +96,20 @@ VerifyPathSpelling :: () -> int {
     }
     return 0;
 }
+
+// The native caller supplies conventional relative search paths in an isolated root.
+VerifyBasenamePaths :: () -> int {
+    arguments := build.arguments();
+    directory := arguments[0];
+    root := build.root();
+    if (length(arguments) > 1 && arguments[1] != "") {
+        root = strings.Join([root, "/", arguments[1]], "");
+    }
+    if (!Installation(root, directory, "libclang.so")) {
+        return 1;
+    }
+    if (!Matches(root, "", root, strings.Join([directory, "/libclang.so"], ""))) {
+        return 2;
+    }
+    return 0;
+}

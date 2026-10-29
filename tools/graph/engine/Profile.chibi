@@ -218,6 +218,9 @@ LibclangPrefix :: (directory: string) -> string {
     while (strings.ByteLength(directory) > 1 && strings.HasSuffix(directory, "/")) {
         directory = strings.Slice(directory, 0, strings.ByteLength(directory) - 1);
     }
+    if (directory == "include" || directory == "lib" || directory == "lib64") {
+        return ".";
+    }
     for (suffix in ["/include", "/lib", "/lib64"]) {
         if (strings.HasSuffix(directory, suffix)) {
             return strings.Slice(directory, 0, strings.ByteLength(directory) - strings.ByteLength(suffix));
@@ -226,6 +229,9 @@ LibclangPrefix :: (directory: string) -> string {
     multiarch := strings.LastIndex(directory, "/lib/");
     if (multiarch >= 0) {
         return strings.Slice(directory, 0, multiarch);
+    }
+    if (strings.HasPrefix(directory, "lib/") && strings.LastIndex(directory, "/") == 3) {
+        return ".";
     }
     return "";
 }
@@ -254,7 +260,7 @@ LibclangLibrary :: (prefix: string) -> string {
 // Preserve absolute aliases, including drive paths, in generated commands.
 LibclangAbsolutePrefix :: (prefix: string) -> string {
     drive := strings.ByteLength(prefix) >= 3 && strings.Slice(prefix, 1, 1) == ":" &&
-        (strings.Slice(prefix, 2, 1) == "/" || strings.Slice(prefix, 2, 1) == "\\");
+             (strings.Slice(prefix, 2, 1) == "/" || strings.Slice(prefix, 2, 1) == "\\");
     if (strings.HasPrefix(prefix, "/") || strings.HasPrefix(prefix, "\\\\") || drive) {
         return prefix;
     }

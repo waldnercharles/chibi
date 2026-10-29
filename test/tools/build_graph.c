@@ -2442,12 +2442,84 @@ TEST_CASE(libclang_discovery_honors_environment_prefixes)
     return true;
 }
 
+TEST_CASE(libclang_discovery_honors_basename_paths)
+{
+    static const struct
+    {
+        const char *include, *library, *directory, *prefix;
+        bool linked_include;
+    } cases[] = { { "include/", "", "lib64", NULL, false },
+                  { "", "lib64", "lib64", NULL, false },
+                  { "", "lib", "lib", NULL, false },
+                  { "include", "lib64", "lib64", NULL, true },
+                  { "", "lib/x86_64-linux-gnu/", "lib", NULL, false },
+                  { "lib/llvm-18/include", "", "lib64", "lib/llvm-18", false },
+                  { "", "lib/llvm-18/lib", "lib", "lib/llvm-18", false },
+                  { "", "lib/llvm-18/lib64", "lib64", "lib/llvm-18", false } };
+    char source[GRAPH_PATH], core[GRAPH_PATH], compiler_root[GRAPH_PATH],
+        collection[GRAPH_PATH + 32];
+    join(source, CHIBI_SOURCE_ROOT, "test/tools/GraphLibclangDiscovery.chibi");
+    join(core, CHIBI_SOURCE_ROOT, "packages/core");
+    join(compiler_root, CHIBI_SOURCE_ROOT, "tools/compiler");
+    snprintf(collection, sizeof collection, "graph=%s/tools/graph", CHIBI_SOURCE_ROOT);
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        char root[GRAPH_PATH], canonical[GRAPH_PATH], name[64],
+            path[GRAPH_PATH], includes[256], libraries[256];
+        snprintf(name, sizeof name, "basename paths %d", i);
+        join(root, suite, name);
+        assert(!mkdir(root, 0700));
+        REQUIRE(realpath(root, canonical));
+        if (cases[i].linked_include) {
+            join(path, root, "headers");
+            assert(!mkdir(path, 0700));
+            join(path, root, "include");
+            assert(!symlink("headers", path));
+        }
+        snprintf(includes, sizeof includes, "CMAKE_INCLUDE_PATH=%s", cases[i].include);
+        snprintf(libraries, sizeof libraries, "CMAKE_LIBRARY_PATH=%s", cases[i].library);
+        const char *const argv[] = { "env",
+                                     "CMAKE_PREFIX_PATH=",
+                                     includes,
+                                     libraries,
+                                     host_path,
+                                     "--root",
+                                     canonical,
+                                     "--source",
+                                     source,
+                                     "--core",
+                                     core,
+                                     "--compiler",
+                                     compiler_root,
+                                     "--compiler-core",
+                                     core,
+                                     "--collection",
+                                     collection,
+                                     "--entry",
+                                     "VerifyBasenamePaths",
+                                     "--timeout-ms",
+                                     "30000",
+                                     "--",
+                                     cases[i].directory,
+                                     cases[i].prefix,
+                                     NULL };
+        int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, 30);
+        if (status) {
+            char *log = tool_read(log_path);
+            fprintf(stderr, "libclang basename case %d: %s\n", i, log ? log : "");
+            free(log);
+        }
+        REQUIRE(!status);
+    }
+    return true;
+}
+
 /* A separate route: reflect's run and the codec compile take seconds. */
 void test_build_graph_generated(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
     RUN_TEST_CASE(discovery_without_a_compiler_driver);
     RUN_TEST_CASE(libclang_discovery_honors_environment_prefixes);
+    RUN_TEST_CASE(libclang_discovery_honors_basename_paths);
     RUN_TEST_CASE(language_delivery_registrations_match);
     RUN_TEST_CASE(asset_generator_uses_its_own_collection);
     RUN_TEST_CASE(failed_steps_name_only_the_output);

@@ -536,7 +536,7 @@ static bool addressable_local(analyzer *a, int expression)
         if (!addressable_local(a, value->left)) {
             return false;
         }
-        (void)script_analyzer_pointer_type(a, value->type);
+        (void)script_analyzer_pointer_type(a, value->type, value->range);
         return true;
     }
     if (value->kind != SCRIPT_EXPR_SYMBOL || value->symbol < 0) {
@@ -551,7 +551,7 @@ static bool addressable_local(analyzer *a, int expression)
     }
     symbol->addressed = true;
     script_analyzer_invalidate_pointers(a);
-    (void)script_analyzer_pointer_type(a, symbol->type);
+    (void)script_analyzer_pointer_type(a, symbol->type, value->range);
     return true;
 }
 static int character_constant(analyzer *a, TSNode node, script_type expected)
@@ -1000,7 +1000,13 @@ static int map_literal(analyzer *a, TSNode node, script_type expected)
     if (!map_key_supported(key)) {
         script_analyzer_diagnostic(a, node, "Unsupported map key type");
     }
-    result.type = script_analyzer_collection_type(a, PIN_CONTAINER_MAP, key, value_type);
+    result.type = script_analyzer_collection_type(
+        a,
+        PIN_CONTAINER_MAP,
+        key,
+        value_type,
+        result.range
+    );
     return script_analyzer_expr_add(a, result);
 }
 /* `m.has(k)`, `k in m` and removal look key up in map, an analyzed value. */
@@ -1113,19 +1119,23 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             script_analyzer_field(node, "operand"),
             (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
         );
-        const char *layout_error = managed_address_layout(a, result.left);
-        if (layout_error) {
-            script_analyzer_diagnostic(a, node, layout_error);
-        } else if (!addressable_local(a, result.left)) {
-            script_analyzer_diagnostic(a, node, "Managed pointer requires a writable local or record field");
-        }
         script_expression addressed = a->out->expressions[result.left];
         script_type target = addressed.kind == SCRIPT_EXPR_SYMBOL &&
                                      addressed.symbol >= 0
                                ? a->out->symbols[addressed.symbol].type
                                : addressed.type;
         target.flags &= ~(SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_UNTYPED);
-        result.type = script_analyzer_pointer_type(a, target);
+        if (target.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+            result.type = script_analyzer_pointer_type(a, target, result.range);
+            return script_analyzer_expr_add(a, result);
+        }
+        const char *layout_error = managed_address_layout(a, result.left);
+        if (layout_error) {
+            script_analyzer_diagnostic(a, node, layout_error);
+        } else if (!addressable_local(a, result.left)) {
+            script_analyzer_diagnostic(a, node, "Managed pointer requires a writable local or record field");
+        }
+        result.type = script_analyzer_pointer_type(a, target, result.range);
         result.effects = script_analyzer_expr_effects(a, result.left);
         return script_analyzer_expr_add(a, result);
     }
@@ -1668,10 +1678,21 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             script_analyzer_diagnostic(a, node, "Empty arrays need an explicit element type");
             element = script_analyzer_bad_type();
         }
+        if (element.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+            script_analyzer_diagnostic(a, node, "Containers and pointers of flattened error unions are not supported yet");
+            result.type = script_analyzer_bad_type();
+            return script_analyzer_expr_add(a, result);
+        }
         result.type = element.collection ||
                               element.container != PIN_CONTAINER_SINGLE ||
                               (element.flags & SCRIPT_TYPE_OPTIONAL)
-                        ? script_analyzer_collection_type(a, PIN_CONTAINER_ARRAY, (script_type){ 0 }, element)
+                        ? script_analyzer_collection_type(
+                              a,
+                              PIN_CONTAINER_ARRAY,
+                              (script_type){ 0 },
+                              element,
+                              result.range
+                          )
                         : element;
         result.type.container = (expected.container == PIN_CONTAINER_SINGLE ||
                                  expected.container == PIN_CONTAINER_VIEW)
@@ -1685,6 +1706,8 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
     if (script_analyzer_is(node, "struct_expression")) {
         result.kind = SCRIPT_EXPR_STRUCT;
         result.type = expected;
+        /* Construct the record before conversion wraps an optional payload. */
+        result.type.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
         if (!type || expected.storage != PIN_STRUCT) {
@@ -1764,9 +1787,22 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
     bool unknown_effects = !a->query && resolved->kind == SCRIPT_EXPR_CALL &&
                            resolved->right >= 0 &&
                            !script_analyzer_readonly_callable(a, resolved->right);
-    if (unknown_effects || (script_analyzer_expr_effects(a, result) &
-                            (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL |
-                             SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST))) {
+    unsigned invalidating = SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL |
+                            SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST;
+    const script_catalog_capability
+        *getter = resolved->kind == SCRIPT_EXPR_MEMBER
+                    ? script_catalog_capability_by_id(a->catalog, resolved->read)
+                    : NULL;
+    bool operation = resolved->kind == SCRIPT_EXPR_CALL ||
+                     resolved->kind == SCRIPT_EXPR_JOIN ||
+                     resolved->kind == SCRIPT_EXPR_CANCEL ||
+                     resolved->kind == SCRIPT_EXPR_YIELD ||
+                     resolved->kind == SCRIPT_EXPR_ARRAY_MUTATE ||
+                     resolved->kind == SCRIPT_EXPR_MAP_REMOVE ||
+                     (getter && (getter->effects & invalidating));
+    /* Children invalidate at their operation. Repeating their inherited
+     * effects at a parent would stale a later read in Clear(p) && value. */
+    if (unknown_effects || (operation && (resolved->effects & invalidating))) {
         script_analyzer_invalidate_narrowing(a, -1);
     }
     a->depth--;

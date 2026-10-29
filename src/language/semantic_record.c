@@ -39,6 +39,7 @@ void script_analyzer_record_types(analyzer *a, TSNode body)
         if (!script_analyzer_is(node, "record_declaration")) {
             continue;
         }
+        bool error = script_analyzer_error_attribute(a, node);
         if (!ts_node_is_null(script_analyzer_field(node, "parameters"))) {
             continue;
         }
@@ -97,6 +98,7 @@ void script_analyzer_record_types(analyzer *a, TSNode body)
                                    .source_name = declaration.source_name,
                                    .type = declaration.type,
                                    .authored_record = declaration.authored_record,
+                                   .error = error,
                                    .size = declaration.size }
         );
     }

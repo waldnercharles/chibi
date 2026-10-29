@@ -195,6 +195,13 @@ Example :: library {
 }
 ```
 
+Mark a package-owned struct or union with `@error` to designate an error type.
+A function returning that type, an optional of it, or a transparent union
+containing it requires callers to acknowledge its final result. Earlier results
+remain usable, including partial progress returned with an error. Ordinary
+optionals do not imply failure. See [recoverable errors](recoverable-errors.md)
+for checking, union composition and compiler-subset limits.
+
 Parameters follow each type's assignment rule: scalars, records, arrays and
 maps copy their values, and managed pointers keep their targets. A `^T`
 parameter receives a pointer to the caller's value, so the callee can change

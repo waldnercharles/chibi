@@ -167,7 +167,8 @@ static bool function(exports_builder *b, const script_symbol *symbol)
                                              .outcome_count = 1,
                                              .completion_outcome = 0,
                                              .effects = f->effects,
-                                             .pure = f->pure };
+                                             .pure = f->pure,
+                                             .fallible = f->fallible };
     if (!parameters(b, f->parameters, f->parameter_count, &capability.parameters) ||
         !parameters(b, f->results, f->result_count, &capability.results)) {
         return false;

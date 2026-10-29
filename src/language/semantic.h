@@ -152,6 +152,9 @@ typedef struct
     script_operator op;
     script_type type;
     script_range range;
+    /* Stable result projections cannot re-prove presence after a mutation
+     * or an intervening unknown effect invalidates their original read. */
+    unsigned presence_mutations, presence_epoch;
     uint64_t capability, member, read, write, instance;
     int symbol, left, right, entry;
     script_argument *arguments;
@@ -233,6 +236,7 @@ typedef struct
     bool pure, disabled;
     bool inferred; /* No `->`: its returns give the results. */
     bool test;     /* Marked `@test`: chibi test runs it. */
+    bool fallible; /* Derived: final output contains a direct @error alternative. */
 } script_function;
 typedef enum
 {

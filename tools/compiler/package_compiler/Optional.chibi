@@ -11,6 +11,60 @@ OptionalDecl: int : 12;
 // nominal record identity; value_* describes its immediate element type.
 CollectionDecl: int : 13;
 
+IsBoxedOptional :: (types: TypeDecl[], value: ValueType) -> bool {
+    return OptionalElement(types, Typed(-1, value.storage, value.container, value.record)).storage != 0;
+}
+OptionalWrapPhase: int : 78;
+// Direct if/while conditions keep the accepted lexical payload-place binding.
+OptionalConditionPosition :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    at := node;
+    parent := forest[at].parent;
+    while Is(forest, parent, "parenthesized_expression") {
+        at = parent;
+        parent = forest[at].parent;
+    }
+    return (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) &&
+           Field(forest, parent, "condition") == at;
+}
+OptionalStepProduced :: (types: TypeDecl[], step: Step) -> bool {
+    switch step {
+        case .Failed(diagnostic): return false;
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks):
+            return OptionalElement(types, value).storage != 0;
+    }
+}
+// Box a complete payload after its contextual expression has been emitted.
+// A tagged union is already represented by its alternatives, with nil as zero.
+OptionalWrapStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], value: Value, record: int,
+                     ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    if SameType(UnionStorage, 0, record, value) {
+        return Step.Emitted([], [], [], [], [], [], [], [], [], 1, value, NoValue(), []);
+    }
+    payload := OptionalElement(types, Typed(-1, UnionStorage, 0, record));
+    if !Returns(types, payload.storage, payload.container, payload.record, value) {
+        return Fail(forest, node.parent, document, "optional value differs from its payload type");
+    }
+    if payload.storage == UnionStorage && payload.container == 0 && payload.record >= 0 &&
+       types[payload.record].kind == UnionDecl {
+        result := value;
+        result.record = record;
+        return Step.Emitted([], [], [], [], [], [], [], [], [], 1, result, NoValue(), []);
+    }
+    tag := QueryCell(WordStorage, -1, OptionalTag(types, payload));
+    wrapped := QueryCallStep(UnionMakeIntrinsic, [Typed(-1, WordStorage, 0, -1), value],
+                              [tag, TypedCell(payload.storage, payload.container, payload.record)],
+                              {storage: UnionStorage, container: 0, record: record}, 1, ops, target, at, node);
+    switch wrapped {
+        case .Failed(diagnostic): return wrapped;
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, made, retained, marks):
+            result := made;
+            result.cell = at.cell + 2;
+            result.owned = true;
+            wrapped = Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped,
+                                    result, retained, marks);
+    }
+    return CleanupSequenceValues(wrapped, [value], ops, target, at, node);
+}
 SequenceNominal :: (types: TypeDecl[], value: ValueType) -> u64 {
     if (value.record < 0) {
         return 0;
@@ -91,7 +145,8 @@ EnsureSequenceCollection :: (table: ^(TypeDecl[]), element: ValueType, package: 
     declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package,
                           node: -1, kind: CollectionDecl, first: 0, count: 0, size: 0, parent: -1,
                           storage: element.storage, id: id, layout: 0, component: 0, key: 0,
-                          value_storage: element.storage, value_container: element.container, value_record: element.record};
+                          value_storage: element.storage, value_container: element.container, value_record: element.record,
+                          error: false};
     table.append(declared);
     return length(table^) - 1;
 }
@@ -227,7 +282,7 @@ AddOptional :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> int {
                           first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage,
                           id: OptionalTag(table^, value), layout: 0, component: 0, key: 0,
                           value_storage: value.storage, value_container: value.container,
-                          value_record: value.record};
+                          value_record: value.record, error: false};
     table.append(declared);
     return length(table^) - 1;
 }
@@ -335,6 +390,12 @@ OptionalPresentStep :: (value: Value, negated: bool, popped: int, ops: Ops, targ
 OptionalUnwrapStep :: (types: TypeDecl[], value: Value, popped: int, ops: Ops, target: Target,
                        at: Bases, node: snapshot.SnapshotNode) -> Step {
     element := OptionalElement(types, value);
+    if element.storage == UnionStorage && element.container == 0 && element.record >= 0 &&
+       types[element.record].kind == UnionDecl {
+        result := value;
+        result.record = element.record;
+        return Step.Emitted([], [], [], [], [], [], [], [], [], popped, result, NoValue(), []);
+    }
     held: Cell = {storage: UnionStorage, container: 0, record: value.record, constant: 0, variant: -1, kind: ValueKind};
     tag: Cell = {storage: WordStorage, container: 0, record: -1, constant: OptionalTag(types, element), variant: -1, kind: ValueKind};
     index: Cell = {storage: IntStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
@@ -369,6 +430,17 @@ OptionalUnwrapStep :: (types: TypeDecl[], value: Value, popped: int, ops: Ops, t
 // `element`.
 PayloadPlaceStep :: (types: TypeDecl[], place: Value, element: ValueType, ops: Ops, target: Target, at: Bases,
                      node: snapshot.SnapshotNode) -> Step {
+    payload := OptionalElement(types, place);
+    if element.storage == UnionStorage && element.container == 0 && element.record >= 0 &&
+       types[element.record].kind == UnionDecl && payload.storage == element.storage &&
+       payload.container == element.container && payload.record == element.record {
+        // A transparent optional union occupies its original cell. There is
+        // no enclosing success box or payload field to address.
+        result := place;
+        result.record = element.record;
+        result.place = true;
+        return Step.Emitted([], [], [], [], [], [], [], [], [], 0, result, NoValue(), []);
+    }
     tag := TypedCell(WordStorage, 0, -1);
     tag.constant = OptionalTag(types, element);
     cells: Cell[] = [ReferenceCell(target), tag, TypedCell(IntStorage, 0, -1),
@@ -419,9 +491,238 @@ OptionalConditionNames :: (types: TypeDecl[], names: Name[], forest: snapshot.Sn
     if (element.storage == 0 || found < 0) {
         return [];
     }
+    // A fresh guard refers to storage, not to an earlier guard's shadow.
+    while (names[found].place == NarrowedPlace) {
+        found = names[found].index;
+    }
     original := names[found];
     binding: Name = {owned: false, name: original.name, place: NarrowedPlace, index: found, storage: element.storage,
                      container: element.container, record: element.record, writable: original.writable,
                      node: original.node};
     return [binding];
+}
+
+OptionalProofChanged :: (forest: snapshot.SnapshotNode[], text: string, root: int, start: int, finish: int,
+                         name: string, aliased: bool) -> bool {
+    pending: int[] = [root];
+    while length(pending) > 0 {
+        node := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if forest[node].start >= start && forest[node].end <= finish {
+            if aliased && (Is(forest, node, "call_expression") || Is(forest, node, "await_expression") ||
+                            Is(forest, node, "yield_statement")) { return true; }
+            if Is(forest, node, "assignment") {
+                destination := Unparenthesized(forest, StatementTarget(forest, node));
+                if aliased || (Is(forest, destination, "identifier") && Text(forest, text, destination) == name) {
+                    return true;
+                }
+            }
+        }
+        pending.extend(Members(forest, node));
+    }
+    return false;
+}
+OptionalBranchExits :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    if node < 0 { return false; }
+    if Is(forest, node, "return_statement") || Is(forest, node, "break_statement") ||
+       Is(forest, node, "continue_statement") { return true; }
+    if Is(forest, node, "block") || Is(forest, node, "callable_body") {
+        children := Members(forest, node);
+        return length(children) > 0 && OptionalBranchExits(forest, children[length(children) - 1]);
+    }
+    return Is(forest, node, "if_statement") &&
+           OptionalBranchExits(forest, Field(forest, node, "consequence")) &&
+           OptionalBranchExits(forest, Field(forest, node, "alternative"));
+}
+// The latest optional read that establishes this condition's presence proof.
+// Invalidation starts at that read, including any later condition operands.
+OptionalGuardEnd :: (forest: snapshot.SnapshotNode[], text: string, condition: int, name: string, truth: bool) -> int {
+    node := Unparenthesized(forest, condition);
+    if Is(forest, node, "identifier") || Is(forest, node, "member_expression") {
+        if truth && Text(forest, text, node) == name { return forest[node].end; }
+        return -1;
+    }
+    if Is(forest, node, "unary_expression") {
+        operator := Text(forest, text, Field(forest, node, "operator"));
+        if operator == "!" || operator == "not" {
+            return OptionalGuardEnd(forest, text, Field(forest, node, "operand"), name, !truth);
+        }
+        return -1;
+    }
+    if Is(forest, node, "call_expression") {
+        if !QueryGuardContext(forest, node) { return -1; }
+        function := Text(forest, text, Field(forest, node, "function"));
+        arguments := Members(forest, Field(forest, node, "arguments"));
+        if function == "has" && length(arguments) == 1 {
+            return OptionalGuardEnd(forest, text, arguments[0], name, truth);
+        }
+        if function == "not" && length(arguments) == 1 {
+            return OptionalGuardEnd(forest, text, arguments[0], name, !truth);
+        }
+        latest: int = -1;
+        if (truth && function == "all") || (!truth && function == "any") {
+            for argument in arguments {
+                end := OptionalGuardEnd(forest, text, argument, name, truth);
+                if end > latest { latest = end; }
+            }
+        }
+        return latest;
+    }
+    if !Is(forest, node, "binary_expression") { return -1; }
+    operator := Text(forest, text, Field(forest, node, "operator"));
+    left := Field(forest, node, "left");
+    right := Field(forest, node, "right");
+    if (truth && (operator == "&&" || operator == "and")) ||
+       (!truth && (operator == "||" || operator == "or")) {
+        // Both operands run on this edge. A fresh later test can
+        // re-establish presence after an earlier mutation.
+        latest := OptionalGuardEnd(forest, text, right, name, truth);
+        if latest >= 0 { return latest; }
+        return OptionalGuardEnd(forest, text, left, name, truth);
+    }
+    left = Unparenthesized(forest, left);
+    right = Unparenthesized(forest, right);
+    if Is(forest, left, "nil") { swapped := left; left = right; right = swapped; }
+    if (!Is(forest, left, "identifier") && !Is(forest, left, "member_expression")) ||
+       !Is(forest, right, "nil") || Text(forest, text, left) != name { return -1; }
+    if (truth && operator == "!=") || (!truth && operator == "==") { return forest[left].end; }
+    return -1;
+}
+OptionalPresent :: (forest: snapshot.SnapshotNode[], text: string, binding: Name, node: int) -> bool {
+    function := node;
+    while function >= 0 && !Is(forest, function, "function_declaration") && !Is(forest, function, "handler") &&
+          !Is(forest, function, "system") {
+        function = forest[function].parent;
+    }
+    if function < 0 { return false; }
+    body := Field(forest, function, "body");
+    aliased := binding.place == ReferencePlace || Holds(AddressedNames(forest, text, body, []), binding.name);
+    child := node;
+    parent := forest[child].parent;
+    crossed_for := false;
+    while parent >= 0 && parent != function {
+        if Is(forest, parent, "binary_expression") && Ancestor(forest, Field(forest, parent, "right"), node) {
+            operator := Text(forest, text, Field(forest, parent, "operator"));
+            truth := operator == "&&" || operator == "and";
+            if truth || operator == "||" || operator == "or" {
+                condition := Field(forest, parent, "left");
+                proof := OptionalGuardEnd(forest, text, condition, binding.name, truth);
+                if proof >= 0 && (binding.node < 0 || forest[binding.node].start < forest[condition].start) &&
+                   !OptionalProofChanged(forest, text, parent, proof, forest[node].start, binding.name, aliased) {
+                    return true;
+                }
+            }
+        }
+        if Is(forest, parent, "argument_list") {
+            call := forest[parent].parent;
+            spelling := Text(forest, text, Field(forest, call, "function"));
+            if (spelling == "all" || spelling == "any") && QueryGuardContext(forest, call) {
+                for argument in Members(forest, parent) {
+                    if Ancestor(forest, argument, node) { break; }
+                    proof := OptionalGuardEnd(forest, text, argument, binding.name, spelling == "all");
+                    if proof >= 0 && !OptionalProofChanged(forest, text, call, proof, forest[node].start,
+                                                          binding.name, aliased) { return true; }
+                }
+            }
+        }
+        if Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement") {
+            condition := Field(forest, parent, "condition");
+            consequence := Field(forest, parent, "consequence");
+            if Is(forest, parent, "while_statement") { consequence = Field(forest, parent, "body"); }
+            truth := consequence >= 0 && forest[child].start >= forest[consequence].start &&
+                     forest[child].end <= forest[consequence].end;
+            alternative := Field(forest, parent, "alternative");
+            other := alternative >= 0 && forest[child].start >= forest[alternative].start &&
+                     forest[child].end <= forest[alternative].end;
+            proof := OptionalGuardEnd(forest, text, condition, binding.name, truth);
+            if (truth || other) && proof >= 0 &&
+               (binding.node < 0 || forest[binding.node].start < forest[condition].start) &&
+               !OptionalProofChanged(forest, text, parent, proof, forest[node].start,
+                                      binding.name, aliased) { return true; }
+        }
+        if Is(forest, parent, "while_statement") { return false; }
+        if Is(forest, parent, "for_statement") { crossed_for = true; }
+        if !crossed_for && (Is(forest, parent, "block") || Is(forest, parent, "callable_body")) {
+            for statement in Members(forest, parent) {
+                if forest[statement].end > forest[child].start { break; }
+                if !Is(forest, statement, "if_statement") { continue; }
+                condition := Field(forest, statement, "condition");
+                if binding.node >= 0 && forest[binding.node].start >= forest[condition].start { continue; }
+                consequence := Field(forest, statement, "consequence");
+                alternative := Field(forest, statement, "alternative");
+                proof: int = -1;
+                if OptionalBranchExits(forest, consequence) {
+                    proof = OptionalGuardEnd(forest, text, condition, binding.name, false);
+                }
+                if OptionalBranchExits(forest, alternative) {
+                    other := OptionalGuardEnd(forest, text, condition, binding.name, true);
+                    if other > proof { proof = other; }
+                }
+                if proof >= 0 && !OptionalProofChanged(forest, text, parent, proof, forest[node].start,
+                                                    binding.name, aliased) { return true; }
+            }
+        }
+        child = parent;
+        parent = forest[parent].parent;
+    }
+    return false;
+}
+// Presence proves only the optional payload, not the other values returned
+// beside an error. The existing mutation-aware guard proof is shared here.
+OptionalNarrowStep :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], expression: int,
+                       step: Step, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    if !Is(forest, expression, "identifier") && !Is(forest, expression, "member_expression") {
+        return step;
+    }
+    parent := forest[expression].parent;
+    if Is(forest, parent, "binary_expression") {
+        left := Field(forest, parent, "left");
+        right := Field(forest, parent, "right");
+        if Is(forest, left, "nil") || Is(forest, right, "nil") { return step; }
+    }
+    switch step {
+        case .Failed(diagnostic):
+            return step;
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks):
+            if !IsBoxedOptional(types, {storage: value.storage, container: value.container, record: value.record}) {
+                return step;
+            }
+            name := Text(forest, text, expression);
+            found := Lookup(names, name);
+            // Member paths conservatively lose their proof at any write.
+            binding: Name = {owned: false, name: name, place: ReferencePlace, index: 0, storage: value.storage,
+                             container: value.container, record: value.record, writable: false, node: -1};
+            if found >= 0 {
+                binding = names[found];
+            } else {
+                // The path must refer to the same lexical root as its guard.
+                // Repeated calls have no stable root whose proof can be reused.
+                root := RootOf(forest, expression);
+                if !Is(forest, root, "identifier") { return step; }
+                source := Lookup(names, Text(forest, text, root));
+                if source < 0 || Alias(names[source].place) { return step; }
+                binding.node = names[source].node;
+            }
+            if !OptionalPresent(forest, text, binding, expression) { return step; }
+            rewritten := code;
+            if ops.debug {
+                // Native narrowing has an unwrap expression around the
+                // original optional read. Both retain their debugger origin.
+                rewritten.append(ExpressionCode(ops, node));
+                rewritten.append(WatchCode(ops, value.slot, value.storage, value.container, value.record,
+                                           0, true, node, target));
+            }
+            continued: Bases = {pc: at.pc + length(rewritten), slot: at.slot + length(slots), local: at.local + length(locals),
+                             cell: at.cell + length(cells), host: at.host + length(hosts), call: at.call + length(calls)};
+            switch OptionalUnwrapStep(types, value, 0, ops, target, continued, node) {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(more_code, more_slots, more_locals, more_cells, more_hosts, more_roots,
+                              more_calls, more_bound, more_next, more_popped, result, more_retained, more_marks):
+                    return Step.Emitted(extend(rewritten, more_code), extend(slots, more_slots), extend(locals, more_locals),
+                                        extend(cells, more_cells), extend(hosts, more_hosts), extend(roots, more_roots),
+                                        extend(calls, more_calls), extend(bound, more_bound), extend(next, more_next),
+                                        popped, result, retained, extend(marks, more_marks));
+            }
+    }
 }

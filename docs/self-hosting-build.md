@@ -598,7 +598,7 @@ identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 platform, processors and backends, and each of `ArtifactFormats`' versions
 with the SHA-256 of the sources and headers that own it. A target's
 `SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
-ROOT by absolute path, byte-sorted, without its `Unlisted` sources, as
+ROOT by absolute path, byte-sorted, as
 `test/language/CMakeLists.txt` writes the language corpus `test_language`
 reads.
 Every run

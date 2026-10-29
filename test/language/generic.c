@@ -1,5 +1,3 @@
-#include "assets/project.h"
-#include "assets/project_migrate.h"
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
@@ -15,12 +13,9 @@
 #include "types/value_document.h"
 #include "types/value_wire.h"
 
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -421,254 +416,6 @@ TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensio
 {
     return constructed_units(quantity_source);
 }
-/* Exercise historical generic type arguments through migration, compilation
- * and both execution backends with a literal result oracle. */
-TEST_CASE(generic_version_34_quantity_type_arguments_migrate)
-{
-    const char
-        *historical = "Units :: library { "
-                      "Quantity :: struct($DataType: Type, $Length: int, "
-                      "$Time: int) { amount: DataType } "
-                      "ProductType :: (A: Type, B: Type) -> Type { return "
-                      "Quantity(A.DataType, "
-                      "A.Length + B.Length, A.Time + B.Time) } "
-                      "Multiply :: (a: $A, b: $B) -> ProductType(A, B) { "
-                      "result: ProductType(A, B) = {amount: a.amount * "
-                      "b.amount}; return result } "
-                      "Run :: () -> Quantity(double, 1, 0) { "
-                      "speed: Quantity(double, 1, -1) = {amount: 6}; "
-                      "time: Quantity(double, 0, 1) = {amount: 2}; return "
-                      "Multiply(speed, time) } }";
-    char error[256] = { 0 }, *migrated = NULL;
-    REQUIRE(!chibi_migrate_number_names(historical, &migrated, error, sizeof error));
-    const char *actual = migrated ? migrated : historical;
-    bool matches = !strcmp(actual, quantity_source);
-    if (!matches) {
-        fprintf(stderr, "version 34 Quantity result: %s\n", actual);
-    }
-    bool executed = constructed_units(actual);
-    free(migrated);
-    REQUIRE(matches && executed);
-    return true;
-}
-TEST_CASE(generic_version_34_argument_roles_preserve_user_names)
-{
-    const struct
-    {
-        const char *source, *expected;
-    } cases[] = {
-        { "L :: library { F :: (x: double | int) {} }",
-          "L :: library { F :: (x: f64 | int) {} }" },
-        { "L :: library { F :: (p: Pair) -> Type { return pkg.Make(double, "
-          "float: float, p.double, pkg.double).field } }",
-          "L :: library { F :: (p: Pair) -> Type { return pkg.Make(f64, float: "
-          "number, p.double, pkg.double).field } }" },
-        { "L :: library { F :: (ordinary: int) -> int { return "
-          "Call(double(double(ordinary)), (byte), {double: float}, [double]) } "
-          "}",
-          "L :: library { F :: (ordinary: int) -> int { return "
-          "Call(f64(f64(ordinary)), (u8), {double: number}, [f64]) } }" },
-        { "// double stays\nL :: library { Row :: struct { double: int } U :: "
-          "union { double | Other } F :: (p: User.double) -> string { double: "
-          "return \"double\" + p.double + pkg.double(1) } }",
-          NULL },
-        { "L :: library { F :: (x: number double/s) -> number double/s { "
-          "return x } }",
-          NULL },
-        { "package p\nimport \"../math\"\nF :: () -> Type { return "
-          "Make(double) }",
-          "package p\nimport \"../math\"\nF :: () -> Type { return Make(f64) "
-          "}" },
-        { "package p\nimport \"core:strings\"\nF :: () -> Type { return "
-          "Make(float) }",
-          "package p\nimport \"core:strings\"\nF :: () -> Type { return "
-          "Make(number) }" },
-        { "package p\nimport \"../m\\u0061th\"\nF :: () -> Type { return "
-          "Make(double) }",
-          "package p\nimport \"../m\\u0061th\"\nF :: () -> Type { return "
-          "Make(f64) }" },
-        { "package p\nimport \"core:\"\nF :: () -> int { return 7 }", NULL },
-        { "package p\nimport _ \"core:\"\nF :: () -> Type { return "
-          "Make(double) }",
-          "package p\nimport _ \"core:\"\nF :: () -> Type { return Make(f64) "
-          "}" },
-    };
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        char error[256] = { 0 }, *migrated = NULL, *again = NULL;
-        int status = chibi_migrate_number_names(cases[i].source, &migrated, error, sizeof error);
-        if (status ||
-            (cases[i].expected ? !migrated || strcmp(migrated, cases[i].expected)
-                               : migrated != NULL)) {
-            fprintf(stderr, "argument role case %zu: %s\n%s\n", i, error, migrated ? migrated : "unchanged");
-        }
-        REQUIRE(!status);
-        REQUIRE(cases[i].expected ? migrated && !strcmp(migrated, cases[i].expected) : !migrated);
-        REQUIRE(
-            !chibi_migrate_number_names(migrated ? migrated : cases[i].source, &again, error, sizeof error)
-        );
-        REQUIRE(!again);
-        free(migrated);
-    }
-    return true;
-}
-TEST_CASE(generic_version_34_bindings_and_uncertain_roles_refuse)
-{
-    const struct
-    {
-        const char *source, *diagnostic;
-    } cases[] = {
-        { "L :: library { F :: (xs: int[]) { for (double, item in xs) { "
-          "Use(item) } } }",
-          "binding is named like a number type; rename it first at 1:40" },
-        { "L :: library { F :: (xs: int[]) { for (item, float in xs) { "
-          "Use(item) } } }",
-          "declaration is named like a number type; rename it first at 1:46" },
-        { "L :: library { F :: (x: int) { if (x is int double) { Use(double) } "
-          "} }",
-          "binding is named like a number type; rename it first at 1:45" },
-        { "L :: library { U :: union { A(value: int) } F :: (x: U) { switch x "
-          "{ case .A(double): Use(double) } } }",
-          "binding is named like a number type; rename it first at 1:78" },
-        { "L :: library { F :: (x: $number) -> int { return 1 } }",
-          "declaration is named like a number type; rename it first at 1:26" },
-        { "L :: library { Quantity :: struct($DataType: Type, $Length: int, "
-          "$Time: int) { amount: DataType } F :: ($number: Type) -> "
-          "Quantity(float, 1, -1) { return {} } }",
-          "declaration is named like a number type; rename it first at 1:106" },
-        { "package p\nimport number \"core:math\"\nF :: () -> Type { return "
-          "Make(float) }",
-          "import alias is named like a number type; use a different alias "
-          "before migration at 2:8" },
-        { "package p\nimport \"../double\"\nF :: () -> Type { return "
-          "Make(double) }",
-          "import alias is named like a number type; use a different alias "
-          "before migration at 2:8" },
-        { "package p\nimport \"core:\"\nF :: () -> Type { return Make(double) "
-          "}",
-          "unresolved import alias may capture a number-type rewrite; supply "
-          "an explicit alias at 2:8" },
-        { "L :: library { F :: () -> Type { return double } }", "unsupported number-type expression; use an explicit type argument before migration at 1:41" },
-    };
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        char error[256] = { 0 }, *migrated = NULL;
-        int status = chibi_migrate_number_names(cases[i].source, &migrated, error, sizeof error);
-        fprintf(stderr, "binding case %zu: %d %s\n", i, status, error);
-        REQUIRE(status < 0 && !migrated);
-        REQUIRE(!strcmp(error, cases[i].diagnostic));
-    }
-    return true;
-}
-static bool migration_write(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    if (!file) {
-        return false;
-    }
-    bool ok = fputs(text, file) >= 0;
-    return !fclose(file) && ok;
-}
-static bool migration_file_is(const char *path, const char *expected)
-{
-    FILE *file = fopen(path, "rb");
-    if (!file) {
-        return false;
-    }
-    char text[2048];
-    size_t size = fread(text, 1, sizeof text - 1, file);
-    bool complete = feof(file) && !ferror(file);
-    fclose(file);
-    text[size] = 0;
-    return complete && !strcmp(text, expected);
-}
-static bool migration_directory(char root[PATH_MAX])
-{
-    const char *temporary = getenv("TMPDIR");
-    int length = snprintf(
-        root,
-        PATH_MAX,
-        "%s/chibi-number-bindings-XXXXXX",
-        temporary && *temporary ? temporary : "/tmp"
-    );
-    REQUIRE(length > 0 && length < PATH_MAX);
-    REQUIRE(mkdtemp(root));
-    return true;
-}
-TEST_CASE(generic_migration_scratch_is_private_and_owned)
-{
-    char first[PATH_MAX], second[PATH_MAX], marker[PATH_MAX + 32];
-    REQUIRE(migration_directory(first) && migration_directory(second));
-    const char *temporary = getenv("TMPDIR");
-    const char *parent = temporary && *temporary ? temporary : "/tmp";
-    size_t length = strlen(parent);
-    REQUIRE(!strncmp(first, parent, length) && first[length] == '/');
-    REQUIRE(!strncmp(second, parent, length) && second[length] == '/');
-    REQUIRE(strcmp(first, second));
-    struct stat info;
-    REQUIRE(!stat(first, &info) && S_ISDIR(info.st_mode) && (info.st_mode & 0777) == 0700);
-    REQUIRE(!stat(second, &info) && S_ISDIR(info.st_mode) && (info.st_mode & 0777) == 0700);
-    snprintf(marker, sizeof marker, "%s/owned", first);
-    REQUIRE(migration_write(marker, "first"));
-    REQUIRE(!unlink(marker) && !rmdir(first));
-    REQUIRE(!stat(second, &info) && S_ISDIR(info.st_mode));
-    REQUIRE(!rmdir(second));
-    return true;
-}
-TEST_CASE(generic_version_34_cross_file_collisions_preserve_project)
-{
-    char root[PATH_MAX], content[PATH_MAX + 32], paths[4][PATH_MAX + 64],
-        error[512] = { 0 };
-    REQUIRE(migration_directory(root));
-    snprintf(content, sizeof content, "%s/content", root);
-    REQUIRE(!mkdir(content, 0700));
-    snprintf(paths[0], sizeof paths[0], "%s/project.kdl", root);
-    snprintf(paths[1], sizeof paths[1], "%s/Use.chibi", content);
-    snprintf(paths[2], sizeof paths[2], "%s/Binding.chibi", content);
-    snprintf(paths[3], sizeof paths[3], "%s/Event.kdl", content);
-    const char *manifest = "version 34\ncontent \"content\"\nstart_scene "
-                           "\"Start.kdl\"\n";
-    const char *use = "package p\nF :: () -> double { return double(7) }";
-    const char *binding = "package p\nnumber :: () -> int { return 3 }";
-    const char *event = "domain \"event\"\n(array)variables {\n    - "
-                        "name=\"Amount\" type=\"double\"\n}\n";
-    const char *original[] = { manifest, use, binding, event };
-    for (int i = 0; i < 4; i++) {
-        REQUIRE(migration_write(paths[i], original[i]));
-    }
-    int status = chibi_project_migrate(root, error, sizeof error);
-    fprintf(stderr, "cross-file migration: %d %s\n", status, error);
-    REQUIRE(
-        status < 0 && strstr(error, "Binding.chibi: declaration is named like a number type; rename it first at 2:1")
-    );
-    for (int i = 0; i < 4; i++) {
-        REQUIRE(migration_file_is(paths[i], original[i]));
-    }
-    /* This unresolved import is file-local and cannot capture Use.chibi's edits. */
-    const char
-        *safe = "package p\nimport \"core:\"\nG :: () -> int { return 3 }";
-    REQUIRE(migration_write(paths[2], safe));
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 34);
-    char current[80];
-    snprintf(current, sizeof current, "version %d\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", CHIBI_PROJECT_VERSION);
-    REQUIRE(migration_file_is(paths[0], current));
-    REQUIRE(migration_file_is(paths[1], "package p\nF :: () -> f64 { return f64(7) }"));
-    REQUIRE(migration_file_is(paths[2], safe));
-    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
-    for (int i = 0; i < 4; i++) {
-        REQUIRE(!unlink(paths[i]));
-    }
-    REQUIRE(!rmdir(content) && !rmdir(root));
-    return true;
-}
-void test_language_migration34_generic_repro()
-{
-    pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(generic_migration_scratch_is_private_and_owned);
-    RUN_TEST_CASE(generic_version_34_quantity_type_arguments_migrate);
-    RUN_TEST_CASE(generic_version_34_argument_roles_preserve_user_names);
-    RUN_TEST_CASE(generic_version_34_bindings_and_uncertain_roles_refuse);
-    RUN_TEST_CASE(generic_version_34_cross_file_collisions_preserve_project);
-    pu_clear_setup();
-}
 static bool reported(const char *message)
 {
     for (int i = 0; i < analysis->diagnostic_count; i++) {
@@ -1054,27 +801,6 @@ TEST_CASE(compile_time_string_alias_survives_analysis_destruction)
     }
     return true;
 }
-TEST_CASE(legacy_bounded_generic_aliases_migrate_but_unbound_require_binders)
-{
-    char error[256], *migrated = NULL, *again = NULL;
-    REQUIRE(
-        !chibi_migrate_syntax("library Fixed { Identity :: <T: plain int>(item:T)->T { return item } }", &migrated, error, sizeof error)
-    );
-    REQUIRE(migrated && !strstr(migrated, "<T"));
-    REQUIRE(analyze(migrated));
-    REQUIRE(!chibi_migrate_syntax(migrated, &again, error, sizeof error));
-    REQUIRE(!again);
-    free(migrated);
-    migrated = NULL;
-    REQUIRE(chibi_migrate_syntax(
-        "library Open { Identity :: <T>(item:T)->T { return item } }",
-        &migrated,
-        error,
-        sizeof error
-    ));
-    REQUIRE(!migrated && strstr(error, "argument binders"));
-    return true;
-}
 TEST_SUITE(language_generic_suite)
 {
     RUN_TEST_CASE(generic_argument_types_specialize_once_and_execute);
@@ -1090,7 +816,6 @@ TEST_SUITE(language_generic_suite)
     RUN_TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings);
     RUN_TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifiers);
     RUN_TEST_CASE(compile_time_string_alias_survives_analysis_destruction);
-    RUN_TEST_CASE(legacy_bounded_generic_aliases_migrate_but_unbound_require_binders);
 }
 void test_language_generic()
 {

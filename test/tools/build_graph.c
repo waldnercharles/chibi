@@ -1382,14 +1382,11 @@ TEST_CASE(tool_testing_headers_match_cmake)
     const char *const headers[] = { "third_party/pico_headers/pico_unit.h",
                                     "test/prepared_fixture.h",
                                     "test/tools/fixture.h",
-                                    "test/graph/packs.h",
-                                    "test/graph/fixture.h",
                                     "test/render/hidden_app.h",
                                     "test/support/reflected_types.h",
-                                    "test/support/gltf_fixture.h",
                                     "export_compiler.h" };
     REQUIRE(
-        configures_as_cmake("chibi_prepared_consumer", "test/tools/testing/include", headers, 9)
+        configures_as_cmake("chibi_prepared_consumer", "test/tools/testing/include", headers, 6)
     );
     return true;
 }

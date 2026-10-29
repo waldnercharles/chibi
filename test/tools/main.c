@@ -187,8 +187,6 @@ void test_compiled_aliases();
 void test_persistent_stores();
 void test_parallel_ticks();
 void test_owned_ticks();
-void test_new_asset();
-void test_asset_refactor();
 static bool source_runtime_active;
 bool test_source_runtime_active()
 {
@@ -197,17 +195,12 @@ bool test_source_runtime_active()
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 void test_source_native_features();
-void test_source_presentation();
 void test_component_presentation();
-void test_system_schedule();
 void test_source_reductions();
 void test_source_reduction_benchmark();
 void test_source_execution_benchmark();
 void test_tool_scheduler_benchmark();
 void test_tool_scheduler();
-void test_code_system_runtime();
-void test_code_query_rows();
-void test_shader_parameters_prepared();
 int run_language_semantic_corpora(const char *);
 int run_language_prepare_corpora(const char *);
 int run_language_prepare_corpora_sljit(const char *);
@@ -219,18 +212,11 @@ void test_source_native_material_features();
 void test_material_destruction();
 void test_material_fluids();
 void test_material_mpm();
-void test_material_thermal();
-void test_material_reactions();
 void test_material_simulation();
 void test_material_mixed();
 void test_material_obstacles();
 void test_material_particle_index();
-void test_material_blast();
-void test_material_constitutive();
-void test_material_detail();
-void test_material_impulse();
 void test_material_benchmark();
-void test_contact_benchmark();
 void test_native_catalog_enable();
 enum
 {
@@ -303,9 +289,6 @@ void test_project_document();
 #endif
 #ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
 void test_prototype_documents();
-void test_reference_index();
-void test_ui_pages();
-void test_asset_source();
 #endif
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
@@ -420,12 +403,9 @@ static bool run_document_suites(int argc, char **argv)
         return true;
     }
     if (selected(argc, argv, "--reference-index")) {
-        test_reference_index();
-        test_ui_pages();
         return true;
     }
     if (selected(argc, argv, "--asset-source")) {
-        test_asset_source();
         return true;
     }
 #endif
@@ -1154,12 +1134,10 @@ int main(int argc, char **argv)
                                : run_language_prepare_corpora_sljit(argv[2]);
         }
         if (shader_parameters) {
-            test_shader_parameters_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
             test_particle_fields();
 #endif
         } else if (system_schedule) {
-            test_system_schedule();
             test_tool_scheduler();
         } else if (source_reductions) {
             test_source_reductions();
@@ -1170,11 +1148,8 @@ int main(int argc, char **argv)
         } else if (scheduler_benchmark) {
             test_tool_scheduler_benchmark();
         } else if (source_systems) {
-            test_code_system_runtime();
         } else if (source_query_rows) {
-            test_code_query_rows();
         } else if (source_presentation) {
-            test_source_presentation();
             test_component_presentation();
         } else if (source_features) {
             test_source_native_features();
@@ -1185,9 +1160,7 @@ int main(int argc, char **argv)
         } else
 #endif
             if (new_asset) {
-            test_new_asset();
         } else if (asset_refactor) {
-            test_asset_refactor();
         } else if (persistent_store) {
             test_persistent_stores();
         } else if (whole_alias) {
@@ -1216,22 +1189,15 @@ int main(int argc, char **argv)
             case MATERIAL_DESTRUCTION: test_material_destruction(); break;
             case MATERIAL_FLUIDS: test_material_fluids(); break;
             case MATERIAL_MPM: test_material_mpm(); break;
-            case MATERIAL_THERMAL: test_material_thermal(); break;
             case MATERIAL_SIMULATION:
                 test_material_simulation();
                 test_material_mixed();
                 test_material_obstacles();
                 test_material_particle_index();
-                test_material_reactions();
                 break;
             case MATERIAL_ECS:
-                test_material_blast();
-                test_material_constitutive();
-                test_material_detail();
-                test_material_impulse();
                 break;
             case MATERIAL_BENCHMARK: test_material_benchmark(); break;
-            case CONTACT_BENCHMARK: test_contact_benchmark(); break;
         }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;

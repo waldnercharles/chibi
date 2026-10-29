@@ -3518,7 +3518,7 @@ LanguageTestsOverSource :: () -> string[] {
 // {sha256:PATH} and {program:NAME}.
 pub SourceDefines :: (target: string, file: string) -> string[] {
     if (target == "test_language" && file == "test/language/package_math.c") {
-        return ["CHIBI_SOURCE_ROOT=\"{source_root}\"", "CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
+        return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\"", "CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];

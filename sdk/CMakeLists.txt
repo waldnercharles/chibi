@@ -571,14 +571,13 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/authoring/source_format.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_navigation.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_rename.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_intelligence.c")
+        "${CHIBI_SDK_ROOT}/src/authoring/source_refactor_text.c")
     add_library(Chibi::authoring ALIAS chibi_authoring)
     set_target_properties(chibi_authoring PROPERTIES EXPORT_NAME authoring)
     chibi_sdk_headers(chibi_authoring PUBLIC authoring/source_prepare.h authoring/source_link.h
-        authoring/source_format.h authoring/source_navigation.h
+        authoring/source_format.h authoring/source_navigation.h authoring/source_refactor_text.h
         authoring/source_prototype_flow.h
-        authoring/source_rename.h authoring/source_intelligence.h authoring/source_declaration.h
+        authoring/source_declaration.h
         authoring/native_bindings.h authoring/source_literal.h authoring/source_references.h)
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")

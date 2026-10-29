@@ -464,7 +464,7 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::native_types)
     if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
         add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../runtime/source_input_save.c ../authoring/source_presentation.c
-            ../runtime/system_schedule.c ../runtime/source_reductions.c scheduler_benchmark.c ../code_system_runtime.c ../authoring/source_edit.c
+            ../runtime/system_schedule.c ../runtime/source_reductions.c scheduler_benchmark.c ../code_system_runtime.c
             ../authoring/shader_parameters.c ../authoring/component_presentation.c ../language/corpus_semantic.c)
         target_include_directories(chibi_source_features_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
         target_link_libraries(chibi_source_features_consumer PRIVATE Chibi::project_preparation Chibi::component_presentation

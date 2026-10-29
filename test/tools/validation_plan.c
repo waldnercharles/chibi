@@ -92,23 +92,23 @@ TEST_CASE(validation_identity_is_frozen_and_requires_clean_checkout)
     git("rev-parse", "HEAD^{tree}", NULL, NULL);
     char tree[64];
     snprintf(tree, sizeof tree, "%.*s", (int)strcspn(output, "\n"), output);
-    REQUIRE(plan("--selector=--source-edit", NULL, NULL, NULL) == 0);
+    REQUIRE(plan("--selector=--source-systems", NULL, NULL, NULL) == 0);
     yyjson_val *root = json();
     yyjson_val *identity = yyjson_obj_get(root, "identity");
     REQUIRE(string_equals(yyjson_obj_get(identity, "head"), head));
     REQUIRE(string_equals(yyjson_obj_get(identity, "tree"), tree));
     REQUIRE(string_equals(yyjson_obj_get(yyjson_obj_get(identity, "sources"), "source"), head));
-    REQUIRE(only_command(root, "iteration_commands", "make agent-test AGENT_SELECTOR=--source-edit"));
+    REQUIRE(only_command(root, "iteration_commands", "make agent-test AGENT_SELECTOR=--source-systems"));
     REQUIRE(yyjson_is_false(yyjson_obj_get(root, "full_verification")));
     tool_write(saved_plan, output);
-    REQUIRE(plan("--selector=--source-edit", "--verify", saved_plan, NULL) == 0);
+    REQUIRE(plan("--selector=--source-systems", "--verify", saved_plan, NULL) == 0);
     REQUIRE(string_equals(yyjson_obj_get(json(), "status"), "identity-current"));
     git("branch", "-f", "source", "base");
-    REQUIRE(plan("--selector=--source-edit", "--verify", saved_plan, NULL) == 2);
+    REQUIRE(plan("--selector=--source-systems", "--verify", saved_plan, NULL) == 2);
     REQUIRE(strstr(output, "stale or changed plan"));
     git("branch", "-f", "source", "HEAD");
     tool_write(contract, "uncommitted change\n");
-    int dirty_status = plan("--selector=--source-edit", "--verify", saved_plan, NULL);
+    int dirty_status = plan("--selector=--source-systems", "--verify", saved_plan, NULL);
     bool dirty_message = strstr(output, "clean worktree") != NULL;
     git("restore", "contract.txt", NULL, NULL);
     REQUIRE(dirty_status == 2);
@@ -147,9 +147,9 @@ TEST_CASE(validation_requires_review_and_checks_for_mixed_scope)
     REQUIRE(strstr(output, "reviewed scope requires"));
     REQUIRE(plan("--scope", "mixed", NULL, NULL) == 2);
     REQUIRE(strstr(output, "reviewed scope requires"));
-    REQUIRE(plan("--selector=--source-edit", "--scope", "mixed", NULL) == 0);
+    REQUIRE(plan("--selector=--source-systems", "--scope", "mixed", NULL) == 0);
     yyjson_val *root = json();
-    REQUIRE(only_command(root, "iteration_commands", "make agent-test AGENT_SELECTOR=--source-edit"));
+    REQUIRE(only_command(root, "iteration_commands", "make agent-test AGENT_SELECTOR=--source-systems"));
     REQUIRE(yyjson_is_false(yyjson_obj_get(root, "full_verification")));
     REQUIRE(plan("--scope", "unknown", NULL, NULL) == 0);
     root = json();
@@ -203,7 +203,7 @@ TEST_CASE(make_selector_data_never_reaches_the_shell)
         for (int j = 0; j < 4; j++) {
             char suffix[256], assignment[512];
             snprintf(suffix, sizeof suffix, suffixes[j], marker);
-            snprintf(assignment, sizeof assignment, "%s=%s%s", variables[i], i ? "--source-edit" : "exit 0", suffix);
+            snprintf(assignment, sizeof assignment, "%s=%s%s", variables[i], i ? "--source-systems" : "exit 0", suffix);
             /* Skip building the worker that already runs this test. The real
                recipes must transport selector data without shell evaluation. */
             const char *argv[] = { "make", "-f",          makefile,

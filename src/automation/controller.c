@@ -33,10 +33,8 @@
 #include "authoring/source_collection.h"
 #include "authoring/source_format.h"
 #include "authoring/source_graph_library.h"
-#include "authoring/source_intelligence.h"
 #include "authoring/source_presentation.h"
 #include "authoring/source_references.h"
-#include "authoring/source_rename.h"
 #include "authoring/studio_project.h"
 #include "authoring/studio_schema.h"
 #include "authoring/visual_prepare.h"
@@ -344,9 +342,8 @@ static const contract_field CONTRACT_IMPORT_MODEL[] = {
 };
 static const contract_field CONTRACT_ANALYZE_CODE[] = {
     { "project_root", "string", false, "Optional project directory supplying library/event signatures; defaults to the controller root." },
-    { "rename", "string", false, "Propose a source-local rename at offset, without publishing." },
     { "source", "string", true, "Unsaved behavior source; uses the shared native frontend." },
-    { "offset", "uint64", false, "Byte offset for shared completion and hover." },
+    { "offset", "uint64", false, "Byte offset for shared reference lookup." },
     { "location", "object", false, "graph_id, node_id and optional pin_id to resolve to a source range." },
 };
 static const contract_field CONTRACT_READ_ASSET[] = {
@@ -2400,114 +2397,6 @@ static void source_location_json(
     source_range_json(doc, value, location.range);
 }
 
-static void source_rename_proposal(
-    const char *content,
-    const script_catalog *native,
-    const authoring_navigation *navigation,
-    int selected,
-    int offset,
-    const char *name,
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *result
-)
-{
-    char error[256] = "";
-    const authoring_reference *reference = authoring_navigation_at(navigation, selected, offset);
-    authoring_rename_plan
-        *plan = reference
-                  ? authoring_source_rename(navigation, reference->target, name, error, sizeof error)
-                  : NULL;
-    if (!plan) {
-        yyjson_mut_obj_add_strcpy(doc, result, "rename_error", error[0] ? error : "No resolved symbol at offset");
-        return;
-    }
-    source_catalog_edit *edits = NULL;
-    int *documents = NULL;
-    for (int i = 0; i < plan->count; i++) {
-        int document = plan->edits[i].document;
-        bool included = false;
-        for (int j = 0; j < acount(documents); j++) {
-            included |= documents[j] == document;
-        }
-        if (included) {
-            continue;
-        }
-        const authoring_document *source = authoring_navigation_document_at(navigation, document);
-        char *text = authoring_rename_document(
-            plan,
-            document,
-            authoring_navigation_document_text(navigation, document),
-            error,
-            sizeof error
-        );
-        if (!text) {
-            break;
-        }
-        apush(edits, ((source_catalog_edit){ .path = source->path, .text = text }));
-        apush(documents, document);
-    }
-    source_catalog *candidate = !error[0]
-                                  ? source_catalog_edited(content, native, edits, acount(edits))
-                                  : NULL;
-    if (candidate && source_catalog_diagnostic_count(candidate)) {
-        snprintf(
-            error,
-            sizeof error,
-            "%s",
-            source_catalog_diagnostic_at(candidate, 0)->message
-        );
-    }
-    for (int i = 0;
-         candidate && !error[0] && i < source_catalog_source_count(candidate);
-         i++) {
-        const source_catalog_source *source = source_catalog_source_at(candidate, i);
-        script_analysis *analysis = script_analyze_document(
-            source->syntax,
-            source_catalog_view(candidate),
-            source->identity
-        );
-        if (!analysis->valid) {
-            snprintf(
-                error,
-                sizeof error,
-                "%s",
-                analysis->diagnostic_count ? analysis->diagnostics[0].message : "Rename candidate is invalid"
-            );
-        }
-        script_analysis_free(analysis);
-    }
-    if (error[0]) {
-        yyjson_mut_obj_add_strcpy(doc, result, "rename_error", error);
-    } else {
-        yyjson_mut_val *proposal = yyjson_mut_obj_add_arr(doc, result, "rename_edits");
-        for (int i = 0; i < plan->count; i++) {
-            const authoring_rename_edit *edit = &plan->edits[i];
-            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, proposal);
-            yyjson_mut_obj_add_strcpy(doc, item, "path", edit->path);
-            source_range_json(doc, item, edit->range);
-            yyjson_mut_obj_add_strcpy(doc, item, "expected", edit->expected);
-            yyjson_mut_obj_add_strcpy(doc, item, "replacement", edit->replacement);
-        }
-        for (int i = 0; i < acount(edits); i++) {
-            if (documents[i] == selected) {
-                yyjson_mut_obj_add_strcpy(
-                    doc,
-                    result,
-                    "renamed_source",
-                    edits[i].text
-                );
-            }
-        }
-    }
-    source_catalog_free(candidate);
-    for (int i = 0; i < acount(edits); i++) {
-        free((char *)edits[i].text);
-    }
-    afree(edits);
-    afree(documents);
-    authoring_rename_plan_free(plan);
-}
-
 static int analyze_project_source(
     const char *root,
     yyjson_val *request,
@@ -2529,12 +2418,6 @@ static int analyze_project_source(
     if (position &&
         (!yyjson_is_uint(position) || yyjson_get_uint(position) > strlen(text))) {
         set_error(error, size, "offset must be a byte position within source");
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    yyjson_val *rename = yyjson_obj_get(request, "rename");
-    if (rename && (!position || !yyjson_is_str(rename) ||
-                   strlen(yyjson_get_str(rename)) != yyjson_get_len(rename))) {
-        set_error(error, size, "rename requires offset and a NUL-free name");
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     yyjson_val *location = yyjson_obj_get(request, "location");
@@ -2663,18 +2546,6 @@ static int analyze_project_source(
             yyjson_mut_arr_add_int(doc, children, query->children[j]);
         }
     }
-    int highlight_count = 0;
-    authoring_highlight *highlights = authoring_source_highlights(navigation, selected, &highlight_count);
-    const char *span_fields[] = { "spans", "semantic_spans" };
-    for (int field = 0; field < 2; field++) {
-        yyjson_mut_val *spans = yyjson_mut_obj_add_arr(doc, result, span_fields[field]);
-        for (int i = 0; i < highlight_count; i++) {
-            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, spans);
-            source_range_json(doc, item, highlights[i].range);
-            yyjson_mut_obj_add_strcpy(doc, item, "class", highlights[i].cls);
-        }
-    }
-    free(highlights);
     int inspection_status = CHIBI_AUTOMATION_OK;
     authoring_source_presentation
         *presentation = authoring_source_presentation_new(analysis, view, NULL);
@@ -2727,43 +2598,6 @@ static int analyze_project_source(
     free(formatted);
     if (position) {
         int offset = (int)yyjson_get_uint(position);
-        authoring_completions completions = { 0 };
-        authoring_source_complete(navigation, selected, offset, &completions);
-        yyjson_mut_val *items = yyjson_mut_obj_add_arr(doc, result, "completions");
-        const char *completion_kinds[] = { "variable", "function", "event",
-                                           "type",     "field",    "keyword" };
-        for (int i = 0; i < completions.count; i++) {
-            authoring_completion *completion = &completions.items[i];
-            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, items);
-            yyjson_mut_obj_add_strcpy(doc, item, "label", completion->label);
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                item,
-                "kind",
-                completion_kinds[completion->kind]
-            );
-            yyjson_mut_obj_add_strcpy(doc, item, "detail", completion->detail);
-            yyjson_mut_obj_add_strcpy(doc, item, "insert", completion->insert);
-            source_range_json(doc, item, completions.range);
-        }
-        authoring_completions_free(&completions);
-        char *hover = authoring_source_hover(navigation, selected, offset);
-        if (hover) {
-            yyjson_mut_obj_add_strcpy(doc, result, "hover", hover);
-        }
-        free(hover);
-        if (rename) {
-            source_rename_proposal(
-                content,
-                authoring_language_catalog_view(native),
-                navigation,
-                selected,
-                offset,
-                yyjson_get_str(rename),
-                doc,
-                result
-            );
-        }
         const authoring_reference *picked = authoring_navigation_at(navigation, selected, offset);
         const authoring_reference
             *definition = picked

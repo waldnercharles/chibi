@@ -1,6 +1,6 @@
 # Native source-built authored asset service. No checked asset bootstrap is used.
 set(asset_output "${CMAKE_CURRENT_BINARY_DIR}/generated/assets")
-set(asset_generator_timeout 240000)
+set(asset_generator_timeout 600000)
 set(asset_compiler_timeout_arguments "")
 # Unoptimized or sanitized hosts take minutes to compile the asset compiler.
 if(CHIBI_ENABLE_SANITIZERS OR NOT CMAKE_BUILD_TYPE STREQUAL "Release")

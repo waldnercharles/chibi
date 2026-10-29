@@ -97,12 +97,12 @@ function constant($, pub) {
     field("value", $._expression), $._end);
 }
 function record($, pub) {
-  return seq(...pub, field("name", $._name), "::", K.struct,
+  return seq(repeat(field("attribute", $.attribute)), ...pub, field("name", $._name), "::", K.struct,
     optional(field("parameters", $.parameter_list)),
     field("body", $.record_body), optional(";"));
 }
 function union($, pub) {
-  return seq(...pub, field("name", $._name), "::", K.union, "{",
+  return seq(repeat(field("attribute", $.attribute)), ...pub, field("name", $._name), "::", K.union, "{",
     $.union_variant, repeat(seq("|", $.union_variant)), optional("|"), "}", optional(";"));
 }
 
@@ -337,7 +337,7 @@ module.exports = grammar({
         ".",
         field("member", $._member_name),
       ),
-    // `@test` before a declaration marks it; analysis decides which names exist.
+    // Attributes mark declarations; analysis decides which names and targets exist.
     attribute: ($) => seq("@", field("name", $.identifier)),
     function_declaration: ($) => functionDeclaration($, []),
     _public_function: ($) => functionDeclaration($, [field("visibility", K.pub)]),

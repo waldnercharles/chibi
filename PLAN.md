@@ -7,6 +7,125 @@
 
 # Chibi toolchain consolidation and self-hosting
 
+## Recoverable errors, approved 2026-10-27 and revised 2026-10-28
+
+The current offline integration combines accepted main
+`79743c5675e5a18eeea14193d729cc6e45bdf926` with the preceding reviewed source
+checkpoint `bd6751c3b185b314e2311d752d7a896436994bde`. Preserve the accepted
+private build protocol 14, callback-result arena reuse and separate invocation
+argument bank alongside error-category metadata. The earlier source checkpoints
+and their receipts stay frozen. No new compiler/runtime artifact or public ABI
+change is part of this source integration.
+Protocol 14 does not establish support for the new type attributes. Keep the
+reviewed fresh-grammar and complete-source-manifest prerequisites. Prepare the
+initial language driver as a standalone compiler-only SDK consumer, with native
+and desktop products and direct asset-host tests disabled; the normal root
+driver otherwise pulls asset generation through project compilation before a
+new bootstrap exists. Normal builds and SDK validation still follow genuine
+private candidate admission in a separate validation checkout.
+
+The preceding offline integration combined accepted main
+`a253ef4b5b91bfc8e6a52a03c31818231027eb6b` with the frozen, independently
+reviewed PR #813 source `e902fcf3c0a00666b437d6ca2c1e58f24be0a30b`.
+Preserve that PR head and its receipts. Keep accepted package activation,
+dense emitted closure rows, `FinishBody`, prepared-record validation and
+identity-based package enumeration. The source compiler's public named-result
+facades and post-emission error checking remain in place. Add combined cases
+for unchecked errors in inactive collections, directly and transitively imported
+collections, independent project packages and checked active collections.
+
+This phase permits source reconciliation, static checks, independent diff review
+and a clean local source checkpoint. It does not run compiler producers or
+refresh artifacts. The accepted compiler and E1 runtime manifests remain
+unchanged; they are starting inputs, not validation of the combined source.
+The 84-sample results below belong to the frozen PR #813 candidate and do not
+establish execution of this integration.
+
+Next validation needs a fresh native parser host containing the `@error` grammar.
+Protocol compatibility alone cannot establish syntax compatibility. Both retained
+bootstrap manifests omit `package_compiler/Fallible.chibi`, so direct recovery
+also fails the complete-source-closure check before compiling changed sources.
+First use direct CMake targets to build the fresh native parser host and
+stage-zero language driver, prove compiler self-reproduction, then produce a
+private candidate artifact and manifest for the complete integrated closure.
+Do not start through `make bootstrap-artifact`: its recursive build can enter
+the old manifest loader before the first candidate exists. Admit the genuine
+candidate in a separate validation source copy before using the normal
+Make/Graph/asset/SDK routes. Validate the native error contracts, both
+authored backends, the reachability interactions and installed SDK facades on
+the exact clean combined source. Schedule normal sanitizer/asset and applicable
+repository groups with the integration owner before starting heavy producers;
+record execution, elapsed time and any unexecuted gates separately.
+
+Use ordinary named results with a final typed optional error. A nil error means
+success. Each API defines whether its other outputs remain useful on failure;
+the compiler does not require success before their use. Exceptions, a generic
+Result wrapper and propagation operators are outside this change.
+
+Mark package-owned struct and union types with `@error`; infer checking from
+the final result's resolved type. Optional and transparent union composition
+retain the category, while fields, containers and pointers remain ordinary data.
+Earlier result slots cannot directly contain errors. This replaces the draft's
+function marker. Testing, reporting, forwarding or storing the error acknowledges
+it. Reading only sibling outputs or copying it through unused aliases does not.
+Overwriting an outcome must not erase the obligation. Ordinary optional absence
+results remain unaffected. Acknowledgment does not prove useful recovery or
+eventual consumption after storage.
+
+The frozen PR #813 source forward port targets base
+`dafe746411182c3320281c0b1fe4e75e7b9b6456`, including merged PR #694 and the
+accepted protocol-13/scalar transport updates, canonical #800 fixture repairs
+and the #797 native runtime. Rebuild native objects against its arena layout.
+Preserve its collection ownership machinery and on-demand optional type
+construction.
+Port the recoverable-error checker and the required named-result parity without
+reintroducing the earlier optional discovery pass. Public package compiler
+`Compile`, `CompileWithEffects` and `CompileBehavior` return module ID, bytes
+and optional `syntax.Diagnostic`. The asset compiler facade returns entry ID,
+prepared bytes and optional diagnostic. Internal assembly unions remain
+package-local; closure byte APIs and the native 29-byte transport are unchanged.
+Preserve the accepted `ExplainCosts` facade.
+
+The preceding `8dd33d14` diagnostic Release checkpoint passed 102 semantic cases / 2,495
+assertions and the 73-sample fallible group with 3 cases / 29,817 assertions on
+both compiler backends. Query-value, import/cache, formatter and whole-tree
+clang-format checks also passed. The revised type-marker candidate now passes
+301 focused native cases / 23,147 assertions and the 84-sample authored group
+with 3 cases / 32,742 assertions in 47.483 seconds. Whole-tree clang-format 22
+also passed. The authored unsupported-union frontier now returns its existing
+source diagnostic rather than failing on a missing type-name child. Metadata
+constructors explicitly initialize the category. This asset-host-disabled harness is separate
+from normal sanitizer/asset acceptance.
+
+The recorded `frozen-7c6ca-01` checkpoint passed focused native/source, public
+API, query, asset, named-result, argument-sharing and debugger/cleanup checks,
+compiler self-reproduction with post-bootstrap samples, ASan/UBSan semantic
+and source checks, tools and formatting. Earlier frozen-candidate results do
+not validate this base. Normal scratch artifact writing and recovery also
+passed against that checkpoint, with identical compiler bytes. The accepted
+main updates were then integrated at recorded boundaries. The fresh normal
+SAN/asset-enabled build failed after 890.00 seconds: bootstrap reuse succeeded,
+then the 41-source facade compile reached its existing 600,000 ms timeout. No
+normal test drivers or downstream check results were produced. That failed
+snapshot predates later checker regression repairs. Normal build success,
+matching-artifact integer integration, eligible library/shared-helper
+reconciliation, required engine aggregates and publication remain pending.
+Error-bearing async calls and calls inside generated query evaluators retain
+explicit unsupported diagnostics. The authored compiler retains its existing
+transparent-union, alias and function-return-inference limits. Full return-type
+inference and parameter-name `?` syntax remain design discussion, outside this
+revision. Do not import held character, math, generic
+or library work. Keep compiler ownership, bootstrap publication, manifest
+updates, phase/ABI and installed defaults with their existing owners.
+
+Validate fixed success, partial-progress and failure oracles in both compiler
+stages. Cover dropped errors, aliases, overwrites, branches, loops, imports,
+await arguments and explicit forwarding. Keep native-boundary assertions for
+exact asset status, token offsets, source line/column and message text. Check
+source recovery and applicable repository groups on the integrated candidate;
+record actual results, elapsed time and unexecuted coverage. See
+[recoverable errors](docs/recoverable-errors.md) for the contract.
+
 ## Coordinated named struct results, 2026-10-22
 
 The next local setup slice extends the ABI20 authored compiler's existing

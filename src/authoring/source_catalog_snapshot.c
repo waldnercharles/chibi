@@ -107,7 +107,7 @@ bool source_catalog_metadata_equal(const script_catalog *a, const script_catalog
             x->layout != y->layout || x->underlying != y->underlying ||
             x->component_id != y->component_id || x->component != y->component ||
             x->derived != y->derived || x->internal != y->internal ||
-            x->authored_record != y->authored_record ||
+            x->authored_record != y->authored_record || x->error != y->error ||
             x->container != y->container || !same_type(x->key_type, y->key_type) ||
             !same_type(x->element_type, y->element_type) ||
             x->variant_count != y->variant_count ||
@@ -163,7 +163,9 @@ bool source_catalog_metadata_equal(const script_catalog *a, const script_catalog
             x->completion_outcome != y->completion_outcome ||
             x->effects != y->effects || x->operation != y->operation ||
             x->receiver != y->receiver || x->pure != y->pure ||
-            x->variadic != y->variadic || x->variadic_optional != y->variadic_optional ||
+            x->fallible != y->fallible || x->language_values != y->language_values ||
+            x->owned_result != y->owned_result || x->variadic != y->variadic ||
+            x->variadic_optional != y->variadic_optional ||
             x->numeric_aggregate != y->numeric_aggregate ||
             x->event_sender != y->event_sender ||
             !same_parameters(x->parameters, y->parameters, x->parameter_count) ||

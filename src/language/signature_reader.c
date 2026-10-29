@@ -157,8 +157,12 @@ static const script_signature_generic *generic(reader *r, TSNode node)
     }
     return NULL;
 }
-static script_type collection(reader *r, pin_container container, script_type key, script_type value)
+static script_type collection(reader *r, TSNode node, pin_container container, script_type key, script_type value)
 {
+    if ((key.flags | value.flags) & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        diagnostic(r, node, "Containers and pointers of flattened error unions are not supported yet");
+        return (script_type){ .flags = SCRIPT_TYPE_ERROR };
+    }
     script_constructor_facts facts = constructors(r);
     return publish(
         r,
@@ -184,6 +188,10 @@ static script_type traits(reader *r, TSNode node, script_type out)
         } else if (!strcmp(token, "?")) {
             out.flags |= SCRIPT_TYPE_OPTIONAL;
         } else if (!strcmp(token, "[") || !strcmp(token, "[]")) {
+            if (out.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+                diagnostic(r, node, "Containers and pointers of flattened error unions are not supported yet");
+                return (script_type){ .flags = SCRIPT_TYPE_ERROR };
+            }
             if (out.flags & SCRIPT_TYPE_OPTIONAL) {
                 (void)named(r);
                 const script_catalog_type
@@ -195,7 +203,7 @@ static script_type traits(reader *r, TSNode node, script_type out)
             }
             if (out.collection || out.container != PIN_CONTAINER_SINGLE ||
                 (out.flags & SCRIPT_TYPE_OPTIONAL)) {
-                out = collection(r, PIN_CONTAINER_ARRAY, (script_type){ 0 }, out);
+                out = collection(r, node, PIN_CONTAINER_ARRAY, (script_type){ 0 }, out);
             }
             out.container = PIN_CONTAINER_ARRAY;
         }
@@ -240,12 +248,36 @@ bool script_signature_task(const char *source, TSNode application)
 {
     return !ts_node_is_null(task_result(source, application));
 }
+/* task(T) uses an argument's expression AST. Interpret only its existing
+ * type-union spelling here, without adding type operations to value code. */
+static script_type task_argument_type(reader *r, TSNode node)
+{
+    if (is(node, "parenthesized_expression")) {
+        return task_argument_type(r, field(node, "expression"));
+    }
+    if (is(node, "binary_expression") &&
+        !strcmp(text(r, field(node, "operator")), "|")) {
+        script_type members[2];
+        members[0] = task_argument_type(r, field(node, "left"));
+        members[1] = task_argument_type(r, field(node, "right"));
+        script_constructor_facts facts = constructors(r);
+        return publish(
+            r,
+            script_constructor_union(r->storage, &facts, members, 2, r->facts.pointer_size)
+        );
+    }
+    return type(r, node);
+}
 static script_type application(reader *r, TSNode node)
 {
     TSNode result = task_result(r->source, node);
     if (!ts_node_is_null(result)) {
+        script_type success = task_argument_type(r, result);
         script_constructor_facts facts = constructors(r);
-        return publish(r, script_constructor_task(r->storage, &facts, type(r, result), 0));
+        if (success.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+            diagnostic(r, node, "Tasks of flattened error unions are not supported yet");
+        }
+        return publish(r, script_constructor_task(r->storage, &facts, success, 0));
     }
     const script_signature_generic *found = generic(r, node);
     if (!found) {
@@ -268,7 +300,7 @@ static script_type map(reader *r, TSNode node)
     if (!supported) {
         diagnostic(r, node, "Unsupported map key type");
     }
-    return collection(r, PIN_CONTAINER_MAP, key, value);
+    return collection(r, node, PIN_CONTAINER_MAP, key, value);
 }
 static script_type type(reader *r, TSNode node)
 {
@@ -283,6 +315,10 @@ static script_type type(reader *r, TSNode node)
             TSNode child = ts_node_named_child(node, i);
             if (is(child, "pointer_type")) {
                 script_type target = type(r, field(child, "target"));
+                if (target.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+                    diagnostic(r, node, "Containers and pointers of flattened error unions are not supported yet");
+                    return (script_type){ .flags = SCRIPT_TYPE_ERROR };
+                }
                 script_catalog_type definition = script_constructor_pointer(
                     r->storage,
                     target,

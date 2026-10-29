@@ -307,6 +307,7 @@ TypeDecl :: struct {
     value_storage: int;
     value_container: int;
     value_record: int;
+    error: bool;
 }
 // A record field, with its byte offset, or a variant's payload field. A
 // native type's field may be read-only, a constant whose value is its name,
@@ -324,7 +325,7 @@ TypeMember :: struct {
     read: int;
     read_key: string;
 }
-pub Result :: union {
+Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: u64, bytes: u8[])
 }
 // Package assembly also returns the effects of its callables, so importers
@@ -578,6 +579,9 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
                                 package, view);
     }
     first := FirstMember(forest, Field(forest, node, "name"));
+    if (first < 0) {
+        return none;
+    }
     name := Text(forest, text, first);
     home := package;
     part := NextMember(forest, first);
@@ -745,7 +749,7 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
         declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package, node: -1, kind: MapDecl,
                               first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage, id: id, layout: 0, component: 0,
                               key: key.storage, value_storage: value.storage, value_container: value.container,
-                              value_record: value.record};
+                              value_record: value.record, error: false};
         known.append(declared);
     }
     return known;
@@ -830,6 +834,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         while (member >= 0) {
             record := Is(forest, member, "record_declaration");
             if (record || Is(forest, member, "union_declaration")) {
+                attributes := DeclarationAttributes(forest, text, file, member, "error");
+                if length(attributes) > 0 { return Declarations.Failed(attributes[0]); }
                 name := Text(forest, text, Field(forest, member, "name"));
                 if (name == "") {
                     return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
@@ -844,7 +850,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                       id: binding.ID("package-symbol", format_text("{}:{}:{}", documents[files[0]].identity,
                                                                                    TypeKind, name)),
                                       layout: 0, component: 0, key: 0, value_storage: 0,
-                                      value_container: 0, value_record: -1};
+                                      value_container: 0, value_record: -1, error: ErrorMarked(forest, text, member)};
                 if (!record) {
                     // Variants follow their union; their payloads resolve below.
                     declared.kind = UnionDecl;
@@ -866,7 +872,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             alternative: TypeDecl = {name: variant_name, type_name: "", package: package, node: member,
                                                      kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder,
                                                      storage: 0, id: 0, layout: 0, component: 0, key: 0, value_storage: 0,
-                                                     value_container: 0, value_record: -1};
+                                                     value_container: 0, value_record: -1, error: false};
                             types.append(alternative);
                             grown := types[holder];
                             grown.count += 1;
@@ -1669,9 +1675,11 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
     return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
 }
 // The signature of the function `member` named `name`, its params numbered
-// from `first`. A named result is a scalar or a single record.
+// from `first`. Named results include text, arrays and boxed optionals.
 FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], table: ^(TypeDecl[]),
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
+    attributes := DeclarationAttributes(forest, text, file, member, "test");
+    if (length(attributes) > 0) { return Signature.Failed(attributes[0]); }
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
     while (parameter >= 0) {
@@ -1742,9 +1750,16 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                 return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
             }
             declared := ReadType(forest, text, table, aliases, package, Field(forest, named, "type"));
-            if (declared.storage == 0 || declared.storage == TextStorage || declared.storage == UnionStorage ||
-                declared.storage == PointerStorage || declared.container != 0) {
+            if (declared.storage == 0 || declared.storage == PointerStorage ||
+                (declared.container != 0 && declared.container != ArrayContainer) ||
+                (declared.storage == UnionStorage && declared.container == 0 &&
+                 OptionalElement(table^, Typed(-1, declared.storage, declared.container, declared.record)).storage == 0)) {
                 return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
+            }
+            initial := Field(forest, named, "value");
+            if (OptionalElement(table^, Typed(-1, declared.storage, declared.container, declared.record)).storage != 0 &&
+                initial >= 0 && !Is(forest, initial, "nil")) {
+                return Signature.Failed(Diagnose(forest, initial, file, "named optional result initializer is not supported yet"));
             }
             result_name := Text(forest, text, Field(forest, named, "name"));
             param: Param = {name: result_name, storage: declared.storage, container: declared.container,
@@ -1767,6 +1782,12 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
     callable: Callable = {name: name, package: package, document: file, node: member, first: first, count: count,
                           result: result.storage, result_container: result.container, result_record: result.record,
                           results: length(added) - count, waits: false};
+    for index in count..<length(added) - 1 {
+        earlier := added[index];
+        if ErrorBearing(table^, {storage: earlier.storage, container: earlier.container, record: earlier.record}) {
+            return Signature.Failed(Diagnose(forest, earlier.node, file, "An error-bearing result must be the final result"));
+        }
+    }
     return Signature.Read(callable, added);
 }
 ScalarValue :: (storage: int, wide: int) -> writer.Value {
@@ -2307,8 +2328,9 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
                  ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
     callable := callables[index];
     document := documents[callable.document];
+    generated_query := QueryEvaluator(query_specs, index) >= 0;
     analysis_body := Field(forest, callable.node, "body");
-    if (QueryEvaluator(query_specs, index) >= 0) {
+    if (generated_query) {
         analysis_body = Field(forest, callable.node, "parameters");
     }
     if (analysis_body < 0) {
@@ -2325,10 +2347,30 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     if (callable.results == 0) {
         built = BuiltLocals(forest, document.text, table^, aliases, callable.package, analysis_body, referenced);
     }
-    return EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
-                    natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
-                    undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target,
-                    query_specs);
+    emitted := EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
+                        natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
+                        undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target,
+                        query_specs);
+    switch emitted {
+        case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+            // Read current resolved return types, including imported source
+            // declarations. Ordinary optional absence remains ordinary.
+            requires_check := false;
+            for fact in facts {
+                if fact.kind == CallFact && fact.target >= 0 && fact.target < length(callables) &&
+                   ErrorResult(table^, params, callables[fact.target]) {
+                    requires_check = true;
+                    break;
+                }
+            }
+            if requires_check {
+                problems := FallibleBody(forest, documents, callables, params, table^, callable, facts, generated_query);
+                if length(problems) > 0 { return Body.Failed(problems[0]); }
+            }
+        case:
+            return emitted;
+    }
+    return emitted;
 }
 Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
              package_names: string[], package_ids: u64[], fingerprints: u64[], reachable: bool[],
@@ -3001,16 +3043,29 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 // functions it links.
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                 sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
-                ports: Port[], identities: u64[]) -> Result {
-    return CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
-                              names, natives, ports, identities, resize([int(0)], length(natives)));
+                ports: Port[], identities: u64[]) -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
+    compiled := CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                                   names, natives, ports, identities, resize([int(0)], length(natives)));
+    return (compiled.module, compiled.bytes, compiled.error);
 }
 // The complete target catalog supplies one effect mask per native, in the
-// same order as natives and identities. Compile retains the bootstrap's
-// stable signature for its verified pure-native catalog.
+// same order as natives and identities. Compile supplies zero effect masks
+// for its verified pure-native catalog.
 pub CompileWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                            sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
-                           ports: Port[], identities: u64[], native_effects: int[]) -> Result {
+                           ports: Port[], identities: u64[], native_effects: int[])
+                           -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
+    switch CompileInput(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                        names, natives, ports, identities, native_effects) {
+        case .Rejected(diagnostic):
+            return (0, [], diagnostic);
+        case .Compiled(compiled_module, prepared):
+            return (compiled_module, prepared, nil);
+    }
+}
+CompileInput :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                 sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
+                 ports: Port[], identities: u64[], native_effects: int[]) -> Result {
     ops := ResolveOps(names, debug);
     resolved_ports := LegacyPorts(ports);
     resolved_natives := LegacyNatives(natives, names);
@@ -3064,22 +3119,20 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
 pub CompileClosure :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                        sources: string[], debug: bool, target: Target, abi: u64, names: string[],
                        natives: Native[], ports: Port[], identities: u64[]) -> u8[] {
-    switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi, names, natives,
-                   ports, identities) {
-        case .Rejected(diagnostic):
-            return [];
-        case .Compiled(module, bytes):
-            return bytes;
+    compiled := Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                        names, natives, ports, identities);
+    if (compiled.error) {
+        return [];
     }
+    return compiled.bytes;
 }
 pub CompileClosureWithEffects :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                                   sources: string[], debug: bool, target: Target, abi: u64, names: string[],
                                   natives: Native[], ports: Port[], identities: u64[], native_effects: int[]) -> u8[] {
-    switch CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
-                              names, natives, ports, identities, native_effects) {
-        case .Rejected(diagnostic):
-            return [];
-        case .Compiled(module, bytes):
-            return bytes;
+    compiled := CompileWithEffects(project, collection_names, collection_paths, paths, sources, debug, target, abi,
+                                   names, natives, ports, identities, native_effects);
+    if (compiled.error) {
+        return [];
     }
+    return compiled.bytes;
 }

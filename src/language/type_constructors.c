@@ -25,6 +25,9 @@ script_catalog_type script_constructor_collection(
     size_t pointer_size
 )
 {
+    if ((key.flags | value.flags) & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        return (script_catalog_type){ .type = { .flags = SCRIPT_TYPE_ERROR } };
+    }
     char identity[128];
     snprintf(
         identity,
@@ -74,6 +77,9 @@ script_constructor_plan script_constructor_collection_plan(
 {
     script_catalog_type definition = script_constructor_collection(storage, container, key, element, pointer_size);
     script_constructor_plan plan = { .type = definition.type };
+    if (definition.type.flags & SCRIPT_TYPE_ERROR) {
+        return plan;
+    }
     if (script_catalog_type_by_id(facts->catalog, definition.id)) {
         return plan;
     }
@@ -90,6 +96,9 @@ script_constructor_plan script_constructor_collection_plan(
 }
 script_catalog_type script_constructor_pointer(arena *storage, script_type pointee, size_t pointer_size)
 {
+    if (pointee.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        return (script_catalog_type){ .type = { .flags = SCRIPT_TYPE_ERROR } };
+    }
     char identity[32];
     snprintf(identity, sizeof identity, "%" PRIu64, script_type_tag(pointee));
     uint64_t id = script_catalog_id("pointer-type", identity);
@@ -114,7 +123,9 @@ script_constructor_plan script_constructor_union(
 )
 {
     script_constructor_variant *variants = NULL;
+    bool error = false, structural = false;
     for (int i = 0; i < count; i++) {
+        error |= script_catalog_type_contains_error(facts->catalog, members[i]);
         const script_catalog_type
             *nested = (members[i].flags & SCRIPT_TYPE_UNION) &&
                               !(members[i].flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
@@ -143,6 +154,14 @@ script_constructor_plan script_constructor_union(
                                     .tag = script_type_tag(members[i]),
                                     .type = members[i]
                                 };
+            /* Shared descriptors describe runtime alternatives only. Source
+             * category provenance belongs to the returned use, never a row
+             * interned with an otherwise identical ordinary literal union. */
+            selection.type.flags &= ~SCRIPT_TYPE_ERROR_ALTERNATIVE;
+            structural |= script_catalog_type_contains_error(
+                facts->catalog,
+                selection.type
+            );
             bool exists = false;
             for (int k = 0; k < acount(variants); k++) {
                 exists |= variants[k].tag == selection.tag;
@@ -166,11 +185,15 @@ script_constructor_plan script_constructor_union(
     script_constructor_plan plan = {
         .type = { .storage = PIN_UNION, .nominal = id, .flags = SCRIPT_TYPE_UNION }
     };
+    if (error && !structural) {
+        plan.type.flags |= SCRIPT_TYPE_ERROR_ALTERNATIVE;
+    }
     if (!script_catalog_type_by_id(facts->catalog, id)) {
         plan.publish = true;
         plan.id = id;
         plan.name = name(storage, "union", id);
         plan.definition_type = plan.type;
+        plan.definition_type.flags &= ~SCRIPT_TYPE_ERROR_ALTERNATIVE;
         plan.size = pointer_size;
         plan.internal = true;
         plan.variant_count = acount(variants);
@@ -191,6 +214,9 @@ script_constructor_plan script_constructor_task(
     uint64_t function
 )
 {
+    if (result.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        return (script_constructor_plan){ .type = { .flags = SCRIPT_TYPE_ERROR } };
+    }
     uint64_t id = script_type_tag(result);
     script_constructor_plan plan = { .type = { .storage = PIN_TASK,
                                                .nominal = function,
@@ -291,6 +317,7 @@ bool script_constructor_materialize(
                                                  .tag = selection->tag,
                                                  .type = selection->type
                                              };
+        variant.type.flags &= ~SCRIPT_TYPE_ERROR_ALTERNATIVE;
         apush(variants, variant);
     }
     script_catalog_field *fields = NULL;

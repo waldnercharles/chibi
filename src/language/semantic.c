@@ -37,6 +37,10 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
         script_analyzer_finish_bindings(a);
         script_analyzer_check_constants(a);
     }
+    script_analyzer_classify_results(a);
+    if (!declarations) {
+        script_analyzer_check_results(a);
+    }
     for (int i = 0; i < acount(out->functions); i++) {
         if (out->functions[i].parent >= 0 &&
             (out->functions[i].kind == SCRIPT_FUNCTION_MACRO_ENTRY ||

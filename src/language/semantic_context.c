@@ -267,15 +267,49 @@ void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind k
 {
     apush(a->out->uses, ((script_use){ script_analyzer_range(a, node), symbol, kind, member }));
 }
-bool script_analyzer_present(const analyzer *a, int symbol)
+static bool present(const analyzer *a, int symbol, uint64_t member)
 {
+    if (symbol < 0) {
+        return false;
+    }
     for (int i = acount(a->narrowed) - 1; i >= 0; i--) {
-        if (a->narrowed[i].symbol == symbol) {
+        if (a->narrowed[i].symbol == symbol && a->narrowed[i].member == member) {
             return a->narrowed[i].present &&
                    a->narrowed[i].mutations == a->out->symbols[symbol].mutations;
         }
     }
     return false;
+}
+bool script_analyzer_present(const analyzer *a, int symbol)
+{
+    return present(a, symbol, 0);
+}
+bool script_analyzer_result_member_present(const analyzer *a, int root, uint64_t member)
+{
+    return member && present(a, root, member);
+}
+int script_analyzer_result_member_root(const analyzer *a, const script_expression *value)
+{
+    if (value->kind != SCRIPT_EXPR_MEMBER || !value->member || value->left < 0 ||
+        !(a->out->expressions[value->left].type.flags & SCRIPT_TYPE_RESULTS)) {
+        return -1;
+    }
+    int index = value->left;
+    for (int depth = 0; index >= 0 && depth < SCRIPT_MAX_DEPTH; depth++) {
+        const script_expression *root = &a->out->expressions[index];
+        if (root->kind == SCRIPT_EXPR_UNWRAP) {
+            index = root->left;
+            continue;
+        }
+        if (root->kind != SCRIPT_EXPR_SYMBOL || root->symbol < 0) {
+            return -1;
+        }
+        script_symbol_kind kind = a->out->symbols[root->symbol].kind;
+        return kind == SCRIPT_LOCAL || kind == SCRIPT_PARAMETER || kind == SCRIPT_RESULT
+                 ? root->symbol
+                 : -1;
+    }
+    return -1;
 }
 script_type script_analyzer_bad_type()
 {
@@ -468,8 +502,24 @@ script_type script_analyzer_read_type(analyzer *a, TSNode node, bool signature, 
     afree(generics);
     return reading.type;
 }
-script_type script_analyzer_collection_type(analyzer *a, pin_container container, script_type key, script_type value)
+static script_type unsupported_error_container(analyzer *a, script_range range)
 {
+    script_diagnostic diagnostic = { .range = range };
+    snprintf(diagnostic.message, sizeof diagnostic.message, "Containers and pointers of flattened error unions are not supported yet");
+    apush(a->out->diagnostics, diagnostic);
+    return script_analyzer_bad_type();
+}
+script_type script_analyzer_collection_type(
+    analyzer *a,
+    pin_container container,
+    script_type key,
+    script_type value,
+    script_range range
+)
+{
+    if ((key.flags | value.flags) & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        return unsupported_error_container(a, range);
+    }
     script_catalog_type definition = script_constructor_collection(
         &a->out->constants,
         container,
@@ -491,8 +541,11 @@ void script_analyzer_invalidate_pointers(analyzer *a)
         }
     }
 }
-script_type script_analyzer_pointer_type(analyzer *a, script_type pointee)
+script_type script_analyzer_pointer_type(analyzer *a, script_type pointee, script_range range)
 {
+    if (pointee.flags & SCRIPT_TYPE_ERROR_ALTERNATIVE) {
+        return unsupported_error_container(a, range);
+    }
     script_catalog_type definition = script_constructor_pointer(
         &a->out->constants,
         pointee,
@@ -511,6 +564,12 @@ int script_analyzer_expression(analyzer *, TSNode, script_type);
 int script_analyzer_statement(analyzer *, TSNode);
 int script_analyzer_expr_add(analyzer *a, script_expression expression)
 {
+    if ((expression.kind == SCRIPT_EXPR_SYMBOL ||
+         expression.kind == SCRIPT_EXPR_QUERY_FIELD) &&
+        expression.symbol >= 0) {
+        expression.presence_mutations = a->out->symbols[expression.symbol].mutations;
+        expression.presence_epoch = a->presence_epoch;
+    }
     expression.argument_count = acount(expression.arguments);
     apush(a->out->expressions, expression);
     return acount(a->out->expressions) - 1;

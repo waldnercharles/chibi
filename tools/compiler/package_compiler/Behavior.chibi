@@ -45,6 +45,7 @@ pub GameType :: struct {
     count: int;
     relationship: bool;
     traits: int;
+    error: bool;
 }
 // A game type's field: of the type types[record] when that is not -1; a
 // constant whose value is its name; read by natives[read] when that is not
@@ -207,7 +208,7 @@ NativeTypes :: (types: GameType[]) -> TypeDecl[] {
         row: TypeDecl = {name: linked.name, type_name: linked.name, package: -1, node: -1, kind: kind,
                          first: linked.first, count: linked.count, size: linked.size, parent: linked.underlying,
                          storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component,
-                         key: linked.traits, value_storage: 0, value_container: 0, value_record: -1};
+                         key: linked.traits, value_storage: 0, value_container: 0, value_record: -1, error: linked.error};
         declared.append(row);
     }
     // Optional query snapshots keep their underlying nominal component type
@@ -483,11 +484,16 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                         natives: Native[], ports: Port[], native_ids: u64[], game_events: GameEvent[],
                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
                         entity: u64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
-                        make_fields: int[]) -> Result {
+                        make_fields: int[]) -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
     context: BodyContext = BodyContext.Unknown;
-    return CompileBehaviorResolved(identity, source, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
-                                   game_events, event_fields, types, type_fields, entity, operators, globals,
-                                   makes, make_fields, resize([int(0)], length(natives)), context);
+    switch CompileBehaviorResolved(identity, source, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
+                                    game_events, event_fields, types, type_fields, entity, operators, globals,
+                                    makes, make_fields, resize([int(0)], length(natives)), context) {
+        case .Rejected(diagnostic):
+            return (0, [], diagnostic);
+        case .Compiled(compiled_module, prepared):
+            return (compiled_module, prepared, nil);
+    }
 }
 CompileBehaviorResolved :: (identity: string, source: string, target: Target, abi: u64, names: string[],
                             natives: ResolvedNative[], ports: ResolvedPort[], native_ids: u64[], game_events: GameEvent[],
@@ -514,12 +520,15 @@ PromoteRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
             member := FirstMember(forest, Field(forest, root, "body"));
             while (member >= 0) {
                 if (Is(forest, member, "record_declaration")) {
+                    attributes := DeclarationAttributes(forest, source, file, member, "error");
+                    if length(attributes) > 0 { return SourceTypes.Failed(attributes[0]); }
                     name := Text(forest, source, Field(forest, member, "name"));
                     id := binding.ID("symbol", format_text("{}:1:{}", documents[file].identity, name));
                     found := TypeWithId(types, id);
                     if (found < 0 || types[found].type_name != format_text("{}.{}", namespace_name, name) ||
                         types[found].kind != NativeDecl || types[found].storage != StructStorage ||
-                        Field(forest, member, "parameters") >= 0) {
+                        Field(forest, member, "parameters") >= 0 ||
+                        types[found].error != ErrorMarked(forest, source, member)) {
                         return SourceTypes.Failed(Diagnose(forest, member, file, "library record differs from the declaration catalog"));
                     }
                     declared := types[found];
@@ -545,6 +554,7 @@ PromoteRecords :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     declared.package = file;
                     declared.node = member;
                     declared.kind = RecordDecl;
+                    declared.error = ErrorMarked(forest, source, member);
                     types[found] = declared;
                 }
                 member = NextMember(forest, member);

@@ -12,8 +12,13 @@ compiler sources.
 `Compile(project: string, collection_names: string[], collection_paths:
 string[], paths: string[], sources: string[], debug: bool, target: Target,
 abi: u64, names: string[], natives: Native[], ports: Port[], identities:
-u64[]) -> Result` returns `Compiled(module, bytes)`, a CHIBICLO closure
-with a module for every package, or `Rejected(diagnostic)`. `paths` and
+u64[]) -> (module: u64, bytes: u8[], error: syntax.Diagnostic?)` returns
+ordinary named outputs. Success returns a root module ID, a CHIBICLO closure
+with a module for every package, and nil error. Failure returns module ID zero,
+empty bytes and a source diagnostic. The optional error requires acknowledgment
+under the [recoverable-error convention](recoverable-errors.md):
+`syntax.Diagnostic` is an `@error` struct, and checking is inferred from the
+result type. Functions do not carry a separate marker. `paths` and
 `sources` hold the files of every package, those of imported collections such
 as `core` under their collection's path; the package of `paths[0]` is the
 closure's root. With `debug`, each function has stage zero's debugger points
@@ -39,8 +44,10 @@ bytes, or none when `Compile` rejects the input, for a host that takes one
 
 The twelve-argument package entries require a verified pure native catalog.
 `CompileWithEffects` and `CompileClosureWithEffects` add a thirteenth argument,
-`native_effects: int[]`, with one validated mask per native. Hosts that expose
-process, file or state operations must supply their actual masks.
+`native_effects: int[]`, with one validated mask per native. `CompileWithEffects`
+returns the same three named outputs as `Compile`; its closure wrapper still
+returns only bytes. Hosts that expose process, file or state operations must
+supply their actual masks.
 
 ## Supported language
 
@@ -72,9 +79,13 @@ import:
   and its call yields that value directly. A call's `.name` reads a named
   result, directly or through a local. The projection has the declared result
   type, with checked numeric conversion when a local widened the value.
-  A named result may be a number, bool
-  or struct; structs use owned, typed storage and retain their field bytes
-  when returned to the caller;
+  A named result may be a number, bool, struct, string, array or optional
+  such as `syntax.Diagnostic?`. Structs use owned, typed storage and retain
+  their field bytes when returned to the caller. Strings, arrays and optional
+  payloads retain their ordinary value lifetimes. A local function-result bank
+  owns independent output cells and permits direct writes such as `r.value = 5`.
+  Whole-bank assignment, native result-bank writes and nested result paths keep
+  their existing stage-one restrictions;
 - integer literals, decimal or hexadecimal, typed as stage zero types them: by
   the declared local, assignment target, result, parameter, field, payload,
   element or index, or by the other operand. A literal whose type nothing
@@ -185,12 +196,13 @@ a cyclic dependency there, while stage one reads the parameter.
 names: string[], natives: Native[], ports: Port[], native_ids: u64[],
 game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
 type_fields: GameField[], entity: u64, operators: NumericOperator[],
-globals: GameGlobal[], makes: NativeMake[], make_fields: int[]) -> Result`
-compiles one behavior asset (`Behavior.chibi`) to `Compiled(module, bytes)`,
-whose bytes are one prepared module of the game the arguments describe, or to
-`Rejected(diagnostic)`. `identity` names the source as the project does, such
-as `behaviors/Counter.chibi`. The module, its states and its handlers take the
-IDs stage zero gives them from it:
+globals: GameGlobal[], makes: NativeMake[], make_fields: int[])
+-> (module: u64, bytes: u8[], error: syntax.Diagnostic?)` compiles one behavior
+asset (`Behavior.chibi`). Success returns its module ID, the bytes of one
+prepared module of the game the arguments describe, and nil error. Failure
+returns module ID zero, empty bytes and a source diagnostic. `identity` names
+the source as the project does, such as `behaviors/Counter.chibi`. The module,
+its states and its handlers take the IDs stage zero gives them from it:
 - the module is `module:<identity>`;
 - a state is `symbol:<identity>:1:<name>`;
 - a handler is `function:<identity>:<offset>:1`, where `<offset>` is the
@@ -200,7 +212,8 @@ The game arguments are flat tables, since records hold no arrays:
 - each event, with its ID, its ABI and a range of payload fields;
 - each type the game links, with whether modules require it (a namespace
   such as `SceneGlobals` is listed but not required), the type it stands for
-  (as `Transform` stands for `vec2`), its ID, layout, storage and size, its
+  (as `Transform` stands for `vec2`), its inferred error category, its ID,
+  layout, storage and size, its
   component ID when it is a component, and a range of fields with their
   storage, offsets, whether they are writable, their type as an index into
   these types, whether one is a constant whose value is its name, such as an
@@ -555,11 +568,12 @@ rejected with their exact messages. With a project's path as its identity,
 Counter's module, state and handler must take stage zero's IDs. The second
 selector checks those two (4,316 and 5,715 assertions in 23.4 s and 28.9 s
 under load). `tool language-package-compiler-chibi-sharing` fails when any of
-stage one's functions, other than `Compile`,
-`CompileClosure`, `CompileBehavior`, `Declare` and `DeclarePackage`, copies
-its arguments on each call: one such function, through its callers, takes
-stage one compiling itself past its ceiling (11 assertions in 22.9 s; see
-`docs/language-friction.md`).
+stage one's functions outside the once-per-compile or once-per-source list in
+`copying_functions` (`test/language/package_compiler_chibi.c`) copies its
+arguments on each call. That list includes `CompileInput`, the private body
+behind the public `CompileWithEffects` wrapper. One copying function, through
+its callers, takes stage one compiling itself past its ceiling (11 assertions
+in 22.9 s; see `docs/language-friction.md`).
 
 `tool language-package-compiler-chibi-actions` checks rich catalog export and
 native differential execution of synchronous actions, named and omitted

@@ -648,8 +648,8 @@ jobs:
             build-release/sdk/chibi-compiler-host.chibi-record \
             > "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
           cat "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
-      - name: Build CMake SDK test harness with the Release graph host
-        run: make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+      - name: Build the SDK test harness with the Release graph host
+        run: make build BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk
       - name: Verify Release graph tools survived the harness build unchanged
         run: sha256sum --check "$RUNNER_TEMP/graph-sdk-release-tools.sha256"
       - name: Verify graph SDK packaging and relocation

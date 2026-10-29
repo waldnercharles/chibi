@@ -239,8 +239,6 @@ STUDIO_OUTPUT ?= dist/chibi-studio-$(shell uname -s | tr '[:upper:]' '[:lower:]'
 STUDIO_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug
 STUDIO_CHECKPOINT ?= $(STUDIO_BUILD_DIR)/workspace.json
 PREFIX ?= $(HOME)/.local
-INSTALL_SDK_BUILD_DIR ?= build-install-sdk
-INSTALL_SDK_PREFIX ?= dist/install-sdk
 
 prepare-project:
 	@test -n "$(PROJECT_ROOT)" -a -n "$(ARTIFACT)" || { printf '%s\n' 'Set PROJECT_ROOT and ARTIFACT' >&2; exit 2; }
@@ -272,14 +270,12 @@ package-studio:
 	@$(MAKE) studio-build STUDIO_BUILD_DIR="$(STUDIO_PACKAGE_BUILD_DIR)" STUDIO_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_STUDIO_DISTRIBUTION=ON"
 	@$(QUIET) package-studio -- python3 "$(STUDIO_SDK_PREFIX)/share/chibi/tools/package_studio.py" --build "$(STUDIO_PACKAGE_BUILD_DIR)" --sdk "$(STUDIO_SDK_PREFIX)" --output "$(STUDIO_OUTPUT)"
 
-# A Release SDK, in its own build tree so the development SDK stays as it is.
-# Packaging computes the engine identity, engine.json, which exports carry;
-# the install adds it to the build's files. Studio's `make install` builds
-# against PREFIX.
+# Installs the Release graph products into PREFIX (tools/toolchain/SDK.chibi):
+# bin/chibi, bin/chibi-compile, bin/chibi-player, the private hosts in
+# libexec/chibi and share/chibi.
 install:
-	@$(MAKE) package-sdk SDK_BUILD_DIR="$(INSTALL_SDK_BUILD_DIR)" SDK_PREFIX="$(INSTALL_SDK_PREFIX)" SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
-	@cmake --install "$(INSTALL_SDK_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
-	@cmake -E copy "$(INSTALL_SDK_PREFIX)/share/chibi/engine.json" "$(abspath $(PREFIX))/share/chibi/engine.json"
+	@$(MAKE) build-release BUILD_TARGET='chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host'
+	@$(QUIET) install -- "$(RELEASE_BUILD_DIR)/sdk/chibi-build-host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source tools/toolchain/SDK.chibi --core packages/core --collection graph=tools/graph --entry Install --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(RELEASE_BUILD_DIR))" --prefix "$(abspath $(PREFIX))"
 
 # The Release build generates its asset compiler with its own hosts, even when
 # a sanitized build in the same make borrows them.
@@ -387,15 +383,13 @@ test-bootstrap:
 # test-recovery with sources exported from HEAD. See docs/self-hosting-build.md.
 BOOTSTRAP_ARTIFACT ?= tools/compiler/bootstrap
 BOOTSTRAP_SEED = $(RELEASE_BUILD_DIR)/bootstrap.seed
-BOOTSTRAP_DRIVER_BUILD = $(RELEASE_BUILD_DIR)/compiler-bootstrap-driver
+BOOTSTRAP_DRIVER_BUILD = $(RELEASE_BUILD_DIR)/test/language
 bootstrap-artifact:
-	@$(QUIET) configure-bootstrap-driver -- cmake -S test/language -B "$(BOOTSTRAP_DRIVER_BUILD)" -G Ninja -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=OFF
-	@$(QUIET) build-bootstrap-driver -- cmake --build "$(BOOTSTRAP_DRIVER_BUILD)" --target test_language chibi-compiler-host --parallel $(JOBS)
+	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
 	@rm -rf "$(BOOTSTRAP_SEED)" && mkdir -p "$(BOOTSTRAP_SEED)"
 	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(BOOTSTRAP_DRIVER_BUILD)" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
-	@"$(BOOTSTRAP_DRIVER_BUILD)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_SEED)"
-	@$(MAKE) stage-zero-build GRAPH_BUILD= BUILD_DIR="$(RELEASE_BUILD_DIR)" BUILD_TARGET='test_language chibi-compiler-host' LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_ASSET_COMPILER_HOST=ON"
 
 bootstrap-recover:
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
@@ -418,15 +412,14 @@ native-census: test-build
 
 test: test-short
 
-TOOLS_BUILD_DIR ?= build-tools
+TOOLS_BUILD_DIR ?= $(BUILD_DIR)/test/tools
 TOOLS_C_COMPILER ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),/opt/homebrew/opt/llvm/bin/clang,$(CC))
 
 # Public SDK language checks configure independently of the engine and Studio.
-LANGUAGE_BUILD_DIR ?= build-language
+LANGUAGE_BUILD_DIR ?= $(BUILD_DIR)/test/language
 .PHONY: language-build test-language test-language-all test-language-semantic test-language-execution test-language-program test-language-headless test-language-prepared test-language-format
 language-build:
-	@$(QUIET) configure-language -- cmake -S test/language -B "$(LANGUAGE_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-	@$(QUIET) build-language -- cmake --build "$(LANGUAGE_BUILD_DIR)" --parallel $(JOBS)
+	@$(MAKE) build BUILD_TARGET=test_language
 
 test-language:
 	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language
@@ -452,12 +445,8 @@ test-language-format:
 test-language-prepared:
 	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" CHIBI_TOOLS_BUILD_DIR="$(TOOLS_BUILD_DIR)" python3 tools/test_policy.py tool language-prepared
 
-# The reflection identity cases run the reflect that `make build` produced.
-TOOLS_REFLECT ?= $(wildcard $(abspath $(BUILD_DIR))/reflect)
-
 tools-build:
-	@cmake -S test/tools -B "$(TOOLS_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug -DCHIBI_REFLECT_EXECUTABLE="$(TOOLS_REFLECT)"
-	@cmake --build "$(TOOLS_BUILD_DIR)" --parallel $(JOBS)
+	@$(MAKE) build BUILD_TARGET=test_tools
 
 test-short: tools-build
 	@python3 tools/test_policy.py unit "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
@@ -490,7 +479,7 @@ clean:
 			rm -rf -- "$$dir"; \
 		fi; \
 	done
-	rm -rf "$(DEBUG_BUILD_DIR)" "$(DEBUG_BUILD_DIR)-cmake" "$(RELEASE_BUILD_DIR)" "$(RELEASE_BUILD_DIR)-cmake" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)"
+	rm -rf "$(DEBUG_BUILD_DIR)" "$(DEBUG_BUILD_DIR)-cmake" "$(RELEASE_BUILD_DIR)" "$(RELEASE_BUILD_DIR)-cmake" "$(WEB_BUILD_DIR)"
 # Full-function browser JIT checks use the existing C language dispatcher.
 WASM_BUILD_DIR ?= build-wasm-language$(WEB_SUFFIX)
 .PHONY: wasm-language-build test-wasm

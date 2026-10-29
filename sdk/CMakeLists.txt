@@ -310,15 +310,6 @@ target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
 # Authored core collection sources are explicit snapshot inputs for SDK users.
 install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
     FILES_MATCHING PATTERN "*.chibi")
-# chibi doc's site generator is authored package source the SDK compiles.
-install(FILES "${CHIBI_SDK_ROOT}/tools/docs/markdown/Markdown.chibi" DESTINATION share/chibi/docs/markdown)
-install(FILES "${CHIBI_SDK_ROOT}/tools/docs/site/Site.chibi" DESTINATION share/chibi/docs/site)
-install(FILES "${CHIBI_SDK_ROOT}/tools/docs/reference/Reference.chibi" DESTINATION share/chibi/docs/reference)
-install(FILES "${CHIBI_SDK_ROOT}/tools/docs/grammar/Grammar.chibi" DESTINATION share/chibi/docs/grammar)
-install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/compiler_syntax/Syntax.chibi"
-    DESTINATION share/chibi/docs/compiler_syntax)
-install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/syntax_diagnostics/Diagnostics.chibi"
-    DESTINATION share/chibi/docs/syntax_diagnostics)
 add_library(chibi_fmt STATIC "${CHIBI_SDK_ROOT}/third_party/fmt/fmt.c")
 set_target_properties(chibi_fmt PROPERTIES EXPORT_NAME fmt)
 target_include_directories(chibi_fmt PRIVATE "${CHIBI_SDK_ROOT}/third_party/fmt")
@@ -567,15 +558,12 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY)
         "${CHIBI_SDK_ROOT}/src/authoring/source_references.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_prepare.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_link.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_format.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_navigation.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_refactor_text.c")
+        "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c")
     add_library(Chibi::authoring ALIAS chibi_authoring)
     set_target_properties(chibi_authoring PROPERTIES EXPORT_NAME authoring)
     chibi_sdk_headers(chibi_authoring PUBLIC authoring/source_prepare.h authoring/source_link.h
-        authoring/source_format.h authoring/source_navigation.h authoring/source_refactor_text.h
-        authoring/source_prototype_flow.h
+        authoring/source_navigation.h authoring/source_prototype_flow.h
         authoring/source_declaration.h
         authoring/native_bindings.h authoring/source_literal.h authoring/source_references.h)
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"

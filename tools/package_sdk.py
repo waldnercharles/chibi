@@ -26,7 +26,7 @@ COMPILER_TARGETS = {'program', 'image_preparation', 'builtin_fonts', 'graph_cata
 NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
-NATIVE_AUTHORING_TARGETS = {'compiler_syntax', 'compiler_json', 'shader_preparation', 'project_compilation', 'project_format', 'scene_authoring', 'asset_authoring', 'model_authoring', 'scenario_document'}
+NATIVE_AUTHORING_TARGETS = {'compiler_syntax', 'compiler_json', 'shader_preparation', 'project_compilation', 'scene_authoring', 'asset_authoring', 'model_authoring', 'scenario_document'}
 DESKTOP_AUTHORING_TARGETS = {'project_preparation', 'model_import'}
 
 

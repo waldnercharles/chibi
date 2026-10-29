@@ -2,6 +2,7 @@
 #define CHIBI_LANGUAGE_SEMANTIC_INTERNAL_H
 
 #include "language/constant_proof.h"
+#include "language/math_types.h"
 #include "language/named_binding.h"
 #include "language/signature_reader.h"
 #include "types/text.h"
@@ -99,11 +100,17 @@ typedef struct
     TSNode awaited; /* The call an enclosing await applies to. */
     TSNode changing; /* The array method call a statement makes, which may change its array. */
     int scope, function, loops, depth;
-    bool declarations_only, migration_import;
+    bool declarations_only;
     bool query;            /* Analyzing an ordered query header. */
     int query_description; /* Active one-based description. */
 } analyzer;
 
+void script_analyzer_math_prepare(analyzer *, TSNode);
+script_type script_analyzer_math_type(analyzer *, TSNode, script_math_kind);
+int script_analyzer_math_call(analyzer *, TSNode, const char *, int **analyzed);
+bool script_analyzer_math_operator(analyzer *, TSNode, script_expression *);
+bool script_analyzer_math_swizzle(analyzer *, TSNode, int, const char *, script_expression *);
+bool script_analyzer_math_write(analyzer *, TSNode, const script_expression *);
 int script_analyzer_lambda(analyzer *, TSNode);
 TSNode script_callable_type_node(TSNode);
 bool script_analyzer_callable_argument(analyzer *, TSNode, TSNode, compile_binding *, int, compile_value *);

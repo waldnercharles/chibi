@@ -5,7 +5,7 @@ in one `make build` invocation. The target list is the union of the previous
 `make test-build` and default `make build` requests:
 
 ```
-chibi chibi-compile chibi-player chibi_ctl test_tools test_language
+chibi chibi-compile chibi-player test_tools test_language
 ```
 
 The Makefile still owns build policy. Its sanitizer profile, compiler flags,
@@ -55,9 +55,9 @@ with the normal compiler/core inputs, `--collection graph=tools/graph`, entry
 --commands-only on --all-commands on
 ```
 
-Append `--target NAME` for each request: the driver set is `chibi_ctl test_tools
+Append `--target NAME` for each request: the driver set is `test_tools
 test_language chibi-build-host`; the product set is `chibi chibi-compile
-chibi-player chibi_ctl chibi-build-host`; the combined set is their union.
+chibi-player chibi-build-host`; the combined set is their union.
 Keep the same source/output paths and environment for all requests. Retain the
 compile/link JSON after each invocation, and alternate the run order.
 

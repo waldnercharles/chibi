@@ -105,7 +105,7 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c case_timings.c case_timings_test.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c chibi_cli.c native_build.c native_workloads.c third_party_publish.c collab.c
-    validate_project.c fixture_format.c controller.c render_fixture.c test_policy.c validation_plan.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
+    test_policy.c validation_plan.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
@@ -492,22 +492,11 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_link_libraries(test_tools PRIVATE Chibi::graph_authoring Chibi::graph_compilation
             Chibi::asset_text Chibi::vector_capabilities)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_GRAPH_AUTHORING=1)
-        # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
-        if(TARGET chibi_ctl)
-            target_sources(test_tools PRIVATE feature_coverage.c environment_authoring.c material_bake.c terrain_storage_commands.c terrain_playable.c
-                game_equivalence.c)
-            target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
-                CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
-            add_dependencies(test_tools chibi_ctl)
-            # game-equivalence rebuilds Terrain Lab with chibi-compile by default.
-            if(TARGET chibi-compile)
-                add_dependencies(test_tools chibi-compile)
-            endif()
-        endif()
-        if(TARGET chibi_automation)
-            target_sources(test_tools PRIVATE preview_components.c preview.c)
-            target_link_libraries(test_tools PRIVATE chibi_automation)
-            target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PREVIEW_COMPONENTS=1 CHIBI_TEST_PREVIEW=1)
+        target_sources(test_tools PRIVATE terrain_playable.c game_equivalence.c)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1)
+        # game-equivalence rebuilds Terrain Lab with chibi-compile by default.
+        if(TARGET chibi-compile)
+            add_dependencies(test_tools chibi-compile)
         endif()
     endif()
 endif()

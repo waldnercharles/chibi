@@ -38,14 +38,14 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation/vendor/sound_v
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/libraries/stb/stb_vorbis.c")
 add_library(chibi_project_compilation STATIC)
-foreach(unit component_declarations project_open project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
+foreach(unit component_declarations project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
     graph_sources native_graph_prepare source_graph_library material_prepare scene_prepare sound_prepare ui_prepare
     ui_prepare_assets source_costs)
     target_sources(chibi_project_compilation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
 endforeach()
 add_library(Chibi::project_compilation ALIAS chibi_project_compilation)
 set_target_properties(chibi_project_compilation PROPERTIES EXPORT_NAME project_compilation)
-chibi_sdk_headers(chibi_project_compilation PUBLIC authoring/component_declarations.h authoring/project_open.h authoring/project_compile.h authoring/renderer_catalog.h
+chibi_sdk_headers(chibi_project_compilation PUBLIC authoring/component_declarations.h authoring/project_compile.h authoring/renderer_catalog.h
     authoring/project_prepare.h authoring/prototype_prepare.h authoring/material_prepare.h authoring/scene_prepare.h
     authoring/sound_prepare.h authoring/source_graph_library.h authoring/source_costs.h)
 foreach(header project_prepare_internal graph_sources native_graph_prepare ui_prepare)

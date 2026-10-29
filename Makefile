@@ -28,7 +28,7 @@ WEB_PORT ?= 8099
 CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
-BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
+BUILD_TARGET ?= chibi chibi-compile chibi-player
 BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 CHIBI_BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 # Another build's sdk directory, such as build-release/sdk, whose
@@ -94,13 +94,13 @@ NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 # in test-language-all. It runs only when this is set.
 NATIVE_LLVM_BIN ?= $(CHIBI_LLVM_BIN)
 
-.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player web web-configure web-serial web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release prepare-project player-run studio-build studio-run studio-dev package-studio install package-player web web-configure web-serial web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
 help:
 	@printf '%s\n' \
-		'make build          Build compiler, player, and controller products' \
+		'make build          Build the compiler, player and launcher' \
 		'make build-debug    Build products in plain Debug' \
 		'make build-release  Build products in Release' \
 		'make package-sdk    Package native compiler and desktop authoring SDK' \
@@ -112,16 +112,15 @@ help:
 		'make studio-dev PROJECT_ROOT=/game  Run Studio with checkpoint recovery' \
 		'make package-studio Package the external Studio distribution' \
 		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
-		'make controller-build / controller-run PROJECT_ROOT=/game' \
 		'make agent-list     List runnable CPU and explicit GPU selectors' \
 		'make agent-test AGENT_SELECTOR=--source-systems' \
 		'make agent-gpu-test AGENT_SELECTOR=--scene3d' \
 		'make test / test-short  Six C execution-policy checks' \
 		'make test-tools     Standalone C tooling integrations' \
-		'make test-build     Build chibi_ctl and the full test drivers in BUILD_DIR' \
+		'make test-build     Build the full test drivers in BUILD_DIR' \
 		'make test-native    CPU test_tools selectors' \
 		'make test-materials Material simulation selectors' \
-		'make test-projects  Project, asset import and chibi_ctl selectors' \
+		'make test-projects  Project, asset import and launcher selectors' \
 		'make test-language-all  Native language aggregate' \
 		'make test-wasm         C language checks on WebAssembly in Node' \
 		'make test-wasm-browser C language checks in Chrome (WEB_THREADS=1 for workers)' \
@@ -148,12 +147,11 @@ toolchain-build:
 	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(abspath $(LIBCLANG_ROOT))",) $(if $(strip $(GRAPH_REFLECT)),--reflect "$(abspath $(GRAPH_REFLECT))",) $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_EFFECTIVE),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_EFFECTIVE)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
 	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
 
-# Recovery builds the first build host with CMake beside the build directory;
+# A cold tree fetches the pinned first build host (tools/bootstrap/hosts.tsv);
 # the graph then builds its own.
 stage-zero-build:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(CMAKE_REFERENCE_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) build -- cmake --build "$(CMAKE_REFERENCE_DIR)" --target chibi-build-host --parallel $(JOBS)
-	@$(MAKE) toolchain-build BUILD_HOST="$(CMAKE_REFERENCE_DIR)/sdk/chibi-build-host"
+	@$(QUIET) bootstrap -- sh tools/bootstrap.sh "$(BUILD_HOST)"
+	@$(MAKE) toolchain-build
 else
 toolchain-build:
 	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_ASSET_GENERATOR_HOSTS="$(ASSET_GENERATOR_HOSTS_PATH)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
@@ -194,12 +192,10 @@ sdk-reflect-build:
 	@$(SDK_GRAPH_HOST) \
 	$(QUIET) build-sdk-reflect -- env CCACHE_BASEDIR="$(CURDIR)" "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry SDKReflect --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(SDK_REFLECT_PATH)" --jobs "$(JOBS)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(SDK_REFLECT_LLVM_ROOT)",) -- $(NATIVE_TOOLCHAIN_FLAGS)
 
-# Cold recovery constructs only the host that runs the authored graph. Remove
-# this with the first-host bootstrap replacement, not with reflection policy.
+# Cold recovery fetches the host that runs the authored graph.
 .PHONY: sdk-reflect-bootstrap
 sdk-reflect-bootstrap:
-	@$(QUIET) configure-sdk-reflect-host -- sh tools/configure.sh sdk-native "$(SDK_REFLECT_BUILD_DIR)/host" $(NATIVE_TOOLCHAIN_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF
-	@$(QUIET) build-sdk-reflect-host -- cmake --build "$(SDK_REFLECT_BUILD_DIR)/host" --target chibi-build-host --parallel $(JOBS)
+	@$(QUIET) bootstrap -- sh tools/bootstrap.sh "$(SDK_REFLECT_BUILD_DIR)/host/chibi-build-host"
 else
 # Windows retains native construction until its build host can run processes.
 # Keep its restricted C-only SDK profile until that replacement is verified.
@@ -238,9 +234,6 @@ package-runtime-sdk: runtime-sdk-build
 	@python3 tools/package_sdk.py --build "$(RUNTIME_SDK_BUILD_DIR)" --output "$(RUNTIME_SDK_PREFIX)" --kind runtime
 endif
 
-controller-build:
-	@$(MAKE) build BUILD_TARGET=chibi_ctl
-
 PROJECT_ROOT ?=
 ARTIFACT ?=
 RESOURCE_ROOT ?= $(dir $(abspath $(ARTIFACT)))
@@ -257,11 +250,6 @@ STUDIO_CHECKPOINT ?= $(STUDIO_BUILD_DIR)/workspace.json
 PREFIX ?= $(HOME)/.local
 INSTALL_SDK_BUILD_DIR ?= build-install-sdk
 INSTALL_SDK_PREFIX ?= dist/install-sdk
-
-controller-run:
-	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
-	@$(MAKE) controller-build
-	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/bin/chibi_ctl" --project-root "$(abspath $(PROJECT_ROOT))" $(ARGS)
 
 prepare-project:
 	@test -n "$(PROJECT_ROOT)" -a -n "$(ARTIFACT)" || { printf '%s\n' 'Set PROJECT_ROOT and ARTIFACT' >&2; exit 2; }
@@ -379,7 +367,7 @@ agent-gpu-test:
 
 # The full test drivers build with the engine, its native packages and reflection.
 test-build:
-	@$(MAKE) build BUILD_TARGET='chibi_ctl test_tools test_language'
+	@$(MAKE) build BUILD_TARGET='test_tools test_language'
 
 test-native: test-build
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_BUILD_HOST="$(CHIBI_BUILD_HOST)" python3 tools/test_policy.py group native
@@ -390,8 +378,8 @@ test-materials: test-build
 # Project commands repeatedly load the authoring catalog. Use Release products
 # for these integrations; the native driver retains its sanitizer coverage.
 test-projects: test-build
-	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host'
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group projects
+	@$(MAKE) build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host'
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" CHIBI_LLVM_BIN="$(NATIVE_LLVM_BIN)" python3 tools/test_policy.py group projects
 
 # Stage one compiling itself, and stage two compiling the same sources to the
 # same bytes, take about two minutes each under sanitizers, so the bootstrap

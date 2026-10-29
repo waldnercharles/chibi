@@ -215,7 +215,6 @@ static int compile(
                                           .components = { REGISTRY_COMPONENTS,
                                                           REGISTRY_COMPONENT_COUNT },
                                           .modules = WORLD_MODULES_ALL,
-                                          .read_only = !output,
                                           .cost_report = cost_report };
     bool valid = modules
                    ? authoring_project_assemble(&options, modules, count, &artifact, error, sizeof error)

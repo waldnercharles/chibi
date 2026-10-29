@@ -15,6 +15,7 @@ package_compiler/Queries.chibi
 package_compiler/QueryLoops.chibi
 package_compiler/Behavior.chibi
 package_compiler/Scalar.chibi
+package_compiler/Math.chibi
 syntax_diagnostics/Diagnostics.chibi
 /sdk/core/strings/Strings.chibi
 source_snapshot/Snapshot.chibi
@@ -32,4 +33,6 @@ package_graph/Graph.chibi
 package_paths/Paths.chibi
 lexical_binding/Binding.chibi
 prepared_writer/Writer.chibi
+math_types/Types.chibi
+math_types/Functions.chibi
 scalar_facts/Facts.chibi

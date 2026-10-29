@@ -940,7 +940,7 @@ that their `.chibi-record` link records name:
 make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
 build-release/sdk/chibi-build-host --root "$PWD" \
   --source tools/toolchain/SDK.chibi --core packages/core \
-  --entry CompilerTools --timeout-ms 120000 -- \
+  --collection graph=tools/graph --entry CompilerTools --timeout-ms 120000 -- \
   --build "$PWD/build-release" --output "$PWD/dist/compiler-tools" \
   --third-party /absolute/path/to/the/pinned/archive
 ```

@@ -458,7 +458,7 @@ Version :: (path: string, define: string) -> string {
 
 // Writes the build identity to build/sdk/chibi_engine_metadata.json, where
 // CMake writes it, when its text changed. False when it cannot.
-WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) -> bool {
+pub WriteIdentity :: (source_root: string, build_dir: string, profile: Profile) -> bool {
     text := Identity(source_root, profile);
     path := Join([build_dir, "/sdk/chibi_engine_metadata.json"]);
     if (text == "") {

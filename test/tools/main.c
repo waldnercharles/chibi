@@ -75,6 +75,7 @@ void test_build_graph_programs(const char *host, const char *cmake_build);
 void test_build_graph_resources(const char *host, const char *cmake_build);
 #ifndef _WIN32
 void test_build_sdk(const char *host, const char *build, const char *third_party);
+void test_runtime_sdk(const char *host);
 #endif
 #endif
 void test_tool_desktop_dependencies();
@@ -583,6 +584,18 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_build_sdk(argv[2], argv[3], argv[4]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--runtime-sdk")) {
+#if defined(CHIBI_TEST_BUILD_PROCESS) && !defined(_WIN32)
+        tool_init();
+        pu_display_time(true);
+        test_runtime_sdk(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

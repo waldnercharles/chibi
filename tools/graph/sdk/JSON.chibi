@@ -1,0 +1,660 @@
+package sdk
+
+import strings "core:strings"
+
+// The SDK manifest's JSON domain: signed 64-bit integers, strings, booleans,
+// null, arrays and objects. Canonical bytes match Python json.dumps with
+// sort_keys=True, separators=(',', ':') and ensure_ascii=True. Empty means
+// invalid except for JsonText, where a valid empty string also decodes empty.
+// Text is limited to the build host's 16 MiB file limit, nesting to 128 values.
+pub JsonField :: struct {
+    key: string;
+    value: string;
+}
+JsonCursor :: struct {
+    text: string;
+    at: int;
+    good: bool;
+}
+JsonRune :: struct {
+    value: int;
+    size: int;
+}
+
+JsonJoin :: (parts: string[]) -> string {
+    while (length(parts) > 1) {
+        next: string[] = [];
+        at := 0;
+        while (at + 1 < length(parts)) {
+            next.append(format_text("{}{}", parts[at], parts[at + 1]));
+            at += 2;
+        }
+        if (at < length(parts)) {
+            next.append(parts[at]);
+        }
+        parts = next;
+    }
+    if (length(parts) == 0) {
+        return "";
+    }
+    return parts[0];
+}
+JsonByte :: (value: int) -> string {
+    return format_text("{:c}", value);
+}
+JsonUtf8 :: (point: int) -> string {
+    if (point < 128) {
+        return JsonByte(point);
+    }
+    if (point < 2048) {
+        return JsonJoin([JsonByte(192 | (point >> 6)), JsonByte(128 | (point & 63))]);
+    }
+    if (point < 65536) {
+        return JsonJoin([JsonByte(224 | (point >> 12)), JsonByte(128 | ((point >> 6) & 63)),
+                         JsonByte(128 | (point & 63))]);
+    }
+    return JsonJoin([JsonByte(240 | (point >> 18)), JsonByte(128 | ((point >> 12) & 63)),
+                     JsonByte(128 | ((point >> 6) & 63)), JsonByte(128 | (point & 63))]);
+}
+JsonPoint :: (text: string, at: int) -> JsonRune {
+    first := strings.ByteAt(text, at);
+    if (first >= 0 && first < 128) {
+        return {value: first, size: 1};
+    }
+    size: int = 0;
+    point: int = 0;
+    minimum: int = 0;
+    if (first >= 194 && first <= 223) {
+        size = 2;
+        point = first & 31;
+        minimum = 128;
+    }
+    if (first >= 224 && first <= 239) {
+        size = 3;
+        point = first & 15;
+        minimum = 2048;
+    }
+    if (first >= 240 && first <= 244) {
+        size = 4;
+        point = first & 7;
+        minimum = 65536;
+    }
+    if (size == 0) {
+        return {value: 0, size: 0};
+    }
+    for (index in 1..<size) {
+        byte := strings.ByteAt(text, at + index);
+        if (byte < 128 || byte > 191) {
+            return {value: 0, size: 0};
+        }
+        point = (point << 6) | (byte & 63);
+    }
+    if (point < minimum || point > 1114111 || (point >= 55296 && point <= 57343)) {
+        return {value: 0, size: 0};
+    }
+    return {value: point, size: size};
+}
+JsonHexDigit :: (byte: int) -> int {
+    if (byte >= 48 && byte <= 57) {
+        return byte - 48;
+    }
+    if (byte >= 65 && byte <= 70) {
+        return byte - 55;
+    }
+    if (byte >= 97 && byte <= 102) {
+        return byte - 87;
+    }
+    return -1;
+}
+JsonHex :: (cursor: ^JsonCursor) -> int {
+    value: int = 0;
+    for (index in 0..<4) {
+        digit := JsonHexDigit(strings.ByteAt(cursor.text, cursor.at));
+        if (digit < 0) {
+            cursor.good = false;
+            return 0;
+        }
+        value = (value << 4) | digit;
+        cursor.at += 1;
+    }
+    return value;
+}
+JsonEscape :: (point: int) -> string {
+    hex := "0123456789abcdef";
+    return JsonJoin(["\\u", strings.Slice(hex, (point >> 12) & 15, 1),
+                     strings.Slice(hex, (point >> 8) & 15, 1),
+                     strings.Slice(hex, (point >> 4) & 15, 1), strings.Slice(hex, point & 15, 1)]);
+}
+
+pub JsonQuote :: (text: string) -> string {
+    if (strings.ByteLength(text) > 16777216) {
+        return "";
+    }
+    parts := ["\""];
+    size := 2;
+    at := 0;
+    while (at < strings.ByteLength(text)) {
+        rune := JsonPoint(text, at);
+        if (rune.size == 0) {
+            return "";
+        }
+        point := rune.value;
+        part := strings.Slice(text, at, rune.size);
+        if (point == 34) {
+            part = "\\\"";
+        }
+        if (point == 92) {
+            part = "\\\\";
+        }
+        if (point < 32 || point >= 127) {
+            part = JsonEscape(point);
+        }
+        if (point > 65535) {
+            rest := point - 65536;
+            part = JsonJoin([JsonEscape(55296 | (rest >> 10)), JsonEscape(56320 | (rest & 1023))]);
+        }
+        if (point == 8) {
+            part = "\\b";
+        }
+        if (point == 9) {
+            part = "\\t";
+        }
+        if (point == 10) {
+            part = "\\n";
+        }
+        if (point == 12) {
+            part = "\\f";
+        }
+        if (point == 13) {
+            part = "\\r";
+        }
+        size += strings.ByteLength(part);
+        if (size > 16777216) {
+            return "";
+        }
+        parts.append(part);
+        at += rune.size;
+    }
+    parts.append("\"");
+    return JsonJoin(parts);
+}
+
+JsonSpace :: (cursor: ^JsonCursor) {
+    byte := strings.ByteAt(cursor.text, cursor.at);
+    while (byte == 32 || byte == 9 || byte == 10 || byte == 13) {
+        cursor.at += 1;
+        byte = strings.ByteAt(cursor.text, cursor.at);
+    }
+}
+JsonString :: (cursor: ^JsonCursor) -> string {
+    if (strings.ByteAt(cursor.text, cursor.at) != 34) {
+        cursor.good = false;
+        return "";
+    }
+    cursor.at += 1;
+    parts: string[] = [];
+    while (cursor.at < strings.ByteLength(cursor.text)) {
+        byte := strings.ByteAt(cursor.text, cursor.at);
+        if (byte == 34) {
+            cursor.at += 1;
+            return JsonJoin(parts);
+        }
+        if (byte < 32) {
+            break;
+        }
+        if (byte != 92) {
+            rune := JsonPoint(cursor.text, cursor.at);
+            if (rune.size == 0) {
+                break;
+            }
+            parts.append(strings.Slice(cursor.text, cursor.at, rune.size));
+            cursor.at += rune.size;
+            continue;
+        }
+        cursor.at += 1;
+        escape := strings.ByteAt(cursor.text, cursor.at);
+        cursor.at += 1;
+        if (escape == 34 || escape == 47 || escape == 92) {
+            parts.append(JsonByte(escape));
+            continue;
+        }
+        point: int = -1;
+        if (escape == 98) {
+            point = 8;
+        }
+        if (escape == 102) {
+            point = 12;
+        }
+        if (escape == 110) {
+            point = 10;
+        }
+        if (escape == 114) {
+            point = 13;
+        }
+        if (escape == 116) {
+            point = 9;
+        }
+        if (escape == 117) {
+            point = JsonHex(cursor);
+            if (!cursor.good) {
+                return "";
+            }
+            if (point >= 55296 && point <= 56319) {
+                if (strings.Slice(cursor.text, cursor.at, 2) != "\\u") {
+                    break;
+                }
+                cursor.at += 2;
+                low := JsonHex(cursor);
+                if (!cursor.good || low < 56320 || low > 57343) {
+                    break;
+                }
+                point = 65536 + ((point - 55296) << 10) + low - 56320;
+            } else if (point >= 56320 && point <= 57343) {
+                break;
+            }
+        }
+        if (point < 0) {
+            break;
+        }
+        parts.append(JsonUtf8(point));
+    }
+    cursor.good = false;
+    return "";
+}
+
+// Compare decimal digits without converting sizes or identities to VM ints.
+JsonInteger :: (cursor: ^JsonCursor) -> string {
+    start := cursor.at;
+    negative := strings.ByteAt(cursor.text, cursor.at) == 45;
+    if (negative) {
+        cursor.at += 1;
+    }
+    digits := cursor.at;
+    byte := strings.ByteAt(cursor.text, cursor.at);
+    if (byte < 48 || byte > 57) {
+        cursor.good = false;
+        return "";
+    }
+    cursor.at += 1;
+    if (byte != 48) {
+        byte = strings.ByteAt(cursor.text, cursor.at);
+        while (byte >= 48 && byte <= 57) {
+            cursor.at += 1;
+            byte = strings.ByteAt(cursor.text, cursor.at);
+        }
+    }
+    value := strings.Slice(cursor.text, digits, cursor.at - digits);
+    limit := "9223372036854775807";
+    if (negative) {
+        limit = "9223372036854775808";
+    }
+    if (strings.ByteLength(value) > 19 || (strings.ByteLength(value) == 19 && strings.Compare(value, limit) > 0)) {
+        cursor.good = false;
+        return "";
+    }
+    if (value == "0") {
+        return "0";
+    }
+    return strings.Slice(cursor.text, start, cursor.at - start);
+}
+
+// Sort paired fields in O(n log n). Strict UTF-8 byte order is Unicode scalar
+// order, including when an escaped key decoded to the same key as a raw one.
+JsonOrder :: (keys: string[]) -> int[] {
+    order: int[] = [];
+    work: int[] = [];
+    for (index in 0..<length(keys)) {
+        order.append(index);
+        work.append(index);
+    }
+    width := 1;
+    while (width < length(order)) {
+        start := 0;
+        while (start < length(order)) {
+            middle := start + width;
+            if (middle > length(order)) {
+                middle = length(order);
+            }
+            end := middle + width;
+            if (end > length(order)) {
+                end = length(order);
+            }
+            left := start;
+            right := middle;
+            at := start;
+            while (left < middle || right < end) {
+                take_left := right == end;
+                if (left < middle && right < end) {
+                    take_left = strings.Compare(keys[order[left]], keys[order[right]]) <= 0;
+                }
+                if (take_left) {
+                    work[at] = order[left];
+                    left += 1;
+                } else {
+                    work[at] = order[right];
+                    right += 1;
+                }
+                at += 1;
+            }
+            start = end;
+        }
+        swap := order;
+        order = work;
+        work = swap;
+        width *= 2;
+    }
+    return order;
+}
+JsonFieldsObject :: (keys: string[], values: string[]) -> string {
+    order := JsonOrder(keys);
+    parts := ["{"];
+    size := 2;
+    for (at in 0..<length(order)) {
+        index := order[at];
+        if (at > 0 && keys[index] == keys[order[at - 1]]) {
+            return "";
+        }
+        key := JsonQuote(keys[index]);
+        if (key == "") {
+            return "";
+        }
+        if (at > 0) {
+            parts.append(",");
+            size += 1;
+        }
+        size += strings.ByteLength(key) + 1 + strings.ByteLength(values[index]);
+        if (size > 16777216) {
+            return "";
+        }
+        parts.extend([key, ":", values[index]]);
+    }
+    parts.append("}");
+    return JsonJoin(parts);
+}
+JsonArrayValues :: (values: string[]) -> string {
+    parts := ["["];
+    size := 2;
+    for (index in 0..<length(values)) {
+        if (index > 0) {
+            parts.append(",");
+            size += 1;
+        }
+        size += strings.ByteLength(values[index]);
+        if (size > 16777216) {
+            return "";
+        }
+        parts.append(values[index]);
+    }
+    parts.append("]");
+    return JsonJoin(parts);
+}
+JsonValue :: (cursor: ^JsonCursor, depth: int) -> string {
+    if (depth > 128) {
+        cursor.good = false;
+        return "";
+    }
+    JsonSpace(cursor);
+    byte := strings.ByteAt(cursor.text, cursor.at);
+    if (byte == 34) {
+        value := JsonString(cursor);
+        if (!cursor.good) {
+            return "";
+        }
+        quoted := JsonQuote(value);
+        if (quoted == "") {
+            cursor.good = false;
+        }
+        return quoted;
+    }
+    if (byte == 45 || (byte >= 48 && byte <= 57)) {
+        return JsonInteger(cursor);
+    }
+    for (literal in ["true", "false", "null"]) {
+        if (strings.Slice(cursor.text, cursor.at, strings.ByteLength(literal)) == literal) {
+            cursor.at += strings.ByteLength(literal);
+            return literal;
+        }
+    }
+    if (byte != 91 && byte != 123) {
+        cursor.good = false;
+        return "";
+    }
+    object := byte == 123;
+    close := 93;
+    if (object) {
+        close = 125;
+    }
+    cursor.at += 1;
+    JsonSpace(cursor);
+    keys: string[] = [];
+    values: string[] = [];
+    if (strings.ByteAt(cursor.text, cursor.at) != close) {
+        while (cursor.good) {
+            if (object) {
+                keys.append(JsonString(cursor));
+                JsonSpace(cursor);
+                if (!cursor.good || strings.ByteAt(cursor.text, cursor.at) != 58) {
+                    break;
+                }
+                cursor.at += 1;
+            }
+            value := JsonValue(cursor, depth + 1);
+            if (!cursor.good || value == "") {
+                break;
+            }
+            values.append(value);
+            JsonSpace(cursor);
+            if (strings.ByteAt(cursor.text, cursor.at) == close) {
+                break;
+            }
+            if (strings.ByteAt(cursor.text, cursor.at) != 44) {
+                break;
+            }
+            cursor.at += 1;
+            JsonSpace(cursor);
+        }
+    }
+    if (!cursor.good || strings.ByteAt(cursor.text, cursor.at) != close || length(keys) != length(values) && object) {
+        cursor.good = false;
+        return "";
+    }
+    cursor.at += 1;
+    result := "";
+    if (object) {
+        result = JsonFieldsObject(keys, values);
+    }
+    if (!object) {
+        result = JsonArrayValues(values);
+    }
+    if (result == "") {
+        cursor.good = false;
+    }
+    return result;
+}
+
+JsonCanonicalAt :: (text: string, depth: int) -> string {
+    if (strings.ByteLength(text) > 16777216) {
+        return "";
+    }
+    cursor: JsonCursor = {text: text, at: 0, good: true};
+    value := JsonValue(&cursor, depth);
+    JsonSpace(&cursor);
+    if (!cursor.good || cursor.at != strings.ByteLength(text)) {
+        return "";
+    }
+    return value;
+}
+pub JsonCanonical :: (text: string) -> string {
+    return JsonCanonicalAt(text, 1);
+}
+pub JsonObject :: (keys: string[], values: string[]) -> string {
+    if (length(keys) != length(values)) {
+        return "";
+    }
+    encoded: string[] = [];
+    for (value in values) {
+        canonical := JsonCanonicalAt(value, 2);
+        if (canonical == "") {
+            return "";
+        }
+        encoded.append(canonical);
+    }
+    return JsonFieldsObject(keys, encoded);
+}
+pub JsonArray :: (values: string[]) -> string {
+    encoded: string[] = [];
+    for (value in values) {
+        canonical := JsonCanonicalAt(value, 2);
+        if (canonical == "") {
+            return "";
+        }
+        encoded.append(canonical);
+    }
+    return JsonArrayValues(encoded);
+}
+
+// Read fields from an already canonical object, alternating decoded key and
+// canonical value. Callers reject non-object and invalid JSON before reading.
+JsonPairs :: (text: string) -> string[] {
+    fields: string[] = [];
+    cursor: JsonCursor = {text: text, at: 1, good: true};
+    while (strings.ByteAt(text, cursor.at) != 125) {
+        fields.append(JsonString(&cursor));
+        cursor.at += 1;
+        fields.append(JsonValue(&cursor, 2));
+        if (strings.ByteAt(text, cursor.at) != 44) {
+            break;
+        }
+        cursor.at += 1;
+    }
+    return fields;
+}
+
+// Parse the object once. Keys are decoded UTF-8 in canonical order and values
+// are canonical encoded JSON. Invalid or non-object input returns no fields,
+// as does an empty object; JsonCanonical distinguishes these when required.
+pub JsonFields :: (object: string) -> JsonField[] {
+    empty: JsonField[] = [];
+    if (strings.ByteLength(object) > 16777216) {
+        return empty;
+    }
+    cursor: JsonCursor = {text: object, at: 0, good: true};
+    JsonSpace(&cursor);
+    if (strings.ByteAt(object, cursor.at) != 123) {
+        return empty;
+    }
+    cursor.at += 1;
+    JsonSpace(&cursor);
+    keys: string[] = [];
+    values: string[] = [];
+    if (strings.ByteAt(object, cursor.at) != 125) {
+        while (cursor.good) {
+            key := JsonString(&cursor);
+            JsonSpace(&cursor);
+            if (!cursor.good || strings.ByteAt(object, cursor.at) != 58) {
+                return empty;
+            }
+            cursor.at += 1;
+            value := JsonValue(&cursor, 2);
+            if (!cursor.good || value == "") {
+                return empty;
+            }
+            keys.append(key);
+            values.append(value);
+            JsonSpace(&cursor);
+            if (strings.ByteAt(object, cursor.at) == 125) {
+                break;
+            }
+            if (strings.ByteAt(object, cursor.at) != 44) {
+                return empty;
+            }
+            cursor.at += 1;
+            JsonSpace(&cursor);
+        }
+    }
+    cursor.at += 1;
+    JsonSpace(&cursor);
+    if (!cursor.good || cursor.at != strings.ByteLength(object)) {
+        return empty;
+    }
+    fields: JsonField[] = [];
+    order := JsonOrder(keys);
+    size := 2;
+    for (at in 0..<length(order)) {
+        index := order[at];
+        if (at > 0 && keys[index] == keys[order[at - 1]]) {
+            return empty;
+        }
+        quoted := JsonQuote(keys[index]);
+        if (quoted == "") {
+            return empty;
+        }
+        if (at > 0) {
+            size += 1;
+        }
+        size += strings.ByteLength(quoted) + 1 + strings.ByteLength(values[index]);
+        if (size > 16777216) {
+            return empty;
+        }
+        field: JsonField = {key: keys[index], value: values[index]};
+        fields.append(field);
+    }
+    return fields;
+}
+pub JsonGet :: (object: string, key: string) -> string {
+    for (field in JsonFields(object)) {
+        if (field.key == key) {
+            return field.value;
+        }
+    }
+    return "";
+}
+pub JsonKeys :: (object: string) -> string[] {
+    keys: string[] = [];
+    for (field in JsonFields(object)) {
+        keys.append(field.key);
+    }
+    return keys;
+}
+pub JsonItems :: (array: string) -> string[] {
+    canonical := JsonCanonical(array);
+    values: string[] = [];
+    if (!strings.HasPrefix(canonical, "[")) {
+        return values;
+    }
+    cursor: JsonCursor = {text: canonical, at: 1, good: true};
+    while (strings.ByteAt(canonical, cursor.at) != 93) {
+        values.append(JsonValue(&cursor, 2));
+        if (strings.ByteAt(canonical, cursor.at) != 44) {
+            break;
+        }
+        cursor.at += 1;
+    }
+    return values;
+}
+pub JsonText :: (encoded: string) -> string {
+    canonical := JsonCanonical(encoded);
+    if (!strings.HasPrefix(canonical, "\"")) {
+        return "";
+    }
+    cursor: JsonCursor = {text: canonical, at: 0, good: true};
+    return JsonString(&cursor);
+}
+pub JsonWithout :: (object: string, key: string) -> string {
+    canonical := JsonCanonical(object);
+    if (!strings.HasPrefix(canonical, "{")) {
+        return "";
+    }
+    keys: string[] = [];
+    values: string[] = [];
+    fields := JsonPairs(canonical);
+    at := 0;
+    while (at < length(fields)) {
+        if (fields[at] != key) {
+            keys.append(fields[at]);
+            values.append(fields[at + 1]);
+        }
+        at += 2;
+    }
+    return JsonFieldsObject(keys, values);
+}

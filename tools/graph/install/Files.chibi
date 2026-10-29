@@ -1,0 +1,146 @@
+package install
+
+import strings "core:strings"
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+pub Parent :: (path: string) -> string {
+    end := strings.LastIndex(path, "/");
+    if (end == 0 && path != "/") {
+        return "/";
+    }
+    return strings.Slice(path, 0, end);
+}
+// Resolve existing components before interpreting '..', preserving symlink
+// semantics. Missing suffixes are normalized without creating directories.
+pub CanonicalPath :: (path: string) -> string {
+    result := "/";
+    parts := strings.Split(path, "/");
+    for (index in 0..<length(parts)) {
+        part := parts[index];
+        if (part == "" || part == ".") {
+            continue;
+        }
+        if (part == "..") {
+            result = Parent(result);
+            if (result == "") {
+                result = "/";
+            }
+            continue;
+        }
+        candidate := Join([result, "/", part]);
+        if (result == "/") {
+            candidate = Join([result, part]);
+        }
+        resolved := build.resolve_path(candidate);
+        kind := build.file_kind(candidate);
+        if (kind != "" && (resolved == "" ||
+                           (index < length(parts) - 1 && build.file_kind(resolved) != "directory"))) {
+            return "";
+        }
+        result = candidate;
+        if (resolved != "") {
+            result = resolved;
+        }
+    }
+    return result;
+}
+// file_stamp starts with device:inode; its remaining metadata may change.
+pub Identity :: (path: string) -> string {
+    stamp := build.file_stamp(path);
+    if (stamp == "") {
+        return "";
+    }
+    device := build.before(stamp, ":");
+    inode := build.before(build.after(stamp, ":"), ":");
+    if (device == "" || inode == "") {
+        return "";
+    }
+    return Join([device, ":", inode]);
+}
+// A case-insensitive filesystem can name the same directory with two cases.
+pub Inside :: (path: string, directory: string) -> bool {
+    identity := Identity(directory);
+    if (identity == "") {
+        // Without the input identity, containment cannot be proved safe.
+        return true;
+    }
+    current := path;
+    while (current != "") {
+        if (Identity(current) == identity) {
+            return true;
+        }
+        current = Parent(current);
+    }
+    return false;
+}
+// Only regular files and real directories are distribution inputs.
+pub SameTree :: (source: string, staged: string) -> bool {
+    kind := build.file_kind(source);
+    if (kind != build.file_kind(staged)) {
+        return false;
+    }
+    if (kind == "file") {
+        hash := build.hash_file(source);
+        return hash != "" && hash == build.hash_file(staged);
+    }
+    if (kind != "directory") {
+        return false;
+    }
+    names := build.list_directory(source);
+    if (build.join(names, "\n") != build.join(build.list_directory(staged), "\n")) {
+        return false;
+    }
+    for (name in names) {
+        if (!SameTree(Join([source, "/", name]), Join([staged, "/", name]))) {
+            return false;
+        }
+    }
+    return true;
+}
+pub CopyTree :: (source: string, destination: string) -> bool {
+    kind := build.file_kind(source);
+    if (kind == "file") {
+        return build.make_directory(Parent(destination)) && build.copy_file(source, destination);
+    }
+    if (kind != "directory" || !build.make_directory(destination)) {
+        return false;
+    }
+    for (name in build.list_directory(source)) {
+        if (!CopyTree(Join([source, "/", name]), Join([destination, "/", name]))) {
+            return false;
+        }
+    }
+    return true;
+}
+pub RemoveTree :: (path: string) -> bool {
+    if (build.file_kind(path) == "directory") {
+        for (name in build.list_directory(path)) {
+            if (!RemoveTree(Join([path, "/", name]))) {
+                return false;
+            }
+        }
+    }
+    return build.remove(path);
+}
+// Sorted relative file names and their byte hashes, without absolute paths.
+pub Inventory :: (root: string, relative: string) -> string {
+    path := root;
+    if (relative != "") {
+        path = Join([root, "/", relative]);
+    }
+    if (build.file_kind(path) == "file") {
+        return Join([relative, "\t", build.hash_file(path), "\n"]);
+    }
+    text := "";
+    for (name in build.list_directory(path)) {
+        child := name;
+        if (relative != "") {
+            child = Join([relative, "/", name]);
+        }
+        text = Join([text, Inventory(root, child)]);
+    }
+    return text;
+}

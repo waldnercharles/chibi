@@ -515,12 +515,6 @@ static const char *managed_address_layout(analyzer *a, int expression)
     if (!record || !record->authored_record) {
         return "Managed values require authored record layouts";
     }
-    for (int i = 0; i < record->field_count; i++) {
-        if (record->fields[i].type.storage == PIN_STRUCT) {
-            return "Managed pointers require records without inline record "
-                   "fields";
-        }
-    }
     return NULL;
 }
 static bool addressable_local(analyzer *a, int expression)

@@ -160,6 +160,45 @@ Invoke :: (host: string, artifact: string, callable: string, input: string, outp
     return true;
 }
 
+// A compiled product depends only on its request and the seed that compiles
+// it, so it is kept under their digest in `cache`: a build whose sources did
+// not change copies it instead of compiling the compiler's sources again.
+Key :: (seed: string, request: string) -> string {
+    return build.hash_text(Join([build.hash_file(seed), "\n", request]));
+}
+
+Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
+            cache: string, timeout: string, inputs: string) -> bool {
+    stored := Join([cache, "/", key]);
+    if (build.file_exists(stored)) {
+        return build.copy_file(stored, output);
+    }
+    if (!build.write_file(inputs, request) ||
+        !Invoke(host, seed, callable, inputs, Join([output, ".tmp"]), timeout)) {
+        return false;
+    }
+    if (build.make_directory(cache)) {
+        build.copy_file(Join([output, ".tmp"]), stored);
+    }
+    return build.rename(Join([output, ".tmp"]), output);
+}
+
+// Removes the cached products this build did not use, so the cache stays at
+// the size of one build.
+Prune :: (cache: string, keep: string[]) {
+    for (name in build.list_directory(cache)) {
+        used := false;
+        for (item in keep) {
+            if (item == name) {
+                used = true;
+            }
+        }
+        if (!used) {
+            build.remove(Join([cache, "/", name]));
+        }
+    }
+}
+
 // Explicit filesystem snapshots and atomic products; source compilation and
 // resource generation execute ordinary Chibi in the prepared compiler host.
 // Reports are buffered until normal return/unwinding, not live flushed traces;
@@ -205,20 +244,8 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
             }
         }
     }
-    for (relative in Sources(Join([root, "/packages/core"]))) {
-        path := Join(["/sdk/core/", relative]);
-        found := false;
-        for (item in paths) {
-            if (item == path) {
-                found = true;
-            }
-        }
-        if (!found) {
-            paths.append(path);
-        }
-    }
-    bootstrap_paths := paths;
-    bootstrap_sources := Read(root, bootstrap_paths);
+    // Compiler implementation dependencies are explicit in CompilerSources.txt.
+    // Public core sources are packaged below, without entering the seed target.
     for (directory in ["asset_compiler", "asset_source", "asset_packaging"]) {
         for (file in build.list_directory(Join([root, "/tools/compiler/", directory]))) {
             if (strings.HasSuffix(file, ".chibi")) {
@@ -231,48 +258,20 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
     }
     paths.append("cost_explanations/Explain.chibi");
     sources := Read(root, paths);
-    for (i in 0..<length(bootstrap_sources)) {
-        if (bootstrap_sources[i] != sources[i]) {
-            build.report("asset compiler source changed between snapshots");
-            return false;
-        }
-    }
     inputs := Join([folder, "/input.json"]);
-    compiler := Join([folder, "/compiler.chibip"]);
     facade := Join([folder, "/native_facade.chibip"]);
     artifact := Join([folder, "/asset_compiler.chibip"]);
+    // The checked seed compiles the facade, its own sources included, once:
+    // it only has to compile them, so no stage-one compiler is built first.
     seed := Join([root, "/tools/compiler/bootstrap/compiler.chibip"]);
     closure_entry := "0x140a9546d9e8c296"; // package_compiler.CompileClosure
-    build.report("asset compiler: serialize bootstrap request");
-    if (!build.write_file(inputs, Request("package_compiler/Compile.chibi", bootstrap_paths, bootstrap_sources, native_target, false))) {
-        return false;
-    }
-    build.report("asset compiler: bootstrap request ready");
-    reused := build.run([host, "--reuse-bootstrap", Join([root, "/tools/compiler/bootstrap"]),
-                         "--compiler", Join([root, "/tools/compiler"]), "--core", Join([root, "/packages/core"]),
-                         "--input", inputs, "--output-artifact", Join([compiler, ".tmp"])]);
-    build.report(format_text("asset compiler: bootstrap reuse status {}", reused));
-    if (reused == 3) {
-        // Keep this captured request unchanged when the checked seed cannot be
-        // reused: changed sources still compile through the existing path.
-        build.report("asset compiler: invoke bootstrap fallback");
-        if (!Invoke(host, seed, closure_entry, inputs, Join([compiler, ".tmp"]), compiler_timeout)) {
-            return false;
-        }
-    } else if (reused != 0) {
-        build.report(Join(["asset compiler bootstrap reuse failed: ", build.last_stderr()]));
-        return false;
-    }
-    if (!build.rename(Join([compiler, ".tmp"]), compiler)) {
-        return false;
-    }
+    cache := Join([root, "/.chibi/asset-compiler-cache"]);
     build.report("asset compiler: serialize facade request");
-    if (!build.write_file(inputs, Request("asset_compiler/Compile.chibi", paths, sources, native_target, true))) {
-        return false;
-    }
+    facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target, true);
+    facade_key := Key(seed, facade_request);
+    kept := [facade_key];
     build.report("asset compiler: invoke facade compiler");
-    if (!Invoke(host, compiler, closure_entry, inputs, Join([facade, ".tmp"]), compiler_timeout) ||
-        !build.rename(Join([facade, ".tmp"]), facade)) {
+    if (!Product(host, seed, closure_entry, facade_request, facade_key, facade, cache, compiler_timeout, inputs)) {
         return false;
     }
     build.report("asset compiler: facade ready");
@@ -282,13 +281,32 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         }
     } else {
         build.report("asset compiler: serialize target request");
-        if (!build.write_file(inputs, Request("asset_compiler/Compile.chibi", paths, sources, target, true))) {
+        target_request := Request("asset_compiler/Compile.chibi", paths, sources, target, true);
+        target_key := Key(seed, target_request);
+        kept.append(target_key);
+        build.report("asset compiler: invoke target compiler");
+        if (!Product(host, seed, closure_entry, target_request, target_key, artifact, cache, compiler_timeout, inputs)) {
             return false;
         }
-        build.report("asset compiler: invoke target compiler");
-        if (!Invoke(host, compiler, closure_entry, inputs, Join([artifact, ".tmp"]), compiler_timeout) ||
-            !build.rename(Join([artifact, ".tmp"]), artifact)) {
-            return false;
+    }
+    if (build.file_kind(cache) == "directory") {
+        Prune(cache, kept);
+    }
+    // Keep the complete public library snapshot separate from compiler inputs.
+    // Retain original compiled source bytes so the final hash check still
+    // rejects a file changed during generation.
+    for (relative in Sources(Join([root, "/packages/core"]))) {
+        path := Join(["/sdk/core/", relative]);
+        found := false;
+        for (item in paths) {
+            if (item == path) {
+                found = true;
+            }
+        }
+        if (!found) {
+            captured := Read(root, [path]);
+            paths.append(path);
+            sources.append(captured[0]);
         }
     }
     library_paths: string[] = [];
@@ -357,7 +375,6 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
         return false;
     }
     build.remove(inputs);
-    build.remove(compiler);
     build.remove(facade);
     build.remove(native_facts);
     build.report("asset compiler: generation complete");

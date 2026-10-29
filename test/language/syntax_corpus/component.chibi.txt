@@ -1,0 +1,7 @@
+Charge :: component {
+    level: number
+    rate: 0..10 charge/s
+    ratio: -1..1
+    speed: m/s
+    area: number m^2
+}

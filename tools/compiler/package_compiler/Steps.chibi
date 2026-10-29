@@ -1358,6 +1358,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         narrowed: int = -1;
         if (Single(Typed(-1, binding.storage, binding.container, binding.record), PointerStorage) &&
             binding.record >= 0 && types[binding.record].key != 0 &&
+            !PointerNilOperand(forest, text, item.node) &&
             (PointerPresent(forest, text, binding, item.node) || QueryAccessPresent(forest, text, types, names, item.node))) {
             element := PointerElement(types, Typed(-1, PointerStorage, 0, binding.record));
             narrowed = FindPointer(types, element, false);
@@ -1535,7 +1536,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                                  {storage: declared.storage, container: declared.container, record: declared.record},
                                  1, ops, target, at, node);
             if (declared.storage == PointerStorage && declared.record >= 0 && types[declared.record].key != 0 &&
-                QueryAccessPresent(forest, text, types, names, item.node)) {
+                !PointerNilOperand(forest, text, item.node) && QueryAccessPresent(forest, text, types, names, item.node)) {
                 element := PointerElement(types, Typed(-1, PointerStorage, 0, declared.record));
                 return PointerNarrow(read, FindPointer(types, element, false));
             }
@@ -1693,6 +1694,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
                                     node));
             nested := Typed(at.slot + 1, StructStorage, 0, field.record);
             nested.schema = object.schema;
+            roots.append({slot: nested.slot, storage: StructStorage, container: 0, record: field.record});
             emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, nested, NoValue(), marks);
             return CleanupProjectionStep(emitted, object, natives, ports, ops, target, at, node);
         }
@@ -1703,6 +1705,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         read.offset = field.offset;
         code.append(read);
         produced = Typed(at.slot, field.storage, field.container, field.record);
+        if (Pointer(field.storage, field.container)) {
+            roots.append({slot: at.slot, storage: field.storage, container: field.container, record: field.record});
+        }
     } else {
         popped = 2;
         array := values[top - 2];

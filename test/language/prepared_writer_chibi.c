@@ -696,6 +696,7 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         put_int(&row, "first", acount(m->fields));
         put_int(&row, "count", v->record ? v->record->type.field_count : 0);
         for (int f = 0; v->record && f < v->record->type.field_count; f++) {
+            const type_field *member = &v->record->type.fields[f];
             pin_value field = record(m, "Field");
             put_text(&field, "name", NULL, v->record->type.fields[f].name);
             put_int(&field, "kind", v->record->type.fields[f].type);
@@ -706,6 +707,19 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
                 v->record->type.fields[f].type_name
             );
             put_text(&field, "unit", "has_unit", v->record->type.fields[f].unit);
+            put_int(&field, "container", member->container);
+            int child = -1;
+            if (member->type == PIN_STRUCT) {
+                for (int j = 0; j < p->type_count; j++) {
+                    if (p->types[j].storage == PIN_STRUCT && member->type_name &&
+                        !strcmp(p->types[j].name, member->type_name)) {
+                        child = j;
+                        break;
+                    }
+                }
+                REQUIRE(child >= 0);
+            }
+            put_int(&field, "record", child);
             apush(m->fields, field);
         }
         apush(m->requirements, row);

@@ -1,0 +1,198 @@
+package runtime_sdk_evidence
+
+import sdk "graph:sdk"
+import engine "graph:engine"
+import c "graph:c"
+import strings "core:strings"
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+Write :: (path: string, text: string) {
+    assert(build.make_directory(strings.Slice(path, 0, strings.LastIndex(path, "/"))));
+    assert(build.write_file(path, text));
+}
+
+Record :: (command: string[], inputs: string[], output: string) {
+    lines := [build.join(command, "\n"), ""];
+    recorded := slice(inputs, 0, length(inputs));
+    recorded.append(output);
+    for (path in recorded) {
+        lines.extend([path, build.file_stamp(path)]);
+    }
+    lines.append("");
+    Write(Join([output, ".chibi-record"]), build.join(lines, "\n"));
+}
+
+Roots :: () -> string[] {
+    root := build.arguments()[0];
+    return [Join([root, "/source"]), Join([root, "/build"]), Join([root, "/vendor"])];
+}
+
+@test
+ObjectRecords :: () {
+    roots := Roots();
+    source := Join([roots[0], "/src/example.c"]);
+    header := Join([roots[0], "/src/example.h"]);
+    output := Join([roots[1], "/objects/example.o"]);
+    Write(source, "source bytes\n");
+    Write(header, "header bytes\n");
+    Write(output, "synthetic object\n");
+    command := ["/fixture/cc", "-DNAME=one two", "", "-o", output, "-c", source];
+    inputs := [source, header];
+    Record(command, inputs, output);
+    proof := sdk.RecordEvidence(roots, command, output, inputs);
+    assert(proof != "");
+    assert(sdk.JsonGet(proof, "path") == sdk.JsonQuote("@build/objects/example.o"));
+    assert(sdk.JsonGet(proof, "sha256") == sdk.JsonQuote(build.hash_file(output)));
+    assert(sdk.JsonGet(sdk.JsonGet(proof, "dependencies"), "@source/src/example.c") == sdk.JsonQuote(build.hash_file(source)));
+    assert(sdk.JsonGet(sdk.JsonGet(proof, "dependencies"), "@source/src/example.h") == sdk.JsonQuote(build.hash_file(header)));
+    normalized := sdk.JsonGet(proof, "arguments");
+    assert(sdk.JsonGet(proof, "command_sha256") == sdk.JsonQuote(build.hash_text(normalized)));
+    assert(!strings.Contains(proof, roots[0]) && !strings.Contains(proof, roots[1]));
+    changed := slice(command, 0, length(command));
+    changed[1] = "-DNAME=different";
+    assert(sdk.RecordEvidence(roots, changed, output, inputs) == "");
+    assert(sdk.RecordEvidence(roots, command, output, [source]) == "");
+    assert(sdk.RecordEvidence(roots, command, output, [header, source]) == "");
+    assert(sdk.RecordEvidence(roots, command, output, [source, header, header]) == "");
+    Write(header, "changed header bytes\n");
+    assert(sdk.RecordEvidence(roots, command, output, inputs) == "");
+    Record(command, inputs, output);
+    assert(sdk.RecordEvidence(roots, command, output, inputs) != "");
+    Write(output, "changed object bytes\n");
+    assert(sdk.RecordEvidence(roots, command, output, inputs) == "");
+    Record(command, inputs, output);
+    assert(build.remove(header));
+    assert(sdk.RecordEvidence(roots, command, output, inputs) == "");
+    Write(header, "header restored\n");
+    Record(command, inputs, output);
+    assert(build.remove(Join([output, ".chibi-record"])));
+    assert(sdk.RecordEvidence(roots, command, output, inputs) == "");
+    Record(command, inputs, output);
+    assert(build.remove(output));
+    assert(sdk.RecordEvidence(roots, command, output, inputs) == "");
+    Write(output, "restored synthetic object\n");
+    Record(command, inputs, output);
+    for (bad in ["NUL\u0000argument", "line\nargument", "line\rargument"]) {
+        invalid := slice(command, 0, length(command));
+        invalid[1] = bad;
+        Record(invalid, inputs, output);
+        assert(sdk.RecordEvidence(roots, invalid, output, inputs) == "");
+    }
+    Record(command, inputs, output);
+    assert(sdk.RecordEvidence([roots[0], "", roots[2]], command, output, inputs) == "");
+    assert(sdk.RecordEvidence([roots[0], Join([roots[1], "-sibling"]), roots[2]], command, output, inputs) == "");
+    duplicates := [source, header, header];
+    Record(command, duplicates, output);
+    proof = sdk.RecordEvidence(roots, command, output, duplicates);
+    assert(proof != "" && length(sdk.JsonFields(sdk.JsonGet(proof, "dependencies"))) == 2);
+}
+
+@test
+ArchiveAndLinkRecords :: () {
+    roots := Roots();
+    first := Join([roots[1], "/objects/first.o"]);
+    second := Join([roots[1], "/objects/second.o"]);
+    archive := Join([roots[1], "/lib/libexample.a"]);
+    vendor := Join([roots[2], "/lib/libvendor.a"]);
+    player := Join([roots[1], "/sdk/chibi-player"]);
+    for (path in [first, second, archive, vendor, player]) {
+        Write(path, "synthetic artifact\n");
+    }
+    archived := ["/fixture/ar", "qc", archive, first, second];
+    Record(archived, [first, second], archive);
+    assert(sdk.RecordEvidence(roots, archived, archive, [first, second]) != "");
+    assert(sdk.RecordEvidence(roots, archived, archive, [first]) == "");
+    assert(sdk.RecordEvidence(roots, ["/fixture/ar", "qc", archive, second, first], archive, [first, second]) == "");
+    linked := ["/fixture/c++", first, "-o", player, archive, vendor, vendor];
+    inputs := [first, archive, vendor, vendor];
+    Record(linked, inputs, player);
+    proof := sdk.RecordEvidence(roots, linked, player, inputs);
+    assert(proof != "");
+    assert(length(sdk.JsonFields(sdk.JsonGet(proof, "dependencies"))) == 3);
+    assert(sdk.JsonGet(sdk.JsonGet(proof, "dependencies"), "@vendor/lib/libvendor.a") == sdk.JsonQuote(build.hash_file(vendor)));
+    assert(sdk.RecordEvidence(roots, linked, player, [first, archive]) == "");
+    Write(archive, "changed archive bytes\n");
+    assert(sdk.RecordEvidence(roots, linked, player, inputs) == "");
+}
+
+FixtureProfile :: (vendor: string) -> engine.Profile {
+    return {
+        compiler: "", cxx_compiler: "", compiler_id: "Clang", build_type: "Debug", debug_optimization: "",
+        debug_frame_pointers: false, architecture: "x86_64", sysroot: "", warnings: true, sanitizers: "",
+        debug_compilation_dir: "", libclang_include: "", opengl_library: "", opengl_include: "", glx_library: "",
+        libclang_library: "", clang_resource_include: "", third_party: vendor, reflect: "", asset_generator_hosts: ""
+    };
+}
+
+@test
+ToolPreflight :: () {
+    roots := Roots();
+    root := build.arguments()[0];
+    compiler := Join([root, "/fake-compiler"]);
+    script := "#!/bin/sh\ncase \"$1\" in\n--version) printf 'Fixture clang version 18.1\\n' ;;\n-dumpmachine) printf 'x86_64-apple-darwin\\n' ;;\n*) printf '#define __SIZEOF_POINTER__ 8\\n#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__\\n#define __ORDER_LITTLE_ENDIAN__ 1234\\n#define __x86_64__ 1\\n' ;;\nesac\n";
+    Write(compiler, script);
+    assert(build.run(["chmod", "+x", compiler]) == 0);
+    tools: c.Tools = {launcher: "", compiler: compiler, cxx_compiler: compiler, archiver: compiler, ranlib: compiler, jobs: 2};
+    profile := FixtureProfile(roots[2]);
+    profile.compiler = compiler;
+    profile.cxx_compiler = compiler;
+    selected := Join([roots[1], "/objects/chibi_support/src/support/arena.c.o.chibi-record"]);
+    unrelated := Join([roots[1], "/objects/unselected/keep.chibi-record"]);
+    object := strings.TrimSuffix(selected, ".chibi-record");
+    Write(selected, "old selected record");
+    Write(object, "selected output stays");
+    Write(unrelated, "unrelated record stays");
+    assert(sdk.PrepareBuildConfiguration(roots[1], profile, tools));
+    assert(!build.file_exists(selected) && build.read_file(object) == "selected output stays");
+    assert(build.read_file(unrelated) == "unrelated record stays");
+    pending := Join([roots[1], "/sdk/runtime-build-pending.json"]);
+    configuration := Join([roots[1], "/sdk/runtime-build.json"]);
+    assert(build.file_kind(pending) == "file");
+    assert(sdk.WriteBuildConfiguration(roots[1], profile, tools));
+    assert(!build.file_exists(pending));
+    saved := sdk.JsonCanonical(build.read_file(configuration));
+    assert(sdk.JsonGet(saved, "pointer_bits") == "64");
+    assert(sdk.JsonText(sdk.JsonGet(saved, "processor")) == "x86_64");
+    assert(sdk.JsonText(sdk.JsonGet(saved, "compiler_version")) == "Fixture clang version 18.1");
+    assert(sdk.JsonText(sdk.JsonGet(saved, "compiler_version_format")) == "raw-banner");
+    assert(sdk.JsonText(sdk.JsonGet(saved, "compiler_default_target")) == "x86_64-apple-darwin");
+    Write(selected, "warm selected record");
+    assert(sdk.PrepareBuildConfiguration(roots[1], profile, tools));
+    assert(build.read_file(selected) == "warm selected record");
+    Write(compiler, Join([script, "# compiler changed during construction\n"]));
+    assert(build.run(["chmod", "+x", compiler]) == 0);
+    assert(!sdk.WriteBuildConfiguration(roots[1], profile, tools));
+    assert(build.file_exists(pending) && sdk.JsonCanonical(build.read_file(configuration)) == saved);
+    assert(sdk.GraphEvidence(roots[0], roots[1], roots[2]) == "");
+    assert(sdk.PrepareBuildConfiguration(roots[1], profile, tools));
+    assert(!build.file_exists(selected) && !build.file_exists(configuration));
+    assert(sdk.WriteBuildConfiguration(roots[1], profile, tools));
+    assert(!build.file_exists(pending));
+    saved = sdk.JsonCanonical(build.read_file(configuration));
+    profile.architecture = "arm64";
+    assert(sdk.PrepareBuildConfiguration(roots[1], profile, tools));
+    assert(!sdk.WriteBuildConfiguration(roots[1], profile, tools));
+    assert(sdk.JsonCanonical(build.read_file(configuration)) == saved && build.file_exists(pending));
+    profile.architecture = "x86_64";
+    profile.reflect = compiler;
+    assert(sdk.PrepareBuildConfiguration(roots[1], profile, tools));
+    assert(sdk.WriteBuildConfiguration(roots[1], profile, tools));
+    saved = sdk.JsonCanonical(build.read_file(configuration));
+    assert(sdk.JsonGet(sdk.JsonGet(saved, "tool_identities"), "reflect") != "");
+    tools.cxx_compiler = Join([root, "/missing-compiler"]);
+    assert(!sdk.PrepareBuildConfiguration(roots[1], profile, tools));
+}
+
+Build :: () -> int {
+    if (length(build.arguments()) != 1 || build.platform() != "Darwin") {
+        return 2;
+    }
+    ObjectRecords();
+    ArchiveAndLinkRecords();
+    ToolPreflight();
+    build.report("runtime SDK evidence: three authored synthetic-record and tool-preflight groups passed");
+    return 0;
+}

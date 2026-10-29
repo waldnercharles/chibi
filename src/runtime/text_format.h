@@ -20,4 +20,7 @@ extern const node_host_call NATIVE_TEXT_EQUAL_HOST, NATIVE_TEXT_EQUAL_CALL;
 extern const node_host_call NATIVE_TEXT_BYTE_LENGTH_CALL,
     NATIVE_TEXT_BYTE_AT_CALL, NATIVE_TEXT_SLICE_CALL, NATIVE_TEXT_BYTES_CALL;
 extern const node_access NATIVE_TEXT_ACCESS;
+/* Copy every u8 into immutable length-carrying text, without Unicode or NUL
+ * conversion. Packed arrays need one copy; boxed arrays use linear scratch. */
+extern const node_host_call NATIVE_TEXT_FROM_BYTES_CALL;
 #endif

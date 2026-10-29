@@ -44,6 +44,8 @@ authoring_program *authoring_program_new(const authoring_program_options *);
 /* Takes ownership of the snapshot on success and failure, including busy
  * rejection. Replaces any prior unpublished candidate. */
 bool authoring_program_compile(authoring_program *, source_package_snapshot *);
+/* A non-empty entry must name a runnable root-package function; an empty one
+ * requires none, for programs that start from `Main` or run a `Frame` hook. */
 bool authoring_program_prepare(authoring_program *, const char *entry, bool restart);
 bool authoring_program_commit(authoring_program *);
 void authoring_program_discard(authoring_program *);
@@ -55,6 +57,16 @@ void authoring_program_discard(authoring_program *);
  * callback for this invocation. An active enclosing scope retains its shared
  * budget, cancellation, purity and VM restrictions. */
 int authoring_program_call(authoring_program *, const authoring_program_call_options *, int *result);
+/* Whether the accepted root package has a runnable zero-argument void/int
+ * function of that name. Calling it by name looks the function up in the
+ * accepted generation, so an update that committed earlier is already in effect. */
+bool authoring_program_has(const authoring_program *, const char *name);
+int authoring_program_call_entry(
+    authoring_program *,
+    const char *name,
+    const authoring_program_call_options *,
+    int *result
+);
 const authoring_program_diagnostic *authoring_program_error(const authoring_program *);
 const execution_program *authoring_program_runtime(const authoring_program *);
 bool authoring_program_busy(const authoring_program *);

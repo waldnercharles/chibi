@@ -659,7 +659,7 @@ TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable)
     FILE *file = fopen(manifest, "wb");
     REQUIRE(file);
     REQUIRE(
-        fputs("version 25\nname \"Migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", file) >= 0
+        fputs("version 38\nname \"Migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", file) >= 0
     );
     REQUIRE(!fclose(file));
     chibi_project opened = { 0 };
@@ -669,17 +669,17 @@ TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable)
         chibi_project_open_migrating(&opened, directory, migration_refuse, &called, error, sizeof error) ==
         -1
     );
-    REQUIRE(called == 25);
+    REQUIRE(called == 38);
     REQUIRE(strstr(error, "native finalization refused"));
     file = fopen(manifest, "rb");
     REQUIRE(file);
     char bytes[256] = { 0 };
     REQUIRE(fread(bytes, 1, sizeof bytes - 1, file) > 0);
     fclose(file);
-    REQUIRE(strstr(bytes, "version 25"));
+    REQUIRE(strstr(bytes, "version 38"));
     REQUIRE(!chibi_project_inspect(&opened, directory, error, sizeof error));
     chibi_project_free(&opened);
-    REQUIRE(chibi_project_migrate(directory, error, sizeof error) == CHIBI_PROJECT_VERSION - 25);
+    REQUIRE(chibi_project_migrate(directory, error, sizeof error) == CHIBI_PROJECT_VERSION - 38);
     REQUIRE(!chibi_project_read(&opened, directory, error, sizeof error));
     chibi_project_free(&opened);
     unlink(manifest);

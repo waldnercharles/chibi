@@ -57,6 +57,14 @@ Set `CMAKE_PREFIX_PATH` to the installation. `Chibi::support` provides arenas an
 allocation; `Chibi::ecs` provides entity storage, queries, structural commands and
 execution views without graph dependencies; `Chibi::execution_contract` provides
 instruction/host/status contracts.
+
+Authored packages install under `share/chibi/core`, exposed to CMake consumers
+as `Chibi_CORE_SOURCE_DIR`. Alongside strings, the portable collection contains
+`core:bytes`, `core:math/bits`, `core:hash/fnv`, `core:hash/adler32` and
+`core:hash/crc32`. Their source and adjacent tests are installed recursively in
+both compiler and runtime SDK profiles. See the
+[portable byte-library APIs](../docs/package-byte-libraries.md).
+
 `Chibi::asset_values` owns document values and their storage. `Chibi::value_document`
 converts reflected values to owned documents and reads documents into caller-owned
 arenas. Failed reads leave the output value unchanged. Both are optional dependencies for

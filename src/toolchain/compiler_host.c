@@ -54,7 +54,9 @@ static compiler_host *load(
         message(error, error_size, "unsupported compiler host backend");
         return NULL;
     }
-    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+    const native_definition_pack packs[] = { values_only
+                                                 ? NATIVE_TEXT_DEFINITION_PACK
+                                                 : NATIVE_COMPILER_TEXT_DEFINITION_PACK,
                                              NATIVE_ARRAY_DEFINITION_PACK,
                                              COMPILER_JSON_DEFINITION_PACK,
                                              COMPILER_SYNTAX_DEFINITION_PACK };
@@ -151,7 +153,7 @@ char *compiler_host_values_target_json(size_t *length, char *error, size_t size)
 }
 char *compiler_host_compiler_target_json(size_t *length, char *error, size_t size)
 {
-    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+    const native_definition_pack packs[] = { NATIVE_COMPILER_TEXT_DEFINITION_PACK,
                                              NATIVE_ARRAY_DEFINITION_PACK,
                                              COMPILER_JSON_DEFINITION_PACK,
                                              COMPILER_SYNTAX_DEFINITION_PACK };

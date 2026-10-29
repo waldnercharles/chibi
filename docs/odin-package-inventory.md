@@ -42,9 +42,12 @@ must not silently replace this pin.
 
 ## Coverage, waves, and gates
 
-Coverage is **N** (no corresponding public Chibi package) for every row except
-`core/strings`, which is **P** (partial). The public package root currently
-contains only [`packages/core/strings/Strings.chibi`](../packages/core/strings/Strings.chibi).
+Coverage is **P** (partial) for strings and the selected bytes, bits and hash
+subsets in the [portable byte-library candidate](package-byte-libraries.md).
+Hash coverage is limited to FNV-1a, Adler-32 and IEEE CRC-32 in separate Chibi
+packages. Other rows are **N** (no corresponding public Chibi package).
+Source coverage does not establish merged, installed or backend acceptance;
+the package decision records those checks separately.
 Runtime C facilities, private build-host operations, and compiler implementation
 modules do not count as a public package port. In particular, the internal
 `tools/compiler/source_tokenizer` is related work for `core/odin/tokenizer`,
@@ -98,7 +101,7 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | Upstream source directory | Role | Coverage | Family | Earliest wave | Gates |
 | --- | --- | --- | --- | --- | --- |
 | [core/bufio](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/bufio) | Candidate | N | Text/IO | W2 | G1, G2 |
-| [core/bytes](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/bytes) | Candidate | N | Text/IO | W1 | G1, G2 |
+| [core/bytes](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/bytes) | Candidate | P | Text/IO | W1 | G1, G2 |
 | [core/c](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/c) | Candidate | N | Memory/ABI | W3 | G3, G5, G6 |
 | [core/c/libc](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/c/libc) | Candidate | N | Memory/ABI | W3 | G3, G5, G6 |
 | [core/c/libc/tests](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/c/libc/tests) | Test/example | N | Memory/ABI | W3 | G3, G5, G6 |
@@ -207,7 +210,7 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | [core/flags](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/flags) | Candidate | N | Text/IO | W2 | G1, G2 |
 | [core/flags/example](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/flags/example) | Test/example | N | Text/IO | W2 | G1, G2 |
 | [core/fmt](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/fmt) | Candidate | N | Text/IO | W2 | G1, G2 |
-| [core/hash](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/hash) | Candidate | N | Collections | W1 | G1, G3, G4 |
+| [core/hash](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/hash) | Candidate | P | Collections | W1 | G1, G3, G4 |
 | [core/hash/xxhash](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/hash/xxhash) | Candidate | N | Collections | W1 | G1, G3, G4 |
 | [core/image](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/image) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/image/bmp](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/image/bmp) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
@@ -220,7 +223,7 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | [core/log](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/log) | Candidate | N | Text/IO | W2 | G1, G2 |
 | [core/math](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math) | Candidate | N | Numeric | W2 | G3, G4 |
 | [core/math/big](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/big) | Candidate | N | Numeric | W2 | G3, G4 |
-| [core/math/bits](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/bits) | Candidate | N | Numeric | W2 | G3, G4 |
+| [core/math/bits](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/bits) | Candidate | P | Numeric | W2 | G3, G4 |
 | [core/math/cmplx](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/cmplx) | Candidate | N | Numeric | W2 | G3, G4 |
 | [core/math/ease](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/ease) | Candidate | N | Numeric | W2 | G3, G4 |
 | [core/math/fixed](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/fixed) | Candidate | N | Numeric | W2 | G3, G4 |

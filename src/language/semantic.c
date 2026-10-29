@@ -476,6 +476,9 @@ static script_analysis *analyze_package(const script_package_options *options, b
     for (int i = 0; i < count; i++) {
         script_analyzer_record_fields(&a, ts_tree_root_node(documents[i].syntax->tree));
     }
+    if (!acount(out->diagnostics)) {
+        script_analyzer_record_layouts(&a, root);
+    }
     if (acount(out->diagnostics)) {
         return finish_analysis(&a, true, false);
     }

@@ -1980,7 +1980,7 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number and bool results where a function has several"));
             }
-            if (type == 0 || type == facts.StringType) {
+            if (type == 0 || type == facts.StringType || field.container != 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number and bool record fields"));
             }

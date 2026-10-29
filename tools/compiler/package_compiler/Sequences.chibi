@@ -408,7 +408,25 @@ ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                         Resume(Field(forest, item.node, "value"), CopyValuePhase, 0, 0),
                         Resume(item.node, 2, 0, 0)];
         if (place.newkey && compound) {
-            return Fail(forest, item.node, document, "compound map assignment is not supported yet");
+            // An absent key reads as its value type's zero, so `counts[name] += 1`
+            // counts from zero; the right side is evaluated before the store.
+            if (!Numeric(place.storage) || place.container != 0) {
+                return Fail(forest, destination, document, "compound assignment needs numeric operands");
+            }
+            zero := Typed(at.slot, place.storage, 0, -1);
+            zero_code := ConstantCode(ops, place.storage, u64(0), at.slot, node);
+            switch SequenceCallStep([place, zero], ReferenceReadIntrinsic,
+                                    Typed(-1, place.storage, place.container, place.record), u64(0), false, 0,
+                                    ops, target,
+                                    {pc: at.pc + 1, slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
+                                     call: at.call}, node) {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, scheduled,
+                              popped, value, retained, marks):
+                    return Step.Emitted(extend([zero_code], code), extend([ValueLocal(place.storage)], slots), locals,
+                                        cells, hosts, roots, calls, bound, next, 0, value, NoValue(), marks);
+            }
         }
         if (place.newkey) {
             return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);

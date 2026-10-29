@@ -305,3 +305,33 @@ NestedAndArrayUnionFieldsCopyAsValues :: () {
     assert(Score(copy.members[0].phase) == 8);
     assert(Score(copy.members[1].phase) == 104);
 }
+
+@test
+NestedMapsReadAndWriteValues :: () {
+    grid: [string: [string: int]] = ["a": ["x": 1], "b": [:]];
+    assert(grid["a"]["x"] == 1);
+    grid["a"]["y"] = 2;
+    assert(grid["a"]["y"] == 2, "a nested map write must update the stored inner map");
+    grid["b"]["z"] += 3;
+    assert(grid["b"]["z"] == 3);
+    copy := grid;
+    copy["a"]["x"] = 9;
+    assert(grid["a"]["x"] == 1, "a copied nested map must not alias the original");
+    assert(copy["a"]["x"] == 9);
+}
+
+
+@test
+CompoundMapAssignmentCountsFromZero :: () {
+    scores: [string: int] = ["a": 1];
+    scores["a"] += 4;
+    scores["b"] += 2;
+    scores["c"] -= 3;
+    assert(scores["a"] == 5, "a compound write must update an existing key");
+    assert(scores["b"] == 2, "a compound write to a missing key must start from zero");
+    assert(scores["c"] == -3);
+    totals: [string: [string: number]] = ["x": [:]];
+    totals["x"]["y"] += 1.5;
+    totals["x"]["y"] *= 2.0;
+    assert(totals["x"]["y"] == 3.0);
+}

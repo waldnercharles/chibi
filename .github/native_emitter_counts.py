@@ -10,6 +10,10 @@ import re
 CASES = ("lines", "rejection", "targets", "interrupted", "incomplete",
          "emitter-seed", "cache", "tools", "llvm", "cross", "other")
 ENTRY = "0x140a9546d9e8c296"
+REASONS = frozenset(('trace_invalid', 'trace_escape', 'trace_exec_shape',
+                     'trace_exec_status', 'trace_argv_shape', 'trace_options',
+                     'trace_paths', 'trace_case', 'trace_resume',
+                     'trace_unexpected_record', 'trace_unfinished'))
 _QUOTED = r'"(?:[^"\\]|\\.)*"'
 _PATH = re.compile(r'\s*(' + _QUOTED + r')\s*,')
 _ARGV = re.compile(r'\s*(\[(?:' + _QUOTED + r'|[^"\]])*\])\s*,')
@@ -20,8 +24,14 @@ _CASE = re.compile(_SUITE + r'/([^/]+)/game with spaces( moved)?/build/native/O[
 _EXPORT = re.compile(_SUITE + r'/native game/\.chibi/build/native/libraries\.work')
 
 
-def _invalid():
-    raise ValueError("invalid or ambiguous exec trace")
+class TraceError(ValueError):
+    def __init__(self, reason):
+        self.reason = reason if reason in REASONS else 'trace_invalid'
+        super().__init__("invalid or ambiguous exec trace")
+
+
+def _invalid(reason='trace_invalid'):
+    raise TraceError(reason)
 
 
 def _decode(token):
@@ -35,7 +45,7 @@ def _decode(token):
         if value.startswith('x') and len(value) > 1:
             return chr(int(value[1:], 16))
         if value not in escapes:
-            _invalid()
+            _invalid('trace_escape')
         return escapes[value]
 
     return re.sub(r'\\(x[0-9a-fA-F]{1,2}|[0-7]{1,3}|.)', decode, token[1:-1])
@@ -44,40 +54,40 @@ def _decode(token):
 def _case(record):
     call = re.fullmatch(r'(execve|execveat)\((.*)\)\s*=\s*(.*)', record)
     if not call:
-        _invalid()
+        _invalid('trace_exec_shape')
     if re.match(r'-1\b', call[3]):
         return None  # Failed PATH candidates are not executions.
     if call[3] != '0':
-        _invalid()
+        _invalid('trace_exec_status')
     arguments = call[2]
     if call[1] == 'execveat':
         fd = re.match(r'(?:AT_FDCWD|-?\d+)\s*,', arguments)
         if not fd:
-            _invalid()
+            _invalid('trace_exec_shape')
         arguments = arguments[fd.end():]
     path = _PATH.match(arguments)
     if not path:
-        _invalid()
+        _invalid('trace_exec_shape')
     executable = _decode(path[1])
     if executable and executable.rsplit('/', 1)[-1] != 'chibi-compiler-host':
         return None
     head = _ARGV.match(arguments[path.end():])
     if not head or not _ARRAY.fullmatch(head[1]):
-        _invalid()  # Includes strace argv/string ellipses or pointer-only argv.
+        _invalid('trace_argv_shape')  # Includes ellipses or pointer-only argv.
     argv = [_decode(token) for token in re.findall(_QUOTED, head[1])]
     if not any(ENTRY in value for value in argv):
         return None
     if not executable:  # execveat(AT_EMPTY_PATH) cannot identify the executable.
-        _invalid()
+        _invalid('trace_exec_shape')
     options = {}
     if not argv or len(argv) % 2 != 1:
-        _invalid()
+        _invalid('trace_options')
     for key, value in zip(argv[1::2], argv[2::2]):
         if not key.startswith('--') or '=' in key or key in options or value.startswith('--'):
-            _invalid()
+            _invalid('trace_options')
         options[key] = value
     if options.get('--entry') != ENTRY:
-        _invalid()
+        _invalid('trace_options')
     source = options.get('--input', '')
     output = options.get('--output-bytes', '')
     compile_input = source.rsplit('/', 1)[-1] == 'compile.json'
@@ -85,16 +95,16 @@ def _case(record):
     if not compile_input and not emitter_output:
         return None
     if not compile_input or not emitter_output:
-        _invalid()
+        _invalid('trace_paths')
     folder = source.rsplit('/', 1)[0]
     if output != folder + '/emitter.chibip':
-        _invalid()
+        _invalid('trace_paths')
     match = _CASE.fullmatch(folder)
     if match and match[1] in CASES[:-1] and (not match[2] or match[1] == 'lines'):
         return match[1]
     if _EXPORT.fullmatch(folder):
         return 'other'
-    _invalid()
+    _invalid('trace_case')
 
 
 def parse_counts(text):
@@ -107,7 +117,7 @@ def parse_counts(text):
         resumed = re.match(r'<\.\.\. (execve|execveat) resumed>(.*)', record)
         if resumed:
             if pid not in pending or not pending[pid].startswith(resumed[1] + '('):
-                _invalid()
+                _invalid('trace_resume')
             record = pending.pop(pid) + resumed[2]
         elif not record.startswith(('execve(', 'execveat(')):
             # A detached/lost process could hide a candidate compilation.
@@ -116,9 +126,9 @@ def parse_counts(text):
                     re.fullmatch(r'\+\+\+ (?:exited with [0-9]+|killed by SIG[A-Z0-9]+(?: \(core dumped\))?) \+\+\+', record) or
                     re.fullmatch(r'strace: Process [0-9]+ attached', record)):
                 continue
-            _invalid()
+            _invalid('trace_unexpected_record')
         elif pid in pending:
-            _invalid()
+            _invalid('trace_resume')
         marker = ' <unfinished ...>'
         if record.endswith(marker):
             pending[pid] = record[:-len(marker)]
@@ -127,5 +137,5 @@ def parse_counts(text):
         if case is not None:
             counts[case] += 1
     if pending:
-        _invalid()
+        _invalid('trace_unfinished')
     return counts

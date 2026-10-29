@@ -73,10 +73,12 @@ jobs:
       - name: Verify profile, assertions, runtime coverage and executed links
         run: python3 .github/verify-native-profile.py
       - name: Count one baseline and one candidate full suite
+        id: emitter-counts
         run: >-
           python3 ../diagnostic/.github/native-emitter-diagnostic.py
           "$PWD" "$RUNNER_TEMP/emitter-count-summary.json"
       - name: Preserve only bounded count and identity summary
+        if: always() && steps.emitter-counts.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: emitter-counts-${{ github.run_id }}

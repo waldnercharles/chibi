@@ -178,10 +178,10 @@ ParseUnary :: (c: ^Cursor, n: ^(Node[])) -> int {
     return ParsePostfix(c, n, ParsePrimary(c, n));
 }
 
-// Whether `not (` opens the arguments of a function called `not`: the
-// parentheses start with a name and a colon.
+// Tree-sitter reads `not (` as a call of a function named `not`, as it reads
+// `not(Value: x)`; only another token after `not` makes it the operator.
 NamesCall :: (c: ^Cursor, n: ^(Node[])) -> bool {
-    return Peek(c, n, 1) == tk.OpenParen && IsMember(Peek(c, n, 2)) && Peek(c, n, 3) == tk.Colon;
+    return Peek(c, n, 1) == tk.OpenParen;
 }
 
 // Members, indexes, calls and dereferences bind tighter than any operator.

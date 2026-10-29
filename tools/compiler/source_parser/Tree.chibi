@@ -35,6 +35,9 @@ Cursor :: struct {
     failed: bool;
     message: string;
     at: int;
+    stop: int;
+    row: int;
+    column: int;
 }
 
 // The parts of a tree Parse returns: Tree-sitter's raw facts, as
@@ -90,6 +93,9 @@ Fail :: (c: ^Cursor, n: ^(Node[]), message: string) {
         c.failed = true;
         c.message = message;
         c.at = n^[c.pos].start;
+        c.stop = n^[c.pos].end;
+        c.row = n^[c.pos].row;
+        c.column = n^[c.pos].column;
     }
     c.pos = c.final;
 }

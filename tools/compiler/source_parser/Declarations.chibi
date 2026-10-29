@@ -106,10 +106,21 @@ ParseDeclaration :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseImport :: (c: ^Cursor, n: ^(Node[])) -> int {
     imported := New(n, "import_declaration");
     Take(c, n, imported, "");
-    if (Cur(c, n) != tk.String) {
+    if (IsName(Cur(c, n)) && Peek(c, n, 1) == tk.Colon && IsName(Peek(c, n, 2))) {
+        collection := Slice(c.text, n^[c.pos].start, n^[c.pos].end);
+        package := Slice(c.text, n^[c.pos + 2].start, n^[c.pos + 2].end);
+        Fail(c, n, format_text("An import names its package in a string; write `import {} \"{}:{}\"`",
+                               package, collection, package));
+        return imported;
+    }
+    if (IsName(Cur(c, n))) {
         TakeName(c, n, imported, "alias");
     }
-    Expect(c, n, imported, tk.String, "path");
+    if (Cur(c, n) != tk.String) {
+        Fail(c, n, Expected(c, n, "a package string such as \"project:name\""));
+        return imported;
+    }
+    Take(c, n, imported, "path");
     End(c, n, imported);
     return imported;
 }
@@ -152,7 +163,11 @@ ParseHandler :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseHandlerName :: (c: ^Cursor, n: ^(Node[])) -> int {
     token := Cur(c, n);
     first: int = -1;
-    if (token == tk.State || token == tk.Event || token == tk.Entry) {
+    if (token == tk.Entry) {
+        first = Take(c, n, -1, "");
+        n^[first].kind = "builtin_reference";
+        n^[first].named = true;
+    } else if (token == tk.State || token == tk.Event) {
         first = New(n, "builtin_reference");
         Take(c, n, first, "");
     } else {

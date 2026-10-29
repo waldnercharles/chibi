@@ -30,7 +30,9 @@ ParseSingleType :: (c: ^Cursor, n: ^(Node[])) -> int {
             Expect(c, n, t, tk.Integer, "trait");
             Expect(c, n, t, tk.CloseParen, "trait");
         } else {
-            Take(c, n, t, "trait");
+            word := Take(c, n, t, "trait");
+            n^[word].kind = Slice(c.text, n^[word].start, n^[word].end);
+            n^[word].named = false;
         }
     }
     ParseTypePrimary(c, n, t);
@@ -146,7 +148,7 @@ SkipSingleType :: (n: ^(Node[]), at: int, final: int) -> int {
             at += 1;
         } else if (token == tk.Wildcard) {
             at += 4;
-        } else if (token == tk.Ident && (IsName(n^[at + 1].token) || n^[at + 1].token == tk.Xor ||
+        } else if (token == tk.Ident && (n^[at + 1].token == tk.Ident || n^[at + 1].token == tk.Xor ||
                                          n^[at + 1].token == tk.Dollar)) {
             at += 1;
         } else {

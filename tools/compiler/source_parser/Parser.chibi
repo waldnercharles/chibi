@@ -5,31 +5,36 @@ import syntax "project:syntax_diagnostics"
 
 // A parse that did not reach a tree: why, and where.
 Outcome :: union {
-    Built(nodes: Node[], root: int) | Rejected(message: string, at: int)
+    Built(nodes: Node[], root: int) |
+    Rejected(message: string, start: int, end: int, row: int, column: int)
 }
 
 // Parses a whole source text into the raw facts compiler_syntax.Parse returns:
 // every token as a leaf, with the node, field and extra flags of the grammar
 // in src/language/grammar.js. Text the grammar does not read gives a single
-// ERROR node over the whole text; error recovery is not written yet.
+// ERROR node over the whole text; Diagnose says what is wrong with it.
 pub Parse :: (text: string) -> Tree {
     outcome := Build(text);
     switch outcome {
         case .Built(nodes, root):
             return Emit(nodes, root);
-        case .Rejected(message, at):
+        case .Rejected(message, start, end, row, column):
             return Failure(text);
     }
 }
 
-// The reason `text` does not parse, as `offset: message`, or "" when it does.
-pub Check :: (text: string) -> string {
+// What is wrong with `text`: one diagnostic at the first token the grammar
+// cannot read, saying what it expected; none when the text parses.
+pub Diagnose :: (text: string) -> syntax.Diagnostic[] {
     outcome := Build(text);
+    diagnostics: syntax.Diagnostic[] = [];
     switch outcome {
         case .Built(nodes, root):
-            return "";
-        case .Rejected(message, at):
-            return format_text("{}: {}", at, message);
+            return diagnostics;
+        case .Rejected(message, start, end, row, column):
+            diagnostics.append({start: start, end: end, line: row + 1, column: column + 1,
+                                document: 0, message: message});
+            return diagnostics;
     }
 }
 
@@ -46,7 +51,8 @@ Build :: (text: string) -> Outcome {
     switch scanned {
         case .Scanned(kinds, starts, ends, rows, columns, errors, error_offsets, error_rows, error_columns):
             if (length(errors) > 0) {
-                return Outcome.Rejected(errors[0], error_offsets[0]);
+                return Outcome.Rejected(errors[0], error_offsets[0], error_offsets[0] + 1,
+                                        error_rows[0], error_columns[0]);
             }
             return Construct(text, kinds, starts, ends, rows, columns);
     }
@@ -69,13 +75,15 @@ Construct :: (text: string, kinds: int[], starts: int[], ends: int[], rows: int[
         }
         index += 1;
     }
-    cursor: Cursor = {text: text, pos: 0, final: length(nodes) - 1, failed: false, message: "", at: 0};
+    cursor: Cursor = {text: text, pos: 0, final: length(nodes) - 1, failed: false, message: "",
+                      at: 0, stop: 0, row: 0, column: 0};
     root := ParseSourceFile(&cursor, &nodes);
     if (cursor.failed) {
-        return Outcome.Rejected(cursor.message, cursor.at);
+        return Outcome.Rejected(cursor.message, cursor.at, cursor.stop, cursor.row, cursor.column);
     }
     if (cursor.pos != cursor.final) {
-        return Outcome.Rejected("Unexpected syntax", nodes[cursor.pos].start);
+        return Outcome.Rejected("Expected a declaration", nodes[cursor.pos].start,
+                                nodes[cursor.pos].end, nodes[cursor.pos].row, nodes[cursor.pos].column);
     }
     Attach(&nodes, root, comments, text_byte_length(text));
     return Outcome.Built(nodes, root);

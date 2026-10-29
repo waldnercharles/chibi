@@ -316,7 +316,9 @@ ParseReduce :: (c: ^Cursor, n: ^(Node[])) -> int {
     reduction := New(n, "reduce_statement");
     Take(c, n, reduction, "");
     if (IsWord(c, n, "min") || IsWord(c, n, "max")) {
-        Take(c, n, reduction, "operator");
+        word := Take(c, n, reduction, "operator");
+        n^[word].kind = Slice(c.text, n^[word].start, n^[word].end);
+        n^[word].named = false;
         Expect(c, n, reduction, tk.OpenParen, "");
         Add(n, reduction, ParseExpression(c, n), "target");
         Expect(c, n, reduction, tk.Comma, "");

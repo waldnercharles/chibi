@@ -91,19 +91,18 @@ jobs:
         run: |
           ccache --show-config
           ccache --zero-stats
-      # validate-project runs chibi_ctl dozens of times, and published-docs and
-      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile and chibi-player.
       - name: Restore the compiled asset compiler
         id: asset-cache
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
-      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+      # published-docs and chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi launcher target also builds chibi-compile and chibi-player.
+      - name: Build an unsanitized chibi launcher (Release)
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
+        run: make build-release BUILD_TARGET='chibi chibi-build-host chibi-compiler-host' LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Build products and test drivers (selected Debug profile)
         env:
           VERBOSE: '1'
@@ -111,7 +110,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       # Keep the temporary CMake oracle beside the Graph output. Only its
@@ -150,10 +149,10 @@ jobs:
         run: |
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
-          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
+          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           python3 tools/test_policy.py group native
           python3 tools/test_policy.py group materials
-          CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
+          CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
           CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group language
       - name: Keep the macOS and Windows native modules
         uses: actions/upload-artifact@v4
@@ -231,21 +230,20 @@ jobs:
         run: |
           ccache --show-config
           ccache --zero-stats
-      # validate-project runs chibi_ctl dozens of times, and published-docs and
-      # chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
-      # chibi launcher target also builds chibi-compile and chibi-player, and
-      # the Graph build adds the Release build host the Debug builds use.
       - name: Restore the compiled asset compiler
         id: asset-cache
         uses: actions/cache/restore@v4
         with:
           path: .chibi/asset-compiler-cache
           key: asset-compiler-${{ runner.os }}-${{ hashFiles('tools/compiler/**', 'packages/**', 'tools/graph/asset_compiler/**') }}
-      - name: Build an unsanitized chibi_ctl and chibi launcher (Release)
+      # published-docs and chibi-cli run chibi-compile --docs, all too slowly under sanitizers. The
+      # chibi launcher target also builds chibi-compile and chibi-player, and
+      # the Graph build adds the Release build host the Debug builds use.
+      - name: Build an unsanitized chibi launcher (Release)
         id: release-build
         env:
           CHIBI_BUILD_TIMINGS: ${{ runner.temp }}/build-timings
-        run: make build-release BUILD_TARGET='chibi_ctl chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
+        run: make build-release BUILD_TARGET='chibi chibi-compiler-host' LIBCLANG_ROOT="$LLVM"
       # Keep transient files retained by a failure. Success removes them; its
       # capture still preserves the hosts and their build/source records.
       - name: Capture macOS facade identities
@@ -275,7 +273,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          make build BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
+          make build BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT="$LLVM" 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
       - name: Preserve failed macOS Graph stage log
@@ -308,10 +306,10 @@ jobs:
         run: |
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
-          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
+          for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           python3 tools/test_policy.py group native
           python3 tools/test_policy.py group materials
-          CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN= python3 tools/test_policy.py group projects
+          CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN= python3 tools/test_policy.py group projects
           CHIBI_LLVM_BIN= python3 tools/test_policy.py group language
       - name: Preserve native profile evidence
         if: always()
@@ -419,7 +417,7 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DLIBCLANG_ROOT="C:/Program Files/LLVM"
       - name: Build the SDK tools
-        run: cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
+        run: cmake --build build --target chibi chibi-compile chibi-player
       - name: Compile a project
         run: build/sdk/chibi-compile.exe --project-root "$PWD/test/fixtures/studio" --output "$env:RUNNER_TEMP/game.chibip"
 

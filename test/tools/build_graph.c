@@ -950,7 +950,6 @@ TEST_CASE(named_programs_build_what_they_run)
     REQUIRE(doc);
     static const char *const programs[] = { "test/tools/test_tools",
                                             "test/tools/policy_worker",
-                                            "bin/chibi_ctl",
                                             "sdk/chibi-compile",
                                             "sdk/chibi-build-host",
                                             "sdk/chibi-compiler-host",
@@ -1926,18 +1925,15 @@ TEST_CASE(resources_install_as_cmake)
         opengl_library,     "--glx-library",  glx_library,
         "--opengl-include", opengl_include,   NULL
     };
-    const char *const installs[] = { "--target", "chibi", "--target", "chibi_ctl", NULL };
+    const char *const installs[] = { "--target", "chibi", NULL };
     REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, installs) == -1);
-    /* The shaders are compared with their source because CMake copies the
-     * controller's shaders only when it configures. */
+    /* The shaders are compared with their source. */
     const char *const trees[][2] = {
         { "share/chibi/engine.json", "build/share/chibi/engine.json" },
         { "share/chibi/core", "build/share/chibi/core" },
         { "share/chibi/docs", "build/share/chibi/docs" },
         { "share/chibi/apps/chibi", "build/share/chibi/apps/chibi" },
         { "share/chibi/shaders", "src/render/shaders" },
-        { "controller_resources/engine.json", "build/controller_resources/engine.json" },
-        { "controller_resources/shaders", "src/render/shaders" },
     };
     int files = 0, application_files = 0;
     for (size_t i = 0; i < sizeof trees / sizeof *trees; i++) {
@@ -2042,7 +2038,7 @@ void test_build_graph_programs(const char *host, const char *cmake_build)
     tool_remove_tree(suite);
 }
 
-/* A separate route: staging chibi_ctl's headers takes seconds. */
+/* A separate route: staging the SDK headers takes seconds. */
 void test_build_graph_resources(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);

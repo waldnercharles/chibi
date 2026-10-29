@@ -65,7 +65,7 @@ target_include_directories(chibi_project_compilation SYSTEM PRIVATE "${CMAKE_CUR
 target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chibi_prototype_document chibi_project_document
     chibi_scene_document chibi_player chibi_native_prepared chibi_shader_preparation
     PRIVATE chibi_host_native_default chibi_asset_authoring
-    chibi_asset_text chibi_source_presentation chibi_text_source chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json
+    chibi_asset_text chibi_text_source chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json
     chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities chibi_task_pool_runtime)
 list(APPEND CHIBI_SDK_TARGETS chibi_compiler_syntax chibi_compiler_json chibi_shader_preparation chibi_project_compilation)
 

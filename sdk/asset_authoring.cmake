@@ -35,4 +35,4 @@ chibi_sdk_headers(chibi_scenario_document PUBLIC assets/scenario_document.h)
 target_link_libraries(chibi_scenario_document PUBLIC chibi_asset_values chibi_input_runtime
     PRIVATE chibi_native_types chibi_asset_text)
 
-list(APPEND CHIBI_SDK_TARGETS chibi_scene_authoring chibi_asset_authoring chibi_model_authoring chibi_scenario_document)
+list(APPEND CHIBI_SDK_TARGETS chibi_scene_authoring chibi_asset_authoring chibi_scenario_document)

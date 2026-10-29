@@ -42,22 +42,4 @@ set_target_properties(chibi_program PROPERTIES EXPORT_NAME program)
 chibi_sdk_headers(chibi_program PUBLIC authoring/program.h authoring/program_service.h)
 target_link_libraries(chibi_program PUBLIC chibi_source_catalog chibi_native_capabilities chibi_behavior_runtime)
 
-add_library(chibi_source_presentation STATIC)
-foreach(unit graph_expression presentation_schema source_presentation source_presentation_graph source_presentation_anchors
-    source_presentation_values source_presentation_flow source_presentation_layout
-    source_presentation_details)
-    target_sources(chibi_source_presentation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
-endforeach()
-add_library(Chibi::source_presentation ALIAS chibi_source_presentation)
-set_target_properties(chibi_source_presentation PROPERTIES EXPORT_NAME source_presentation)
-chibi_sdk_headers(chibi_source_presentation PUBLIC authoring/graph_expression.h authoring/presentation_schema.h authoring/source_presentation.h)
-foreach(header source_presentation_internal source_presentation_anchors source_presentation_details)
-    configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/private/source_presentation/authoring/${header}.h" COPYONLY)
-endforeach()
-target_include_directories(chibi_source_presentation PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/private/source_presentation" "${CHIBI_SDK_ROOT}/third_party/yyjson")
-target_link_libraries(chibi_source_presentation PUBLIC chibi_authoring chibi_graph_model chibi_text_source
-    PRIVATE chibi_json chibi_graph_authoring)
-
-list(APPEND CHIBI_SDK_TARGETS chibi_source_catalog chibi_program chibi_source_presentation)
+list(APPEND CHIBI_SDK_TARGETS chibi_source_catalog chibi_program)

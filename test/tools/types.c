@@ -138,15 +138,13 @@ type_catalog_pack test_native_catalog_pack();
 
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 #include "authoring/studio_schema.h"
-bool test_shader_parameters_active();
-type_catalog_pack test_shader_parameters_types();
 #endif
 int type_catalog_pack_count()
 {
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES
-        return test_shader_parameters_active() ? 4 : 3;
+        return 3;
 #else
         return 2;
 #endif
@@ -168,9 +166,6 @@ type_catalog_pack type_catalog_pack_at(int index)
 #ifdef CHIBI_TEST_SOURCE_FEATURES
         if (index == 2) {
             return STUDIO_TYPE_PACK;
-        }
-        if (index == 3) {
-            return test_shader_parameters_types();
         }
 #endif
         return index ? TEST_REFLECTED_TYPES_PACK : TYPE_PACK;

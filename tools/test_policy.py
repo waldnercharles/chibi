@@ -525,8 +525,8 @@ GROUPS = {
                'material-surface-mesh', 'scene3d-camera', 'scene3d-volume', 'scene3d-terrain'],
     # Imported assets, Terrain Lab's authored save/load restart, the published
     # documentation site and the Release launcher's commands.
-    'projects': ['mesh-files', 'model-import', 'terrain-checkpoint',
-                 'terrain-playable', 'chibi-cli', 'native-build'],
+    'projects': ['terrain-checkpoint',
+                 'chibi-cli', 'native-build'],
     # Independently reviewed fixed CPU workloads: cave<=2048x768, flow<=192x192,
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 
@@ -534,8 +534,8 @@ GROUPS = {
     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-package-math', 'language-package-tests', 'language-argument-effects-chibi', 'language-package-core', 'language-package-portable', 'language-package-portable-compiler', 'language-host-packages', 'language-host-packages-compiler', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
-                 'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
-                 'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
+                 'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 
+                 'language-row-array', 'language-outliner-projection',
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-compositional-records', 'language-package-compiler-chibi-scalar',
                  'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',
                  'language-integer-semantics', 'language-integer-arithmetic', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap',

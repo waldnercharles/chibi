@@ -153,6 +153,9 @@ static int leaf_kind(const char *type, const char *text, int size)
     if (!strcmp(type, "string")) {
         return kind_named("String");
     }
+    if (!strcmp(type, "character")) {
+        return kind_named("Char");
+    }
     if (!strcmp(type, "number")) {
         return number_kind(text, size);
     }

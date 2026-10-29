@@ -6315,6 +6315,8 @@ static bool project_closure_only(const unsigned char *bytes, size_t length, int 
     }
     compiler_artifact_rows_free(rows, count);
     REQUIRE(project_only);
+    return true;
+}
 /* Invalid Unicode scalars are authored data failures, as stage zero's
  * char_check emits, rather than failures attributed to a native host call. */
 static bool char_failures_use_data_status(const unsigned char *bytes, size_t length)

@@ -19,7 +19,8 @@ typedef struct
     const chibi_build_options *options;
     chibi_build_result *result;
     char *root, *program_directory;
-    build_values values;
+    build_values values; /* Native results, imported before the next callback. */
+    build_values argument_values; /* Root arguments live for the invocation. */
     pin_array *arguments;
     char *last_stdout, *last_stderr; /* BUILD_STEP_OUTPUT_CAPACITY each. */
     size_t last_stdout_size, last_stderr_size;

@@ -47,10 +47,14 @@ Verify :: () -> int {
         engine.CxxCompiler(strings.Join([root, "/clang-18"], ""), "Clang") != sibling) {
         return 6;
     }
+    failing := build.find_executable("false");
+    if (failing == "" || build.probe([failing]) != 1) {
+        return 7;
+    }
     shared := strings.Join([libraries, "/libGraphDiscovery.so"], "");
     if (!build.write_file(shared, "") ||
-        engine.SystemLibrary("/bin/false", "libGraphDiscovery.so") != shared ||
-        engine.SystemLibrary("/bin/false", "libAbsentGraphDiscovery.so") != "" ||
+        engine.SystemLibrary(failing, "libGraphDiscovery.so") != shared ||
+        engine.SystemLibrary(failing, "libAbsentGraphDiscovery.so") != "" ||
         engine.SystemLibrary("", "libAbsentGraphDiscovery.so") != "") {
         return 7;
     }
@@ -60,11 +64,64 @@ Verify :: () -> int {
         engine.OpenGLInclude() != headers) {
         return 8;
     }
+    multiarch := strings.Join([libraries, "/x86_64-linux-gnu"], "");
+    versioned := strings.Join([multiarch, "/libclang-18.so.18"], "");
+    unversioned := strings.Join([multiarch, "/libclang.so"], "");
+    absent := strings.Join([multiarch, "/libclang-20.so"], "");
+    if (!build.make_directory(multiarch) || !build.write_file(versioned, "") ||
+        !build.write_file(unversioned, "") || !build.write_file(absent, "") ||
+        engine.ClangResourceInclude(versioned) != include ||
+        engine.ClangResourceInclude(unversioned) != "" || engine.ClangResourceInclude(absent) != "") {
+        return 10;
+    }
+    driver_prefix := strings.Join([root, "/multiarch driver"], "");
+    driver_libraries := strings.Join([driver_prefix, "/lib/x86_64-linux-gnu"], "");
+    driver_resources := strings.Join([driver_prefix, "/share/clang/18/include"], "");
+    driver_library := strings.Join([driver_libraries, "/libclang-18.so.18"], "");
+    driver_choice := strings.Join([driver_prefix, "/resource-directory"], "");
+    if (!build.make_directory(driver_libraries) || !build.make_directory(driver_resources) ||
+        !build.write_file(driver_library, "") ||
+        !build.write_file(strings.Join([driver_resources, "/stdbool.h"], ""), "") ||
+        !build.write_file(driver_choice, strings.Join([driver_prefix, "/share/clang/18\n"], "")) ||
+        engine.ClangResourceInclude(driver_library) != driver_resources) {
+        return 11;
+    }
+    named := strings.Join([root, "/libclang-unrelated/lib"], "");
+    named_include := strings.Join([named, "/clang/18/include"], "");
+    named_other := strings.Join([named, "/clang/19/include"], "");
+    named_library := strings.Join([named, "/libclang-18.so.18"], "");
+    if (!build.make_directory(named_include) || !build.make_directory(named_other) ||
+        !build.write_file(named_library, "") ||
+        !build.write_file(strings.Join([named_include, "/stdbool.h"], ""), "") ||
+        !build.write_file(strings.Join([named_other, "/stdbool.h"], ""), "") ||
+        engine.ClangResourceInclude(named_library) != named_include) {
+        return 12;
+    }
+    // The selected driver's resource path is authoritative, not its dirname.
+    alternate_driver := strings.Join([driver_prefix, "/share/clang/19/include"], "");
+    if (!build.make_directory(alternate_driver) ||
+        !build.write_file(strings.Join([alternate_driver, "/stdbool.h"], ""), "") ||
+        !build.write_file(driver_choice, strings.Join([driver_prefix, "/share/clang/19\n"], "")) ||
+        engine.ClangResourceInclude(driver_library) != alternate_driver) {
+        return 13;
+    }
+    custom_driver := strings.Join([driver_prefix, "/share/builtin/include"], "");
+    if (!build.make_directory(custom_driver) ||
+        !build.write_file(strings.Join([custom_driver, "/stdbool.h"], ""), "") ||
+        !build.write_file(driver_choice, strings.Join([driver_prefix, "/share/builtin\n"], "")) ||
+        engine.ClangResourceInclude(driver_library) != custom_driver) {
+        return 14;
+    }
+    if (!build.write_file(driver_choice, strings.Join([driver_prefix, "/share/clang/18\n"], "")) ||
+        engine.ClangResourceInclude(driver_library) != driver_resources) {
+        return 15;
+    }
     // An incomplete matching directory is still ambiguous, as CMake's
     // resource fallback counts candidates before checking the sole header.
     partial := strings.Join([libraries, "/clang/18.1/include"], "");
     if (!build.make_directory(partial) ||
-        engine.ClangResourceInclude(strings.Join([libraries, "/libclang-18.so.18"], "")) != "") {
+        engine.ClangResourceInclude(strings.Join([libraries, "/libclang-18.so.18"], "")) != "" ||
+        engine.ClangResourceInclude(versioned) != "") {
         return 9;
     }
     return 0;

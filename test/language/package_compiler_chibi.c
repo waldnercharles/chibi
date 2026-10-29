@@ -102,7 +102,10 @@ typedef enum
     COLLECTION_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
- * `library` is package lib when present, and `core` adds core:strings. A
+ * `library` is package lib when present, and `core` adds core:strings.
+ * `collection_source` and `collection_dependency` add core:host_only and
+ * core:host_dependency; `project_modules` checks that the emitted closure
+ * contains exactly that many project modules and no collection rows. A
  * `game` sample's target links the core pack a game links, which declares
  * assert; preparing every sample with it would cost each selector seconds. An
  * `updates` sample's `Build(count)` updates a local array in place: doubling
@@ -131,6 +134,7 @@ typedef enum
 typedef struct
 {
     const char *name, *source, *more, *library;
+    const char *collection_source, *collection_dependency;
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built, lends,
         drops, same_rejection, c_string_probe, host_effects, update_order,
@@ -141,7 +145,7 @@ typedef struct
     sample_call calls[CALLS];
     const char *message;
     const char *oracle_message;
-    int line, column;
+    int line, column, project_modules;
 } sample;
 static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
 {
@@ -409,7 +413,7 @@ static const char *action_kind_function(void *, const pin_value *arguments, pin_
 static const char *action_kind_action(void *, const pin_value *arguments, pin_value *results)
 {
     if (arguments[0].type != PIN_STR ||
-        !pin_text_equal(pin_text(arguments[0]), (pin_string){ "text", 4 }) ||
+        !pin_text_equal(pin_text(arguments[0]), (pin_string){ .bytes = "text", .length = 4 }) ||
         results[0].type != PIN_I32) {
         return "qualified action argument or result differs";
     }
@@ -908,7 +912,89 @@ static const native_definition_pack ACTION_PACK = {
     .global_bindings = ACTION_GLOBAL_BINDINGS,
     .global_binding_count = NATIVE_COUNT(ACTION_GLOBAL_BINDINGS),
 };
+static const char HOST_ONLY_SOURCE[] = "package host_only\n"
+                                       "pub Probe :: () -> int {\n"
+                                       "    return host_only_probe();\n"
+                                       "}\n";
+static const char HOST_DEPENDENCY_SOURCE[] = "package host_dependency\n"
+                                             "pub Probe :: () -> int {\n"
+                                             "    return host_only_probe();\n"
+                                             "}\n";
 static const sample samples[] = {
+    { .name = "unused collection host capability is not required",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = HOST_ONLY_SOURCE,
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "unused collection ill-typed body is not checked",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\npub Broken :: () -> int { "
+                           "return true; }\n",
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "unused collection declaration is not checked",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\npub Broken :: (value: Missing) "
+                           "-> int { return 0; }\n",
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "unused collection dependencies stay outside closure",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\nimport dep "
+                           "\"core:host_dependency\"\n"
+                           "pub Value :: () -> int { return 2; }\n",
+      .collection_dependency = HOST_DEPENDENCY_SOURCE,
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "direct collection import requires its host capability",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport host \"core:host_only\"\n"
+                "pub Value :: () -> int { return 7; }\n",
+      .collection_source = HOST_ONLY_SOURCE,
+      .message = "Unknown function 'host_only_probe'",
+      .line = 3,
+      .column = 12 },
+    { .name = "transitive collection import requires its host capability",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport host \"core:host_only\"\n"
+                "pub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\nimport dep "
+                           "\"core:host_dependency\"\n"
+                           "pub Value :: () -> int { return 2; }\n",
+      .collection_dependency = HOST_DEPENDENCY_SOURCE,
+      .message = "Unknown function 'host_only_probe'",
+      .line = 3,
+      .column = 12 },
+    { .name = "unrelated project package remains checked",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .library = "package lib\npub Probe :: () -> int {\n"
+                 "    return host_only_probe();\n}\n",
+      .collection_source = "package host_only\npub Value :: () -> int { return "
+                           "2; }\n",
+      .message = "Unknown function 'host_only_probe'",
+      .line = 3,
+      .column = 12 },
+    { .name = "unrelated project imports retain collection checking",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .library = "package lib\nimport host \"core:host_only\"\n"
+                 "pub Value :: () -> int { return 2; }\n",
+      .collection_source = HOST_ONLY_SOURCE,
+      .message = "Unknown function 'host_only_probe'",
+      .line = 3,
+      .column = 12 },
+    { .name = "independent project package remains in emitted closure",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .library = "package lib\npub Independent :: () -> int { return 9; }\n",
+      .collection_source = HOST_ONLY_SOURCE,
+      .project_modules = 2,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
     { .name = "array update debug order",
       .group = COLLECTION_SAMPLES,
       .update_order = true,
@@ -4347,6 +4433,22 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
             sizeof CORE_STRINGS_SOURCE - 1
         };
     }
+    if (s->collection_source) {
+        assert(count < SAMPLE_INPUTS);
+        inputs[count++] = (source_package_input){
+            "/sdk/core/host_only/HostOnly.chibi",
+            s->collection_source,
+            strlen(s->collection_source)
+        };
+    }
+    if (s->collection_dependency) {
+        assert(count < SAMPLE_INPUTS);
+        inputs[count++] = (source_package_input){
+            "/sdk/core/host_dependency/Dependency.chibi",
+            s->collection_dependency,
+            strlen(s->collection_dependency)
+        };
+    }
     return count;
 }
 static pin_value files(const source_package_input *inputs, int count, bool sources)
@@ -6113,6 +6215,27 @@ static bool traces_like_oracle(const unsigned char *bytes, size_t length, const 
     free(expected);
     return same;
 }
+/* Unused collection packages have no emitted row, even an empty one. All
+ * independent project packages retain nonempty module rows. */
+static bool project_closure_only(const unsigned char *bytes, size_t length, int expected)
+{
+    char error[256];
+    int count = 0;
+    uint64_t root = 0;
+    package_module *rows = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
+    if (!rows) {
+        fprintf(stderr, "project-only closure: %s\n", error);
+    }
+    REQUIRE(rows);
+    bool project_only = count == expected &&
+                        root == script_catalog_id("module", "project:facts");
+    for (int i = 0; i < count; i++) {
+        project_only &= !strncmp(rows[i].name, "project:", 8) && rows[i].length > 0;
+    }
+    compiler_artifact_rows_free(rows, count);
+    REQUIRE(project_only);
+    return true;
+}
 static bool run_samples(sample_group group, int b)
 {
     REQUIRE(prepare_backends(1u << b));
@@ -6207,6 +6330,9 @@ static bool run_samples(sample_group group, int b)
         size_t length;
         unsigned char *bytes = closure_bytes(value, &length);
         arena_free(&detached);
+        if (s->project_modules) {
+            REQUIRE(project_closure_only(bytes, length, s->project_modules));
+        }
         unsigned char *expected = NULL;
         size_t expected_length = 0;
         bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
@@ -9266,7 +9392,10 @@ static bool library_plays(execution_module *expected, execution_module *actual, 
         REQUIRE(left->y == 3.5f * tick && right->y == left->y);
         const pin_value *x = execution_instance_state(e.instance, label);
         const pin_value *y = execution_instance_state(a.instance, label);
-        REQUIRE(x && y && pin_text_equal(pin_text(*x), (pin_string){ "a\0b", 3 }));
+        REQUIRE(
+            x && y &&
+            pin_text_equal(pin_text(*x), (pin_string){ .bytes = "a\0b", .length = 3 })
+        );
         REQUIRE(pin_text_equal(pin_text(*x), pin_text(*y)));
     }
     stop(&e);
@@ -11407,8 +11536,12 @@ TEST_CASE(package_compiler_keeps_text_state_per_owner)
     const pin_value *first_value = execution_instance_state(p.instance, state);
     const pin_value *second_value = execution_instance_state(second, state);
     REQUIRE(first_value && second_value);
-    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "a\0b", 3 }));
-    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "seed", 4 }));
+    REQUIRE(
+        pin_text_equal(pin_text(*first_value), (pin_string){ .bytes = "a\0b", .length = 3 })
+    );
+    REQUIRE(
+        pin_text_equal(pin_text(*second_value), (pin_string){ .bytes = "seed", .length = 4 })
+    );
     behavior_run_scope_begin(&runs);
     int repeated = execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000);
     int other_result = execution_instance_dispatch(second, TICK, &delta, 1, 0, 0, 1000);
@@ -11417,8 +11550,12 @@ TEST_CASE(package_compiler_keeps_text_state_per_owner)
     first_value = execution_instance_state(p.instance, state);
     second_value = execution_instance_state(second, state);
     REQUIRE(first_value && second_value);
-    REQUIRE(pin_text_equal(pin_text(*first_value), (pin_string){ "seed", 4 }));
-    REQUIRE(pin_text_equal(pin_text(*second_value), (pin_string){ "a\0b", 3 }));
+    REQUIRE(
+        pin_text_equal(pin_text(*first_value), (pin_string){ .bytes = "seed", .length = 4 })
+    );
+    REQUIRE(
+        pin_text_equal(pin_text(*second_value), (pin_string){ .bytes = "a\0b", .length = 3 })
+    );
     REQUIRE(
         TEST_COMPILED_BACKEND == BEHAVIOR_WASM ? runs.counts.wasm_entries > 0
                                                : runs.counts.sljit_entries > 0
@@ -11596,7 +11733,9 @@ static bool retained_text(const pin_value *row, const char *name, const char *ex
 {
     pin_value value = scalar_field(row, name);
     REQUIRE(value.type == PIN_STR && arena_contains(&detached, value.text));
-    REQUIRE(pin_text_equal(pin_text(value), (pin_string){ expected, strlen(expected) }));
+    REQUIRE(
+        pin_text_equal(pin_text(value), (pin_string){ .bytes = expected, .length = strlen(expected) })
+    );
     return true;
 }
 static const char
@@ -12499,7 +12638,10 @@ static bool validated(int b, pin_value *rows, const char *message)
         compiler_fixture_call(&consumer, b, "project:scalar_llvm", "Validate", rows, 1, COMPILE_BUDGET, &input, &error)
     );
     REQUIRE(emit_bytes(b, "LinuxX64", rows, &emitted));
-    bool valid = pin_text_equal(pin_text(error), (pin_string){ message, strlen(message) });
+    bool valid = pin_text_equal(
+        pin_text(error),
+        (pin_string){ .bytes = message, .length = strlen(message) }
+    );
     if (!valid) {
         fprintf(
             stderr,
@@ -13013,8 +13155,6 @@ enum
     NATIVE_PUBLISH = 4,
     NATIVE_RETURN = 5,
     NATIVE_NE = 24,
-    NATIVE_BRANCH = 25,
-    NATIVE_JUMP = 26,
     NATIVE_CHECK = 27,
     NATIVE_CALL = 28,
     NATIVE_INSERT = 30,
@@ -13022,12 +13162,9 @@ enum
     NATIVE_TEXT = 13,
     NATIVE_RECORD = 32,
     NATIVE_ADD = 7,
-    NATIVE_TEXT_LENGTH = 32,
     NATIVE_TEXT_BYTE = 33,
     NATIVE_TEXT_DROP = 34,
-    NATIVE_TEXT_TAKE = 35,
-    NATIVE_FORMAT = 36,
-    NATIVE_FAIL = 37
+    NATIVE_TEXT_TAKE = 35
 };
 typedef struct native_code
 {
@@ -13261,7 +13398,7 @@ static bool native_rejects(int b, const native_module *m, const char *message)
     REQUIRE(native_emit(b, m, &value));
     REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
     pin_string text = pin_text(value->values[1]);
-    REQUIRE(pin_text_equal(text, (pin_string){ message, strlen(message) }));
+    REQUIRE(pin_text_equal(text, (pin_string){ .bytes = message, .length = strlen(message) }));
     return true;
 }
 /* main() returns Pick(7, true, 9), and Pick :: (int, bool, int) -> int
@@ -13292,10 +13429,16 @@ static const int CALL_SLOTS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_IN
 static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
 static native_module call_module(const native_code *code, const int *arguments, int argument_count)
 {
-    return (native_module){
-        CALL_FUNCTIONS, 2,         CALL_PARAMETERS, 3, CALL_SLOTS, 5, code,
-        CALL_CODE,      arguments, argument_count
-    };
+    return (native_module){ .functions = CALL_FUNCTIONS,
+                            .function_count = 2,
+                            .parameters = CALL_PARAMETERS,
+                            .parameter_count = 3,
+                            .slots = CALL_SLOTS,
+                            .slot_count = 5,
+                            .code = code,
+                            .code_count = CALL_CODE,
+                            .arguments = arguments,
+                            .argument_count = argument_count };
 }
 static bool contains(pin_string haystack, const char *needle)
 {
@@ -13379,7 +13522,8 @@ static bool native_libraries_export_words(int b)
         pin_string message = pin_text(value->values[1]);
         REQUIRE(pin_text_equal(
             message,
-            (pin_string){ rejected[i].message, strlen(rejected[i].message) }
+            (pin_string){ .bytes = rejected[i].message,
+                          .length = strlen(rejected[i].message) }
         ));
     }
     return true;
@@ -13413,14 +13557,20 @@ static bool native_text(int b, const native_module *m, pin_string *ir)
     *ir = pin_text(value->values[0]);
     return true;
 }
-/* A string is `native_abi.TextType()`, the layout of the runtime's
- * pin_string: its bytes, its length, then its owner. */
+/* The native LLVM fixtures target 64-bit layouts. Portable hosts still store
+ * pin_string as their own bytes pointer, 32-bit length and owner pointer. */
 _Static_assert(
-    offsetof(pin_string, bytes) == 0 && offsetof(pin_string, length) == 8 &&
-        offsetof(pin_string, owner) == 16 && sizeof(pin_string) == 24 &&
+    offsetof(pin_string, bytes) == 0 &&
+        offsetof(pin_string, length) == sizeof(void *) &&
+        offsetof(pin_string, owner) == 2 * sizeof(void *) &&
         sizeof(((pin_string *)0)->length) == 4,
-    "pin_string is { ptr, i32, ptr }"
+    "pin_string is { host pointer, i32, host pointer }"
 );
+#if UINTPTR_MAX == UINT64_MAX
+_Static_assert(sizeof(pin_string) == 24, "64-bit native text layout");
+#else
+_Static_assert(sizeof(void *) == 4 && sizeof(pin_string) == 12, "32-bit portable text layout");
+#endif
 /* Main returns whether its two texts differ: each constant is a private
  * global of its bytes and a NUL, named by its index in the text table, and
  * `!=` negates the module's one byte comparison. */
@@ -13461,225 +13611,15 @@ static bool native_rejects_text_change(int b, native_change change, const char *
     native_module m = text_module(code);
     return native_rejects(b, &m, message);
 }
-/* Main returns the length of format_text("{} {}", 7, "x"). */
-static const native_code FORMAT_CODE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 7 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_TEXT, .output = 2, .literal = 1 },
-    { .op = NATIVE_FORMAT, .type = NATIVE_TEXT, .output = 3, .target = 3 },
-    { .op = NATIVE_TEXT_LENGTH, .type = NATIVE_INT, .output = 4, .left = 3 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 4 },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    FORMAT_COUNT = (int)(sizeof FORMAT_CODE / sizeof *FORMAT_CODE)
-};
-static const int FORMAT_ARGUMENTS[] = { 0, 1, 2 };
-static native_module format_module(const native_code *code, const int *arguments)
-{
-    static const native_function functions[] = {
-        { NATIVE_INT, 0, 0, 0, 5, 0, FORMAT_COUNT, 0, 3 }
-    };
-    static const int slots[] = { NATIVE_TEXT, NATIVE_INT, NATIVE_TEXT, NATIVE_TEXT, NATIVE_INT };
-    static const char *const texts[] = { "{} {}", "x" };
-    return (native_module){ .functions = functions,
-                            .function_count = 1,
-                            .slots = slots,
-                            .slot_count = 5,
-                            .code = code,
-                            .code_count = FORMAT_COUNT,
-                            .arguments = arguments,
-                            .argument_count = 3,
-                            .texts = texts,
-                            .text_count = 2 };
-}
-/* A format makes each argument a runtime value, a scalar's word or a
- * string's bytes and length, and calls format_text through the context,
- * which every function of the module, and each library export, takes
- * first. A format of a missing or non-string format, or outside its
- * arguments, is rejected, as is a program that would format. */
-static bool native_formats_emit(int b)
-{
-    native_module m = format_module(FORMAT_CODE, FORMAT_ARGUMENTS);
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    static const char *const expected[] = {
-        "define i32 @chibi_scalar(ptr %ctx) #0 {\n",
-        "%values4 = alloca [3 x { i32, i32, i64, ptr }]\n  %text4 = alloca { "
-        "ptr, i32, ptr }\n",
-        "%f4_1.word = sext i32 %f4_1 to i64\n  %f4_1.value = insertvalue { "
-        "i32, i32, i64, ptr } "
-        "{ i32 1, i32 0, i64 0, ptr null }, i64 %f4_1.word, 2\n",
-        "%f4_2.sized = insertvalue { i32, i32, i64, ptr } { i32 12, i32 0, i64 "
-        "0, ptr null }, "
-        "i32 %f4_2.length, 1\n",
-        "%f4_2.value = insertvalue { i32, i32, i64, ptr } %f4_2.sized, ptr "
-        "%f4_2.bytes, 3\n",
-        "%f4_2.at = getelementptr inbounds [3 x { i32, i32, i64, ptr }], ptr "
-        "%values4, i64 0, i64 2\n",
-        "%format4.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, "
-        "i32 0\n"
-        "  %format4 = load ptr, ptr %format4.at\n"
-        "  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n"
-        "  %v4 = load { ptr, i32, ptr }, ptr %text4\n",
-    };
-    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
-        REQUIRE(contains(ir, expected[i]));
-    }
-    static const char *const names[] = { "Main" };
-    static const int64_t ids[] = { 3 };
-    const pin_union *value;
-    REQUIRE(native_emit_library(b, "LinuxX64", &m, "Formats", names, ids, 1, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Emitted"));
-    pin_string library = pin_text(value->values[0]);
-    REQUIRE(contains(library, "define internal i32 @chibi_scalar.0(ptr %ctx) #0 {\n"));
-    REQUIRE(
-        contains(library, "(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n  %r = call i32 @chibi_scalar.0(ptr %ctx)\n")
-    );
-    REQUIRE(native_entry_emit(b, "LinuxX64", &m, true, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
-    REQUIRE(pin_text_equal(
-        pin_text(value->values[1]),
-        pin_text(text("a native program cannot call the runtime yet"))
-    ));
-    static const char format[] = "native format differs from its operands";
-    static const native_change changes[] = {
-        /* No format, a callee, arguments past the table, and an int result. */
-        { 4, offsetof(native_code, target), 0 },
-        { 4, offsetof(native_code, left), 1 },
-        { 4, offsetof(native_code, right), 1 },
-        { 4, offsetof(native_code, type), NATIVE_INT },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        native_code code[FORMAT_COUNT];
-        memcpy(code, FORMAT_CODE, sizeof code);
-        change_code(code, changes[i]);
-        m = format_module(code, FORMAT_ARGUMENTS);
-        REQUIRE(
-            native_rejects(b, &m, i == 3 ? "native scalar output has an invalid type or multiple definitions" : format)
-        );
-    }
-    /* An int format. */
-    static const int unformatted[] = { 1, 0, 2 };
-    m = format_module(FORMAT_CODE, unformatted);
-    REQUIRE(native_rejects(b, &m, format));
-    return true;
-}
-/* Main returns Check(), and Check fails its assert at bytes [3, 9) of the
- * function with ID 77 when its condition, false, is false. */
-static const native_code FAIL_CODE[] = {
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CALL, .type = NATIVE_INT, .left = 1 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT },
-    { .op = NATIVE_RETURN },
-    { .op = NATIVE_CHECK },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_BOOL },
-    { .op = NATIVE_BRANCH, .left = 0, .target = 4 },
-    { .op = NATIVE_FAIL, .left = 3, .right = 9, .literal = 77 },
-    { .op = NATIVE_CONSTANT, .type = NATIVE_INT, .output = 1, .literal = 5 },
-    { .op = NATIVE_PUBLISH, .type = NATIVE_INT, .left = 1 },
-    { .op = NATIVE_RETURN },
-};
-enum
-{
-    FAIL_COUNT = (int)(sizeof FAIL_CODE / sizeof *FAIL_CODE)
-};
-static native_module fail_module(const native_code *code)
-{
-    static const native_function functions[] = {
-        { NATIVE_INT, 0, 0, 0, 1, 0, 4, 0, 0 },
-        { NATIVE_INT, 0, 0, 1, 2, 4, FAIL_COUNT - 4, 0, 0 },
-    };
-    static const int slots[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT };
-    return (native_module){ .functions = functions,
-                            .function_count = 2,
-                            .slots = slots,
-                            .slot_count = 3,
-                            .code = code,
-                            .code_count = FAIL_COUNT };
-}
-/* A Fail stores its failure constant, the function's ID and the range, in the
- * context, and the function returns its zero; a call of a function that can
- * fail returns its zero too when the context names a failure, so the failure
- * reaches the call from the VM. Both take the context. A Fail may end a body
- * but must name a range, and a program cannot fail. */
-static bool native_fails_emit(int b)
-{
-    native_module m = fail_module(FAIL_CODE);
-    pin_string ir;
-    REQUIRE(native_text(b, &m, &ir));
-    static const char *const expected[] = {
-        "@chibi_scalar.failure.1.3 = private unnamed_addr constant { i64, i32, "
-        "i32 } { i64 77, i32 3, i32 9 }\n",
-        "define i32 @chibi_scalar(ptr %ctx) #0 {\n",
-        "  %v1 = call i32 @chibi_scalar.1(ptr %ctx)\n",
-        "  %failure1.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 "
-        "0, i32 1\n"
-        "  %failure1 = load ptr, ptr %failure1.at\n"
-        "  %failed1 = icmp ne ptr %failure1, null\n"
-        "  br i1 %failed1, label %failed, label %p2\n",
-        "define internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n",
-        "  br i1 %a2, label %p4, label %p3\n",
-        "p3:\n  %fail3.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 "
-        "0, i32 1\n"
-        "  store ptr @chibi_scalar.failure.1.3, ptr %fail3.at\n  br label "
-        "%failed\n",
-        /* Each function ends failing with its zero. */
-        "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  "
-        "unreachable\n}"
-        "\n\ndefine internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n",
-        "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  "
-        "unreachable\n}"
-        "\n\nattributes #0 = { ",
-    };
-    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
-        REQUIRE(contains(ir, expected[i]));
-    }
-    /* A function that cannot fail checks no call and has no failed block. */
-    native_code ending[FAIL_COUNT];
-    memcpy(ending, FAIL_CODE, sizeof ending);
-    ending[7] = (native_code){ .op = NATIVE_JUMP, .target = 4 };
-    m = fail_module(ending);
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(!contains(ir, "failed") && !contains(ir, "ptr %ctx"));
-    /* A Fail ends the callee's body. */
-    memcpy(ending, FAIL_CODE, sizeof ending);
-    ending[FAIL_COUNT - 1] = ending[7];
-    m = fail_module(ending);
-    REQUIRE(native_text(b, &m, &ir));
-    REQUIRE(
-        contains(ir, "p6:\n  %fail6.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, i32 1\n")
-    );
-    const pin_union *value;
-    m = fail_module(FAIL_CODE);
-    REQUIRE(native_entry_emit(b, "LinuxX64", &m, true, &value));
-    REQUIRE(value->tag == fixture_variant_tag(&consumer, b, NATIVE_PACKAGE, "Result", "Rejected"));
-    REQUIRE(pin_text_equal(
-        pin_text(value->values[1]),
-        pin_text(text("a native program cannot call the runtime yet"))
-    ));
-    static const native_change changes[] = {
-        { 7, offsetof(native_code, left), -1 },
-        { 7, offsetof(native_code, right), 2 },
-    };
-    for (size_t i = 0; i < sizeof changes / sizeof *changes; i++) {
-        native_code code[FAIL_COUNT];
-        memcpy(code, FAIL_CODE, sizeof code);
-        change_code(code, changes[i]);
-        m = fail_module(code);
-        REQUIRE(native_rejects(b, &m, "native failure names no source range"));
-    }
-    return true;
-}
 static bool native_strings_emit(int b)
 {
     pin_value type;
     REQUIRE(
         compiler_fixture_call(&consumer, b, "project:native_abi", "TextType", NULL, 0, COMPILE_BUDGET, &input, &type)
     );
-    REQUIRE(pin_text_equal(pin_text(type), (pin_string){ "{ ptr, i32, ptr }", 17 }));
+    REQUIRE(
+        pin_text_equal(pin_text(type), (pin_string){ .bytes = "{ ptr, i32, ptr }", .length = 17 })
+    );
     native_module m = text_module(TEXT_CODE);
     pin_string ir;
     REQUIRE(native_text(b, &m, &ir));
@@ -13788,8 +13728,6 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     for (int b = 0; b < 2; b++) {
         REQUIRE(native_libraries_export_words(b));
         REQUIRE(native_strings_emit(b));
-        REQUIRE(native_formats_emit(b));
-        REQUIRE(native_fails_emit(b));
     }
     REQUIRE(compiler_fixture_tests(&consumer));
     return true;
@@ -14053,7 +13991,10 @@ enum
 static bool deep_case(pin_string name)
 {
     for (int i = 0; i < DEEP_CASE_COUNT; i++) {
-        if (pin_text_equal(name, (pin_string){ DEEP_CASES[i], strlen(DEEP_CASES[i]) })) {
+        if (pin_text_equal(
+                name,
+                (pin_string){ .bytes = DEEP_CASES[i], .length = strlen(DEEP_CASES[i]) }
+            )) {
             return true;
         }
     }
@@ -16437,9 +16378,16 @@ static bool module_gives(const char *directory, int b, const char *name, const c
     }
     REQUIRE(ir);
     scalar_call calls[MAX_CASE_CALLS];
-    REQUIRE(
-        module_agrees(directory, b, name, (pin_string){ source, strlen(source) }, &rows, ir, entry, calls)
-    );
+    REQUIRE(module_agrees(
+        directory,
+        b,
+        name,
+        (pin_string){ .bytes = source, .length = strlen(source) },
+        &rows,
+        ir,
+        entry,
+        calls
+    ));
     if (calls[0].values[0] != entry) {
         fprintf(
             stderr,
@@ -16905,7 +16853,7 @@ static bool width_module_agrees(
         directory,
         b,
         name,
-        (pin_string){ source, strlen(source) },
+        (pin_string){ .bytes = source, .length = strlen(source) },
         &rows,
         ir,
         calls,
@@ -18059,7 +18007,9 @@ static bool vms_fail(const char *source, const char *function, int64_t argument,
 {
     unsigned char *closure;
     size_t length;
-    REQUIRE(vm_closure(0, (pin_string){ source, strlen(source) }, &closure, &length));
+    REQUIRE(
+        vm_closure(0, (pin_string){ .bytes = source, .length = strlen(source) }, &closure, &length)
+    );
     char id[128], arguments[32];
     snprintf(id, sizeof id, "project:scalar:1:%s:callable", function);
     int n = snprintf(arguments, sizeof arguments, "[%" PRId64 "]", argument);
@@ -19752,8 +19702,8 @@ TEST_CASE(package_compiler_query_values_are_readonly)
 {
     static const char *const sources[] = {
         "Fixed :: system(point: Spot) { point.x = 2 }",
-        "Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
-        "row.point.x = 2 } } }",
+        ("Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
+         "row.point.x = 2 } } }"),
         "Fixed :: system(point: ^Spot, amount := 2) { amount = 3 }",
         "Fixed :: system(point: ^Spot) { point = null }",
         "Fixed :: system(point: ^Spot) { point.w = 3 }",
@@ -20110,35 +20060,51 @@ TEST_CASE(native_overload_reference_contract)
         const char *message;
         int column;
     } cases[] = {
-        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
+        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32, NULL, 0 },
         { "package facts\nRun :: () -> int { return "
           "native.overload((-(2))); }",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(2.0); "
           "}",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(1e0); "
           "}",
-          PIN_I32 },
-        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
+          PIN_I32,
+          NULL,
+          0 },
+        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32, NULL, 0 },
         { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
           "* "
           "2); }",
-          PIN_F32 },
+          PIN_F32,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
           "* "
           "2); }",
-          PIN_F64 },
+          PIN_F64,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: f64) -> int { return "
           "native.kernel(v); }",
-          PIN_F64 },
+          PIN_F64,
+          NULL,
+          0 },
         { "package facts\nRun :: (v: int) -> int { return "
           "native.overload(v); "
           "}",
-          PIN_I32 },
+          PIN_I32,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return "
           "native.overload(\"three\"); }",
-          PIN_STR },
+          PIN_STR,
+          NULL,
+          0 },
         { "package facts\nRun :: () -> int { return native.overload(2.5); "
           "}",
           PIN_FLOW,

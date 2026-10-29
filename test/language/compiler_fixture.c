@@ -699,16 +699,24 @@ TEST_CASE(compiler_fixture_prepares_only_selected_backend)
         compiler_fixture_free(second);
         REQUIRE(!first->native && !first->owners[0] && !first->owners[1]);
         REQUIRE(!first->observe_failures && !first->collectable);
-        REQUIRE(pin_text_equal(pin_text(old_value), (pin_string){ "first", 5 }));
-        REQUIRE(pin_text_equal(pin_text(new_value), (pin_string){ "later", 5 }));
+        REQUIRE(
+            pin_text_equal(pin_text(old_value), (pin_string){ .bytes = "first", .length = 5 })
+        );
+        REQUIRE(
+            pin_text_equal(pin_text(new_value), (pin_string){ .bytes = "later", .length = 5 })
+        );
         /* Reuse only the empty fixture shell, with changed source. */
         REQUIRE(compiler_fixture_prepare_backends(first, 1u << b, &file, 1, NULL, 0));
         REQUIRE(first->owners[b] && !first->owners[1 - b]);
         REQUIRE(preparation_value(first, b, &new_value));
         compiler_fixture_free(first);
         compiler_fixture_free(first);
-        REQUIRE(pin_text_equal(pin_text(new_value), (pin_string){ "later", 5 }));
-        REQUIRE(pin_text_equal(pin_text(old_value), (pin_string){ "first", 5 }));
+        REQUIRE(
+            pin_text_equal(pin_text(new_value), (pin_string){ .bytes = "later", .length = 5 })
+        );
+        REQUIRE(
+            pin_text_equal(pin_text(old_value), (pin_string){ .bytes = "first", .length = 5 })
+        );
         arena_free(&prepared_results);
     }
     return true;
@@ -734,7 +742,9 @@ TEST_CASE(compiler_fixture_default_keeps_both_backends)
     }
     compiler_fixture_free(fixture);
     for (int b = 0; b < 2; b++) {
-        REQUIRE(pin_text_equal(pin_text(values[b]), (pin_string){ "both", 4 }));
+        REQUIRE(
+            pin_text_equal(pin_text(values[b]), (pin_string){ .bytes = "both", .length = 4 })
+        );
     }
     return true;
 }
@@ -930,6 +940,7 @@ TEST_CASE(compiler_fixture_preserves_a_custom_authored_budget)
 TEST_CASE(compiler_fixture_selects_an_exact_collection)
 {
     const char project[] = "package fixture\n"
+                           "import _ \"core:core_fixture\"\n"
                            "@test ProjectOnly :: () { assert(false, "
                            "\"project-only\"); }\n";
     const char collection[] = "package core_fixture\n"
@@ -978,10 +989,10 @@ TEST_CASE(compiler_fixture_selects_an_exact_collection)
         expected,
         sizeof expected,
         "FAIL fixture.ProjectOnly (BYTECODE)\n  "
-        "/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\n"
+        "/compiler/fixture/Tests.chibi:3:27: Assertion failed: project-only\n"
         "BYTECODE: 1 tests, 1 failed\n"
         "FAIL fixture.ProjectOnly (%s)\n  "
-        "/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\n"
+        "/compiler/fixture/Tests.chibi:3:27: Assertion failed: project-only\n"
         "%s: 1 tests, 1 failed\n",
         backend,
         backend

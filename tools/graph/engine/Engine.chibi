@@ -55,6 +55,16 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
         return "";
     }
     library_dir := strings.Slice(libclang_library, 0, strings.LastIndex(libclang_library, "/"));
+    parent_end := strings.LastIndex(library_dir, "/");
+    parent := strings.Slice(library_dir, 0, parent_end);
+    target := strings.Slice(library_dir, parent_end + 1, strings.ByteLength(library_dir) - parent_end - 1);
+    // A conventional GNU multiarch library still belongs to prefix/lib and
+    // prefix/bin, not to a separate toolchain below lib/<target>.
+    if (strings.HasSuffix(parent, "/lib") && strings.HasSuffix(target, "-linux-gnu")) {
+        library_dir = parent;
+    }
+    // The installation's own driver owns its resource path. CLANG_RESOURCE_DIR
+    // may use any directory name; only the driver-absent fallback filters versions.
     clang := Join([library_dir, "/../bin/clang"]);
     if (build.file_exists(clang) && build.probe([clang, "-print-resource-dir"]) == 0) {
         include := Join([strings.TrimSpace(build.last_stdout()), "/include"]);
@@ -65,11 +75,13 @@ pub ClangResourceInclude :: (libclang_library: string) -> string {
     // libclang can be installed without its driver. Match resource.cmake's
     // unique matching resource directory fallback; ambiguity is not success.
     resolved := build.resolve_path(libclang_library);
+    basename_start := strings.LastIndex(resolved, "/") + 1;
+    basename := strings.Slice(resolved, basename_start, strings.ByteLength(resolved) - basename_start);
     version := "";
-    if (strings.Contains(resolved, "libclang-")) {
-        version = build.after(resolved, "libclang-");
-    } else if (strings.Contains(resolved, "libclang.")) {
-        version = build.after(resolved, "libclang.");
+    if (strings.HasPrefix(basename, "libclang-")) {
+        version = build.after(basename, "libclang-");
+    } else if (strings.HasPrefix(basename, "libclang.")) {
+        version = build.after(basename, "libclang.");
     }
     digits := 0;
     for (byte in strings.Bytes(version)) {
@@ -353,15 +365,20 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
     return true;
 }
 
+// The shared SDK version authority, also read by the CMake compatibility path.
+pub SDKVersion :: (source_root: string) -> string {
+    return strings.TrimSpace(build.read_file(Join([source_root, "/sdk/VERSION"])));
+}
+
 // The build identity document sdk/artifact_formats.cmake writes, which
 // `chibi version` and `chibi doctor` read: the SDK and project versions, the
 // platform, the processors and execution backends, and for each artifact
 // format its version and the SHA-256 of the sources and headers that own it.
 // Empty when an owner declares no version.
 Identity :: (source_root: string, profile: Profile) -> string {
-    sdk := build.read_file(Join([source_root, "/sdk/CMakeLists.txt"]));
+    sdk := SDKVersion(source_root);
     project := Version(Join([source_root, "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
-    if (project == "") {
+    if (sdk == "" || project == "") {
         return "";
     }
     processor := profile.architecture;
@@ -377,7 +394,7 @@ Identity :: (source_root: string, profile: Profile) -> string {
         records.append(record);
     }
     return Join([
-        "{\"sdk_version\": \"", build.before(build.after(sdk, "set(CHIBI_SDK_VERSION "), ")"), "\", \"system\": \"",
+        "{\"sdk_version\": \"", sdk, "\", \"system\": \"",
         build.platform(), "\", \"processors\": [\"", processor,
         "\"], \"backends\": [\"bytecode\", \"sljit\"], \"project_version\": ", project,
         ", \"artifact_formats\": {\n", build.join(records, ",\n"), "\n}}\n"

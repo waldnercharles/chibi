@@ -3603,6 +3603,30 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             at_next -= 1;
         }
     }
+    return FinishBody(forest, document, callable, declaration, inferring, evaluating, values, value_top,
+                      key, solid, undeclared, meaning, document_hash, params, named, names, natives, ports,
+                      ops, target, slots, locals, cells, code, calls, hosts, roots, points, watches,
+                      semantic_effects, direct_write, facts, retargets, retarget_starts);
+}
+
+// Complete the body after dispatch, keeping cleanup and result publication
+// separate so dispatch fits each backend's function definition budget.
+FinishBody :: (forest: snapshot.SnapshotNode[], document: int, callable: Callable,
+               declaration: snapshot.SnapshotNode, inferring: bool, evaluating: int, values: Value[], value_top: int,
+               key: string, solid: int[], undeclared: u64, meaning: u64, document_hash: u64,
+               params: Param[], named: int, names: Name[], natives: ResolvedNative[], ports: ResolvedPort[],
+               ops: Ops, target: Target, input_slots: Slot[], input_locals: Slot[], input_cells: Cell[],
+               input_code: Code[], input_calls: Invocation[], input_hosts: Host[], input_roots: Root[],
+               input_points: SourcePoint[], watches: SourceWatch[], semantic_effects: int, direct_write: int,
+               facts: SemanticFact[], retargets: int[], retarget_starts: int[]) -> Body {
+    slots := input_slots;
+    locals := input_locals;
+    cells := input_cells;
+    code := input_code;
+    calls := input_calls;
+    hosts := input_hosts;
+    roots := input_roots;
+    points := input_points;
     cleanup_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
                          cell: length(cells), host: length(hosts), call: length(calls)};
     switch DropNamesStep(names, 0, natives, ports, ops, target, cleanup_at, declaration) {

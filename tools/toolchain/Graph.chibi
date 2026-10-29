@@ -93,6 +93,74 @@ Libraries :: () -> int {
     return LibrariesWithArguments(build.arguments());
 }
 
+// The SDK's native reflection host uses the same graph as ordinary builds.
+// Translate the retained Make toolchain definitions at this one boundary.
+SDKReflect :: () -> int {
+    return SDKReflectWithArguments(build.arguments());
+}
+
+SDKReflectWithArguments :: (arguments: string[]) -> int {
+    options := ["--profile", "release", "--target", "reflect"];
+    preferred_libclang := Option(arguments, "--libclang-root", "");
+    definitions := false;
+    split := false;
+    index := 0;
+    while (index < length(arguments)) {
+        argument := arguments[index];
+        index += 1;
+        if (!definitions && argument == "--") {
+            definitions = true;
+            continue;
+        }
+        if (!definitions) {
+            if ((argument != "--build" && argument != "--jobs" && argument != "--libclang-root") ||
+                index == length(arguments) || strings.HasPrefix(arguments[index], "--") || arguments[index] == "") {
+                build.report(format_text("graph: invalid native reflection option '{0}'", argument));
+                return 2;
+            }
+            options.extend([argument, arguments[index]]);
+            index += 1;
+            continue;
+        }
+        if (argument == "-D" && !split) {
+            split = true;
+            continue;
+        }
+        definition := argument;
+        if (split) {
+            definition = strings.Join(["-D", argument], "");
+            split = false;
+        }
+        mapped := engine.NativeToolchainOption(definition);
+        if (length(mapped) != 2) {
+            build.report(format_text("graph: unsupported native reflection toolchain argument '{0}'", definition));
+            return 2;
+        }
+        // CMake definitions select the last occurrence.
+        options = build.concat(mapped, options);
+    }
+    if (split) {
+        build.report("graph: -D requires a native toolchain definition");
+        return 2;
+    }
+    if (preferred_libclang != "") {
+        options = build.concat(["--libclang-root", preferred_libclang], options);
+    }
+    for (name in ["--compiler", "--cxx-compiler", "--archiver", "--ranlib"]) {
+        chosen := Option(options, name, "");
+        if (chosen == "") {
+            continue;
+        }
+        program := build.find_executable(chosen);
+        if (program == "") {
+            build.report(format_text("graph: native reflection tool not found for '{0}'", chosen));
+            return 2;
+        }
+        options = build.concat([name, program], options);
+    }
+    return LibrariesWithArguments(options);
+}
+
 // Keep argument evaluation independent so bounded verification cases can share
 // compilation without sharing a profile or a build result.
 LibrariesWithArguments :: (arguments: string[]) -> int {
@@ -210,6 +278,14 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         if (Selected(arguments, target)) {
             selected.append(target);
         }
+    }
+    if (Option(arguments, "--commands-only", "") != "on" &&
+        Selected(arguments, "reflect") && profile.reflect == "" &&
+        (!build.file_exists(strings.Join([profile.libclang_include, "/clang-c/Index.h"], "")) ||
+         !build.file_exists(profile.libclang_library) ||
+         !build.file_exists(strings.Join([profile.clang_resource_include, "/stdbool.h"], "")))) {
+        build.report("graph: native reflection requires libclang and its matching builtin headers; set --libclang-root");
+        return 2;
     }
     if (engine.NeedsCxx(selected) && !strings.HasPrefix(profile.cxx_compiler, "/")) {
         build.report("graph: no C++ compiler was found for the C++ sources; set CXX or --cxx-compiler");

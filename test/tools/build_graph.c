@@ -278,7 +278,7 @@ typedef struct
     const char *diagnostic;
 } graph_case;
 
-static int run_graph_batch(const graph_case *cases, int count)
+static int run_graph_entry_batch(const graph_case *cases, int count, const char *entry, const char *checks)
 {
     assert(count > 0 && count <= GRAPH_BATCH_CASES);
     char path[GRAPH_PATH], source[GRAPH_PATH];
@@ -296,6 +296,7 @@ static int run_graph_batch(const graph_case *cases, int count)
         fprintf(
             file,
             "\nVerifyGraph :: () -> int {\n"
+            "%s"
             "    input := build.arguments(); at := 0; index := 0;\n"
             "    while (at < length(input)) {\n"
             "        if (at + 2 > length(input)) { return 3; }\n"
@@ -309,7 +310,7 @@ static int run_graph_batch(const graph_case *cases, int count)
             "}\n"
             "        build.report(format_text(\"graph-case {0} begin\", "
             "index));\n"
-            "        status := LibrariesWithArguments(arguments);\n"
+            "        status := %s(arguments);\n"
             "        build.report(format_text(\"graph-case {0} returned {1}\", "
             "index, status));\n"
             "        if (status != expected) { return 1; }\n"
@@ -318,7 +319,9 @@ static int run_graph_batch(const graph_case *cases, int count)
             "    if (index == 0) { return 3; }\n"
             "    return 0;\n"
             "}\n",
-            GRAPH_BATCH_CASES
+            checks,
+            GRAPH_BATCH_CASES,
+            entry
         ) >= 0
     );
     assert(!fclose(file));
@@ -361,6 +364,11 @@ static int run_graph_batch(const graph_case *cases, int count)
     }
     argv[argc] = NULL;
     return tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
+}
+
+static int run_graph_batch(const graph_case *cases, int count)
+{
+    return run_graph_entry_batch(cases, count, "LibrariesWithArguments", "");
 }
 
 /* Every case owns its diagnostic interval. A previous rejection cannot make a
@@ -1015,6 +1023,84 @@ TEST_CASE(links_match_cmake)
     REQUIRE((size_t)matched == programs && yyjson_arr_size(yyjson_doc_get_root(doc)) == programs);
     yyjson_doc_free(doc);
     free(ninja);
+    return true;
+}
+
+TEST_CASE(sdk_reflection_rejects_invalid_arguments_before_building)
+{
+    char build_dir[GRAPH_PATH];
+    join(build_dir, suite, "sdk-reflect-arguments");
+    const char *const none[] = { NULL };
+    const char *const missing_jobs[] = { "--jobs", NULL };
+    const char *const missing_build[] = { "--build", NULL };
+    const char *const missing_libclang[] = { "--libclang-root", NULL };
+    const char *const empty_jobs[] = { "--jobs", "", NULL };
+    const char *const empty_build[] = { "--build", "", NULL };
+    const char *const empty_libclang[] = { "--libclang-root", "", NULL };
+    const char *const unknown_option[] = { "--commands-only", "on", NULL };
+    const char *const unknown_definition[] = { "--", "-DUNSUPPORTED=ON", NULL };
+    const char *const missing_definition[] = { "--", "-D", NULL };
+    const char *const empty_definition[] = { "--", "-DCMAKE_C_COMPILER:FILEPATH=", NULL };
+    const char *const typed_compiler[] = {
+        "--",
+        "-DCMAKE_C_COMPILER:FILEPATH=/usr/bin/true",
+        "-DUNSUPPORTED=ON",
+        NULL
+    };
+    const char *const split_compiler[] = {
+        "--",
+        "-D",
+        "CMAKE_C_COMPILER:FILEPATH=/usr/bin/true",
+        "-DUNSUPPORTED=ON",
+        NULL
+    };
+    const char *const split_libclang[] = {
+        "--",
+        "-D",
+        "LIBCLANG_ROOT:PATH=/fixture/llvm root",
+        "-DUNSUPPORTED=ON",
+        NULL
+    };
+    const char *const split_unknown[] = { "--", "-D", "UNSUPPORTED=ON", NULL };
+    const graph_case cases[] = {
+        { build_dir, none, missing_jobs, 2, "graph: invalid native reflection option '--jobs'" },
+        { build_dir, none, missing_build, 2, "graph: invalid native reflection option '--build'" },
+        { build_dir, none, missing_libclang, 2, "graph: invalid native reflection option '--libclang-root'" },
+        { build_dir, none, empty_jobs, 2, "graph: invalid native reflection option '--jobs'" },
+        { build_dir, none, empty_build, 2, "graph: invalid native reflection option '--build'" },
+        { build_dir, none, empty_libclang, 2, "graph: invalid native reflection option '--libclang-root'" },
+        { build_dir, none, unknown_option, 2, "graph: invalid native reflection option '--commands-only'" },
+        { build_dir, none, unknown_definition, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
+        { build_dir, none, missing_definition, 2, "graph: -D requires a native toolchain definition" },
+        { build_dir, none, empty_definition, 2, "graph: unsupported native reflection toolchain argument '-DCMAKE_C_COMPILER:FILEPATH='" },
+        { build_dir, none, typed_compiler, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
+        { build_dir, none, split_compiler, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
+        { build_dir, none, split_libclang, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" },
+        { build_dir, none, split_unknown, 2, "graph: unsupported native reflection toolchain argument '-DUNSUPPORTED=ON'" }
+    };
+    /* Check path parsing in the same compiled invocation. Actual-entry
+     * cases above accept typed/split values before reaching the final rejection. */
+    const char *checks = "    value := \"/fixture/llvm root=value\";\n"
+                         "    mapped := "
+                         "engine.NativeToolchainOption(strings.Join([\"-"
+                         "DLIBCLANG_ROOT:PATH=\", value], \"\"));\n"
+                         "    if (length(mapped) != 2 || mapped[0] != "
+                         "\"--libclang-root\" || mapped[1] != value) {\n"
+                         "        build.report(\"native reflection changed a "
+                         "typed path value\");\n"
+                         "        return 4;\n"
+                         "    }\n"
+                         "    if "
+                         "(length(engine.NativeToolchainOption(\"-DLIBCLANG_"
+                         "ROOT:PATH\")) != 0) {\n"
+                         "        build.report(\"native reflection accepted a "
+                         "definition without a value\");\n"
+                         "        return 4;\n"
+                         "    }\n";
+    int count = (int)(sizeof cases / sizeof *cases);
+    REQUIRE(!run_graph_entry_batch(cases, count, "SDKReflectWithArguments", checks));
+    REQUIRE(graph_batch_matches(cases, count));
+    REQUIRE(access(build_dir, F_OK) != 0);
     return true;
 }
 
@@ -1741,6 +1827,87 @@ static int same_tree(const char *ours, const char *theirs)
     return count;
 }
 
+TEST_CASE(sdk_version_authority_is_shared_and_invalidates_configuration)
+{
+    char source[GRAPH_PATH], sdk[GRAPH_PATH], build_dir[GRAPH_PATH],
+        version[GRAPH_PATH], decoy[GRAPH_PATH], configured[GRAPH_PATH],
+        original[GRAPH_PATH], reader[GRAPH_PATH], project[GRAPH_PATH],
+        probe[GRAPH_PATH];
+    join(source, suite, "sdk version source");
+    join(sdk, source, "sdk");
+    join(build_dir, suite, "sdk version build");
+    assert(!mkdir(source, 0700));
+    assert(!mkdir(sdk, 0700));
+    join(version, sdk, "VERSION");
+    tool_write(version, " \t9.8.7 \r\n");
+    join(decoy, sdk, "CMakeLists.txt");
+    tool_write(decoy, "set(CHIBI_SDK_VERSION 0.0.1)\n");
+    join(original, CHIBI_SOURCE_ROOT, "sdk/version.cmake");
+    join(reader, sdk, "version.cmake");
+    const char *copy[] = { "cp", original, reader, NULL };
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    join(project, source, "CMakeLists.txt");
+    tool_write(
+        project,
+        "cmake_minimum_required(VERSION 3.25)\n"
+        "project(SDKVersionFixture NONE)\n"
+        "include(\"${CMAKE_CURRENT_SOURCE_DIR}/sdk/version.cmake\")\n"
+        "file(WRITE \"${CMAKE_CURRENT_BINARY_DIR}/configured-version\" "
+        "\"${CHIBI_SDK_VERSION}\\n\")\n"
+    );
+    const char *configure[] = { "cmake",   "-S", source,  "-B",
+                                build_dir, "-G", "Ninja", NULL };
+    REQUIRE(tool_run(configure, source, log_path) == 0);
+    join(configured, build_dir, "configured-version");
+    char *actual = tool_read(configured);
+    REQUIRE(actual && !strcmp(actual, "9.8.7\n"));
+    free(actual);
+
+    tool_write(version, "\n 9.8.8\t\n");
+    const char *rebuild[] = { "cmake", "--build", build_dir, NULL };
+    REQUIRE(tool_run(rebuild, source, log_path) == 0);
+    actual = tool_read(configured);
+    REQUIRE(actual && !strcmp(actual, "9.8.8\n"));
+    free(actual);
+    assert(!unlink(decoy));
+    join(probe, suite, "SDKVersion.chibi");
+    tool_write(
+        probe,
+        "package version\nimport engine \"graph:engine\"\n"
+        "Build :: () -> int {\n"
+        "    arguments := build.arguments(); root := arguments[0];\n"
+        "    if (engine.SDKVersion(root) != \"9.8.8\") { return 1; }\n"
+        "    path := build.join([root, \"/sdk/VERSION\"], \"\");\n"
+        "    if (!build.write_file(path, \"\\t 7.6.5 \\r\\n\")) { return 2; }\n"
+        "    if (engine.SDKVersion(root) != \"7.6.5\") { return 3; }\n"
+        "    return 0;\n}\n"
+    );
+    const char *argv[] = { host_path,
+                           "--root",
+                           CHIBI_SOURCE_ROOT,
+                           "--source",
+                           probe,
+                           "--core",
+                           "packages/core",
+                           "--collection",
+                           "graph=tools/graph",
+                           "--entry",
+                           "Build",
+                           "--timeout-ms",
+                           "50000",
+                           "--",
+                           source,
+                           NULL };
+    int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, GRAPH_RUN_SECONDS);
+    if (status) {
+        char *log = tool_read(log_path);
+        fprintf(stderr, "SDK version probe: %s\n", log ? log : "");
+        free(log);
+    }
+    REQUIRE(!status);
+    return true;
+}
+
 /* The launcher's share/chibi and chibi_ctl's resources equal what CMake
  * configures: the build identity, the core and documentation sources and the
  * shaders. They are written before any compile, so a compiler that always
@@ -1865,6 +2032,7 @@ void test_build_graph_programs(const char *host, const char *cmake_build)
 void test_build_graph_resources(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
+    RUN_TEST_CASE(sdk_version_authority_is_shared_and_invalidates_configuration);
     RUN_TEST_CASE(resources_install_as_cmake);
     RUN_TEST_CASE(language_corpus_lists_as_cmake);
     tool_remove_tree(suite);
@@ -1885,6 +2053,7 @@ void test_build_graph_support(const char *host, const char *cmake_build)
 void test_build_graph_reflect(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
+    RUN_TEST_CASE(sdk_reflection_rejects_invalid_arguments_before_building);
     RUN_TEST_CASE(reflect_links_as_cmake_and_writes_the_same_sources);
     tool_remove_tree(suite);
 }
@@ -2148,8 +2317,19 @@ TEST_CASE(asset_generator_source_lists_bounded_ordered_phases)
 
 TEST_CASE(discovery_without_a_compiler_driver)
 {
-    char root[GRAPH_PATH];
+    char root[GRAPH_PATH], driver_root[GRAPH_PATH], driver[GRAPH_PATH],
+        resource[GRAPH_PATH], script[GRAPH_PATH + 128];
     join(root, suite, "toolchain");
+    assert(!mkdir(root, 0700));
+    join(driver_root, root, "multiarch driver");
+    assert(!mkdir(driver_root, 0700));
+    join(driver, driver_root, "bin");
+    assert(!mkdir(driver, 0700));
+    join(driver, driver_root, "bin/clang");
+    join(resource, driver_root, "resource-directory");
+    snprintf(script, sizeof script, "#!/bin/sh\ntest \"$1\" = -print-resource-dir || exit 1\ncat \"%s\"\n", resource);
+    tool_write(driver, script);
+    assert(!chmod(driver, 0700));
     const char *const argv[] = { host_path,
                                  "--root",
                                  CHIBI_SOURCE_ROOT,
@@ -2186,11 +2366,160 @@ TEST_CASE(discovery_without_a_compiler_driver)
     return true;
 }
 
+TEST_CASE(libclang_discovery_honors_environment_prefixes)
+{
+    char root[GRAPH_PATH], relative[GRAPH_PATH], prefixes[GRAPH_PATH * 5],
+        includes[GRAPH_PATH * 2], libraries[GRAPH_PATH * 2];
+    snprintf(relative, sizeof relative, ".chibi/build-graph-discovery/%s", strrchr(suite, '/') + 1);
+    join(root, CHIBI_SOURCE_ROOT, relative);
+    snprintf(
+        prefixes,
+        sizeof prefixes,
+        "CMAKE_PREFIX_PATH=:%s/missing prefix::%s/first prefix:%s/second "
+        "prefix:%s/semicolon;prefix:",
+        relative,
+        relative,
+        relative,
+        relative
+    );
+    snprintf(includes, sizeof includes, "CMAKE_INCLUDE_PATH=%s/direct prefix/include/", relative);
+    snprintf(libraries, sizeof libraries, "CMAKE_LIBRARY_PATH=%s/direct prefix/lib64/", relative);
+    const char *const argv[] = { "env",
+                                 prefixes,
+                                 includes,
+                                 libraries,
+                                 host_path,
+                                 "--root",
+                                 CHIBI_SOURCE_ROOT,
+                                 "--source",
+                                 "test/tools/GraphLibclangDiscovery.chibi",
+                                 "--core",
+                                 "packages/core",
+                                 "--collection",
+                                 "graph=tools/graph",
+                                 "--entry",
+                                 "Verify",
+                                 "--timeout-ms",
+                                 "30000",
+                                 "--",
+                                 root,
+                                 NULL };
+    int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, 30);
+    if (!status) {
+        char source[GRAPH_PATH], core[GRAPH_PATH], compiler_root[GRAPH_PATH],
+            collection[GRAPH_PATH + 32];
+        join(source, CHIBI_SOURCE_ROOT, "test/tools/GraphLibclangDiscovery.chibi");
+        join(core, CHIBI_SOURCE_ROOT, "packages/core");
+        join(compiler_root, CHIBI_SOURCE_ROOT, "tools/compiler");
+        snprintf(collection, sizeof collection, "graph=%s/tools/graph", CHIBI_SOURCE_ROOT);
+        const char *const spelling[] = { host_path,
+                                         "--root",
+                                         root,
+                                         "--source",
+                                         source,
+                                         "--core",
+                                         core,
+                                         "--compiler",
+                                         compiler_root,
+                                         "--compiler-core",
+                                         core,
+                                         "--collection",
+                                         collection,
+                                         "--entry",
+                                         "VerifyPathSpelling",
+                                         "--timeout-ms",
+                                         "30000",
+                                         NULL };
+        status = tool_run_within(spelling, CHIBI_SOURCE_ROOT, log_path, 30);
+    }
+    if (status) {
+        char *log = tool_read(log_path);
+        fprintf(stderr, "libclang discovery: %s\n", log ? log : "");
+        free(log);
+    }
+    tool_remove_tree(root);
+    REQUIRE(!status);
+    return true;
+}
+
+TEST_CASE(libclang_discovery_honors_basename_paths)
+{
+    static const struct
+    {
+        const char *include, *library, *directory, *prefix;
+        bool linked_include;
+    } cases[] = { { "include/", "", "lib64", NULL, false },
+                  { "", "lib64", "lib64", NULL, false },
+                  { "", "lib", "lib", NULL, false },
+                  { "include", "lib64", "lib64", NULL, true },
+                  { "", "lib/x86_64-linux-gnu/", "lib", NULL, false },
+                  { "lib/llvm-18/include", "", "lib64", "lib/llvm-18", false },
+                  { "", "lib/llvm-18/lib", "lib", "lib/llvm-18", false },
+                  { "", "lib/llvm-18/lib64", "lib64", "lib/llvm-18", false } };
+    char source[GRAPH_PATH], core[GRAPH_PATH], compiler_root[GRAPH_PATH],
+        collection[GRAPH_PATH + 32];
+    join(source, CHIBI_SOURCE_ROOT, "test/tools/GraphLibclangDiscovery.chibi");
+    join(core, CHIBI_SOURCE_ROOT, "packages/core");
+    join(compiler_root, CHIBI_SOURCE_ROOT, "tools/compiler");
+    snprintf(collection, sizeof collection, "graph=%s/tools/graph", CHIBI_SOURCE_ROOT);
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        char root[GRAPH_PATH], canonical[GRAPH_PATH], name[64],
+            path[GRAPH_PATH], includes[256], libraries[256];
+        snprintf(name, sizeof name, "basename paths %d", i);
+        join(root, suite, name);
+        assert(!mkdir(root, 0700));
+        REQUIRE(realpath(root, canonical));
+        if (cases[i].linked_include) {
+            join(path, root, "headers");
+            assert(!mkdir(path, 0700));
+            join(path, root, "include");
+            assert(!symlink("headers", path));
+        }
+        snprintf(includes, sizeof includes, "CMAKE_INCLUDE_PATH=%s", cases[i].include);
+        snprintf(libraries, sizeof libraries, "CMAKE_LIBRARY_PATH=%s", cases[i].library);
+        const char *const argv[] = { "env",
+                                     "CMAKE_PREFIX_PATH=",
+                                     includes,
+                                     libraries,
+                                     host_path,
+                                     "--root",
+                                     canonical,
+                                     "--source",
+                                     source,
+                                     "--core",
+                                     core,
+                                     "--compiler",
+                                     compiler_root,
+                                     "--compiler-core",
+                                     core,
+                                     "--collection",
+                                     collection,
+                                     "--entry",
+                                     "VerifyBasenamePaths",
+                                     "--timeout-ms",
+                                     "30000",
+                                     "--",
+                                     cases[i].directory,
+                                     cases[i].prefix,
+                                     NULL };
+        int status = tool_run_within(argv, CHIBI_SOURCE_ROOT, log_path, 30);
+        if (status) {
+            char *log = tool_read(log_path);
+            fprintf(stderr, "libclang basename case %d: %s\n", i, log ? log : "");
+            free(log);
+        }
+        REQUIRE(!status);
+    }
+    return true;
+}
+
 /* A separate route: reflect's run and the codec compile take seconds. */
 void test_build_graph_generated(const char *host, const char *cmake_build)
 {
     set_up(host, cmake_build);
     RUN_TEST_CASE(discovery_without_a_compiler_driver);
+    RUN_TEST_CASE(libclang_discovery_honors_environment_prefixes);
+    RUN_TEST_CASE(libclang_discovery_honors_basename_paths);
     RUN_TEST_CASE(language_delivery_registrations_match);
     RUN_TEST_CASE(asset_generator_uses_its_own_collection);
     RUN_TEST_CASE(failed_steps_name_only_the_output);

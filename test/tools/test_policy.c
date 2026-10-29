@@ -329,8 +329,8 @@ static const char driver_integer_parallel
          "              policy.GROUPS['language'].count(name), flush=True)\n"
          "        policy.TOOLS[name] = [sys.argv[3], 'parallel', root,\n"
          "                              alias, 'barrier']\n"
-         "    print('migration-exclusive', "
-         "'language-migration34-generic-repro'\n"
+         "    print('census-exclusive', "
+         "'language-native-census-flattening'\n"
          "          not in policy.PARALLEL_RESOURCES, flush=True)\n"
          "    sys.exit(policy.run_group(names, jobs=2))\n";
 /* Standalone developer targets still build their prerequisites and stop on
@@ -505,7 +505,7 @@ static const char driver_ci_build
          "    else:\n"
          "        host.write_text('#!/bin/sh\\n[ \"$1\" = --protocol-version ] "
          "|| exit 99\\nprintf "
-         "\"12\\\\n\"\\n')\n"
+         "\"14\\\\n\"\\n')\n"
          "        host.chmod(0o700)\n"
          "    (root / 'Makefile').write_bytes(Path('Makefile').read_bytes())\n"
          "    env = dict(os.environ, CI_TRACE=str(trace), CI_FAIL=failure, "
@@ -651,8 +651,33 @@ static const char driver_ci_build_run[] =
     "                print('jobs=' + arguments[arguments.index('--jobs') + "
     "1])\n"
     "    sys.exit(0)\n";
-/* Inject only the expensive workload; exercise the experiment's real CLI
- * handlers and policy supervisor over the existing native worker. */
+/* Trigger timeout cleanup after the native descendant publishes its complete
+ * PID marker. The fixture clock controls this controller's deadline; production
+ * wait/cleanup code and the existing outer startup guards remain active. */
+static const char driver_experiment_clock
+    [] = "def fixture_experiment_cli(experiment, root, mode):\n"
+         "    if mode != 'timeout':\n"
+         "        return experiment.cli()\n"
+         "    clock = policy.time\n"
+         "    epoch = clock.monotonic()\n"
+         "    class ReadyTimeoutClock:\n"
+         "        def monotonic(self):\n"
+         "            try:\n"
+         "                record = Path(root, 'started').read_text()\n"
+         "                if record.endswith('\\n') and int(record) > 0:\n"
+         "                    return epoch + .3\n"
+         "            except (OSError, ValueError):\n"
+         "                pass\n"
+         "            return epoch\n"
+         "        def __getattr__(self, name):\n"
+         "            return getattr(clock, name)\n"
+         "    policy.time = ReadyTimeoutClock()\n"
+         "    try:\n"
+         "        return experiment.cli()\n"
+         "    finally:\n"
+         "        policy.time = clock\n";
+/* Inject the expensive workload; exercise the experiment's real CLI handlers
+ * and policy supervisor over the existing native worker. */
 static const char driver_experiment[] =
     "if sys.argv[2].startswith('experiment-'):\n"
     "    import debug_optimization_experiment as experiment\n"
@@ -722,7 +747,7 @@ static const char driver_experiment[] =
     "'error-failure',\n"
     "                    [worker, 'exit', '7'], dict(os.environ))\n"
     "        experiment.main = workload\n"
-    "        sys.exit(experiment.cli())\n"
+    "        sys.exit(fixture_experiment_cli(experiment, root, sys.argv[5]))\n"
     "    child = subprocess.Popen([sys.executable, __file__, "
     "sys.argv[1],\n"
     "        'experiment-inner', worker, root, sys.argv[5]])\n"
@@ -1318,6 +1343,122 @@ static const char *driver_seed[] = {
     "    sys.exit(result.returncode)\n"
 };
 
+static const char *const driver_facade_capture[] = {
+    "if sys.argv[2] == 'facade-capture':\n"
+    "    import hashlib, shutil\n"
+    "    mode = sys.argv[5]\n"
+    "    parent = Path(sys.argv[4]) / ('facade-' + mode)\n"
+    "    parent.mkdir()\n"
+    "    root = parent / 'source tree'\n"
+    "    root.mkdir()\n"
+    "    output = parent / 'capture'\n"
+    "    helper = Path('.github/capture-facade.py').resolve()\n"
+    "    sources = ['tools/compiler/bootstrap/bootstrap.json', "
+    "'tools/compiler/runtime.json',\n"
+    "               'tools/compiler/asset_compiler/CompilerSources.txt',\n"
+    "               'tools/graph/asset_compiler/Generate.chibi',\n"
+    "               'tools/toolchain/AssetCompiler.chibi', "
+    "'tools/graph/engine/Engine.chibi']\n"
+    "    for name in sources:\n"
+    "        path = root / name\n"
+    "        path.parent.mkdir(parents=True, exist_ok=True)\n"
+    "        path.write_text('tracked source\\n')\n"
+    "    (root / '.gitignore').write_text('build/\\n')\n"
+    "    def git(*args):\n"
+    "        return subprocess.check_output(['git', *args], cwd=root, "
+    "text=True,\n"
+    "                                       "
+    "stderr=subprocess.DEVNULL).strip()\n"
+    "    git('init', '-q')\n"
+    "    git('add', '.')\n"
+    "    git('-c', 'user.name=Chibi fixture', '-c', "
+    "'user.email=fixture@example.invalid',\n"
+    "        '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'Capture "
+    "fixture')\n"
+    "    revision = git('rev-parse', 'HEAD')\n"
+    "    build = root / 'build'\n"
+    "    payload = b'[\"/project\", [], [], "
+    "[\"asset_compiler/Compile.chibi\"], [\"source\\\\u0000text\"], false]'\n"
+    "    files = {'sdk/generated/assets/input.json': payload,\n"
+    "             'sdk/generated/assets/compiler.chibip': "
+    "b'\\x00artifact\\xff\\n',\n"
+    "             'sdk/generated/assets/native_target.json': "
+    "b'[1,2,3,4,5,6]\\n',\n"
+    "             'sdk/chibi-compiler-host': b'actual native host\\n',\n"
+    "             'sdk/chibi-build-host': b'actual build host\\n',\n"
+    "             'compile_commands.json': "
+    "b'[{\"arguments\":[\"clang\",\"-O3\",\"-DNDEBUG\"]}]\\n',\n"
+    "             'link_commands.json': "
+    "b'[{\"arguments\":[\"clang\",\"-o\",\"chibi-compiler-host\"]}]\\n'}\n"
+    "    for name, data in files.items():\n"
+    "        path = build / name\n"
+    "        path.parent.mkdir(parents=True, exist_ok=True)\n"
+    "        path.write_bytes(data)\n"
+    "    if mode == 'missing':\n"
+    "        (build / 'sdk/generated/assets/input.json').unlink()\n"
+    "    if mode == 'empty':\n"
+    "        (build / 'sdk/generated/assets/input.json').write_bytes(b'')\n"
+    "    if mode == 'packaging':\n",
+    "        (build / "
+    "'sdk/generated/assets/"
+    "input.json').write_bytes(b'[[\"library\"],[\"text\"]]')\n"
+    "    if mode == 'dirty':\n"
+    "        (root / sources[0]).write_text('changed source\\n')\n"
+    "    if mode == 'mismatch':\n"
+    "        revision = '0' * 40\n"
+    "    if mode == 'oversize':\n"
+    "        with (build / 'sdk/generated/assets/input.json').open('wb') as "
+    "stream:\n"
+    "            stream.truncate(64 * 1024 * 1024 + 1)\n"
+    "    if mode == 'fifo':\n"
+    "        path = build / 'sdk/generated/assets/input.json'\n"
+    "        path.unlink()\n"
+    "        os.mkfifo(path)\n"
+    "    if mode in ('symlink', 'parent-link'):\n"
+    "        outside = parent / 'outside'\n"
+    "        outside.mkdir()\n"
+    "        (outside / "
+    "'input.json').write_bytes(b'NEVER_CAPTURE_EXTERNAL_BYTES')\n"
+    "        target = build / 'sdk/generated/assets'\n"
+    "        if mode == 'symlink':\n"
+    "            (target / 'input.json').unlink()\n"
+    "            (target / 'input.json').symlink_to(outside / 'input.json')\n"
+    "        else:\n"
+    "            shutil.rmtree(target)\n"
+    "            target.symlink_to(outside, target_is_directory=True)\n"
+    "    if mode == 'outside-build':\n"
+    "        build = parent / 'outside-build'\n"
+    "        build.mkdir()\n"
+    "    if mode == 'build-alias':\n"
+    "        (root / 'alias').symlink_to(root, target_is_directory=True)\n"
+    "        build = root / 'alias/build'\n"
+    "    if mode == 'inside-output':\n"
+    "        output = root / 'capture'\n"
+    "    if mode == 'reuse-output':\n"
+    "        output.mkdir()\n"
+    "        (output / 'keep').write_bytes(b'preserved')\n"
+    "    env = dict(os.environ, GH_TOKEN='NEVER_CAPTURE_AUTH')\n"
+    "    result = subprocess.run([sys.executable, str(helper), "
+    "'--source-root', str(root),\n"
+    "        '--build', str(build), '--output', str(output), "
+    "'--expected-revision', revision],\n"
+    "        env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, "
+    "text=True)\n"
+    "    print(result.stdout, end='')\n"
+    "    receipt = output / 'capture.json'\n"
+    "    if receipt.is_file():\n"
+    "        print(receipt.read_text(), end='')\n"
+    "    for name in ['sdk/generated/assets/input.json', "
+    "'sdk/generated/assets/compiler.chibip',\n"
+    "                 'compile_commands.json', 'link_commands.json']:\n"
+    "        path = output / 'build' / name\n"
+    "        if path.is_file():\n"
+    "            print(name + '.sha256=' + "
+    "hashlib.sha256(path.read_bytes()).hexdigest())\n"
+    "    print('kept-output=' + str((output / 'keep').is_file()))\n"
+    "    sys.exit(result.returncode)\n"
+};
+
 static void path(char *output, const char *name)
 {
     int length = snprintf(output, PATH_MAX, "%s/%s", directory, name);
@@ -1466,7 +1607,7 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
                              "split-start",   "split-done",     "join-done",
                              "evidence-done", "singleton-done", "invalid-done",
                              "counters-done", "corpus-start",   "corpus-done",
-                             "pwsh-exit" };
+                             "partial-start", "partial-done",   "pwsh-exit" };
     const char *phase = output;
     for (int i = 0; i < (int)(sizeof phases / sizeof *phases); i++) {
         char expected[96];
@@ -1478,10 +1619,27 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
     REQUIRE(strstr(output, "scalar-transport runtime pwsh="));
     REQUIRE(strstr(output, " dotnet="));
     REQUIRE(strstr(output, " cpus="));
-    REQUIRE(strstr(output, "singleton=1\nsingleton-identical=True\n"));
-    REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-9 rejected\n"));
     REQUIRE(
-        strstr(output, "empty rejected\nnine rejected\njson rejected\njson rejected\njson rejected\nutf8 rejected\n")
+        strstr(output, "digest-empty=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-binary=07357c2e935267e3b90071a4d9edef497ab0d9e0a8a87a78258a3a173574b10d\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-overwrite=91d6b1c484360131d3d95d4df0d4ad95377f04cdf2de124f6ff9cb7d8bb0d5e7\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-three-byte=4234f1064f32788dc9487507f9eeecd0cdf7df6bd010fd1dad8026226e222813\n")
+    );
+    REQUIRE(
+        strstr(output, "digest-changed=d67e2e944994496c8d8ec76eed0cf9f09679448d584b532bebf941852a37f5ed\n")
+    );
+    REQUIRE(strstr(output, "digest-missing rejected\ndigest-directory rejected\n"));
+    REQUIRE(strstr(output, "singleton=1\nsingleton-identical=True\n"));
+    REQUIRE(strstr(output, "full=64\nfull-identical=True\n"));
+    REQUIRE(strstr(output, "count-0 rejected\ncount-2 rejected\ncount-65 rejected\n"));
+    REQUIRE(
+        strstr(output, "empty rejected\noversized rejected\njson rejected\njson rejected\njson rejected\nutf8 rejected\n")
     );
     REQUIRE(
         strstr(output, "Compiler invocation 16-sljit-produce-batch failed: compiler batch item 2: compiler argument count mismatch\n")
@@ -1491,6 +1649,9 @@ TEST_CASE(scalar_batch_keeps_original_bytes_and_failure_order)
     );
     REQUIRE(
         strstr(output, "published=0-bytecode-bytecode-raw,0-bytecode-sljit-raw,0-sljit-bytecode-raw,0-sljit-sljit-raw,1-bytecode-bytecode-raw,1-bytecode-sljit-raw\ncrossings=6\nnext-batch=False\n")
+    );
+    REQUIRE(
+        strstr(output, "partial-crossings=260\npartial-raw=260\npartial-last=64-sljit-sljit-raw\npartial-size=1\npartial-order=True\n")
     );
     REQUIRE(!strstr(output, "bad counters accepted"));
     REQUIRE(strstr(output, "bytecode counters accepted\nbytecode counters rejected\n"));
@@ -1596,7 +1757,11 @@ static int run_group(const char *group)
         saved[i] = value ? xstrdup(value) : NULL;
         assert(!setenv(names[i], directory, 1));
     }
-    const char *args[] = { "python3", policy_path, "group", group, NULL };
+    /* This case records group membership; parallel scheduler behavior has
+     * separate fixtures. Use the real serial CLI route so recorder capacity
+     * does not depend on host admission or one supervisor per selector. */
+    const char *args[] = { "python3", policy_path, "--jobs", "1",
+                           "group",   group,       NULL };
     int status = tool_run(args, tool_root(), logpath);
     for (int i = 0; i < 2; i++) {
         if (saved[i]) {
@@ -2230,6 +2395,145 @@ TEST_CASE(ci_main_push_finishes_before_newest_pending_run)
     return true;
 }
 
+TEST_CASE(ci_facade_capture_retains_exact_bytes_and_source_identity)
+{
+    REQUIRE(run("facade-capture", "clean") == 0);
+    char *text = tool_read(logpath);
+    REQUIRE(text);
+    REQUIRE(strstr(text, "\"source_bound_payloads\": true"));
+    REQUIRE(strstr(text, "\"input_role\": \"facade-closure\""));
+    REQUIRE(
+        strstr(text, "input.json.sha256=7b33b60c9bb94cd26982a12a290baf44fd7bd2ee84904dc8549073b2d4c0b17a")
+    );
+    REQUIRE(
+        strstr(text, "compiler.chibip.sha256=341a68ba9d0e95d90907def00662e751c856cbccd8c6c530ef7493911a2780fb")
+    );
+    REQUIRE(
+        strstr(text, "compile_commands.json.sha256=3b46aae9fba7829e5a1f184a1ff4f78bd66b7cfc3637d008937d2e0e4c68d73a")
+    );
+    REQUIRE(
+        strstr(text, "link_commands.json.sha256=56740dbb425ffd908e0043e1f65305b643cadfe699e0d2f0b1dfec7191a37406")
+    );
+    REQUIRE(!strstr(text, "NEVER_CAPTURE_AUTH"));
+    REQUIRE(strstr(text, "\"child_argv\": {\n    \"status\": \"not captured\""));
+    free(text);
+    return true;
+}
+
+TEST_CASE(ci_facade_capture_distinguishes_missing_empty_and_later_inputs)
+{
+    REQUIRE(run("facade-capture", "missing") == 0);
+    char *text = tool_read(logpath);
+    REQUIRE(text && strstr(text, "\"payloads_complete\": false"));
+    REQUIRE(strstr(text, "\"input_role\": \"unavailable\""));
+    REQUIRE(!strstr(text, "input.json.sha256="));
+    free(text);
+    REQUIRE(run("facade-capture", "empty") == 0);
+    text = tool_read(logpath);
+    REQUIRE(text && strstr(text, "\"payloads_complete\": true"));
+    REQUIRE(strstr(text, "\"input_role\": \"unparsed\""));
+    REQUIRE(
+        strstr(text, "input.json.sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    );
+    free(text);
+    REQUIRE(run("facade-capture", "packaging") == 0);
+    text = tool_read(logpath);
+    REQUIRE(text && strstr(text, "may be a later packaging request"));
+    REQUIRE(!strstr(text, "\"input_role\": \"facade-closure\""));
+    free(text);
+    return true;
+}
+
+TEST_CASE(ci_facade_capture_does_not_admit_dirty_or_wrong_source)
+{
+    const char *modes[] = { "dirty", "mismatch" };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(run("facade-capture", modes[i]) == 0);
+        char *text = tool_read(logpath);
+        REQUIRE(text && strstr(text, "\"payloads_complete\": true"));
+        REQUIRE(strstr(text, "\"source_bound_payloads\": false"));
+        REQUIRE(strstr(text, i ? "\"revision_matches\": false" : "\"clean\": false"));
+        free(text);
+    }
+    return true;
+}
+
+TEST_CASE(ci_facade_capture_rejects_unsafe_or_oversized_files)
+{
+    const char *modes[] = { "symlink", "parent-link", "oversize", "fifo" };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(run("facade-capture", modes[i]) == 0);
+        char *text = tool_read(logpath);
+        REQUIRE(text && strstr(text, "\"payloads_complete\": false"));
+        const char *reason = i == 2 ? "capture byte limit exceeded"
+                           : i == 3 ? "expected a regular file"
+                                    : "symbolic links are not captured";
+        REQUIRE(strstr(text, reason));
+        REQUIRE(!strstr(text, "input.json.sha256="));
+        REQUIRE(!strstr(text, "NEVER_CAPTURE_EXTERNAL_BYTES"));
+        REQUIRE(!strstr(text, "NEVER_CAPTURE_AUTH"));
+        free(text);
+    }
+    return true;
+}
+
+TEST_CASE(ci_facade_capture_preserves_checkout_and_existing_output)
+{
+    REQUIRE(run("facade-capture", "outside-build") != 0);
+    char *text = tool_read(logpath);
+    REQUIRE(text && strstr(text, "build directory must be inside the source checkout"));
+    free(text);
+    REQUIRE(run("facade-capture", "build-alias") != 0);
+    text = tool_read(logpath);
+    REQUIRE(text && strstr(text, "build directory must not contain symbolic links"));
+    free(text);
+    REQUIRE(run("facade-capture", "inside-output") != 0);
+    text = tool_read(logpath);
+    REQUIRE(text && strstr(text, "capture output must be outside the source checkout"));
+    free(text);
+    REQUIRE(run("facade-capture", "reuse-output") != 0);
+    text = tool_read(logpath);
+    REQUIRE(text && strstr(text, "kept-output=True"));
+    free(text);
+    return true;
+}
+
+TEST_CASE(ci_facade_capture_is_diagnostic_and_keeps_the_build_result)
+{
+    char *text = tool_read(CHIBI_SOURCE_ROOT "/.github/workflows/ci.yml");
+    REQUIRE(text);
+    const char *job = strstr(text, "\n  native-macos:\n");
+    const char *release = job ? strstr(job, "      - name: Build an unsanitized")
+                              : NULL;
+    const char *capture = release
+                            ? strstr(release, "      - name: Capture macOS facade identities")
+                            : NULL;
+    const char *upload = capture
+                           ? strstr(capture, "      - name: Preserve macOS facade identities")
+                           : NULL;
+    const char *build = upload ? strstr(upload, "      - name: Build products and test drivers")
+                               : NULL;
+    REQUIRE(job && release && capture && upload && build);
+    const char *identifier = strstr(release, "        id: release-build\n");
+    REQUIRE(identifier && identifier < capture);
+    const char
+        *condition = "        if: always() && (steps.release-build.outcome == "
+                     "'success' || steps.release-build.outcome == 'failure')\n";
+    const char *fields[] = { condition,
+                             "        continue-on-error: true\n",
+                             ".github/capture-facade.py",
+                             "--expected-revision \"$GITHUB_SHA\"" };
+    for (int i = 0; i < (int)(sizeof fields / sizeof *fields); i++) {
+        const char *field = strstr(capture, fields[i]);
+        REQUIRE(field && field < upload);
+    }
+    const char *continued = strstr(upload, "        continue-on-error: true\n");
+    const char *guard = strstr(upload, condition);
+    REQUIRE(continued && continued < build && guard && guard < build);
+    free(text);
+    return true;
+}
+
 TEST_CASE(ci_preserves_failed_macos_graph_stage_log)
 {
     char workflow[PATH_MAX];
@@ -2840,9 +3144,29 @@ TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work)
         char *output = tool_read(logpath);
         REQUIRE(output && strstr(output, names[i]));
         REQUIRE(strstr(output, "frozenset() 1\n"));
-        REQUIRE(strstr(output, "migration-exclusive True\n"));
+        REQUIRE(strstr(output, "census-exclusive True\n"));
         free(output);
     }
+    reset_parallel();
+    return true;
+}
+
+TEST_CASE(parallel_migration_selector_overlaps_with_owned_scratch)
+{
+    reset_parallel();
+    REQUIRE(run("integer-parallel", "language-migration34-generic-repro") == 0);
+    REQUIRE(exists("parallel/first-overlapped") && exists("parallel/second-overlapped"));
+    char *output = tool_read(logpath);
+    REQUIRE(output && strstr(output, "language-migration34-generic-repro frozenset() 1\n"));
+    REQUIRE(strstr(output, "census-exclusive True\n"));
+    char first[4096], second[4096];
+    const char *a = strstr(output, "scratch-first="),
+               *b = strstr(output, "scratch-second=");
+    REQUIRE(a && b);
+    REQUIRE(sscanf(a, "scratch-first=%4095[^\n]", first) == 1);
+    REQUIRE(sscanf(b, "scratch-second=%4095[^\n]", second) == 1);
+    REQUIRE(strcmp(first, second) && access(first, F_OK) && access(second, F_OK));
+    free(output);
     reset_parallel();
     return true;
 }
@@ -3471,11 +3795,16 @@ static void set_up()
     }
     assert(fputs(driver_integer_parallel, script) >= 0);
     assert(fputs(driver_ci, script) >= 0);
+    for (size_t i = 0; i < sizeof driver_facade_capture / sizeof *driver_facade_capture;
+         i++) {
+        assert(fputs(driver_facade_capture[i], script) >= 0);
+    }
     assert(fputs(driver_ci_ready_setup, script) >= 0);
     assert(fputs(driver_ci_ready_run, script) >= 0);
     assert(fputs(driver_ci_build, script) >= 0);
     assert(fputs(driver_ci_build_workflow, script) >= 0);
     assert(fputs(driver_ci_build_run, script) >= 0);
+    assert(fputs(driver_experiment_clock, script) >= 0);
     assert(fputs(driver_experiment, script) >= 0);
     for (size_t i = 0; i < sizeof driver_parallel / sizeof *driver_parallel; i++) {
         assert(fputs(driver_parallel[i], script) >= 0);
@@ -3524,6 +3853,12 @@ void test_tool_test_policy()
     RUN_TEST_CASE(ci_generator_hosts_resolve_symlink_root);
     RUN_TEST_CASE(ci_linux_optimization_preserves_explicit_o0);
     RUN_TEST_CASE(ci_main_push_finishes_before_newest_pending_run);
+    RUN_TEST_CASE(ci_facade_capture_retains_exact_bytes_and_source_identity);
+    RUN_TEST_CASE(ci_facade_capture_distinguishes_missing_empty_and_later_inputs);
+    RUN_TEST_CASE(ci_facade_capture_does_not_admit_dirty_or_wrong_source);
+    RUN_TEST_CASE(ci_facade_capture_rejects_unsafe_or_oversized_files);
+    RUN_TEST_CASE(ci_facade_capture_preserves_checkout_and_existing_output);
+    RUN_TEST_CASE(ci_facade_capture_is_diagnostic_and_keeps_the_build_result);
     RUN_TEST_CASE(ci_preserves_failed_macos_graph_stage_log);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
@@ -3542,6 +3877,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(parallel_group_failure_stops_active_peer_and_queued_work);
     RUN_TEST_CASE(parallel_inner_pools_remain_exclusive_and_covered);
     RUN_TEST_CASE(parallel_integer_selectors_overlap_with_audited_asset_work);
+    RUN_TEST_CASE(parallel_migration_selector_overlaps_with_owned_scratch);
     RUN_TEST_CASE(parallel_language_manifest_matches_serial_exactly);
     RUN_TEST_CASE(parallel_admission_bounds_cpu_and_available_memory);
     RUN_TEST_CASE(parallel_serial_escape_uses_real_cli_and_environment);

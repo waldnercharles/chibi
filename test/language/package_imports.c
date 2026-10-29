@@ -1,8 +1,11 @@
+#include "authoring/package_tests.h"
 #include "authoring/source_package_prepare.h"
 #include "capabilities/catalog.h"
 #include "capabilities/catalog_snapshot.h"
+#include "execution/managed.h"
 #include "execution/status.h"
 #include "support/arena.h"
+#include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/text.h"
@@ -22,6 +25,7 @@ static authoring_packages *owners[MAX_OWNERS];
 static execution_module *retained;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap managed;
 static arena storage, metadata_storage;
 static pin_value argument, result;
 static int default_host_calls;
@@ -43,6 +47,7 @@ static void finish_call()
 {
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&managed);
     arena_free(&storage);
     context = (behavior_function_context){ 0 };
     activation = (behavior_function_activation){ 0 };
@@ -170,7 +175,10 @@ static bool call(execution_module *module, uint64_t id, behavior_backend backend
     }
     argument = (pin_value){ .type = PIN_I32, .i = value };
     result = (pin_value){ .type = PIN_I32, .i = -999 };
+    behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     context = (behavior_function_context){
+        .managed_heap = &managed,
         .activation = behavior_function_resumable(function) ? &activation : NULL,
         .arguments = &argument,
         .argument_count = 1,
@@ -908,6 +916,169 @@ TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
     return true;
 }
 
+static bool prepare_with_collection(
+    int slot,
+    source_package_input *files,
+    int count,
+    behavior_backend backend,
+    int previous
+)
+{
+    REQUIRE(count > 0 && count <= MAX_FILES);
+    for (int i = 0; i < count; i++) {
+        files[i].size = strlen(files[i].text);
+    }
+    source_package_collection core = { "core", "/sdk/core" };
+    source_package_snapshot_options options = { .project_root = "/project",
+                                                .files = files,
+                                                .file_count = count,
+                                                .collections = &core,
+                                                .collection_count = 1 };
+    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
+    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
+    authoring_packages_free(owners[slot]);
+    owners[slot] = authoring_packages_prepare(
+        snapshot,
+        &native,
+        &bindings,
+        backend,
+        previous >= 0 ? owners[previous] : NULL
+    );
+    REQUIRE(owners[slot]);
+    return true;
+}
+
+TEST_CASE(package_imports_ignore_unused_collection_bodies_but_check_every_project)
+{
+    source_package_input files[] = {
+        { "app/App.chibi", "package app\n@test AppTest :: () {}\npub Main :: (value: int) -> int { return value + 1; }\n", 0 },
+        { "/sdk/core/host_only/HostOnly.chibi", "package hosted\npub Read :: () -> int { return unavailable_host(); }\n", 0 },
+        { "other/Other.chibi", "package other\n@test OtherTest :: () {}\n", 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare_with_collection(0, files, 3, backends[b], -1));
+        REQUIRE(valid(0) && authoring_packages_count(owners[0]) == 2);
+        REQUIRE(!package(0, "core:host_only"));
+        REQUIRE(run(0, "project:app", "Main", backends[b], 4, 5));
+        package_test *found = package_tests_find(owners[0]);
+        bool app = false, other = false;
+        for (int i = 0; i < acount(found); i++) {
+            app |= !strcmp(found[i].package, "app");
+            other |= !strcmp(found[i].package, "other");
+        }
+        bool both = acount(found) == 2 && app && other;
+        afree(found);
+        REQUIRE(both);
+        files[2].text = "package other\npub Broken :: () -> int { return "
+                        "missing; }\n";
+        REQUIRE(prepare_with_collection(1, files, 3, backends[b], 0));
+        REQUIRE(!authoring_packages_valid(owners[1]));
+        REQUIRE(package(1, "project:other") && !package(1, "project:other")->valid);
+        REQUIRE(
+            package(1, "project:app")->generation == package(0, "project:app")->generation
+        );
+        files[2].text = "package other\n@test OtherTest :: () {}\n";
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_check_direct_transitive_and_blank_collection_imports)
+{
+    const char *apps[] = {
+        "package app\nimport host \"core:host_only\"\npub Main :: () -> int { "
+        "return host.Read(); }\n",
+        "package app\nimport middle \"core:middle\"\npub Main :: () -> int { "
+        "return middle.Read(); }\n",
+        "package app\nimport _ \"core:host_only\"\npub Main :: () -> int { "
+        "return 1; }\n",
+    };
+    source_package_input files[] = {
+        { "app/App.chibi", NULL, 0 },
+        { "/sdk/core/host_only/HostOnly.chibi", "package hosted\npub Read :: () -> int { return unavailable_host(); }\n", 0 },
+        { "/sdk/core/middle/Middle.chibi", "package middle\nimport host \"core:host_only\"\npub Read :: () -> int { return host.Read(); }\n", 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 3; i++) {
+            files[0].text = apps[i];
+            REQUIRE(prepare_with_collection(0, files, 3, backends[b], -1));
+            REQUIRE(!authoring_packages_valid(owners[0]));
+            const authoring_package *host = package(0, "core:host_only");
+            REQUIRE(host && !host->valid && host->analysis && host->diagnostic_count > 0);
+            REQUIRE(strstr(host->diagnostics[0].message, "unavailable_host"));
+            REQUIRE(package(0, "project:app") && !package(0, "project:app")->valid);
+            REQUIRE(authoring_packages_count(owners[0]) == (i == 1 ? 3 : 2));
+            cleanup();
+        }
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_collection_only_snapshot_checks_first_input_root)
+{
+    source_package_input files[] = {
+        { "/sdk/core/z_root/Root.chibi",
+          "package root\nimport shared \"core:shared\"\npub Main :: (value: "
+          "int) -> int { return value + shared.Read(); }\n",
+          0 },
+        { "/sdk/core/a_unused/Unused.chibi", "package unused\npub Read :: () -> int { return unavailable_host(); }\n", 0 },
+        { "/sdk/core/shared/Shared.chibi",
+          "package shared\npub Read :: () -> int { return 7; }\n",
+          0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare_with_collection(0, files, 3, backends[b], -1));
+        REQUIRE(valid(0) && authoring_packages_count(owners[0]) == 2);
+        REQUIRE(!package(0, "core:a_unused"));
+        REQUIRE(run(0, "core:z_root", "Main", backends[b], 4, 11));
+        const char *root = files[0].text;
+        files[0]
+            .text = "package root\npub Main :: (value: int) -> int { return "
+                    "missing; }\n";
+        REQUIRE(prepare_with_collection(1, files, 3, backends[b], 0));
+        REQUIRE(!authoring_packages_valid(owners[1]));
+        REQUIRE(authoring_packages_count(owners[1]) == 1);
+        REQUIRE(package(1, "core:z_root") && !package(1, "core:z_root")->valid);
+        files[0].text = root;
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependency)
+{
+    source_package_input files[] = {
+        { "app/App.chibi", "package app\nimport host \"core:host_only\"\npub Main :: (value: int) -> int { return host.Read() + value; }\n", 0 },
+        { "/sdk/core/host_only/HostOnly.chibi",
+          "package hosted\npub Read :: () -> int { return 7; }\n",
+          0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(prepare_with_collection(0, files, 2, backends[b], -1));
+        REQUIRE(valid(0) && authoring_packages_count(owners[0]) == 2);
+        const authoring_package *old = package(0, "project:app");
+        retained = old->module;
+        execution_module_retain(retained);
+        uint64_t id = function_id(old, "Main");
+        const char *importing = files[0].text;
+        files[0].text = "package app\npub Main :: (value: int) -> int { return "
+                        "value; }\n";
+        REQUIRE(prepare_with_collection(1, files, 2, backends[b], 0));
+        REQUIRE(valid(1) && authoring_packages_count(owners[1]) == 1);
+        REQUIRE(!package(1, "core:host_only") && authoring_packages_reused(owners[1]) == 0);
+        authoring_packages_free(owners[0]);
+        owners[0] = NULL;
+        REQUIRE(run(1, "project:app", "Main", backends[b], 4, 4));
+        REQUIRE(call(retained, id, backends[b], 4, 11));
+        files[0].text = importing;
+        REQUIRE(prepare_with_collection(2, files, 2, backends[b], 1));
+        REQUIRE(valid(2) && authoring_packages_count(owners[2]) == 2);
+        REQUIRE(run(2, "project:app", "Main", backends[b], 4, 11));
+        cleanup();
+    }
+    return true;
+}
+
 void test_language_package_imports()
 {
     pu_setup(NULL, cleanup);
@@ -925,5 +1096,9 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults);
     RUN_TEST_CASE(package_exports_keep_private_managed_pointee_metadata);
     RUN_TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup);
+    RUN_TEST_CASE(package_imports_ignore_unused_collection_bodies_but_check_every_project);
+    RUN_TEST_CASE(package_imports_check_direct_transitive_and_blank_collection_imports);
+    RUN_TEST_CASE(package_imports_collection_only_snapshot_checks_first_input_root);
+    RUN_TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependency);
     pu_clear_setup();
 }

@@ -38,11 +38,14 @@ typedef struct graph_copy
     int depth;
 } graph_copy;
 static _Thread_local graph_copy *copying_graph;
-static _Thread_local const pin_array **adopting_arrays;
 enum
 {
     VALUE_COPY_MAX_NESTING = 256
 };
+/* Arrays whose adoption is copying their items. Each nested adoption runs
+ * inside one more value copy, so their count stays within its nesting. */
+static _Thread_local const pin_array *adopting_arrays[VALUE_COPY_MAX_NESTING + 1];
+static _Thread_local int adopting_count;
 static int graph_value(graph_copy *, pin_value *, const pin_value *);
 static int manage_owned_graph(arena *, pin_array *);
 static const pin_record *snapshot_layout(arena *, pin_type, const char *, const pin_record *);
@@ -1395,9 +1398,12 @@ static void manage_header(
     const char *name
 )
 {
+    /* The root has no entry: nothing reaches it again. */
     graph_entry *entry = graph_find(graph, value);
-    entry->copy.record = record;
-    entry->copy.type_name = name;
+    if (entry) {
+        entry->copy.record = record;
+        entry->copy.type_name = name;
+    }
     if (slot) {
         slot->record = record;
         slot->type_name = name;
@@ -1407,17 +1413,21 @@ static int manage_owned_graph(arena *storage, pin_array *array)
 {
     graph_copy visited = { 0 };
     manage_pending *pending = NULL;
-    apush(
-        pending,
-        ((manage_pending){ .value = { .type = array->element_type,
-                                      .container = PIN_CONTAINER_ARRAY,
-                                      .type_name = array->type_name,
-                                      .record = array->record,
-                                      .ptr = array } })
-    );
+    /* The root is visited first and off the work list, so a packed array
+     * allocates neither. */
+    manage_pending at = { .value = { .type = array->element_type,
+                                     .container = PIN_CONTAINER_ARRAY,
+                                     .type_name = array->type_name,
+                                     .record = array->record,
+                                     .ptr = array } };
     int error = 0;
-    while (acount(pending) && !error) {
-        manage_pending at = apop(pending);
+    for (bool root = true; !error; root = false) {
+        if (!root) {
+            if (!acount(pending)) {
+                break;
+            }
+            at = apop(pending);
+        }
         pin_value value = at.value;
         bool aggregate = value.container != PIN_CONTAINER_SINGLE ||
                          value.type == PIN_UNION || value.type == PIN_STRUCT;
@@ -1432,7 +1442,9 @@ static int manage_owned_graph(arena *storage, pin_array *array)
             }
             continue;
         }
-        graph_remember(&visited, &value, value);
+        if (!root) {
+            graph_remember(&visited, &value, value);
+        }
 #define MANAGE_SLOT(p) apush(pending, ((manage_pending){ *(p), (p) }))
         if (value.container == PIN_CONTAINER_MAP) {
             pin_map *map = value.ptr;
@@ -1894,7 +1906,8 @@ int pin_array_make_unique(arena *storage, pin_array *array)
     backing->anchor->backing = backing;
     arena_set_trace(storage, backing->anchor, trace_backing, NULL);
     if (adopting) {
-        apush(adopting_arrays, array);
+        assert(adopting_count <= VALUE_COPY_MAX_NESTING);
+        adopting_arrays[adopting_count++] = array;
         /* Preregister before child VALUE copies. Active-source guards reject
          * imported cycles recoverably, so rollback cannot expose a partial
          * backing through a recursively adopted child.
@@ -1921,10 +1934,7 @@ int pin_array_make_unique(arena *storage, pin_array *array)
                     pin_value_collection_release(&backing->payload.items[j]);
                 }
                 if (adopting) {
-                    (void)apop(adopting_arrays);
-                    if (!acount(adopting_arrays)) {
-                        afree(adopting_arrays);
-                    }
+                    adopting_count--;
                     *array = previous;
                     arena_replace_cleanup(storage, array, NULL, NULL, 0);
                 } else {
@@ -1936,12 +1946,7 @@ int pin_array_make_unique(arena *storage, pin_array *array)
         }
     }
     backing->payload.count = previous.count;
-    if (adopting) {
-        (void)apop(adopting_arrays);
-        if (!acount(adopting_arrays)) {
-            afree(adopting_arrays);
-        }
-    }
+    adopting_count -= adopting;
     if (!adopting) {
         *array = backing->payload;
         backing_attach(array, backing);
@@ -1957,7 +1962,7 @@ pin_array *pin_array_value_copy(arena *storage, const pin_array *source)
     if (!storage || !source) {
         return NULL;
     }
-    for (int i = 0; i < acount(adopting_arrays); i++) {
+    for (int i = 0; i < adopting_count; i++) {
         if (adopting_arrays[i] == source) {
             return NULL;
         }
@@ -2038,7 +2043,26 @@ int pin_array_box_owned(arena *storage, pin_array *array)
     pin_array_mutation_end(array);
     return 0;
 }
-static void collection_visit_layout(const type_desc *type, const void *data, pin_value **pending)
+/* The owner walk's work list. Most walks stay within its first entries, which
+ * need no allocation. */
+#define OWNER_LOCAL_WORK 16
+typedef struct
+{
+    pin_value *items, local[OWNER_LOCAL_WORK];
+    int count, capacity;
+} owner_stack;
+static void owner_push(owner_stack *stack, pin_value value)
+{
+    if (stack->count == stack->capacity) {
+        size_t bytes = (size_t)stack->capacity * sizeof *stack->items;
+        stack->items = stack->items == stack->local
+                         ? memcpy(xmalloc(2 * bytes), stack->local, bytes)
+                         : xrealloc(stack->items, 2 * bytes);
+        stack->capacity *= 2;
+    }
+    stack->items[stack->count++] = value;
+}
+static void collection_visit_layout(const type_desc *type, const void *data, owner_stack *pending)
 {
     if (type_alias_layout(type)) {
         collection_visit_layout(type_alias_type(type, (type_resolver){ 0 }), data, pending);
@@ -2050,14 +2074,14 @@ static void collection_visit_layout(const type_desc *type, const void *data, pin
         if (field->container == PIN_CONTAINER_ARRAY) {
             pin_value value;
             if (!pin_read_field(NULL, data, field, &value)) {
-                apush(*pending, value);
+                owner_push(pending, value);
             }
         } else if (field->type == PIN_STRUCT) {
             collection_visit_layout(type_field_type(field, (type_resolver){ 0 }), member, pending);
         } else if (field->type == PIN_UNION) {
             pin_value value = { .type = PIN_UNION };
             memcpy(&value.ptr, member, sizeof value.ptr);
-            apush(*pending, value);
+            owner_push(pending, value);
         }
     }
 }
@@ -2084,11 +2108,15 @@ void pin_value_collection_visit_owners(
     if (root.type == PIN_STRUCT && !type_holds_references(pin_value_type(&root))) {
         return;
     }
-    pin_value *pending = NULL;
+    owner_stack pending = { .capacity = OWNER_LOCAL_WORK };
+    pending.items = pending.local;
     graph_copy visited = { 0 };
-    apush(pending, root);
-    while (acount(pending)) {
-        pin_value next = apop(pending);
+    owner_push(&pending, root);
+    /* Values form no cycles, so nothing reaches the root again and it needs
+     * no visited entry. */
+    bool first = true;
+    while (pending.count) {
+        pin_value next = pending.items[--pending.count];
         if (!next.ptr) {
             continue;
         }
@@ -2102,17 +2130,22 @@ void pin_value_collection_visit_owners(
             graph_find(&visited, &next)) {
             continue;
         }
-        graph_remember(&visited, &next, next);
+        if (!first) {
+            graph_remember(&visited, &next, next);
+        }
+        first = false;
         if (next.type == PIN_UNION) {
             const pin_union *tagged = next.ptr;
             for (int i = 0; i < tagged->count; i++) {
-                apush(pending, tagged->values[i]);
+                owner_push(&pending, tagged->values[i]);
             }
         } else {
             collection_visit_layout(pin_value_type(&next), next.ptr, &pending);
         }
     }
-    afree(pending);
+    if (pending.items != pending.local) {
+        free(pending.items);
+    }
     free(visited.entries);
 }
 
@@ -2136,11 +2169,20 @@ void pin_value_collection_release(const pin_value *value)
 {
     /* Copy owning shell headers before a last-reference drop frees the outer
      * malloc payload. Nested releases append work rather than recurse in C. */
-    pin_value_collection_visit_owners(value, collection_enqueue_owner, NULL);
     if (releasing_collections) {
+        pin_value_collection_visit_owners(value, collection_enqueue_owner, NULL);
         return;
     }
     releasing_collections = true;
+    pin_value root = value ? *value : (pin_value){ 0 };
+    if (root.ptr && (root.container == PIN_CONTAINER_ARRAY ||
+                     root.container == PIN_CONTAINER_MAP ||
+                     root.container == PIN_CONTAINER_SET)) {
+        /* One collection is its only owner and needs no work list. */
+        collection_release_owner(&root, NULL);
+    } else {
+        pin_value_collection_visit_owners(&root, collection_enqueue_owner, NULL);
+    }
     while (acount(release_pending)) {
         pin_value next = apop(release_pending);
         collection_release_owner(&next, NULL);
@@ -2292,8 +2334,9 @@ bool pin_value_holds_storage(const pin_value *value)
 }
 int pin_value_collection_copy(arena *storage, pin_value *out, const pin_value *source)
 {
-    static _Thread_local const void **active;
-    static _Thread_local int depth;
+    /* Compound values being copied, at most one per nesting level. */
+    static _Thread_local const void *active[VALUE_COPY_MAX_NESTING];
+    static _Thread_local int depth, active_count;
     if (depth == VALUE_COPY_MAX_NESTING) {
         return -1;
     }
@@ -2301,22 +2344,17 @@ int pin_value_collection_copy(arena *storage, pin_value *out, const pin_value *s
                     source->container == PIN_CONTAINER_SINGLE &&
                     (source->type == PIN_UNION || source->type == PIN_STRUCT);
     if (compound) {
-        for (int i = 0; i < acount(active); i++) {
+        for (int i = 0; i < active_count; i++) {
             if (active[i] == source->ptr) {
                 return -1;
             }
         }
-        apush(active, source->ptr);
+        active[active_count++] = source->ptr;
     }
     depth++;
     int error = collection_copy_value(storage, out, source);
     depth--;
-    if (compound) {
-        (void)apop(active);
-        if (!acount(active)) {
-            afree(active);
-        }
-    }
+    active_count -= compound;
     return error;
 }
 pin_array *pin_array_window_copy(arena *storage, const pin_array *source, int start, int count)

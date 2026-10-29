@@ -693,6 +693,12 @@ static const char *native_test(
 )
 {
     program_service *service = user;
+    if (service->test) {
+        /* A nested run would get a fresh runtime and instruction budget. */
+        results[0].i = 1;
+        fprintf(stderr, "program.test cannot run inside a test\n");
+        return NULL;
+    }
     arena_reset(&service->scratch);
     const char *path = NULL;
     const char *error = pin_text_cstring(&service->scratch, arguments[0], &path, NULL);

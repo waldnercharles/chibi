@@ -19,7 +19,7 @@
 static native_capabilities *native;
 static authoring_program *sessions[2];
 static program_service *services[2];
-static char temporary[1024], source[1200], core[1200], library[1300];
+static char temporary[1024], source[1200], sibling[1200], core[1200], library[1300];
 static char *previous_workers;
 static bool workers_changed;
 static task_system test_tasks;
@@ -131,10 +131,11 @@ static void cleanup()
     native = NULL;
     if (temporary[0]) {
         unlink(source);
+        unlink(sibling);
         unlink(library);
         rmdir(core);
         rmdir(temporary);
-        temporary[0] = source[0] = core[0] = library[0] = 0;
+        temporary[0] = source[0] = sibling[0] = core[0] = library[0] = 0;
     }
 }
 
@@ -504,6 +505,7 @@ static bool disk()
     snprintf(temporary, sizeof temporary, "%s/chibi-program-XXXXXX", base ? base : "/tmp");
     REQUIRE(mkdtemp(temporary));
     snprintf(source, sizeof source, "%s/Main.chibi", temporary);
+    snprintf(sibling, sizeof sibling, "%s/Sibling.chibi", temporary);
     snprintf(core, sizeof core, "%s/core", temporary);
     snprintf(library, sizeof library, "%s/Base.chibi", core);
     REQUIRE(!mkdir(core, 0700));
@@ -596,6 +598,28 @@ TEST_CASE(program_tests_bind_the_public_catalog_and_copy_transient_diagnostics)
     return true;
 }
 
+TEST_CASE(program_tests_reject_nested_runs_and_allow_later_host_runs)
+{
+    REQUIRE(disk());
+    write_source(sibling, "package sibling\n@test\nFinite :: () { assert(2 + 3 == 5) }\n");
+    char escaped[sizeof sibling * 2], *out = escaped;
+    for (const char *part = sibling; *part; part++) {
+        if (*part == '\\' || *part == '"') {
+            *out++ = '\\';
+        }
+        *out++ = *part;
+    }
+    *out = 0;
+    char text[sizeof escaped + 128];
+    snprintf(text, sizeof text, "package outer\n@test\nNested :: () { assert(program.test(\"%s\") == 1) }\n", escaped);
+    write_source(source, text);
+    /* The sibling is finite: the broken path completes and fails the status
+     * assertion instead of recursively exhausting the native stack. */
+    REQUIRE(program_service_test(services[0], source) == 0);
+    REQUIRE(program_service_test(services[0], sibling) == 0);
+    return true;
+}
+
 void test_language_program_session()
 {
     pu_setup(NULL, cleanup);
@@ -610,5 +634,6 @@ void test_language_program_session()
     RUN_TEST_CASE(session_calls_honor_the_callers_live_cancellation_budget);
     RUN_TEST_CASE(program_handles_suppress_rejections_and_never_alias_other_sessions);
     RUN_TEST_CASE(program_tests_bind_the_public_catalog_and_copy_transient_diagnostics);
+    RUN_TEST_CASE(program_tests_reject_nested_runs_and_allow_later_host_runs);
     pu_clear_setup();
 }

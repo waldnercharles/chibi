@@ -228,6 +228,64 @@ TEST_CASE(session_collection_reachability_preserves_entry_and_source_diagnostics
     return true;
 }
 
+TEST_CASE(session_patches_frame_calls_by_name_without_restarting_state)
+{
+    REQUIRE(catalog());
+    const char
+        *before = "package app\nFrame :: () -> int { count: retain int = 0; "
+                  "count += 1; return count }\n";
+    const char
+        *after = "package app\nFrame :: () -> int { count: retain f64 = 0; "
+                 "count += 10; return int(count) }\nMain :: () -> int { return "
+                 "7 }\n";
+    const char *broken = "package app\nFrame :: () -> int { return missing }\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int i = 0; i < 2; i++) {
+        authoring_program_options configuration = options(backends[i]);
+        sessions[i] = authoring_program_new(&configuration);
+        /* An empty entry requires no runnable function: Frame-only programs load. */
+        REQUIRE(authoring_program_compile(sessions[i], snapshot(before, NULL)));
+        REQUIRE(authoring_program_prepare(sessions[i], "", false));
+        REQUIRE(authoring_program_commit(sessions[i]));
+        int result = 0;
+        REQUIRE(
+            authoring_program_has(sessions[i], "Frame") &&
+            !authoring_program_has(sessions[i], "Main")
+        );
+        REQUIRE(authoring_program_call_entry(sessions[i], "Main", NULL, &result) == FLOW_ERR_ARGUMENT);
+        REQUIRE(strstr(authoring_program_error(sessions[i])->message, "No runnable Main"));
+        REQUIRE(
+            authoring_program_call_entry(sessions[i], "Frame", NULL, &result) == FLOW_OK &&
+            result == 1
+        );
+        REQUIRE(
+            authoring_program_call_entry(sessions[i], "Frame", NULL, &result) == FLOW_OK &&
+            result == 2
+        );
+        /* A broken edit keeps the running code and its state. */
+        REQUIRE(!authoring_program_compile(sessions[i], snapshot(broken, NULL)));
+        REQUIRE(
+            authoring_program_call_entry(sessions[i], "Frame", NULL, &result) == FLOW_OK &&
+            result == 3
+        );
+        /* A good edit patches in place: the retained count converts and continues,
+         * and the new function is callable without calling Main again. */
+        REQUIRE(authoring_program_compile(sessions[i], snapshot(after, NULL)));
+        REQUIRE(authoring_program_prepare(sessions[i], "", false));
+        REQUIRE(authoring_program_commit(sessions[i]));
+        REQUIRE(authoring_program_has(sessions[i], "Main"));
+        REQUIRE(
+            authoring_program_call_entry(sessions[i], "Frame", NULL, &result) == FLOW_OK &&
+            result == 13
+        );
+        REQUIRE(
+            authoring_program_call_entry(sessions[i], "Main", NULL, &result) == FLOW_OK &&
+            result == 7
+        );
+    }
+    return true;
+}
+
 TEST_CASE(session_candidates_preserve_package_and_import_state)
 {
     REQUIRE(catalog());
@@ -625,6 +683,7 @@ void test_language_program_session()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(session_collection_reachability_preserves_entry_and_source_diagnostics);
     RUN_TEST_CASE(session_candidates_preserve_package_and_import_state);
+    RUN_TEST_CASE(session_patches_frame_calls_by_name_without_restarting_state);
     RUN_TEST_CASE(session_rejected_source_and_entry_keep_the_accepted_runtime);
     RUN_TEST_CASE(session_calls_observe_host_cancellation_and_recover);
     RUN_TEST_CASE(session_cooperative_host_preserves_nested_cancellation);

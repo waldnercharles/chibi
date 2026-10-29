@@ -1,6 +1,6 @@
 # Edit and Continue
 
-Status: design, 2026-10-29. Applies to standalone programs run with `chibi --watch`
+Status: implemented for standalone programs, 2026-10-29. Applies to standalone programs run with `chibi --watch`
 and to the shared program session (`Chibi::program`, `src/authoring/program.c`) that
 Studio can also use. Game projects keep Studio Live, which publishes through
 `src/runtime/behaviors/source_publication.c`; both end in the same
@@ -26,9 +26,11 @@ diagnostic once, the old code keeps running, and the next good save applies.
 
 - `Main :: ()` is startup. It runs once, if present.
 - `Frame :: ()` is the per-frame entry, called repeatedly (about 60 Hz) until Ctrl-C.
-  It returns nothing to continue, or an `int` exit status (0..255) to stop.
-- A program with `Main` only behaves as before: it runs and exits. Without `Frame`
-  there is nothing to continue, so `--watch` applies edits but never re-runs `Main`.
+  It returns nothing to continue, or a nonzero `int` exit status (1..255) to stop.
+- A program with `Main` only runs and exits. Without `Frame` there is nothing to
+  continue, so `--watch` keeps polling and applies edits but never re-runs `Main`.
+- The session API (`program.open/update/call_entry/has`) takes the function by name,
+  so Studio can drive the same loop. `open` takes an empty entry for such programs.
 
 ## Why a per-frame entry, not on-stack replacement
 

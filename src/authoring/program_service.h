@@ -34,6 +34,17 @@ int program_service_call(
 );
 /* Text is borrowed until the next mutating operation on that session. Invalid
  * handles have a stable diagnostic instead of aliasing a later session. */
+/* Calls a named zero-argument void/int function of the accepted generation;
+ * `has` reports whether one exists. A missing name is an argument failure with
+ * a diagnostic. */
+int program_service_call_entry(
+    program_service *,
+    uint64_t handle,
+    const char *name,
+    const authoring_program_call_options *,
+    int *result
+);
+bool program_service_has(program_service *, uint64_t handle, const char *name);
 const char *program_service_diagnostic(const program_service *, uint64_t handle);
 bool program_service_close(program_service *, uint64_t handle);
 /* Runs project @tests with this service's catalog and services. Each test owns

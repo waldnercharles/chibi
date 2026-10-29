@@ -51,10 +51,11 @@ Every program source needs a `package` header. Running a file compiles that
 file and the core library. To include sibling source files and local package
 imports, run the package directory with `chibi .`.
 
-To keep the program open while you edit it, use `chibi --watch Hello.chibi`.
-Each valid source change calls `Main` again. Explicit `retain` bindings keep
-their values; ordinary locals start again. Invalid edits report diagnostics
-and keep the last valid program and state. See [program reload](docs/guide/toolchain.md#reload-a-program)
+To keep a program running while you edit it, add a `Frame :: ()` function and
+use `chibi --watch Hello.chibi`. The runner calls `Main` once and `Frame` every
+frame; each valid save patches the running code, keeps `retain` state, and does
+not call `Main` again. Invalid edits report diagnostics and keep the last valid
+code running. See [program reload](docs/guide/toolchain.md#reload-a-program)
 for a complete example.
 
 The CLI is itself an ordinary Chibi program in

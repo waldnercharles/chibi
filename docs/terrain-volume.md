@@ -64,9 +64,9 @@ re-meshes only the affected chunks; removal releases everything.
 5. Later: columnar jointing via a cellular (Voronoi) field op; chunked streaming
    of volume chunks; GPU-side meshing if cut latency demands it.
 
-## Prototype status, 2026-10-16 (uncommitted)
+## Integration
 
-Increments 1 to 4 are implemented in this worktree:
+The volume uses these shared modules:
 
 - `Field Z` is appended to the field IR and node pack; `field_grid.depth`
   feeds it, so planar bakes are unchanged.
@@ -81,13 +81,6 @@ Increments 1 to 4 are implemented in this worktree:
   `scene3d.c` submits the chunks as dynamic meshes with direct shadows and
   adds the boxes as indirect proxies.
 
-Checks: `--material-surface-mesh` now also runs the volume cases (12 cases,
-22,312 assertions: sphere cavity, seams, carve cone, GI openings, back wall,
-size limit, winding). `--field-runtime` covers `Field Z`. Also passing:
-`--scene3d-terrain`, `test-short`, `test-materials`, `test-language-all` and
-`check-format`. `test-projects` still fails only on the pre-existing Substance
-coverage line. Voidweaver evidence is in its `docs/evidence/terrain-volume`.
-
 Known limits:
 
 - Fixed 2026-10-17: checkpoint-restored terrain lost its volume. A restore
@@ -100,7 +93,7 @@ Known limits:
 - No dedicated GPU case for volume chunk upload or retirement exists yet; the
   existing dynamic-mesh lifecycle is reused.
 
-## Generation quality proposal, 2026-10-16 (route A approved)
+## Generation quality
 
 The user asked for terrain that never looks pixelated, realistic stalagmites,
 a convincingly 3D environment and a stylized basalt cave, using Fingal's Cave
@@ -180,10 +173,7 @@ Sources:
 - [Claybook GDC 2018](https://media.gdcvault.com/gdc2018/presentations/Aaltonen_Sebastian_GPU_Based_Clay.pdf)
 - [Infinigen](https://arxiv.org/pdf/2306.09310)
 
-## Route A progress, 2026-10-16 (uncommitted)
-
-Implemented in this worktree, with Voidweaver evidence in its
-`docs/evidence/route-a`:
+## Surface sampling and rendering
 
 1. **Rendering fixes:** joint bilateral, depth-aware fog upsampling;
    mipmapped, anisotropic shader images sampled with `textureGrad` on their
@@ -224,20 +214,6 @@ Implemented in this worktree, with Voidweaver evidence in its
    with materials, so depth hides the stars behind them; spheres now draw a
    48 x 96 mesh, round when they fill the screen.
 
-Release-build timings on this Mac (debug builds are 25 to 30 times slower in
-the bake and mesher): the bay bakes in 0.33 s, meshes 1.39M triangles in
-0.52 s and fits 799 GI boxes in 0.04 s. Cuts were not real time; see below.
-
-Checks: `--material-surface-mesh` 15 cases (adds refined and open-back
-cases), `--field-runtime` 8 cases (adds point baking and cells),
-`--shader-graphs` 16 cases (adds Star Field), `test-language-all`,
-`test-materials` and `test-native` pass. The opt-in GPU `--scene3d` selector
-passes 98 cases on Metal, including three sky-material cases, when run with
-`SDL_VIDEO_DRIVER=cocoa`; the agent harness's default offscreen driver cannot
-open a Metal device on macOS. `test-projects` fails only on the pre-existing
-Substance coverage line; `test-tools` fails on this host's Python 3.9
-(`hashlib.file_digest`) and its `/tmp` symlink, as before.
-
 Known limits:
 
 - Normals come from lattice differences, not the field; exact Hermite normals
@@ -249,14 +225,7 @@ Known limits:
   orthographic camera. Voidweaver's space bay measures 27.1 ms median with
   its sun off and 38.6 ms on, mostly the sun's soft-shadow filtering.
 
-## Real-time cuts, 2026-10-17 (uncommitted)
-
-The user requires cuts to work in real time. The `--terrain-cut-benchmark`
-selector times a bay-sized volume (1100 x 760 x 360, voxel 2, refine 4) in a
-release build. Before this change one 4-unit projectile hit cost about 395 ms:
-the unclamped removed distance changed every plane sample, so all 216 chunk
-columns re-meshed through their full depth, and every GI box was refit
-(47 ms). Every cut also restarted indirect light's history.
+## Cut updates
 
 - **Slab:** `TerrainVolume.slab` (required, positive) caps how far cuts
   carve either side of the plane. Removed distances are held between six fine
@@ -281,21 +250,7 @@ columns re-meshed through their full depth, and every GI box was refit
   A masked material that opens around a `SurfaceInfluence` on the ship cuts
   the foreground away near the player.
 
-| Release, this Mac | Before | After |
-| --- | ---: | ---: |
-| 4-unit hit | 395 ms (216 chunks) | 0.8 ms (2 chunks) |
-| Next hit beside it | 247 ms (120) | 1.1 ms (4) |
-| 34-unit cut | 393 ms (216) | 2.0 ms (8) |
-| Load | about 440 ms | 91 ms (1296 chunks, parallel) |
-
-Voidweaver's captures (slab 96) are unchanged within 0.2% RMSE and measure
-25.8, 37.1 and 26.3 ms median (off, on, cut), against 27.7, 37.8 and 26.0 ms
-before. Checks: `--terrain-cut-benchmark` (the cut counts are asserted),
-`--material-surface-mesh` 16 cases (adds windowed carve, slab cap, changed
-layers and depth-chunk seams), `--material-destruction` 27 cases (adds
-chunk-depth fragments) and GPU `--scene3d` 99 cases (adds front material).
-
-## Review fixes, 2026-10-17 (uncommitted)
+## Restore and settings
 
 - **Restore:** a checkpoint restore keeps the baked volume and clears the
   open plane it last carved, so the restore's surface sync carves the whole
@@ -318,10 +273,6 @@ chunk-depth fragments) and GPU `--scene3d` 99 cases (adds front material).
   rest.
 - **Fragments:** a piece split from a piece keeps straddling the plane; its
   elevation comes from its source's plane elevation, not its raised one.
-
-Checks: `--material-surface-mesh` 18 cases (adds box coarsening at
-non-power-of-two ranges) and `--material-destruction` 28 cases (adds
-restore and settings, and nested fragments).
 
 ## Authoring changes suggested by this work
 

@@ -1,0 +1,1367 @@
+{
+  "status": "reviewed integration checkpoint; local artifact diagnostics; publication held",
+  "event_date": "2026-10-28",
+  "prepared_format": 26,
+  "bootstrap_version": 7,
+  "bootstrap_minimum": 6,
+  "heads": {
+    "artifact_origin": {
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "tree": "1167d80416c3b2b7d2ffdfa8b26a52007e8f4e9c"
+    },
+    "pure_bootstrap": {
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tree": "c182fbfca3af81ddce38306c2acbddeb0a46fb47"
+    },
+    "pure_fixture_rechecks": {
+      "head": "60b28e5736d170e3635ad7e94b8ccddf4f334ed3",
+      "tree": "b9403c54ef0ff3b098ce76206e47c04cfd8205ba"
+    },
+    "math_wasm_selected": {
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    "math_fixture_rechecks_and_native_diagnosis": {
+      "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+      "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7"
+    }
+  },
+  "checked_artifact": {
+    "bytes": 20780474,
+    "sha256": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a",
+    "manifest_sha256": "812635d0e2c0c5336071dda2394b881dfcd1ed8aef17999d92511a506f5d2485",
+    "revision": "f2a71eae9611009c8a9a237b87f867739c7a5f82",
+    "unchanged_in_authoritative_sources": true
+  },
+  "task_artifact": {
+    "origin_head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+    "revision": "2a76e61a8",
+    "closure": {
+      "file": "compiler.chibip",
+      "bytes": 20805242,
+      "sha256": "ce56a52ba79e51fe538eac447bd1caf2d233d5250f2a990e56f9d4ca0e9b3356"
+    },
+    "manifest_sha256": "216d418a988dc0e6eae622b391585b5d10ab030d11d9d4e20492926d673fa2f0",
+    "target_sha256": "400d9618ec769a85bfe29e22e00004dc7d11985b4bc85b21ca2cc59a34b64cb0",
+    "captured_request_raw_sha256": "3196c1464a3f7be181838a786fa71f0624180972772256ce368b391fee432236",
+    "original_captured_request_copied_byte_for_byte": true,
+    "source_count": 27,
+    "debug": false,
+    "project_root": "/project",
+    "core_collection_root": "/sdk/core",
+    "full_target_equality_verified": true,
+    "recovery_and_writer_unmodified": true,
+    "publication": false
+  },
+  "pure_snapshot": {
+    "revision": "60b28e573-dirty",
+    "tracked_files_compared": 3460,
+    "only_modified_tracked_files": [
+      "tools/compiler/bootstrap/bootstrap.json",
+      "tools/compiler/bootstrap/compiler.chibip"
+    ],
+    "all_other_tracked_hashes_exact": true,
+    "compiler_27_texts_and_full_target_unchanged": true,
+    "final_driver_sha256": "e6480bab12cf9b0acda5ca78df766b327bc45f54e0e953cb58c610937882ce77",
+    "cleanup": {
+      "reason": "Coordinator explicitly requested preserving dirty snapshot and its matching artifact pair until native Math diagnostics or final handoff needs settle",
+      "removed_paths": [],
+      "retained": "detached snapshot, local matching artifact/seed, original partial build and all proof receipts remain task-owned"
+    }
+  },
+  "math_snapshot": {
+    "revision": "8b1419414-dirty",
+    "tracked_files_compared": 3467,
+    "all_other_tracked_hashes_exact": true,
+    "only_modified_tracked_files": [
+      "tools/compiler/bootstrap/bootstrap.json",
+      "tools/compiler/bootstrap/compiler.chibip"
+    ],
+    "recorded27path_order_texts_roots_debug_fulltarget_match": true,
+    "fresh_native_target_matches_artifact": true,
+    "host_binary_sha256": {
+      "chibi-build-host": "2230442a798cca172e23ad0bbd03093c98cd0666da8bec08e8d311e36455e0e6",
+      "chibi-compiler-host": "0188550d08b44782d4e89b11b335dae73b5a277f694ee9b841a964018553fedb"
+    },
+    "actual_source_count": 33,
+    "additional_paths": [
+      "/sdk/core/math/Math.chibi",
+      "/sdk/core/math/MathTests.chibi",
+      "/sdk/core/math/Spring.chibi",
+      "/sdk/core/math/SpringTests.chibi",
+      "/sdk/core/math/ease/Ease.chibi",
+      "/sdk/core/math/ease/EaseTests.chibi"
+    ],
+    "driver_linked": false,
+    "runtime_tests_run": [],
+    "benchmark_counters": null,
+    "unrun_selectors": [
+      "language-package-math",
+      "language-package-compiler-chibi-imports",
+      "language-package-compiler-chibi-imports-compiled",
+      "language-native-calls",
+      "language-package-math-benchmark"
+    ],
+    "build_cancelled_after_confirmed_reuse_miss": true
+  },
+  "backend_scope": {
+    "native_pure_import_compiler_modes": [
+      "BYTECODE",
+      "SLJIT"
+    ],
+    "native_pure_sample_execution": [
+      "BYTECODE",
+      "SLJIT"
+    ],
+    "native_pure_bootstrap_stages": [
+      "SLJIT",
+      "SLJIT"
+    ],
+    "native_pure_contains_math_samples": false,
+    "wasm_math_authored_execution": [
+      "BYTECODE",
+      "WASM"
+    ],
+    "math_authored_tests_per_backend": 29,
+    "wasm_bytecode_compiler_math_sample_execution": [
+      "BYTECODE",
+      "WASM"
+    ],
+    "wasm_compiled_compiler_import_lane": "FAILED preparation; no successful proof",
+    "native_math": "UNRUN"
+  },
+  "preserved_reds": [
+    {
+      "check": "pure pristine build2a",
+      "wall_seconds": 264.78620495810173,
+      "cause": "normal bootstrap mismatch/fallback reaches unchanged240000ms guard"
+    },
+    {
+      "check": "pure dirty build2a",
+      "wall_seconds": 200.99245383404195,
+      "cause": "four strict pin_string.owner initializer warnings; asset generation reuse passed"
+    },
+    {
+      "check": "pure dirty buildc3",
+      "wall_seconds": 14.16139766597189,
+      "cause": "further strict pin_string.owner initializer warnings"
+    },
+    {
+      "check": "tools build target list2a",
+      "wall_seconds": 30.448737707920372,
+      "cause": "test_tools built; minimal SDK configuration has no chibi-compile target"
+    },
+    {
+      "check": "pure imports3ca",
+      "wall_seconds": 2.158035208005458,
+      "result": "17pass/1fail/1473asserts",
+      "cause": "fixture caller lacked managed heap;18/1530green60b"
+    },
+    {
+      "check": "pure snapshots3ca",
+      "wall_seconds": 0.37620366690680385,
+      "result": "2pass/14fail/48769asserts",
+      "cause": "fixture rejected canonicalNULL empty text;16/286093green60b"
+    },
+    {
+      "check": "pure bootstrap first invocation3ca",
+      "wall_seconds": 570.3164802079555,
+      "cause": "agent omitted optional export directory; seeded assertion; later checks unrun in first attempt",
+      "correction": "create task-owned directory; same selector/limits580.830587833887s1/31262pass"
+    },
+    {
+      "check": "Wasm buildea596",
+      "wall_seconds": 52.06272145919502,
+      "cause": "four strict pin_string.owner initializer warnings"
+    },
+    {
+      "check": "Wasm build519c",
+      "wall_seconds": 29.42077491688542,
+      "cause": "further strict pin_string.owner initializer warnings"
+    },
+    {
+      "check": "Wasm manual imports567",
+      "wall_seconds": 0.4608474588021636,
+      "result": "4pass/14fail/925asserts",
+      "cause": "non-Wasm-admitted selector hardcodesSLJIT"
+    },
+    {
+      "check": "Wasm package-core567",
+      "wall_seconds": 47.10379516589455,
+      "result": "5pass/1fail/12770asserts",
+      "cause": "stage-one compiledWASM compiler emission limit"
+    },
+    {
+      "check": "Wasm --packed567",
+      "wall_seconds": 0.6647264170460403,
+      "cause": "unsupported flag; no suite executed"
+    },
+    {
+      "check": "Wasm compiled compiler imports567",
+      "wall_seconds": 22.858516624895856,
+      "result": "0pass/2fail/15asserts",
+      "cause": "compiledWASM compiler emission limit during preparation"
+    },
+    {
+      "check": "native Math build8b",
+      "wall_seconds": 79.74326829100028,
+      "cause": "strict exact reuse3 for33vs27inventory; task cancellationexit-15, not timeout/runtime failure"
+    }
+  ],
+  "boundary": {
+    "accepted_796": "3e2b28dc19fb21961ae06fe99aeb5a8dede35bf0",
+    "accepted_protocol": 13,
+    "accepted_prepared_format": 26,
+    "accepted_796_is_ancestor_of_evidence_heads": false,
+    "separate_common18_fixture_packet": [
+      "d0d5d87af3ce5faa2984dcf181c60b0ecb0637c3",
+      "f2a3af817456720f4a50c174f5e7450dbb1e6740"
+    ],
+    "packet_base": "3e2b28dc19fb21961ae06fe99aeb5a8dede35bf0",
+    "not_validated_by_frozen_runs": true,
+    "common_fixture_packet_pr800": {
+      "head": "ce4b9d9af4337316c18850ff7ec748d6bb9f76b6",
+      "tree": "a11d0a4bc69af69b24341ddbd2fa3376ad9fbee8",
+      "tracked_files": 18,
+      "source_review": "independent and coordinator approved",
+      "strict_wasm_reported_by_coordinator": {
+        "selectors": 9,
+        "passed_cases": 178,
+        "assertions": 319113
+      },
+      "ci_native": "queued",
+      "merge": "pending",
+      "base": "3e2b28dc19fb21961ae06fe99aeb5a8dede35bf0",
+      "outside_frozen_execution_boundary": true
+    },
+    "pure790_generate_driver_source_role_dependency": false,
+    "pure790_recorded_core_package": "strings only, complete single-file package"
+  },
+  "pending": [
+    "coordinator order: EmitBody/common PR800, then pure PR790, then PR795",
+    "PR800 CI/native queued; merge pending",
+    "#795 library/Generate/SDK ownership",
+    "Math PR791 and SDK publication hold after795",
+    "coordinator-ordered final normal Graph build and reviewed matching artifact gates",
+    "native Math runtime/native-boundary/benchmark selectors",
+    "native project_compile published-docs CLI driver control",
+    "full installed SDK and applicable platform gates; no Windows or release claim"
+  ],
+  "excluded": [
+    "pre-694 prepared25 timing/proof transfer",
+    "wholeWasmsuitegreen",
+    "nativeMathprooftransferfrompurecontrols"
+  ],
+  "commands": [
+    {
+      "name": "configure-language",
+      "argv": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/language",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 5.012250500032678,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/configure-language.log",
+      "log_sha256": "c8e7ea153623f6580fa9b89bf83702ea281c536e0cd8405cdc47143bda47fc59",
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "tracked_status": "",
+      "phase": "configure"
+    },
+    {
+      "name": "build-language",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/language",
+        "--parallel",
+        "4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/language"
+      },
+      "exit_code": 2,
+      "wall_seconds": 264.78620495810173,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/build-language.log",
+      "log_sha256": "2aa532bdd6965634425a7505fa089637416a5c9edbd87e014205bfa5364a85ab",
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "tracked_status": "",
+      "phase": "build"
+    },
+    {
+      "name": "diagnose-recover",
+      "argv": [
+        ".chibi/integration/language/sdk/chibi-compiler-host",
+        "--bootstrap",
+        "tools/compiler/bootstrap",
+        "--compiler",
+        "tools/compiler",
+        "--core",
+        "packages/core",
+        "--recover",
+        ".chibi/integration/artifact-proof/seed/compiler.chibip"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 230.07087862491608,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/diagnose-recover.log",
+      "log_sha256": "047e779586a8390450b64dd042a34c58ca004aaf817bf74c7a139902edb0186b",
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "tracked_status": "",
+      "phase": "recovery"
+    },
+    {
+      "name": "diagnose-writer",
+      "argv": [
+        ".chibi/integration/language/sdk/chibi-compiler-host",
+        "--bootstrap",
+        ".chibi/integration/artifact-proof/artifact",
+        "--compiler",
+        "tools/compiler",
+        "--core",
+        "packages/core",
+        "--seed",
+        ".chibi/integration/artifact-proof/seed",
+        "--revision",
+        "2a76e61a8"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 135.01973208296113,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/diagnose-writer.log",
+      "log_sha256": "190357e36832526f3970ceaaf8de59fc6efc5387d3ce162535d7a5345e722733",
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "tracked_status": "",
+      "phase": "production writer"
+    },
+    {
+      "name": "configure-language-local-dirty",
+      "argv": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/language",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 8.681737958919257,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/configure-language-local-dirty.log",
+      "log_sha256": "fe9037733a4a814f95436d48779cb99ed83bf1346b9bed5f0b5a1ca8d568ea35",
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "configure"
+    },
+    {
+      "name": "build-language-local-dirty",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/language",
+        "--parallel",
+        "4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 2,
+      "wall_seconds": 200.99245383404195,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/build-language-local-dirty.log",
+      "log_sha256": "a575dfea16286f8eec64334e7c284d21610f40522ea56ad2c0825827123b2194",
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "build"
+    },
+    {
+      "name": "configure-language-c3-local-dirty",
+      "argv": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/language",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 7.654609999852255,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/configure-language-c3-local-dirty.log",
+      "log_sha256": "29fc001b1904b1ebb9f2c71181b2270ccb5f1987d6c8b8d6cefc242b69f6d2ec",
+      "head": "c3fbf7f4c2db9c5026525214c675223b8e891eef",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "configure"
+    },
+    {
+      "name": "build-language-c3-local-dirty",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/language",
+        "--parallel",
+        "4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 2,
+      "wall_seconds": 14.16139766597189,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/build-language-c3-local-dirty.log",
+      "log_sha256": "45cbb69da490e96de32ef8993068956ae88aae34e8545ecb95252bef58335453",
+      "head": "c3fbf7f4c2db9c5026525214c675223b8e891eef",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "build"
+    },
+    {
+      "name": "bootstrap-fixedpoint-rerun",
+      "argv": [
+        "env",
+        "CHIBI_BOOTSTRAP_SEED=/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/seed-not-for-publication",
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-bootstrap"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 580.830587833887,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/bootstrap-fixedpoint-rerun.log",
+      "log_sha256": "11e986fa238d65223216e809e73191dee3d1421c06c0694eaf7e1831831bacca",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "bootstrap-fixedpoint",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-bootstrap"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_BOOTSTRAP_SEED": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/seed-not-for-publication"
+      },
+      "exit_code": 1,
+      "wall_seconds": 570.3164802079555,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/bootstrap-fixedpoint.log",
+      "log_sha256": "f2e33521b9e617f019bcd18261bd8e31eb50a4b2c3cebc97b6317513389f50c4",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "build-language-3ca-local-dirty",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/language",
+        "--parallel",
+        "4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 35.70574108394794,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/build-language-3ca-local-dirty.log",
+      "log_sha256": "8783a4a1d6a8a048c6ad89ad03aee738f71c046e27d548562592606b9e006459",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "build"
+    },
+    {
+      "name": "check-language-compiler-fixture",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-compiler-fixture"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 1.8487050831317902,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-compiler-fixture.log",
+      "log_sha256": "3aafbf396e1ec24ca071b3d517ea58f42aa3ca7b7cf34d33c6798a34054cb890",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "check-language-docs-markdown",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-docs-markdown"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 1.921209666877985,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-docs-markdown.log",
+      "log_sha256": "8d7153694ff77803edffbf26422536e74770b1d73e7d93900f6535fb38bc4861",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "check-language-package-compiler-chibi-imports-compiled",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-imports-compiled"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 32.110020000021905,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-package-compiler-chibi-imports-compiled.log",
+      "log_sha256": "b281fae492eecf280316249649b7bc14a9d9405403e0fa4e5bf8cf43a7b7024f",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "check-language-package-compiler-chibi-imports",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-imports"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 38.282097042072564,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-package-compiler-chibi-imports.log",
+      "log_sha256": "d7cb804c125ebe28197c25c6efee19852342371f66dc057d81ed601607f67dbf",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "check-language-package-core",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-core"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 41.24256124999374,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-package-core.log",
+      "log_sha256": "589881f81aa19d4b3228009106dac103b358d1ff6f6f21be6973bb67f1bf24e6",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "check-language-package-imports",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-imports"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 1,
+      "wall_seconds": 2.158035208005458,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-package-imports.log",
+      "log_sha256": "41ad3202eb47bd4218598d077dd07d516849814aa6c7e97f5c6d7b2e67274711",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "check-language-package-resolution",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-resolution"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 0.48338241619057953,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-package-resolution.log",
+      "log_sha256": "2d1eddfee9a03f361d79291c9526159a6e391bda5b3af42edfac7163b906ee82",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "check-language-package-snapshot-chibi",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-snapshot-chibi"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 1,
+      "wall_seconds": 0.37620366690680385,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-package-snapshot-chibi.log",
+      "log_sha256": "1a360e320f34cdee41b29785ca2c57455fb7ff3b19f0f4e25c43772c22d93e41",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "check-language-package-tests",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-tests"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 0.24546529189683497,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/check-language-package-tests.log",
+      "log_sha256": "03e426745b0bd6ce5d3592c11e395b5499c46d99b7a428ea6644604e5939fe4f",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "test"
+    },
+    {
+      "name": "configure-language-3ca-local-dirty",
+      "argv": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/language",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 7.243673667078838,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/configure-language-3ca-local-dirty.log",
+      "log_sha256": "d2f83636a5eea760560468e1d2988f2fc4a3bf2ccfbfb4127e1c5b0c65e82f1f",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "configure"
+    },
+    {
+      "name": "build-language-60b-local-dirty",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/language",
+        "--parallel",
+        "4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 5.858358249999583,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/build-language-60b-local-dirty.log",
+      "log_sha256": "afc67eaf4ac7c0f5c40019eaea3ca35ddb0a357151ecc678ce44dfce878ff9a0",
+      "head": "60b28e5736d170e3635ad7e94b8ccddf4f334ed3",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "summaries": [],
+      "phase": "build"
+    },
+    {
+      "name": "recheck-language-package-imports-60b",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-imports"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 1.7099128749687225,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/recheck-language-package-imports-60b.log",
+      "log_sha256": "f70f2791cfa173d5bb8b7d0d0011ee6221a6f901bf222178cadfc8756974d6a7",
+      "head": "60b28e5736d170e3635ad7e94b8ccddf4f334ed3",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "summaries": [
+        "Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 1530"
+      ],
+      "phase": "test"
+    },
+    {
+      "name": "recheck-language-package-snapshot-chibi-60b",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-snapshot-chibi"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 0.6610989170148969,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/recheck-language-package-snapshot-chibi-60b.log",
+      "log_sha256": "35b2042aeaac71134848a171110075d0fd5ba92bdce7168d3755b30d1c8fc31c",
+      "head": "60b28e5736d170e3635ad7e94b8ccddf4f334ed3",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "summaries": [
+        "Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 286093"
+      ],
+      "phase": "test"
+    },
+    {
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "compiler-bootstrap"
+      ],
+      "environment": {
+        "CHIBI_TOOLS_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/tools",
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/local-artifact-snapshot/.chibi/integration/language/sdk/chibi-compiler-host"
+      },
+      "exit_code": 0,
+      "wall_seconds": 29.72958841593936,
+      "log": ".chibi/integration/compiler-bootstrap-current.log",
+      "log_sha256": "2c098fea1fb0a97e3c99ec1b8801b611089715a6a097bb0d5cbf20c2dbdaba55",
+      "head": "3ca0b4a0170bf4d56576619396a43440b53077dd",
+      "snapshot_revision": "3ca0b4a0170bf4d56576619396a43440b53077dd-dirty",
+      "phase": "controlled unit test"
+    },
+    {
+      "name": "tools-configure",
+      "command": [
+        "cmake",
+        "-S",
+        "test/tools",
+        "-B",
+        ".chibi/integration/tools",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 4.09303674986586,
+      "log": ".chibi/integration/tools-configure.log",
+      "log_sha256": "bd1bdf1340f447d89092e34cd41ea41464361634a264adfc0adcc705c42b9fc3",
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "phase": "tools configure"
+    },
+    {
+      "name": "tools-build",
+      "command": [
+        "cmake",
+        "--build",
+        ".chibi/integration/tools",
+        "--target",
+        "test_tools",
+        "chibi-compile",
+        "--parallel",
+        "4"
+      ],
+      "exit_code": 2,
+      "wall_seconds": 30.448737707920372,
+      "log": ".chibi/integration/tools-build.log",
+      "log_sha256": "9c02d9cc45d1685bc13162f74c6752416334db0e0b7e3c21f0e7b80cddeec87a",
+      "head": "2a76e61a8bc21ee908f1306d607c8ddd93432b48",
+      "phase": "tools build"
+    },
+    {
+      "command": [
+        "cmake",
+        "--build",
+        ".chibi/integration/tools",
+        "--target",
+        "test_tools",
+        "--parallel",
+        "4"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 2.7970011250581592,
+      "log": ".chibi/integration/tools-driver-build-only.log",
+      "log_sha256": "ea7ba03b070bc44043e51bc6b0c1eb83f5dfe32ee1060c16d8a4468cefc640d6",
+      "head": "c3fbf7f4c2db9c5026525214c675223b8e891eef",
+      "phase": "tools build"
+    },
+    {
+      "name": "configure-native-math-local-dirty",
+      "argv": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/language",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot/.chibi/integration/language",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot/.chibi/integration/language"
+      },
+      "exit_code": 0,
+      "wall_seconds": 8.202193916076794,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot/.chibi/integration/configure-native-math-local-dirty.log",
+      "log_sha256": "ff20a5d44d4b3b04930623f129ccba7eb947b7426a6698213651fd8f0d716d25",
+      "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "phase": "configure",
+      "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/language",
+        "--parallel",
+        "4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot",
+      "exit_code": -15,
+      "wall_seconds": 79.74326829100028,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/build-native-math.log",
+      "log_sha256": "a4f7c02d6cae272e0aa949bf9394d484c3e0ab0d7b47bcad6c68d5861d4dcfcf",
+      "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+      "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n",
+      "snapshot_revision": "8b1419414-dirty",
+      "phase": "build",
+      "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7"
+    },
+    {
+      "name": "wasm-build",
+      "command": [
+        "make",
+        "wasm-language-build",
+        "WASM_BUILD_DIR=.chibi/integration/wasm",
+        "JOBS=4"
+      ],
+      "exit_code": 2,
+      "wall_seconds": 52.06272145919502,
+      "log": ".chibi/integration/wasm-build.log",
+      "log_sha256": "6e58879b6b0a9e3f8cf072f14772beb9668ef7217d7d709997e1d3e436c9fa6c",
+      "summaries": [],
+      "phase": "Wasm build",
+      "head": "ea596f9dfd9d353e129e6e7cb11d3cdd811d794c",
+      "tree": "3f0905af823bb8e11c671ac96f84815c0afc2514"
+    },
+    {
+      "name": "build",
+      "command": [
+        "make",
+        "wasm-language-build",
+        "WASM_BUILD_DIR=.chibi/integration/wasm",
+        "JOBS=4"
+      ],
+      "exit_code": 2,
+      "wall_seconds": 29.42077491688542,
+      "log": ".chibi/integration/wasm-after-initializers-build.log",
+      "log_sha256": "508c006963123d68c57efdf19807b174d9e3df958034f1f3bc2faa9d5e41b869",
+      "summaries": [],
+      "phase": "Wasm build",
+      "head": "519c5f2eb25e9cc2b711627763e5df8b523ae1d7",
+      "tree": "28b5b1a70169873856eb99d82b21cc6cbc61d3cc"
+    },
+    {
+      "name": "build",
+      "command": [
+        "make",
+        "wasm-language-build",
+        "WASM_BUILD_DIR=.chibi/integration/wasm",
+        "JOBS=4"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 22.79137408407405,
+      "log": ".chibi/integration/wasm-complete-initializers-build.log",
+      "log_sha256": "bc324db2d17ebfa5a84af60d4fc2359c7f2404e7f1f4a39053a9a0727ab0b6eb",
+      "summaries": [],
+      "phase": "Wasm build",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "name": "package-math",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-math"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.7882737079635262,
+      "log": ".chibi/integration/wasm-complete-initializers-package-math.log",
+      "log_sha256": "449a1b34776aef617a7d4ba4dcfe601ba86d87a4aaa9e0b4f842de97f47c3f38",
+      "summaries": [
+        "Running: package_math_runs_shipped_authored_tests MATH_TESTS backend=BYTECODE tests=29 prepare_ms=102.334",
+        "MATH_TESTS backend=WASM tests=29 prepare_ms=33.979",
+        "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 4132",
+        "Test command wall time: 0.672s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "name": "compiler-fixture",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--compiler-fixture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 2.5030631669797003,
+      "log": ".chibi/integration/wasm-complete-initializers-compiler-fixture.log",
+      "log_sha256": "5a927b20cf45724a518e4da72071ea3c95b20884e50e4e2dd110f6863a50e6c5",
+      "summaries": [
+        "Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 414",
+        "Test command wall time: 2.337s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "name": "package-imports",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-imports"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 0.4608474588021636,
+      "log": ".chibi/integration/wasm-complete-initializers-package-imports.log",
+      "log_sha256": "7cf4f3464f199e005712fcd20f34d128694c8f14e0b39ee5ac9caead2b5230d8",
+      "summaries": [
+        "Summary: Passed: 4 Failed: 14 Total: 18 Suites: 0 Asserts: 925",
+        "Test command wall time: 0.378s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "name": "package-core",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-core"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 47.10379516589455,
+      "log": ".chibi/integration/wasm-complete-initializers-package-core.log",
+      "log_sha256": "9b2e037990c0bb22365eb41e422a1a38b6df4412b139077ae150d7fef887c66f",
+      "summaries": [
+        "Summary: Passed: 5 Failed: 1 Total: 6 Suites: 0 Asserts: 12770",
+        "Test command wall time: 47.028s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "name": "docs-markdown",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--docs-markdown"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 4.053484291071072,
+      "log": ".chibi/integration/wasm-complete-initializers-docs-markdown.log",
+      "log_sha256": "dbd3fcef0d92ee195b3645b7593b4173207774eccfb234e0ca3d20652e9017f0",
+      "summaries": [
+        "Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 1778",
+        "Test command wall time: 3.752s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "name": "packed",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--packed"
+      ],
+      "exit_code": 2,
+      "wall_seconds": 0.6647264170460403,
+      "log": ".chibi/integration/wasm-complete-initializers-packed.log",
+      "log_sha256": "762a5623ba2d7326a8f8462686bcf4f43d2b3dce3528e907670d0fdac4bad630",
+      "summaries": [
+        "Test command wall time: 0.489s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "name": "package-compiler-chibi-imports",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-compiler-chibi-imports"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 60.26768033299595,
+      "log": ".chibi/integration/wasm-complete-initializers-package-compiler-chibi-imports.log",
+      "log_sha256": "366cbcd43d3e73860b6925e7a73247a7e56cf44badbdbec8a0913500f4c2f805",
+      "summaries": [
+        "Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 17453",
+        "Test command wall time: 60.149s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "name": "package-compiler-chibi-imports-compiled",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-compiler-chibi-imports-compiled"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 22.858516624895856,
+      "log": ".chibi/integration/wasm-complete-initializers-package-compiler-chibi-imports-compiled.log",
+      "log_sha256": "8b68e711d2d6e5fe4ce3e646d7394ad6e0793ceff3271ec02f5f3c56c61ca39a",
+      "summaries": [
+        "Summary: Passed: 0 Failed: 2 Total: 2 Suites: 0 Asserts: 15",
+        "Test command wall time: 22.618s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "tree": "b6429211937c6f280ee51cd38599cc45f036e94d"
+    },
+    {
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--row-array"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 1.2852357500232756,
+      "log": ".chibi/integration/wasm-row-array-packed.log",
+      "log_sha256": "0727935445d74602e28b41405750a4cce75a46a12f48d30819008fe5fba4f34d",
+      "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+      "phase": "Wasm test"
+    },
+    {
+      "name": "build",
+      "command": [
+        "make",
+        "wasm-language-build",
+        "WASM_BUILD_DIR=.chibi/integration/wasm",
+        "JOBS=4"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 13.158528292085975,
+      "log": ".chibi/integration/wasm-8b-fixture-controls-build.log",
+      "log_sha256": "f80b27a6089cd569cf1a6d3f6d95870b33f75e3b6cc44fbca2e24a056f0e14a2",
+      "summaries": [],
+      "phase": "Wasm build",
+      "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+      "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7"
+    },
+    {
+      "name": "package-snapshot-chibi",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-snapshot-chibi"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.9604870001785457,
+      "log": ".chibi/integration/wasm-8b-fixture-controls-package-snapshot-chibi.log",
+      "log_sha256": "fb0820740752099d92c9fafc348917eb2ddaec0fd6fa7db1be773b28aca932dd",
+      "summaries": [
+        "Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 286093",
+        "Test command wall time: 0.818s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+      "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7"
+    },
+    {
+      "name": "package-math",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-math"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.7145612922031432,
+      "log": ".chibi/integration/wasm-8b-fixture-controls-package-math.log",
+      "log_sha256": "78918bd37d45743421886375101a18c5f2c5d8457e48011048a12c8a3366e711",
+      "summaries": [
+        "Running: package_math_runs_shipped_authored_tests MATH_TESTS backend=BYTECODE tests=29 prepare_ms=92.460",
+        "MATH_TESTS backend=WASM tests=29 prepare_ms=35.366",
+        "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 4132",
+        "Test command wall time: 0.653s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "phase": "Wasm test",
+      "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+      "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7"
+    }
+  ],
+  "receipts": [
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/configure-language.json",
+      "sha256": "0b0445702d070292998de2bcc5fc66814dad94167197de4f8aba69d52ebf0b8e"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/build-language.json",
+      "sha256": "2108b00d8153b196b58294b06b06b4de0c4e42f66ad4ff2aedc131cc0168d120"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/diagnose-recover.json",
+      "sha256": "a3359362ed615a7d1203011eb6f608b8edabbf9c6ced63a6ebd1bb15f016bec3"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/diagnose-writer.json",
+      "sha256": "98a0fd26245767b6ecc355c4c40e4e524c735ff0df609dc46483faf7295e076b"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm-receipts.json",
+      "sha256": "7cc796fff693edbc428e70cd4df7f2d008a5272c94b424e78fbd0c57342ec839"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm-after-initializers.json",
+      "sha256": "3b3be024e1884f452b48df732fed8f571f0db1eb348361b062d73aa6f5adb267"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm-complete-initializers.json",
+      "sha256": "c87c6d398013846dcdad74242824a5af3bc32caf17dc90db4c5b0683e8fce423"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm-row-array-packed.json",
+      "sha256": "cbc3392448a649731bd5db9f45c37a8465a7020604357ddaff96986c69cd39be"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm-8b-fixture-controls.json",
+      "sha256": "f72ebbd4519eea6bb925f677a65d3ec1cddaa4a0d886617473ef966647a33a8c"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/source-receipt.json",
+      "sha256": "eb7acd84335392c3f256c1fd29deac51b5f209425d149c1e8065bb71289ecb89"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/inputs.json",
+      "sha256": "007178ee1e622636afdd059bb30e4dd92bee65dd6d7d2273bca7cb6f6e0183c5"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/writer-proof.json",
+      "sha256": "62dde5b20fe8e9e44f948fa04e629e9e36fb6581a3c57c60385951b8d35aa043"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/summary.json",
+      "sha256": "9663a47da7f4d214bc702a908cbba4b1f295f965c2fd38c596eae8462ba26c19"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/summary-c3fbf7f4.json",
+      "sha256": "2ae0b1b85e25b9dabebe3e9539a871a807e92804d775048622ca969fa76674de"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/summary-3ca0b4a0.json",
+      "sha256": "bb9d8aefae4ec57ad68a0079df83a83bbd27efe00fe0d1b6c16212bdbe2f16a7"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/summary-60b28e57.json",
+      "sha256": "039b142fed6818947ef9ad095176cad26e9e5e6c41a3f17581faebd37a3e4e2b"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/bootstrap-export-setup-failure.json",
+      "sha256": "04e0ffeccd839dd4252974c3002d49329bb0879206d5b2c8e7f56b2b7cc112b2"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/bootstrap-selector-export.json",
+      "sha256": "2acd157e2c6faf0d9cead2db7d6a39a546b5584badf9cf88706f593d7ead169c"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/compiler-bootstrap-current.json",
+      "sha256": "b2e5dff17f377de08d391abd5f2cb1cde3bd2aeb568f0d29a675c89f933d5418"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/tools-build-receipts.json",
+      "sha256": "22f3b2abcecd58ce106eadf9d5eb9f28f88ee431085d0f54df781a6bda87207e"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/tools-driver-build-only.json",
+      "sha256": "01c4b28290921805d9702277431bd3df712c053d1b0a8bcd189e5ec1403ab5af"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/local-snapshot-60b28e57.json",
+      "sha256": "c5744b4ec851f6fe716e88e7e47c86b4cd1cf778e6edf55348039baf481803dd"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/local-snapshot-60b28e57-files-sha256.json",
+      "sha256": "ef7d4f93b67dcd152b2d2ad6a4e4170c9c57e9a1616e41980e71c3493b0ae159"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/summary.json",
+      "sha256": "b235be4620404ccd22ff1b2cffb16fb699596780d56ae6f8f3c4593ed6d565c7"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/preflight.json",
+      "sha256": "ea94482ed454dd99ae094ab6d593c383e0ac51ac7e28ed09492784f3c7d9b8b2"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/snapshot.json",
+      "sha256": "1c71ce8ba4e0356db876bb7e51c4d6411b2965c0a60dd93d75062907912bf6ed"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/snapshot-files-sha256.json",
+      "sha256": "bde45be9d58d37a59092475e593865ea150c6677131ea5970fcbdaba04407939"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/captured-bootstrap-request.json",
+      "sha256": "b4dec15a190d33b2fc52b98e4fe58cbbf9d03add6236cf3c5cc8fac27ad7885f"
+    },
+    {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/fresh-native-target.json",
+      "sha256": "da01568aa036f6307fe67a4f274ab253d91f00ebf6d080db85e2428383167767"
+    }
+  ],
+  "verified_saved_log_hashes": 45
+}

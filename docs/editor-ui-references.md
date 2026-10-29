@@ -92,8 +92,7 @@ arrow-key navigation, typeahead within 0.5 s and close on Tab; a `menuitem` or
 (Base UI's `closeOnClick`). A disabled item never highlights, under the
 pointer, by arrow keys or by typeahead, and its click reaches nothing. A popover marked `data-template` (Menu, Submenu) is mounted only while open, as Base UI unmounts a Popup that is not `keepMounted`: it builds its content on opening and removes it after its exit transition. A modal host (`kit_modal_host`) traps the
 focus as Base UI's Dialog does: Tab and Shift+Tab cycle through its tabbable
-elements and never reach the editor behind it. `docs/prototypes/studio/kit.html` lists every
-control's contract.
+elements and never reach the editor behind it.
 
 Editable references use `kit_autocomplete`: one inline text input with an
 anchored suggestion list. The caller supplies type-compatible suggestions and

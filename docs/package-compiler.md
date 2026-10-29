@@ -44,6 +44,22 @@ process, file or state operations must supply their actual masks.
 
 ## Supported language
 
+Package `Compile` specializes exported generic functions for inferred concrete
+types and builtin numeric compile-time values. Boolean compile-time arguments
+currently accept literals and bound constants. Named functions and capture-free inline
+functions can bind synchronous callable parameters with zero or one result;
+those parameters disappear from the runtime signature. Definitions retain their
+own private-name scope, while callbacks and foreign nominal types can place a
+specialization in the consuming module. The numeric scalar-facts route uses the
+same specializer. See [passing functions](code-language.md#passing-functions) for
+the initial admission rules.
+
+These additions do not extend general compile-time string/type-function
+execution or the separate legacy `CompileBehaviors` source route. That route
+still needs mixed package/source collection and import integration before it can
+consume package algorithms. Shared scalar-facts helper checks do not establish
+material or GPU compilation.
+
 Packages of functions, records, unions and constants, and the packages they
 import:
 
@@ -463,7 +479,7 @@ fast paths otherwise cover.
 ## Hosts
 
 Stage one runs natively on macOS arm64 and on the 32-bit Wasm host. Linux
-x86_64 and Windows x64 wait for a host to run on (PLAN.md M5).
+x86_64 and Windows x64 host execution remains unverified here.
 
 - **32-bit Wasm:** the compiler prepared for Wasm compiles every package and
   behavior sample, and their closures run there. Stage one writes the

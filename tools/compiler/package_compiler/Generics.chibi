@@ -1,0 +1,970 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import graph "project:package_graph"
+import binding "project:lexical_binding"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+
+// Type binders and resolved call sites belong to one concrete function.
+// They are compile-time names; neither becomes a runtime value or ABI port.
+GenericTypePlace: int : 40;
+GenericCallPlace: int : 41;
+GenericFunctionPlace: int : 42;
+GenericOmittedPlace: int : 43;
+GenericConstantPlace: int : 44;
+GenericFunctionStorage: int : -40;
+GenericInferStorage: int : -41;
+GenericReturnPhase: int : 82;
+GenericFunctionPhase: int : 81;
+GenericCallPhase: int : 80;
+GenericLimit: int : 256;
+GenericBinding :: struct {
+    owner: int;
+    name: string;
+    place: int;
+    index: int;
+    storage: int;
+    container: int;
+    record: int;
+    node: int;
+    bits: u64;
+}
+GenericPlan :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Ready(callables: Callable[], params: Param[], bindings: GenericBinding[])
+}
+GenericArguments :: union {
+    Failed(diagnostic: syntax.Diagnostic) | Bound(names: Name[])
+}
+GenericBinder :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    if (node < 0 || Is(forest, node, "type_binder")) {
+        return node;
+    }
+    for (child in Members(forest, node)) {
+        found := GenericBinder(forest, child);
+        if (found >= 0) {
+            return found;
+        }
+    }
+    return -1;
+}
+GenericTemplate :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    parameters := Field(forest, node, "parameters");
+    if (GenericBinder(forest, parameters) >= 0) {
+        return true;
+    }
+    for (parameter in Members(forest, parameters)) {
+        if (Field(forest, parameter, "comptime") >= 0 ||
+            GenericCallableType(forest, Field(forest, parameter, "type")) >= 0) {
+            return true;
+        }
+    }
+    return false;
+}
+GenericCallableType :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    if (node < 0 || Is(forest, node, "callable_type")) {
+        return node;
+    }
+    if (!Is(forest, node, "type") || HasToken(forest, node, "[") || HasToken(forest, node, "?") ||
+        Field(forest, node, "trait") >= 0) {
+        return -1;
+    }
+    for (child in Members(forest, node)) {
+        if (Is(forest, child, "callable_type")) {
+            return child;
+        }
+        if (Is(forest, child, "parenthesized_type")) {
+            return GenericCallableType(forest, Field(forest, child, "type"));
+        }
+    }
+    return -1;
+}
+GenericOmitted :: (names: Name[], node: int) -> bool {
+    for (name in names) {
+        if (name.place == GenericOmittedPlace && name.node == node) {
+            return true;
+        }
+    }
+    return false;
+}
+// Template headers retain labels before their types are concrete. These rows
+// are never runtime parameters; each instance appends its own typed signature.
+GenericParameters :: (forest: snapshot.SnapshotNode[], text: string, declaration: int) -> Param[] {
+    params: Param[] = [];
+    for (parameter in Members(forest, Field(forest, declaration, "parameters"))) {
+        storage: int = 0;
+        if (GenericCallableType(forest, Field(forest, parameter, "type")) >= 0) {
+            storage = GenericFunctionStorage;
+        }
+        params.append({name: Text(forest, text, Field(forest, parameter, "name")), storage: storage,
+                       container: 0, record: -1, has_default: false, default_bits: 0, default_text: "",
+                       default_occurrence: 0, reference: false, node: Field(forest, parameter, "name")});
+    }
+    return params;
+}
+GenericArgumentValue :: (forest: snapshot.SnapshotNode[], argument: int) -> int {
+    if (Is(forest, argument, "named_argument")) { return Field(forest, argument, "value"); }
+    return argument;
+}
+GenericSourceParameter :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], definition: Callable,
+                           argument: int, position: int) -> int {
+    if (!Is(forest, argument, "named_argument")) { return position; }
+    label := Text(forest, text, Field(forest, argument, "name"));
+    count := length(Members(forest, Field(forest, definition.node, "parameters")));
+    index: int = 0;
+    while (index < count) {
+        if (params[definition.first + index].name == label) { return index; }
+        index += 1;
+    }
+    return -1;
+}
+GenericResolvedCall :: (names: Name[], call: int) -> bool {
+    for (name in names) {
+        if (name.place == GenericCallPlace && name.node == call) { return true; }
+    }
+    return false;
+}
+GenericCallParameter :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                         names: Name[], called: int, call: int, argument: int, ordinal: int) -> int {
+    if (GenericResolvedCall(names, call) && Is(forest, argument, "named_argument")) {
+        label := Text(forest, text, Field(forest, argument, "name"));
+        index: int = 0;
+        while (called >= 0 && index < callables[called].count) {
+            if (params[callables[called].first + index].name == label) { return index; }
+            index += 1;
+        }
+        return -1;
+    }
+    return GenericCallbackParameter(forest, text, GenericCallbackSignature(forest, text, names, call), argument, ordinal);
+}
+// Only a named source function or a callable parameter already specialized
+// to one can be forwarded. Ordinary runtime variables never contain code.
+GenericFunctionTarget :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[],
+                          natives: ResolvedNative[], names: Name[], package: int, node: int) -> int {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, "lambda_expression")) {
+        return -2;
+    }
+    if (Is(forest, value, "identifier")) {
+        name := Text(forest, text, value);
+        local := Lookup(names, name);
+        if (local >= 0 && !Alias(names[local].place)) {
+            if (names[local].place == GenericFunctionPlace) {
+                return names[local].index;
+            }
+            return -1;
+        }
+        return SourceCallable(callables, natives, names, package, name);
+    }
+    if (Is(forest, value, "member_expression")) {
+        home := QualifierOf(forest, text, names, package, Field(forest, value, "object"));
+        if (home >= 0) {
+            return QualifiedCallable(callables, natives, names, home, Text(forest, text, Field(forest, value, "member")),
+                                     Text(forest, text, value));
+        }
+    }
+    return -1;
+}
+GenericCallbackSignature :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], call: int) -> int {
+    callee := Field(forest, call, "function");
+    if (!Is(forest, callee, "identifier")) {
+        return -1;
+    }
+    found := Lookup(names, Text(forest, text, callee));
+    if (found >= 0 && names[found].place == GenericFunctionPlace) {
+        return names[found].record;
+    }
+    return -1;
+}
+GenericCallbackParameter :: (forest: snapshot.SnapshotNode[], text: string, signature: int,
+                             argument: int, ordinal: int) -> int {
+    if (signature < 0 || !Is(forest, argument, "named_argument")) {
+        return ordinal;
+    }
+    label := Text(forest, text, Field(forest, argument, "name"));
+    parameters := Members(forest, Field(forest, signature, "parameters"));
+    index: int = 0;
+    while (index < length(parameters)) {
+        if (Text(forest, text, Field(forest, parameters[index], "name")) == label) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// Resolve declarations by lexical scope and source order. A declaration in
+// a sibling block cannot hide an enclosing runtime binding from a capture.
+GenericPatternName :: (forest: snapshot.SnapshotNode[], text: string, condition: int, read: int, name: string) -> bool {
+    pending: int[] = [condition];
+    while (length(pending) > 0) {
+        node := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, node, "is_expression") && QueryPatternScope(forest, text, node, read)) {
+            pattern := Field(forest, node, "type");
+            for (bound in Members(forest, Field(forest, pattern, "bindings"))) {
+                if (Text(forest, text, bound) == name) {
+                    return true;
+                }
+            }
+        }
+        pending.extend(Members(forest, node));
+    }
+    return false;
+}
+GenericLambdaOwnName :: (forest: snapshot.SnapshotNode[], text: string, lambda: int, read: int, name: string) -> bool {
+    for (param in Members(forest, Field(forest, lambda, "parameters"))) {
+        if (Text(forest, text, Field(forest, param, "name")) == name) {
+            return true;
+        }
+    }
+    for (result in Members(forest, Field(forest, lambda, "results"))) {
+        if (Text(forest, text, Field(forest, result, "name")) == name) {
+            return true;
+        }
+    }
+    ancestor := forest[read].parent;
+    while (ancestor >= 0 && ancestor != lambda) {
+        if (Is(forest, ancestor, "block") || Is(forest, ancestor, "callable_body")) {
+            for (statement in Members(forest, ancestor)) {
+                if (Is(forest, statement, "local_declaration") && forest[statement].end <= forest[read].start &&
+                    Text(forest, text, Field(forest, statement, "name")) == name) {
+                    return true;
+                }
+            }
+        }
+        if (Is(forest, ancestor, "for_statement") && Ancestor(forest, Field(forest, ancestor, "body"), read) &&
+            (Text(forest, text, Field(forest, ancestor, "name")) == name ||
+             Text(forest, text, Field(forest, ancestor, "key")) == name)) {
+            return true;
+        }
+        if (Is(forest, ancestor, "switch_arm") && Ancestor(forest, Field(forest, ancestor, "body"), read)) {
+            pattern := Field(forest, ancestor, "value");
+            for (bound in Members(forest, Field(forest, pattern, "bindings"))) {
+                if (Text(forest, text, bound) == name) {
+                    return true;
+                }
+            }
+        }
+        if ((Is(forest, ancestor, "if_statement") || Is(forest, ancestor, "while_statement")) &&
+            GenericPatternName(forest, text, Field(forest, ancestor, "condition"), read, name)) {
+            return true;
+        }
+        ancestor = forest[ancestor].parent;
+    }
+    return false;
+}
+GenericLambdaCapture :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], lambda: int) -> int {
+    pending: int[] = [Field(forest, lambda, "body")];
+    while (length(pending) > 0) {
+        node := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, node, "lambda_expression") || Is(forest, node, "function_declaration")) {
+            continue;
+        }
+        if (Is(forest, node, "identifier")) {
+            parent := forest[node].parent;
+            declaration := Field(forest, parent, "member") == node || Field(forest, parent, "name") == node ||
+                           Is(forest, parent, "pattern_bindings") ||
+                           (Is(forest, parent, "for_statement") && Field(forest, parent, "key") == node);
+            if (!declaration) {
+                name := Text(forest, text, node);
+                outer := Lookup(names, name);
+                if (outer >= 0 && !Alias(names[outer].place) && names[outer].place != GenericFunctionPlace &&
+                    names[outer].place != GenericTypePlace && !GenericLambdaOwnName(forest, text, lambda, node, name)) {
+                    return node;
+                }
+            }
+        }
+        pending.extend(Members(forest, node));
+    }
+    return -1;
+}
+CallableIdentity :: (packages: string[], callable: Callable) -> u64 {
+    if (callable.identity != 0) {
+        return callable.identity;
+    }
+    return binding.ID("package-symbol", format_text("{}:{}:{}:callable", packages[callable.package],
+                                                    FunctionKind, callable.name));
+}
+// Construct the specialization as a value. Updating a copied record's u64
+// identity through a reference would obscure which storage the write owns.
+GenericCallable :: (source: Callable, identity: u64, owner: int, waits: bool, result: ValueType) -> Callable {
+    return {name: source.name, package: source.package, document: source.document, node: source.node,
+            first: source.first, count: source.count, result: result.storage, result_container: result.container,
+            result_record: result.record, results: source.results, waits: waits, identity: identity,
+            owner_package: owner};
+}
+GenericAliases :: (aliases: Name[], bindings: GenericBinding[], owner: int) -> Name[] {
+    names := aliases;
+    for (bound in bindings) {
+        if (bound.owner == owner && bound.place != GenericConstantPlace) {
+            bound_name: Name = {owned: false, name: bound.name, place: bound.place, index: bound.index, storage: bound.storage,
+                                container: bound.container, record: bound.record, writable: false, node: bound.node};
+            names.append(bound_name);
+        }
+    }
+    return names;
+}
+GenericConstants :: (forest: snapshot.SnapshotNode[], constants: ConstDecl[], bindings: GenericBinding[], owner: int, callable: Callable,
+                     documents: snapshot.Document[]) -> ConstDecl[] {
+    has_constants := false;
+    for (bound in bindings) {
+        has_constants = has_constants || (bound.owner == owner && bound.place == GenericConstantPlace);
+    }
+    if (!has_constants) {
+        return constants;
+    }
+    values: ConstDecl[] = [];
+    for (bound in bindings) {
+        if (bound.owner == owner && bound.place == GenericConstantPlace) {
+            document := documents[callable.document];
+            solid := SolidOffsets(document.text);
+            range := forest[bound.node];
+            value: ConstDecl = {name: bound.name, package: callable.package, storage: bound.storage, bits: bound.bits,
+                                node: bound.node, file: callable.document, folded: true,
+                                occurrence: Occurrence(document.key, SymbolRecord, solid[range.start], solid[range.end])};
+            values.append(value);
+        }
+    }
+    values.extend(constants);
+    return values;
+}
+// Remove the annotation's constructors from outside in. A collection's
+// descriptor names its immediate element, which may itself be collected or
+// optional; its container number is not a nesting depth.
+GenericElement :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[]), annotation: int,
+                   argument: ValueType, package: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    if (!Is(forest, annotation, "type") || argument.storage <= 0) {
+        return none;
+    }
+    value := argument;
+    view := HasTypeTrait(forest, text, annotation, "view");
+    if (!ViewTraits(forest, text, annotation)) {
+        return none;
+    }
+    suffixes: int[] = [];
+    child := forest[annotation].first_child;
+    while (child >= 0) {
+        if (!forest[child].is_extra && (forest[child].kind == "[" || forest[child].kind == "?")) {
+            suffixes.append(child);
+        }
+        child = forest[child].next_sibling;
+    }
+    at := length(suffixes) - 1;
+    while (at >= 0) {
+        token := forest[suffixes[at]].kind;
+        if (token == "[") {
+            expected := ArrayContainer;
+            if (view) { expected = ViewContainer; }
+            if (value.container != expected) { return none; }
+            value = SequenceElement(table^, value);
+            view = false;
+        } else if (value.storage == PointerStorage && value.container == 0 && value.record >= 0 &&
+                   table^[value.record].kind == PointerDecl && table^[value.record].key != 0) {
+            element := PointerElement(table^, Typed(-1, value.storage, value.container, value.record));
+            value.record = EnsurePointer(table, element, false, package);
+        } else {
+            value = OptionalElement(table^, Typed(-1, value.storage, value.container, value.record));
+            if (value.storage == 0) { return none; }
+        }
+        at -= 1;
+    }
+    if (view) {
+        if (value.container != ViewContainer) { return none; }
+        value.container = ArrayContainer;
+    }
+    pointer := TypePointerNode(forest, annotation);
+    if (pointer >= 0) {
+        if (value.storage != PointerStorage || value.container != 0 || value.record < 0 ||
+            table^[value.record].kind != PointerDecl || table^[value.record].key != 0) {
+            return none;
+        }
+        element := PointerElement(table^, Typed(-1, value.storage, value.container, value.record));
+        return GenericElement(forest, text, table, Field(forest, pointer, "target"), element, package);
+    }
+    grouped := TypeGroupNode(forest, annotation);
+    if (grouped >= 0) {
+        return GenericElement(forest, text, table, grouped, value, package);
+    }
+    return value;
+}
+GenericNames :: (forest: snapshot.SnapshotNode[], text: string, document: int, callable: Callable,
+                 table: ^(TypeDecl[]), arguments: ValueType[]) -> GenericArguments {
+    names: Name[] = [];
+    parameters := Members(forest, Field(forest, callable.node, "parameters"));
+    if (length(parameters) != length(arguments)) {
+        return GenericArguments.Failed(Diagnose(forest, callable.node, document,
+                                                "generic call needs one value per parameter"));
+    }
+    at: int = 0;
+    while (at < length(parameters)) {
+        parameter := parameters[at];
+        if (Field(forest, parameter, "comptime") >= 0) {
+            at += 1;
+            continue;
+        }
+        annotation := Field(forest, parameter, "type");
+        binder := GenericBinder(forest, annotation);
+        if (GenericCallableType(forest, annotation) >= 0) {
+            at += 1;
+            continue;
+        }
+        if (binder >= 0) {
+            value := arguments[at];
+            value = GenericElement(forest, text, table, annotation, value, callable.package);
+            if (value.storage == 0) {
+                return GenericArguments.Failed(Diagnose(forest, parameter, document,
+                                                        "generic argument does not match its collection type"));
+            }
+            name := Text(forest, text, Field(forest, binder, "name"));
+            previous := Lookup(names, name);
+            if (previous >= 0) {
+                bound := names[previous];
+                if (bound.storage != value.storage || bound.container != value.container || bound.record != value.record) {
+                    return GenericArguments.Failed(Diagnose(forest, parameter, document,
+                                                            format_text("generic arguments disagree for '{}'", name)));
+                }
+            } else {
+                type_name: Name = {owned: false, name: name, place: GenericTypePlace, index: 0, storage: value.storage,
+                                   container: value.container, record: value.record, writable: false, node: binder};
+                names.append(type_name);
+            }
+        }
+        at += 1;
+    }
+    // Binding order is canonical, independent of discovery and argument order.
+    at = 1;
+    while (at < length(names)) {
+        value := names[at];
+        before := at;
+        while (before > 0 && strings.Compare(names[before - 1].name, value.name) > 0) {
+            names[before] = names[before - 1];
+            before -= 1;
+        }
+        names[before] = value;
+        at += 1;
+    }
+    return GenericArguments.Bound(names);
+}
+GenericIdentity :: (definition: u64, names: Name[], types: TypeDecl[], callables: Callable[], packages: string[],
+                    bindings: GenericBinding[]) -> u64 {
+    hash := MixWord(binding.ID("polymorphic-instance", ""), definition);
+    for (name in names) {
+        hash = MixWord(hash, binding.ID("argument", name.name));
+        if (name.place == GenericFunctionPlace) {
+            hash = MixWord(hash, 0);
+            hash = MixWord(hash, binding.ID("callable-binding", ""));
+            hash = MixWord(hash, CallableIdentity(packages, callables[name.index]));
+        } else if (name.place == GenericConstantPlace) {
+            hash = MixWord(hash, 0);
+            hash = MixWord(hash, u64(name.storage));
+            hash = MixWord(hash, bindings[name.index].bits);
+        } else {
+            hash = MixWord(hash, 1);
+            hash = MixWord(hash, SemanticTag(types, {storage: name.storage, container: name.container, record: name.record}));
+        }
+    }
+    if (hash == 0) {
+        return 1;
+    }
+    return hash;
+}
+// Collection and optional descriptors carry structure, while their element
+// retains the lexical package of a nominal type supplied by the caller.
+GenericForeignType :: (types: TypeDecl[], record: int, package: int) -> bool {
+    if (record < 0) { return false; }
+    declared := types[record];
+    if (declared.kind == CollectionDecl || declared.kind == OptionalDecl ||
+        declared.kind == PointerDecl || declared.kind == MapDecl) {
+        return GenericForeignType(types, declared.value_record, package);
+    }
+    return declared.package != package;
+}
+GenericConstantValue :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[],
+                         aliases: Name[], package: int, node: int, storage: int) -> Folding {
+    if (storage != BoolStorage) {
+        return FoldConstant(forest, text, document, constants, aliases, package, node, storage);
+    }
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, "boolean")) {
+        if (Text(forest, text, value) == "true") {
+            return Folding.Folded(1);
+        }
+        return Folding.Folded(0);
+    }
+    named := ConstantOf(forest, text, constants, aliases, package, value);
+    if (named >= 0 && constants[named].storage == BoolStorage && constants[named].folded) {
+        return Folding.Folded(constants[named].bits);
+    }
+    return Folding.Failed(Diagnose(forest, node, document, "A boolean compile-time argument requires a constant boolean value"));
+}
+GenericFunctions :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Bound(callables: Callable[], params: Param[], names: Name[], bindings: GenericBinding[])
+}
+GenericSingleResult :: (callable: Callable, params: Param[]) -> ValueType {
+    if (callable.results == 1) {
+        result := params[callable.first + callable.count];
+        return {storage: result.storage, container: result.container, record: result.record};
+    }
+    return {storage: callable.result, container: callable.result_container, record: callable.result_record};
+}
+// Scoped parameters lower to their pointee, but their source signature still
+// takes a pointer. Matching never chooses how the supplied function lowers it.
+GenericParameterType :: (param: Param, table: ^(TypeDecl[]), package: int) -> ValueType {
+    value: ValueType = {storage: param.storage, container: param.container, record: param.record};
+    if (param.reference) {
+        return {storage: PointerStorage, container: 0, record: EnsurePointer(table, value, false, package)};
+    }
+    return value;
+}
+GenericFunctionArguments :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package_names: string[],
+                             links: graph.Binding[], table: ^(TypeDecl[]), constants: ConstDecl[], caller: Callable, definition: Callable,
+                             call: int, arguments: ValueType[], caller_names: Name[], input_callables: Callable[], input_params: Param[],
+                             input_names: Name[], input_bindings: GenericBinding[], owner: int) -> GenericFunctions {
+    callables := input_callables;
+    params := input_params;
+    names := input_names;
+    bindings := input_bindings;
+    source := documents[definition.document];
+    document := documents[caller.document];
+    aliases := Aliases(links, definition.document);
+    aliases.extend(names);
+    parameters := Members(forest, Field(forest, definition.node, "parameters"));
+    supplied := Members(forest, Field(forest, call, "arguments"));
+    values := supplied;
+    position: int = 0;
+    for (argument in supplied) {
+        parameter := GenericSourceParameter(forest, document.text, params, definition, argument, position);
+        values[parameter] = argument;
+        if (!Is(forest, argument, "named_argument")) { position += 1; }
+    }
+    ordinal: int = 0;
+    while (ordinal < length(parameters)) {
+        parameter := parameters[ordinal];
+        signature := GenericCallableType(forest, Field(forest, parameter, "type"));
+        if (Field(forest, parameter, "comptime") >= 0) {
+            declared := ReadType(forest, source.text, table, aliases, definition.package, Field(forest, parameter, "type"));
+            if (declared.container != 0 || declared.record >= 0 ||
+                (!Integer(declared.storage) && !Floating(declared.storage) && declared.storage != BoolStorage)) {
+                return GenericFunctions.Failed(Diagnose(forest, parameter, definition.document,
+                                                        "A stage-one compile-time parameter requires a builtin numeric or boolean type"));
+            }
+            bits: u64 = 0;
+            switch GenericConstantValue(forest, document.text, caller.document,
+                                        GenericConstants(forest, constants, bindings, owner, caller, documents),
+                                        caller_names, caller.package,
+                                        GenericArgumentValue(forest, values[ordinal]), declared.storage) {
+                case .Failed(diagnostic):
+                    return GenericFunctions.Failed(diagnostic);
+                case .Waiting:
+                    return GenericFunctions.Failed(Diagnose(forest, values[ordinal], caller.document,
+                                                            "A compile-time argument requires a constant value"));
+                case .Folded(value):
+                    bits = value;
+            }
+            name := Text(forest, source.text, Field(forest, parameter, "name"));
+            constant: GenericBinding = {owner: -1, name: name, place: GenericConstantPlace, index: 0,
+                                        storage: declared.storage, container: 0, record: -1,
+                                        node: Field(forest, parameter, "name"), bits: bits};
+            key: Name = {owned: false, name: name, place: GenericConstantPlace, index: length(bindings), storage: declared.storage,
+                         container: 0, record: -1, writable: false, node: constant.node};
+            names.append(key);
+            bindings.append(constant);
+            omitted: GenericBinding = {owner: owner, name: "", place: GenericOmittedPlace, index: 0,
+                                       storage: 0, container: 0, record: -1, node: values[ordinal], bits: 0};
+            bindings.append(omitted);
+            ordinal += 1;
+            continue;
+        }
+        if (signature < 0) {
+            ordinal += 1;
+            continue;
+        }
+        if (Field(forest, parameter, "value") >= 0 || Field(forest, parameter, "source") >= 0) {
+            return GenericFunctions.Failed(Diagnose(forest, parameter, definition.document,
+                                                    "Callable parameters cannot have defaults or source qualifiers"));
+        }
+        for (input in Members(forest, Field(forest, signature, "parameters"))) {
+            if (Field(forest, input, "value") >= 0 || Field(forest, input, "source") >= 0) {
+                return GenericFunctions.Failed(Diagnose(forest, input, definition.document,
+                                                        "Callable signature parameters cannot have defaults or source qualifiers"));
+            }
+        }
+        expected: Callable = caller;
+        expected_params: Param[] = [];
+        switch FunctionSignature(forest, source.text, source.key, SolidOffsets(source.text), table, aliases,
+                                 definition.package, definition.document, signature, "__callable_signature", 0) {
+            case .Failed(diagnostic):
+                return GenericFunctions.Failed(diagnostic);
+            case .Read(found, added):
+                expected = found;
+                expected_params = added;
+        }
+        if (expected.results > 1) {
+            return GenericFunctions.Failed(Diagnose(forest, signature, definition.document,
+                                                    "Callable parameters support at most one result"));
+        }
+        target := arguments[ordinal].record;
+        if (arguments[ordinal].storage != GenericFunctionStorage) {
+            return GenericFunctions.Failed(Diagnose(forest, values[ordinal], caller.document,
+                                                    "A callable parameter requires a function argument"));
+        }
+        if (target == -2) {
+            lambda := Unparenthesized(forest, GenericArgumentValue(forest, values[ordinal]));
+            id := binding.ID("lambda", format_text("{}:{}:{}", document.key, forest[lambda].start,
+                                                   CallableIdentity(package_names, caller)));
+            target = -1;
+            index: int = 0;
+            while (index < length(callables)) {
+                if (callables[index].identity == id && callables[index].owner_package == caller.owner_package) {
+                    target = index;
+                    break;
+                }
+                index += 1;
+            }
+            if (target < 0) {
+                switch FunctionSignature(forest, document.text, document.key, SolidOffsets(document.text), table,
+                                         caller_names,
+                                         caller.package, caller.document, lambda,
+                                         format_text("__lambda_{}", id), length(params)) {
+                    case .Failed(diagnostic):
+                        return GenericFunctions.Failed(diagnostic);
+                    case .Read(found, added):
+                        result: ValueType = {storage: found.result, container: found.result_container,
+                                             record: found.result_record};
+                        if (Field(forest, lambda, "results") < 0) {
+                            result = {storage: GenericInferStorage, container: 0, record: -1};
+                        }
+                        concrete := GenericCallable(found, id, caller.owner_package,
+                                                    WaitingBody(forest, Field(forest, lambda, "body")), result);
+                        target = length(callables);
+                        callables.append(concrete);
+                        params.extend(added);
+                        inherited := bindings;
+                        for (bound in inherited) {
+                            if (bound.owner == owner && (bound.place == GenericTypePlace || bound.place == GenericFunctionPlace || bound.place == GenericConstantPlace)) {
+                                captured := bound;
+                                captured.owner = target;
+                                bindings.append(captured);
+                            }
+                        }
+                }
+            }
+        }
+        actual := callables[target];
+        have_result := GenericSingleResult(actual, params);
+        want_result := GenericSingleResult(expected, expected_params);
+        valid := !actual.waits && actual.count == expected.count && actual.results <= 1 &&
+                 (have_result.storage == GenericInferStorage || (have_result.storage == want_result.storage && have_result.container == want_result.container && have_result.record == want_result.record));
+        at: int = 0;
+        while (valid && at < actual.count) {
+            have := GenericParameterType(params[actual.first + at], table, actual.package);
+            want := GenericParameterType(expected_params[at], table, definition.package);
+            valid = have.storage == want.storage && have.container == want.container && have.record == want.record;
+            at += 1;
+        }
+        if (!valid) {
+            return GenericFunctions.Failed(Diagnose(forest, values[ordinal], caller.document,
+                                                    "Function argument does not match the callable parameter signature"));
+        }
+        function_name: Name = {owned: false, name: Text(forest, source.text, Field(forest, parameter, "name")), place: GenericFunctionPlace,
+                               index: target, storage: GenericFunctionStorage, container: 0, record: signature,
+                               writable: false, node: Field(forest, parameter, "name")};
+        names.append(function_name);
+        omitted_binding: GenericBinding = {owner: owner, name: "", place: GenericOmittedPlace, index: 0,
+                                           storage: 0, container: 0, record: -1, node: values[ordinal], bits: 0};
+        bindings.append(omitted_binding);
+        ordinal += 1;
+    }
+    // Function and type bindings share one canonical name order.
+    ordinal = 1;
+    while (ordinal < length(names)) {
+        value := names[ordinal];
+        before := ordinal;
+        while (before > 0 && strings.Compare(names[before - 1].name, value.name) > 0) {
+            names[before] = names[before - 1];
+            before -= 1;
+        }
+        names[before] = value;
+        ordinal += 1;
+    }
+    return GenericFunctions.Bound(callables, params, names, bindings);
+}
+// A request stops ordinary body typing at its first unresolved generic call.
+// Materialize that concrete signature, then retry with the resolved call-site
+// binding. Recursive requests reuse the signature installed before its body.
+SpecializePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], order: int[],
+                       links: graph.Binding[], package_names: string[], input_callables: Callable[], input_params: Param[],
+                       table: ^(TypeDecl[]), members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[],
+                       ports: ResolvedPort[], identities: u64[], context: BodyContext, ops: Ops, target: Target) -> GenericPlan {
+    has_templates := false;
+    for (callable in input_callables) {
+        has_templates = has_templates || callable.count < 0;
+    }
+    if (!has_templates) {
+        return GenericPlan.Ready(input_callables, input_params, []);
+    }
+    callables := input_callables;
+    params := input_params;
+    bindings: GenericBinding[] = [];
+    instances: int = 0;
+    current: int = 0;
+    scoped := forest;
+    scoped_callables: int = -1;
+    scoped_params: int = -1;
+    while (current < length(callables)) {
+        callable := callables[current];
+        if (callable.count < 0) {
+            current += 1;
+            continue;
+        }
+        document := documents[callable.document];
+        aliases := GenericAliases(Aliases(links, callable.document), bindings, current);
+        // Signatures only append during specialization. Result inference does
+        // not change scoped parameters, so refresh their normalized bodies
+        // only when a new signature can introduce another scoped binding.
+        if (scoped_callables != length(callables) || scoped_params != length(params)) {
+            scoped = forest;
+            if (AnyReference(params)) {
+                scoped = ScopedTargets(forest, documents, callables, params);
+            }
+            scoped_callables = length(callables);
+            scoped_params = length(params);
+        }
+        body := FunctionBody(scoped, documents, callables, params, table, members, GenericConstants(forest, constants, bindings, current, callable, documents), natives, ports,
+                             identities, aliases, [], [], [], current, SolidOffsets(document.text), 0,
+                             CallableIdentity(package_names, callable), context, [], ops, target, []);
+        switch body {
+            case .Failed(diagnostic):
+                return GenericPlan.Failed(diagnostic);
+            case .Inferred(value):
+                if (callable.result != GenericInferStorage) {
+                    return GenericPlan.Failed(Diagnose(forest, callable.node, callable.document,
+                                                       "expression inferred where a callable body was required"));
+                }
+                callable.result = value.storage;
+                callable.result_container = value.container;
+                callable.result_record = value.record;
+                inferred_callables := callables;
+                inferred_callables[current] = callable;
+                switch GenericCallableResults(forest, documents, package_names, links, inferred_callables, params, table, bindings, current) {
+                    case .Valid:
+                        callables[current] = callable;
+                    case .Failed(diagnostic):
+                        return GenericPlan.Failed(diagnostic);
+                }
+            case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+                current += 1;
+            case .Specialize(template, call, arguments, caller_names):
+                definition := callables[template];
+                source := documents[definition.document];
+                switch GenericNames(forest, source.text, definition.document, definition, table, arguments) {
+                    case .Failed(diagnostic):
+                        return GenericPlan.Failed(diagnostic);
+                    case .Bound(type_names):
+                        names := type_names;
+                        switch GenericFunctionArguments(forest, documents, package_names, links, table, constants, callable, definition,
+                                                        call, arguments, caller_names, callables, params, names, bindings, current) {
+                            case .Failed(diagnostic):
+                                return GenericPlan.Failed(diagnostic);
+                            case .Bound(more_callables, more_params, more_names, more_bindings):
+                                callables = more_callables;
+                                params = more_params;
+                                names = more_names;
+                                bindings = more_bindings;
+                        }
+                        instance_owner := definition.owner_package;
+                        for (name in names) {
+                            if (name.place == GenericFunctionPlace ||
+                                GenericForeignType(table^, name.record, definition.package)) {
+                                instance_owner = callable.owner_package;
+                            }
+                        }
+                        id := GenericIdentity(CallableIdentity(package_names, definition), names, table^, callables, package_names, bindings);
+                        instance: int = -1;
+                        index: int = 0;
+                        while (index < length(callables)) {
+                            if (callables[index].identity == id && callables[index].owner_package == instance_owner) {
+                                instance = index;
+                                break;
+                            }
+                            index += 1;
+                        }
+                        if (instance < 0) {
+                            if (instances >= GenericLimit) {
+                                return GenericPlan.Failed(Diagnose(forest, call, callable.document,
+                                                                   "Polymorphic specialization budget exceeded"));
+                            }
+                            definition_aliases := Aliases(links, definition.document);
+                            definition_aliases.extend(names);
+                            switch FunctionSignature(forest, source.text, source.key, SolidOffsets(source.text), table,
+                                                     definition_aliases, definition.package, definition.document,
+                                                     definition.node, format_text("__generic_{}", id), length(params)) {
+                                case .Failed(diagnostic):
+                                    return GenericPlan.Failed(diagnostic);
+                                case .Read(concrete, added):
+                                    instance = length(callables);
+                                    result: ValueType = {storage: concrete.result, container: concrete.result_container,
+                                                         record: concrete.result_record};
+                                    instance_row := GenericCallable(concrete, id, instance_owner, definition.waits, result);
+                                    callables.append(instance_row);
+                                    params.extend(added);
+                            }
+                            for (name in names) {
+                                bits: u64 = 0;
+                                if (name.place == GenericConstantPlace) {
+                                    bits = bindings[name.index].bits;
+                                }
+                                instance_binding: GenericBinding = {owner: instance, name: name.name, place: name.place, index: name.index,
+                                                                    storage: name.storage, container: name.container, record: name.record,
+                                                                    node: name.node, bits: bits};
+                                bindings.append(instance_binding);
+                            }
+                            instances += 1;
+                        }
+                        call_binding: GenericBinding = {owner: current, name: "", place: GenericCallPlace, index: instance,
+                                                        storage: 0, container: 0, record: -1, node: call, bits: 0};
+                        bindings.append(call_binding);
+                }
+        }
+    }
+    // Assembly expects concrete functions contiguous within each package.
+    concrete: Callable[] = [];
+    remap := resize([int(-1)], length(callables));
+    for (package in order) {
+        index: int = 0;
+        while (index < length(callables)) {
+            if (callables[index].owner_package == package && callables[index].count >= 0) {
+                remap[index] = length(concrete);
+                concrete.append(callables[index]);
+            }
+            index += 1;
+        }
+    }
+    final_bindings: GenericBinding[] = [];
+    index: int = 0;
+    while (index < length(bindings)) {
+        row := bindings[index];
+        if (row.owner < 0) {
+            index += 1;
+            continue;
+        }
+        row.owner = remap[row.owner];
+        if (row.place == GenericCallPlace || row.place == GenericFunctionPlace) {
+            row.index = remap[row.index];
+        }
+        final_bindings.append(row);
+        index += 1;
+    }
+    return GenericPlan.Ready(concrete, params, final_bindings);
+}
+
+GenericCheck :: union {
+    Valid | Failed(diagnostic: syntax.Diagnostic)
+}
+GenericCallableResults :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package_names: string[],
+                           links: graph.Binding[], callables: Callable[], params: Param[], table: ^(TypeDecl[]),
+                           bindings: GenericBinding[], target: int) -> GenericCheck {
+    for (bound in bindings) {
+        if (bound.place != GenericFunctionPlace || bound.owner < 0 || (target >= 0 && bound.index != target)) {
+            continue;
+        }
+        owner := callables[bound.owner];
+        file: int = 0;
+        while (file + 1 < length(documents) && documents[file + 1].node_start <= bound.record) {
+            file += 1;
+        }
+        document := documents[file];
+        package: int = 0;
+        while (package < length(package_names) && package_names[package] != document.identity) {
+            package += 1;
+        }
+        if (package == length(package_names)) {
+            return GenericCheck.Failed(Diagnose(forest, bound.record, file, "Callable signature has no owning package"));
+        }
+        aliases := GenericAliases(Aliases(links, file), bindings, bound.owner);
+        switch FunctionSignature(forest, document.text, document.key, SolidOffsets(document.text), table, aliases,
+                                 package, file, bound.record, "__callable_signature", 0) {
+            case .Failed(diagnostic):
+                return GenericCheck.Failed(diagnostic);
+            case .Read(expected, added):
+                actual := callables[bound.index];
+                have := GenericSingleResult(actual, params);
+                want := GenericSingleResult(expected, added);
+                if (actual.results > 1 || have.storage != want.storage || have.container != want.container || have.record != want.record) {
+                    return GenericCheck.Failed(Diagnose(forest, actual.node, actual.document,
+                                                        "Function argument does not match the callable parameter signature"));
+                }
+        }
+    }
+    return GenericCheck.Valid;
+}
+
+// Match assembly's SUSPEND fixed point, including declared native effects.
+// A callable parameter may never survive a suspension of its consumer.
+GenericSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], bodies: Body[],
+                       bindings: GenericBinding[], native_effects: int[]) -> GenericCheck {
+    needed := false;
+    for (bound in bindings) {
+        needed = needed || bound.place == GenericFunctionPlace;
+    }
+    if (!needed) {
+        return GenericCheck.Valid;
+    }
+    suspended := resize([false], length(callables));
+    index: int = 0;
+    for (body in bodies) {
+        switch body {
+            case .Failed(diagnostic):
+                return GenericCheck.Failed(diagnostic);
+            case .Inferred(value):
+                return GenericCheck.Failed(Diagnose(forest, callables[index].node, callables[index].document,
+                                                    "An inferred body cannot establish a synchronous callable contract"));
+            case .Specialize(template, call, arguments, caller_names):
+                return GenericCheck.Failed(Diagnose(forest, call, callables[index].document, "unresolved generic call"));
+            case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+                suspended[index] = callables[index].waits || (effects & SuspendEffect) != 0;
+                for (host in hosts) {
+                    suspended[index] = suspended[index] ||
+                                       (host.linked >= 0 && (native_effects[host.linked] & SuspendEffect) != 0) ||
+                                       (host.command != 0 && host.command != CancelCommand && host.command != CancelAfterCommand);
+                }
+        }
+        index += 1;
+    }
+    changed := true;
+    while (changed) {
+        changed = false;
+        index = 0;
+        for (body in bodies) {
+            switch body {
+                case .Failed(diagnostic):
+                    return GenericCheck.Failed(diagnostic);
+                case .Inferred(value):
+                    return GenericCheck.Failed(Diagnose(forest, callables[index].node, callables[index].document,
+                                                        "An inferred body cannot establish a synchronous callable contract"));
+                case .Specialize(template, call, arguments, caller_names):
+                    return GenericCheck.Failed(Diagnose(forest, call, callables[index].document, "unresolved generic call"));
+                case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+                    for (call in calls) {
+                        if (!call.task && suspended[call.callee] && !suspended[index]) {
+                            suspended[index] = true;
+                            changed = true;
+                        }
+                    }
+            }
+            index += 1;
+        }
+    }
+    for (bound in bindings) {
+        if (bound.place == GenericFunctionPlace && (suspended[bound.owner] || suspended[bound.index])) {
+            callable := callables[bound.owner];
+            return GenericCheck.Failed(Diagnose(forest, callable.node, callable.document,
+                                                "Non-escaping callable parameters require synchronous function bodies"));
+        }
+    }
+    return GenericCheck.Valid;
+}

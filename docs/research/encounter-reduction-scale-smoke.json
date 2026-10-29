@@ -1,8 +1,0 @@
-{
-  "count": 5000,
-  "frames": 240,
-  "profile": true,
-  "after_binary_sha256": "c4e48e70376f93660c601ca826c9d3539c1bd0fbc0f7e021687bbca47568c10e",
-  "purpose": "Functional scale acceptance, not a paired performance result",
-  "log": "Arena point lights: 32 active, 4969 omitted by the 32-light camera influence budget.\nSurface influences: 64-sample budget full; retaining strongest remaining colored strength.\nscene_scale_cold physics_ms=7.127000 frame_ms=31.843083\nscene_scale_first_fire physics_ms=3.207000 behavior_ms=2.815000 frame_ms=11.691333\nscene_scale_executor workers=4 external=0\nscene_scale_spikes physics_max_ms=5.987000 frame_max_ms=17.035958 backlog_max=0 backlog_frames=0 backlog_final=0\nscene_scale_phase name=wall p50_ms=11.737375 p95_ms=14.819583\nscene_scale_phase name=behavior p50_ms=2.818000 p95_ms=4.308000\nscene_scale_phase name=physics p50_ms=2.904000 p95_ms=5.165000\nscene_scale_phase name=systems p50_ms=0.268000 p95_ms=0.320000\nscene_scale_phase name=render_host p50_ms=5.510125 p95_ms=6.154833\nscene_scale_phase name=present p50_ms=0.061250 p95_ms=0.084292\nscene_scale_physics sync_ms=0.128579 solve_ms=1.213642 sweeps_ms=0.289183 pairs_ms=0.758321 writeback_ms=0.033746 dispatch_ms=0.698442 bodies=4997 pair_candidates=28117\nscene_scale backend=SLJIT entities=5000 frames=240 profile=1 draws=5103 checksum=665347.331999302 oracle_calls=0\nscene_scale_combat alive=4990 kills=10 experience=8 health=999999930 peak_shots=0 firing_frames=239 trace=13959324170899137728\nArena point lights: 1 active, 0 omitted by the 32-light camera influence budget.\nscene_scale_restart reset_ms=22.858000 workers=1 oracle_calls=0\n"
-}

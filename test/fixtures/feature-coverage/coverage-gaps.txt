@@ -15,6 +15,9 @@
 # requires a host-owned grant. It is absent from the default game catalog, so
 # feature_function has no entry to list. language-host-packages and its compiler
 # route exercise the private kernel, grants and imported wrappers on both VMs.
+# Precise Sine, Precise Cosine and Floating Remainder are narrow libm helpers
+# exercised by core:math's authored tests and the package-math boundary fixture.
+# Their uncategorized language declarations are excluded by feature_function.
 
 # Material simulation: fluids, destruction worlds, heat and combustion need a
 # material field and solver scene.

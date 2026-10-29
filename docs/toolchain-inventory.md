@@ -1,9 +1,8 @@
 # Chibi toolchain migration inventory
 
 Read this before changing or deleting project-owned Python, shell, Make, CMake,
-packaging, reflection, test-supervision, browser, or release code. This file is a
-deletion contract and current ownership map. `PLAN.md` owns the implementation
-order and checkpoint.
+packaging, reflection, test-supervision, browser, or release code. This file
+lists current owners and the requirements for replacing them.
 
 The goal is not to translate scripts line for line. Move policy and orchestration
 into shared `.chibi` modules, keep native host capabilities narrow, then delete a
@@ -37,7 +36,7 @@ Before removing or bypassing an implementation:
    behavior, and supported platforms where applicable.
 6. Remove the old caller, implementation, tests that only test the old mechanism,
    and stale documentation together. Preserve replacement coverage.
-7. Record the evidence and remaining recovery path in `PLAN.md`.
+7. Describe the checks run and any remaining recovery path in the change.
 
 Passing a happy-path replacement is not enough. A repository-local `.chibi` file
 does not replace a capability installed into the SDK. Invoking CMake from Chibi
@@ -165,8 +164,6 @@ staging directories, or limit a child's resources. Its instruction budget,
 | `tools/configure_inputs.py` | Native configuration probe. `tools/toolchain/Build.chibi`, SDK install. | `signature`: **Replace now**: prebuilt archives removed the dependency inputs it tracked, and the host primitives cover the rest. `Build.chibi` owns the former `compiler-sdk` probe; `package-enabled` went with the dependency packages. |
 | `tools/package_sdk.py`, `tools/package_player.py`, `tools/package_studio.py` | SDK, player and Studio packaging. Makefile `package-*`, `test/tools/package.c` and `package_ownership.c`, SDK install. | **Blocked**: M6 and the host file primitives. |
 | `tools/quiet.py` | Build logs for every Makefile recipe (`QUIET`). | **Blocked**: it wraps configuration before any build host exists. Needs a prebuilt host or Make's retirement (M6). |
-| `docs/studio-migration-roadmap/build_ledger.py` | Studio migration ledger generator. Its README and provenance JSON. | **Blocked**: the Studio migration is paused; this moves or retires with it. |
-| `docs/prototypes/studio/serve.py` and the prototype's JavaScript | Static server and code for the Studio design prototype. Its README; the prototype is cited by `docs/editor-ui-references.md` and `docs/studio-ui-authoring.md`. | **Blocked**: Studio-owned design reference; Studio migration is paused. |
 
 ### Shell
 

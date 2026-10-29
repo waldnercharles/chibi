@@ -21,7 +21,5 @@ DECLARE(RandomReal)
 #undef BINARY
 #undef VALUE
 #undef DECLARE
-const char *native_math_spring(const pin_value *, pin_value *);
-extern const node_host_call NATIVE_MATH_Advance_Damped_Spring_CALL;
 extern const node_access NATIVE_MATH_ACCESS, NATIVE_MATH_RANDOM_ACCESS;
 #endif

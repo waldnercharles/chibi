@@ -21,13 +21,9 @@ Effect analysis does not follow a local across a branch, so a predicate that
 reads the array after an update whose value branches (`a && b`) is rejected, as
 a read after any other branch already was.
 
-This replaced the counted-row builder (removed on 2026-10-18). That builder
-proved one private loop shape after lowering and grew rows in place under a
-64 KiB bound. Its measurements remain in
-[evidence/counted-record-construction/results.json](evidence/counted-record-construction/results.json).
-Collectable arenas index their live values by page, so the ownership check
-each record copy makes does not walk the arena; before, 10,000 record appends
-took 5 seconds in collectable storage.
+Collectable arenas index their live values by page, so each record copy's
+ownership check does not walk the arena.
+
 `language-row-array` covers the current behavior: 200,000 appends, 100,000
 record appends, aliasing through copies, borrowed arguments, `foreach`, record
 items and union payloads, on bytecode and the compiled backend, in ordinary and

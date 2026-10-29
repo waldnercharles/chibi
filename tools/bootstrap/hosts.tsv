@@ -1,0 +1,2 @@
+# The pinned first build host per platform: platform, release tag, asset, SHA-256.
+# `tools/bootstrap.sh` downloads and checks it. The bootstrap-host workflow publishes new ones.

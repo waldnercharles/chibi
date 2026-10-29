@@ -42,21 +42,3 @@ bool behavior_function_bind(
     }
     return true;
 }
-
-void behavior_function_bind_columns(
-    const behavior_function *f,
-    behavior_function_context *ctx,
-    const ecs_execution_column ***columns
-)
-{
-    assert(behavior_function_batchable(f));
-    asetlen(*columns, acount(f->components));
-    for (int i = 0; i < acount(f->components); i++) {
-        behavior_function_component component = f->components[i];
-        (*columns)[i] = ecs_execution_find_column(
-            component.binding ? ctx->binding_world : ctx->world,
-            component.id
-        );
-    }
-    ctx->columns = *columns;
-}

@@ -99,11 +99,6 @@ static void metadata_attach(const char *source, av_value *root, const asset_comp
     attach(source, "Overrides", av_obj_get(root, "overrides"), options);
 }
 
-void asset_source_metadata_attach(const char *source, av_value *root)
-{
-    metadata_attach(source, root, NULL);
-}
-
 typedef struct host_lease
 {
     compiler_host *host;
@@ -1233,87 +1228,4 @@ char *asset_source_invoke_bytes(
     free(result.bytes);
     host_release(host);
     return text;
-}
-av_doc *asset_source_invoke_document(
-    const char *entry,
-    const av_value *arguments,
-    const asset_compiler_options *options,
-    asset_compiler_diagnostic *diagnostic
-)
-{
-    char *json = asset_source_invoke_bytes(entry, arguments, options, diagnostic);
-    av_doc *doc = json ? read_document_transport(json, strlen(json), diagnostic) : NULL;
-    free(json);
-    return doc;
-}
-
-static char *reconcile_compiled(
-    const char *entry,
-    const char *source,
-    const av_value *old_value,
-    const av_value *new_value,
-    const asset_compiler_options *options,
-    asset_compiler_diagnostic *diagnostic
-)
-{
-    *diagnostic = (asset_compiler_diagnostic){ .document = -1 };
-    av_doc *before = asset_source_value_columns(old_value, diagnostic);
-    if (!before) {
-        return NULL;
-    }
-    av_doc *after = asset_source_value_columns(new_value, diagnostic);
-    if (!after) {
-        av_doc_free(before);
-        return NULL;
-    }
-    av_doc *request = av_doc_new();
-    av_value *args = av_arr(request);
-    av_doc_set_root(request, args);
-    av_arr_append(args, av_str(request, source));
-    for (size_t i = 0; i < 8; i++) {
-        av_arr_append(args, av_clone(request, av_arr_get(av_doc_root(before), i)));
-    }
-    for (size_t i = 0; i < 8; i++) {
-        av_arr_append(args, av_clone(request, av_arr_get(av_doc_root(after), i)));
-    }
-    char *text = asset_source_invoke_bytes(entry, args, options, diagnostic);
-    av_doc_free(before);
-    av_doc_free(after);
-    av_doc_free(request);
-    return text;
-}
-char *asset_source_reconcile_compiled(
-    const char *source,
-    const av_value *old_value,
-    const av_value *new_value,
-    const asset_compiler_options *options,
-    asset_compiler_diagnostic *diagnostic
-)
-{
-    return reconcile_compiled(
-        "project:asset_compiler:1:Reconcile:callable",
-        source,
-        old_value,
-        new_value,
-        options,
-        diagnostic
-    );
-}
-
-char *asset_source_reconcile_native_compiled(
-    const char *source,
-    const av_value *old_value,
-    const av_value *new_value,
-    const asset_compiler_options *options,
-    asset_compiler_diagnostic *diagnostic
-)
-{
-    return reconcile_compiled(
-        "project:asset_compiler:1:ReconcileNative:callable",
-        source,
-        old_value,
-        new_value,
-        options,
-        diagnostic
-    );
 }

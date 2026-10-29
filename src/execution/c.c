@@ -1433,7 +1433,3 @@ void behavior_function_write_sequence_c(
     }
     fputs("}}\n", out);
 }
-void behavior_function_write_system_c(const behavior_function *f, FILE *out, const char *name)
-{
-    behavior_function_write_sequence_c(&f, 1, out, name);
-}

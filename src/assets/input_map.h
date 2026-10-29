@@ -25,8 +25,6 @@
 #define INPUT_MAP_FILE "input.kdl"
 
 bool input_map_read(const char *text, input_action **out, char *error, size_t size);
-/* Reads <content>/input.kdl; a project without one has no actions. */
-bool input_map_load(const char *content, input_action **out, char *error, size_t size);
 char *input_map_write(const input_action *map);
 /* Adds controls to the named action, appending the action when it is new. */
 void input_map_add(input_action **map, const char *name, uint64_t controls, bool firing);

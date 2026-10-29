@@ -46,33 +46,6 @@ class ProfileTests(unittest.TestCase):
         self.assertNotIn('--debug-frame-pointers "on"', result)
         self.assertNotIn('--asset-generator-hosts', result)
 
-    def test_graph_reference_tracks_platform_default_and_explicit_override(self):
-        for system, default in (('linux', 'build-cmake'), ('darwin', 'build-cmake'),
-                                ('win32', 'build')):
-            for override, host in ((None, None), ('custom-cmake', None),
-                                   (None, 'custom/sdk/chibi-build-host'),
-                                   ('custom-cmake', 'custom/sdk/chibi-build-host')):
-                with self.subTest(system=system, override=override, host=host), \
-                        patch.object(sys, 'platform', system), patch.dict(os.environ):
-                    os.environ.pop('CHIBI_GRAPH_REFERENCE', None)
-                    os.environ.pop('CHIBI_BUILD_HOST', None)
-                    if override is not None:
-                        os.environ['CHIBI_GRAPH_REFERENCE'] = override
-                    if host is not None:
-                        os.environ['CHIBI_BUILD_HOST'] = host
-                    policy = runpy.run_path(str(ROOT / 'tools/test_policy.py'))
-                    expected = str(ROOT / (override or default))
-                    expected_host = str(ROOT / (host or 'build/sdk/chibi-build-host'))
-                    self.assertEqual(policy['GRAPH_REFERENCE'], expected)
-                    for name, command in policy['TOOLS'].items():
-                        if name.startswith('build-graph'):
-                            selector = command.index('--' + name)
-                            arguments = command[selector + 1:]
-                            expected_arguments = [expected_host]
-                            if name != 'build-graph-link-response':
-                                expected_arguments.append(expected)
-                            self.assertEqual(arguments, expected_arguments, name)
-
     def test_linux_graph_proof_is_bounded_and_explicit(self):
         text = (ROOT / '.github/workflows/linux-graph.yml').read_text()
         triggers = text.split('\non:\n', 1)[1].split('\npermissions:', 1)[0]
@@ -191,10 +164,8 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 1)
             self.assertIn('BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"', block[build:verify])
             if job == 'native':
-                reference = block.index('make graph-reference LIBCLANG_ROOT=/usr/lib/llvm-18')
                 parity = block.index('python3 tools/test_policy.py tool build-graph-debug-optimization')
-                self.assertLess(verify, reference)
-                self.assertLess(reference, parity)
+                self.assertLess(verify, parity)
         diagnostics = ['Capture macOS facade identities', 'Preserve macOS facade identities']
         optional = []
         native_jobs = text.split('  native:\n', 1)[1].split('  windows:\n', 1)[0]

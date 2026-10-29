@@ -139,7 +139,7 @@ help:
 build:
 	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 14 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
 
-.PHONY: toolchain-build stage-zero-build graph-reference
+.PHONY: toolchain-build stage-zero-build
 ifneq ($(GRAPH_BUILD),)
 toolchain-build:
 	@if [ -n "$(ASSET_GENERATOR_HOSTS_DEFAULT)" ]; then $(MAKE) build-release BUILD_HOST="$(abspath $(BUILD_HOST))" BUILD_TARGET='chibi-build-host chibi-compiler-host' || exit $$?; fi
@@ -161,15 +161,6 @@ stage-zero-build:
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_ASSET_GENERATOR_HOSTS="$(ASSET_GENERATOR_HOSTS_PATH)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET) $(BUILD_HOST_TARGET),) --parallel $(JOBS)
 endif
-
-# The CMake build the build-graph checks compare the graph with: configured
-# with the sanitizer profile, with what they read built (reflect, its
-# generated sources, the shaders and the build host).
-graph-reference:
-	@$(QUIET) configure-reference -- sh tools/configure_native.sh "$(CMAKE_REFERENCE_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SANITIZER_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) build-reference -- cmake --build "$(CMAKE_REFERENCE_DIR)" --target reflect generate_runtime_registry chibi_build_shaders chibi-build-host --parallel $(JOBS)
-	@# Configuring links the root compile database to this tree; editors keep the graph's.
-	@if [ -f "$(abspath $(BUILD_DIR))/compile_commands.json" ]; then ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json; fi
 
 build-debug:
 	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_PROFILE=debug BUILD_TARGET="$(BUILD_TARGET)"
@@ -491,7 +482,7 @@ test-list test-policy-inventory:
 	@python3 tools/test_policy.py inventory
 
 clean:
-	@for dir in "$(abspath $(BUILD_DIR))" "$(abspath $(CMAKE_REFERENCE_DIR))"; do \
+	@for dir in "$(abspath $(BUILD_DIR))"; do \
 		if git worktree list --porcelain | awk -v root="$$dir" \
 			'$$1 == "worktree" && ($$2 == root || index($$2, root "/") == 1) { found = 1 } END { exit !found }'; then \
 			printf '%s\n' "Skipping $$dir: it contains a registered worktree"; \

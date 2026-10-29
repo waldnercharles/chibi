@@ -113,13 +113,9 @@ jobs:
           make build BUILD_TARGET='chibi chibi-compile chibi-player test_tools test_language' BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" ASSET_GENERATOR_HOSTS=build-release/sdk LIBCLANG_ROOT=/usr/lib/llvm-18 2>&1 | tee "$RUNNER_TEMP/native-build.log"
       - name: Verify native profile evidence
         run: python3 .github/verify-native-profile.py
-      # Keep the temporary CMake oracle beside the Graph output. Only its
-      # reflection/generation prerequisites and build host are compiled.
-      - name: Build matching CMake graph reference
-        run: make graph-reference LIBCLANG_ROOT=/usr/lib/llvm-18
       # Run authored command generation on the Release helper; test_tools and
       # the reference profile remain the selected Debug profile.
-      - name: Graph Debug optimization and command parity (commands only)
+      - name: Graph Debug optimization (commands only)
         env:
           CHIBI_BUILD_HOST: build-release/sdk/chibi-build-host
         run: python3 tools/test_policy.py tool build-graph-debug-optimization

@@ -63,9 +63,9 @@ ParseDeclaration :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (token == tk.Bind) {
         binding := New(n, "bind_declaration");
         Take(c, n, binding, "");
-        Add(n, binding, ParseExpression(c, n), "target");
+        Add(n, binding, ParseBinary(c, n, OrPower), "target");
         Expect(c, n, binding, tk.Eq, "");
-        Add(n, binding, ParseExpression(c, n), "value");
+        Add(n, binding, ParseBinary(c, n, OrPower), "value");
         End(c, n, binding);
         return binding;
     }
@@ -139,7 +139,7 @@ ParseComputation :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
         }
     }
     Expect(c, n, declaration, tk.Eq, "");
-    Add(n, declaration, ParseExpression(c, n), "value");
+    Add(n, declaration, ParseBinary(c, n, OrPower), "value");
     End(c, n, declaration);
     return declaration;
 }
@@ -256,7 +256,7 @@ ParseConstant :: (c: ^Cursor, n: ^(Node[]), public: bool) -> int {
         Add(n, constant, ParseType(c, n), "type");
         Expect(c, n, constant, tk.Colon, "");
     }
-    Add(n, constant, ParseExpression(c, n), "value");
+    Add(n, constant, ParseBinary(c, n, OrPower), "value");
     End(c, n, constant);
     return constant;
 }
@@ -266,12 +266,12 @@ ParseState :: (c: ^Cursor, n: ^(Node[]), public: bool) -> int {
     slot := New(n, "state_declaration");
     TakeName(c, n, slot, "name");
     if (Accept(c, n, slot, tk.ColonEq, "")) {
-        Add(n, slot, ParseExpression(c, n), "value");
+        Add(n, slot, ParseBinary(c, n, OrPower), "value");
     } else {
         Expect(c, n, slot, tk.Colon, "");
         Add(n, slot, ParseType(c, n), "type");
         if (Accept(c, n, slot, tk.Eq, "")) {
-            Add(n, slot, ParseExpression(c, n), "value");
+            Add(n, slot, ParseBinary(c, n, OrPower), "value");
         }
     }
     End(c, n, slot);
@@ -288,7 +288,7 @@ ParseExplicitState :: (c: ^Cursor, n: ^(Node[])) -> int {
         Add(n, slot, ParseType(c, n), "type");
     }
     if (Accept(c, n, slot, tk.Eq, "")) {
-        Add(n, slot, ParseExpression(c, n), "value");
+        Add(n, slot, ParseBinary(c, n, OrPower), "value");
     }
     End(c, n, slot);
     return slot;
@@ -340,10 +340,10 @@ ParseParameter :: (c: ^Cursor, n: ^(Node[])) -> int {
     }
     if (Cur(c, n) == tk.From || Cur(c, n) == tk.Split) {
         Take(c, n, parameter, "");
-        Add(n, parameter, ParseExpression(c, n), "source");
+        Add(n, parameter, ParseBinary(c, n, OrPower), "source");
     }
     if (Accept(c, n, parameter, tk.Eq, "")) {
-        Add(n, parameter, ParseExpression(c, n), "value");
+        Add(n, parameter, ParseBinary(c, n, OrPower), "value");
     }
     return parameter;
 }
@@ -366,7 +366,7 @@ ParseRecord :: (c: ^Cursor, n: ^(Node[]), public: bool) -> int {
         Expect(c, n, field, tk.Colon, "");
         Add(n, field, ParseType(c, n), "type");
         if (Accept(c, n, field, tk.Eq, "")) {
-            Add(n, field, ParseExpression(c, n), "value");
+            Add(n, field, ParseBinary(c, n, OrPower), "value");
         }
         End(c, n, field);
         Add(n, body, field, "");
@@ -454,7 +454,7 @@ ParseQueryItem :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (Cur(c, n) == tk.If) {
         guard := New(n, "query_guard");
         Take(c, n, guard, "");
-        Add(n, guard, ParseExpression(c, n), "condition");
+        Add(n, guard, ParseBinary(c, n, OrPower), "condition");
         return guard;
     }
     next := Peek(c, n, 1);
@@ -462,14 +462,14 @@ ParseQueryItem :: (c: ^Cursor, n: ^(Node[])) -> int {
         binding := New(n, "query_binding");
         TakeName(c, n, binding, "name");
         Take(c, n, binding, "");
-        Add(n, binding, ParseExpression(c, n), "value");
+        Add(n, binding, ParseBinary(c, n, OrPower), "value");
         return binding;
     }
     if (next == tk.In) {
         generator := New(n, "query_generator");
         TakeName(c, n, generator, "name");
         Take(c, n, generator, "");
-        Add(n, generator, ParseExpression(c, n), "source");
+        Add(n, generator, ParseBinary(c, n, OrPower), "source");
         return generator;
     }
     following := SkipType(n, c.pos + 2, c.final);
@@ -479,7 +479,7 @@ ParseQueryItem :: (c: ^Cursor, n: ^(Node[])) -> int {
         Take(c, n, binding, "");
         Add(n, binding, ParseType(c, n), "type");
         Take(c, n, binding, "");
-        Add(n, binding, ParseExpression(c, n), "value");
+        Add(n, binding, ParseBinary(c, n, OrPower), "value");
         return binding;
     }
     if (next == tk.Colon && following >= 0 && n^[following].token == tk.In) {
@@ -488,7 +488,7 @@ ParseQueryItem :: (c: ^Cursor, n: ^(Node[])) -> int {
         Take(c, n, generator, "");
         Add(n, generator, ParseType(c, n), "type");
         Take(c, n, generator, "");
-        Add(n, generator, ParseExpression(c, n), "source");
+        Add(n, generator, ParseBinary(c, n, OrPower), "source");
         return generator;
     }
     parameter := New(n, "parameter");
@@ -497,7 +497,7 @@ ParseQueryItem :: (c: ^Cursor, n: ^(Node[])) -> int {
     Add(n, parameter, ParseSignatureType(c, n), "type");
     if (Cur(c, n) == tk.From) {
         Take(c, n, parameter, "");
-        Add(n, parameter, ParseExpression(c, n), "source");
+        Add(n, parameter, ParseBinary(c, n, OrPower), "source");
     }
     return parameter;
 }
@@ -553,7 +553,7 @@ ParsePrototype :: (c: ^Cursor, n: ^(Node[])) -> int {
             field := New(n, "struct_field");
             TakeMember(c, n, field, "name");
             Expect(c, n, field, tk.Colon, "");
-            Add(n, field, ParseExpression(c, n), "value");
+            Add(n, field, ParseBinary(c, n, OrPower), "value");
             Add(n, body, field, "");
             if (!Accept(c, n, body, tk.Comma, "")) {
                 End(c, n, body);

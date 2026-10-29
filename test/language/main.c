@@ -364,10 +364,10 @@ int main(int argc, char **argv)
          !program_session && !query_program && !query_values && !query_migration &&
          !incremental && !operations && !modules && !native_calls && !ranges &&
          !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
-         !integer_shift_counts && !integer_shift_counts_authored &&
-         !package_graph && !package_graph_chibi && !asset_compiler_host &&
-         !asset_packaging_chibi && !shader_source_chibi && !syntax_chibi &&
-         !source_tokenizer_chibi && !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
+         !integer_shift_counts && !integer_shift_counts_authored && !package_graph &&
+         !package_graph_chibi && !asset_compiler_host && !asset_packaging_chibi &&
+         !shader_source_chibi && !syntax_chibi && !source_tokenizer_chibi &&
+         !source_parser_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
          !compiler_fixture && !bounded_compiler_chibi && !prepared_writer_chibi &&
@@ -414,7 +414,8 @@ int main(int argc, char **argv)
             "--integer-shift-counts [case] | --integer-shift-counts-authored | "
             "--package-graph | --package-graph-chibi | --shader-source-chibi | "
             "--asset-packaging-chibi | --syntax-chibi | "
-            "--source-tokenizer-chibi | --source-parser-chibi | --package-paths-chibi | "
+            "--source-tokenizer-chibi | --source-parser-chibi | "
+            "--package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             "--constant-proof-chibi | --constant-scalar-chibi | "
             "--scalar-lowering-chibi | --compiler-fixture | "

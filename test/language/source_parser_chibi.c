@@ -36,17 +36,14 @@ static const char *const PARSER_FILES[] = {
     "tools/compiler/source_parser/Declarations.chibi",
     "tools/compiler/source_parser/Parser.chibi",
     "test/language/SourceParserDiff.chibi",
+    "packages/core/strings/Strings.chibi",
 };
 static const char *const PARSER_PATHS[] = {
-    "source_tokenizer/Tokenizer.chibi",
-    "syntax_diagnostics/Diagnostics.chibi",
-    "source_parser/Tree.chibi",
-    "source_parser/Types.chibi",
-    "source_parser/Expressions.chibi",
-    "source_parser/Statements.chibi",
-    "source_parser/Declarations.chibi",
-    "source_parser/Parser.chibi",
-    "source_parser_diff/Diff.chibi",
+    "source_tokenizer/Tokenizer.chibi", "syntax_diagnostics/Diagnostics.chibi",
+    "source_parser/Tree.chibi",         "source_parser/Types.chibi",
+    "source_parser/Expressions.chibi",  "source_parser/Statements.chibi",
+    "source_parser/Declarations.chibi", "source_parser/Parser.chibi",
+    "source_parser_diff/Diff.chibi",    "/sdk/core/strings/Strings.chibi",
 };
 #define PARSER_COUNT ((int)(sizeof PARSER_FILES / sizeof *PARSER_FILES))
 
@@ -71,15 +68,13 @@ static bool prepare()
         snprintf(path, sizeof path, "%s/%s", CHIBI_SOURCE_ROOT, PARSER_FILES[i]);
         sources[i] = file_read_text(path);
         REQUIRE(sources[i]);
-        inputs[i] = (source_package_input){ PARSER_PATHS[i], sources[i], strlen(sources[i]) };
+        inputs[i] = (source_package_input){ PARSER_PATHS[i],
+                                            sources[i],
+                                            strlen(sources[i]) };
     }
-    REQUIRE(compiler_fixture_prepare_packs(
-        &fixture,
-        inputs,
-        PARSER_COUNT,
-        &COMPILER_SYNTAX_DEFINITION_PACK,
-        1
-    ));
+    REQUIRE(
+        compiler_fixture_prepare_packs(&fixture, inputs, PARSER_COUNT, &COMPILER_SYNTAX_DEFINITION_PACK, 1)
+    );
     return true;
 }
 /* The parser's difference from Tree-sitter's tree for `text`; false when the
@@ -94,10 +89,15 @@ static bool differential(const char *label, const char *text)
         char *copy = arena_alloc(&input, size);
         memcpy(copy, text, size);
         pin_value argument = { .type = PIN_STR,
-                               .text = &(const pin_string){ .bytes = copy,
-                                                            .length = (uint32_t)strlen(copy) } },
+                               .text = &(
+                                   const pin_string
+                               ){ .bytes = copy, .length = (uint32_t)strlen(copy) } },
                   output = { 0 };
-        REQUIRE(compiler_fixture_call(&fixture, b, IDENTITY, "Differ", &argument, 1, budget, &detached, &output));
+        bool called = compiler_fixture_call(&fixture, b, IDENTITY, "Differ", &argument, 1, budget, &detached, &output);
+        if (!called) {
+            fprintf(stderr, "%s (backend %d): the comparison did not finish\n", label, b);
+        }
+        REQUIRE(called);
         REQUIRE(output.type == PIN_STR);
         const char *difference = pin_text(output).bytes;
         if (difference && difference[0]) {

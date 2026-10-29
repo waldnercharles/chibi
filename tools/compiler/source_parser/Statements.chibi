@@ -39,7 +39,7 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
     if (token == tk.While) {
         loop := New(n, "while_statement");
         Take(c, n, loop, "");
-        Add(n, loop, ParseExpression(c, n), "condition");
+        Add(n, loop, ParseBinary(c, n, OrPower), "condition");
         Add(n, loop, ParseBlock(c, n), "body");
         return loop;
     }
@@ -71,10 +71,10 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
     if (token == tk.Cancel) {
         stop := New(n, "cancel_statement");
         Take(c, n, stop, "");
-        Add(n, stop, ParseExpression(c, n), "value");
+        Add(n, stop, ParseBinary(c, n, OrPower), "value");
         if (Cur(c, n) == tk.After) {
             Take(c, n, stop, "");
-            Add(n, stop, ParseExpression(c, n), "duration");
+            Add(n, stop, ParseBinary(c, n, OrPower), "duration");
         }
         End(c, n, stop);
         return stop;
@@ -82,7 +82,7 @@ ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
     if (token == tk.Delete) {
         removal := New(n, "delete_statement");
         Take(c, n, removal, "");
-        Add(n, removal, ParseExpression(c, n), "target");
+        Add(n, removal, ParseBinary(c, n, OrPower), "target");
         End(c, n, removal);
         return removal;
     }
@@ -153,14 +153,14 @@ ParseLocal :: (c: ^Cursor, n: ^(Node[])) -> int {
     local := New(n, "local_declaration");
     TakeName(c, n, local, "name");
     if (Accept(c, n, local, tk.ColonEq, "")) {
-        Add(n, local, ParseExpression(c, n), "value");
+        Add(n, local, ParseBinary(c, n, OrPower), "value");
         End(c, n, local);
         return local;
     }
     Expect(c, n, local, tk.Colon, "");
     Add(n, local, ParseType(c, n), "type");
     Expect(c, n, local, tk.Eq, "");
-    Add(n, local, ParseExpression(c, n), "value");
+    Add(n, local, ParseBinary(c, n, OrPower), "value");
     End(c, n, local);
     return local;
 }
@@ -174,12 +174,12 @@ ParseKeywordStatement :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
 
 // An assignment or an expression used for its effect.
 ParseExpressionStatement :: (c: ^Cursor, n: ^(Node[])) -> int {
-    value := ParseExpression(c, n);
+    value := ParseBinary(c, n, OrPower);
     if (!c.failed && IsAssignment(Cur(c, n))) {
         assignment := New(n, "assignment");
         Add(n, assignment, value, "target");
         Take(c, n, assignment, "operator");
-        Add(n, assignment, ParseExpression(c, n), "value");
+        Add(n, assignment, ParseBinary(c, n, OrPower), "value");
         End(c, n, assignment);
         return assignment;
     }
@@ -190,19 +190,39 @@ ParseExpressionStatement :: (c: ^Cursor, n: ^(Node[])) -> int {
 }
 
 ParseIf :: (c: ^Cursor, n: ^(Node[])) -> int {
-    part := New(n, "if_statement");
-    Take(c, n, part, "");
-    Add(n, part, ParseExpression(c, n), "condition");
-    Add(n, part, ParseBlock(c, n), "consequence");
-    if (!c.failed && Cur(c, n) == tk.Else) {
-        Take(c, n, part, "");
-        if (Cur(c, n) == tk.If) {
-            Add(n, part, ParseIf(c, n), "alternative");
-        } else {
-            Add(n, part, ParseBlock(c, n), "alternative");
+    first := New(n, "if_statement");
+    current := first;
+    while (!c.failed) {
+        Take(c, n, current, "");
+        Add(n, current, ParseBinary(c, n, OrPower), "condition");
+        Add(n, current, ParseBlock(c, n), "consequence");
+        if (c.failed || Cur(c, n) != tk.Else) {
+            break;
         }
+        Take(c, n, current, "");
+        if (Cur(c, n) != tk.If) {
+            Add(n, current, ParseBlock(c, n), "alternative");
+            break;
+        }
+        chained := New(n, "if_statement");
+        Add(n, current, chained, "alternative");
+        current = chained;
     }
-    return part;
+    // The chain grew downward, so each link's range still ends where its own
+    // last child did before the next link was added.
+    chain: int[] = [first];
+    link := first;
+    while (n^[link].last >= 0 && n^[n^[link].last].kind == "if_statement" &&
+           n^[n^[link].last].field == "alternative") {
+        link = n^[link].last;
+        chain.append(link);
+    }
+    at := length(chain) - 2;
+    while (at >= 0) {
+        n^[chain[at]].end = n^[n^[chain[at]].last].end;
+        at -= 1;
+    }
+    return first;
 }
 
 // `for [<] name in first (..|..<) last`, or `for [key,] [&]name in value`,
@@ -222,11 +242,11 @@ ParseFor :: (c: ^Cursor, n: ^(Node[])) -> int {
     Accept(c, n, loop, tk.And, "reference");
     TakeName(c, n, loop, "name");
     Expect(c, n, loop, tk.In, "");
-    first := ParseExpression(c, n);
+    first := ParseBinary(c, n, OrPower);
     if (!c.failed && (Cur(c, n) == tk.Ellipsis || Cur(c, n) == tk.HalfOpenRange)) {
         Add(n, loop, first, "first");
         Take(c, n, loop, "bound");
-        Add(n, loop, ParseExpression(c, n), "last");
+        Add(n, loop, ParseBinary(c, n, OrPower), "last");
     } else {
         Add(n, loop, first, "value");
     }
@@ -240,7 +260,7 @@ ParseFor :: (c: ^Cursor, n: ^(Node[])) -> int {
 ParseSwitch :: (c: ^Cursor, n: ^(Node[])) -> int {
     selection := New(n, "switch_statement");
     Take(c, n, selection, "");
-    Add(n, selection, ParseExpression(c, n), "value");
+    Add(n, selection, ParseBinary(c, n, OrPower), "value");
     Expect(c, n, selection, tk.OpenBrace, "");
     while (!c.failed && Cur(c, n) == tk.Case) {
         arm := New(n, "switch_arm");
@@ -250,7 +270,7 @@ ParseSwitch :: (c: ^Cursor, n: ^(Node[])) -> int {
         } else if (Cur(c, n) == tk.Period) {
             Add(n, arm, ParseVariantPattern(c, n), "value");
         } else {
-            Add(n, arm, ParseExpression(c, n), "value");
+            Add(n, arm, ParseBinary(c, n, OrPower), "value");
         }
         Expect(c, n, arm, tk.Colon, "");
         if (Cur(c, n) == tk.OpenBrace) {
@@ -280,7 +300,7 @@ ParseReturn :: (c: ^Cursor, n: ^(Node[])) -> int {
         if (Cur(c, n) == tk.OpenParen) {
             Add(n, statement, ParseArgumentsOrGroup(c, n), "value");
         } else {
-            Add(n, statement, ParseExpression(c, n), "value");
+            Add(n, statement, ParseBinary(c, n, OrPower), "value");
         }
     }
     End(c, n, statement);
@@ -294,7 +314,7 @@ ParseArgumentsOrGroup :: (c: ^Cursor, n: ^(Node[])) -> int {
     if (following >= 0 && n^[following].token == tk.Semicolon) {
         return ParseArguments(c, n);
     }
-    return ParseExpression(c, n);
+    return ParseBinary(c, n, OrPower);
 }
 
 ParseSequence :: (c: ^Cursor, n: ^(Node[])) -> int {
@@ -320,15 +340,15 @@ ParseReduce :: (c: ^Cursor, n: ^(Node[])) -> int {
         n^[word].kind = Slice(c.text, n^[word].start, n^[word].end);
         n^[word].named = false;
         Expect(c, n, reduction, tk.OpenParen, "");
-        Add(n, reduction, ParseExpression(c, n), "target");
+        Add(n, reduction, ParseBinary(c, n, OrPower), "target");
         Expect(c, n, reduction, tk.Comma, "");
-        Add(n, reduction, ParseExpression(c, n), "value");
+        Add(n, reduction, ParseBinary(c, n, OrPower), "value");
         Expect(c, n, reduction, tk.CloseParen, "");
     } else {
         Accept(c, n, reduction, tk.Unordered, "ordering");
-        Add(n, reduction, ParseExpression(c, n), "target");
+        Add(n, reduction, ParseBinary(c, n, OrPower), "target");
         Expect(c, n, reduction, tk.AddEq, "operator");
-        Add(n, reduction, ParseExpression(c, n), "value");
+        Add(n, reduction, ParseBinary(c, n, OrPower), "value");
     }
     End(c, n, reduction);
     return reduction;

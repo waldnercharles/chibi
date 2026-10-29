@@ -115,7 +115,7 @@ Take :: (c: ^Cursor, n: ^(Node[]), parent: int, field: string) -> int {
 // Takes the current token if it has `token` kind, else fails.
 Expect :: (c: ^Cursor, n: ^(Node[]), parent: int, token: int, field: string) -> int {
     if (Cur(c, n) != token) {
-        Fail(c, n, Expected(c, n, Describe(token)));
+        Fail(c, n, format_text("{}{}", Expected(c, n, Describe(token)), Opener(c, n, token)));
         return -1;
     }
     return Take(c, n, parent, field);
@@ -263,4 +263,35 @@ Describe :: (token: int) -> string {
         return "the end of the statement";
     }
     return format_text("`{}`", tk.KindNames()[token]);
+}
+
+// For a missing closing bracket, where its opening bracket is: " (to close the
+// `(` at 4:10)"; nothing for any other token.
+Opener :: (c: ^Cursor, n: ^(Node[]), closing: int) -> string {
+    opening: int = -1;
+    if (closing == tk.CloseParen) {
+        opening = tk.OpenParen;
+    } else if (closing == tk.CloseBracket) {
+        opening = tk.OpenBracket;
+    } else if (closing == tk.CloseBrace) {
+        opening = tk.OpenBrace;
+    }
+    if (opening < 0) {
+        return "";
+    }
+    depth: int = 0;
+    at := c.pos - 1;
+    while (at >= 0) {
+        if (n^[at].token == closing) {
+            depth += 1;
+        } else if (n^[at].token == opening) {
+            if (depth == 0) {
+                return format_text(" (to close the `{}` at {}:{})", tk.KindNames()[opening],
+                                   n^[at].row + 1, n^[at].column + 1);
+            }
+            depth -= 1;
+        }
+        at -= 1;
+    }
+    return "";
 }

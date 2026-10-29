@@ -20590,15 +20590,13 @@ TEST_CASE(package_compiler_compositional_records)
     int count = sample_inputs(&s, inputs);
     const sample_call call = { .function = "Main", .arguments = "[]", .expected = "[0]" };
     for (int b = 0; b < 2; b++) {
-        pin_value out;
+        compiler_result out;
         REQUIRE(compile(b, true, false, false, inputs, count, COMPILE_BUDGET, &out));
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value);
-        if (value->tag == tag(b, "Rejected")) {
+        if (!compiler_succeeded(&out)) {
             pin_value message, line, column;
-            REQUIRE(get(&value->values[0], "message", &message));
-            REQUIRE(get(&value->values[0], "line", &line));
-            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(get(compiler_error(&out), "message", &message));
+            REQUIRE(get(compiler_error(&out), "line", &line));
+            REQUIRE(get(compiler_error(&out), "column", &column));
             fprintf(
                 stderr,
                 "compositional stage one: %s at %d:%d\n",
@@ -20607,9 +20605,9 @@ TEST_CASE(package_compiler_compositional_records)
                 column.i
             );
         }
-        REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+        REQUIRE(compiler_succeeded(&out));
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
+        unsigned char *bytes = closure_bytes(&out, &length);
         arena_free(&detached);
         bool passed = true;
         for (int backend = 0; passed && backend < 2; backend++) {
@@ -20623,10 +20621,9 @@ TEST_CASE(package_compiler_compositional_records)
             strlen(COMPOSITIONAL_RECORD_ALIAS_REJECTION)
         };
         REQUIRE(compile(b, false, false, false, &rejected, 1, COMPILE_BUDGET, &out));
-        value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
+        REQUIRE(!compiler_succeeded(&out));
         pin_value message;
-        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(get(compiler_error(&out), "message", &message));
         if (!strstr(pin_text(message).bytes, "Nullable pointer requires a presence guard")) {
             fprintf(
                 stderr,
@@ -20646,16 +20643,15 @@ TEST_CASE(package_compiler_compositional_records)
                                                      depth_source,
                                                      strlen(depth_source) };
                 REQUIRE(compile(b, false, false, false, &input, 1, COMPILE_BUDGET, &out));
-                value = out.ptr;
-                REQUIRE(out.type == PIN_UNION && value);
-                if (value->tag != tag(b, depth == 16 ? "Compiled" : "Rejected")) {
+                bool expected = depth == 16;
+                if (compiler_succeeded(&out) != expected) {
                     fprintf(stderr, "compositional stage-one depth: backend=%d arrays=%d depth=%d\n", b, arrays, depth);
-                    if (value->tag == tag(b, "Rejected")) {
-                        REQUIRE(get(&value->values[0], "message", &message));
+                    if (!compiler_succeeded(&out)) {
+                        REQUIRE(get(compiler_error(&out), "message", &message));
                         fprintf(stderr, "%s\n", pin_text(message).bytes);
                     }
                 }
-                REQUIRE(value->tag == tag(b, depth == 16 ? "Compiled" : "Rejected"));
+                REQUIRE(compiler_succeeded(&out) == expected);
                 arena_free(&detached);
             }
         }
@@ -20664,9 +20660,8 @@ TEST_CASE(package_compiler_compositional_records)
                                               depth_source,
                                               strlen(depth_source) };
         REQUIRE(compile(b, false, false, false, &fanout, 1, COMPILE_BUDGET, &out));
-        value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
-        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(!compiler_succeeded(&out));
+        REQUIRE(get(compiler_error(&out), "message", &message));
         REQUIRE(strstr(pin_text(message).bytes, "metadata work"));
         arena_free(&detached);
     }

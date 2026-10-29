@@ -1657,6 +1657,14 @@ is compared after producer storage retires. This route uses no filesystem,
 process, service or GPU work. Build separately.
 It remains outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-source-parser-chibi` compares the
+authored parser (`docs/source-parser.md`) with Tree-sitter. It parses every
+`.chibi` file below `packages/`, `test/` and `tools/`, and the `*.chibi.txt`
+sources in `test/language/syntax_corpus`, once on each backend, and
+`test/language/SourceParserDiff.chibi` compares every row of the two trees:
+kind, range, links, field, named and extra flags. Text Tree-sitter rejects must
+be rejected as well.
+
 `python3 tools/test_policy.py tool language-source-tokenizer-chibi` compares
 the authored tokenizer (`docs/source-tokenizer.md`) with Tree-sitter. It reads
 every `.chibi` file below `packages/`, `test/` and `tools/` at run time, about

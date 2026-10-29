@@ -2,6 +2,7 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_minimize.h"
+#include "authoring/source_package_prepare.h"
 #include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
@@ -298,6 +299,7 @@ static execution_module *prior_module;
 static execution_program *other_program;
 static bool program_prepared_type(void *, uint64_t, execution_prepared_type *);
 static native_capabilities *state_native;
+static authoring_packages *call_packages[3];
 static execution_inspector *debugger;
 static behavior_function_context parser_context;
 static behavior_function_activation parser_activation;
@@ -361,6 +363,10 @@ static void cleanup()
     script_syntax_free(syntax);
     ecs_world_free(world);
     lifetime_cleanup();
+    for (int i = 0; i < 3; i++) {
+        authoring_packages_free(call_packages[i]);
+        call_packages[i] = NULL;
+    }
     native_capabilities_free(state_native);
     state_native = NULL;
     program = NULL;
@@ -8752,9 +8758,176 @@ TEST_CASE(program_managed_array_items_copy_alone)
     return true;
 }
 
+static const authoring_package *call_package(
+    int index,
+    int previous,
+    const char *source,
+    const char *dependency,
+    behavior_backend backend
+)
+{
+    if (!state_native) {
+        char error[256];
+        const native_definition_pack packs[] = { CORE_DEFINITION_PACK };
+        state_native = native_capabilities_from_definition_packs(NULL, 0, packs, 1, error, sizeof error);
+        assert(state_native);
+    }
+    source_package_input files[] = {
+        { "Main.chibi", source, strlen(source) },
+        { "counter/Counter.chibi", dependency, dependency ? strlen(dependency) : 0 },
+    };
+    source_package_snapshot_options options = { .project_root = "/program-call",
+                                                .files = files,
+                                                .file_count = dependency ? 2 : 1 };
+    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
+    script_lower_bindings bindings = authoring_native_bindings(state_native);
+    call_packages[index] = authoring_packages_prepare(
+        snapshot,
+        native_capabilities_catalog(state_native),
+        &bindings,
+        backend,
+        previous >= 0 ? call_packages[previous] : NULL
+    );
+    if (!authoring_packages_valid(call_packages[index])) {
+        for (int i = 0; i < authoring_packages_count(call_packages[index]); i++) {
+            const authoring_package *package = authoring_packages_at(call_packages[index], i);
+            for (int j = 0; j < package->diagnostic_count; j++) {
+                fprintf(stderr, "program package: %s\n", package->diagnostics[j].message);
+            }
+        }
+        return NULL;
+    }
+    for (int i = 0; i < authoring_packages_count(call_packages[index]); i++) {
+        const authoring_package *package = authoring_packages_at(call_packages[index], i);
+        if (!strcmp(package->identity, "project:")) {
+            return package;
+        }
+    }
+    return NULL;
+}
+static uint64_t call_id(const authoring_package *package, const char *name)
+{
+    for (int i = 0; i < package->analysis->symbol_count; i++) {
+        const script_symbol *symbol = &package->analysis->symbols[i];
+        if (symbol->kind == SCRIPT_FUNCTION &&
+            symbol->scope == package->analysis->package_scope &&
+            !strcmp(symbol->name, name)) {
+            return symbol->id;
+        }
+    }
+    return 0;
+}
+/* Ordinary package functions run with their own instance and import owners,
+ * without a scene or world. A reload keeps both retained counters, converts
+ * one's type, ignores its new default and resets invocation locals. */
+TEST_CASE(program_calls_keep_package_and_import_state_across_replacement)
+{
+    const char
+        *before = "package app\nimport counter \"project:counter\"\n"
+                  "Main :: () -> int { count: retain int = 0; count += 1; "
+                  "fresh := 0; fresh += 1; return count * 100 + counter.Next() "
+                  "* 10 + fresh; }\n",
+        *after = "package app\nimport counter \"project:counter\"\n"
+                 "Main :: () -> int { count: retain f64 = 100; count += 1; "
+                 "fresh := 0; fresh += 1; return int(count) * 1000 + "
+                 "counter.Next() * 10 + fresh; }\n",
+        *dependency = "package counter\npub Next :: () -> int { calls: retain "
+                      "int = 0; calls += 1; return calls; }\n",
+        *changed = "package counter\npub Next :: () -> int { calls: retain int "
+                   "= 50; calls += 2; return calls; }\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        const authoring_package *original = call_package(0, -1, before, dependency, backends[b]);
+        REQUIRE(original);
+        program = execution_program_new(original->module, NULL, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, 1);
+        uint64_t main = call_id(original, "Main");
+        REQUIRE(instance && main);
+        int result = -1;
+        REQUIRE(execution_instance_call(instance, main, &result, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(result == 111);
+        REQUIRE(execution_instance_call(instance, main, &result, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(result == 221 && execution_instance_pending(instance) == 0);
+        const authoring_package *next = call_package(1, 0, after, changed, backends[b]);
+        REQUIRE(next && call_id(next, "Main") == main);
+        other_program = execution_program_prepare_replace(program, next->module, false);
+        REQUIRE(other_program);
+        execution_program_commit_replace(program, other_program);
+        other_program = NULL;
+        instance = execution_program_instance(program, 1);
+        REQUIRE(instance);
+        REQUIRE(execution_instance_call(instance, main, &result, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(result == 3041 && execution_instance_pending(instance) == 0);
+        REQUIRE(execution_program_replace(program, next->module, true) == FLOW_OK);
+        instance = execution_program_instance(program, 1);
+        REQUIRE(instance);
+        REQUIRE(execution_instance_call(instance, main, &result, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(result == 101521);
+    }
+    return true;
+}
+/* The synchronous call boundary never schedules unsupported work. Rejected
+ * calls leave the result alone and the instance ready for another call. */
+TEST_CASE(program_calls_reject_signatures_waits_and_tasks_without_pending_work)
+{
+    const char *source = "package app\n"
+                         "Main :: () -> int { return 7; }\n"
+                         "Empty :: () {}\n"
+                         "Argument :: (value: int) -> int { return value; }\n"
+                         "Text :: () -> string { return \"wrong\"; }\n"
+                         "Wait :: () { await delay(1); }\n"
+                         "Task :: () { Wait(); }\n"
+                         "Fails :: () { assert(false, \"call failure\"); }\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        const authoring_package *package = call_package(0, -1, source, NULL, backends[b]);
+        REQUIRE(package);
+        program = execution_program_new(package->module, NULL, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, 1);
+        REQUIRE(instance);
+        int result = -1;
+        REQUIRE(
+            execution_instance_call(instance, call_id(package, "Empty"), &result, 0, 0, 1000) == FLOW_OK
+        );
+        REQUIRE(result == 0);
+        const char *invalid[] = { "Argument", "Text", "Absent" };
+        for (int i = 0; i < 3; i++) {
+            result = -1;
+            REQUIRE(
+                execution_instance_call(instance, call_id(package, invalid[i]), &result, 0, 0, 1000) ==
+                FLOW_ERR_ARGUMENT
+            );
+            REQUIRE(result == -1 && execution_instance_pending(instance) == 0);
+        }
+        const char *rejected[] = { "Wait", "Task", "Fails" };
+        const char *messages[] = { "waiting", "task", "call failure" };
+        for (int i = 0; i < 3; i++) {
+            execution_program_clear_error(program);
+            result = -1;
+            REQUIRE(
+                execution_instance_call(instance, call_id(package, rejected[i]), &result, 0, 0, 1000) < 0
+            );
+            const execution_program_failure *failure = execution_program_error(program);
+            REQUIRE(failure && strstr(failure->message, messages[i]));
+            REQUIRE(result == -1 && execution_instance_pending(instance) == 0);
+            REQUIRE(
+                execution_instance_call(instance, call_id(package, "Main"), &result, 0, 0, 1000) == FLOW_OK
+            );
+            REQUIRE(result == 7);
+        }
+    }
+    return true;
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_calls_keep_package_and_import_state_across_replacement);
+    RUN_TEST_CASE(program_calls_reject_signatures_waits_and_tasks_without_pending_work);
     RUN_TEST_CASE(program_captured_addressed_local_preserves_pointer_alias);
     RUN_TEST_CASE(program_borrowed_pointer_array_results_survive_collection);
     RUN_TEST_CASE(program_borrowing_kernel_results_survive_collection);

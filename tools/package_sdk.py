@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = Path('share/chibi/package.json')
 CORE_TARGETS = {'ui_document_values', 'text_search', 'image_catalog', 'support', 'types', 'ecs', 'execution_contract', 'execution', 'behavior_runtime', 'events',
                 'asset_values', 'value_document', 'capabilities', 'native_capabilities', 'native_prepared', 'core_capabilities', 'array_capabilities', 'field_capabilities', 'state_capabilities', 'selection_capabilities', 'set_capabilities', 'comparison_capabilities', 'conversion_capabilities', 'text_capabilities', 'fmt', 'host_native_catalog', 'scene_runtime', 'scheduling', 'fields', 'field_catalog', 'tasks', 'shader_runtime', 'model_runtime', 'ui_documents', 'input_action'}
-COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
+COMPILER_TARGETS = {'program', 'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
 NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
@@ -38,6 +38,9 @@ PRIVATE_TOOL_PATHS = {
 }
 PRIVATE_OBJECT_OWNERS = {
     'chibi_build_host': 'chibi-build-host',
+}
+PRODUCT_OBJECT_OWNERS = {
+    'chibi_application': ('chibi',),
 }
 PRIVATE_ARCHIVE_OWNERS = {
     'chibi_compiler_host': 'chibi-compiler-host',
@@ -465,9 +468,9 @@ def build_identity(build, cache):
                 executable = build / identities[target]['path']
                 if executable.stat().st_mtime_ns < object_path.stat().st_mtime_ns:
                     raise ValueError(f'Executable {target} predates a rebuilt object; relink first')
-            elif PRIVATE_OBJECT_OWNERS.get(target) in allowed_tools:
-                # Private host objects link directly into its installed tool.
-                # It deliberately has no separately installed static archive.
+            elif (PRIVATE_OBJECT_OWNERS.get(target) in allowed_tools
+                  or any(owner in allowed_products for owner in PRODUCT_OBJECT_OWNERS.get(target, ()))):
+                # Application host objects link directly into installed tools.
                 pass
             else:
                 candidates = [target_directory.parent.parent / name
@@ -554,6 +557,9 @@ def build_identity(build, cache):
     for name, evidence in private_executables.items():
         evidence['install_path'] = allowed_tools[name]
     for name, evidence in objects.items():
+        for owner in PRODUCT_OBJECT_OWNERS.get(evidence['target'], ()):
+            if owner in allowed_products and executables[owner]['link_inputs'].get(name) != evidence['sha256']:
+                raise ValueError(f'Application host object has no installed executable owner: {name}')
         owner = PRIVATE_OBJECT_OWNERS.get(evidence['target'])
         if owner in allowed_tools:
             linked = private_executables[owner]['link_inputs']

@@ -8,10 +8,9 @@
  * passed 1 MB at about 580 sources. */
 #define BUILD_TEXT_LIMIT (16 * 1024 * 1024)
 #define BUILD_ARRAY_LIMIT 8192
-/* Values are never freed. An up-to-date build graph holds every compile
- * record it reads, about 15 MB for 362 sources with sanitizers. The limit
- * counts the arena's doubling blocks, so it holds about half as many bytes of
- * values: room for the whole engine, while still stopping a runaway program. */
+/* Bound a bank's retained arena blocks. The host reuses its native-result
+ * bank after the VM imports a callback's results; root arguments have a
+ * separate bank that lives for the invocation. */
 #define BUILD_STORAGE_LIMIT (256 * 1024 * 1024)
 
 typedef struct

@@ -2460,16 +2460,6 @@ production target flags; validation-only section flags, stripping or hidden
 symbols do not establish the boundary. Configuration/build timing and link
 inspection are separate from test execution.
 
-The existing two-case `package-ownership` route also verifies both private host
-executables and their directly linked implementation objects under Ninja and
-Makefiles. The compiler host adds four tiny C compilations, two executable links
-and one wrong-owner inspection. The route has 22 supervised child invocations
-(six configure/build/install commands and sixteen inspections), each bounded to
-ten seconds. It compiles thirteen tiny C
-units and one precompiled header; none of those fixture executables runs. Missing
-or changed installed compiler-host bytes and linking its implementation only
-into an unrelated executable must fail provenance checks.
-
 ## Private build-host process checks
 
 `python3 tools/test_policy.py tool build-process` selects 23 C cases in the
@@ -3456,17 +3446,6 @@ an integration-review decision. Source-only registration records no measured pas
 
 
 ## Tooling parent C++ language activation
-
-The existing `desktop-dependencies` C/pico_unit selector adds one finite case
-with four configure-only fixtures: a pure C runtime consumer with an invalid
-C++ compiler path, a child-enabled scheduler with a parent C consumer, a
-child-enabled renderer with a parent C++ consumer, and an imported renderer.
-The C++ consumers reuse the existing `test/draw_backend.cpp` pass-through shim;
-no new C++ logic or standalone executable is added. The fixtures generate real
-Ninja rules through the production tooling language include. They do not build
-the fixture targets, fetch dependencies, execute fixture code or use a GPU.
-CMake's compiler identification/try-compile subprocesses remain part of each
-bounded configuration child.
 
 The whole selector has five C cases and fifteen direct children on Linux
 (eight and twenty before the dependency package, its s2n pin and enkiTS

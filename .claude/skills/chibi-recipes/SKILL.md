@@ -67,14 +67,10 @@ The smallest complete example is Play Sound:
 2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
    of `- name=... prototype=...`) and the prototypes it uses. A scenario in
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
-3. Format and validate: `build/bin/chibi_ctl --project-root <root> --format`,
-   then a `validate_asset` request per changed asset.
-4. Run it bounded. A scene:
-   `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Scene>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
-   A scenario, which supplies its own scene, frames and input:
-   `printf '%s\n' '{"contract":1,"operation":"run_scenario","scenario":"<Name>"}' | build/bin/chibi_ctl --project-root <root>`
-   Check `behavior_failures` and the state evidence. Choose enough frames to
-   exercise the scenario.
+3. Format and validate: `chibi fmt <root>`, then `chibi check <root>`.
+4. Run it bounded with the project's `@test` functions (`chibi test <root>`) or
+   a scenario through `make agent-test`. Choose enough frames to exercise the
+   scenario.
 
 ## Change saved projects
 
@@ -96,7 +92,7 @@ When you do bump it:
 3. Edit Studio's projects (`projects/starter`, `projects/studio`,
    `tests/acceptance/project`) the same way in a Studio PR that pins the
    engine PR in `.github/engine-ref`, and merge the two together.
-4. Run `chibi_ctl --format` on each edited project and compile it with
+4. Run `chibi fmt` on each edited project and compile it with
    `chibi-compile` to prove it loads.
 
 Prepared artifact versions (`PLAYER_PREPARED_VERSION` and the other

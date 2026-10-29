@@ -33,16 +33,8 @@ ranges and explicit uncertainty. They do not measure runtime traffic.
   declaration ranges. Definitions, references and callers use resolved IDs;
   authored event aliases retain their own identity while call hierarchy can
   normalize them to their underlying event.
-- `authoring/source_intelligence.h` supplies owned highlighting, typed completion
-  results and hover text. It combines recovered syntax with resolved scope,
-  reflected field and catalog facts. External KDL documents can provide hover
-  and definitions; executable completion and highlighting require executable
-  syntax.
-- `authoring/source_rename.h` creates project edits with exact expected bytes.
-  It rejects collisions, scope capture, invalid project facts and native
-  declarations without editable source. Bare KDL names, such as input map
-  action nodes, stay bare when the new name is an identifier. Applying a plan does not publish it;
-  consumers validate the complete candidate and check stale bytes before commit.
+- Highlighting, completion, hover, rename and source edits moved to `archive/`
+  (see `archive/README.md`); the compiler and formatter do not need them.
 - `authoring/source_prototype_flow.h` finds the string constants that reach a
   prototype parameter, such as Spawn Prototype's, through locals, state, authored
   function parameters and their defaults, in any document. Navigation indexes

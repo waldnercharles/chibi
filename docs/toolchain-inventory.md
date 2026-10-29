@@ -181,7 +181,6 @@ staging directories, or limit a child's resources. Its instruction budget,
 | `Makefile` | Build, test, package and agent entry points. CI, `AGENTS.md`, documentation. | **Blocked**: M6 build graph and the test-policy replacement. Public targets give way to `chibi` commands. |
 | Root `CMakeLists.txt`, `cmake/*.cmake`, `sdk/`, component and test `CMakeLists.txt` | Internal build graph. Makefile, `Build.chibi`, `configure.sh`, CI. | **Blocked**: M6's SDK, remaining native-platform, Wasm, Studio and parity/recovery responsibilities. Build-program compiler replacement alone does not remove them. |
 | Installed `ChibiConfig.cmake` and `ChibiTargets.cmake` | CMake consumer interface. `chibi-studio`. | **Blocked**: kept while Studio builds through CMake. |
-| `cmake/tests/` | Fixtures for desktop dependencies, package ownership and generation. `test/tools/desktop_dependencies.c`, `package_ownership.c`, root `CMakeLists.txt`. | **Blocked**: leave with the CMake mechanism they test. |
 
 ### C and C++
 

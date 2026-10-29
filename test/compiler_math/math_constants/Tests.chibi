@@ -1,0 +1,348 @@
+package math_constants
+
+Expect :: (result: Result, expected: number[], tolerance: number) {
+    switch result {
+        case .Rejected(message):
+            assert(false, "unexpected math constant rejection");
+        case .Value(values):
+            assert(length(values) == length(expected), "component count");
+            index: int = 0;
+            while (index < length(expected)) {
+                assert(Magnitude(values[index] - expected[index]) <= tolerance, "component value");
+                index += 1;
+            }
+    }
+}
+Reject :: (result: Result, expected: string) {
+    switch result {
+        case .Rejected(message):
+            assert(message == expected, "source diagnostic");
+        case .Value(values):
+            assert(false, "expected a recoverable math failure");
+    }
+}
+
+@test
+FiniteUsesTheExactF32Boundary :: () {
+    // (2^24 - 1) * 2^104 constructs the maximum independently of its spelling.
+    maximum: number = 16777215.0 * 20282409603651670423947251286016.0;
+    assert(maximum > 3e38);
+    assert(Finite(maximum) && Finite(-maximum) && Finite(0.0));
+    infinity := maximum + maximum;
+    nan := infinity - infinity;
+    assert(infinity > maximum);
+    assert(!Finite(infinity) && !Finite(-infinity) && !Finite(nan));
+}
+
+@test
+ColumnVectorConvention :: () {
+    // Rows [1, 2], [3, 4] multiply column [5, 6] to [17, 39].
+    matrix: number[] = [1, 3, 2, 4];
+    vector: number[] = [5, 6];
+    expected: number[] = [17, 39];
+    Expect(MatrixVector(2, matrix, vector), expected, 0.0);
+    transposed: number[] = [1, 2, 3, 4];
+    Expect(Transpose(2, matrix), transposed, 0.0);
+}
+
+@test
+MatrixCompositionAppliesRightFirst :: () {
+    // In homogeneous 2D, A translates x by 3; B scales x by 2.
+    translate: number[] = [1, 0, 0, 0, 1, 0, 3, 0, 1];
+    scale: number[] = [2, 0, 0, 0, 1, 0, 0, 0, 1];
+    point: number[] = [4, 5, 1];
+    expected: number[] = [11, 5, 1];
+    reversed: number[] = [14, 5, 1];
+    switch MatrixMultiply(3, translate, scale) {
+        case .Value(product):
+            Expect(MatrixVector(3, product, point), expected, 0.0);
+        case .Rejected(message):
+            assert(false, "unexpected math constant rejection");
+    }
+    switch MatrixMultiply(3, scale, translate) {
+        case .Value(product):
+            Expect(MatrixVector(3, product, point), reversed, 0.0);
+        case .Rejected(message):
+            assert(false, "unexpected math constant rejection");
+    }
+}
+
+@test
+Mat4PreservesHomogeneousPosition :: () {
+    translate: number[] = [1, 0, 0, 0, 0, 1, 0, 0,
+                           0, 0, 1, 0, 3, -2, 7, 1];
+    point: number[] = [4, 5, 6, 1];
+    direction: number[] = [4, 5, 6, 0];
+    expected_point: number[] = [7, 3, 13, 1];
+    Expect(MatrixVector(4, translate, point), expected_point, 0.0);
+    Expect(MatrixVector(4, translate, direction), direction, 0.0);
+}
+
+@test
+InversePivotsAndDoesNotChangeInput :: () {
+    matrix: number[] = [0, 1, 2, 3];
+    // Inverse of rows [0, 2], [1, 3]. First pivot requires a row swap.
+    expected: number[] = [-1.5, 0.5, 1, 0];
+    Expect(Inverse(2, matrix), expected, 0.0);
+    assert(matrix[0] == 0.0 && matrix[1] == 1.0 && matrix[2] == 2.0 && matrix[3] == 3.0,
+           "inverse preserves caller values");
+    determinant: number[] = [-2];
+    Expect(Determinant(2, matrix), determinant, 0.0);
+}
+
+@test
+InverseHandlesEveryMatrixWidth :: () {
+    matrix3: number[] = [2, 0, 0, 0, 4, 0, 6, 8, 1];
+    expected3: number[] = [0.5, 0, 0, 0, 0.25, 0, -3, -2, 1];
+    Expect(Inverse(3, matrix3), expected3, 0.0);
+    determinant3: number[] = [8];
+    Expect(Determinant(3, matrix3), determinant3, 0.0);
+    matrix4: number[] = [2, 0, 0, 0, 0, 4, 0, 0,
+                         0, 0, 8, 0, 6, 8, 16, 1];
+    expected4: number[] = [0.5, 0, 0, 0, 0, 0.25, 0, 0,
+                           0, 0, 0.125, 0, -3, -2, -2, 1];
+    Expect(Inverse(4, matrix4), expected4, 0.0);
+    determinant4: number[] = [64];
+    Expect(Determinant(4, matrix4), determinant4, 0.0);
+}
+
+@test
+DenseInverseMatchesKnownCofactors :: () {
+    // Rows [1, 2, 3], [0, 1, 4], [5, 6, 0] have determinant one.
+    matrix: number[] = [1, 0, 5, 2, 1, 6, 3, 4, 0];
+    expected: number[] = [-24, 20, -5, 18, -15, 4, 5, -4, 1];
+    Expect(Inverse(3, matrix), expected, 0.0001);
+    determinant: number[] = [1];
+    Expect(Determinant(3, matrix), determinant, 0.0);
+}
+
+@test
+SingularAndSmallMatricesHaveDifferentOutcomes :: () {
+    singular: number[] = [1, 2, 2, 4];
+    Reject(Inverse(2, singular), "cannot invert a singular matrix");
+    zero: number[] = [0];
+    Expect(Determinant(2, singular), zero, 0.0);
+    small: number[] = [1e-20, 0, 0, 1e-20];
+    expected: number[] = [1e20, 0, 0, 1e20];
+    Expect(Inverse(2, small), expected, 1e14);
+}
+
+@test
+DimensionsAreRecoverableFailures :: () {
+    short: number[] = [1, 2, 3];
+    matrix: number[] = [1, 0, 0, 1];
+    Reject(MatrixMultiply(2, matrix, short),
+           "matrix multiplication needs two square matrices of the same width");
+    Reject(MatrixVector(2, matrix, short),
+           "matrix multiplication needs a column vector of the matrix width");
+    Reject(Transpose(1, matrix), "transpose needs a square mat2, mat3 or mat4 constant");
+    Reject(Inverse(5, matrix), "inverse needs a square mat2, mat3 or mat4 constant");
+    Reject(QuaternionNormalize(short),
+           "quaternion normalization needs an xyzw quaternion constant");
+}
+
+@test
+QuaternionHamiltonProductUsesXYZW :: () {
+    // i * j = k, j * i = -k, and conjugation negates the vector part.
+    i: number[] = [1, 0, 0, 0];
+    j: number[] = [0, 1, 0, 0];
+    k: number[] = [0, 0, 1, 0];
+    negative_k: number[] = [0, 0, -1, 0];
+    Expect(QuaternionMultiply(i, j), k, 0.0);
+    Expect(QuaternionMultiply(j, i), negative_k, 0.0);
+    source: number[] = [1, 2, 3, 4];
+    conjugate: number[] = [-1, -2, -3, 4];
+    Expect(QuaternionConjugate(source), conjugate, 0.0);
+}
+
+@test
+QuaternionSignDoesNotChangeRotation :: () {
+    positive: number[] = [0, 0, 1, 0];
+    negative: number[] = [0, 0, -1, 0];
+    point: number[] = [3, 4, 5];
+    expected: number[] = [-3, -4, 5];
+    Expect(QuaternionRotate(positive, point), expected, 0.0);
+    Expect(QuaternionRotate(negative, point), expected, 0.0);
+}
+
+@test
+QuaternionCompositionAppliesRightFirst :: () {
+    half: number = sqrt(0.5);
+    x: number[] = [half, 0, 0, half];
+    z: number[] = [0, 0, half, half];
+    forward: number[] = [0, 0, 1];
+    right: number[] = [1, 0, 0];
+    down: number[] = [0, -1, 0];
+    switch QuaternionMultiply(z, x) {
+        case .Value(product):
+            Expect(QuaternionRotate(product, forward), right, 0.000001);
+        case .Rejected(message):
+            assert(false, "unexpected quaternion product rejection");
+    }
+    switch QuaternionMultiply(x, z) {
+        case .Value(product):
+            Expect(QuaternionRotate(product, forward), down, 0.000001);
+        case .Rejected(message):
+            assert(false, "unexpected quaternion product rejection");
+    }
+}
+
+@test
+QuaternionNormalizationScalesBeforeSquaring :: () {
+    huge: number[] = [1e30, 1e30, 1e30, 1e30];
+    tiny: number[] = [1e-30, 1e-30, 1e-30, 1e-30];
+    expected: number[] = [0.5, 0.5, 0.5, 0.5];
+    Expect(QuaternionNormalize(huge), expected, 0.0);
+    Expect(QuaternionNormalize(tiny), expected, 0.0);
+    zero: number[] = [0, 0, 0, 0];
+    Reject(QuaternionNormalize(zero), "cannot normalize a zero quaternion");
+    point: number[] = [1, 2, 3];
+    Reject(QuaternionRotate(zero, point), "cannot normalize a zero quaternion");
+}
+
+@test
+NonfiniteMatrixInputsAreRecoverable :: () {
+    zero: number = 0.0;
+    infinity := 1.0 / zero;
+    nan := infinity - infinity;
+    bad_matrix: number[] = [nan, 0, 0, 1];
+    Reject(Inverse(2, bad_matrix), "matrix constant contains a nonfinite component");
+}
+
+@test
+NonfiniteQuaternionInputsAreRecoverable :: () {
+    zero: number = 0.0;
+    infinity := 1.0 / zero;
+    bad_quaternion: number[] = [0, 0, 0, infinity];
+    Reject(QuaternionNormalize(bad_quaternion), "cannot normalize a nonfinite quaternion");
+}
+
+@test
+FiniteInputsCanOverflow :: () {
+    large: number = 3e38;
+    matrix: number[] = [large, 0, 0, large];
+    scale: number[] = [2, 0, 0, 2];
+    Reject(MatrixMultiply(2, matrix, scale), "math constant exceeds the finite f32 range");
+}
+
+@test
+SwizzleReadsRepeatAndPermuteComponents :: () {
+    color: number[] = [0.1, 0.2, 0.3, 0.4];
+    bgra: int[] = [2, 1, 0, 3];
+    expected: number[] = [0.3, 0.2, 0.1, 0.4];
+    Expect(ReadSwizzle(color, bgra), expected, 0.0);
+    xxx: int[] = [0, 0, 0];
+    repeated: number[] = [0.1, 0.1, 0.1];
+    Expect(ReadSwizzle(color, xxx), repeated, 0.0);
+    y: int[] = [1];
+    scalar: number[] = [0.2];
+    Expect(ReadSwizzle(color, y), scalar, 0.0);
+}
+
+@test
+SwizzleWritesSnapshotTheRightSide :: () {
+    vector: number[] = [3, 7, 11];
+    xy: int[] = [0, 1];
+    yx: int[] = [1, 0];
+    expected: number[] = [7, 3, 11];
+    switch ReadSwizzle(vector, yx) {
+        case .Value(replacement):
+            Expect(WriteSwizzle(vector, xy, replacement), expected, 0.0);
+        case .Rejected(message):
+            assert(false, "unexpected swizzle rejection");
+    }
+    assert(vector[0] == 3.0 && vector[1] == 7.0 && vector[2] == 11.0,
+           "swizzle assignment preserves its input value");
+}
+
+@test
+SwizzleReplacementCanShareTheReceiver :: () {
+    vector: number[] = [2, 3, 5, 7];
+    reverse: int[] = [3, 2, 1, 0];
+    expected: number[] = [7, 5, 3, 2];
+    Expect(WriteSwizzle(vector, reverse, vector), expected, 0.0);
+    switch WriteSwizzle(vector, reverse, vector) {
+        case .Value(written):
+            changed := written;
+            changed[0] = 99.0;
+            assert(vector[0] == 2.0 && vector[3] == 7.0, "output storage cannot modify the receiver");
+            assert(written[0] == 7.0, "ordinary result copies remain values");
+        case .Rejected(message):
+            assert(false, "unexpected swizzle rejection");
+    }
+}
+
+@test
+SwizzleFailuresNameTheSourceRule :: () {
+    vector: number[] = [2, 3];
+    scalar: number[] = [2];
+    one: int[] = [0];
+    none: int[] = [];
+    long: int[] = [0, 1, 0, 1, 0];
+    high: int[] = [2];
+    negative: int[] = [-1];
+    repeated: int[] = [0, 0];
+    replacement: number[] = [5, 7];
+    Reject(ReadSwizzle(scalar, one), "a swizzle receiver needs two, three or four components");
+    Reject(ReadSwizzle(vector, none), "a swizzle needs one to four components");
+    Reject(ReadSwizzle(vector, long), "a swizzle needs one to four components");
+    Reject(ReadSwizzle(vector, high), "swizzle component is outside the receiver width");
+    Reject(WriteSwizzle(vector, negative, scalar), "swizzle component is outside the receiver width");
+    Reject(WriteSwizzle(vector, one, replacement), "swizzle replacement width must match the destinations");
+    Reject(WriteSwizzle(vector, repeated, replacement), "a writable swizzle cannot repeat a destination");
+}
+
+@test
+SwizzlesCopyNonfiniteComponentsWithoutArithmetic :: () {
+    zero: number = 0.0;
+    infinity := 1.0 / zero;
+    nan := infinity - infinity;
+    vector: number[] = [infinity, nan];
+    reverse: int[] = [1, 0];
+    switch ReadSwizzle(vector, reverse) {
+        case .Value(read):
+            assert(read[0] != read[0], "projection preserves NaN");
+            assert(read[1] == infinity, "projection preserves infinity");
+        case .Rejected(message):
+            assert(false, "projection must not reject nonfinite bits");
+    }
+    switch WriteSwizzle(vector, reverse, vector) {
+        case .Value(written):
+            assert(written[0] != written[0], "assignment preserves NaN");
+            assert(written[1] == infinity, "assignment preserves infinity");
+        case .Rejected(message):
+            assert(false, "assignment must not reject nonfinite bits");
+    }
+}
+
+@test
+VectorNormalizationScalesAndRecovers :: () {
+    large: number[] = [3e30, 4e30];
+    tiny: number[] = [0, 3e-30, 4e-30];
+    expected2: number[] = [0.6, 0.8];
+    expected3: number[] = [0, 0.6, 0.8];
+    Expect(VectorNormalize(large), expected2, 0.000001);
+    Expect(VectorNormalize(tiny), expected3, 0.000001);
+    zero: number[] = [0, 0, 0];
+    fallback: number[] = [0, 2, 0];
+    Reject(VectorNormalize(zero), "cannot normalize a zero vector");
+    Expect(VectorNormalizeOr(zero, fallback), fallback, 0.0);
+    Expect(VectorNormalizeOrZero(zero), zero, 0.0);
+    good: number[] = [0, 5, 0];
+    unit: number[] = [0, 1, 0];
+    Expect(VectorNormalizeOr(good, fallback), unit, 0.0);
+}
+
+@test
+VectorNormalizationValidatesExplicitFallback :: () {
+    zero: number = 0.0;
+    infinity := 1.0 / zero;
+    nonfinite: number[] = [infinity, 0];
+    fallback: number[] = [1, 0];
+    Expect(VectorNormalizeOr(nonfinite, fallback), fallback, 0.0);
+    Reject(VectorNormalize(nonfinite), "cannot normalize a nonfinite vector");
+    short: number[] = [0];
+    Reject(VectorNormalizeOrZero(short), "vector normalization needs two, three or four components");
+    Reject(VectorNormalizeOr(fallback, short), "normalization fallback must be finite and match the vector width");
+    Reject(VectorNormalizeOr(fallback, nonfinite), "normalization fallback must be finite and match the vector width");
+}

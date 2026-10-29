@@ -600,7 +600,8 @@ uint64_t script_analyzer_component_target(const script_analysis *out, int index)
     int remaining = acount(out->expressions);
     while (index >= 0 && remaining--) {
         const script_expression *e = &out->expressions[index];
-        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_DEREFERENCE) {
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_DEREFERENCE ||
+            (e->kind == SCRIPT_EXPR_MATH && e->math_op == SCRIPT_MATH_SWIZZLE)) {
             if (e->read || e->write || e->type.container != PIN_CONTAINER_SINGLE) {
                 return 0;
             }
@@ -635,7 +636,8 @@ bool script_analyzer_writes_external(const script_analysis *out, int index)
             e->kind == SCRIPT_EXPR_COMPONENT) {
             return true;
         }
-        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX) {
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX ||
+            (e->kind == SCRIPT_EXPR_MATH && e->math_op == SCRIPT_MATH_SWIZZLE)) {
             index = e->left;
             continue;
         }
@@ -833,6 +835,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         result.expression = script_analyzer_expression(a, target, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
         script_expression address = a->out->expressions[result.expression];
+        (void)script_analyzer_math_write(a, target, &address);
+        result.op = script_analyzer_operator_node(a, script_analyzer_field(node, "operator"));
+        bool compound_math = result.op != SCRIPT_OP_NONE &&
+                             script_math_of(a->catalog, address.type) >= SCRIPT_MATH_VEC2;
         if (!address.writable) {
             script_analyzer_diagnostic(a, target, "Assignment requires a writable value");
         }
@@ -841,7 +847,9 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             script_analyzer_field(node, "value"),
             address.type
         );
-        script_analyzer_require_values(a, node, result.expression, result.second);
+        if (!compound_math) {
+            script_analyzer_require_values(a, node, result.expression, result.second);
+        }
         if (address.kind == SCRIPT_EXPR_MEMBER && address.left >= 0) {
             script_type owner = script_analyzer_expr_type(a, address.left);
             const script_catalog_type
@@ -879,7 +887,9 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 .effects = address.effects |
                            script_analyzer_expr_effects(a, result.second)
             };
-            if (script_analyzer_resolve_operator(a, node, script_analyzer_field(node, "operator"), &operation)) {
+            if (script_analyzer_math_operator(a, node, &operation) ||
+                script_analyzer_resolve_operator(a, node, script_analyzer_field(node, "operator"), &operation)) {
+                script_analyzer_require(a, node, address.type, operation.type);
                 result.second = script_analyzer_expr_add(a, operation);
                 result.op = SCRIPT_OP_NONE;
             } else {

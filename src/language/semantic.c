@@ -143,6 +143,7 @@ static script_analysis *analyze(
     }
     a.catalog_view.types = a.catalog_types;
     a.catalog = &a.catalog_view;
+    script_analyzer_math_prepare(&a, ts_tree_root_node(syntax->tree));
     for (int i = 0; i < syntax->diagnostic_count; i++) {
         apush(out->diagnostics, syntax->diagnostics[i]);
     }
@@ -375,6 +376,9 @@ static script_analysis *analyze_package(const script_package_options *options, b
     }
     a.catalog_view.types = a.catalog_types;
     a.catalog = &a.catalog_view;
+    for (int i = 0; i < count; i++) {
+        script_analyzer_math_prepare(&a, ts_tree_root_node(documents[i].syntax->tree));
+    }
     if (!script_analyzer_package_metadata(&a)) {
         return finish_analysis(&a, true, false);
     }

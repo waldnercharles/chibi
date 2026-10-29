@@ -129,9 +129,6 @@ void test_field_runtime();
 void test_prototype_document();
 void test_ui_authoring();
 void test_language_text_format();
-void test_graph_model();
-void test_graph_authoring();
-void test_model_runtime();
 void test_language_prepared_write(const char *directory);
 void test_language_compiler_artifact_write(const char *directory);
 void test_language_record_producer(const char *directory);
@@ -349,9 +346,6 @@ int main(int argc, char **argv)
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
     bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
     bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
-    bool model_runtime = argc == 2 && !strcmp(argv[1], "--model-runtime");
-    bool graph_authoring = argc == 2 && !strcmp(argv[1], "--graph-authoring");
-    bool graph_model = argc == 2 && !strcmp(argv[1], "--graph-model");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((!prepared && !compiler_artifact && !record_producer && !execution &&
@@ -390,18 +384,17 @@ int main(int argc, char **argv)
          !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !snapshot_reader_chibi && !callable_headers_chibi &&
-         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
-         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
-         !package_execution && !package_resolution && !package_imports &&
-         !host_packages && !host_packages_compiler && !package_files &&
-         !package_core && !package_math && !package_math_benchmark &&
-         !package_portable && !package_portable_compiler && !package_tests &&
-         !argument_effects_chibi && !component_write && !component_write_layout &&
-         !scalarize && !borrow && !reductions && !binding_schedule &&
-         !activation_cache && !headless && !build_workflow && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
-         !text_format && !graph_model && !graph_authoring && !model_runtime &&
+         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
+         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
+         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
+         !package_resolution && !package_imports && !host_packages &&
+         !host_packages_compiler && !package_files && !package_core &&
+         !package_math && !package_math_benchmark && !package_portable &&
+         !package_portable_compiler && !package_tests && !argument_effects_chibi &&
+         !component_write && !component_write_layout && !scalarize && !borrow &&
+         !reductions && !binding_schedule && !activation_cache && !headless &&
+         !build_workflow && !navigation && !publication && !field_runtime &&
+         !prototype && !ui_authoring && !text_format &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
@@ -478,8 +471,7 @@ int main(int argc, char **argv)
             "--publication | "
             "--field-runtime | --prototype-document "
             "| --ui-authoring | "
-            "--text-format | --graph-model | --graph-authoring | "
-            "--model-runtime | --runtime-attribution | "
+            "--text-format | --runtime-attribution | "
             "--runtime-attribution-benchmark | --query-binding-benchmark | "
             "--scalar-read-benchmark | --packed-benchmark | --record-values | "
             "--record-semantic | --record-document | --record-services | "
@@ -561,12 +553,6 @@ int main(int argc, char **argv)
         test_language_binding_schedule();
     } else if (activation_cache) {
         test_language_activation_cache();
-    } else if (model_runtime) {
-        test_model_runtime();
-    } else if (graph_authoring) {
-        test_graph_authoring();
-    } else if (graph_model) {
-        test_graph_model();
     } else if (text_format) {
         test_language_text_format();
     } else if (ui_authoring) {

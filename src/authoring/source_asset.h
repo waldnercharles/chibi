@@ -3,7 +3,7 @@
 
 #include "assets/prototype.h"
 #include "authoring/source_catalog.h"
-#include "authoring/source_intelligence.h"
+#include "authoring/source_completion.h"
 
 /* Static authored defaults in the ordinary prototype value schema. Source
  * ranges remain attached to values for shared navigation/refactoring. */

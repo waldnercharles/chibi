@@ -1,6 +1,6 @@
 #include "authoring/source_minimize.h"
 
-#include "authoring/source_edit_refactor_internal.h"
+#include "authoring/source_refactor_text.h"
 #include "authoring/source_format.h"
 #include "authoring/source_literal.h"
 #include "support/array.h"

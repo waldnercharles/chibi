@@ -230,7 +230,6 @@ void test_tool_scheduler_benchmark();
 void test_tool_scheduler();
 void test_code_system_runtime();
 void test_code_query_rows();
-void test_source_edit();
 void test_shader_parameters_prepared();
 int run_language_semantic_corpora(const char *);
 int run_language_prepare_corpora(const char *);
@@ -1180,7 +1179,7 @@ int main(int argc, char **argv)
          source_presentation = false, system_schedule = false,
          scheduler_benchmark = false, source_reductions = false,
          source_reduction_benchmark = false, source_execution_benchmark = false,
-         source_systems = false, source_query_rows = false, source_edit = false,
+         source_systems = false, source_query_rows = false,
          new_asset = false, asset_refactor = false;
     int corpus = 0;
     bool unit_fixtures = false;
@@ -1223,7 +1222,6 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SOURCE_FEATURES
     unit_fixtures = argc == 2 && !strcmp(argv[1], "--unit-fixtures");
     shader_parameters = argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared");
-    source_edit = argc == 2 && !strcmp(argv[1], "--source-edit");
     if (argc == 3) {
         corpus = !strcmp(argv[1], "--semantic-corpora")      ? 1
                : !strcmp(argv[1], "--prepare-corpora")       ? 2
@@ -1321,7 +1319,7 @@ int main(int argc, char **argv)
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
     if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
-        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
+        !shader_parameters && !new_asset && !asset_refactor &&
         !tilemap && !package && !desktop_dependencies && !third_party_publish &&
         !collab && !package_ownership && !unit && !test_runner && !validation_plan &&
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
@@ -1406,7 +1404,7 @@ int main(int argc, char **argv)
             "--source-query-rows | --source-reductions | "
             "--source-reduction-benchmark | "
             "--source-execution-benchmark | "
-            "--source-edit | --new-asset | --asset-refactor | "
+            "--new-asset | --asset-refactor | "
             "--shader-parameters-prepared | "
             "--graph-document | --graph-presentation | --graph-functions | "
             "--vector-nodes | "
@@ -1431,7 +1429,7 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = corpus || unit_fixtures || coverage ||
                             preview_components || shader_parameters ||
-                            source_edit || new_asset || asset_refactor ||
+                            new_asset || asset_refactor ||
                             system_schedule || scheduler_benchmark ||
                             source_reductions || source_reduction_benchmark ||
                             source_execution_benchmark || source_systems ||
@@ -1495,8 +1493,6 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_RENDER_RUNTIME
             test_particle_fields();
 #endif
-        } else if (source_edit) {
-            test_source_edit();
         } else if (system_schedule) {
             test_system_schedule();
             test_tool_scheduler();

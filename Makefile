@@ -114,7 +114,7 @@ help:
 		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
 		'make controller-build / controller-run PROJECT_ROOT=/game' \
 		'make agent-list     List runnable CPU and explicit GPU selectors' \
-		'make agent-test AGENT_SELECTOR=--source-edit' \
+		'make agent-test AGENT_SELECTOR=--source-systems' \
 		'make agent-gpu-test AGENT_SELECTOR=--scene3d' \
 		'make test / test-short  Six C execution-policy checks' \
 		'make test-tools     Standalone C tooling integrations' \

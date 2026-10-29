@@ -75,7 +75,6 @@ CPU_SELECTORS = {
     '--terrain-storage': 'terrain-storage',
     '--terrain-storage-commands': 'terrain-storage-commands',
     '--terrain-playable': 'terrain-playable',
-    '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',
     '--system-schedule': 'system-schedule',

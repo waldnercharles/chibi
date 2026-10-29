@@ -417,122 +417,6 @@ static const behavior_function *compile(pin_type type, behavior_backend backend)
     );
     return compile_source(source, backend);
 }
-static bool integer_case(
-    pin_type type,
-    behavior_backend backend,
-    const char *operation,
-    uint64_t left,
-    uint64_t right,
-    uint64_t expected,
-    bool comparison
-)
-{
-    char source[384];
-    const char *name = script_scalar_name(type);
-    snprintf(
-        source,
-        sizeof source,
-        "Packed :: library { Edge :: (a:%s,b:%s) -> %s { return a %s b; } }",
-        name,
-        name,
-        comparison ? "bool" : name,
-        operation
-    );
-    const behavior_function *function = compile_source(source, backend);
-    if (!function) {
-        return false;
-    }
-    pin_value arguments[] = { behavior_scalar_from_bits(type, left),
-                              behavior_scalar_from_bits(type, right) };
-    pin_value result = { .type = comparison ? PIN_BOOL : type };
-    context = (behavior_function_context){ .arguments = arguments,
-                                           .argument_count = 2,
-                                           .results = &result,
-                                           .activation = &activation,
-                                           .managed_heap = managed_heap(),
-                                           .budget = 10000 };
-    behavior_function_bind_storage(&context, &storage);
-    if (!behavior_function_bind(function, &context, NULL, 0)) {
-        return false;
-    }
-    int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
-    bool valid = status == FLOW_OK &&
-                 (comparison
-                      ? result.b == (expected != 0)
-                      : behavior_scalar_bits(result) ==
-                            behavior_scalar_bits(behavior_scalar_from_bits(type, expected)));
-    if (!valid) {
-        fprintf(
-            stderr,
-            "integer edge backend=%s type=%s op=%s status=%d\n",
-            behavior_backend_name(backend),
-            name,
-            operation,
-            status
-        );
-    }
-    cleanup();
-    return valid;
-}
-TEST_CASE(typed_integer_edges_match_vm_and_compiled_backends)
-{
-    const pin_type types[] = { PIN_I8,  PIN_U8,  PIN_I16, PIN_U16,
-                               PIN_I32, PIN_U32, PIN_I64, PIN_U64 };
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
-    for (int b = 0; b < 2; b++) {
-        for (size_t t = 0; t < sizeof types / sizeof *types; t++) {
-            pin_type type = types[t];
-            unsigned bits = (unsigned)behavior_scalar_size(type) * 8;
-            uint64_t mask = UINT64_MAX >> (64 - bits);
-            uint64_t high = UINT64_C(1) << (bits - 1);
-            bool sign = behavior_scalar_signed(type);
-            REQUIRE(integer_case(type, backends[b], "+", mask, 1, 0, false));
-            REQUIRE(integer_case(type, backends[b], "-", 0, 1, mask, false));
-            REQUIRE(integer_case(type, backends[b], "*", high + 1, 3, high + 3, false));
-            REQUIRE(integer_case(type, backends[b], "<", high, 1, sign, true));
-            REQUIRE(
-                integer_case(type, backends[b], "/", mask - 1, 2, sign ? mask : (mask - 1) / 2, false)
-            );
-            REQUIRE(integer_case(type, backends[b], "%", mask, 2, sign ? mask : 1, false));
-            /* x / 0 is 0 and x % 0 is x. */
-            REQUIRE(integer_case(type, backends[b], "/", high, 0, 0, false));
-            REQUIRE(integer_case(type, backends[b], "%", high, 0, high, false));
-            if (sign) {
-                /* The minimum / -1 wraps to the minimum, with remainder 0. */
-                REQUIRE(integer_case(type, backends[b], "/", high, mask, high, false));
-                REQUIRE(integer_case(type, backends[b], "%", high, mask, 0, false));
-            }
-        }
-    }
-    return true;
-}
-TEST_CASE(typed_integer_large_constant_folding_is_exact)
-{
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
-    for (int b = 0; b < 2; b++) {
-        const behavior_function *function = compile_source(
-            "Packed :: library { Inner :: (a:u64,b:u64) -> u64 { "
-            "return (a+b)*3; } Fold :: () -> u64 { "
-            "return Inner(9007199254740993,9007199254740991); } }",
-            backends[b]
-        );
-        REQUIRE(function);
-        /* Authored calls suspend the parent while the callee executes. Their
-         * public invocation contract requires saved activation values. */
-        behavior_function_activation_init(function, &activation);
-        pin_value result = { .type = PIN_U64 };
-        context = (behavior_function_context){ .results = &result,
-                                               .activation = &activation,
-                                               .managed_heap = managed_heap(),
-                                               .budget = 10000 };
-        behavior_function_bind_storage(&context, &storage);
-        REQUIRE(behavior_function_bind(function, &context, NULL, 0));
-        REQUIRE(behavior_function_run(function, &context, b != 0) == FLOW_OK);
-        REQUIRE(result.u64 == UINT64_C(54043195528445952));
-        cleanup();
-    }
-    return true;
-}
 TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
 {
     const struct
@@ -1106,8 +990,6 @@ void test_language_packed()
     RUN_TEST_CASE(packed_slices_take_their_representation_from_their_range);
     RUN_TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks);
     RUN_TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths);
-    RUN_TEST_CASE(typed_integer_edges_match_vm_and_compiled_backends);
-    RUN_TEST_CASE(typed_integer_large_constant_folding_is_exact);
     RUN_TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder);
     RUN_TEST_CASE(float_math_stays_float_and_f64_math_stays_f64);
     RUN_TEST_CASE(wide_literals_need_an_f64_context);

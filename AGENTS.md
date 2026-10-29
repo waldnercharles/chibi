@@ -5,7 +5,8 @@ The owner's top priority is replacing C, C++ and CMake with Chibi as fast as pos
 - Delete C and CMake whenever Chibi can take over. Write new code in Chibi; write C only for what Chibi can't run yet.
 - Replacements lean into Chibi's strengths and newest language features instead of transliterating C. When a feature is missing, add it to the language and compiler rather than writing C around it.
 - Breaking `chibi-studio`, old project formats, public APIs, the C front end's consumers or a platform temporarily is acceptable. Fix them afterwards in Chibi, or delete what nobody needs.
-- Keep `main` building with CI green, so parallel work isn't blocked; that is the only gate. Merge small PRs as soon as they are green. No evidence bundles, receipts, staged admissions, holds or paired-PR requirements.
+- Merge first, fix forward. Merge a PR as soon as the change is done; don't wait for CI. CI runs on `main`, and whoever's merge breaks `main` fixes it right away. Merge `main` into a PR only to resolve a conflict. No evidence bundles, receipts, staged admissions, holds or paired-PR requirements.
+- When a design choice is unclear, follow Zig's and Odin's prior art.
 - When contracts change, migrate this repository's assets directly and remove obsolete implementations. No backward compatibility, legacy aliases or migration steps for projects outside this repository.
 
 ## Rules
@@ -42,7 +43,7 @@ The owner's top priority is replacing C, C++ and CMake with Chibi as fast as pos
 ## Working autonomously
 
 - Work autonomously. Ask only when a choice changes the goal, an output the owner will notice, or something that can't be undone; otherwise pick the reasonable default, say which, and keep going.
-- Fix root causes, and keep `main` building, formatted and green. Speed toward the C exit beats preserving existing behavior.
+- Fix root causes. Speed toward the C exit beats preserving existing behavior; fix a red `main` before starting new work.
 - When checks need a re-run (for example after a dependency merged), label the PR `ci-rerun`; label it `ci-seed` to build, publish and pin new compiler runtime seeds on its branch (pull before pushing again). See [starting CI with labels](docs/testing.md#starting-ci-with-labels).
 - Recipes for adding a component, a native script function, a test scene and a project migration are in `.claude/skills/chibi-recipes/SKILL.md`.
 
@@ -51,7 +52,7 @@ The owner's top priority is replacing C, C++ and CMake with Chibi as fast as pos
 1. Review the whole diff as a reviewer would: correctness, ownership and lifetimes, failure paths, the style rules above, and dead code left behind. In Claude Code run `/code-review`; otherwise review it yourself. Fix what you find before committing.
 2. Add or update an authored `@test` for every expressible behavior change, or a pico_unit case for a native boundary, through the dispatcher that owns the area (`test/tools` or `test/language`). A fix needs a case that failed before it.
    A new component, native function or event is also used in a `test/fixtures/feature-coverage` scene, or listed in its `coverage-gaps.txt` with a reason (see [feature coverage](docs/testing.md#feature-coverage)).
-3. Build and run the focused selectors for what changed; CI runs the full groups (`make test-native`, `make test-materials`, `make test-projects`, `make test-language-all`, `make test-tools`). Say which ran.
+3. Build what changed and run a focused selector if it's quick; CI on `main` runs the full groups.
 4. Format. The pre-commit hook (`.githooks/pre-commit`, installed by configure) runs clang-format 22 on staged C sources; `make check-format` checks everything. Format hand-edited assets with `chibi_ctl --format`.
 5. Commit messages say what changed and why, in the imperative.
 

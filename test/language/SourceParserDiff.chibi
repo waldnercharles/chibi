@@ -1,0 +1,54 @@
+package source_parser_diff
+
+import parser "project:source_parser"
+
+// The authored parser's tree against Tree-sitter's for `text`: "" when they
+// are the same, otherwise the first difference. Text Tree-sitter rejects only
+// has to be rejected by the authored parser as well.
+pub Differ :: (text: string) -> string {
+    raw := compiler_syntax_parse(text);
+    problems := parser.Diagnose(text);
+    if (raw.has_errors[raw.root]) {
+        if (length(problems) == 0) {
+            return "Tree-sitter rejects the text and the parser accepts it";
+        }
+        return "";
+    }
+    if (length(problems) > 0) {
+        return format_text("The parser rejects the text: {} at {}:{}", problems[0].message,
+                           problems[0].line, problems[0].column);
+    }
+    tree := parser.Parse(text);
+    switch tree {
+        case .Parsed(nodes, fields, named, extras, root):
+            if (length(nodes) != length(raw.kinds)) {
+                return format_text("The parser has {} nodes, Tree-sitter {}", length(nodes), length(raw.kinds));
+            }
+            index := 0;
+            while (index < length(nodes)) {
+                node := nodes[index];
+                if (node.kind != raw.kinds[index] || node.start != raw.starts[index] ||
+                    node.end != raw.ends[index] || node.row != raw.rows[index] ||
+                    node.column != raw.columns[index]) {
+                    return format_text("Node {} is {} {}..{} at {}:{}, Tree-sitter's {} {}..{} at {}:{}", index,
+                                       node.kind, node.start, node.end, node.row, node.column,
+                                       raw.kinds[index], raw.starts[index], raw.ends[index],
+                                       raw.rows[index], raw.columns[index]);
+                }
+                if (node.parent != raw.parents[index] || node.first_child != raw.first_children[index] ||
+                    node.next_sibling != raw.next_siblings[index]) {
+                    return format_text("Node {} ({}) has links {} {} {}, Tree-sitter's {} {} {}", index, node.kind,
+                                       node.parent, node.first_child, node.next_sibling,
+                                       raw.parents[index], raw.first_children[index], raw.next_siblings[index]);
+                }
+                if (fields[index] != raw.fields[index] || named[index] != raw.is_named[index] ||
+                    extras[index] != raw.is_extra[index] || node.error != raw.errors[index] ||
+                    node.missing != raw.missing[index] || node.has_error != raw.has_errors[index]) {
+                    return format_text("Node {} ({}) has field `{}`, Tree-sitter's `{}`, or other flags", index,
+                                       node.kind, fields[index], raw.fields[index]);
+                }
+                index += 1;
+            }
+            return "";
+    }
+}

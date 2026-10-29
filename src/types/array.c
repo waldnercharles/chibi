@@ -169,7 +169,8 @@ static bool packed_layout(const type_desc *type, int depth, type_resolver resolv
     }
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
-        if (field->offset > type->size || field->size > type->size - field->offset) {
+        if (field->offset > type->size || field->size > type->size - field->offset ||
+            field->container != PIN_CONTAINER_SINGLE) {
             return false;
         }
         if (field->type == PIN_STRUCT) {
@@ -736,7 +737,17 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
             return -1;
         }
         unsigned char *member = (unsigned char *)data + field->offset;
-        if (field->type == PIN_STRUCT) {
+        if (field->container == PIN_CONTAINER_ARRAY) {
+            if (field->size != sizeof(pin_array *)) {
+                return -1;
+            }
+            pin_value source, copy;
+            if (pin_read_field(a, data, field, &source) ||
+                pin_value_collection_copy(a, &copy, &source)) {
+                return -1;
+            }
+            memcpy(member, &copy.ptr, sizeof copy.ptr);
+        } else if (field->type == PIN_STRUCT) {
             const type_desc *nested = type_field_type(field, resolver);
             if (!nested || !nested->size || nested->size != field->size ||
                 snapshot_fields(a, nested, member, depth + 1, resolver)) {
@@ -1519,9 +1530,13 @@ static int manage_owned_graph(arena *storage, pin_array *array)
             const type_field *field = &type->fields[i];
             const void *member = (const char *)value.ptr + field->offset;
             pin_value child = { .type = field->type,
+                                .container = field->container,
                                 .type_name = field->type_name,
                                 .schema = schema ? value.schema : NULL };
-            if (field->type == PIN_STRUCT) {
+            if (field->container == PIN_CONTAINER_ARRAY) {
+                memcpy(&child.ptr, member, sizeof child.ptr);
+                child.record = field->layout ? field->layout->carrier : NULL;
+            } else if (field->type == PIN_STRUCT) {
                 const type_desc *nested = type_field_type(field, resolver);
                 child.ptr = (void *)member;
                 child.record = nested ? nested->carrier : NULL;
@@ -2044,7 +2059,12 @@ static void collection_visit_layout(const type_desc *type, const void *data, own
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         const char *member = (const char *)data + field->offset;
-        if (field->type == PIN_STRUCT) {
+        if (field->container == PIN_CONTAINER_ARRAY) {
+            pin_value value;
+            if (!pin_read_field(NULL, data, field, &value)) {
+                owner_push(pending, value);
+            }
+        } else if (field->type == PIN_STRUCT) {
             collection_visit_layout(type_field_type(field, (type_resolver){ 0 }), member, pending);
         } else if (field->type == PIN_UNION) {
             pin_value value = { .type = PIN_UNION };
@@ -2166,7 +2186,14 @@ static int collection_copy_layout(arena *storage, const type_desc *type, void *d
     for (int i = 0; i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         char *member = (char *)data + field->offset;
-        if (field->type == PIN_STRUCT) {
+        if (field->container == PIN_CONTAINER_ARRAY) {
+            pin_value source, copy;
+            if (pin_read_field(storage, data, field, &source) ||
+                pin_value_collection_copy(storage, &copy, &source)) {
+                return -1;
+            }
+            memcpy(member, &copy.ptr, sizeof copy.ptr);
+        } else if (field->type == PIN_STRUCT) {
             if (collection_copy_layout(storage, type_field_type(field, (type_resolver){ 0 }), member)) {
                 return -1;
             }
@@ -2565,7 +2592,7 @@ static int value_equal(const pin_value *a, const pin_value *b)
         for (int i = 0; i < type->field_count; i++) {
             pin_value left, right;
             const type_field *field = &type->fields[i];
-            if (field->type == PIN_STR) {
+            if (field->type == PIN_STR && field->container == PIN_CONTAINER_SINGLE) {
                 const void *x = (const char *)a->ptr + field->offset;
                 const void *y = (const char *)b->ptr + field->offset;
                 if (field->text_descriptor) {

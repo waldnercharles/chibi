@@ -1638,19 +1638,6 @@ static bool watch_output(chibi_process *process, size_t after, const char *expec
     return false;
 }
 
-static bool watch_unchanged(chibi_process *process)
-{
-    size_t size = watch_output_size();
-    double deadline = chibi_process_now() + 1;
-    do {
-        if (chibi_process_poll(process) || watch_output_size() != size) {
-            return false;
-        }
-        usleep(10000);
-    } while (chibi_process_now() < deadline);
-    return true;
-}
-
 static bool stop_process(chibi_process *process, int expected, bool allow_signal, int interrupt)
 {
     if (interrupt == SIGTERM) {
@@ -2227,124 +2214,153 @@ TEST_CASE(program_process_run_hands_the_terminal_to_its_child)
     return true;
 }
 
-static void write_watch_file(const char *type, int count, const char *marker)
+static int watch_count(const char *text)
 {
-    char text[1024];
-    int length = snprintf(
-        text,
-        sizeof text,
-        "package watch_file\nMain :: () {\n"
-        "    count: retain %s = 0\n"
+    char *log = tool_read(log_path);
+    int count = 0;
+    for (const char *at = log; at && (at = strstr(at, text)); at++) {
+        count++;
+    }
+    free(log);
+    return count;
+}
+
+TEST_CASE(program_watch_patches_a_running_frame_and_keeps_state)
+{
+    directory("watch-file");
+    write_file(
+        "watch-file/Hello.chibi",
+        "package watch_file\nMain :: () { print_string(\"watch-main\") }\n"
+        "Frame :: () {\n"
+        "    count: retain int = 0\n"
         "    count += 1\n"
         "    ordinary: int = 0\n"
         "    ordinary += 1\n"
-        "    assert(count == %d, \"retained Main count\")\n"
-        "    assert(ordinary == 1, \"ordinary Main local\")\n"
-        "    print_string(\"%s\")\n}\n",
-        type,
-        count,
-        marker
+        "    assert(ordinary == 1, \"ordinary Frame local\")\n"
+        "    if count % 10 == 0 { print_string(format_text(\"watch-first {}\", "
+        "count)) }\n}\n"
     );
-    assert(length > 0 && length < (int)sizeof text);
-    write_file("watch-file/Hello.chibi", text);
-}
-
-TEST_CASE(program_watch_preserves_main_state_and_rejects_invalid_edits)
-{
-    directory("watch-file");
-    write_watch_file("int", 1, "watch-file-first");
     const char *args[] = { built, "--watch", "watch-file/Hello.chibi", NULL };
     chibi_process process;
     REQUIRE(chibi_process_start(&process, args, root, log_path));
     tool_own_process(process.pid);
-    bool passed = watch_output(&process, 0, "watch-file-first\n");
+    bool passed = watch_output(&process, 0, "watch-first 10\n");
     if (passed) {
         /* A file target neither compiles nor watches its sibling sources. */
         write_file("watch-file/Broken.chibi", "not valid Chibi\n");
-        passed = watch_unchanged(&process);
+        size_t after = watch_output_size();
+        write_file(
+            "watch-file/Hello.chibi",
+            "package watch_file\nMain :: () { print_string(\"watch-main\") }\n"
+            "Frame :: () {\n"
+            "    count: retain int = 0\n"
+            "    count += 1\n"
+            "    assert(count >= 10, \"retained Frame count\")\n"
+            "    if count % 10 == 0 { print_string(format_text(\"watch-second "
+            "{}\", count)) }\n}\n"
+        );
+        passed = watch_output(&process, after, "watch-second ");
     }
     if (passed) {
         size_t after = watch_output_size();
-        write_watch_file("int", 2, "watch-file-second");
-        passed = watch_output(&process, after, "watch-file-second\n");
+        /* Conversion uses the runtime's existing numeric-state migration, and a
+         * binding added by the edit starts from its initializer. */
+        write_file(
+            "watch-file/Hello.chibi",
+            "package watch_file\n"
+            "Frame :: () {\n"
+            "    count: retain number = 0\n"
+            "    printed: retain bool = false\n"
+            "    count += 1\n"
+            "    assert(count >= 20, \"converted Frame count\")\n"
+            "    if !printed { printed = true; print_string(\"watch-third\") "
+            "}\n}\n"
+        );
+        passed = watch_output(&process, after, "watch-third");
     }
-    const char *invalid[] = { "package watch_file\nMain :: ( {\n",
-                              "package watch_file\nHelper :: () {}\n",
-                              "package watch_file\nMain :: (value: int) {}\n" };
-    const char *errors[] = { "/watch-file/Hello.chibi:",
-                             "No runnable Main",
-                             "Main must take no arguments" };
+    const char *invalid[] = {
+        "package watch_file\nFrame :: ( {\n",
+        "package watch_file\nHelper :: () {}\n",
+        "package watch_file\nFrame :: (value: int) {}\n"
+    };
+    const char *errors[] = { "/watch-file/Hello.chibi:", "No runnable Frame", "No runnable Frame" };
     for (int i = 0; passed && i < 3; i++) {
         size_t after = watch_output_size();
         write_file("watch-file/Hello.chibi", invalid[i]);
         passed = watch_output(&process, after, errors[i]);
     }
     if (passed) {
+        /* A removed Frame drops its state; restoring it resumes the frames. */
         size_t after = watch_output_size();
-        /* Conversion uses the runtime's existing numeric-state migration. */
-        write_watch_file("number", 3, "watch-file-third");
-        passed = watch_output(&process, after, "watch-file-third\n");
+        write_file(
+            "watch-file/Hello.chibi",
+            "package watch_file\nFrame :: () {\n"
+            "    count: retain int = 0\n"
+            "    count += 1\n"
+            "    if count == 3 { print_string(\"watch-fourth\") }\n}\n"
+        );
+        passed = watch_output(&process, after, "watch-fourth");
     }
     bool stopped = watch_stop(&process);
     watch_failure_log(passed && stopped);
     REQUIRE(passed);
     REQUIRE(stopped);
+    REQUIRE(watch_count("watch-main") == 1);
     REQUIRE(!exists("watch-file/.chibi"));
     return true;
 }
 
-static void write_watch_sibling(int step, const char *marker)
+static void write_watch_sibling(const char *marker)
 {
     char text[512];
     int length = snprintf(
         text,
         sizeof text,
-        "package watch_directory\nStep :: %d\n"
-        "Marker :: () -> string { return \"%s\" }\n",
-        step,
+        "package watch_directory\nMarker :: () -> string { return \"%s\" }\n",
         marker
     );
     assert(length > 0 && length < (int)sizeof text);
     write_file("watch-directory/Values.chibi", text);
 }
 
-static void write_watch_import(int expected, const char *marker)
+static void write_watch_import(const char *marker)
 {
     char text[768];
     int length = snprintf(
         text,
         sizeof text,
-        "package words\npub Expected :: %d\n"
+        "package words\n"
         "pub Next :: () -> int {\n"
         "    count: retain int = 0\n"
         "    count += 1\n"
         "    return count\n}\n"
         "pub Marker :: () -> string { return \"%s\" }\n",
-        expected,
         marker
     );
     assert(length > 0 && length < (int)sizeof text);
     write_file("watch-directory/words/Words.chibi", text);
 }
 
-TEST_CASE(program_watch_tracks_siblings_and_preserves_imported_state)
+TEST_CASE(program_watch_tracks_siblings_and_keeps_imported_state)
 {
     directory("watch-directory");
     directory("watch-directory/words");
     write_file(
         "watch-directory/Main.chibi",
         "package watch_directory\nimport words \"project:words\"\n"
-        "Main :: () {\n"
-        "    count: retain int = 0\n"
-        "    count += 1\n"
-        "    expected := words.Expected + Step\n"
-        "    assert(count == expected, \"directory Main count\")\n"
-        "    assert(words.Next() == expected, \"imported retained count\")\n"
-        "    print_string(Marker())\n"
-        "    print_string(words.Marker())\n}\n"
+        "Main :: () { print_string(\"watch-directory-main\") }\n"
+        "Frame :: () {\n"
+        "    last: retain int = 0\n"
+        "    now := words.Next()\n"
+        "    assert(now == last + 1, \"imported retained count\")\n"
+        "    last = now\n"
+        "    if now % 10 == 0 {\n"
+        "        print_string(Marker())\n"
+        "        print_string(words.Marker())\n"
+        "    }\n}\n"
     );
-    write_watch_sibling(0, "watch-directory-first");
-    write_watch_import(1, "watch-import-first");
+    write_watch_sibling("watch-directory-first");
+    write_watch_import("watch-import-first");
     char cwd[256];
     path(cwd, "watch-directory");
     const char *args[] = { built, "run", "--watch", ".", NULL };
@@ -2354,12 +2370,12 @@ TEST_CASE(program_watch_tracks_siblings_and_preserves_imported_state)
     bool passed = watch_output(&process, 0, "watch-import-first\n");
     if (passed) {
         size_t after = watch_output_size();
-        write_watch_sibling(1, "watch-directory-second");
+        write_watch_sibling("watch-directory-second");
         passed = watch_output(&process, after, "watch-directory-second\n");
     }
     if (passed) {
         size_t after = watch_output_size();
-        write_watch_import(2, "watch-import-third");
+        write_watch_import("watch-import-third");
         passed = watch_output(&process, after, "watch-import-third\n");
     }
     if (passed) {
@@ -2369,13 +2385,14 @@ TEST_CASE(program_watch_tracks_siblings_and_preserves_imported_state)
     }
     if (passed) {
         size_t after = watch_output_size();
-        write_watch_import(3, "watch-import-fourth");
+        write_watch_import("watch-import-fourth");
         passed = watch_output(&process, after, "watch-import-fourth\n");
     }
     bool stopped = watch_stop(&process);
     watch_failure_log(passed && stopped);
     REQUIRE(passed);
     REQUIRE(stopped);
+    REQUIRE(watch_count("watch-directory-main") == 1);
     REQUIRE(!exists("watch-directory/.chibi"));
     REQUIRE(!exists("watch-directory/words/.chibi"));
     return true;
@@ -3339,8 +3356,8 @@ void test_tool_chibi_cli(const char *binary, const char *self)
     RUN_TEST_CASE(program_sources_link_packages_and_select_the_root_entry);
     RUN_TEST_CASE(public_cli_is_a_relocatable_ordinary_application);
     RUN_TEST_CASE(program_failures_report_entry_and_source_errors);
-    RUN_TEST_CASE(program_watch_preserves_main_state_and_rejects_invalid_edits);
-    RUN_TEST_CASE(program_watch_tracks_siblings_and_preserves_imported_state);
+    RUN_TEST_CASE(program_watch_patches_a_running_frame_and_keeps_state);
+    RUN_TEST_CASE(program_watch_tracks_siblings_and_keeps_imported_state);
     RUN_TEST_CASE(program_cancellation_stops_busy_main_and_tests);
     RUN_TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled);
     RUN_TEST_CASE(program_process_run_hands_the_terminal_to_its_child);
@@ -3712,8 +3729,8 @@ void test_tool_chibi_cli_installed(const char *binary, const char *self)
     RUN_TEST_CASE(program_sources_link_packages_and_select_the_root_entry);
     RUN_TEST_CASE(public_cli_is_a_relocatable_ordinary_application);
     RUN_TEST_CASE(program_failures_report_entry_and_source_errors);
-    RUN_TEST_CASE(program_watch_preserves_main_state_and_rejects_invalid_edits);
-    RUN_TEST_CASE(program_watch_tracks_siblings_and_preserves_imported_state);
+    RUN_TEST_CASE(program_watch_patches_a_running_frame_and_keeps_state);
+    RUN_TEST_CASE(program_watch_tracks_siblings_and_keeps_imported_state);
     RUN_TEST_CASE(program_cancellation_stops_busy_main_and_tests);
     RUN_TEST_CASE(program_process_run_stops_children_when_only_parent_is_signalled);
     RUN_TEST_CASE(program_process_run_hands_the_terminal_to_its_child);

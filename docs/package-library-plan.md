@@ -5,7 +5,16 @@ implementation. The owner approved this program on 2026-10-20, chose fidelity
 separately for each package, and asked that useful language features be
 implemented before the ports that need them.
 
-## Current checkpoint
+## Portable byte libraries (2026-10-28)
+
+The approved portable work now has an independent candidate containing complete
+selected APIs for bytes, bits, FNV, Adler-32 and CRC-32. It uses existing integer,
+array and string contracts; character and recoverable-result work remains
+separate. The [package decision](package-byte-libraries.md) records exact APIs,
+the additive binary-text native boundary and current validation status. The
+remaining five packages keep their approved contracts and prerequisites.
+
+## Foundation checkpoint (2026-10-21)
 
 - Planning base: `4a751bd5fb2bb414ec867f089acae9b9736e1d9e` in `chibi`.
 - Branch: `codex/odin-package-foundations-20261020`.

@@ -13,8 +13,9 @@
    load and a step in project_migrate.c would rewrite it; see the first rule
    in AGENTS.md for what needs no bump. */
 #define CHIBI_PROJECT_VERSION 39
-/* Opening a project from this version on upgrades it in place first. */
-#define CHIBI_PROJECT_OLDEST_VERSION 10
+/* Opening a project from this version on upgrades it in place first; an
+   older one needs an older SDK's chibi_ctl --migrate. */
+#define CHIBI_PROJECT_OLDEST_VERSION 38
 
 /* The optional `application` block: how a shipped game presents its window. */
 typedef struct

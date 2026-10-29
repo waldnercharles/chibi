@@ -25,7 +25,13 @@ struct prepared_record_cache
     const pin_record *owned;
     /* The type at this position in name order, and in id order. */
     int by_name, by_id;
+    bool authored;
+    type_field *fields;
+    int *children;
+    int count;
+    const type_desc *linked;
 };
+static int name_position(prepared_context *, const char *, size_t, int, bool *);
 static bool work(prepared_context *c, size_t amount)
 {
     size_t limit = c->record_work_limit ? c->record_work_limit : PREPARED_RECORD_WORK;
@@ -102,7 +108,19 @@ static size_t validate(prepared_context *c, const pin_record *record, bool curre
         }
     }
     size_t cost = validation_work(c, record->type.field_count, names);
-    if (!cost || !work(c, cost) ||
+    size_t root_bytes = sizeof *record +
+                        (size_t)record->type.field_count * sizeof(type_field);
+    if (names > SIZE_MAX - root_bytes) {
+        c->wire.error = "invalid prepared authored layout size";
+        return 0;
+    }
+    root_bytes += names;
+    /* Root fields and names are already covered by cost. Frozen closures can
+     * additionally own child descriptors; only those add traversal work. */
+    size_t children = record->frozen && record->bytes > root_bytes
+                        ? record->bytes - root_bytes
+                        : 0;
+    if (!cost || !work(c, cost) || !work(c, children) ||
         !(current ? pin_record_fields_current(record) : pin_record_valid(record))) {
         if (!c->wire.error) {
             c->wire.error = "prepared authored nested layout is retired or "
@@ -134,6 +152,46 @@ static const pin_record *copy_record(prepared_context *c, const pin_record *sour
     }
     return record;
 }
+static int field_requirement(prepared_context *c, const type_field *field)
+{
+    if (field->type != PIN_STRUCT) {
+        return -1;
+    }
+    size_t bytes = name_bytes(c, field->type_name);
+    if (field->type_name && !c->wire.error) {
+        bool found;
+        int at = name_position(c, field->type_name, bytes, c->plan->type_count, &found);
+        if (found && !c->wire.error) {
+            int i = c->records[at].by_name;
+            const execution_type_requirement *type = &c->plan->types[i];
+            const type_desc *layout = type_field_type(field, (type_resolver){ 0 });
+            if (type->storage != PIN_STRUCT) {
+                c->wire
+                    .error = "prepared child layout lacks a type requirement";
+                return -1;
+            }
+            if (!layout || layout->size != type->size ||
+                type_layout_hash(layout) != type->layout) {
+                c->wire.error = "prepared child layout differs from its "
+                                "requirement";
+                return -1;
+            }
+            const pin_record *child = layout->carrier;
+            bool authored = child && !child->native;
+            if (authored != (type->record != NULL) ||
+                (authored && !pin_record_same(child, type->record))) {
+                c->wire.error = "prepared child identity differs from its "
+                                "requirement";
+                return -1;
+            }
+            return i;
+        }
+    }
+    if (!c->wire.error) {
+        c->wire.error = "prepared child layout lacks a type requirement";
+    }
+    return -1;
+}
 static void record_type(prepared_context *c, execution_type_requirement *v, int index)
 {
     execution_wire *w = &c->wire;
@@ -144,6 +202,7 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
     }
     bool authored = !w->reading && v->record;
     execution_wire_bool(w, &authored);
+    cache->authored = authored;
     if (w->error) {
         return;
     }
@@ -172,6 +231,7 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
                 t->size != v->size || type_layout_hash(t) != v->layout) {
                 w->error = "linked type catalog layout differs";
             }
+            cache->linked = t;
         }
         return;
     }
@@ -201,9 +261,11 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         return;
     }
     type_field *fields = NULL;
+    int *children = NULL;
     if (w->reading) {
         fields = execution_wire_allocate(w, (size_t)count * sizeof *fields);
-        if (!fields) {
+        children = execution_wire_allocate(w, (size_t)count * sizeof *children);
+        if (!fields || !children) {
             return;
         }
         memset(fields, 0, (size_t)count * sizeof *fields);
@@ -220,8 +282,18 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         execution_wire_string(w, &unit);
         bool text_descriptor = w->reading ? false : v->record->type.fields[i].text_descriptor;
         execution_wire_bool(w, &text_descriptor);
-        if (text_descriptor != (kind == PIN_STR)) {
-            w->error = "invalid prepared authored string representation";
+        int container = w->reading ? 0 : v->record->type.fields[i].container;
+        int child = w->reading ? -1
+                               : field_requirement(c, &v->record->type.fields[i]);
+        execution_wire_int(w, &container);
+        execution_wire_int(w, &child);
+        if (w->error) {
+            break;
+        }
+        if ((container != PIN_CONTAINER_SINGLE && container != PIN_CONTAINER_ARRAY) ||
+            text_descriptor != (kind == PIN_STR && container == PIN_CONTAINER_SINGLE) ||
+            (kind == PIN_STRUCT ? child < 0 : child != -1)) {
+            w->error = "invalid prepared authored field representation";
         }
         if (w->error) {
             break;
@@ -251,7 +323,9 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
                                       .type = kind,
                                       .type_name = type_name,
                                       .unit = unit,
-                                      .text_descriptor = text_descriptor };
+                                      .text_descriptor = text_descriptor,
+                                      .container = container };
+            children[i] = child;
         }
     }
     if (w->error) {
@@ -270,12 +344,6 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         }
         return;
     }
-    size_t bytes = sizeof(pin_record) + (size_t)count * sizeof(type_field);
-    if (names > SIZE_MAX - bytes) {
-        w->error = "prepared authored layout size overflow";
-        return;
-    }
-    bytes += names;
     cache->validation_work = validation_work(c, count, names);
     if (w->error) {
         return;
@@ -291,19 +359,127 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
             break;
         }
     }
-    if (!work(c, cache->validation_work)) {
-        return;
+    cache->fields = fields;
+    cache->children = children;
+    cache->count = count;
+}
+/* Type requirements may be listed before their children. Resolve complete
+ * acyclic layouts after every header is known, without catalog lookup. */
+static void materialize_records(prepared_context *c)
+{
+    execution_module_plan *p = c->plan;
+    int remaining = 0;
+    for (int i = 0; i < p->type_count; i++) {
+        remaining += c->records[i].authored;
     }
-    void *memory = execution_wire_allocate(w, bytes);
-    if (!memory) {
-        return;
+    while (remaining && !c->wire.error) {
+        int before = remaining;
+        for (int i = 0; i < p->type_count && !c->wire.error; i++) {
+            execution_type_requirement *v = &p->types[i];
+            struct prepared_record_cache *cache = &c->records[i];
+            if (!cache->authored || v->record) {
+                continue;
+            }
+            if (!work(c, (size_t)cache->count + 1)) {
+                return;
+            }
+            bool ready = true;
+            for (int j = 0; j < cache->count; j++) {
+                type_field *field = &cache->fields[j];
+                if (field->type != PIN_STRUCT) {
+                    continue;
+                }
+                int child = cache->children[j];
+                if (child < 0 || child >= p->type_count || child == i ||
+                    p->types[child].storage != PIN_STRUCT || !field->type_name ||
+                    strcmp(p->types[child].name, field->type_name)) {
+                    c->wire.error = "invalid prepared child type reference";
+                    return;
+                }
+                if (c->records[child].authored) {
+                    if (!p->types[child].record) {
+                        ready = false;
+                        continue;
+                    }
+                    field->layout = &p->types[child].record->type;
+                } else {
+                    field->layout = c->records[child].linked;
+                    if (!field->layout) {
+                        c->wire.error = "missing prepared child layout";
+                        return;
+                    }
+                    /* Keep legacy native-only declarations tied to their
+                     * registered catalog layout. An array or authored child
+                     * makes the containing record own all children instead. */
+                    const type_desc *catalog = type_catalog_find(field->type_name);
+                    if (field->container == PIN_CONTAINER_SINGLE && catalog &&
+                        catalog->size == p->types[child].size &&
+                        type_layout_hash(catalog) == p->types[child].layout) {
+                        field->layout = NULL;
+                    }
+                }
+            }
+            if (!ready) {
+                continue;
+            }
+            /* Closing a parent copies each child closure. Charge those bytes
+             * before the size/layout walk, including repeated child uses. */
+            for (int j = 0; j < cache->count; j++) {
+                const type_desc *child = cache->fields[j].layout;
+                if (child && child->carrier && !work(c, child->carrier->bytes)) {
+                    return;
+                }
+            }
+            size_t bytes = pin_record_create_bytes(
+                v->name,
+                v->id,
+                cache->fields,
+                cache->count
+            );
+            if (!bytes || !work(c, cache->validation_work) || !work(c, bytes)) {
+                if (!c->wire.error) {
+                    c->wire.error = "invalid prepared authored layout size";
+                }
+                return;
+            }
+            void *memory = execution_wire_allocate(&c->wire, bytes);
+            if (!memory) {
+                return;
+            }
+            v->record = pin_record_init(
+                memory,
+                bytes,
+                v->name,
+                v->id,
+                cache->fields,
+                cache->count
+            );
+            if (!v->record || v->record->layout != v->layout ||
+                v->record->type.size != v->size) {
+                c->wire.error = "prepared authored layout differs from target";
+                return;
+            }
+            v->name = v->record->type.name;
+            /* Hashing flat metadata does not visit descriptor allocation
+             * padding. Nested authored layouts add their actual hash walk. */
+            for (int j = 0; j < cache->count; j++) {
+                int child = cache->children[j];
+                if (child < 0) {
+                    continue;
+                }
+                size_t child_work = c->records[child].hash_work;
+                if (child_work > SIZE_MAX - cache->hash_work) {
+                    c->wire.error = "prepared authored hash work overflow";
+                    return;
+                }
+                cache->hash_work += child_work;
+            }
+            remaining--;
+        }
+        if (before == remaining && !c->wire.error) {
+            c->wire.error = "recursive prepared authored layout is unsupported";
+        }
     }
-    v->record = pin_record_init(memory, bytes, v->name, v->id, fields, count);
-    if (!v->record || v->record->layout != v->layout || v->record->type.size != v->size) {
-        w->error = "prepared authored layout differs from target";
-        return;
-    }
-    v->name = v->record->type.name;
 }
 /* The first of the `count` name-ordered types whose name is not before
  * `name`, found in log2(count) comparisons, each charged `bytes`; `found`
@@ -340,6 +516,37 @@ static int id_position(prepared_context *c, uint64_t id, int count)
     }
     return low;
 }
+static bool index_type(prepared_context *c, int i)
+{
+    execution_type_requirement *v = &c->plan->types[i];
+    c->records[i].name_bytes = name_bytes(c, v->name);
+    if (!v->id || !v->name || !*v->name || v->storage < PIN_BOOL ||
+        v->storage > PIN_QUERY) {
+        c->wire.error = "invalid prepared type requirement";
+        return false;
+    }
+    /* Insertion moves are charged as well as comparisons, including reverse
+     * order. Writers build the complete index before encoding child links. */
+    bool found;
+    int at = name_position(c, v->name, c->records[i].name_bytes, i, &found);
+    int id_at = id_position(c, v->id, i);
+    if (!work(c, (size_t)(i - at + i - id_at) * sizeof c->records->by_name)) {
+        return false;
+    }
+    if (found || (id_at < i && c->plan->types[c->records[id_at].by_id].id == v->id)) {
+        c->wire.error = "duplicate prepared type requirement";
+        return false;
+    }
+    for (int k = i; k > at; k--) {
+        c->records[k].by_name = c->records[k - 1].by_name;
+    }
+    c->records[at].by_name = i;
+    for (int k = i; k > id_at; k--) {
+        c->records[k].by_id = c->records[k - 1].by_id;
+    }
+    c->records[id_at].by_id = i;
+    return true;
+}
 void prepared_types(prepared_context *c)
 {
     execution_wire *w = &c->wire;
@@ -363,6 +570,9 @@ void prepared_types(prepared_context *c)
         c->record_cache_bytes = 0;
         return;
     }
+    for (int i = 0; !w->reading && i < count && !w->error; i++) {
+        index_type(c, i);
+    }
     for (int i = 0; i < count && !w->error; i++) {
         execution_type_requirement *v = &p->types[i];
         execution_wire_u64(w, &v->id);
@@ -377,35 +587,13 @@ void prepared_types(prepared_context *c)
         if (w->error) {
             break;
         }
-        c->records[i].name_bytes = name_bytes(c, v->name);
-        if (!v->id || !v->name || !*v->name || v->storage < PIN_BOOL ||
-            v->storage > PIN_QUERY) {
-            w->error = "invalid prepared type requirement";
+        if (w->reading && !index_type(c, i)) {
             break;
         }
-        /* The earlier types are kept in name and id order, so a repeat is
-         * found by two searches rather than a comparison with each. Making
-         * room for this type moves the indexes after both positions, which
-         * is charged too: a table listed in reverse order moves count^2. */
-        bool found;
-        int at = name_position(c, v->name, c->records[i].name_bytes, i, &found);
-        int id_at = id_position(c, v->id, i);
-        if (!work(c, (size_t)(i - at + i - id_at) * sizeof c->records->by_name)) {
-            break;
-        }
-        if (found || (id_at < i && p->types[c->records[id_at].by_id].id == v->id)) {
-            w->error = "duplicate prepared type requirement";
-            break;
-        }
-        for (int k = i; k > at; k--) {
-            c->records[k].by_name = c->records[k - 1].by_name;
-        }
-        c->records[at].by_name = i;
-        for (int k = i; k > id_at; k--) {
-            c->records[k].by_id = c->records[k - 1].by_id;
-        }
-        c->records[id_at].by_id = i;
         record_type(c, v, i);
+    }
+    if (w->reading && !w->error) {
+        materialize_records(c);
     }
 }
 static int requirement(prepared_context *c, const pin_value *v)

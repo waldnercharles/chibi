@@ -393,45 +393,6 @@ TEST_CASE(catalog_errors_are_reported_once)
     return true;
 }
 
-TEST_CASE(version_33_vector_types_load_after_migration)
-{
-    /* Version 33 named vec2 CF_V2. KDL decodes a quoted key as a bare one,
-     * so the migrated payload loads with its default either way. */
-    char manifest[256];
-    path(manifest, sizeof manifest, "game/project.kdl");
-    char *text = tool_read(manifest);
-    REQUIRE(text && strchr(text, '\n'));
-    char old[1024];
-    snprintf(old, sizeof old, "version 33%s", strchr(text, '\n'));
-    free(text);
-    tool_write(manifest, old);
-    char events[256];
-    path(events, sizeof events, "game/content/events");
-    REQUIRE(!mkdir(events, 0700));
-    write_file(
-        "game/content/events/Hit.kdl",
-        "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 2\n"
-        "(array)variables {\n"
-        "    - id=1 name=\"Point\" type=\"struct\" \"type_name\"=\"CF_V2\" {\n"
-        "        default x=1.0 y=2.0\n"
-        "    }\n"
-        "}\n"
-        "(array)graphs {\n    - kind=\"event\" name=\"\"\n}\n"
-    );
-    write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}\n");
-    REQUIRE(
-        run("\"$0\" --project-root game --migrate > /dev/null && "
-            "exec \"$0\" --project-root game < request.json") == 0
-    );
-    REQUIRE(yyjson_get_bool(result("valid")) && errors() == 0);
-    char event[256];
-    path(event, sizeof event, "game/content/events/Hit.kdl");
-    text = tool_read(event);
-    REQUIRE(text && strstr(text, "vec2") && !strstr(text, "CF_V2"));
-    free(text);
-    return true;
-}
-
 TEST_CASE(other_project_versions_are_not_opened)
 {
     char manifest[256];
@@ -1844,7 +1805,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(cataloged_start_scene_is_reported_once);
     RUN_TEST_CASE(missing_ui_documents_are_reported);
     RUN_TEST_CASE(catalog_errors_are_reported_once);
-    RUN_TEST_CASE(version_33_vector_types_load_after_migration);
     RUN_TEST_CASE(other_project_versions_are_not_opened);
     RUN_TEST_CASE(application_settings_are_checked);
     RUN_TEST_CASE(prototype_includes_resolve);

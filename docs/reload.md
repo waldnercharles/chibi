@@ -21,10 +21,8 @@ These asset updates do not require a native rebuild. Browser C/WASM changes
 require rebuilding the web application and refreshing the browser.
 
 Authored executable publication still owns immutable modules, state matching,
-task cancellation and late-request safety. See the
-[current source/runtime contract](language-contracts/v1.md#c09-authored-publication-and-project-migration-si)
-and its actual preview/runtime callers. Removing native application replacement
-does not remove those authored-lifetime obligations.
+task cancellation and late-request safety. The preview and runtime callers
+preserve these obligations when authored sources change.
 
 ## Workspace checkpoints
 

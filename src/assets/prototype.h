@@ -113,8 +113,8 @@ typedef struct prototype
     prototype_link *links;
     prototype_pair *pairs;
     int expanded; /* the other documents its load read, at most PROTOTYPE_EXPANSION_MAX */
-    size_t read; /* their bytes, at most PROTOTYPE_READ_MAX */
-    char **strings;
+    size_t read;    /* their bytes, at most PROTOTYPE_READ_MAX */
+    char **strings; /* Opaque text ownership records, not C string pointers. */
 } prototype;
 
 /* The component a document names by stable key or reflected name, or NULL. */
@@ -182,8 +182,8 @@ int prototype_apply_components_value(
     char *error,
     size_t error_size
 );
-/* Free strings retained by prototype_apply_components_value after their
- * ECS component values are no longer used. */
+/* Free opaque text ownership records retained by prototype_apply_components_value
+ * after their ECS component values are no longer used. Do not free entries directly. */
 void prototype_owned_strings_free(char **strings);
 /* Allocate authored components without running attached behaviors. */
 int prototype_spawn_components(

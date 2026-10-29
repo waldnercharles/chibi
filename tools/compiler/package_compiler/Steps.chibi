@@ -1737,7 +1737,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         emitted := SequenceCallStep([array, position], read,
                                     Typed(-1, element_type.storage, element_type.container, element_type.record), u64(0), false,
                                     2, ops, target, at, node);
-        return CleanupProjectionStep(emitted, array, natives, ports, ops, target, at, node);
+        observed: int = 0;
+        if (array.container == ViewContainer) {
+            observed = ReadEffect;
+        }
+        return EffectsStep(CleanupProjectionStep(emitted, array, natives, ports, ops, target, at, node), observed);
     }
     emitted := Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, NoValue(), marks);
     if (produced.storage != 0 && popped > 0 && (kind == "member_expression" || kind == "index_expression")) {
@@ -2452,6 +2456,79 @@ NativeCallPrefix :: (code: Code[], slots: Slot[], before: Work[], step: Step, po
                                 roots, calls, bound, extend(before, next), popped, value, retained, marks);
     }
 }
+// A value argument may contain a live view whose backing can change outside
+// this invocation. Follow value types, not explicit pointer targets. An owned
+// array of pointers copies identities without reading their pointees.
+ArgumentReadEffects :: (types: TypeDecl[], members: TypeMember[], arguments: Value[]) -> int {
+    pending: ValueType[] = [];
+    for (argument in arguments) {
+        if (argument.container != 0 || argument.storage == StructStorage || argument.storage == UnionStorage) {
+            pending.append({storage: argument.storage, container: argument.container, record: argument.record});
+        }
+    }
+    seen: ValueType[] = [];
+    at: int = 0;
+    while (at < length(pending)) {
+        value := pending[at];
+        at += 1;
+        if (value.container == ViewContainer) {
+            return ReadEffect;
+        }
+        if (value.container == 0 && value.storage != StructStorage && value.storage != UnionStorage) {
+            continue;
+        }
+        visited := false;
+        for (prior in seen) {
+            if (prior.storage == value.storage && prior.container == value.container && prior.record == value.record) {
+                visited = true;
+            }
+        }
+        if (visited) {
+            continue;
+        }
+        seen.append(value);
+        if (value.container == ArrayContainer) {
+            pending.append(SequenceElement(types, value));
+            continue;
+        }
+        if (value.container == MapContainer) {
+            if (value.record < 0 || value.record >= length(types)) {
+                return ReadEffect;
+            }
+            map := types[value.record];
+            pending.append({storage: map.value_storage, container: map.value_container, record: map.value_record});
+            continue;
+        }
+        if (value.storage != StructStorage && value.storage != UnionStorage) {
+            continue;
+        }
+        if (value.record < 0 || value.record >= length(types)) {
+            return ReadEffect;
+        }
+        declared := types[value.record];
+        if (declared.kind == OptionalDecl || declared.kind == CollectionDecl) {
+            pending.append({storage: declared.value_storage, container: declared.value_container,
+                            record: declared.value_record});
+        } else if (declared.kind == UnionDecl) {
+            variant := declared.first;
+            while (variant < declared.first + declared.count) {
+                pending.append({storage: UnionStorage, container: 0, record: variant});
+                variant += 1;
+            }
+        } else {
+            field := declared.first;
+            while (field < declared.first + declared.count) {
+                member := members[field];
+                if (member.container != 0 || member.storage == StructStorage || member.storage == UnionStorage) {
+                    pending.append({storage: member.storage, container: member.container, record: member.record});
+                }
+                field += 1;
+            }
+        }
+    }
+    return 0;
+}
+
 // Calls of the package's functions and of natives. Arguments go to fresh data
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
@@ -2971,6 +3048,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                                 result, NoValue(), marks);
         return CleanupSequenceValues(emitted, Held(types, members, slice(values, first, count)), ops, target, at, node);
     }
+    argument_reads := ArgumentReadEffects(types, members, slice(values, first, count));
     chosen := item.a;
     if (item.c == 4) {
         // An overloaded native: the one whose parameters take the arguments.
@@ -2994,14 +3072,14 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     if ((item.c == 1 || item.c == 4 || item.c == 7) && count == 1 && NameMatches(natives[chosen].name, "length") &&
         values[first].container == ArrayContainer && !values[first].place && !ops.debug) {
-        return CleanupSequenceValues(ArrayLengthStep(values[first], ops, target, at, node), [values[first]], ops,
-                                     target, at, node);
+        return EffectsStep(CleanupSequenceValues(ArrayLengthStep(values[first], ops, target, at, node),
+                                                 [values[first]], ops, target, at, node), argument_reads);
     }
     if ((item.c == 1 || item.c == 4 || item.c == 7) && count == 1 && NameMatches(natives[chosen].name, "length") &&
         values[first].container == ViewContainer) {
         emitted := SequenceCallStep([values[first]], SequenceLengthIntrinsic, Typed(-1, IntStorage, 0, -1),
                                     u64(0), false, 1, ops, target, at, node);
-        return CleanupSequenceValues(emitted, [values[first]], ops, target, at, node);
+        return EffectsStep(CleanupSequenceValues(emitted, [values[first]], ops, target, at, node), argument_reads);
     }
     linked := item.c == 1 || item.c == 4 || item.c == 7;
     inferred := NoValue();
@@ -3296,7 +3374,8 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                                            NoValue(), marks),
                               at.cell + total, ops, target, at, node);
     // The call lent its arguments; the caller drops those it owns.
-    return CleanupSequenceValues(emitted, Held(types, members, slice(values, first, count)), ops, target, at, node);
+    return EffectsStep(CleanupSequenceValues(emitted, Held(types, members, slice(values, first, count)),
+                                             ops, target, at, node), argument_reads);
 }
 
 // Unary operators and the binary operators other than logic.
@@ -4815,7 +4894,8 @@ EffectsStep :: (step: Step, effects: int) -> Step {
                                 retained, marks);
     }
 }
-// A resolved store through external storage contributes WRITE to preparation.
+// A resolved store through external storage contributes WRITE to preparation
+// and the public effect summary.
 // Local boxes and copy-on-write record/array stores do not.
 WriteStep :: (step: Step, node: int, writes: bool) -> Step {
     if (!writes) {
@@ -4826,7 +4906,8 @@ WriteStep :: (step: Step, node: int, writes: bool) -> Step {
             return Step.Failed(diagnostic);
         case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks):
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound,
-                                extend([RecordSemantic(node, WriteFact, 0)], next), popped, value, retained, marks);
+                                extend([RecordSemantic(node, WriteFact, 0), RecordEffects(WriteEffect)], next),
+                                popped, value, retained, marks);
     }
 }
 // Publishes named locals after all return assignments. Records are copied

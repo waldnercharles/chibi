@@ -295,6 +295,8 @@ configure_file(host_packages_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/host_packages_source.h" @ONLY)
 # Package tests consume the owning SDK implementation; extraction stays private.
 target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_tests.c package_graph_chibi.c docs_markdown.c)
+target_sources(test_language PRIVATE argument_effects_chibi.c)
+set_source_files_properties(argument_effects_chibi.c package_tests.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::tasks)
 if(TARGET Chibi::task_pool_runtime)
     target_link_libraries(test_language PRIVATE Chibi::task_pool_runtime Chibi::conversion_capabilities)

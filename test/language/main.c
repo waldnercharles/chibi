@@ -102,6 +102,7 @@ void test_language_host_packages_compiler();
 void test_language_package_files();
 void test_language_package_core();
 void test_language_package_tests();
+void test_language_argument_effects_chibi();
 void test_language_docs_markdown();
 void test_language_scalarize();
 void test_language_component_write();
@@ -324,6 +325,8 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--host-packages-compiler");
     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
+    bool argument_effects_chibi = argc == 2 &&
+                                  !strcmp(argv[1], "--argument-effects-chibi");
     bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
@@ -381,15 +384,15 @@ int main(int argc, char **argv)
          !package_compiler_chibi_debug_free && !package_compiler_chibi_scalar &&
          !package_compiler_chibi_native && !native_census &&
          !native_census_flattening && !package_compiler_chibi_native_arguments &&
-         !package_compiler_chibi_native_arguments_oracle &&
-         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
-         !type_constructors_chibi && !type_relations_chibi &&
-         !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
-         !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
-         !unit_analysis_deep && !union_members_chibi && !effect_analysis_chibi &&
-         !record_members_chibi && !package_execution && !package_resolution &&
-         !package_imports && !host_packages && !host_packages_compiler &&
-         !package_files && !package_core && !package_tests && !docs_markdown &&
+         !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
+         !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
+         !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
+         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
+         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
+         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
+         !package_resolution && !package_imports && !host_packages &&
+         !host_packages_compiler && !package_files && !package_core &&
+         !package_tests && !argument_effects_chibi && !docs_markdown &&
          !component_write && !component_write_layout && !scalarize && !borrow &&
          !reductions && !binding_schedule && !activation_cache && !headless &&
          !build_workflow && !navigation && !publication && !field_runtime &&
@@ -451,9 +454,8 @@ int main(int argc, char **argv)
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --host-packages | --host-packages-compiler | "
-            "--package-files | "
-            "--package-core | "
-            "--package-tests | --docs-markdown | "
+            "--package-files | --package-core | "
+            "--package-tests | --argument-effects-chibi | --docs-markdown | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -734,6 +736,8 @@ int main(int argc, char **argv)
         test_language_package_core();
     } else if (package_tests) {
         test_language_package_tests();
+    } else if (argument_effects_chibi) {
+        test_language_argument_effects_chibi();
     } else if (docs_markdown) {
         test_language_docs_markdown();
     } else if (package_files) {

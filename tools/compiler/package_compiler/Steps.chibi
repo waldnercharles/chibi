@@ -2250,7 +2250,7 @@ NativeExpectation :: (forest: snapshot.SnapshotNode[], text: string, call: int, 
     }
     expected := Visit(source);
     first := true;
-    exact := ExactNativeKind(natives, name, NativeFunctionKind) >= 0;
+    exact := ExactNativeName(natives, name, NativeFunctionKind);
     for (candidate in natives) {
         if (NativeCandidate(candidate, name, NativeFunctionKind, exact)) {
             switch BindNative(forest, text, call, sources, candidate, ports) {
@@ -5563,7 +5563,7 @@ Overload :: (forest: snapshot.SnapshotNode[], text: string, document: int, call:
     found: int = -1;
     best_cost: int = 2147483647;
     best_literal_cost: int = 2147483647;
-    exact := ExactNativeKind(natives, name, NativeFunctionKind) >= 0;
+    exact := ExactNativeName(natives, name, NativeFunctionKind);
     index: int = 0;
     while (index < length(natives)) {
         candidate := natives[index];

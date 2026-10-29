@@ -1458,8 +1458,8 @@ FindCallable :: (callables: Callable[], package: int, name: string) -> int {
     }
     return -1;
 }
-// Library exports and native functions share the catalog namespace. Exact
-// canonical names precede loose source and canonical names within that kind.
+// Library exports and native functions share the catalog namespace. Private
+// host members and exact canonical names precede loose names within that kind.
 CatalogCallable :: (callables: Callable[], natives: ResolvedNative[], names: Name[], name: string) -> int {
     if (ExactNativeKind(natives, name, NativeFunctionKind) >= 0) {
         return -1;
@@ -1597,33 +1597,50 @@ NameMatches :: (left: string, right: string) -> bool {
     return false;
 }
 NativeNameMatches :: (native: ResolvedNative, name: string) -> bool {
+    if (strings.HasPrefix(native.qualified_name, "host:")) {
+        return native.name != native.qualified_name && native.name == name;
+    }
     return NameMatches(native.qualified_name, name) || NameMatches(native.name, name);
 }
 ExactNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {
+    canonical: int = -1;
     index: int = 0;
     while (index < length(natives)) {
         native := natives[index];
-        if (native.kind == kind && !native.source && native.qualified_name == name) {
-            return index;
+        if (native.kind == kind && !native.source) {
+            if (native.name == name && native.name != native.qualified_name &&
+                strings.HasPrefix(native.qualified_name, "host:")) {
+                return index;
+            }
+            if (canonical < 0 && native.qualified_name == name) {
+                canonical = index;
+            }
         }
         index += 1;
     }
-    return -1;
+    return canonical;
 }
-NativeCandidate :: (native: ResolvedNative, name: string, kind: int, exact: bool) -> bool {
+ExactNativeName :: (natives: ResolvedNative[], name: string, kind: int) -> string {
+    index := ExactNativeKind(natives, name, kind);
+    if (index < 0) {
+        return "";
+    }
+    return natives[index].qualified_name;
+}
+NativeCandidate :: (native: ResolvedNative, name: string, kind: int, exact: string) -> bool {
     if (native.kind != kind || native.source) {
         return false;
     }
-    if (exact) {
-        return native.qualified_name == name;
+    if (exact != "") {
+        return native.qualified_name == exact;
     }
     return NativeNameMatches(native, name);
 }
-// Within one capability kind, exact canonical names precede loose canonical
-// and source names. Rows owned by parsed source keep their indices but do not
-// compete with native declarations.
+// Within one capability kind, private host members precede exact canonical
+// names, then loose canonical and source names. Parsed source rows keep their
+// indices but do not compete with native declarations.
 FindNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {
-    exact := ExactNativeKind(natives, name, kind) >= 0;
+    exact := ExactNativeName(natives, name, kind);
     found: int = -1;
     index: int = 0;
     while (index < length(natives)) {

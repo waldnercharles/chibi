@@ -97,6 +97,8 @@ void test_language_unit_analysis_chibi(int regression);
 void test_language_package_execution();
 void test_language_package_resolution();
 void test_language_package_imports();
+void test_language_host_packages();
+void test_language_host_packages_compiler();
 void test_language_package_files();
 void test_language_package_core();
 void test_language_package_math();
@@ -322,6 +324,9 @@ int main(int argc, char **argv)
     bool package_execution = argc == 2 && !strcmp(argv[1], "--package-execution");
     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
+    bool host_packages = argc == 2 && !strcmp(argv[1], "--host-packages");
+    bool host_packages_compiler = argc == 2 &&
+                                  !strcmp(argv[1], "--host-packages-compiler");
     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
     bool package_math = argc == 2 && !strcmp(argv[1], "--package-math");
     bool package_math_benchmark = argc == 2 &&
@@ -395,7 +400,8 @@ int main(int argc, char **argv)
          !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
          !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
          !effect_analysis_chibi && !record_members_chibi && !package_execution &&
-         !package_resolution && !package_imports && !package_files && !package_core &&
+         !package_resolution && !package_imports && !host_packages &&
+         !host_packages_compiler && !package_files && !package_core &&
          !package_math && !package_math_benchmark && !package_portable &&
          !package_portable_compiler && !package_tests && !argument_effects_chibi &&
          !docs_markdown && !component_write && !component_write_layout && !scalarize &&
@@ -460,7 +466,8 @@ int main(int argc, char **argv)
             "--record-members-chibi | "
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
-            "--package-imports | --package-files | --package-core | "
+            "--package-imports | --host-packages | --host-packages-compiler | "
+            "--package-files | --package-core | "
             "--package-math | --package-math-benchmark | --package-portable | "
             "--package-portable-compiler | "
             "--package-tests | --argument-effects-chibi | --docs-markdown | "
@@ -734,6 +741,10 @@ int main(int argc, char **argv)
         test_language_package_resolution();
     } else if (package_imports) {
         test_language_package_imports();
+    } else if (host_packages) {
+        test_language_host_packages();
+    } else if (host_packages_compiler) {
+        test_language_host_packages_compiler();
     } else if (package_core) {
         test_language_package_core();
     } else if (package_math) {

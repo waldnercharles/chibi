@@ -330,6 +330,14 @@ add_library(Chibi::host_native_catalog ALIAS chibi_host_native_catalog)
 set_target_properties(chibi_host_native_catalog PROPERTIES EXPORT_NAME host_native_catalog)
 chibi_sdk_headers(chibi_host_native_catalog PUBLIC host/native_catalog.h)
 target_link_libraries(chibi_host_native_catalog PUBLIC chibi_native_capabilities PRIVATE chibi_events)
+
+# Explicit host clock registration, independent of game/world services.
+add_library(chibi_host_clock STATIC "${CHIBI_SDK_ROOT}/src/host/clock.c"
+    "${CHIBI_SDK_ROOT}/src/host/clock_package.c")
+add_library(Chibi::host_clock ALIAS chibi_host_clock)
+set_target_properties(chibi_host_clock PROPERTIES EXPORT_NAME host_clock)
+chibi_sdk_headers(chibi_host_clock PUBLIC host/clock.h host/clock_package.h)
+target_link_libraries(chibi_host_clock PUBLIC chibi_native_capabilities)
 add_library(chibi_behavior_runtime STATIC
     "${CHIBI_SDK_ROOT}/src/runtime/event_catalog.c"
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/source.c"
@@ -377,7 +385,7 @@ chibi_sdk_headers(chibi_field_catalog PUBLIC runtime/material_field.h runtime/ma
 target_link_libraries(chibi_field_catalog PUBLIC chibi_fields)
 set(CHIBI_SDK_TARGETS chibi_support chibi_types chibi_execution_contract chibi_ecs
     chibi_execution chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities chibi_state_capabilities chibi_selection_capabilities chibi_behavior_runtime chibi_events chibi_asset_values chibi_value_document chibi_capabilities chibi_native_capabilities chibi_scene_runtime chibi_scheduling chibi_fields chibi_field_catalog chibi_tasks chibi_input_action)
-list(APPEND CHIBI_SDK_TARGETS chibi_set_capabilities chibi_host_native_catalog chibi_native_prepared
+list(APPEND CHIBI_SDK_TARGETS chibi_set_capabilities chibi_host_native_catalog chibi_host_clock chibi_native_prepared
     chibi_comparison_capabilities chibi_conversion_capabilities chibi_text_capabilities chibi_fmt)
 add_library(chibi_ui_documents STATIC "${CHIBI_SDK_ROOT}/src/runtime/ui/documents.c"
     "${CHIBI_SDK_ROOT}/src/runtime/ui/font.c")

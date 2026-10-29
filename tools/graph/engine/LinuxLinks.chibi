@@ -126,6 +126,7 @@ pub LinuxLinks :: (target: string) -> string[] {
     }
     if (target == "test_language") {
         return [
+            "chibi_host_clock",
             "chibi_task_pool_runtime", "chibi_conversion_capabilities", "chibi_json", "chibi_language_syntax",
             "chibi_asset_json", "chibi_native_prepared", "chibi_compiler_host", "chibi_asset_compiler_host",
             "chibi_native_prepared", "-ldl", "chibi_math_capabilities", "chibi_project_compilation",

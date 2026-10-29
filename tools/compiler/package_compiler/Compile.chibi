@@ -218,6 +218,38 @@ CatalogNatives :: (natives: CatalogNative[]) -> ResolvedNative[] {
     }
     return resolved;
 }
+// Host kernels have canonical names such as host:clock.Sample. Only the owning
+// authored package sees the exact private member. Keep every row's index so its
+// ports, effects and identity/ABI pair remain those supplied by the host.
+HostPackageAvailable :: (natives: ResolvedNative[], identity: string) -> bool {
+    if (!strings.HasPrefix(identity, "host:")) {
+        return true;
+    }
+    prefix := format_text("{}.", identity);
+    for (native in natives) {
+        if (!native.source && strings.HasPrefix(native.name, prefix)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+PackageNatives :: (natives: ResolvedNative[], identity: string) -> ResolvedNative[] {
+    if (!strings.HasPrefix(identity, "host:")) {
+        return natives;
+    }
+    prefix := format_text("{}.", identity);
+    prefix_length := strings.ByteLength(prefix);
+    scoped: ResolvedNative[] = [];
+    for (item in natives) {
+        native := item;
+        if (!native.source && strings.HasPrefix(native.name, prefix)) {
+            native.name = strings.Slice(native.name, prefix_length, strings.ByteLength(native.name) - prefix_length);
+        }
+        scoped.append(native);
+    }
+    return scoped;
+}
 // A native port. Storage 0 is a type the call infers, one type for every such
 // port of the native; AnyPort takes each argument's own type, and
 // UnsupportedPort is a type this compiler cannot pass.
@@ -2486,6 +2518,11 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     pass: int = 0;
     while (pass < 2) {
         for (package in order) {
+            if (!HostPackageAvailable(natives, package_names[package])) {
+                document := files_of[packages[package].member_start];
+                return Preparation.Failed(Diagnose(forest, documents[document].root, document,
+                                                   "Host package is unavailable for this target"));
+            }
             first: int = 0;
             while (first < length(callables) && callables[first].owner_package != package) {
                 first += 1;
@@ -2578,6 +2615,12 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     built: int[] = [];
     if (callable.results == 0) {
         built = BuiltLocals(forest, document.text, table^, aliases, callable.package, analysis_body, referenced);
+    }
+    if (strings.HasPrefix(document.identity, "host:")) {
+        return EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
+                        PackageNatives(natives, document.identity), ports, identities, operators, makes, make_fields,
+                        aliases, document.key, solid, undeclared, meaning, index, referenced, mutated, built, context,
+                        generic_updates, ops, target, query_specs);
     }
     return EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
                     natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,

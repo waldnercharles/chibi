@@ -586,7 +586,8 @@ Files :: (target: string) -> string[] {
     }
     if (target == "chibi-compile") {
         return [
-            "src/host/compile_main.c", "src/toolchain/compiler_target.c", "src/toolchain/compiler_artifact.c"
+            "src/host/compile_main.c", "src/host/compile_tests.c", "src/toolchain/compiler_target.c",
+            "src/toolchain/compiler_artifact.c"
         ];
     }
     if (target == "test_host") {
@@ -2172,7 +2173,9 @@ pub Includes :: (target: string) -> string[] {
             "public/save_runtime", "public/input_runtime", "public/declared_components",
             "public/native_prepared", "public/shader_preparation", "public/visual_catalog",
             "public/shader_runtime", "public/model_runtime", "public/asset_json",
-            "public/json"
+            "public/json", "public/asset_compiler_host", "public/compiler_host",
+            "public/host_native_default", "public/host_native_catalog", "private/compiler-json",
+            "private/compiler-syntax"
         ];
     }
     if (target == "test_host") {

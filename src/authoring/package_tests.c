@@ -81,6 +81,61 @@ package_test *package_tests_find_collection(const authoring_packages *packages, 
     return tests;
 }
 
+/* A package test is exported as "@test NAME". */
+#define TEST_PREFIX "@test "
+
+static int by_package_position(const void *a, const void *b)
+{
+    const package_test *left = a, *right = b;
+    int order = strcmp(left->package, right->package);
+    if (order) {
+        return order;
+    }
+    order = strcmp(left->path, right->path);
+    if (order) {
+        return order;
+    }
+    return left->line != right->line ? left->line - right->line
+                                     : left->column - right->column;
+}
+
+static void add_compiled_tests(package_test **tests, const char *package, const execution_module *module)
+{
+    for (int i = 0; i < execution_module_function_count(module); i++) {
+        execution_module_function_info info = execution_module_function_at(module, i);
+        if (info.kind != EXECUTION_FUNCTION_AUTHORED || !info.entry ||
+            strncmp(info.entry, TEST_PREFIX, strlen(TEST_PREFIX))) {
+            continue;
+        }
+        assert(info.body);
+        package_test test = { package, info.entry + strlen(TEST_PREFIX), "", 0, 0, info.body,
+                              !info.effects && behavior_function_hosts_pure(info.body) };
+        if (behavior_function_source_count(info.body)) {
+            const behavior_function_source *at = behavior_function_source_at(info.body, 0);
+            test.path = at->asset_name ? at->asset_name : "";
+            test.line = at->line;
+            test.column = at->column;
+        }
+        apush(*tests, test);
+    }
+}
+
+package_test *package_tests_find_compiled(const package_collection *packages)
+{
+    package_test *tests = NULL;
+    for (int i = 0; i < package_collection_count(packages); i++) {
+        const char *name = package_collection_name(packages, i);
+        if (!strncmp(name, "project:", strlen("project:"))) {
+            const char *directory = name + strlen("project:");
+            add_compiled_tests(&tests, *directory ? directory : ".", package_collection_module(packages, i));
+        }
+    }
+    if (tests) {
+        qsort(tests, (size_t)acount(tests), sizeof *tests, by_package_position);
+    }
+    return tests;
+}
+
 /* The innermost failing call reports first; its callers report after it. */
 static void observe(const behavior_function *function, const behavior_function_context *context, int)
 {
@@ -148,7 +203,17 @@ bool package_test_run(
     bool bound = behavior_function_bind(test->body, &context, NULL, 0);
     assert(bound);
     (void)bound;
+    /* A function the authored compiler prepared draws its calls' instructions from
+     * the enclosing scope's quota, so a test without one owns a scope. */
+    behavior_execution_scope scope = { .remaining = budget };
+    bool owned_scope = !behavior_execution_scope_active();
+    if (owned_scope) {
+        behavior_execution_scope_begin(&scope);
+    }
     int status = behavior_function_run(test->body, &context, backend != BEHAVIOR_BYTECODE);
+    if (owned_scope) {
+        behavior_execution_scope_end(&scope);
+    }
     /* Refused waits and tasks leave nothing to suspend. */
     assert(status <= 0);
     bool passed = status == FLOW_OK && context.returned;

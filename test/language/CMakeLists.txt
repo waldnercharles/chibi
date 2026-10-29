@@ -129,7 +129,7 @@ configure_file(package_routes_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/package_routes_chibi_source.h" @ONLY)
 
 set(package_snapshot_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/source_snapshot/Snapshot.chibi")
-set(compiler_syntax_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/compiler_syntax/Syntax.chibi")
+set(compiler_syntax_source "${CHIBI_LANGUAGE_TEST_ROOT}/test/language/native_syntax/Syntax.chibi.txt")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${package_snapshot_source}" "${compiler_syntax_source}")
 file(READ "${package_snapshot_source}" CHIBI_PACKAGE_SNAPSHOT_HEX HEX)

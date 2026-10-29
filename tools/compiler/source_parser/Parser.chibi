@@ -11,15 +11,15 @@ Outcome :: union {
 
 // Parses a whole source text into the raw facts compiler_syntax.Parse returns:
 // every token as a leaf, with the node, field and extra flags of the grammar
-// in src/language/grammar.js. Text the grammar does not read gives a single
-// ERROR node over the whole text; Diagnose says what is wrong with it.
+// in src/language/grammar.js. Text the grammar does not read gives the file
+// with one error node where the parse stopped, named by what was expected.
 pub Parse :: (text: string) -> Tree {
     outcome := Build(text);
     switch outcome {
         case .Built(nodes, root):
             return Emit(nodes, root);
         case .Rejected(message, start, end, row, column):
-            return Failure(text);
+            return Failure(text, message, start, end, row, column);
     }
 }
 
@@ -38,12 +38,18 @@ pub Diagnose :: (text: string) -> syntax.Diagnostic[] {
     }
 }
 
-Failure :: (text: string) -> Tree {
+// A tree for text the grammar does not read: the file with one error node
+// where the parse stopped. The node's kind carries the message, which
+// syntax_diagnostics.Diagnose reports.
+Failure :: (text: string, message: string, start: int, end: int, row: int, column: int) -> Tree {
     nodes: syntax.Node[] = [];
-    nodes.append({kind: "ERROR", start: 0, end: text_byte_length(text), row: 0, column: 0,
-                  parent: -1, first_child: -1, next_sibling: -1, error: true, missing: false,
+    nodes.append({kind: "source_file", start: 0, end: text_byte_length(text), row: 0, column: 0,
+                  parent: -1, first_child: 1, next_sibling: -1, error: false, missing: false,
                   has_error: true});
-    return Tree.Parsed(nodes, [""], [true], [false], 0);
+    nodes.append({kind: message, start: start, end: end, row: row, column: column,
+                  parent: 0, first_child: -1, next_sibling: -1, error: true, missing: false,
+                  has_error: true});
+    return Tree.Parsed(nodes, ["", ""], [true, true], [false, false], 0);
 }
 
 Build :: (text: string) -> Outcome {

@@ -319,6 +319,20 @@ install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/compiler_syntax/Syntax.chibi"
     DESTINATION share/chibi/docs/compiler_syntax)
 install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/syntax_diagnostics/Diagnostics.chibi"
     DESTINATION share/chibi/docs/syntax_diagnostics)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/source_tokenizer/Tokenizer.chibi"
+    DESTINATION share/chibi/docs/source_tokenizer)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/source_parser/Tree.chibi"
+    DESTINATION share/chibi/docs/source_parser)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/source_parser/Types.chibi"
+    DESTINATION share/chibi/docs/source_parser)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/source_parser/Expressions.chibi"
+    DESTINATION share/chibi/docs/source_parser)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/source_parser/Statements.chibi"
+    DESTINATION share/chibi/docs/source_parser)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/source_parser/Declarations.chibi"
+    DESTINATION share/chibi/docs/source_parser)
+install(FILES "${CHIBI_SDK_ROOT}/tools/compiler/source_parser/Parser.chibi"
+    DESTINATION share/chibi/docs/source_parser)
 add_library(chibi_fmt STATIC "${CHIBI_SDK_ROOT}/third_party/fmt/fmt.c")
 set_target_properties(chibi_fmt PROPERTIES EXPORT_NAME fmt)
 target_include_directories(chibi_fmt PRIVATE "${CHIBI_SDK_ROOT}/third_party/fmt")

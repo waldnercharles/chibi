@@ -18,6 +18,13 @@ package_compiler/Scalar.chibi
 syntax_diagnostics/Diagnostics.chibi
 /sdk/core/strings/Strings.chibi
 source_snapshot/Snapshot.chibi
+source_tokenizer/Tokenizer.chibi
+source_parser/Tree.chibi
+source_parser/Types.chibi
+source_parser/Expressions.chibi
+source_parser/Statements.chibi
+source_parser/Declarations.chibi
+source_parser/Parser.chibi
 compiler_syntax/Syntax.chibi
 package_routes/Routes.chibi
 package_syntax/Extract.chibi

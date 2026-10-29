@@ -3743,7 +3743,7 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_BOUNDED_PREPARE_BYTES=bytes:tools/compiler/bounded_compiler/Prepare.chibi",
             "CHIBI_CALLABLE_HEADERS_BYTES=bytes:tools/compiler/callable_headers/Headers.chibi",
             "CHIBI_COMPILER_FACTS_BYTES=bytes:tools/compiler/compiler_facts/Facts.chibi",
-            "CHIBI_COMPILER_SYNTAX_BYTES=bytes:tools/compiler/compiler_syntax/Syntax.chibi",
+            "CHIBI_COMPILER_SYNTAX_BYTES=bytes:test/language/native_syntax/Syntax.chibi.txt",
             "CHIBI_CONSTANT_FOLDING_BYTES=bytes:tools/compiler/constant_folding/Fold.chibi",
             "CHIBI_CONSTANT_IR_BYTES=bytes:tools/compiler/constant_ir/IR.chibi",
             "CHIBI_CONSTANT_PROOF_BYTES=bytes:tools/compiler/constant_admissibility/Proof.chibi",
@@ -3913,6 +3913,13 @@ pub Resources :: (target: string) -> string[] {
             "build/share/chibi/docs/grammar/Grammar.chibi=tools/docs/grammar/Grammar.chibi",
             "build/share/chibi/docs/compiler_syntax/Syntax.chibi=tools/compiler/compiler_syntax/Syntax.chibi",
             "build/share/chibi/docs/syntax_diagnostics/Diagnostics.chibi=tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+            "build/share/chibi/docs/source_tokenizer/Tokenizer.chibi=tools/compiler/source_tokenizer/Tokenizer.chibi",
+            "build/share/chibi/docs/source_parser/Tree.chibi=tools/compiler/source_parser/Tree.chibi",
+            "build/share/chibi/docs/source_parser/Types.chibi=tools/compiler/source_parser/Types.chibi",
+            "build/share/chibi/docs/source_parser/Expressions.chibi=tools/compiler/source_parser/Expressions.chibi",
+            "build/share/chibi/docs/source_parser/Statements.chibi=tools/compiler/source_parser/Statements.chibi",
+            "build/share/chibi/docs/source_parser/Declarations.chibi=tools/compiler/source_parser/Declarations.chibi",
+            "build/share/chibi/docs/source_parser/Parser.chibi=tools/compiler/source_parser/Parser.chibi",
             "build/share/chibi/shaders=src/render/shaders"
         ];
     }

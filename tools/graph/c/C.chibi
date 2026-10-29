@@ -357,13 +357,139 @@ pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: str
 // on failure.
 pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> int {
     command := LinkCommand(tools, output, objects, flags, libraries);
+    // Records hold one argument per line. A response file must not turn an
+    // embedded NUL or line ending into a different command or cache identity.
+    if (output == "" || tools.compiler == "") {
+        build.report("graph: invalid link output or compiler");
+        return -1;
+    }
+    for (argument in command) {
+        for (byte in strings.Bytes(argument)) {
+            if (byte == 0 || byte == 10 || byte == 13) {
+                build.report("graph: link arguments cannot contain NUL or line endings");
+                return -1;
+            }
+        }
+    }
+    if (Current(command, output)) {
+        return 0;
+    }
     inputs := slice(objects, 0, length(objects));
     for (linked in libraries) {
         if (strings.HasPrefix(linked, "/")) {
             inputs.append(linked);
         }
     }
-    return Step(command, inputs, output);
+    build.make_directory(strings.Slice(output, 0, strings.LastIndex(output, "/")));
+    response := Join([output, ".chibi-link.rsp"]);
+    // A killed host can leave the response file, but no successful record.
+    // Retry owns the base and numbered regular files even when its new
+    // command needs fewer segments. Other files and directories stay intact.
+    build.remove(Record(output));
+    if (!RemovePreviousResponses(response)) {
+        build.report(Join(["graph: removing link responses failed: ", output]));
+        return -1;
+    }
+    // Older GNU response tokenizers discard quoted empty tokens. Keep every
+    // empty argument directly in argv and preserve the nonempty runs around
+    // it. Compress a run only when its @path is smaller, so transport never
+    // increases the host's argument count or byte admission requirements.
+    // Step and Archive retain their programs' own argument contracts.
+    started := [command[0]];
+    responses: string[] = [];
+    index := 1;
+    while (index < length(command)) {
+        if (command[index] == "") {
+            started.append("");
+            index += 1;
+            continue;
+        }
+        first := index;
+        bytes := 0;
+        while (index < length(command) && command[index] != "") {
+            bytes += strings.ByteLength(command[index]) + 1;
+            index += 1;
+        }
+        path := response;
+        if (length(responses) > 0) {
+            path = format_text("{0}.{1}", response, length(responses));
+        }
+        argument := Join(["@", path]);
+        if (strings.ByteLength(argument) + 1 >= bytes) {
+            started.extend(slice(command, first, index - first));
+            continue;
+        }
+        kind := build.file_kind(path);
+        if (kind != "" && kind != "file") {
+            RemoveResponses(responses);
+            build.report(Join(["graph: writing link response failed: ", output]));
+            return -1;
+        }
+        responses.append(path);
+        quoted: string[] = [];
+        for (i in first..<index) {
+            escaped := build.replace(build.replace(command[i], "\\", "\\\\"), "\"", "\\\"");
+            quoted.append(Join(["\"", escaped, "\""]));
+        }
+        if (!build.write_file(path, Join([build.join(quoted, "\n"), "\n"]))) {
+            RemoveResponses(responses);
+            build.report(Join(["graph: writing link response failed: ", output]));
+            return -1;
+        }
+        started.append(argument);
+    }
+    status := build.run(started);
+    removed := RemoveResponses(responses);
+    if (status != 0 || !removed || !build.file_exists(output)) {
+        build.report(Join(["graph: step failed: ", output]));
+        return -1;
+    }
+    if (!build.write_file(Record(output), RecordText(build.join(command, "\n"), inputs, output))) {
+        return -1;
+    }
+    return 1;
+}
+
+// Response files are generated inputs owned by one link output. Try every
+// cleanup even after a failure; absence already satisfies the cleanup.
+RemoveResponses :: (paths: string[]) -> bool {
+    removed := true;
+    for (path in paths) {
+        if (build.file_kind(path) != "" && !build.remove(path)) {
+            removed = false;
+        }
+    }
+    return removed;
+}
+
+RemovePreviousResponses :: (response: string) -> bool {
+    directory := "./";
+    name := response;
+    slash := strings.LastIndex(response, "/");
+    if (slash >= 0) {
+        directory = strings.Slice(response, 0, slash + 1);
+        name = strings.Slice(response, slash + 1, strings.ByteLength(response));
+    }
+    prefix := Join([name, "."]);
+    paths: string[] = [];
+    for (item in build.list_directory(directory)) {
+        owned := item == name;
+        if (strings.HasPrefix(item, prefix)) {
+            suffix := build.after(item, prefix);
+            owned = suffix != "";
+            for (byte in strings.Bytes(suffix)) {
+                if (byte < 48 || byte > 57) {
+                    owned = false;
+                    break;
+                }
+            }
+        }
+        path := Join([directory, item]);
+        if (owned && build.file_kind(path) == "file") {
+            paths.append(path);
+        }
+    }
+    return RemoveResponses(paths);
 }
 
 // Runs a command that writes output, unless output was written by the same

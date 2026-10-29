@@ -102,6 +102,7 @@ void test_language_package_core();
 void test_language_package_math();
 void test_language_package_math_benchmark();
 void test_language_package_tests();
+void test_language_argument_effects_chibi();
 void test_language_docs_markdown();
 void test_language_scalarize();
 void test_language_component_write();
@@ -324,6 +325,8 @@ int main(int argc, char **argv)
     bool package_math_benchmark = argc == 2 &&
                                   !strcmp(argv[1], "--package-math-benchmark");
     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
+    bool argument_effects_chibi = argc == 2 &&
+                                  !strcmp(argv[1], "--argument-effects-chibi");
     bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
@@ -388,7 +391,7 @@ int main(int argc, char **argv)
          !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
          !effect_analysis_chibi && !record_members_chibi && !package_execution &&
          !package_resolution && !package_imports && !package_files && !package_core &&
-         !package_math && !package_math_benchmark && !package_tests && !docs_markdown &&
+         !package_math && !package_math_benchmark && !package_tests && !argument_effects_chibi && !docs_markdown &&
          !component_write && !component_write_layout && !scalarize && !borrow &&
          !reductions && !binding_schedule && !activation_cache && !headless &&
          !build_workflow && !navigation && !publication && !field_runtime &&
@@ -450,8 +453,7 @@ int main(int argc, char **argv)
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
-            "--package-math | --package-math-benchmark | --package-tests | "
-            "--docs-markdown | "
+            "--package-math | --package-math-benchmark | --package-tests | --argument-effects-chibi | --docs-markdown | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -732,6 +734,8 @@ int main(int argc, char **argv)
         test_language_package_math_benchmark();
     } else if (package_tests) {
         test_language_package_tests();
+    } else if (argument_effects_chibi) {
+        test_language_argument_effects_chibi();
     } else if (docs_markdown) {
         test_language_docs_markdown();
     } else if (package_files) {

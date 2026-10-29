@@ -193,21 +193,6 @@ static bool call(execution_module *module, uint64_t id, behavior_backend backend
     behavior_run_scope_begin(&scope);
     int status = behavior_function_run(function, &context, backend == BEHAVIOR_SLJIT);
     behavior_run_scope_end(&scope);
-    if (status != FLOW_OK || !context.returned) {
-        fprintf(
-            stderr,
-            "Package import call: backend=%s function=%016llx status=%d "
-            "returned=%d "
-            "failure=%d steps=%zu message=%s\n",
-            backend == BEHAVIOR_SLJIT ? "compiled" : "bytecode",
-            (unsigned long long)id,
-            status,
-            context.returned,
-            context.failure,
-            (size_t)context.steps,
-            context.error_message ? context.error_message : ""
-        );
-    }
     REQUIRE(status == FLOW_OK && context.returned);
     REQUIRE(result.type == PIN_I32 && result.i == expected);
     REQUIRE(!scope.counts.overflow && !scope.counts.inspection_bytecode_fallbacks);
@@ -1319,18 +1304,8 @@ static const char *default_probe(arena *, const pin_value *, int, pin_value *out
     out[0] = (pin_value){ .type = PIN_I32, .i = 99 };
     return NULL;
 }
-static const char *optional_probe(arena *, const pin_value *, int, pin_value *out)
-{
-    out[0] = (pin_value){ .type = PIN_UNION };
-    return NULL;
-}
 static bool default_probe_binding(void *, uint64_t id, script_lower_host *out)
 {
-    if (id == 701) {
-        static const node_host_call call = { .value = optional_probe };
-        *out = (script_lower_host){ .call = &call };
-        return true;
-    }
     if (id != 700) {
         return false;
     }
@@ -1689,6 +1664,215 @@ TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependenc
     return true;
 }
 
+TEST_CASE(package_imports_malformed_definition_environments_are_rejected)
+{
+    static const char
+        text[] = "package app\nimport lib \"../lib\"\nRow :: struct { value: "
+                 "int; }\nMain :: (value: int) -> int { row: Row = {value: "
+                 "value}; return lib.Identity(row).value; }\n";
+    direct_syntax = script_parse(text);
+    definition_syntax = script_parse(
+        "package lib\npub Identity :: (value: $T) -> T { return value; }\n"
+    );
+    REQUIRE(!direct_syntax->diagnostic_count && !definition_syntax->diagnostic_count);
+    const script_package_document caller = { "/project/app/a.chibi",
+                                             "project:app/a.chibi",
+                                             direct_syntax };
+    script_package_document definition = { "/project/lib/a.chibi",
+                                           "project:lib/a.chibi",
+                                           definition_syntax };
+    const script_template_parameter parameter = { .name = "value",
+                                                  .binder = "T",
+                                                  .type = { .flags = SCRIPT_TYPE_UNTYPED },
+                                                  .binds_type = true };
+    const script_catalog_template template = { .id = 800,
+                                               .name = "Identity",
+                                               .owner = "project:lib",
+                                               .kind = SCRIPT_TEMPLATE_FUNCTION,
+                                               .parameters = &parameter,
+                                               .parameter_count = 1,
+                                               .generic = true };
+    const script_catalog metadata = { .templates = &template, .template_count = 1 };
+    const script_package_export member = { .name = "Identity",
+                                           .id = 800,
+                                           .kind = SCRIPT_PACKAGE_TEMPLATE };
+    script_package_environment environment;
+    const script_package_exports exports = { .identity = "project:lib",
+                                             .metadata = &metadata,
+                                             .members = &member,
+                                             .member_count = 1,
+                                             .environment = &environment };
+    int start = (int)(strstr(text, "import lib") - text);
+    script_range range = { .start = start,
+                           .end = start + (int)strlen("import lib \"../lib\""),
+                           .line = 2,
+                           .column = 1,
+                           .document = 0 };
+    const script_package_import import = { .document = 0,
+                                           .range = range,
+                                           .alias = "lib",
+                                           .identity = "project:lib",
+                                           .exports = &exports };
+    const script_package_options options = { .documents = &caller,
+                                             .document_count = 1,
+                                             .identity = "project:app",
+                                             .native = &native,
+                                             .imports = &import,
+                                             .import_count = 1 };
+    script_catalog nested_metadata;
+    script_catalog_type nested_type;
+    script_catalog_variant nested_variant;
+    script_catalog_capability nested_capability;
+    script_catalog_template nested_template;
+    script_catalog_specialization nested_specialization;
+    script_package_exports dependency;
+    script_package_import dependency_import;
+    int payload = 1;
+    script_package_export environment_bindings[2] = {
+        member,
+        { .name = "Hidden",
+          .id = 901,
+          .kind = SCRIPT_PACKAGE_CONSTANT,
+          .type = { .storage = PIN_STRUCT },
+          .value = { .type = PIN_STRUCT, .ptr = &payload } },
+    };
+    for (int sample = 0; sample < 34; sample++) {
+        definition = (script_package_document){ "/project/lib/a.chibi",
+                                                "project:lib/a.chibi",
+                                                definition_syntax };
+        environment = (script_package_environment){ .identity = "project:lib",
+                                                    .documents = &definition,
+                                                    .document_count = 1,
+                                                    .bindings = &member,
+                                                    .binding_count = 1 };
+        nested_metadata = (script_catalog){ 0 };
+        nested_type = (script_catalog_type){ 0 };
+        nested_variant = (script_catalog_variant){ 0 };
+        nested_capability = (script_catalog_capability){ 0 };
+        nested_template = template;
+        nested_specialization = (script_catalog_specialization){ .id = 900,
+                                                                 .template_id = 800 };
+        dependency = (script_package_exports){ .identity = "project:dependency",
+                                               .metadata = &nested_metadata };
+        dependency_import = (script_package_import){
+            .document = 0,
+            .alias = "dependency",
+            .identity = "project:dependency",
+            .exports = &dependency
+        };
+        if (sample >= 13) {
+            environment.imports = &dependency_import;
+            environment.import_count = 1;
+        }
+        switch (sample) {
+            case 1: environment.documents = NULL; break;
+            case 2: environment.document_count = -1; break;
+            case 3:
+                environment.document_count = SCRIPT_PACKAGE_MAX_DOCUMENTS + 1;
+                break;
+            case 4: environment.import_count = 1; break;
+            case 5:
+                environment.binding_count = 1;
+                environment.bindings = NULL;
+                break;
+            case 6: environment.identity = NULL; break;
+            case 7: environment.identity = "project:other"; break;
+            case 8: definition.path = NULL; break;
+            case 9: definition.key = ""; break;
+            case 10: definition.syntax = NULL; break;
+            case 11: environment.import_count = -1; break;
+            case 12: environment.binding_count = 4097; break;
+            /* A self import is valid and must not recurse indefinitely. */
+            case 13:
+                dependency_import.identity = "project:lib";
+                dependency_import.exports = &exports;
+                break;
+            case 14: nested_metadata.global_count = -1; break;
+            case 15: nested_metadata.global_count = 1; break;
+            case 16: nested_metadata.relationship_count = -1; break;
+            case 17: nested_metadata.relationship_count = 1; break;
+            case 18: nested_metadata.template_count = -1; break;
+            case 19: nested_metadata.template_count = 1; break;
+            case 20: nested_metadata.specialization_count = -1; break;
+            case 21: nested_metadata.specialization_count = 1; break;
+            case 22: nested_metadata.type_count = 1; break;
+            case 23:
+                nested_metadata.types = &nested_type;
+                nested_metadata.type_count = 1;
+                nested_type.field_count = 1;
+                break;
+            case 24:
+                nested_metadata.types = &nested_type;
+                nested_metadata.type_count = 1;
+                nested_type.variant_count = 1;
+                break;
+            case 25:
+                nested_metadata.types = &nested_type;
+                nested_metadata.type_count = 1;
+                nested_type.variants = &nested_variant;
+                nested_type.variant_count = 1;
+                nested_variant.field_count = 1;
+                break;
+            case 26: nested_metadata.capability_count = 1; break;
+            case 27:
+                nested_metadata.capabilities = &nested_capability;
+                nested_metadata.capability_count = 1;
+                nested_capability.parameter_count = 1;
+                break;
+            case 28:
+                nested_metadata.capabilities = &nested_capability;
+                nested_metadata.capability_count = 1;
+                nested_capability.result_count = 1;
+                break;
+            case 29:
+                nested_metadata.capabilities = &nested_capability;
+                nested_metadata.capability_count = 1;
+                nested_capability.entry_count = 1;
+                break;
+            case 30:
+                nested_metadata.capabilities = &nested_capability;
+                nested_metadata.capability_count = 1;
+                nested_capability.outcome_count = 1;
+                break;
+            case 31:
+                nested_metadata.templates = &nested_template;
+                nested_metadata.template_count = 1;
+                nested_template.parameters = NULL;
+                break;
+            case 32:
+                nested_metadata.specializations = &nested_specialization;
+                nested_metadata.specialization_count = 1;
+                nested_specialization.binding_count = 1;
+                break;
+            case 33:
+                environment.bindings = environment_bindings;
+                environment.binding_count = 2;
+                break;
+        }
+        script_analysis_free(direct_analysis);
+        direct_analysis = script_analyze_package(&options);
+        if (!sample || sample == 13) {
+            REQUIRE(direct_analysis->valid);
+            continue;
+        }
+        REQUIRE(!direct_analysis->valid && direct_analysis->diagnostic_count > 0);
+        if (sample == 33) {
+            REQUIRE(
+                strstr(direct_analysis->diagnostics[0].message, "Cannot retain generic definition environment")
+            );
+            REQUIRE(direct_analysis->diagnostics[0].range.document == 0);
+            REQUIRE(
+                direct_analysis->diagnostics[0].range.start ==
+                (int)(strstr(text, "lib.Identity") - text)
+            );
+            continue;
+        }
+        REQUIRE(strstr(direct_analysis->diagnostics[0].message, "Invalid package import binding"));
+        REQUIRE(direct_analysis->diagnostics[0].range.start == range.start);
+    }
+    return true;
+}
+
 TEST_CASE(package_imports_check_errors_only_in_active_collections_and_all_projects)
 {
     const char unchecked
@@ -1910,6 +2094,7 @@ TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse)
     }
     return true;
 }
+
 TEST_CASE(package_imports_ownership_contract_changes_invalidate_reuse)
 {
     const script_catalog_parameter output = { .name = "value",
@@ -1968,211 +2153,6 @@ TEST_CASE(package_imports_ownership_contract_changes_invalidate_reuse)
                 package(2, "project:app")->generation
             );
         }
-TEST_CASE(package_imports_malformed_definition_environments_are_rejected)
-{
-    static const char
-        text[] = "package app\nimport lib \"../lib\"\nRow :: struct { value: "
-                 "int; }\nMain :: (value: int) -> int { row: Row = {value: "
-                 "value}; return lib.Identity(row).value; }\n";
-    direct_syntax = script_parse(text);
-    definition_syntax = script_parse(
-        "package lib\npub Identity :: (value: $T) -> T { return value; }\n"
-    );
-    REQUIRE(!direct_syntax->diagnostic_count && !definition_syntax->diagnostic_count);
-    const script_package_document caller = { "/project/app/a.chibi",
-                                             "project:app/a.chibi",
-                                             direct_syntax };
-    script_package_document definition = { "/project/lib/a.chibi",
-                                           "project:lib/a.chibi",
-                                           definition_syntax };
-    const script_template_parameter parameter = { .name = "value",
-                                                  .binder = "T",
-                                                  .type = { .flags = SCRIPT_TYPE_UNTYPED },
-                                                  .binds_type = true };
-    const script_catalog_template template = { .id = 800,
-                                               .name = "Identity",
-                                               .owner = "project:lib",
-                                               .kind = SCRIPT_TEMPLATE_FUNCTION,
-                                               .parameters = &parameter,
-                                               .parameter_count = 1,
-                                               .generic = true };
-    const script_catalog metadata = { .templates = &template, .template_count = 1 };
-    const script_package_export member = { .name = "Identity",
-                                           .id = 800,
-                                           .kind = SCRIPT_PACKAGE_TEMPLATE };
-    script_package_environment environment;
-    const script_package_exports exports = { .identity = "project:lib",
-                                             .metadata = &metadata,
-                                             .members = &member,
-                                             .member_count = 1,
-                                             .environment = &environment };
-    int start = (int)(strstr(text, "import lib") - text);
-    script_range range = { .start = start,
-                           .end = start + (int)strlen("import lib \"../lib\""),
-                           .line = 2,
-                           .column = 1,
-                           .document = 0 };
-    const script_package_import import = { .document = 0,
-                                           .range = range,
-                                           .alias = "lib",
-                                           .identity = "project:lib",
-                                           .exports = &exports };
-    const script_package_options options = { .documents = &caller,
-                                             .document_count = 1,
-                                             .identity = "project:app",
-                                             .native = &native,
-                                             .imports = &import,
-                                             .import_count = 1 };
-    script_catalog nested_metadata;
-    script_catalog_type nested_type;
-    script_catalog_variant nested_variant;
-    script_catalog_capability nested_capability;
-    script_catalog_template nested_template;
-    script_catalog_specialization nested_specialization;
-    script_package_exports dependency;
-    script_package_import dependency_import;
-    int payload = 1;
-    script_package_export environment_bindings[2] = {
-        member,
-        { .name = "Hidden",
-          .id = 901,
-          .kind = SCRIPT_PACKAGE_CONSTANT,
-          .type = { .storage = PIN_STRUCT },
-          .value = { .type = PIN_STRUCT, .ptr = &payload } },
-    };
-    for (int sample = 0; sample < 34; sample++) {
-        definition = (script_package_document){ "/project/lib/a.chibi",
-                                                "project:lib/a.chibi",
-                                                definition_syntax };
-        environment = (script_package_environment){ .identity = "project:lib",
-                                                    .documents = &definition,
-                                                    .document_count = 1,
-                                                    .bindings = &member,
-                                                    .binding_count = 1 };
-        nested_metadata = (script_catalog){ 0 };
-        nested_type = (script_catalog_type){ 0 };
-        nested_variant = (script_catalog_variant){ 0 };
-        nested_capability = (script_catalog_capability){ 0 };
-        nested_template = template;
-        nested_specialization = (script_catalog_specialization){ .id = 900,
-                                                                 .template_id = 800 };
-        dependency = (script_package_exports){ .identity = "project:dependency",
-                                               .metadata = &nested_metadata };
-        dependency_import = (script_package_import){
-            .document = 0,
-            .alias = "dependency",
-            .identity = "project:dependency",
-            .exports = &dependency
-        };
-        if (sample >= 13) {
-            environment.imports = &dependency_import;
-            environment.import_count = 1;
-        }
-        switch (sample) {
-            case 1: environment.documents = NULL; break;
-            case 2: environment.document_count = -1; break;
-            case 3:
-                environment.document_count = SCRIPT_PACKAGE_MAX_DOCUMENTS + 1;
-                break;
-            case 4: environment.import_count = 1; break;
-            case 5:
-                environment.binding_count = 1;
-                environment.bindings = NULL;
-                break;
-            case 6: environment.identity = NULL; break;
-            case 7: environment.identity = "project:other"; break;
-            case 8: definition.path = NULL; break;
-            case 9: definition.key = ""; break;
-            case 10: definition.syntax = NULL; break;
-            case 11: environment.import_count = -1; break;
-            case 12: environment.binding_count = 4097; break;
-            /* A self import is valid and must not recurse indefinitely. */
-            case 13:
-                dependency_import.identity = "project:lib";
-                dependency_import.exports = &exports;
-                break;
-            case 14: nested_metadata.global_count = -1; break;
-            case 15: nested_metadata.global_count = 1; break;
-            case 16: nested_metadata.relationship_count = -1; break;
-            case 17: nested_metadata.relationship_count = 1; break;
-            case 18: nested_metadata.template_count = -1; break;
-            case 19: nested_metadata.template_count = 1; break;
-            case 20: nested_metadata.specialization_count = -1; break;
-            case 21: nested_metadata.specialization_count = 1; break;
-            case 22: nested_metadata.type_count = 1; break;
-            case 23:
-                nested_metadata.types = &nested_type;
-                nested_metadata.type_count = 1;
-                nested_type.field_count = 1;
-                break;
-            case 24:
-                nested_metadata.types = &nested_type;
-                nested_metadata.type_count = 1;
-                nested_type.variant_count = 1;
-                break;
-            case 25:
-                nested_metadata.types = &nested_type;
-                nested_metadata.type_count = 1;
-                nested_type.variants = &nested_variant;
-                nested_type.variant_count = 1;
-                nested_variant.field_count = 1;
-                break;
-            case 26: nested_metadata.capability_count = 1; break;
-            case 27:
-                nested_metadata.capabilities = &nested_capability;
-                nested_metadata.capability_count = 1;
-                nested_capability.parameter_count = 1;
-                break;
-            case 28:
-                nested_metadata.capabilities = &nested_capability;
-                nested_metadata.capability_count = 1;
-                nested_capability.result_count = 1;
-                break;
-            case 29:
-                nested_metadata.capabilities = &nested_capability;
-                nested_metadata.capability_count = 1;
-                nested_capability.entry_count = 1;
-                break;
-            case 30:
-                nested_metadata.capabilities = &nested_capability;
-                nested_metadata.capability_count = 1;
-                nested_capability.outcome_count = 1;
-                break;
-            case 31:
-                nested_metadata.templates = &nested_template;
-                nested_metadata.template_count = 1;
-                nested_template.parameters = NULL;
-                break;
-            case 32:
-                nested_metadata.specializations = &nested_specialization;
-                nested_metadata.specialization_count = 1;
-                nested_specialization.binding_count = 1;
-                break;
-            case 33:
-                environment.bindings = environment_bindings;
-                environment.binding_count = 2;
-                break;
-        }
-        script_analysis_free(direct_analysis);
-        direct_analysis = script_analyze_package(&options);
-        if (!sample || sample == 13) {
-            REQUIRE(direct_analysis->valid);
-            continue;
-        }
-        REQUIRE(!direct_analysis->valid && direct_analysis->diagnostic_count > 0);
-        if (sample == 33) {
-            REQUIRE(
-                strstr(direct_analysis->diagnostics[0].message, "Cannot retain generic definition environment")
-            );
-            REQUIRE(direct_analysis->diagnostics[0].range.document == 0);
-            REQUIRE(
-                direct_analysis->diagnostics[0].range.start ==
-                (int)(strstr(text, "lib.Identity") - text)
-            );
-            continue;
-        }
-        REQUIRE(strstr(direct_analysis->diagnostics[0].message, "Invalid package import binding"));
-        REQUIRE(direct_analysis->diagnostics[0].range.start == range.start);
     }
     return true;
 }
@@ -2180,9 +2160,6 @@ TEST_CASE(package_imports_malformed_definition_environments_are_rejected)
 void test_language_package_imports()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_imports_preserve_fallible_contract);
-    RUN_TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse);
-    RUN_TEST_CASE(package_imports_ownership_contract_changes_invalidate_reuse);
     RUN_TEST_CASE(package_imports_transitive_calls_execute_on_each_backend);
     RUN_TEST_CASE(package_imports_reused_alias_spelling_remains_file_local);
     RUN_TEST_CASE(package_imports_self_alias_resolves_sibling_function);
@@ -2215,7 +2192,10 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_imports_check_direct_transitive_and_blank_collection_imports);
     RUN_TEST_CASE(package_imports_collection_only_snapshot_checks_first_input_root);
     RUN_TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependency);
-    RUN_TEST_CASE(package_imports_check_errors_only_in_active_collections_and_all_projects);
     RUN_TEST_CASE(package_imports_malformed_definition_environments_are_rejected);
+    RUN_TEST_CASE(package_imports_check_errors_only_in_active_collections_and_all_projects);
+    RUN_TEST_CASE(package_imports_preserve_fallible_contract);
+    RUN_TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse);
+    RUN_TEST_CASE(package_imports_ownership_contract_changes_invalidate_reuse);
     pu_clear_setup();
 }

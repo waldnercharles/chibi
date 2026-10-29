@@ -498,7 +498,11 @@ bool script_analyzer_callable_argument(
                  * callable contract compares their source pointer types. */
                 if (!result && (supplied.flags & SCRIPT_TYPE_REFERENCE)) {
                     supplied.flags &= ~SCRIPT_TYPE_REFERENCE;
-                    supplied = script_analyzer_pointer_type(a, supplied);
+                    supplied = script_analyzer_pointer_type(
+                        a,
+                        supplied,
+                        script_analyzer_range(a, type_node)
+                    );
                 }
                 if (!script_type_equal(wanted, supplied)) {
                     script_analyzer_diagnostic(
@@ -1227,16 +1231,17 @@ static bool construct_record(
     script_type type = { .storage = PIN_STRUCT, .nominal = id };
     script_analyzer_publish_type(
         a,
-        (script_catalog_type){ .id = id,
-                               .name = own(a, identity),
-                               .source_name = own(a, signature),
-                               .type = type,
-                               .fields = owned_fields,
-                               .field_count = count,
-                               .size = record ? record->type.size : 0,
-                               .layout = record ? record->layout : 0,
-                               .authored_record = true,
-                               .error = script_analyzer_error_attribute(a, definition.node) }
+        (script_catalog_type){
+            .id = id,
+            .name = own(a, identity),
+            .source_name = own(a, signature),
+            .type = type,
+            .fields = owned_fields,
+            .field_count = count,
+            .size = record ? record->type.size : 0,
+            .layout = record ? record->layout : 0,
+            .authored_record = true,
+            .error = script_analyzer_error_attribute(a, definition.node) }
     );
     apush(
         a->instances,

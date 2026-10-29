@@ -12043,15 +12043,15 @@ TEST_CASE(package_compiler_rejects_invalid_char_conversions)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(&s, inputs);
         for (int b = 0; b < 2; b++) {
-            pin_value out, message;
+            compiler_result out;
+            pin_value message;
             bool probe = strstr(sources[i], "native.kernel") != NULL;
             REQUIRE(compile(b, false, probe, false, inputs, count, COMPILE_BUDGET, &out));
-            const pin_union *value = out.ptr;
-            if (out.type != PIN_UNION || !value || value->tag != tag(b, "Rejected")) {
+            if (compiler_succeeded(&out)) {
                 fprintf(stderr, "stage one accepted invalid char source: %s\n", sources[i]);
             }
-            REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
-            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(!compiler_succeeded(&out));
+            REQUIRE(get(compiler_error(&out), "message", &message));
             if (i < 6) {
                 REQUIRE(strstr(pin_text(message).bytes, "Constant does not fit in char"));
             }
@@ -12150,21 +12150,20 @@ TEST_CASE(package_compiler_rejects_deferred_char_forms)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(&s, inputs);
         for (int b = 0; b < 2; b++) {
-            pin_value out, message;
+            compiler_result out;
+            pin_value message;
             REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-            const pin_union *value = out.ptr;
-            if (out.type != PIN_UNION || !value || value->tag != tag(b, "Rejected")) {
+            if (compiler_succeeded(&out)) {
                 fprintf(
                     stderr,
                     "stage one accepted deferred char form: %s\n",
                     cases[i].name
                 );
             }
-            REQUIRE(out.type == PIN_UNION && value);
-            bool rejected = value->tag == tag(b, "Rejected");
+            bool rejected = !compiler_succeeded(&out);
             rejected_all &= rejected;
             if (rejected) {
-                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(compiler_error(&out), "message", &message));
                 REQUIRE(pin_text(message).length > 0);
             }
             arena_free(&detached);
@@ -12262,28 +12261,19 @@ TEST_CASE(package_compiler_defers_generic_char_native_results)
         REQUIRE(native && authoring_packages_valid(native));
         authoring_packages_free(native);
         for (int b = 0; b < 2; b++) {
-            pin_value args[ARGUMENTS + 1], out;
+            pin_value args[ARGUMENTS + 1];
+            compiler_result out;
             REQUIRE(arguments(b, false, &source, 1, args));
             REQUIRE(
                 compiler_fixture_natives(&fixture, b, PACKAGE, catalog, &input, &args[9], &args[ARGUMENTS])
             );
-            REQUIRE(compiler_fixture_call(
-                &fixture,
-                b,
-                PACKAGE,
-                "CompileWithEffects",
-                args,
-                ARGUMENTS + 1,
-                COMPILE_BUDGET,
-                &detached,
-                &out
-            ));
-            const pin_union *value = out.ptr;
-            REQUIRE(out.type == PIN_UNION && value);
-            REQUIRE(value->tag == tag(b, i == 0 ? "Rejected" : "Compiled"));
+            REQUIRE(
+                compiler_call(b, "CompileWithEffects", args, ARGUMENTS + 1, COMPILE_BUDGET, &out)
+            );
+            REQUIRE(compiler_succeeded(&out) == (i != 0));
             if (i == 0) {
                 pin_value message;
-                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(compiler_error(&out), "message", &message));
                 REQUIRE(
                     strstr(pin_text(message).bytes, "generic char native results are not supported yet")
                 );

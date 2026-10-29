@@ -12,7 +12,6 @@ void prototypes_free(prototypes *);
  * never modifies generations retained by pending spawns. No authoring
  * document, source compiler, or filesystem resolver is retained. */
 int prototypes_register(prototypes *, const char *, scene *, char *error, size_t size);
-int prototypes_remove(prototypes *, const char *);
 /* Borrowed until replacement/removal/free; retain before asynchronous use. */
 const scene *prototypes_find(const prototypes *, const char *);
 int prototypes_count(const prototypes *);

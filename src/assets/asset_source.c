@@ -141,13 +141,6 @@ static void lex(asset_source *s)
     kdl_lex(s);
 }
 
-asset_source_span *asset_source_highlight(const char *text)
-{
-    asset_source source = { .text = (char *)text };
-    lex(&source);
-    return source.spans;
-}
-
 /* Asset identities resolve through composed component descriptors or an exact
  * reflection-pack name, never an arbitrary prefix on a short type name. */
 static const type_desc *reflected_type_named(const char *name)

@@ -37,35 +37,6 @@ int pin_union_value(arena *storage, uint64_t tag, const pin_value *values, int c
     *out = (pin_value){ .type = PIN_UNION, .ptr = value };
     return 0;
 }
-/* Whether what a value points to is in storage. Its header's type name and
- * record are the layout its cell was declared with, which outlives it. */
-static bool held_by(const arena *storage, const pin_value *v)
-{
-    bool pointer = v->container != PIN_CONTAINER_SINGLE || v->type == PIN_STRUCT ||
-                   v->type == PIN_STR || v->type == PIN_NAME || v->type == PIN_UNION;
-    return !pointer || !v->ptr || arena_contains(storage, v->ptr);
-}
-int pin_union_kept(arena *storage, uint64_t tag, uint64_t keep, const pin_value *values, int count, pin_value *out)
-{
-    pin_union *value = allocate(storage, tag, values, count);
-    for (int i = 0; i < count; i++) {
-        /* A union kept here may hold a value another payload keeps. */
-        bool kept = i < 64 && (keep >> i & 1) && held_by(storage, &values[i]) &&
-                    !(values[i].type == PIN_UNION &&
-                      values[i].container == PIN_CONTAINER_SINGLE);
-        /* A value kept once is copied again, so the payloads stay apart. */
-        for (int j = 0; kept && j < i; j++) {
-            kept = value->values[j].ptr != values[i].ptr;
-        }
-        if (kept) {
-            value->values[i] = values[i];
-        } else if (pin_value_snapshot_to_arena(storage, &value->values[i], &values[i])) {
-            return -1;
-        }
-    }
-    *out = (pin_value){ .type = PIN_UNION, .ptr = value };
-    return 0;
-}
 /* Heap-owned copies use one owner header and an arena for nested snapshots.
  * This follows pin_value_copy/destroy ownership, separate from arena values. */
 typedef struct

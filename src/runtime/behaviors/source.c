@@ -528,38 +528,6 @@ int source_dispatch(
 {
     return dispatch_event(r, ecs_entity_to_u64(entity), name, arguments, count, now, delta);
 }
-int source_field_changed(
-    source_registry *r,
-    ecs_entity entity,
-    ecs_component_id component,
-    size_t offset,
-    pin_value value,
-    double now,
-    double delta
-)
-{
-    begin_boundary(r);
-    r->executing++;
-    for (int i = 0; i < acount(r->records); i++) {
-        execution_program *program = r->records[i].program;
-        int status = execution_program_field_changed(
-            program,
-            ecs_entity_to_u64(entity),
-            component,
-            offset,
-            value,
-            now,
-            delta,
-            10000
-        );
-        if (status < 0) {
-            r->executing--;
-            return program_status(r, program, status);
-        }
-    }
-    r->executing--;
-    return FLOW_OK;
-}
 int source_dispatch_all(
     source_registry *r,
     const char *name,

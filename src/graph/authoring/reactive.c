@@ -29,53 +29,6 @@ int behavior_reactive_output_index(const node *n, uint64_t id)
 static bool depends(const graph *, const node *, int, const node *, int, int);
 static bool bind_depends(const graph *, const behavior_reactive *, const node *, int);
 
-void behavior_reactive_order(const behavior_asset *asset, int **order)
-{
-    int count = acount(asset->reactives);
-    unsigned char *edges = xcalloc((size_t)count * count, 1);
-    int *degree = xcalloc((size_t)count, sizeof *degree);
-    for (int i = 0; i < count; i++) {
-        const behavior_reactive *a = &asset->reactives[i];
-        if (a->kind != BEHAVIOR_REACTIVE_BIND) {
-            continue;
-        }
-        const graph *g = behavior_asset_find_graph(asset, a->graph_id);
-        const node *target = g ? graph_node_by_id(g, a->source_node_id) : NULL;
-        for (int j = 0; j < count; j++) {
-            const behavior_reactive *b = &asset->reactives[j];
-            if (b->kind == BEHAVIOR_REACTIVE_BIND &&
-                bind_depends(g, b, target, behavior_reactive_output_index(target, a->source_pin_id))) {
-                edges[i * count + j] = 1;
-                degree[j]++;
-            }
-        }
-    }
-    for (int selected = 0; selected < count; selected++) {
-        int at = -1;
-        for (int i = 0; i < count; i++) {
-            if (!degree[i] && asset->reactives[i].kind == BEHAVIOR_REACTIVE_BIND) {
-                at = i;
-                break;
-            }
-        }
-        if (at < 0) {
-            break;
-        }
-        apush(*order, at);
-        degree[at] = -1;
-        for (int i = 0; i < count; i++) {
-            degree[i] -= edges[at * count + i];
-        }
-    }
-    for (int i = 0; i < count; i++) {
-        if (asset->reactives[i].kind != BEHAVIOR_REACTIVE_BIND) {
-            apush(*order, i);
-        }
-    }
-    free(edges);
-    free(degree);
-}
-
 static bool compile_binding(const pin_binding *binding, behavior_reactive_path *path)
 {
     if (binding->kind == PIN_BINDING_VARIABLE) {

@@ -37,12 +37,6 @@ flow_host_request *execution_request_new(const execution_request_sink *sink, voi
     return request;
 }
 
-uint64_t execution_request_entity(const flow_host_request *request)
-{
-    assert(request);
-    return request->entity;
-}
-
 void execution_request_retain(flow_host_request *request)
 {
     assert(request && request->references > 0);

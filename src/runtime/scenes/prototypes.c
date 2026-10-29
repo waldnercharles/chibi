@@ -61,18 +61,6 @@ int prototypes_register(prototypes *prototypes, const char *name, scene *scene, 
     apush(prototypes->records, ((prototype_record){ xstrdup(name), scene }));
     return 0;
 }
-int prototypes_remove(prototypes *prototypes, const char *name)
-{
-    assert(prototypes && name);
-    int index = index_of(prototypes, name);
-    if (index < 0) {
-        return -1;
-    }
-    free(prototypes->records[index].name);
-    scene_free(prototypes->records[index].scene);
-    adel(prototypes->records, index);
-    return 0;
-}
 const scene *prototypes_find(const prototypes *prototypes, const char *name)
 {
     assert(prototypes && name);

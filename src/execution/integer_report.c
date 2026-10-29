@@ -18,17 +18,6 @@ bool execution_integer_reports_enabled()
 {
     return atomic_load(&enabled);
 }
-const char *execution_integer_report_text(execution_integer_report_kind kind)
-{
-    switch (kind) {
-        case EXECUTION_INTEGER_OVERFLOW:
-            return "Integer overflow wrapped around";
-        case EXECUTION_INTEGER_ZERO_DIVISOR: return "Integer division by zero";
-        case EXECUTION_INTEGER_CLAMP:
-            return "Conversion clamped a value that does not fit";
-        default: assert(false); return NULL;
-    }
-}
 
 size_t behavior_integer_report_bytes(int sites)
 {

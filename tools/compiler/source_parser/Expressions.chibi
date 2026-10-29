@@ -1,0 +1,453 @@
+package source_parser
+
+import tk "project:source_tokenizer"
+
+// Tree-sitter's binding powers (src/language/grammar.js, P).
+OrPower: int : 1;
+AndPower: int : 2;
+BitOrPower: int : 3;
+BitXorPower: int : 4;
+BitAndPower: int : 5;
+EqualityPower: int : 6;
+ComparisonPower: int : 7;
+CoalescePower: int : 8;
+ShiftPower: int : 9;
+SumPower: int : 10;
+ProductPower: int : 11;
+
+ParseExpression :: (c: ^Cursor, n: ^(Node[])) -> int {
+    return ParseBinary(c, n, OrPower);
+}
+
+// The binding power of the binary operator at the cursor, or 0.
+BinaryPower :: (c: ^Cursor, n: ^(Node[])) -> int {
+    token := Cur(c, n);
+    if (token == tk.CmpOr || token == tk.OrKeyword) {
+        return OrPower;
+    }
+    if (token == tk.CmpAnd || token == tk.AndKeyword) {
+        return AndPower;
+    }
+    if (token == tk.Or) {
+        return BitOrPower;
+    }
+    if (token == tk.Xor) {
+        return BitXorPower;
+    }
+    if (token == tk.And) {
+        return BitAndPower;
+    }
+    if (token == tk.CmpEq || token == tk.NotEq) {
+        return EqualityPower;
+    }
+    if (token == tk.Lt || token == tk.LtEq || token == tk.Gt || token == tk.GtEq ||
+        token == tk.In || token == tk.Is || token == tk.As) {
+        return ComparisonPower;
+    }
+    if (token == tk.NotKeyword && Peek(c, n, 1) == tk.In) {
+        return ComparisonPower;
+    }
+    if (token == tk.Coalesce) {
+        return CoalescePower;
+    }
+    if (token == tk.Shl || token == tk.Shr) {
+        return ShiftPower;
+    }
+    if (token == tk.Add || token == tk.Sub) {
+        return SumPower;
+    }
+    if (token == tk.Mul || token == tk.Quo || token == tk.Mod) {
+        return ProductPower;
+    }
+    return 0;
+}
+
+// Precedence climbing: binary operators are left associative, `??` right.
+ParseBinary :: (c: ^Cursor, n: ^(Node[]), least: int) -> int {
+    left := ParseUnary(c, n);
+    while (!c.failed) {
+        power := BinaryPower(c, n);
+        if (power == 0 || power < least) {
+            break;
+        }
+        token := Cur(c, n);
+        if (token == tk.Is) {
+            left = ParseIs(c, n, left);
+        } else if (token == tk.As) {
+            cast := New(n, "as_expression");
+            Add(n, cast, left, "value");
+            Take(c, n, cast, "");
+            Add(n, cast, ParseType(c, n), "type");
+            left = cast;
+        } else {
+            binary := New(n, "binary_expression");
+            Add(n, binary, left, "left");
+            if (token == tk.NotKeyword) {
+                joined := New(n, "not_in");
+                Take(c, n, joined, "");
+                Expect(c, n, joined, tk.In, "");
+                Add(n, binary, joined, "operator");
+            } else {
+                Take(c, n, binary, "operator");
+            }
+            SkipSpuriousEnd(c, n);
+            next := power + 1;
+            if (power == CoalescePower) {
+                next = power;
+            }
+            Add(n, binary, ParseBinary(c, n, next), "right");
+            left = binary;
+        }
+    }
+    return left;
+}
+
+// The tokenizer cannot tell a `>` that ends a line as an operator from one
+// that closes type arguments, so it may end the statement there; the grammar
+// continues the expression.
+SkipSpuriousEnd :: (c: ^Cursor, n: ^(Node[])) {
+    if (Cur(c, n) == tk.Semicolon && n^[c.pos].hidden) {
+        c.pos += 1;
+    }
+}
+
+// value `is` [`not`] (type | variant pattern) [binding name].
+ParseIs :: (c: ^Cursor, n: ^(Node[]), left: int) -> int {
+    test := New(n, "is_expression");
+    Add(n, test, left, "value");
+    Take(c, n, test, "");
+    Accept(c, n, test, tk.NotKeyword, "negated");
+    if (Cur(c, n) == tk.Period) {
+        Add(n, test, ParseVariantPattern(c, n), "type");
+    } else {
+        Add(n, test, ParseType(c, n), "type");
+    }
+    if (!c.failed && IsName(Cur(c, n)) && !StartsOperator(c, n)) {
+        TakeName(c, n, test, "binding");
+    }
+    return test;
+}
+
+// A name at the cursor that is a word operator rather than a binding.
+StartsOperator :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    token := Cur(c, n);
+    return token == tk.NotKeyword && Peek(c, n, 1) == tk.In;
+}
+
+// `.Name` and optional `(bindings)`.
+ParseVariantPattern :: (c: ^Cursor, n: ^(Node[])) -> int {
+    pattern := New(n, "variant_pattern");
+    Expect(c, n, pattern, tk.Period, "");
+    TakeName(c, n, pattern, "name");
+    if (!c.failed && Cur(c, n) == tk.OpenParen) {
+        bindings := New(n, "pattern_bindings");
+        Take(c, n, bindings, "");
+        while (!c.failed && Cur(c, n) != tk.CloseParen) {
+            TakeName(c, n, bindings, "");
+            if (!Accept(c, n, bindings, tk.Comma, "")) {
+                break;
+            }
+        }
+        Expect(c, n, bindings, tk.CloseParen, "");
+        Add(n, pattern, bindings, "bindings");
+    }
+    return pattern;
+}
+
+ParseUnary :: (c: ^Cursor, n: ^(Node[])) -> int {
+    token := Cur(c, n);
+    if (token == tk.Not || token == tk.Sub || token == tk.Add || token == tk.Complement ||
+        (token == tk.NotKeyword && !NamesCall(c, n))) {
+        unary := New(n, "unary_expression");
+        Take(c, n, unary, "operator");
+        Add(n, unary, ParseUnary(c, n), "operand");
+        return unary;
+    }
+    if (token == tk.And) {
+        address := New(n, "address_expression");
+        Take(c, n, address, "");
+        Add(n, address, ParseUnary(c, n), "operand");
+        return address;
+    }
+    if (token == tk.Await) {
+        wait := New(n, "await_expression");
+        Take(c, n, wait, "");
+        Add(n, wait, ParseUnary(c, n), "value");
+        return wait;
+    }
+    return ParsePostfix(c, n, ParsePrimary(c, n));
+}
+
+// Whether `not (` opens the arguments of a function called `not`: the
+// parentheses start with a name and a colon.
+NamesCall :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    return Peek(c, n, 1) == tk.OpenParen && IsMember(Peek(c, n, 2)) && Peek(c, n, 3) == tk.Colon;
+}
+
+// Members, indexes, calls and dereferences bind tighter than any operator.
+ParsePostfix :: (c: ^Cursor, n: ^(Node[]), start: int) -> int {
+    left := start;
+    while (!c.failed) {
+        token := Cur(c, n);
+        if (token == tk.Period) {
+            member := New(n, "member_expression");
+            Add(n, member, left, "object");
+            Take(c, n, member, "");
+            TakeMember(c, n, member, "member");
+            left = member;
+        } else if (token == tk.OpenBracket) {
+            index := New(n, "index_expression");
+            Add(n, index, left, "object");
+            Take(c, n, index, "");
+            Add(n, index, ParseIndexValue(c, n), "index");
+            Expect(c, n, index, tk.CloseBracket, "");
+            left = index;
+        } else if (token == tk.OpenParen && IsCallTarget(n^[left].kind)) {
+            call := New(n, "call_expression");
+            Add(n, call, left, "function");
+            Add(n, call, ParseArguments(c, n), "arguments");
+            left = call;
+        } else if (token == tk.Xor && n^[c.pos].start == n^[c.pos - 1].end) {
+            deref := New(n, "dereference_expression");
+            Add(n, deref, left, "operand");
+            Take(c, n, deref, "");
+            left = deref;
+        } else {
+            break;
+        }
+    }
+    return left;
+}
+
+IsCallTarget :: (kind: string) -> bool {
+    return kind == "identifier" || kind == "builtin_reference" || kind == "member_expression" ||
+           kind == "index_expression" || kind == "call_expression" ||
+           kind == "parenthesized_expression";
+}
+
+// An index or an argument that may be a half-open range.
+ParseIndexValue :: (c: ^Cursor, n: ^(Node[])) -> int {
+    first := ParseExpression(c, n);
+    if (c.failed || Cur(c, n) != tk.HalfOpenRange) {
+        return first;
+    }
+    span := New(n, "range_expression");
+    Add(n, span, first, "start");
+    Take(c, n, span, "");
+    Add(n, span, ParseExpression(c, n), "end");
+    return span;
+}
+
+ParsePrimary :: (c: ^Cursor, n: ^(Node[])) -> int {
+    token := Cur(c, n);
+    if (IsName(token)) {
+        name := Take(c, n, -1, "");
+        n^[name].kind = "identifier";
+        n^[name].named = true;
+        return name;
+    }
+    if (token == tk.String || token == tk.Integer || token == tk.Float || token == tk.Char) {
+        return Take(c, n, -1, "");
+    }
+    if (token == tk.True || token == tk.False) {
+        boolean := New(n, "boolean");
+        Take(c, n, boolean, "");
+        return boolean;
+    }
+    if (token == tk.Nil || token == tk.Null) {
+        nothing := New(n, "nil");
+        Take(c, n, nothing, "");
+        return nothing;
+    }
+    if (token == tk.State || token == tk.Event) {
+        builtin := New(n, "builtin_reference");
+        Take(c, n, builtin, "");
+        return builtin;
+    }
+    if (token == tk.Emit) {
+        return ParseEmit(c, n);
+    }
+    if (token == tk.OpenParen) {
+        group := New(n, "parenthesized_expression");
+        Take(c, n, group, "");
+        Add(n, group, ParseExpression(c, n), "expression");
+        Expect(c, n, group, tk.CloseParen, "");
+        return group;
+    }
+    if (token == tk.OpenBracket) {
+        return ParseCollection(c, n);
+    }
+    if (token == tk.OpenBrace) {
+        return ParseStructLiteral(c, n);
+    }
+    if (token == tk.Query) {
+        search := New(n, "query_expression");
+        Take(c, n, search, "");
+        Add(n, search, ParseQueryList(c, n), "parameters");
+        return search;
+    }
+    Fail(c, n, "Expected an expression");
+    return New(n, "ERROR");
+}
+
+// `emit target.Event(payload)` and `emit Event(target, payload)`.
+ParseEmit :: (c: ^Cursor, n: ^(Node[])) -> int {
+    emission := New(n, "emit_expression");
+    Take(c, n, emission, "");
+    first := Take(c, n, -1, "");
+    n^[first].kind = "identifier";
+    n^[first].named = true;
+    target := first;
+    while (!c.failed && Cur(c, n) == tk.Period) {
+        member := New(n, "member_expression");
+        Add(n, member, target, "object");
+        Take(c, n, member, "");
+        TakeMember(c, n, member, "member");
+        target = member;
+    }
+    Add(n, emission, target, "event");
+    Add(n, emission, ParseArguments(c, n), "arguments");
+    return emission;
+}
+
+// An array `[a, b]`, a map `["k": v]` or an empty map `[:]`.
+ParseCollection :: (c: ^Cursor, n: ^(Node[])) -> int {
+    if (Peek(c, n, 1) == tk.Colon && Peek(c, n, 2) == tk.CloseBracket) {
+        empty := New(n, "map_expression");
+        Take(c, n, empty, "");
+        Take(c, n, empty, "");
+        Take(c, n, empty, "");
+        return empty;
+    }
+    open := Take(c, n, -1, "");
+    if (Cur(c, n) == tk.CloseBracket) {
+        array := New(n, "array_expression");
+        Add(n, array, open, "");
+        Take(c, n, array, "");
+        return array;
+    }
+    first := ParseExpression(c, n);
+    if (!c.failed && Cur(c, n) == tk.Colon) {
+        map := New(n, "map_expression");
+        Add(n, map, open, "");
+        row := New(n, "map_entry");
+        Add(n, row, first, "key");
+        Take(c, n, row, "");
+        Add(n, row, ParseExpression(c, n), "value");
+        Add(n, map, row, "");
+        while (!c.failed && Accept(c, n, map, tk.Comma, "")) {
+            if (Cur(c, n) == tk.CloseBracket) {
+                break;
+            }
+            row = New(n, "map_entry");
+            Add(n, row, ParseExpression(c, n), "key");
+            Expect(c, n, row, tk.Colon, "");
+            Add(n, row, ParseExpression(c, n), "value");
+            Add(n, map, row, "");
+        }
+        Expect(c, n, map, tk.CloseBracket, "");
+        return map;
+    }
+    array := New(n, "array_expression");
+    Add(n, array, open, "");
+    Add(n, array, first, "");
+    while (!c.failed && Accept(c, n, array, tk.Comma, "")) {
+        if (Cur(c, n) == tk.CloseBracket) {
+            break;
+        }
+        Add(n, array, ParseExpression(c, n), "");
+    }
+    Expect(c, n, array, tk.CloseBracket, "");
+    return array;
+}
+
+// `{ name: value, ... }`.
+ParseStructLiteral :: (c: ^Cursor, n: ^(Node[])) -> int {
+    literal := New(n, "struct_expression");
+    Take(c, n, literal, "");
+    while (!c.failed && Cur(c, n) != tk.CloseBrace) {
+        field := New(n, "struct_field");
+        TakeMember(c, n, field, "name");
+        Expect(c, n, field, tk.Colon, "");
+        Add(n, field, ParseExpression(c, n), "value");
+        Add(n, literal, field, "");
+        if (!Accept(c, n, literal, tk.Comma, "")) {
+            break;
+        }
+    }
+    Expect(c, n, literal, tk.CloseBrace, "");
+    return literal;
+}
+
+// `(argument, ...)`: named, typed, ranged or plain expressions.
+ParseArguments :: (c: ^Cursor, n: ^(Node[])) -> int {
+    list := New(n, "argument_list");
+    Expect(c, n, list, tk.OpenParen, "");
+    while (!c.failed && Cur(c, n) != tk.CloseParen) {
+        Add(n, list, ParseArgument(c, n), "");
+        if (!Accept(c, n, list, tk.Comma, "")) {
+            break;
+        }
+    }
+    Expect(c, n, list, tk.CloseParen, "");
+    return list;
+}
+
+ParseArgument :: (c: ^Cursor, n: ^(Node[])) -> int {
+    if (IsMember(Cur(c, n))) {
+        following := SkipArgumentName(n, c.pos, c.final);
+        if (following > 0 && n^[following].token == tk.Colon) {
+            return ParseNamedArgument(c, n, following);
+        }
+    }
+    return ParseIndexValue(c, n);
+}
+
+// The position following the argument name that starts at `at`: member names
+// joined by dots. 0 when it is not one.
+SkipArgumentName :: (n: ^(Node[]), at: int, final: int) -> int {
+    at += 1;
+    while (at + 1 < final && n^[at].token == tk.Period && IsMember(n^[at + 1].token)) {
+        at += 2;
+    }
+    return at;
+}
+
+// `name: value` or `name: Type = value` / `name: Type from source`.
+ParseNamedArgument :: (c: ^Cursor, n: ^(Node[]), colon: int) -> int {
+    typed := false;
+    end := SkipType(n, colon + 1, c.final);
+    if (end >= 0) {
+        token := n^[end].token;
+        typed = token == tk.Eq || token == tk.From || token == tk.Split;
+    }
+    kind := "named_argument";
+    if (typed) {
+        kind = "typed_argument";
+    }
+    argument := New(n, kind);
+    name := New(n, "argument_name");
+    TakeMember(c, n, name, "");
+    while (!c.failed && Cur(c, n) == tk.Period) {
+        Take(c, n, name, "");
+        TakeMember(c, n, name, "");
+    }
+    Add(n, argument, name, "name");
+    Expect(c, n, argument, tk.Colon, "");
+    if (!typed) {
+        Add(n, argument, ParseExpression(c, n), "value");
+        return argument;
+    }
+    Add(n, argument, ParseType(c, n), "type");
+    if (Cur(c, n) == tk.From || Cur(c, n) == tk.Split) {
+        Take(c, n, argument, "");
+        Add(n, argument, ParseExpression(c, n), "source");
+        if (Accept(c, n, argument, tk.Eq, "")) {
+            Add(n, argument, ParseExpression(c, n), "value");
+        }
+        return argument;
+    }
+    Expect(c, n, argument, tk.Eq, "");
+    Add(n, argument, ParseExpression(c, n), "value");
+    return argument;
+}

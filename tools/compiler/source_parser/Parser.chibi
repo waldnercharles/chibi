@@ -1,0 +1,194 @@
+package source_parser
+
+import tk "project:source_tokenizer"
+import syntax "project:syntax_diagnostics"
+
+// A parse that did not reach a tree: why, and where.
+Outcome :: union {
+    Built(nodes: Node[], root: int) | Rejected(message: string, at: int)
+}
+
+// Parses a whole source text into the raw facts compiler_syntax.Parse returns:
+// every token as a leaf, with the node, field and extra flags of the grammar
+// in src/language/grammar.js. Text the grammar does not read gives a single
+// ERROR node over the whole text; error recovery is not written yet.
+pub Parse :: (text: string) -> Tree {
+    outcome := Build(text);
+    switch outcome {
+        case .Built(nodes, root):
+            return Emit(nodes, root);
+        case .Rejected(message, at):
+            return Failure(text);
+    }
+}
+
+// The reason `text` does not parse, as `offset: message`, or "" when it does.
+pub Check :: (text: string) -> string {
+    outcome := Build(text);
+    switch outcome {
+        case .Built(nodes, root):
+            return "";
+        case .Rejected(message, at):
+            return format_text("{}: {}", at, message);
+    }
+}
+
+Failure :: (text: string) -> Tree {
+    nodes: syntax.Node[] = [];
+    nodes.append({kind: "ERROR", start: 0, end: text_byte_length(text), row: 0, column: 0,
+                  parent: -1, first_child: -1, next_sibling: -1, error: true, missing: false,
+                  has_error: true});
+    return Tree.Parsed(nodes, [""], [true], [false], 0);
+}
+
+Build :: (text: string) -> Outcome {
+    scanned := tk.Tokenize(text);
+    switch scanned {
+        case .Scanned(kinds, starts, ends, rows, columns, errors, error_offsets, error_rows, error_columns):
+            if (length(errors) > 0) {
+                return Outcome.Rejected(errors[0], error_offsets[0]);
+            }
+            return Construct(text, kinds, starts, ends, rows, columns);
+    }
+}
+
+Construct :: (text: string, kinds: int[], starts: int[], ends: int[], rows: int[], columns: int[]) -> Outcome {
+    names := tk.KindNames();
+    nodes: Node[] = [];
+    comments: Node[] = [];
+    index: int = 0;
+    while (index < length(kinds)) {
+        leaf := Leaf(LeafKind(names, kinds[index]), kinds[index], starts[index], ends[index],
+                     rows[index], columns[index]);
+        if (kinds[index] == tk.Comment) {
+            leaf.named = true;
+            leaf.extra = true;
+            comments.append(leaf);
+        } else {
+            nodes.append(leaf);
+        }
+        index += 1;
+    }
+    cursor: Cursor = {text: text, pos: 0, final: length(nodes) - 1, failed: false, message: "", at: 0};
+    root := ParseSourceFile(&cursor, &nodes);
+    if (cursor.failed) {
+        return Outcome.Rejected(cursor.message, cursor.at);
+    }
+    if (cursor.pos != cursor.final) {
+        return Outcome.Rejected("Unexpected syntax", nodes[cursor.pos].start);
+    }
+    Attach(&nodes, root, comments, text_byte_length(text));
+    return Outcome.Built(nodes, root);
+}
+
+// Comments are extras: Tree-sitter keeps each in the innermost node that has a
+// child after it, and a trailing one in the node that ends before it.
+Attach :: (n: ^(Node[]), root: int, comments: Node[], size: int) {
+    index: int = 0;
+    while (index < length(comments)) {
+        comment := comments[index];
+        at := length(n^);
+        n.append(comment);
+        owner := root;
+        descending := true;
+        while (descending) {
+            descending = false;
+            child := n^[owner].first;
+            while (child >= 0) {
+                if (n^[child].first >= 0 && n^[child].start < comment.start && comment.end <= n^[child].end) {
+                    owner = child;
+                    descending = true;
+                    break;
+                }
+                child = n^[child].next;
+            }
+        }
+        Insert(n, owner, at);
+        index += 1;
+    }
+    n^[root].end = size;
+}
+
+// Places `comment` among the children of `owner`, before the first that
+// starts after it.
+Insert :: (n: ^(Node[]), owner: int, comment: int) {
+    n^[comment].parent = owner;
+    previous: int = -1;
+    child := n^[owner].first;
+    while (child >= 0 && n^[child].start < n^[comment].end) {
+        previous = child;
+        child = n^[child].next;
+    }
+    n^[comment].next = child;
+    if (previous < 0) {
+        n^[owner].first = comment;
+    } else {
+        n^[previous].next = comment;
+    }
+    if (child < 0) {
+        n^[owner].last = comment;
+    }
+    if (n^[owner].start < 0 || n^[comment].start < n^[owner].start) {
+        n^[owner].start = n^[comment].start;
+        n^[owner].row = n^[comment].row;
+        n^[owner].column = n^[comment].column;
+    }
+}
+
+// The first child of `node` that the tree shows, from `child` on.
+Visible :: (nodes: Node[], child: int) -> int {
+    while (child >= 0 && nodes[child].hidden) {
+        child = nodes[child].next;
+    }
+    return child;
+}
+
+// Rows in pre-order, as Tree-sitter's cursor walk lists them, without the
+// hidden terminators.
+Emit :: (nodes: Node[], root: int) -> Tree {
+    order: int[] = [];
+    place := resize([int(0)], length(nodes));
+    current := root;
+    while (current >= 0) {
+        place[current] = length(order);
+        order.append(current);
+        next := Visible(nodes, nodes[current].first);
+        climbing := current;
+        while (next < 0 && climbing != root) {
+            next = Visible(nodes, nodes[climbing].next);
+            climbing = nodes[climbing].parent;
+        }
+        current = next;
+    }
+    rows: syntax.Node[] = [];
+    fields: string[] = [];
+    named: bool[] = [];
+    extras: bool[] = [];
+    index: int = 0;
+    while (index < length(order)) {
+        node := nodes[order[index]];
+        parent: int = -1;
+        if (node.parent >= 0) {
+            parent = place[node.parent];
+        }
+        first := Visible(nodes, node.first);
+        following := Visible(nodes, node.next);
+        first_child: int = -1;
+        if (first >= 0) {
+            first_child = place[first];
+        }
+        next_sibling: int = -1;
+        if (following >= 0 && node.parent >= 0) {
+            next_sibling = place[following];
+        }
+        rows.append({kind: node.kind, start: node.start, end: node.end, row: node.row,
+                     column: node.column, parent: parent, first_child: first_child,
+                     next_sibling: next_sibling, error: node.error, missing: node.missing,
+                     has_error: false});
+        fields.append(node.field);
+        named.append(node.named);
+        extras.append(node.extra);
+        index += 1;
+    }
+    return Tree.Parsed(rows, fields, named, extras, 0);
+}

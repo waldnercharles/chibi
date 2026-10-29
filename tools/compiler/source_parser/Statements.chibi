@@ -1,0 +1,333 @@
+package source_parser
+
+import tk "project:source_tokenizer"
+
+// block: `{` statements `}`.
+ParseBlock :: (c: ^Cursor, n: ^(Node[])) -> int {
+    block := New(n, "block");
+    Expect(c, n, block, tk.OpenBrace, "");
+    while (!c.failed && Cur(c, n) != tk.CloseBrace) {
+        Add(n, block, ParseStatement(c, n, false), "");
+    }
+    Expect(c, n, block, tk.CloseBrace, "");
+    return block;
+}
+
+// The body of a function, a system or a macro: statements and declarations.
+ParseCallableBody :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
+    body := New(n, kind);
+    Expect(c, n, body, tk.OpenBrace, "");
+    while (!c.failed && Cur(c, n) != tk.CloseBrace) {
+        Add(n, body, ParseStatement(c, n, true), "");
+    }
+    Expect(c, n, body, tk.CloseBrace, "");
+    return body;
+}
+
+IsAssignment :: (token: int) -> bool {
+    return token == tk.Eq || token == tk.AddEq || token == tk.SubEq || token == tk.MulEq ||
+           token == tk.QuoEq || token == tk.ModEq || token == tk.AndEq || token == tk.OrEq ||
+           token == tk.XorEq;
+}
+
+// One statement; with `declarations`, also what a body may declare.
+ParseStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
+    token := Cur(c, n);
+    if (token == tk.If) {
+        return ParseIf(c, n);
+    }
+    if (token == tk.While) {
+        loop := New(n, "while_statement");
+        Take(c, n, loop, "");
+        Add(n, loop, ParseExpression(c, n), "condition");
+        Add(n, loop, ParseBlock(c, n), "body");
+        return loop;
+    }
+    if (token == tk.For) {
+        return ParseFor(c, n);
+    }
+    if (token == tk.Switch) {
+        return ParseSwitch(c, n);
+    }
+    if (token == tk.Return) {
+        return ParseReturn(c, n);
+    }
+    if (token == tk.Goto) {
+        jump := New(n, "goto_statement");
+        Take(c, n, jump, "");
+        TakeName(c, n, jump, "name");
+        End(c, n, jump);
+        return jump;
+    }
+    if (token == tk.Break) {
+        return ParseKeywordStatement(c, n, "break_statement");
+    }
+    if (token == tk.Continue) {
+        return ParseKeywordStatement(c, n, "continue_statement");
+    }
+    if (token == tk.Yield) {
+        return ParseKeywordStatement(c, n, "yield_statement");
+    }
+    if (token == tk.Cancel) {
+        stop := New(n, "cancel_statement");
+        Take(c, n, stop, "");
+        Add(n, stop, ParseExpression(c, n), "value");
+        if (Cur(c, n) == tk.After) {
+            Take(c, n, stop, "");
+            Add(n, stop, ParseExpression(c, n), "duration");
+        }
+        End(c, n, stop);
+        return stop;
+    }
+    if (token == tk.Delete) {
+        removal := New(n, "delete_statement");
+        Take(c, n, removal, "");
+        Add(n, removal, ParseExpression(c, n), "target");
+        End(c, n, removal);
+        return removal;
+    }
+    if (token == tk.Sequence) {
+        return ParseSequence(c, n);
+    }
+    if (token == tk.Reduce) {
+        return ParseReduce(c, n);
+    }
+    if (declarations && StartsBodyDeclaration(c, n)) {
+        return ParseDeclaration(c, n);
+    }
+    if (IsName(token)) {
+        next := Peek(c, n, 1);
+        if (next == tk.ColonEq) {
+            return ParseLocal(c, n);
+        }
+        if (next == tk.ColonColon) {
+            return ParseNamed(c, n, 0, false);
+        }
+        if (next == tk.Colon) {
+            return ParseColonStatement(c, n, declarations);
+        }
+    }
+    return ParseExpressionStatement(c, n);
+}
+
+// Whether the cursor starts a declaration that only bodies may hold.
+StartsBodyDeclaration :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    token := Cur(c, n);
+    if (token == tk.At || token == tk.Disabled || token == tk.Action || token == tk.Bind ||
+        token == tk.On || token == tk.After || token == tk.Macro || token == tk.Events ||
+        token == tk.Exit || token == tk.Pub) {
+        return true;
+    }
+    if (token == tk.Event) {
+        return Peek(c, n, 1) != tk.Period;
+    }
+    if (token == tk.Entry) {
+        return IsName(Peek(c, n, 1));
+    }
+    return false;
+}
+
+// `name : ...`: a typed local, a typed constant, an explicit state, or a label.
+ParseColonStatement :: (c: ^Cursor, n: ^(Node[]), declarations: bool) -> int {
+    if (declarations && Peek(c, n, 2) == tk.Retain) {
+        return ParseExplicitState(c, n);
+    }
+    following := SkipType(n, c.pos + 2, c.final);
+    if (following >= 0 && n^[following].token == tk.Eq) {
+        return ParseLocal(c, n);
+    }
+    if (following >= 0 && n^[following].token == tk.Colon) {
+        return ParseConstant(c, n, false);
+    }
+    label := New(n, "label_statement");
+    TakeName(c, n, label, "name");
+    Expect(c, n, label, tk.Colon, "");
+    if (Cur(c, n) == tk.Semicolon && n^[c.pos].hidden) {
+        Take(c, n, label, "");
+    }
+    return label;
+}
+
+// `name := value` or `name: Type = value`.
+ParseLocal :: (c: ^Cursor, n: ^(Node[])) -> int {
+    local := New(n, "local_declaration");
+    TakeName(c, n, local, "name");
+    if (Accept(c, n, local, tk.ColonEq, "")) {
+        Add(n, local, ParseExpression(c, n), "value");
+        End(c, n, local);
+        return local;
+    }
+    Expect(c, n, local, tk.Colon, "");
+    Add(n, local, ParseType(c, n), "type");
+    Expect(c, n, local, tk.Eq, "");
+    Add(n, local, ParseExpression(c, n), "value");
+    End(c, n, local);
+    return local;
+}
+
+ParseKeywordStatement :: (c: ^Cursor, n: ^(Node[]), kind: string) -> int {
+    statement := New(n, kind);
+    Take(c, n, statement, "");
+    End(c, n, statement);
+    return statement;
+}
+
+// An assignment or an expression used for its effect.
+ParseExpressionStatement :: (c: ^Cursor, n: ^(Node[])) -> int {
+    value := ParseExpression(c, n);
+    if (!c.failed && IsAssignment(Cur(c, n))) {
+        assignment := New(n, "assignment");
+        Add(n, assignment, value, "target");
+        Take(c, n, assignment, "operator");
+        Add(n, assignment, ParseExpression(c, n), "value");
+        End(c, n, assignment);
+        return assignment;
+    }
+    statement := New(n, "expression_statement");
+    Add(n, statement, value, "");
+    End(c, n, statement);
+    return statement;
+}
+
+ParseIf :: (c: ^Cursor, n: ^(Node[])) -> int {
+    part := New(n, "if_statement");
+    Take(c, n, part, "");
+    Add(n, part, ParseExpression(c, n), "condition");
+    Add(n, part, ParseBlock(c, n), "consequence");
+    if (!c.failed && Cur(c, n) == tk.Else) {
+        Take(c, n, part, "");
+        if (Cur(c, n) == tk.If) {
+            Add(n, part, ParseIf(c, n), "alternative");
+        } else {
+            Add(n, part, ParseBlock(c, n), "alternative");
+        }
+    }
+    return part;
+}
+
+// `for [<] name in first (..|..<) last`, or `for [key,] [&]name in value`,
+// either one parenthesized.
+ParseFor :: (c: ^Cursor, n: ^(Node[])) -> int {
+    loop := New(n, "for_statement");
+    Take(c, n, loop, "");
+    Accept(c, n, loop, tk.Lt, "reverse");
+    grouped := Cur(c, n) == tk.OpenParen;
+    if (grouped) {
+        Take(c, n, loop, "");
+    }
+    if (Peek(c, n, 1) == tk.Comma) {
+        TakeName(c, n, loop, "key");
+        Take(c, n, loop, "");
+    }
+    Accept(c, n, loop, tk.And, "reference");
+    TakeName(c, n, loop, "name");
+    Expect(c, n, loop, tk.In, "");
+    first := ParseExpression(c, n);
+    if (!c.failed && (Cur(c, n) == tk.Ellipsis || Cur(c, n) == tk.HalfOpenRange)) {
+        Add(n, loop, first, "first");
+        Take(c, n, loop, "bound");
+        Add(n, loop, ParseExpression(c, n), "last");
+    } else {
+        Add(n, loop, first, "value");
+    }
+    if (grouped) {
+        Expect(c, n, loop, tk.CloseParen, "");
+    }
+    Add(n, loop, ParseBlock(c, n), "body");
+    return loop;
+}
+
+ParseSwitch :: (c: ^Cursor, n: ^(Node[])) -> int {
+    selection := New(n, "switch_statement");
+    Take(c, n, selection, "");
+    Add(n, selection, ParseExpression(c, n), "value");
+    Expect(c, n, selection, tk.OpenBrace, "");
+    while (!c.failed && Cur(c, n) == tk.Case) {
+        arm := New(n, "switch_arm");
+        Take(c, n, arm, "");
+        if (Cur(c, n) == tk.Colon) {
+            // The default arm has no value.
+        } else if (Cur(c, n) == tk.Period) {
+            Add(n, arm, ParseVariantPattern(c, n), "value");
+        } else {
+            Add(n, arm, ParseExpression(c, n), "value");
+        }
+        Expect(c, n, arm, tk.Colon, "");
+        if (Cur(c, n) == tk.OpenBrace) {
+            Add(n, arm, ParseBlock(c, n), "body");
+        } else {
+            statements := New(n, "block");
+            while (!c.failed && Cur(c, n) != tk.Case && Cur(c, n) != tk.CloseBrace) {
+                Add(n, statements, ParseStatement(c, n, false), "");
+            }
+            Add(n, arm, statements, "body");
+        }
+        Add(n, selection, arm, "");
+    }
+    Expect(c, n, selection, tk.CloseBrace, "");
+    return selection;
+}
+
+// `return [.Outcome] [values]`.
+ParseReturn :: (c: ^Cursor, n: ^(Node[])) -> int {
+    statement := New(n, "return_statement");
+    Take(c, n, statement, "");
+    if (Cur(c, n) == tk.Period) {
+        Take(c, n, statement, "");
+        TakeName(c, n, statement, "outcome");
+    }
+    if (!c.failed && Cur(c, n) != tk.Semicolon) {
+        if (Cur(c, n) == tk.OpenParen) {
+            Add(n, statement, ParseArgumentsOrGroup(c, n), "value");
+        } else {
+            Add(n, statement, ParseExpression(c, n), "value");
+        }
+    }
+    End(c, n, statement);
+    return statement;
+}
+
+// A parenthesized start is an argument list unless an operator follows the
+// closing parenthesis, which makes it the start of an expression.
+ParseArgumentsOrGroup :: (c: ^Cursor, n: ^(Node[])) -> int {
+    following := SkipBrackets(n, c.pos, c.final);
+    if (following >= 0 && n^[following].token == tk.Semicolon) {
+        return ParseArguments(c, n);
+    }
+    return ParseExpression(c, n);
+}
+
+ParseSequence :: (c: ^Cursor, n: ^(Node[])) -> int {
+    chain := New(n, "sequence_statement");
+    Take(c, n, chain, "");
+    Expect(c, n, chain, tk.OpenBrace, "");
+    while (!c.failed && Cur(c, n) == tk.Branch) {
+        part := New(n, "branch_statement");
+        Take(c, n, part, "");
+        Add(n, part, ParseBlock(c, n), "body");
+        Add(n, chain, part, "");
+    }
+    Expect(c, n, chain, tk.CloseBrace, "");
+    return chain;
+}
+
+// `reduction [unordered] target += value` or `reduction min(target, value)`.
+ParseReduce :: (c: ^Cursor, n: ^(Node[])) -> int {
+    reduction := New(n, "reduce_statement");
+    Take(c, n, reduction, "");
+    if (IsWord(c, n, "min") || IsWord(c, n, "max")) {
+        Take(c, n, reduction, "operator");
+        Expect(c, n, reduction, tk.OpenParen, "");
+        Add(n, reduction, ParseExpression(c, n), "target");
+        Expect(c, n, reduction, tk.Comma, "");
+        Add(n, reduction, ParseExpression(c, n), "value");
+        Expect(c, n, reduction, tk.CloseParen, "");
+    } else {
+        Accept(c, n, reduction, tk.Unordered, "ordering");
+        Add(n, reduction, ParseExpression(c, n), "target");
+        Expect(c, n, reduction, tk.AddEq, "operator");
+        Add(n, reduction, ParseExpression(c, n), "value");
+    }
+    End(c, n, reduction);
+    return reduction;
+}

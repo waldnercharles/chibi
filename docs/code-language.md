@@ -782,9 +782,12 @@ ordinary `return` statements. Results can be inferred, or written with `->`.
 The optional `fn` prefix has the same meaning:
 
 ```chibi
-Apply(4, (value: int) => value * 2)
-Apply(4, (value: int) { return value * 2 })
-Apply(4, fn(value: int) -> int { return value * 2 })
+Inline :: () -> int {
+    a := Apply(4, (value: int) => value * 2)
+    b := Apply(4, (value: int) { return value * 2 })
+    c := Apply(4, fn(value: int) -> int { return value * 2 })
+    return a + b + c
+}
 ```
 
 The initial callable signature supports zero or one result. `fn(value: int)`

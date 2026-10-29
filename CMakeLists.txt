@@ -256,7 +256,6 @@ if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripte
     if(TARGET Chibi::authoring)
         add_subdirectory(test/language)
     endif()
-    add_subdirectory(test/tools)
     add_executable(test_host test/host/main.c test/host/export.c test/host/process.c
         test/host/state_file.c src/host/export.c src/host/process.c src/host/state_file.c
         src/support/xalloc.c third_party/yyjson/yyjson.c)

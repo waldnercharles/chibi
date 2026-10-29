@@ -1,6 +1,5 @@
 #include "authoring/behavior_loader.h"
 
-#include "authoring/graph_loader_internal.h"
 #include "authoring/preview_source.h"
 
 #include <assert.h>
@@ -53,13 +52,7 @@ fail:
 
 int app_behavior_fixtures_load(preview_world *world, prototype_preview *preview, const char *root)
 {
-    /* Each world takes each definition once. Sources load first because
-     * graphs such as fields call source libraries. */
+    /* Each world takes each definition once. */
     assert(!preview || prototype_preview_live(preview) != world);
-    int sources = load_sources(world, preview ? prototype_preview_live(preview) : NULL, root);
-    if (sources < 0) {
-        return -1;
-    }
-    int graphs = authoring_graphs_prepare(world, preview, root);
-    return graphs < 0 ? -1 : graphs + sources;
+    return load_sources(world, preview ? prototype_preview_live(preview) : NULL, root);
 }

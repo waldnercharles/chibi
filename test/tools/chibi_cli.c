@@ -665,6 +665,32 @@ TEST_CASE(doctor_reports_each_capability)
     REQUIRE(doctor("--web", web, programs) == 0);
     snprintf(expected, sizeof expected, "browser export: supported (%s with %s/node)\n", web, bin);
     REQUIRE(file_has("doctor.log", expected));
+    const char *payloads[] = { "index.html",
+                               "chibi-player.js",
+                               "chibi-player.wasm",
+                               "compiler/chibi-compile.js",
+                               "compiler/chibi-compile.wasm" };
+    bool unreadable = true;
+    for (size_t i = 0; i < sizeof payloads / sizeof *payloads; i++) {
+        int length = snprintf(file, sizeof file, "%s/%s", web, payloads[i]);
+        REQUIRE(length > 0 && length < (int)sizeof file);
+        struct stat info;
+        REQUIRE(!stat(file, &info));
+        REQUIRE(!chmod(file, 0));
+        int status = doctor("--web", web, programs);
+        bool broken = status == 1 &&
+                      file_has("doctor.log", "browser export: broken (") &&
+                      file_has("doctor.log", payloads[i]) &&
+                      !file_has("doctor.log", "browser export: supported (");
+        bool restored = !chmod(file, info.st_mode & 07777);
+        REQUIRE(restored);
+        if (!broken) {
+            fprintf(stderr, "unreadable browser payload %s: doctor status=%d\n", payloads[i], status);
+        }
+        unreadable &= broken;
+        REQUIRE(doctor("--web", web, programs) == 0);
+    }
+    REQUIRE(unreadable);
     REQUIRE(doctor("--web", web, tools) == 1);
     REQUIRE(file_has("doctor.log", "browser export: broken (node, which runs "));
 
@@ -3426,6 +3452,63 @@ static void setup_installed(const char *binary)
     assert(length > 0 && length < (int)sizeof compiler);
     free(program);
     path(log_path, "output.log");
+}
+
+TEST_CASE(raw_sdk_build_finds_its_application_and_companions)
+{
+    char output[256];
+    path(output, "raw-sdk.log");
+    const char *help[] = { built, "--help", NULL };
+    REQUIRE(tool_run(help, root, output) == 0);
+    REQUIRE(file_has("raw-sdk.log", "Usage:"));
+    const char *slash = strrchr(built, '/');
+    REQUIRE(slash);
+    const char *companions[] = { "chibi-compile",
+                                 "chibi-player",
+                                 "chibi-build-host",
+                                 "chibi-compiler-host" };
+    for (size_t i = 0; i < sizeof companions / sizeof *companions; i++) {
+        char executable[1024];
+        int length = snprintf(
+            executable,
+            sizeof executable,
+            "%.*s/%s",
+            (int)(slash - built),
+            built,
+            companions[i]
+        );
+        REQUIRE(length > 0 && length < (int)sizeof executable);
+        REQUIRE(!access(executable, X_OK));
+    }
+    directory("raw-game");
+    directory("raw-llvm");
+    write_file("raw-game/Main.chibi", "Main :: () -> int { return 0 }\n");
+    char game[256], llvm[256];
+    path(game, "raw-game");
+    path(llvm, "raw-llvm");
+    const char *native[] = { built, "build", "--native", "--llvm",
+                             llvm,  game,    NULL };
+    REQUIRE(tool_run(native, root, output) == 2);
+    REQUIRE(file_has("raw-sdk.log", "must hold LLVM's opt, llc and ld.lld"));
+    REQUIRE(!file_has("raw-sdk.log", "Cannot run"));
+    return true;
+}
+
+void test_tool_chibi_cli_build(const char *binary)
+{
+    setup_installed(binary);
+    RUN_TEST_CASE(raw_sdk_build_finds_its_application_and_companions);
+    RUN_TEST_CASE(version_of_the_built_launcher);
+    RUN_TEST_CASE(doctor_of_the_built_launcher);
+    RUN_TEST_CASE(program_main_runs_from_files_and_directories);
+    tool_remove_tree(root);
+}
+
+void test_tool_chibi_cli_doctor(const char *binary)
+{
+    setup(binary);
+    RUN_TEST_CASE(doctor_reports_each_capability);
+    tool_remove_tree(root);
 }
 
 void test_tool_chibi_cli_process(const char *binary, const char *self)

@@ -291,7 +291,8 @@ int authoring_program_call(
                                                       ? NULL
                                                       : program->options.cancelled,
                                        .user = program->options.cancel_user,
-                                       .prefer_compiled = true };
+                                       .prefer_compiled = true,
+                                       .inherit = true };
     behavior_execution_scope_begin(&scope);
     execution_instance *instance = execution_program_instance(program->runtime, PROGRAM_OWNER);
     int status = execution_instance_call(instance, program->entry, result, 0, 0, UINT_MAX);

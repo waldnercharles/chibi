@@ -28,6 +28,7 @@
 #include <unistd.h>
 #ifdef _WIN32
 #include <direct.h>
+#include <io.h>
 #include <sys/utime.h>
 #include <windows.h>
 #else
@@ -356,6 +357,18 @@ static const char *file_kind(void *service, const pin_value *arguments, pin_valu
                  : S_ISDIR(info.st_mode) ? 2
                  : S_ISREG(info.st_mode) ? 1
                                          : 0;
+    return NULL;
+}
+
+static const char *file_readable(void *service, const pin_value *arguments, pin_value *results)
+{
+    IO();
+    STRING(0, path);
+#ifdef _WIN32
+    results[0].b = !_access(path, 4);
+#else
+    results[0].b = !access(path, R_OK);
+#endif
     return NULL;
 }
 
@@ -768,6 +781,7 @@ static const char *network_close(void *service, const pin_value *arguments, pin_
         .name = NAME, .type = {.storage = TYPE }                               \
     }
 static const script_catalog_parameter text_input[] = { PARAM("text", PIN_STR) };
+static const script_catalog_parameter path_input[] = { PARAM("path", PIN_STR) };
 static const script_catalog_parameter integer_input[] = { PARAM("value", PIN_I32) };
 static const script_catalog_parameter path_time_input[] = { PARAM("path", PIN_STR),
                                                             PARAM("stamp", PIN_I64) };
@@ -793,35 +807,36 @@ static const script_catalog_parameter capture_result[] = {
 };
 #undef PARAM
 
-#define IO_FUNCTIONS(X)                                                                          \
-    X(1, "application.arguments", NULL, 0, argv_result, 1, context, app_arguments)               \
-    X(2, "application.bin", NULL, 0, text_result, 1, invoke, app_bin)                            \
-    X(3, "application.stdout", text_input, 1, NULL, 0, invoke, app_stdout)                       \
-    X(4, "application.stderr", text_input, 1, NULL, 0, invoke, app_stderr)                       \
-    X(5, "application.environment", text_input, 1, text_result, 1, invoke, app_environment)      \
-    X(6, "application.platform", NULL, 0, text_result, 1, invoke, app_platform)                  \
-    X(7, "application.machine", NULL, 0, text_result, 1, invoke, app_machine)                    \
-    X(8, "application.now", NULL, 0, time_result, 1, invoke, app_now)                            \
-    X(9, "application.stopped", NULL, 0, bool_result, 1, invoke, app_stopped)                    \
-    X(10, "application.wait", integer_input, 1, bool_result, 1, invoke, app_wait)                \
-    X(11, "files.kind", text_input, 1, integer_result, 1, invoke, file_kind)                     \
-    X(12, "files.resolve", text_input, 1, text_result, 1, invoke, file_resolve)                  \
-    X(13, "files.modified", text_input, 1, time_result, 1, invoke, file_modified)                \
-    X(14, "files.read", text_input, 1, text_result, 1, invoke, file_read)                        \
-    X(15, "files.write", path_text_input, 2, bool_result, 1, invoke, file_write)                 \
-    X(16, "files.mkdir", text_input, 1, bool_result, 1, invoke, file_mkdir)                      \
-    X(17, "files.touch", path_time_input, 2, bool_result, 1, invoke, file_touch)                 \
-    X(18, "files.remove", text_input, 1, bool_result, 1, invoke, file_remove)                    \
-    X(19, "files.temporary", text_input, 1, text_result, 1, invoke, file_temporary)              \
-    X(20, "files.find_executable", text_input, 1, text_result, 1, invoke, file_find_executable)  \
-    X(21, "files.changed_since", path_time_input, 2, bool_result, 1, invoke, file_changed_since) \
-    X(22, "process.run", argv_input, 1, integer_result, 1, invoke, process_run)                  \
-    X(23, "process.capture", argv_input, 1, capture_result, 4, invoke, process_capture)          \
-    X(24, "network.listen", integer_input, 1, integer_result, 1, invoke, network_listen)         \
-    X(25, "network.port", integer_input, 1, integer_result, 1, invoke, network_port)             \
-    X(26, "network.serve", server_path_input, 2, integer_result, 1, invoke, network_serve)       \
-    X(27, "network.close", integer_input, 1, NULL, 0, invoke, network_close)                     \
-    X(28, "application.interrupt_status", NULL, 0, integer_result, 1, invoke, app_interrupt_status)
+#define IO_FUNCTIONS(X)                                                                             \
+    X(1, "application.arguments", NULL, 0, argv_result, 1, context, app_arguments)                  \
+    X(2, "application.bin", NULL, 0, text_result, 1, invoke, app_bin)                               \
+    X(3, "application.stdout", text_input, 1, NULL, 0, invoke, app_stdout)                          \
+    X(4, "application.stderr", text_input, 1, NULL, 0, invoke, app_stderr)                          \
+    X(5, "application.environment", text_input, 1, text_result, 1, invoke, app_environment)         \
+    X(6, "application.platform", NULL, 0, text_result, 1, invoke, app_platform)                     \
+    X(7, "application.machine", NULL, 0, text_result, 1, invoke, app_machine)                       \
+    X(8, "application.now", NULL, 0, time_result, 1, invoke, app_now)                               \
+    X(9, "application.stopped", NULL, 0, bool_result, 1, invoke, app_stopped)                       \
+    X(10, "application.wait", integer_input, 1, bool_result, 1, invoke, app_wait)                   \
+    X(11, "files.kind", text_input, 1, integer_result, 1, invoke, file_kind)                        \
+    X(12, "files.resolve", text_input, 1, text_result, 1, invoke, file_resolve)                     \
+    X(13, "files.modified", text_input, 1, time_result, 1, invoke, file_modified)                   \
+    X(14, "files.read", text_input, 1, text_result, 1, invoke, file_read)                           \
+    X(15, "files.write", path_text_input, 2, bool_result, 1, invoke, file_write)                    \
+    X(16, "files.mkdir", text_input, 1, bool_result, 1, invoke, file_mkdir)                         \
+    X(17, "files.touch", path_time_input, 2, bool_result, 1, invoke, file_touch)                    \
+    X(18, "files.remove", text_input, 1, bool_result, 1, invoke, file_remove)                       \
+    X(19, "files.temporary", text_input, 1, text_result, 1, invoke, file_temporary)                 \
+    X(20, "files.find_executable", text_input, 1, text_result, 1, invoke, file_find_executable)     \
+    X(21, "files.changed_since", path_time_input, 2, bool_result, 1, invoke, file_changed_since)    \
+    X(22, "process.run", argv_input, 1, integer_result, 1, invoke, process_run)                     \
+    X(23, "process.capture", argv_input, 1, capture_result, 4, invoke, process_capture)             \
+    X(24, "network.listen", integer_input, 1, integer_result, 1, invoke, network_listen)            \
+    X(25, "network.port", integer_input, 1, integer_result, 1, invoke, network_port)                \
+    X(26, "network.serve", server_path_input, 2, integer_result, 1, invoke, network_serve)          \
+    X(27, "network.close", integer_input, 1, NULL, 0, invoke, network_close)                        \
+    X(28, "application.interrupt_status", NULL, 0, integer_result, 1, invoke, app_interrupt_status) \
+    X(29, "files.readable", path_input, 1, bool_result, 1, invoke, file_readable)
 
 #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULTS, RESULT_COUNT, KIND, FUNCTION) \
     { .id = IO_ID(ID),                                                                 \

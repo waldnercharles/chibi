@@ -49,7 +49,7 @@ Browser :: (player: string) -> bool {
         return Report("browser export", "unavailable", "pass --web PLAYER; make package-web-player builds one")
     }
     for name in ["index.html", "chibi-player.js", "chibi-player.wasm", "compiler/chibi-compile.js", "compiler/chibi-compile.wasm"] {
-        if files.kind(Join([player, "/", name])) == 0 {
+        if !files.readable(Join([player, "/", name])) {
             return Report("browser export", "broken", format_text("{} lacks {}", player, name))
         }
     }

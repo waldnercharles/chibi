@@ -31,8 +31,8 @@ typedef struct
 {
     const execution_program *caller;
     /* The application handles cancellation through its own service calls and
-     * completes its cleanup and exit policy. Nested invocations choose their
-     * own policy; authored program.call always remains interruptible. */
+     * completes its cleanup and exit policy. Enclosing scope constraints still
+     * apply; authored program.call always remains interruptible. */
     bool cooperative;
 } authoring_program_call_options;
 
@@ -51,8 +51,9 @@ void authoring_program_discard(authoring_program *);
  * runtime status separately from the authored result. NULL options select an
  * interruptible native call. Authored callers must own a different runtime
  * and managed heap. Calls reject active sessions and unpublished prepared
- * replacements. Cooperative hosts explicitly opt out of instruction-level
- * cancellation for this invocation only. */
+ * replacements. Cooperative hosts suppress only this session's cancellation
+ * callback for this invocation. An active enclosing scope retains its shared
+ * budget, cancellation, purity and VM restrictions. */
 int authoring_program_call(authoring_program *, const authoring_program_call_options *, int *result);
 const authoring_program_diagnostic *authoring_program_error(const authoring_program *);
 const execution_program *authoring_program_runtime(const authoring_program *);

@@ -609,6 +609,9 @@ TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
     reset_fixture("CLI tail", 0);
     char log[1024];
     path(log, root, "cli.log");
+    /* Test the CLI argument boundary without compiling the whole toolchain
+     * under its five-second operation deadline. The cases above exercise
+     * Build.chibi directly on both backends. */
     const char *arguments[] = {
         host_path,
         "--compiler",
@@ -618,7 +621,7 @@ TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
         "--root",
         root,
         "--source",
-        program_path,
+        CHIBI_SOURCE_ROOT "/test/language/BuildCLITail.chibi",
         "--entry",
         "Build",
         "--timeout-ms",
@@ -665,7 +668,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
     tool_write(overrides, recipes);
     char old[1024], previous[1024], current[1024], missing[1024];
     path(old, root, "old host");
-    path(previous, root, "protocol-12 host");
+    path(previous, root, "protocol-13 host");
     path(current, root, "current host");
     path(missing, root, "missing host");
     assert(!symlink(worker_path, old));
@@ -673,8 +676,8 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
     assert(!symlink(host_path, current));
     char recursive_make[4096];
     snprintf(recursive_make, sizeof recursive_make, "MAKE=make -f '%s' -f '%s'", makefile, overrides);
-    /* A protocol-12 host answers the query but cannot load the format-26
-     * compiler bootstrap introduced by collections as values. */
+    /* A protocol-13 host loads the compiler but retains native results until
+     * teardown, so a warm graph can exhaust storage before rebuilding it. */
     const char *hosts[] = { missing, old, previous, current };
     for (int i = 0; i < 4; i++) {
         char host_option[1200];

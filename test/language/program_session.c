@@ -374,6 +374,115 @@ TEST_CASE(session_nested_calls_use_separate_state_and_reject_active_mutations)
     return true;
 }
 
+/* Finite bodies make both the broken and corrected paths finish; instruction
+ * counts, rather than elapsed time, are the oracle. */
+static const char
+    *budgeted_loop = "package app\nMain :: () -> int {\n count := 0\n while "
+                     "count < 1000 {\n count += 1\n }\n return count\n}\n";
+
+TEST_CASE(session_calls_debit_the_caller_budget_and_keep_its_vm_policy)
+{
+    REQUIRE(catalog());
+    for (int compiled = 0; compiled < 2; compiled++) {
+        authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
+        sessions[compiled] = authoring_program_new(&configuration);
+        REQUIRE(accept(sessions[compiled], budgeted_loop, NULL, false));
+        behavior_execution_scope caller = { .remaining = 32,
+                                            .prefer_compiled = compiled != 0 };
+        behavior_run_scope runs = { 0 };
+        behavior_run_scope_begin(&runs);
+        behavior_execution_scope_begin(&caller);
+        int result = 0;
+        int status = authoring_program_call(sessions[compiled], NULL, &result);
+        behavior_execution_scope_end(&caller);
+        behavior_run_scope_end(&runs);
+        REQUIRE(status == FLOW_ERR_STEP_BUDGET && !caller.remaining);
+        REQUIRE(
+            strstr(authoring_program_error(sessions[compiled])->message, "shared instruction budget exhausted")
+        );
+        REQUIRE(!behavior_execution_scope_active());
+        if (!compiled || !behavior_backend_available(BEHAVIOR_SLJIT)) {
+            REQUIRE(runs.counts.bytecode_entries && !runs.counts.sljit_entries);
+        } else {
+            REQUIRE(runs.counts.sljit_entries);
+        }
+        REQUIRE(
+            authoring_program_call(sessions[compiled], NULL, &result) == FLOW_OK &&
+            result == 1000
+        );
+    }
+    return true;
+}
+
+TEST_CASE(session_repeated_calls_cannot_reset_the_enclosing_budget)
+{
+    REQUIRE(catalog());
+    authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
+    sessions[0] = authoring_program_new(&configuration);
+    REQUIRE(
+        accept(sessions[0], "package app\nMain :: () -> int { count: retain int = 0; count += 1; return count }\n", NULL, false)
+    );
+    behavior_execution_scope caller = { .remaining = 256, .prefer_compiled = true };
+    behavior_execution_scope_begin(&caller);
+    int result = 0, status = FLOW_OK, completed = 0;
+    bool charged = true;
+    while (completed < 64) {
+        uint64_t before = caller.remaining;
+        status = authoring_program_call(sessions[0], NULL, &result);
+        if (status != FLOW_OK) {
+            break;
+        }
+        charged &= result == completed + 1 && caller.remaining < before;
+        completed++;
+    }
+    behavior_execution_scope_end(&caller);
+    if (!(completed > 0 && completed < 64 && charged)) {
+        fprintf(
+            stderr,
+            "repeated calls completed=%d status=%d result=%d remaining=%llu "
+            "charged=%d\n",
+            completed,
+            status,
+            result,
+            (unsigned long long)caller.remaining,
+            charged
+        );
+    }
+    REQUIRE(completed > 0 && completed < 64 && charged);
+    REQUIRE(status == FLOW_ERR_STEP_BUDGET && !caller.remaining);
+    REQUIRE(
+        strstr(authoring_program_error(sessions[0])->message, "shared instruction budget exhausted")
+    );
+    return true;
+}
+
+static bool caller_cancelled(void *user)
+{
+    const behavior_execution_scope *caller = user;
+    return caller->remaining <= 16;
+}
+
+TEST_CASE(session_calls_honor_the_callers_live_cancellation_budget)
+{
+    REQUIRE(catalog());
+    authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
+    sessions[0] = authoring_program_new(&configuration);
+    REQUIRE(accept(sessions[0], budgeted_loop, NULL, false));
+    behavior_execution_scope caller = { .remaining = 32,
+                                        .prefer_compiled = true,
+                                        .cancelled = caller_cancelled };
+    caller.user = &caller;
+    const authoring_program_call_options cooperative = { .cooperative = true };
+    behavior_execution_scope_begin(&caller);
+    int result = 0;
+    int status = authoring_program_call(sessions[0], &cooperative, &result);
+    behavior_execution_scope_end(&caller);
+    REQUIRE(status == FLOW_ERR_STEP_BUDGET && caller.remaining == 16);
+    REQUIRE(strstr(authoring_program_error(sessions[0])->message, "execution cancelled"));
+    REQUIRE(!behavior_execution_scope_active());
+    return true;
+}
+
 static void write_source(const char *path, const char *text)
 {
     FILE *file = fopen(path, "wb");
@@ -496,6 +605,9 @@ void test_language_program_session()
     RUN_TEST_CASE(session_calls_observe_host_cancellation_and_recover);
     RUN_TEST_CASE(session_cooperative_host_preserves_nested_cancellation);
     RUN_TEST_CASE(session_nested_calls_use_separate_state_and_reject_active_mutations);
+    RUN_TEST_CASE(session_calls_debit_the_caller_budget_and_keep_its_vm_policy);
+    RUN_TEST_CASE(session_repeated_calls_cannot_reset_the_enclosing_budget);
+    RUN_TEST_CASE(session_calls_honor_the_callers_live_cancellation_budget);
     RUN_TEST_CASE(program_handles_suppress_rejections_and_never_alias_other_sessions);
     RUN_TEST_CASE(program_tests_bind_the_public_catalog_and_copy_transient_diagnostics);
     pu_clear_setup();

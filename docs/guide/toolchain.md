@@ -284,6 +284,9 @@ next call. Call failures and an authored nonzero return are separate results;
 hosts can report a diagnostic without confusing it with the program's exit
 value.
 
+Nested calls share the caller's remaining instruction budget and cancellation
+checks; repeated calls spend that same budget.
+
 Native hosts can use the exported [authoring/program.h](../../src/authoring/program.h)
 session API directly. It accepts package snapshots built from source buffers,
 an explicit native catalog and service bindings, and reports source-range

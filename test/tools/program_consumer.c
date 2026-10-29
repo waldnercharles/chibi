@@ -68,7 +68,42 @@ TEST_CASE(exported_program_sessions_keep_independent_retained_state)
     return true;
 }
 
+TEST_CASE(exported_program_calls_respect_the_host_instruction_budget)
+{
+    const native_definition_pack definition = CORE_DEFINITION_PACK;
+    char error[256];
+    native_capabilities *
+        native = native_capabilities_from_definition_packs(NULL, 0, &definition, 1, error, sizeof error);
+    REQUIRE(native);
+    const authoring_program_options options = {
+        .native = native,
+        .bindings = authoring_native_bindings(native),
+        .backend = behavior_default_backend()
+    };
+    authoring_program *program = authoring_program_new(&options);
+    REQUIRE(
+        accept(program, "package consumer\nMain :: () -> int {\n count := 0\n while count < 1000 {\n count += 1\n }\n return count\n}\n")
+    );
+    behavior_execution_scope host = { .remaining = 32, .prefer_compiled = true };
+    behavior_execution_scope_begin(&host);
+    int result = 0;
+    int status = authoring_program_call(program, NULL, &result);
+    behavior_execution_scope_end(&host);
+    bool exhausted = strstr(
+                         authoring_program_error(program)->message
+                             ? authoring_program_error(program)->message
+                             : "",
+                         "shared instruction budget exhausted"
+                     ) != NULL;
+    authoring_program_free(program);
+    native_capabilities_free(native);
+    REQUIRE(status == FLOW_ERR_STEP_BUDGET);
+    REQUIRE(!host.remaining && exhausted && !behavior_execution_scope_active());
+    return true;
+}
+
 void test_program_sdk()
 {
     RUN_TEST_CASE(exported_program_sessions_keep_independent_retained_state);
+    RUN_TEST_CASE(exported_program_calls_respect_the_host_instruction_budget);
 }

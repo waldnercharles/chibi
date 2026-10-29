@@ -77,6 +77,8 @@ void test_tool_record_c_export();
 void test_tool_package();
 void test_tool_chibi_cli(const char *binary, const char *self);
 void test_tool_chibi_cli_process(const char *binary, const char *self);
+void test_tool_chibi_cli_build(const char *binary);
+void test_tool_chibi_cli_doctor(const char *binary);
 void test_tool_chibi_cli_installed(const char *binary, const char *self);
 void test_native_build(const char *binary);
 void test_native_workload_benchmark(const char *binary);
@@ -747,6 +749,18 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_chibi_cli(argv[2], argv[0]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 3 && (!strcmp(argv[1], "--chibi-cli-build") ||
+                      !strcmp(argv[1], "--chibi-cli-doctor"))) {
+        tool_init();
+        pu_display_time(true);
+        if (!strcmp(argv[1], "--chibi-cli-build")) {
+            test_tool_chibi_cli_build(argv[2]);
+        } else {
+            test_tool_chibi_cli_doctor(argv[2]);
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

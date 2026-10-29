@@ -12,7 +12,8 @@
 The owner approved making the public CLI an ordinary Chibi application with
 Main and a shared compiler/runtime interface. The isolated branch
 codex/chibi-main-app-20261028 started at 2c6d3ed5c and now includes accepted
-origin/main a253ef4b5, including SDK VERSION and compiler reachability changes.
+origin/main 79743c567, including SDK VERSION, compiler reachability and accepted
+private build-host lifetime fixes (protocol14; compiler/E1 unchanged).
 The original checkout and its tracked/untracked edits remain byte-identical.
 Earlier native and private authored-runner checkpoints are preserved under
 .chibi/main-runner-reload; ordinary-cli-pre-reachability-forward-port preserves
@@ -104,6 +105,33 @@ The test-only host composition and this evidence update follow fee955dc2; refres
 package identity and affected installed checks on the final clean tip. Product
 sources are unchanged by that follow-up. Private compiler-tools packaging is
 separate proof. No global SDK installation or new checked seed occurred.
+
+Independent review of fee955dc2 found three additional parity/interaction issues.
+Nested program calls now explicitly inherit the caller's instruction budget,
+cancellation, purity and VM preference; default compiler/asset scopes remain
+exclusive. Finite-loop, repeated-call and live-cancellation controls fail on the
+old implementation and pass after the fix. The repeated-call fixture uses a
+measured 256-instruction budget because 32 cannot complete one retained call;
+no wall-clock policy is introduced. Runtime scope/session/host/test and existing
+replacement coverage pass 309 / 23,211 in 42.755s summed subprocess time.
+
+Standalone full-SDK CMake builds put all five sibling tools in bin and stage
+the authoritative generated engine identity beside the existing app/core data.
+Compiler-host-only and embedded/Graph layouts retain their paths. Raw build-tree
+help, version, doctor, Main and private-driver lookup pass 4 / 39 in 6.677s;
+raw ALL build passes in 86.437s. Browser diagnosis uses shared files.readable
+rather than presence; all five unreadable payload controls now fail correctly
+and restore to healthy status (doctor 1 / 60 in 4.548s).
+
+The complete CLI passes 35 / 550 in 40.954s, resource/version parity 3 / 26 in
+56.004s and public program consumer 2 / 17 in 0.472s. POSIX source/import checks
+pass 41 / 17,381 in 0.908s parallel outer wall; actual-staged-header MinGW syntax
+passes thirteen production files plus the Windows fixture in 3.423s. The native
+combined build uses matching protocol14 hosts and passes in 123.0s plus 1.8s
+for dependencies. All C sources pass clang-format22 (25.611s). Final installed
+SDK evidence must use this clean combined repair candidate; earlier fee955dc2
+receipts remain attributed to that checkpoint. Root review continues before PR
+acceptance; no held #814/#818 code is included.
 
 ## Coordinated named struct results, 2026-10-22
 

@@ -739,7 +739,7 @@ Files :: (target: string) -> string[] {
             "test/language/packages.c", "test/language/package_syntax.c",
             "test/language/package_execution.c", "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",
-            "test/language/package_core.c", "test/language/package_tests.c",
+            "test/language/package_core.c", "test/language/package_math.c", "test/language/package_tests.c",
             "test/language/package_portable.c", "test/language/package_portable_compiler.c",
             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
             "test/language/argument_effects_chibi.c", "test/language/program_session.c",
@@ -3579,6 +3579,12 @@ LanguageTestsOverSource :: () -> string[] {
 // source property adds them; Expand fills {source_root}, {build_type},
 // {sha256:PATH} and {program:NAME}.
 pub SourceDefines :: (target: string, file: string) -> string[] {
+    if (target == "test_language" && file == "test/language/package_math.c") {
+        return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\"", "CHIBI_SOURCE_ROOT=\"{source_root}\""];
+    }
+    if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
+        return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
+    }
     if (target == "test_language" && file == "test/language/runtime_attribution.c") {
         return [
             "CHIBI_ATTRIBUTION_BASE=\"3c65bb60b6f3443aef6ccf4ab15acbe09b04b191\"",

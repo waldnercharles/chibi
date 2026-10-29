@@ -19,6 +19,7 @@
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
+#include "runtime/math_definition.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
@@ -63,6 +64,10 @@
 #include <signal.h>
 #include <sys/stat.h>
 extern char **environ;
+#endif
+
+#ifndef CHIBI_CORE_MATH_ROOT
+#define CHIBI_CORE_MATH_ROOT "packages/core/math"
 #endif
 
 /* The authored package compiler, prepared by stage zero, compiles each sample
@@ -136,9 +141,9 @@ typedef struct
     const char *name, *source, *more, *library;
     const char *collection_source, *collection_dependency;
     sample_group group;
-    bool core, updates, boxed, game, moves, aliases, variants, built, lends,
-        drops, same_rejection, c_string_probe, host_effects, update_order,
-        debug_metadata, traced;
+    bool core, math, updates, boxed, game, moves, aliases, variants, built,
+        lends, drops, same_rejection, c_string_probe, host_effects,
+        update_order, debug_metadata, traced;
     /* Its calls run with the probe natives linked, take no arguments and
      * return one int. */
     bool probe_calls;
@@ -995,6 +1000,37 @@ static const sample samples[] = {
       .collection_source = HOST_ONLY_SOURCE,
       .project_modules = 2,
       .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "core-math-imported-values",
+      .group = IMPORT_SAMPLES,
+      .math = true,
+      .game = true,
+      .source =
+          "package facts\nimport math \"core:math\"\nimport ease "
+          "\"core:math/ease\"\n"
+          "pub Check :: () -> bool { x: number = 16777215; "
+          "return math.InverseLerp(-1, 16777216, x) == 1 && "
+          "math.InverseLerp(6, 2, 3) == 0.75 && math.Lerp(2, 6, 0.25) == 3 && "
+          "ease.QuadraticInOut(0.5) == 0.5; }\n"
+          "pub Spring :: () -> bool { spring: math.Spring = {position: 1, "
+          "velocity: 0}; "
+          "next := math.AdvanceSpring(spring, 0, 1, 1, 0.125); "
+          "return next.position > 0.8140309 && next.position < 0.8140313 && "
+          "next.velocity > -2.2499655 && next.velocity < -2.2499635; }\n"
+          "pub Narrow :: () -> bool { wide: f64 = 16777217; "
+          "return math.InverseLerp(16777216, 16777218, number(wide)) == 0; }\n",
+      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Spring", .arguments = "[]", .expected = "[true]" },
+                 { .function = "Narrow", .arguments = "[]", .expected = "[true]" } } },
+    { .name = "core-math-rejects-implicit-f64-narrowing",
+      .group = IMPORT_SAMPLES,
+      .math = true,
+      .game = true,
+      .source = "package facts\nimport math \"core:math\"\n"
+                "pub Narrow :: (value: f64) -> number { return "
+                "math.InverseLerp(16777216, 16777218, value); }\n",
+      .message = "argument differs from its parameter type",
+      .line = 3,
+      .column = 47 },
     { .name = "array update debug order",
       .group = COLLECTION_SAMPLES,
       .update_order = true,
@@ -4322,11 +4358,12 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
             CORE_DEFINITION_PACK,          CSTRING_PACK
         };
         char error[256];
-        native_definition_pack selected[6];
+        native_definition_pack selected[7];
         int count = 4;
         memcpy(selected, packs, (size_t)count * sizeof *selected);
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
+            selected[count++] = NATIVE_MATH_DEFINITION_PACK;
         }
         if (probe) {
             selected[count++] = CSTRING_PACK;
@@ -4448,6 +4485,30 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
             s->collection_dependency,
             strlen(s->collection_dependency)
         };
+    }
+    if (s->math) {
+        static char sources[3][32768];
+        static const char *const names[] = { "Math.chibi", "Spring.chibi", "ease/Ease.chibi" };
+        static const char *const paths[] = { "/sdk/core/math/Math.chibi",
+                                             "/sdk/core/math/Spring.chibi",
+                                             "/sdk/core/math/ease/Ease.chibi" };
+        const char *root = getenv("CHIBI_CORE_MATH_ROOT");
+        if (!root || !root[0]) {
+            root = CHIBI_CORE_MATH_ROOT;
+        }
+        for (int i = 0; i < 3; i++) {
+            char path[4096];
+            int n = snprintf(path, sizeof path, "%s/%s", root, names[i]);
+            assert(n > 0 && (size_t)n < sizeof path && count < SAMPLE_INPUTS);
+            FILE *file = fopen(path, "rb");
+            assert(file);
+            size_t length = fread(sources[i], 1, sizeof sources[i] - 1, file);
+            bool read = !ferror(file) && feof(file);
+            fclose(file);
+            assert(read);
+            sources[i][length] = 0;
+            inputs[count++] = (source_package_input){ paths[i], sources[i], length };
+        }
     }
     return count;
 }
@@ -4586,6 +4647,89 @@ static uint64_t function_id(const char *name)
     char text[256];
     snprintf(text, sizeof text, "project:facts:1:%s:callable", name);
     return script_catalog_id("package-symbol", text);
+}
+/* Math packages link the ordinary native libm pack, outside the compiler
+ * host's intentionally restricted JSON/text/array execution profile. */
+static bool run_math(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
+{
+    REQUIRE(!strcmp(call->arguments, "[]") && !strcmp(call->expected, "[true]"));
+    native_prepared_context native = { .native = linked[1][0] };
+    execution_prepared_linker linker = native_capabilities_prepared_linker(&native);
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root;
+    char error[256];
+    behavior_backend mode = backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE;
+    package_collection *collection = compiler_artifact_read(
+        bytes,
+        length,
+        &linker,
+        mode,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!collection) {
+        fprintf(stderr, "math artifact: %s\n", error);
+    }
+    REQUIRE(collection);
+    const behavior_function *body = NULL;
+    for (int i = 0; i < package_collection_count(collection); i++) {
+        execution_module *module = package_collection_module(collection, i);
+        if (execution_module_id(module) != root) {
+            continue;
+        }
+        for (int j = 0; j < execution_module_function_count(module); j++) {
+            execution_module_function_info info = execution_module_function_at(module, j);
+            if (info.id == function_id(call->function)) {
+                body = info.body;
+            }
+        }
+    }
+    REQUIRE(body);
+    arena memory = { 0 };
+    behavior_managed_heap heap = { 0 };
+    behavior_managed_heap_init(&heap);
+    behavior_function_activation activation = { 0 };
+    if (behavior_function_resumable(body)) {
+        behavior_function_activation_init(body, &activation);
+    }
+    pin_value answer = { .type = PIN_BOOL };
+    behavior_function_context context = {
+        .results = &answer,
+        .activation = behavior_function_resumable(body) ? &activation : NULL,
+        .managed_heap = &heap,
+        .budget = TARGET_BUDGET
+    };
+    behavior_function_bind_storage(&context, &memory);
+    REQUIRE(behavior_function_bind(body, &context, NULL, 0));
+    behavior_run_scope counts = { 0 };
+    behavior_run_scope_begin(&counts);
+    int status = behavior_function_run(body, &context, backend != 0);
+    behavior_run_scope_end(&counts);
+    bool passed = status == FLOW_OK && context.returned && answer.type == PIN_BOOL &&
+                  answer.b && !counts.counts.inspection_bytecode_fallbacks &&
+                  (!backend || ((TEST_COMPILED_BACKEND == BEHAVIOR_WASM
+                                     ? counts.counts.wasm_entries > 0
+                                     : counts.counts.sljit_entries > 0) &&
+                                !counts.counts.bytecode_entries));
+    if (!passed) {
+        fprintf(
+            stderr,
+            "math artifact %s backend=%d status=%d: %s\n",
+            call->function,
+            backend,
+            status,
+            context.error_message ? context.error_message : "wrong result"
+        );
+    }
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
+    arena_free(&memory);
+    package_collection_free(collection);
+    REQUIRE(passed);
+    return true;
 }
 static bool run(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
 {
@@ -4806,7 +4950,8 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK,
-                                       CORE_DEFINITION_PACK };
+                                       CORE_DEFINITION_PACK,
+                                       NATIVE_MATH_DEFINITION_PACK };
     /* Only this bytecode owner is serialized and compared below. Each
      * caller still chooses its original target execution backends. */
     REQUIRE(compiler_fixture_prepare_backends(
@@ -4815,7 +4960,9 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
         inputs,
         count,
         packs,
-        s->game ? 4 : 3
+        s->math   ? 5
+        : s->game ? 4
+                  : 3
     ));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
@@ -5693,6 +5840,9 @@ static bool call_sample(
     int backend
 )
 {
+    if (s->math) {
+        return run_math(bytes, length, call, backend);
+    }
     return s->probe_calls ? run_probe(bytes, length, call, backend)
                           : run(bytes, length, call, backend);
 }
@@ -6388,7 +6538,7 @@ static bool run_samples(sample_group group, int b)
                    (!s->drops || drops_only_collections(bytes, length)) &&
                    ((b && !s->host_effects && !s->debug_metadata) ||
                     (oracle_closure(s, &expected, &expected_length) &&
-                     points_like_oracle(bytes, length, s->host_effects)));
+                     (s->math || points_like_oracle(bytes, length, s->host_effects))));
         bool hosted = !s->traced || !s->c_string_probe;
         for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {

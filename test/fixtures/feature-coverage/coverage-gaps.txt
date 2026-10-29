@@ -11,6 +11,10 @@
 # These uncategorized pure declarations are excluded by feature_function, so no
 # function gaps apply here.
 
+# Precise Sine, Precise Cosine and Floating Remainder are narrow libm helpers
+# exercised by core:math's authored tests and the package-math boundary fixture.
+# Their uncategorized language declarations are excluded by feature_function.
+
 # Material simulation: fluids, destruction worlds, heat and combustion need a
 # material field and solver scene.
 component MaterialFluidWorld

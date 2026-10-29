@@ -1,0 +1,37 @@
+package time_tests
+
+import time "core:time"
+
+@test
+ExactNanoseconds :: () {
+    duration: time.Duration = {nanoseconds: 9007199254740993};
+    assert(time.Nanoseconds(duration) == 9007199254740993);
+    copy := duration;
+    copy.nanoseconds = -7;
+    assert(time.Nanoseconds(duration) == 9007199254740993);
+    assert(time.Nanoseconds(copy) == -7);
+}
+
+@test
+SecondsConversion :: () {
+    zero: time.Duration = {nanoseconds: 0};
+    positive: time.Duration = {nanoseconds: 1500000000};
+    negative: time.Duration = {nanoseconds: -1500000000};
+    smallest: time.Duration = {nanoseconds: 1};
+    assert(time.Seconds(zero) == 0.0);
+    assert(time.Seconds(positive) == 1.5);
+    assert(time.Seconds(negative) == -1.5);
+    assert(time.Seconds(smallest) > 0.0);
+}
+
+@test
+InstantCopiesKeepTheirDomainAndSample :: () {
+    first: time.Instant = {nanoseconds: 9007199254740993, domain: 37};
+    second := first;
+    second.nanoseconds = 19;
+    second.domain = 38;
+    assert(first.nanoseconds == 9007199254740993);
+    assert(first.domain == 37);
+    assert(second.nanoseconds == 19);
+    assert(second.domain == 38);
+}

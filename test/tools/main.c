@@ -97,7 +97,6 @@ void test_native_aot_driver(const char *source);
 void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
-void test_build_toolchain(const char *worker, const char *host);
 void test_build_graph(const char *host);
 void test_build_graph_link_response(const char *host);
 void test_build_graph_support(const char *host);
@@ -638,18 +637,6 @@ int main(int argc, char **argv)
         } else {
             test_build_graph_generated(argv[2]);
         }
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-#else
-        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
-        return 2;
-#endif
-    }
-    if (argc == 4 && !strcmp(argv[1], "--build-toolchain")) {
-#ifdef CHIBI_TEST_BUILD_PROCESS
-        tool_init();
-        pu_display_time(true);
-        test_build_toolchain(argv[2], argv[3]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

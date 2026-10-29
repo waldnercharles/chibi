@@ -54,6 +54,13 @@ endforeach()
 configure_file(core_strings_tests_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/core_strings_tests_source.h" @ONLY)
 
+set(integer_arithmetic_source "${CHIBI_LANGUAGE_TEST_ROOT}/test/integer_arithmetic/Arithmetic.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${integer_arithmetic_source}")
+file(READ "${integer_arithmetic_source}" CHIBI_INTEGER_ARITHMETIC_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_INTEGER_ARITHMETIC_BYTES "${CHIBI_INTEGER_ARITHMETIC_HEX}")
+configure_file(integer_arithmetic_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/integer_arithmetic_source.h" @ONLY)
+
 # The documentation site's Markdown renderer is authored package source too.
 set(docs_markdown_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/docs/markdown/Markdown.chibi")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${docs_markdown_source}")
@@ -331,7 +338,7 @@ set_source_files_properties(execution_scope.c
 # Integer semantics uses the checked authored compiler through the same host
 # archive as other compiler fixtures. Older SDKs retain the direct-source
 # fallback above; normal and installed compiler-host builds own these once.
-target_sources(test_language PRIVATE integer_semantics.c)
+target_sources(test_language PRIVATE integer_semantics.c integer_arithmetic.c)
 set_source_files_properties(integer_semantics.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src"
     COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")

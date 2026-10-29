@@ -10,11 +10,11 @@
 
 #define BROWSER_RESULT_CAPACITY (256 * 1024)
 
-static const char *selectors[] = {
-    "--wasm",          "--execution",   "--program",
-    "--publication",   "--row-array",   "--modules",
-    "--query-program", "--row-builder", "--outliner-projection"
-};
+static const char *selectors[] = { "--wasm",        "--execution",
+                                   "--program",     "--publication",
+                                   "--row-array",   "--integer-arithmetic",
+                                   "--modules",     "--query-program",
+                                   "--row-builder", "--outliner-projection" };
 
 /* JS only boots independent instances of the C dispatcher and transports their
  * output. Test cases, benchmark loops and all pass/fail assertions stay in C. */
@@ -89,7 +89,7 @@ TEST_CASE(browser_runs_c_wasm_language_checks)
     const char *benchmark[] = { "--script-benchmark" };
     const char *const *cases = benchmark_only ? benchmark : selectors;
     int count = benchmark_only ? 1 : (int)(sizeof selectors / sizeof selectors[0]);
-    const char *arguments = benchmark_only ? "['--script-benchmark']" : "['--wasm','--execution','--program','--publication','--row-array','--modules','--query-program','--row-builder','--outliner-projection']";
+    const char *arguments = benchmark_only ? "['--script-benchmark']" : "['--wasm','--execution','--program','--publication','--row-array','--integer-arithmetic','--modules','--query-program','--row-builder','--outliner-projection']";
     char page[8192];
     int page_size = snprintf(page, sizeof page, page_template, arguments);
     REQUIRE(page_size > 0 && page_size < (int)sizeof page);

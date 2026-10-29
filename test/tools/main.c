@@ -1,16 +1,46 @@
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(CHIBI_TEST_PROGRAM_ONLY)
 #define pu_run_test tool_pico_run_test
 #endif
 #define PICO_UNIT_IMPLEMENTATION
+#ifndef CHIBI_TEST_PROGRAM_ONLY
 #include "test/tools/fixture.h"
 #include "test/tools/graph_dispatch.h"
+#endif
 #include "third_party/pico_headers/pico_unit.h"
 #undef pu_run_test
 
 #include <stdio.h>
 #include <string.h>
 
-#if defined(CHIBI_TEST_WEBGPU_STAGING) || defined(CHIBI_TEST_AUDIO_WEB)
+#if defined(CHIBI_TEST_PROGRAM_ONLY)
+#include "types/catalog.h"
+
+#include <assert.h>
+
+/* This consumer has no reflected native structs or enums. */
+int type_catalog_pack_count()
+{
+    return 0;
+}
+
+type_catalog_pack type_catalog_pack_at(int)
+{
+    assert(false);
+    return (type_catalog_pack){ 0 };
+}
+
+void test_program_sdk();
+int main(int argc, char **argv)
+{
+    if (argc != 2 || strcmp(argv[1], "--program-sdk")) {
+        return 2;
+    }
+    pu_display_time(true);
+    test_program_sdk();
+    pu_print_stats();
+    return pu_test_failed() ? 1 : 0;
+}
+#elif defined(CHIBI_TEST_WEBGPU_STAGING) || defined(CHIBI_TEST_AUDIO_WEB)
 #ifdef CHIBI_TEST_WEBGPU_STAGING
 int test_webgpu_staging_start();
 #endif
@@ -45,8 +75,11 @@ void test_tool_c_export();
 void test_tool_record_c_export();
 #endif
 void test_tool_package();
-void test_tool_chibi_cli(const char *binary);
-void test_tool_chibi_cli_installed(const char *binary);
+void test_tool_chibi_cli(const char *binary, const char *self);
+void test_tool_chibi_cli_process(const char *binary, const char *self);
+void test_tool_chibi_cli_build(const char *binary);
+void test_tool_chibi_cli_doctor(const char *binary);
+void test_tool_chibi_cli_installed(const char *binary, const char *self);
 void test_native_build(const char *binary);
 void test_native_workload_benchmark(const char *binary);
 void test_tool_chibi_cli_export(const char *binary);
@@ -66,6 +99,7 @@ void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
 void test_build_graph(const char *host, const char *cmake_build);
+void test_build_graph_link_response(const char *host);
 void test_build_graph_support(const char *host, const char *cmake_build);
 void test_build_graph_reflect(const char *host, const char *cmake_build);
 void test_build_graph_archive(const char *host, const char *cmake_build);
@@ -109,6 +143,9 @@ void test_tool_controller(const char *binary);
 void test_tool_render_fixture(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
+#ifdef CHIBI_TEST_PROGRAM
+void test_program_sdk();
+#endif
 void test_tool_record_prepared(const char *producer, const char *consumer);
 void test_tool_record_runtime(const char *directory);
 void test_tool_prepared_runtime(const char *directory);
@@ -554,9 +591,14 @@ bool test_model_import_active()
 
 void test_tool_case_timings(const char *self);
 int tool_case_timing_probe(const char *mode);
+int tool_tty_echo_child(bool terminal);
 
 int main(int argc, char **argv)
 {
+    if ((argc == 2 || (argc == 3 && !strcmp(argv[2], "--tty"))) &&
+        !strcmp(argv[1], "--tty-echo-child")) {
+        return tool_tty_echo_child(argc == 3);
+    }
     if (argc == 3 && !strcmp(argv[1], "--case-timing-probe")) {
         return tool_case_timing_probe(argv[2]);
     }
@@ -583,6 +625,18 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_build_sdk(argv[2], argv[3], argv[4]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--build-graph-link-response")) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        test_build_graph_link_response(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else
@@ -693,10 +747,40 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
+    if (argc == 2 && !strcmp(argv[1], "--program-sdk")) {
+#ifdef CHIBI_TEST_PROGRAM
+        pu_display_time(true);
+        test_program_sdk();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires Chibi::program\n", argv[1]);
+        return 2;
+#endif
+    }
     if (argc == 3 && !strcmp(argv[1], "--chibi-cli")) {
         tool_init();
         pu_display_time(true);
-        test_tool_chibi_cli(argv[2]);
+        test_tool_chibi_cli(argv[2], argv[0]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 3 && (!strcmp(argv[1], "--chibi-cli-build") ||
+                      !strcmp(argv[1], "--chibi-cli-doctor"))) {
+        tool_init();
+        pu_display_time(true);
+        if (!strcmp(argv[1], "--chibi-cli-build")) {
+            test_tool_chibi_cli_build(argv[2]);
+        } else {
+            test_tool_chibi_cli_doctor(argv[2]);
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--chibi-cli-process")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_chibi_cli_process(argv[2], argv[0]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
@@ -724,7 +808,7 @@ int main(int argc, char **argv)
     if (argc == 3 && !strcmp(argv[1], "--chibi-cli-installed")) {
         tool_init();
         pu_display_time(true);
-        test_tool_chibi_cli_installed(argv[2]);
+        test_tool_chibi_cli_installed(argv[2], argv[0]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

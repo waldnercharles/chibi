@@ -728,23 +728,65 @@ if(CHIBI_SDK_COMPILER_HOST_ONLY)
 endif()
 # `chibi PROJECT` prepares a changed project and plays it with its siblings.
 if(TARGET chibi-compile AND TARGET chibi-player)
-    add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c"
+    add_library(chibi_application OBJECT "${CHIBI_SDK_ROOT}/src/host/application.c"
+        "${CHIBI_SDK_ROOT}/src/host/application_tools.c"
+        "${CHIBI_SDK_ROOT}/src/host/application_io.c"
         "${CHIBI_SDK_ROOT}/src/host/export.c" "${CHIBI_SDK_ROOT}/src/host/process.c")
-    foreach(header export process serve)
+    foreach(header application application_tools application_io export process serve)
         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/host/${header}.h" COPYONLY)
     endforeach()
+    foreach(header compiler_syntax compiler_json)
+        configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/toolchain/${header}.h" COPYONLY)
+    endforeach()
     # chibi web serves an export on loopback; Windows has no server yet.
     if(NOT WIN32)
-        target_sources(chibi PRIVATE "${CHIBI_SDK_ROOT}/src/host/serve.c")
+        target_sources(chibi_application PRIVATE "${CHIBI_SDK_ROOT}/src/host/serve.c")
     endif()
-    target_include_directories(chibi PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/launcher"
+    target_include_directories(chibi_application PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/launcher")
+    target_include_directories(chibi_application PRIVATE
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
-    target_link_libraries(chibi PRIVATE chibi_project_document chibi_support chibi_json)
+    target_link_libraries(chibi_application PUBLIC chibi_program chibi_project_compilation
+        chibi_project_document chibi_host_native_default chibi_core_capabilities
+        chibi_text_capabilities chibi_array_capabilities chibi_support chibi_json chibi_task_pool_runtime
+        chibi_compiler_syntax chibi_compiler_json)
+    target_compile_options(chibi_application PRIVATE -Wall -Wextra -Werror)
+    add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c")
+    target_link_libraries(chibi PRIVATE chibi_application)
+    # The public CLI loads an ordinary authored application.
+    file(GLOB_RECURSE application_inputs CONFIGURE_DEPENDS
+        RELATIVE "${CHIBI_SDK_ROOT}/apps/chibi" "${CHIBI_SDK_ROOT}/apps/chibi/*.chibi")
+    foreach(source IN LISTS application_inputs)
+        configure_file("${CHIBI_SDK_ROOT}/apps/chibi/${source}"
+            "${CMAKE_BINARY_DIR}/share/chibi/apps/chibi/${source}" COPYONLY)
+    endforeach()
+    file(GLOB_RECURSE application_core_inputs CONFIGURE_DEPENDS
+        RELATIVE "${CHIBI_SDK_ROOT}/packages/core" "${CHIBI_SDK_ROOT}/packages/core/*.chibi")
+    foreach(source IN LISTS application_core_inputs)
+        configure_file("${CHIBI_SDK_ROOT}/packages/core/${source}"
+            "${CMAKE_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
+    endforeach()
+    install(DIRECTORY "${CHIBI_SDK_ROOT}/apps/chibi/" DESTINATION share/chibi/apps/chibi
+        FILES_MATCHING PATTERN "*.chibi")
+    install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
+        FILES_MATCHING PATTERN "*.chibi")
     target_compile_options(chibi PRIVATE -Wall -Wextra -Werror)
     add_dependencies(chibi chibi-compile chibi-player)
     chibi_windows_manifest(chibi)
     chibi_install_product(chibi)
+endif()
+# A standalone SDK build uses the installed bin/share relationship. Keep
+# private driver companions beside the public tools in this build layout.
+# Embedded product builds and compiler-host-only bootstraps keep their paths.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND
+   NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    foreach(target chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host)
+        if(TARGET ${target})
+            set_target_properties(${target} PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/bin>")
+        endif()
+    endforeach()
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
     if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
@@ -755,6 +797,10 @@ foreach(target IN LISTS CHIBI_SDK_TARGETS)
     endif()
 endforeach()
 include(artifact_formats.cmake)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND TARGET chibi)
+    configure_file("${CMAKE_CURRENT_BINARY_DIR}/chibi_engine_metadata.json"
+        "${CMAKE_BINARY_DIR}/share/chibi/engine.json" COPYONLY)
+endif()
 include(contracts.cmake)
 
 install(TARGETS ${CHIBI_SDK_TARGETS}

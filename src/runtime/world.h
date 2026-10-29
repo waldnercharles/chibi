@@ -49,7 +49,6 @@ source_registry *world_sources(const world *);
 entities *world_entities(const world *);
 engine *world_engine(const world *);
 materials *world_materials(const world *);
-material_fields *world_fields(const world *);
 /* Scene requests from scripts, which the host applies between frames. */
 scene_flow *world_scenes(const world *);
 /* External URL requests remain disabled until the host opts in. */

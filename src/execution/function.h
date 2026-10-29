@@ -57,6 +57,10 @@ typedef struct behavior_execution_scope
     /* Trusted packaged code may request guarded native execution. Pure scopes
      * always use the VM. Unsupported native targets fall back to the VM. */
     bool prefer_compiled;
+    /* Nested scopes are exclusive by default. Inheriting also enforces the
+     * enclosing scope's budget, cancellation, purity and VM preference. Each
+     * operation checks every inherited budget before debiting any of them. */
+    bool inherit;
     struct behavior_execution_scope *previous;
     bool active;
 } behavior_execution_scope;
@@ -76,10 +80,6 @@ typedef enum
     EXECUTION_REDUCTION_ADD_UNORDERED
 } execution_reduction_op;
 behavior_value_kind behavior_function_kind(const behavior_function *, behavior_value_bank, int index);
-const compile_diagnostic *behavior_function_query_diagnostics(
-    const behavior_function *function,
-    int *count
-);
 typedef struct
 {
     void *data;            /* Stable even while the current value is null. */
@@ -406,14 +406,6 @@ bool behavior_function_bind(
     const struct service_binding *services,
     uint64_t owner
 );
-/* Resolve IDs once before a batchable span. The caller owns *columns and must
- * refresh it after any structural boundary or service/view change. Presence
- * and layout diagnostics remain at the original operation, not at binding. */
-void behavior_function_bind_columns(
-    const behavior_function *function,
-    behavior_function_context *ctx,
-    const struct ecs_execution_column ***columns
-);
 /* Rebind services while retaining plain argument/result buffers for this
  * immutable function generation. Each simultaneous invocation needs a cache. */
 void behavior_function_prepare_data(
@@ -498,9 +490,6 @@ void behavior_function_visit_values(
     void *user
 );
 bool behavior_function_resumable(const behavior_function *function);
-/* Whether its inspected code records the wires and values it carries. */
-bool behavior_function_observed(const behavior_function *function);
-bool behavior_function_has_invocations(const behavior_function *function);
 /* An event whose logic reads no payload, with synchronous, non-reentrant
  * operations only.
  * Its component accesses may cross entities, so execution order still matters. */
@@ -513,8 +502,6 @@ bool behavior_function_parallel(const behavior_function *function);
  * return false. Built-in value intrinsics remain governed by source effects;
  * this check alone does not prove that a function has no other side effects. */
 bool behavior_function_hosts_pure(const behavior_function *function);
-/* Static work estimate used to keep cheap loops below scheduling overhead. */
-int behavior_function_parallel_work(const behavior_function *function);
 /* Union of a host call's zero-based U32 input across the unobserved body.
  * No matching calls returns zero; an unproven value/invocation returns UINT_MAX.
  * Used once when preparing a synchronous execution plan, not per entity. */
@@ -523,7 +510,6 @@ unsigned behavior_function_host_mask(
     const node_host_call *call,
     int input
 );
-bool behavior_function_parallel_with(const behavior_function *a, const behavior_function *b);
 /* Cached conservative proof for synchronous broadcasts. Unknown host effects
  * and structural operations cannot preserve a component-dependent query index. */
 bool behavior_function_preserves_components(
@@ -531,23 +517,7 @@ bool behavior_function_preserves_components(
     const uint64_t *components,
     int count
 );
-bool behavior_function_breakpoints(const behavior_function *function);
 int behavior_function_frame_count(const behavior_function *function);
-uintptr_t behavior_function_frame_steps(
-    const behavior_function *function,
-    const behavior_function_activation *activation,
-    int frame
-);
-int behavior_function_frame_parent(const behavior_function *function, int frame);
-const behavior_function_source *behavior_function_frame_source(
-    const behavior_function *function,
-    int frame
-);
-int behavior_function_frame_stack(const behavior_function *function, int frame);
-const behavior_function_point *behavior_function_pause_point(
-    const behavior_function *function,
-    const behavior_function_activation *activation
-);
 void behavior_function_activation_init(
     const behavior_function *function,
     behavior_function_activation *activation
@@ -561,10 +531,6 @@ int behavior_function_run(const behavior_function *function, behavior_function_c
 /* Thread-local scratch-bank initializations for allocation profiling; shared
  * by bytecode and WebAssembly execution. */
 uint64_t behavior_function_vm_allocations();
-/* The exported C function has the same ABI as the SLJIT entry. */
-/* Batchable Tick body embedded in an ordered native row loop. */
-bool behavior_function_compile_system(behavior_function *function);
-void *behavior_function_system_entry(const behavior_function *function);
 /* Caller owns the sequence kernel; all immutable functions must outlive its
  * invocation. Frees with behavior_jit_free. Executes exactly the given order. */
 void *behavior_function_compile_sequence(const behavior_function *const *functions, int count);
@@ -574,7 +540,6 @@ void behavior_function_write_sequence_c(
     FILE *out,
     const char *name
 );
-void behavior_function_write_system_c(const behavior_function *function, FILE *out, const char *name);
 void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
 /* Whether a compiled definition runs on bytecode, past the Wasm JIT's size
@@ -590,9 +555,6 @@ void behavior_function_prepare_results(
 /* Language arrays require an initialized caller-owned managed heap, shared by
  * the complete invocation family. Managed objects keep identity across copies. */
 pin_array *behavior_function_copy_array(behavior_function_context *, const pin_array *);
-/* Imports borrowed array arguments once, preserving aliases across the bank.
- * The supplied argument slots are not modified; only context's bank changes. */
-const char *behavior_function_import_arguments(behavior_function_context *);
 const char *behavior_function_value_arguments(behavior_function_context *);
 const char *behavior_function_validate_value(behavior_function_context *, const pin_value *);
 void behavior_function_restore_arguments(behavior_function_context *);
@@ -602,10 +564,6 @@ const char *behavior_function_value_call(behavior_function_context *, int host_c
 void behavior_function_bind_storage(behavior_function_context *context, arena *storage);
 /* True when emitted operations require invocation-owned temporary values. */
 bool behavior_function_uses_storage(const behavior_function *function);
-/* Pure calls share the evaluator's depth counter. If an inlined call could
- * exceed its limit, use the checked compiled path for precise diagnostics. */
-bool behavior_function_pure_depth(const behavior_function *function, unsigned depth);
-const behavior_function_source *behavior_function_stack_at(const behavior_function *function, int stack);
 int behavior_function_source_count(const behavior_function *function);
 pin_type behavior_function_slot_type(const behavior_function *, int slot);
 const behavior_function_source *behavior_function_instruction_source(

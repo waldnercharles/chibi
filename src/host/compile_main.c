@@ -65,7 +65,8 @@ static int usage(const char *program)
         stderr,
         "Usage: %s --project-root PATH (--output FILE [--modules FILE | "
         "--resources-only] | "
-        "--check [--explain-costs [--json]] | --test | --format [--check] | "
+        "--check [--explain-costs [--json]] | --test | "
+        "--format [--check] | "
         "--docs | --stage-one-input "
         "FILE) [--scene PATH]\n",
         program

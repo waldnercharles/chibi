@@ -30,6 +30,7 @@ FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
 BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
+CHIBI_BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 # Another build's sdk directory, such as build-release/sdk, whose
 # chibi-build-host and chibi-compiler-host generate the asset compiler instead
 # of this build's. The resource is the same; Release hosts generate it faster.
@@ -174,7 +175,7 @@ ifneq ($(filter Linux Darwin,$(shell uname -s)),)
 sdk-reflect-build:
 	@host="$(BUILD_HOST)"; \
 	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
-		host="$(SDK_REFLECT_BUILD_DIR)/host/chibi-build-host"; \
+		host="$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"; \
 		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
 			$(MAKE) sdk-reflect-bootstrap || exit $$?; \
 		fi; \
@@ -356,7 +357,7 @@ test-build:
 	@$(MAKE) build BUILD_TARGET='chibi_ctl test_tools test_language'
 
 test-native: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group native
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_BUILD_HOST="$(CHIBI_BUILD_HOST)" python3 tools/test_policy.py group native
 
 test-materials: test-build
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group materials

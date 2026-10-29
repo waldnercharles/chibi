@@ -67,29 +67,92 @@ static char *command_line(char *const *argv)
     return line;
 }
 
-int chibi_process_run(char *const *argv)
+int chibi_process_run(char *const *argv, volatile sig_atomic_t *stop_signal)
 {
+    if (stop_signal && *stop_signal) {
+        return 128 + *stop_signal;
+    }
+    HANDLE job = NULL;
+    if (stop_signal) {
+        job = CreateJobObjectA(NULL, NULL);
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = { 0 };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if (!job ||
+            !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof limits)) {
+            DWORD error = GetLastError();
+            if (job) {
+                CloseHandle(job);
+            }
+            fprintf(stderr, "Cannot own process job for %s: error %lu\n", argv[0], error);
+            return 1;
+        }
+    }
     char *line = command_line(argv);
     STARTUPINFOA startup = { .cb = sizeof startup };
     PROCESS_INFORMATION info;
-    bool started = CreateProcessA(NULL, line, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &info);
+    DWORD flags = stop_signal ? CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP : 0;
+    bool started = CreateProcessA(NULL, line, NULL, NULL, TRUE, flags, NULL, NULL, &startup, &info);
     free(line);
     if (!started) {
-        fprintf(stderr, "Cannot run %s: error %lu\n", argv[0], GetLastError());
+        DWORD error = GetLastError();
+        if (job) {
+            CloseHandle(job);
+        }
+        fprintf(stderr, "Cannot run %s: error %lu\n", argv[0], error);
+        return 1;
+    }
+    if (job && (!AssignProcessToJobObject(job, info.hProcess) ||
+                ResumeThread(info.hThread) == (DWORD)-1)) {
+        DWORD error = GetLastError();
+        TerminateProcess(info.hProcess, 1);
+        WaitForSingleObject(info.hProcess, INFINITE);
+        CloseHandle(info.hThread);
+        CloseHandle(info.hProcess);
+        CloseHandle(job);
+        fprintf(stderr, "Cannot own process %s: error %lu\n", argv[0], error);
         return 1;
     }
     CloseHandle(info.hThread);
-    WaitForSingleObject(info.hProcess, INFINITE);
+    int interrupted = 0;
+    DWORD waited;
+    for (;;) {
+        interrupted = stop_signal ? *stop_signal : 0;
+        if (interrupted) {
+            if (!TerminateJobObject(job, (UINT)(128 + interrupted))) {
+                fprintf(stderr, "Cannot terminate process job for %s: error %lu\n", argv[0], GetLastError());
+                /* Closing a kill-on-close job is also a termination request. */
+                CloseHandle(job);
+                job = NULL;
+            }
+            waited = WaitForSingleObject(info.hProcess, INFINITE);
+            break;
+        }
+        waited = WaitForSingleObject(info.hProcess, stop_signal ? 10 : INFINITE);
+        if (waited != WAIT_TIMEOUT) {
+            break;
+        }
+    }
     DWORD status = 1;
-    GetExitCodeProcess(info.hProcess, &status);
+    if (waited == WAIT_OBJECT_0) {
+        if (!GetExitCodeProcess(info.hProcess, &status)) {
+            fprintf(stderr, "Cannot read process status for %s: error %lu\n", argv[0], GetLastError());
+        }
+    } else {
+        fprintf(stderr, "Cannot wait for %s: error %lu\n", argv[0], GetLastError());
+    }
+    if (job) {
+        /* Closing the owned job also ends descendants left by an exited leader. */
+        CloseHandle(job);
+    }
     CloseHandle(info.hProcess);
-    return (int)status;
+    return interrupted ? 128 + interrupted : (int)status;
 }
 #else
 
 #include <fcntl.h>
 #include <math.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -531,22 +594,224 @@ bool chibi_process_start(chibi_process *process, const char *const *argv, const 
     return true;
 }
 
-int chibi_process_run(char *const *argv)
+/* A background parent needs SIGTTOU blocked while restoring terminal control.
+ * Only the calling thread's mask changes; application worker masks stay intact. */
+static bool foreground(int terminal, pid_t group)
 {
-    pid_t pid;
-    int error = posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ);
+    sigset_t block, previous;
+    sigemptyset(&block);
+    sigaddset(&block, SIGTTOU);
+    int error = pthread_sigmask(SIG_BLOCK, &block, &previous);
     if (error) {
-        fprintf(stderr, "Cannot run %s: %s\n", argv[0], strerror(error));
-        return 1;
+        errno = error;
+        return false;
     }
-    int status;
-    while (waitpid(pid, &status, 0) < 0) {
-        if (errno != EINTR) {
-            perror("waitpid");
+    bool changed = !tcsetpgrp(terminal, group);
+    int saved = errno;
+    error = pthread_sigmask(SIG_SETMASK, &previous, NULL);
+    errno = changed && error ? error : saved;
+    return changed && !error;
+}
+
+static int child_status(int status)
+{
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+}
+
+int chibi_process_run(char *const *argv, volatile sig_atomic_t *stop_signal)
+{
+    if (stop_signal && *stop_signal) {
+        return 128 + *stop_signal;
+    }
+    /* Standard input may be redirected while an interactive child opens its
+     * controlling terminal itself. This descriptor never replaces child IO. */
+    int terminal = -1;
+    pid_t parent_group = 0;
+    bool handoff = false;
+    if (stop_signal) {
+        terminal = open("/dev/tty", O_RDWR | O_CLOEXEC);
+        if (terminal >= 0 && terminal < 3) {
+            int descriptor = fcntl(terminal, F_DUPFD_CLOEXEC, 3);
+            close(terminal);
+            terminal = descriptor;
+        }
+        parent_group = getpgrp();
+        handoff = terminal >= 0 && tcgetpgrp(terminal) == parent_group;
+    }
+    posix_spawnattr_t attributes;
+    int error = 0;
+    if (stop_signal) {
+        error = posix_spawnattr_init(&attributes);
+        if (error) {
+            fprintf(stderr, "Cannot prepare %s: %s\n", argv[0], strerror(error));
+            if (terminal >= 0) {
+                close(terminal);
+            }
             return 1;
         }
+        error = posix_spawnattr_setpgroup(&attributes, 0);
+        sigset_t signals;
+        sigemptyset(&signals);
+        if (!error) {
+            error = posix_spawnattr_setsigmask(&attributes, &signals);
+        }
+        sigaddset(&signals, SIGINT);
+        sigaddset(&signals, SIGTERM);
+        sigaddset(&signals, SIGHUP);
+        sigaddset(&signals, SIGPIPE);
+        if (!error) {
+            error = posix_spawnattr_setsigdefault(&attributes, &signals);
+        }
+        if (!error) {
+            short flags = POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK |
+                          POSIX_SPAWN_SETSIGDEF;
+#ifdef __APPLE__
+            /* Darwin returns EINTR after a background tty read sends SIGTTIN.
+             * Keep user code suspended until it owns the foreground terminal. */
+            if (handoff) {
+                flags |= POSIX_SPAWN_START_SUSPENDED;
+            }
+#endif
+            error = posix_spawnattr_setflags(&attributes, flags);
+        }
     }
-    return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+    pid_t pid;
+    if (!error) {
+        error = posix_spawnp(&pid, argv[0], NULL, stop_signal ? &attributes : NULL, argv, environ);
+    }
+    if (stop_signal) {
+        posix_spawnattr_destroy(&attributes);
+    }
+    if (error) {
+        fprintf(stderr, "Cannot run %s: %s\n", argv[0], strerror(error));
+        if (terminal >= 0) {
+            close(terminal);
+        }
+        return 1;
+    }
+    int status = 0;
+    if (!stop_signal) {
+        while (waitpid(pid, &status, 0) < 0) {
+            if (errno != EINTR) {
+                perror("waitpid");
+                return 1;
+            }
+        }
+        return child_status(status);
+    }
+
+    bool failed = false;
+    bool owned = true;
+    if (handoff) {
+        if (!foreground(terminal, pid)) {
+            perror("Cannot give child terminal control");
+            failed = true;
+        } else if (kill(-pid, SIGCONT) && errno != ESRCH) {
+            perror("Cannot continue foreground child");
+            failed = true;
+        }
+    }
+    int interrupted = 0;
+    uint64_t stop_started = 0;
+    while (!failed) {
+        if (!interrupted && *stop_signal) {
+            interrupted = *stop_signal;
+            stop_started = milliseconds();
+            kill(-pid, interrupted);
+        }
+        if (interrupted && milliseconds() - stop_started >= 2000) {
+            break;
+        }
+        siginfo_t info = { 0 };
+        /* Keep the leader's PID reserved until its remaining group is killed. */
+        int waited = waitid(P_PID, (id_t)pid, &info, WEXITED | WSTOPPED | WCONTINUED | WNOHANG | WNOWAIT);
+        if (!waited && info.si_pid == pid) {
+            if (info.si_code == CLD_EXITED || info.si_code == CLD_KILLED ||
+                info.si_code == CLD_DUMPED) {
+                break;
+            }
+            /* Consume only the non-exit notification. The exited leader stays
+             * waitable until its remaining process group has been terminated. */
+            siginfo_t change = { 0 };
+            int event = info.si_code == CLD_CONTINUED ? WCONTINUED : WSTOPPED;
+            waited = waitid(P_PID, (id_t)pid, &change, event | WNOHANG);
+            if (waited < 0 && errno == EINTR) {
+                continue;
+            }
+            if (waited < 0) {
+                owned = errno != ECHILD;
+                perror("waitid");
+                failed = true;
+                break;
+            }
+            if (change.si_pid == pid &&
+                (change.si_code == CLD_STOPPED || change.si_code == CLD_TRAPPED)) {
+                if (!interrupted && !*stop_signal) {
+                    if (terminal >= 0 && tcgetpgrp(terminal) == pid &&
+                        !foreground(terminal, parent_group)) {
+                        perror("Cannot restore terminal control");
+                        failed = true;
+                        break;
+                    }
+                    /* SIGSTOP also works when this wrapper's process group is
+                     * orphaned. A shell or controller resumes the wrapper; it
+                     * then resumes its separately owned foreground child. */
+                    if (*stop_signal) {
+                        kill(-pid, SIGCONT);
+                        continue;
+                    }
+                    if (kill(getpid(), SIGSTOP)) {
+                        perror("Cannot suspend process wrapper");
+                        failed = true;
+                        break;
+                    }
+                    if (terminal >= 0 && tcgetpgrp(terminal) == parent_group &&
+                        !foreground(terminal, pid)) {
+                        perror("Cannot give child terminal control");
+                        failed = true;
+                        break;
+                    }
+                }
+                kill(-pid, SIGCONT);
+            }
+            continue;
+        }
+        if (waited < 0 && errno != EINTR) {
+            owned = errno != ECHILD;
+            perror("waitid");
+            failed = true;
+            break;
+        }
+        poll(NULL, 0, 10);
+    }
+    /* Also terminate descendants left behind after a leader exits normally. */
+    if (owned) {
+        kill(-pid, SIGKILL);
+        while (waitpid(pid, &status, 0) < 0) {
+            if (errno != EINTR) {
+                perror("waitpid");
+                failed = true;
+                break;
+            }
+        }
+    }
+    if (terminal >= 0) {
+        if (tcgetpgrp(terminal) == pid && !foreground(terminal, parent_group)) {
+            perror("Cannot restore terminal control");
+            failed = true;
+        }
+        close(terminal);
+    }
+    if (!failed && !*stop_signal && WIFSIGNALED(status)) {
+        int signal = WTERMSIG(status);
+        if (signal == SIGINT || signal == SIGTERM || signal == SIGHUP) {
+            *stop_signal = signal;
+        }
+    }
+    if (!interrupted && *stop_signal) {
+        interrupted = *stop_signal;
+    }
+    return failed ? 1 : interrupted ? 128 + interrupted : child_status(status);
 }
 
 bool chibi_process_poll(chibi_process *process)

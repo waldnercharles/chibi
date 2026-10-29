@@ -10296,11 +10296,11 @@ TEST_CASE(package_compiler_rejects_invalid_library_closures)
         "A :: library { Value :: () -> int { return 2; } }"
     };
     REQUIRE(library_rejects(identities, roots, 2, "duplicate library declaration", true));
-    const char *system[] = {
+    const char *non_declaration[] = {
         "A :: library { Value :: () -> int { return 1; } }",
-        "Batch :: system() {}"
+        "Batch :: struct { value: int; }"
     };
-    REQUIRE(library_rejects(identities, system, 2, "one behavior or library declaration", false));
+    REQUIRE(library_rejects(identities, non_declaration, 2, "Unexpected syntax", false));
     return true;
 }
 /* Stage zero's build of stage one passes arguments without copying them to
@@ -10503,7 +10503,7 @@ TEST_CASE(package_compiler_exports_native_actions)
     }
     REQUIRE(exported && yyjson_arr_size(functions) == NATIVE_COUNT(ACTION_DEFINITIONS) - 1);
     REQUIRE(yyjson_arr_size(yyjson_arr_get(root, 17)) == yyjson_arr_size(functions));
-    REQUIRE(yyjson_obj_size(native) == 9);
+    REQUIRE(yyjson_obj_size(native) == 10);
     static const char *const eligible[] = { "fixture.kind_action",
                                             "fixture.duplicate_int",
                                             "fixture.duplicate_text",
@@ -10535,7 +10535,7 @@ TEST_CASE(package_compiler_exports_native_actions)
             continue;
         }
         yyjson_val *row = action_exported_id(root, capability->id);
-        REQUIRE(row && yyjson_obj_size(row) == 9);
+        REQUIRE(row && yyjson_obj_size(row) == 10);
         REQUIRE(yyjson_get_int(yyjson_obj_get(row, "kind")) == (int)capability->kind);
         const native_capability_binding *binding = native_capabilities_find(
             actions_native,
@@ -11449,7 +11449,10 @@ TEST_CASE(package_compiler_keeps_function_assert_binding_identity)
     yyjson_val *functions = yyjson_arr_get(yyjson_doc_get_root(parsed), 5),
                *ordinary = action_exported(functions, "assert"),
                *guard = action_exported(functions, "demand_truth");
-    REQUIRE(ordinary && guard && yyjson_obj_size(ordinary) == 9 && yyjson_obj_size(guard) == 9);
+    REQUIRE(
+        ordinary && guard && yyjson_obj_size(ordinary) == 10 &&
+        yyjson_obj_size(guard) == 10
+    );
     REQUIRE(yyjson_get_int(yyjson_obj_get(ordinary, "intrinsic")) == 0);
     REQUIRE(yyjson_get_int(yyjson_obj_get(guard, "intrinsic")) == BF_ASSERT);
     yyjson_doc_free(parsed);

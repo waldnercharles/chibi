@@ -27,15 +27,6 @@ bool material_field_bake_rows_text(
     char *error,
     size_t size
 );
-material_field_session *material_field_session_new_text(
-    const material_fields *,
-    const char *name,
-    const char *parameters,
-    unsigned seed,
-    const task_system *,
-    char *error,
-    size_t size
-);
 
 /* Prepare an opaque argument key for scene/prototype publication. Runtime
  * terrain lookup subsequently consumes only the copied typed record. */

@@ -211,6 +211,8 @@ MathRequired :: (record: int, types: TypeDecl[], callables: Callable[], params: 
             switch prepared[index] {
                 case .Failed(diagnostic):
                     return false;
+                case .Specialize(template, call, arguments, caller_names):
+                    return false;
                 case .Inferred(value):
                     if (MathReferences(types, value.record, record)) {
                         return true;

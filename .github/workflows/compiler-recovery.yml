@@ -12,7 +12,9 @@ permissions:
 
 concurrency:
   group: compiler-recovery-${{ github.ref }}
-  cancel-in-progress: true
+  # Let a running main build finish so main's health is known; only the
+  # newest queued main run is kept. PR runs still cancel superseded ones.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   recover:

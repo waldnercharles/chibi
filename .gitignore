@@ -2,6 +2,7 @@ build/
 build-code-language/
 build-sdk/
 /build-sdk-tests/
+/build-sdk-tests-cmake/
 build-language/
 .worktrees/
 # A second build tree, so verifying a build cannot relink the binary a manual

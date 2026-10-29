@@ -215,27 +215,77 @@ static bool stream_function(const behavior_function *f, int depth, int *steps)
 
 bool program_same_type(pin_value a, pin_value b)
 {
+    /* A native record frozen into one side matches the catalog layout the
+     * other names. */
     return a.type == b.type && a.container == b.container &&
-           pin_record_same(a.record, b.record) &&
+           pin_value_layout_same(&a, &b) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }
 static void state_free(state_value *state)
 {
+    pin_value_collection_release(&state->value);
     arena_free(&state->storage);
     for (int i = 0; i < acount(state->retired); i++) {
         arena_free(&state->retired[i]);
     }
     afree(state->retired);
 }
-static int state_assign(state_value *state, const pin_value *value)
+static void event_free(queued_event *event)
+{
+    for (int i = 0; i < event->count; i++) {
+        pin_value_collection_release(&event->arguments[i]);
+    }
+    free(event->arguments);
+    arena_free(&event->storage);
+    *event = (queued_event){ 0 };
+}
+static int event_copy_arguments(
+    execution_program *program,
+    queued_event *event,
+    const pin_value *arguments,
+    int count
+)
+{
+    if (program_validate_values(program, arguments, count)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    event->count = count;
+    event->arguments = xcalloc((size_t)(count + 1), sizeof *event->arguments);
+    for (int i = 0; i < count; i++) {
+        pin_value owned;
+        if (pin_value_collection_copy(&program->owner_program->managed->storage, &owned, &arguments[i])) {
+            event_free(event);
+            return FLOW_ERR_ARGUMENT;
+        }
+        if (pin_value_snapshot_to_arena(&event->storage, &event->arguments[i], &owned)) {
+            pin_value_collection_release(&owned);
+            event_free(event);
+            return FLOW_ERR_ARGUMENT;
+        }
+    }
+    return FLOW_OK;
+}
+static int state_assign(execution_program *program, state_value *state, const pin_value *value)
 {
     arena storage = { 0 };
-    pin_value copy;
-    if (pin_value_snapshot_to_arena(&storage, &copy, value)) {
+    pin_value owned, copy;
+    if (program_validate_values(program, value, 1)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    /* Only values that hold storage share collection owners in the managed
+     * heap; a scalar or pointer header would leave its type name there. */
+    owned = *value;
+    if (pin_value_holds_storage(value) &&
+        pin_value_collection_copy(&program->owner_program->managed->storage, &owned, value)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (pin_value_snapshot_to_arena(&storage, &copy, &owned)) {
+        pin_value_collection_release(&owned);
         arena_free(&storage);
         return FLOW_ERR_ARGUMENT;
     }
+    pin_value_collection_release(&state->value);
     if (state->storage.first) {
         apush(state->retired, state->storage);
     }
@@ -359,6 +409,25 @@ static bool registration_state(const execution_program *p, int index)
 {
     return p->registration_state || p->module->plan.states[index].shared;
 }
+static int initialize_states(execution_program *p, state_value *states, bool shared)
+{
+    pin_value *defaults = NULL;
+    int *indices = NULL;
+    for (int i = 0; i < p->module->plan.state_count; i++) {
+        if (registration_state(p, i) == shared) {
+            apush(defaults, p->module->plan.states[i].initial);
+            apush(indices, i);
+        }
+    }
+    int count = acount(defaults);
+    int status = program_validate_values(p, defaults, count);
+    for (int i = 0; i < count && !status; i++) {
+        status = state_assign(p, &states[indices[i]], &defaults[i]);
+    }
+    afree(defaults);
+    afree(indices);
+    return status;
+}
 static bool system_module(const execution_module *module)
 {
     for (int i = 0; i < module->plan.function_count; i++) {
@@ -417,12 +486,9 @@ static execution_program *program_new(
         }
     }
     p->shared = xcalloc((size_t)(m->plan.state_count + 1), sizeof *p->shared);
-    for (int i = 0; i < m->plan.state_count; i++) {
-        if (registration_state(p, i) &&
-            state_assign(&p->shared[i], &m->plan.states[i].initial)) {
-            execution_program_free(p);
-            return NULL;
-        }
+    if (initialize_states(p, p->shared, true)) {
+        execution_program_free(p);
+        return NULL;
     }
     if (m->plan.query >= 0) {
         for (int i = 0; i < m->plan.query_count; i++) {
@@ -541,12 +607,15 @@ static void commit_state(execution_instance *instance)
                 !strcmp(state->value.type_name, value.type_name)) {
                 value.type_name = state->value.type_name;
             } else {
-                int status = state_assign(state, &value);
+                int status = state_assign(instance->program, state, &value);
                 assert(!status);
                 (void)status;
                 instance->values[i] = state->value;
                 continue;
             }
+        }
+        if (state->value.ptr != value.ptr) {
+            pin_value_collection_release(&state->value);
         }
         state->value = value;
         instance->values[i] = value;
@@ -703,7 +772,7 @@ static void store_value(void *owner, int variable, const pin_value *value)
     assert(variable >= 0 && variable < instance->program->module->plan.state_count);
     assert(program_same_type(instance->program->module->plan.states[variable].initial, *value));
     commit_state(instance);
-    int result = state_assign(instance_storage(instance, variable), value);
+    int result = state_assign(instance->program, instance_storage(instance, variable), value);
     assert(!result);
     (void)result;
     sync_state(instance);
@@ -834,6 +903,8 @@ static void row_insert(execution_program *p, execution_instance *instance)
     }
     p->row_table[row_bucket(p, instance->owner, instance->query_variables)] = instance;
 }
+static void instance_free(execution_instance *);
+static void detach_row(execution_program *, int index);
 static execution_instance *attach_row(execution_program *p, uint64_t owner, const uint64_t *variables)
 {
     execution_instance *existing = program_instance_row(p, owner, variables);
@@ -874,23 +945,31 @@ static execution_instance *attach_row(execution_program *p, uint64_t owner, cons
             sizeof *instance->query_snapshot
         );
     }
-    for (int i = 0; i < count; i++) {
-        if (!registration_state(p, i)) {
-            int result = state_assign(
-                &instance->states[i],
-                &p->module->plan.states[i].initial
-            );
-            assert(!result);
-            (void)result;
-        }
+    if (initialize_states(p, instance->states, false)) {
+        instance_free(instance);
+        return NULL;
     }
     sync_state(instance);
+    bool *attached = xcalloc((size_t)(acount(p->imports) + 1), sizeof *attached);
+    for (int i = 0; i < acount(p->imports); i++) {
+        execution_program *child = p->imports[i];
+        attached[i] = !program_instance_row(child, owner, variables);
+        if (!attach_row(child, owner, variables)) {
+            for (int j = 0; j < i; j++) {
+                if (attached[j]) {
+                    execution_instance *row = program_instance_row(p->imports[j], owner, variables);
+                    detach_row(p->imports[j], row->index);
+                }
+            }
+            free(attached);
+            instance_free(instance);
+            return NULL;
+        }
+    }
+    free(attached);
     instance->index = acount(p->instances);
     apush(p->instances, instance);
     row_insert(p, instance);
-    for (int i = 0; i < acount(p->imports); i++) {
-        attach_row(p->imports[i], owner, variables);
-    }
     return instance;
 }
 execution_instance *execution_program_attach(execution_program *p, uint64_t owner)
@@ -904,7 +983,9 @@ execution_instance *execution_program_attach(execution_program *p, uint64_t owne
     }
     uint64_t variables[ECS_QUERY_VARS] = { 0 };
     execution_instance *instance = attach_row(p, owner, variables);
-    instance->query_managed = false;
+    if (instance) {
+        instance->query_managed = false;
+    }
     return instance;
 }
 static void instance_free(execution_instance *instance)
@@ -1028,11 +1109,11 @@ void execution_program_free(execution_program *p)
     }
     afree(p->imports);
     for (int i = 0; i < acount(p->events); i++) {
-        free(p->events[i].arguments);
-        arena_free(&p->events[i].storage);
+        event_free(&p->events[i]);
     }
     afree(p->events);
     for (int i = 0; i < acount(p->field_edges); i++) {
+        pin_value_collection_release(&p->field_edges[i].value);
         arena_free(&p->field_edges[i].storage);
     }
     afree(p->field_edges);
@@ -1617,12 +1698,36 @@ int execution_instance_dispatch(
     unsigned budget
 )
 {
-    if (!arguments_owned(instance->program, arguments, count)) {
+    execution_program *program = instance->program;
+    if (!arguments_owned(program, arguments, count)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    /* Scalars are their own copies, so only arguments that hold storage need
+     * an owned copy the dispatch roots. */
+    bool held = false;
+    for (int i = 0; i < count; i++) {
+        held |= pin_value_holds_storage(&arguments[i]);
+    }
+    queued_event values = { 0 };
+    queued_event *events = NULL;
+    queued_event_batch batch = { .previous = program->dispatch_events };
+    if (held) {
+        if (event_copy_arguments(program, &values, arguments, count)) {
+            return FLOW_ERR_ARGUMENT;
+        }
+        apush(events, values);
+        batch.events = events;
+        program->dispatch_events = &batch;
+        arguments = values.arguments;
+    } else if (program_validate_values(program, arguments, count)) {
         return FLOW_ERR_ARGUMENT;
     }
     int status = dispatch_to(instance, event, instance->owner, arguments, count, now, delta, budget);
-    program_apply_services(instance->program->owner_program);
-    program_collect_states(instance->program);
+    program->dispatch_events = batch.previous;
+    afree(events);
+    event_free(&values);
+    program_apply_services(program->owner_program);
+    program_collect_states(program);
     return status;
 }
 const pin_value *execution_instance_state(const execution_instance *instance, uint64_t id)
@@ -1644,7 +1749,7 @@ int execution_instance_set_state(execution_instance *instance, uint64_t id, pin_
             if (!program_same_type(instance->program->module->plan.states[i].initial, value)) {
                 return FLOW_ERR_ARGUMENT;
             }
-            int status = state_assign(instance_storage(instance, i), &value);
+            int status = state_assign(instance->program, instance_storage(instance, i), &value);
             sync_state(instance);
             if (!instance->running) {
                 program_collect_states(instance->program);
@@ -1674,13 +1779,8 @@ int execution_program_emit(
         return FLOW_ERR_ARGUMENT;
     }
     queued_event e = { .event = event, .owner = owner, .count = count };
-    e.arguments = xcalloc((size_t)(count + 1), sizeof *e.arguments);
-    for (int i = 0; i < count; i++) {
-        if (pin_value_snapshot_to_arena(&e.storage, &e.arguments[i], &arguments[i])) {
-            free(e.arguments);
-            arena_free(&e.storage);
-            return FLOW_ERR_ARGUMENT;
-        }
+    if (event_copy_arguments(p, &e, arguments, count)) {
+        return FLOW_ERR_ARGUMENT;
     }
     apush(p->events, e);
     return FLOW_OK;
@@ -1823,6 +1923,7 @@ static int query_matches(execution_instance *instance, int index)
             /* Even a non-suspending predicate can reuse its VM scratch. */
             context->activation = &e->activation;
             context->query_variables = instance->query_variables;
+            context->managed_heap = p->owner_program->managed;
             context->module = p->module;
             context->results = &result;
             context->now = p->now;
@@ -1963,6 +2064,12 @@ static int refresh_rows(execution_program *p)
             int match = query_matches(instance, p->module->plan.query);
             if (added && match > 0) {
                 instance = attach_row(p, candidate.owner, candidate.query_variables);
+                if (!instance) {
+                    ecs_query_end(&query);
+                    free(snapshot);
+                    free(initial);
+                    return FLOW_ERR_ARGUMENT;
+                }
                 instance->query_managed = true;
                 instance->query_new = true;
                 instance->query_seen = true;
@@ -2158,7 +2265,8 @@ size_t program_row_worker_bytes(const execution_program *p)
     for (int i = 0; i < acount(p->row_workers); i++) {
         const execution_program *worker = p->row_workers[i].program;
         bytes += sizeof *worker + program_activation_cache_bytes(worker) +
-                 reduction_capacity(worker);
+                 reduction_capacity(worker) + sizeof *worker->managed +
+                 arena_storage_bytes(&worker->managed->storage);
     }
     return bytes;
 }
@@ -2169,6 +2277,8 @@ static void row_workers_trim(execution_program *p, int count)
         /* Worker programs borrow their module, names, services and world. */
         assert(!worker->running && !worker->dispatching && !worker->query_evaluators);
         program_activation_cache_free(worker);
+        behavior_managed_heap_free(worker->managed);
+        free(worker->managed);
         afree(worker->reductions);
         afree(worker->reduction_table);
         free(worker);
@@ -2279,7 +2389,10 @@ int execution_program_run_system_parallel(execution_program *p, const task_syste
     assert(tasks->enqueue && tasks->finish && p->reducing && !acount(p->reductions));
     row_workers_trim(p, chunks);
     while (acount(p->row_workers) < chunks) {
-        apush(p->row_workers, ((execution_row_worker){ .program = xcalloc(1, sizeof *p) }));
+        execution_program *worker = xcalloc(1, sizeof *worker);
+        worker->managed = xcalloc(1, sizeof *worker->managed);
+        behavior_managed_heap_init(worker->managed);
+        apush(p->row_workers, ((execution_row_worker){ .program = worker }));
     }
     for (int i = 0; i < chunks; i++) {
         execution_program *worker = p->row_workers[i].program;
@@ -2384,8 +2497,7 @@ static int dispatch_events(execution_program *p)
                 break;
             }
         }
-        free(e->arguments);
-        arena_free(&e->storage);
+        event_free(e);
         batch.first = i + 1;
         if (failure < 0) {
             queued_event *later = p->events;
@@ -2422,8 +2534,7 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
     if (streaming(p)) {
         /* These modules have no handlers, bindings, state, or suspension. */
         for (int i = 0; i < acount(p->events); i++) {
-            free(p->events[i].arguments);
-            arena_free(&p->events[i].storage);
+            event_free(&p->events[i]);
         }
         asetlen(p->events, 0);
         int status = prepare_stream(p);
@@ -2767,9 +2878,25 @@ static int prior_state(const execution_module *before, const execution_module_st
     }
     return -1;
 }
-static bool same_state(const execution_module_state *a, const execution_module_state *b)
+/* A kept value of prior as state keeps it: unchanged, or converted when its
+ * type changed. False when no conversion exists, and state keeps its
+ * initializer. */
+static bool kept_value(
+    arena *scratch,
+    const execution_module_state *prior,
+    const execution_module_state *state,
+    pin_value value,
+    pin_value *out
+)
 {
-    return a->shared == b->shared && program_same_type(a->initial, b->initial);
+    if (prior->shared != state->shared) {
+        return false;
+    }
+    if (program_same_type(prior->initial, state->initial)) {
+        *out = value;
+        return true;
+    }
+    return program_migrate_value(scratch, value, state->initial, out);
 }
 static bool record_current(const execution_module *module, const pin_record *record)
 {
@@ -2795,12 +2922,8 @@ typedef struct
     const pin_record **current;
     program_pointer_set cells;
 } layout_check;
-/* Whether every authored record that value reaches through a managed pointer
- * has the layout module declares. A kept cell keeps the layout it was made
- * with, so a replacement keeping state that reaches an older one is refused. */
-static bool pointees_current(layout_check *c, pin_value value)
+static bool pointees_reach_current(layout_check *c)
 {
-    apush(c->pending, ((layout_value){ value, false }));
     while (acount(c->pending)) {
         layout_value item = apop(c->pending);
         pin_value v = item.value;
@@ -2864,28 +2987,50 @@ static bool pointees_current(layout_check *c, pin_value value)
     }
     return true;
 }
-/* Rejects a replacement that would drop a kept value: the old program keeps
- * running, and a restart applies the change. A shared value always exists;
- * preserve_state checks instance values per row. */
-static int preserve_shared(execution_program *next, const execution_program *before)
+/* Whether every authored record that value reaches through a managed pointer
+ * has the layout module declares. A kept cell keeps the layout it was made
+ * with. Cells stay visited only after a check that holds, since every record
+ * they reach was then found current. */
+static bool pointees_current(layout_check *c, pin_value value)
+{
+    apush(c->pending, ((layout_value){ value, false }));
+    if (!pointees_reach_current(c)) {
+        asetlen(c->pending, 0);
+        free(c->cells.slots);
+        c->cells = (program_pointer_set){ 0 };
+        return false;
+    }
+    return true;
+}
+/* Keeps each shared value next can keep. A reload always applies: a value
+ * that cannot convert, or whose state became per instance, keeps next's
+ * initializer. preserve_state keeps instance values per row. */
+static void preserve_shared(execution_program *next, const execution_program *before)
 {
     for (int i = 0; i < next->module->plan.state_count; i++) {
         const execution_module_state *state = &next->module->plan.states[i];
         int old = prior_state(before->module, state);
-        if (old < 0 || !registration_state(before, old)) {
+        if (old < 0 || !registration_state(before, old) ||
+            !registration_state(next, i)) {
             continue;
         }
-        if (!registration_state(next, i) ||
-            !same_state(&before->module->plan.states[old], state)) {
-            return FLOW_ERR_ARGUMENT;
+        arena scratch = { 0 };
+        pin_value value;
+        if (kept_value(
+                &scratch,
+                &before->module->plan.states[old],
+                state,
+                before->shared[old].value,
+                &value
+            )) {
+            int status = state_assign((execution_program *)before, &next->shared[i], &value);
+            assert(!status);
+            (void)status;
         }
-        int status = state_assign(&next->shared[i], &before->shared[old].value);
-        assert(!status);
-        (void)status;
+        arena_free(&scratch);
     }
-    return FLOW_OK;
 }
-static int preserve_state(
+static void preserve_state(
     execution_program *next,
     const execution_program *before,
     uint64_t owner,
@@ -2896,7 +3041,7 @@ static int preserve_state(
     execution_instance *instance = program_instance_row(next, owner, variables);
     assert(instance);
     if (!old) {
-        return FLOW_OK;
+        return;
     }
     instance->time = old->time;
     for (int i = 0; i < next->module->plan.action_count; i++) {
@@ -2923,61 +3068,73 @@ static int preserve_state(
     for (int i = 0; i < next->module->plan.state_count; i++) {
         const execution_module_state *state = &next->module->plan.states[i];
         int index = prior_state(before->module, state);
-        if (index < 0 || registration_state(before, index)) {
+        if (index < 0 || registration_state(before, index) ||
+            registration_state(next, i)) {
             continue;
         }
-        if (registration_state(next, i) ||
-            !same_state(&before->module->plan.states[index], state)) {
-            return FLOW_ERR_ARGUMENT;
-        }
+        arena scratch = { 0 };
+        pin_value value;
         /* A staged candidate deliberately retains the original family's
          * identities; its stable root snapshots pin them until adoption. */
-        int status = state_assign(
-            instance_storage(instance, i),
-            &old->states[index].value
-        );
-        assert(!status);
-        (void)status;
-        sync_state(instance);
+        if (kept_value(
+                &scratch,
+                &before->module->plan.states[index],
+                state,
+                old->states[index].value,
+                &value
+            )) {
+            int status = state_assign((execution_program *)before, instance_storage(instance, i), &value);
+            assert(!status);
+            (void)status;
+        }
+        arena_free(&scratch);
     }
-    return FLOW_OK;
+    sync_state(instance);
 }
-/* Whether every value a candidate scope keeps reaches only current record
- * layouts. Kept cells are shared with the running program, which may change
- * them until commit. */
-static bool scope_current(const execution_program *scope)
+static void reset_state(execution_program *scope, state_value *slot, const execution_module_state *state)
+{
+    int status = state_assign(scope, slot, &state->initial);
+    assert(!status);
+    (void)status;
+}
+/* Resets each value a candidate scope keeps that reaches a record layout the
+ * replacement changed: shared and instance state to its initializer, a node
+ * state to a fresh one. Kept cells are shared with the running program, which
+ * may change them until commit. */
+static void reset_stale(execution_program *scope)
 {
     const execution_module *module = scope->module;
     layout_check c = { .module = module };
-    bool current = true;
-    for (int i = 0; current && i < module->plan.state_count; i++) {
-        current = pointees_current(&c, scope->shared[i].value);
+    for (int i = 0; i < module->plan.state_count; i++) {
+        if (!pointees_current(&c, scope->shared[i].value)) {
+            reset_state(scope, &scope->shared[i], &module->plan.states[i]);
+        }
     }
-    for (int i = 0; current && i < acount(scope->instances); i++) {
-        const execution_instance *instance = scope->instances[i];
-        for (int j = 0; current && j < module->plan.state_count; j++) {
-            current = pointees_current(&c, instance->states[j].value);
+    for (int i = 0; i < acount(scope->instances); i++) {
+        execution_instance *instance = scope->instances[i];
+        for (int j = 0; j < module->plan.state_count; j++) {
+            if (!registration_state(scope, j) &&
+                !pointees_current(&c, instance->states[j].value)) {
+                reset_state(scope, &instance->states[j], &module->plan.states[j]);
+            }
         }
-        for (int j = 0; current && j < acount(instance->node_states); j++) {
-            current = pointees_current(&c, instance->node_states[j]);
+        for (int j = 0; j < acount(instance->node_states); j++) {
+            if (!pointees_current(&c, instance->node_states[j])) {
+                instance->node_states[j] = (pin_value){ 0 };
+            }
         }
+        sync_state(instance);
     }
     afree(c.pending);
     afree(c.current);
     free(c.cells.slots);
-    return current;
 }
-static bool candidate_current(const execution_program *candidate)
+static void reset_stale_candidate(execution_program *candidate)
 {
-    if (!scope_current(candidate)) {
-        return false;
-    }
+    reset_stale(candidate);
     for (int i = 0; i < acount(candidate->imports); i++) {
-        if (!scope_current(candidate->imports[i])) {
-            return false;
-        }
+        reset_stale(candidate->imports[i]);
     }
-    return true;
 }
 static bool query_shape_equal(const execution_module *a, const execution_module *b)
 {
@@ -3144,38 +3301,44 @@ execution_program *execution_program_prepare_replace_services(
     }
     execution_program_set_name(next, p->name);
     next->enabled = p->enabled;
-    int status = restart ? FLOW_OK : preserve_shared(next, p);
-    for (int n = 0; !restart && !status && n < acount(next->imports); n++) {
+    if (!restart) {
+        preserve_shared(next, p);
+    }
+    for (int n = 0; !restart && n < acount(next->imports); n++) {
         for (int o = 0; o < acount(p->imports); o++) {
             const execution_module *old = p->imports[o]->module;
             const execution_module *now = next->imports[n]->module;
             if (old == now || (now->plan.id && now->plan.id == old->plan.id)) {
-                status = preserve_shared(next->imports[n], p->imports[o]);
+                preserve_shared(next->imports[n], p->imports[o]);
                 break;
             }
         }
     }
-    for (int i = 0; !status && i < acount(p->instances); i++) {
+    for (int i = 0; i < acount(p->instances); i++) {
         execution_instance *before = p->instances[i];
         if (before->query_managed && !query_shape_equal(module, p->module)) {
             continue;
         }
         execution_instance *after = attach_row(next, before->owner, before->query_variables);
+        if (!after) {
+            execution_program_free(next);
+            return NULL;
+        }
         after->query_managed = before->query_managed;
         after->time = restart ? 0 : before->time;
         if (restart) {
             continue;
         }
-        status = preserve_state(next, p, before->owner, before->query_variables);
+        preserve_state(next, p, before->owner, before->query_variables);
         preserve_changes(after, before);
-        for (int n = 0; !status && n < acount(next->imports); n++) {
+        for (int n = 0; n < acount(next->imports); n++) {
             for (int o = 0; o < acount(p->imports); o++) {
                 const execution_module *old = p->imports[o]->module;
                 const execution_module *now = next->imports[n]->module;
                 if (old != now && (!now->plan.id || now->plan.id != old->plan.id)) {
                     continue;
                 }
-                status = preserve_state(
+                preserve_state(
                     next->imports[n],
                     p->imports[o],
                     before->owner,
@@ -3185,10 +3348,7 @@ execution_program *execution_program_prepare_replace_services(
             }
         }
     }
-    if (status || !candidate_current(next)) {
-        execution_program_free(next);
-        return NULL;
-    }
+    reset_stale_candidate(next);
     next->replacement_of = p;
     next->replacement_module = p->module;
     replacement_scope_roots(next, next);
@@ -3206,7 +3366,7 @@ execution_program *execution_program_prepare_replace_services(
     }
     return next;
 }
-int execution_program_commit_replace(execution_program *p, execution_program *next)
+void execution_program_commit_replace(execution_program *p, execution_program *next)
 {
     assert(
         p && next && !p->dispatching && !p->running &&
@@ -3214,10 +3374,7 @@ int execution_program_commit_replace(execution_program *p, execution_program *ne
         !next->running && !next->system_prepared
     );
     assert(next->replacement_of == p && next->replacement_module == p->module);
-    if (!candidate_current(next)) {
-        execution_program_free(next);
-        return FLOW_ERR_STATE;
-    }
+    reset_stale_candidate(next);
     execution_program_cancel_system(p);
     replacement_unroot(next);
     next->replacement_of = NULL;
@@ -3254,7 +3411,6 @@ int execution_program_commit_replace(execution_program *p, execution_program *ne
     }
     execution_program_free(next);
     behavior_managed_heap_release_empty(heap);
-    return FLOW_OK;
 }
 int execution_program_replace(execution_program *p, execution_module *module, bool restart)
 {
@@ -3262,7 +3418,8 @@ int execution_program_replace(execution_program *p, execution_module *module, bo
     if (!next) {
         return FLOW_ERR_COMPILE;
     }
-    return execution_program_commit_replace(p, next);
+    execution_program_commit_replace(p, next);
+    return FLOW_OK;
 }
 
 static bool services_busy(const execution_program *p)

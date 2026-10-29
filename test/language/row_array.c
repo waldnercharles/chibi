@@ -3,6 +3,7 @@
 #include "compiler_fixture.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/module_effects.h"
 #include "execution/status.h"
@@ -41,6 +42,7 @@ static native_capabilities *native;
 static uint64_t function_id, expected_id, expected_layout;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap heap;
 static behavior_run_scope runs;
 static pin_copy_scope copies;
 static pin_value result;
@@ -86,6 +88,7 @@ static void cleanup()
         behavior_run_scope_end(&runs);
     }
     retire_module();
+    behavior_managed_heap_free(&heap);
     arena_free(&producer);
     arena_free(&storage);
     result = (pin_value){ 0 };
@@ -173,7 +176,8 @@ static bool check_row(const pin_value *value, int number, const char *shared_tex
                 pin_text(v).bytes &&
                 !strcmp(pin_text(v).bytes, shared_text ? shared_text : buffer)
             );
-            REQUIRE(arena_contains(owner, pin_text(v).bytes));
+            /* Text shares its immutable bytes; the owner holds the descriptor. */
+            REQUIRE(arena_contains(owner, v.text));
         } else if (v.type == PIN_I32) {
             REQUIRE(v.i == number + f);
         } else {
@@ -182,6 +186,12 @@ static bool check_row(const pin_value *value, int number, const char *shared_tex
     }
     return true;
 }
+/* A result lives in the caller's storage, or, when the function shares an
+ * array it built, on the caller's managed heap. */
+static bool caller_owns(const void *p)
+{
+    return arena_contains(&storage, p) || arena_contains(&heap.storage, p);
+}
 static bool check_array(const pin_value *value, int count, const char *shared_text)
 {
     REQUIRE(value->type == PIN_STRUCT && value->container == PIN_CONTAINER_ARRAY);
@@ -189,25 +199,19 @@ static bool check_array(const pin_value *value, int count, const char *shared_te
     REQUIRE(value->record->id == expected_id && value->record->layout == expected_layout);
     REQUIRE(value->type_name == value->record->type.name);
     REQUIRE(!strcmp(value->type_name, "Rows.Row"));
-    REQUIRE(arena_contains(&storage, value->record));
+    REQUIRE(caller_owns(value->record));
     const pin_array *a = value->ptr;
-    REQUIRE(a && arena_contains(&storage, a));
+    REQUIRE(a && caller_owns(a));
     REQUIRE(a->count == count && a->element_type == PIN_STRUCT);
     REQUIRE(a->record == value->record && a->type_name == value->type_name);
     for (int i = 0; i < count; i++) {
         REQUIRE(pin_array_get(a, i).record == a->record);
         pin_value item = pin_array_get(a, i);
-        REQUIRE(check_row(&item, i, shared_text, &storage));
+        REQUIRE(
+            check_row(&item, i, shared_text, arena_contains(&storage, a) ? &storage : &heap.storage)
+        );
     }
     return true;
-}
-static uint64_t row_text_bytes(const pin_value *value)
-{
-    uint64_t bytes = 0;
-    for (int f = 0; f < 5; f++) {
-        bytes += strlen(pin_text(member(value, f)).bytes) + 1;
-    }
-    return bytes;
 }
 static void expect_layout(const pin_record *record)
 {
@@ -258,10 +262,6 @@ TEST_CASE(row_array_direct_cost_and_aliases)
                 for (int i = 0; i < count; i++) {
                     items[i] = row(record, i);
                 }
-                uint64_t weighted_text = 0;
-                for (int i = 0; i < count; i++) {
-                    weighted_text += row_text_bytes(&items[i]) * (count - i);
-                }
                 pin_array empty;
                 pin_value initial = array_header(&empty, record, NULL, 0);
                 REQUIRE(!pin_value_snapshot_to_arena(&storage, &result, &initial));
@@ -282,17 +282,12 @@ TEST_CASE(row_array_direct_cost_and_aliases)
                 uint64_t copies_expected = (uint64_t)count * (count + 1) / 2;
                 REQUIRE(!copies.counts.overflow);
                 REQUIRE(copies.counts.record_bytes == copies_expected * payload);
-                REQUIRE(copies.counts.text_bytes == weighted_text);
+                REQUIRE(!copies.counts.text_bytes);
                 REQUIRE(copies.counts.value_header_moves == copies_expected);
                 REQUIRE(!copies.counts.nominal_bytes && !copies.counts.value_buffer_bytes);
                 report(operation ? "append" : "add", wrapper, count, blocks);
                 REQUIRE(check_array(&prefix, count ? 1 : 0, NULL));
                 REQUIRE(check_array(&result, count, NULL));
-                for (int i = 0; i < count; i++) {
-                    for (int f = 0; f < 5; f++) {
-                        ((char *)pin_text(member(&items[i], f)).bytes)[0] = 'X';
-                    }
-                }
                 arena_free(&producer);
                 REQUIRE(check_array(&prefix, count ? 1 : 0, NULL));
                 REQUIRE(check_array(&result, count, NULL));
@@ -310,10 +305,6 @@ TEST_CASE(row_array_direct_cost_and_aliases)
         for (int i = 0; i < count; i++) {
             items[i] = row(record, i);
         }
-        uint64_t text_bytes = 0;
-        for (int i = 0; i < count; i++) {
-            text_bytes += row_text_bytes(&items[i]);
-        }
         pin_array a;
         pin_value input = array_header(&a, record, items, count);
         uint64_t blocks = arena_block_allocations();
@@ -323,7 +314,7 @@ TEST_CASE(row_array_direct_cost_and_aliases)
         pin_copy_scope_end(&copies);
         REQUIRE(!copies.counts.overflow);
         REQUIRE(copies.counts.record_bytes == (uint64_t)count * payload);
-        REQUIRE(copies.counts.text_bytes == text_bytes);
+        REQUIRE(!copies.counts.text_bytes);
         REQUIRE(copies.counts.value_header_moves == (uint64_t)count + 1);
         REQUIRE(!copies.counts.nominal_bytes && !copies.counts.value_buffer_bytes);
         report("one-pass-snapshot", 0, count, blocks);
@@ -405,9 +396,8 @@ TEST_CASE(row_array_call_collectable_results)
         REQUIRE(!call->value(&storage, arguments[i], 2, &retained[i]));
         REQUIRE(check_array(&retained[i], counts[i], NULL));
     }
-    for (int f = 0; f < 5; f++) {
-        ((char *)pin_text(member(&item, f)).bytes)[0] = 'X';
-    }
+    /* Text bytes are immutable and shared, so freeing their producer is the
+     * change the results must survive. */
     arena_free(&producer);
     arena_collection collection;
     arena *arenas[] = { &storage };
@@ -512,6 +502,8 @@ static bool run(behavior_backend backend, int count, const char *source_text, co
     activation = (behavior_function_activation){ 0 };
     context = (behavior_function_context){ 0 };
     arena_free(&storage);
+    behavior_managed_heap_free(&heap);
+    behavior_managed_heap_init(&heap);
     const behavior_function *function = body();
     REQUIRE(function);
     result = function->result_defaults[0];
@@ -525,6 +517,7 @@ static bool run(behavior_backend backend, int count, const char *source_text, co
                                            .arguments = args,
                                            .argument_count = 2,
                                            .results = &result,
+                                           .managed_heap = &heap,
                                            .budget = 10000 };
     behavior_function_bind_storage(&context, &storage);
     REQUIRE(behavior_function_bind(function, &context, NULL, 0));
@@ -588,14 +581,11 @@ TEST_CASE(row_array_authored_construction)
     /* Exact selected-copy predictions for an in-place local add and an
      * in-place append of one-row arrays: both are linear in the row count.
      * Constructor, argument and return work remains in these totals. */
-    static const uint64_t row_copies[][4] = { { 0, 5, 17, 65 }, { 0, 6, 21, 81 } };
-    /* Each constructor also owns five explicit field values: 5 * 9 extra
-     * bytes per row. The first constructor snapshots the empty base's five
-     * descriptors once, adding 5 bytes per nonempty invocation. Later base
-     * snapshots contain the strings already counted in the original totals. */
-    static const uint64_t text_bytes[][4] = { { 0, 275, 1085, 4325 },
-                                              { 0, 320, 1265, 5045 } };
-    static const uint64_t headers[][4] = { { 4, 21, 69, 261 }, { 4, 22, 73, 277 } };
+    static const uint64_t row_copies[][4] = { { 0, 3, 9, 33 }, { 0, 6, 21, 81 } };
+    /* Text shares its immutable bytes: the call copies its borrowed text
+     * argument, "producer" and its terminator, once, and every row shares it. */
+    static const uint64_t text_bytes = 9;
+    static const uint64_t headers[][4] = { { 13, 29, 74, 254 }, { 13, 33, 90, 318 } };
     static const char *sources[] = {
         "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
@@ -619,7 +609,7 @@ TEST_CASE(row_array_authored_construction)
                     copies.counts.record_bytes ==
                     row_copies[operation][n] * result.record->type.size
                 );
-                REQUIRE(copies.counts.text_bytes == text_bytes[operation][n]);
+                REQUIRE(copies.counts.text_bytes == text_bytes);
                 REQUIRE(copies.counts.value_header_moves == headers[operation][n]);
                 REQUIRE(!copies.counts.nominal_bytes && !copies.counts.value_buffer_bytes);
                 memset(input, 'x', sizeof input - 1);
@@ -693,11 +683,12 @@ static const char *call_intrinsic(const node_host_call *call, arena *storage, pi
     return call->value(storage, args, count, &out);
 }
 /* A local array of plain scalars changes in place without boxing: a byte
- * costs a byte, and extending one packed array by another copies bytes. An
- * item that does not fit inline boxes the array once. */
+ * costs a byte, and extending one packed array by another copies bytes. */
 TEST_CASE(row_array_owned_scalars_stay_packed)
 {
-    arena storage = { 0 };
+    /* Local arrays live on a collectable managed heap. */
+    arena storage;
+    arena_init_collectable(&storage);
     pin_value bytes = { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY };
     for (int i = 0; i < 20; i++) {
         pin_value args[] = { { .u64 = (uint64_t)(uintptr_t)&bytes },
@@ -724,25 +715,17 @@ TEST_CASE(row_array_owned_scalars_stay_packed)
                          { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY, .ptr = boxed } };
     REQUIRE(!call_intrinsic(&EXECUTION_array_extend_call, &storage, more, 2));
     REQUIRE(array->stride == 1 && array->count == 42 && pin_array_get(array, 41).u8 == 8);
-    /* An item of another type boxes the array and keeps every element. */
+    /* An item of another type is rejected and leaves the array as it was,
+     * as is a store of one. */
     pin_value wide[] = { { .u64 = (uint64_t)(uintptr_t)&bytes },
                          { .type = PIN_I32, .i = 1000 } };
-    REQUIRE(!call_intrinsic(&EXECUTION_array_push_call, &storage, wide, 2));
-    REQUIRE(!array->stride && array->count == 43 && array->items);
-    /* So does a store of one. */
-    pin_value other = { .type = PIN_U8, .container = PIN_CONTAINER_ARRAY };
-    pin_value seed[] = { { .u64 = (uint64_t)(uintptr_t)&other },
-                         { .type = PIN_U8, .u8 = 1 } };
-    REQUIRE(!call_intrinsic(&EXECUTION_array_push_call, &storage, seed, 2));
-    pin_value replace[] = { { .u64 = (uint64_t)(uintptr_t)&other },
+    REQUIRE(call_intrinsic(&EXECUTION_array_push_call, &storage, wide, 2));
+    pin_value replace[] = { { .u64 = (uint64_t)(uintptr_t)&bytes },
                             { .type = PIN_I32, .i = 0 },
                             { .type = PIN_I32, .i = 9 } };
-    REQUIRE(!call_intrinsic(&EXECUTION_array_store_call, &storage, replace, 3));
-    REQUIRE(!((pin_array *)other.ptr)->stride && pin_array_get(other.ptr, 0).i == 9);
-    REQUIRE(
-        pin_array_get(array, 3).u8 == 200 && pin_array_get(array, 41).u8 == 8 &&
-        pin_array_get(array, 42).i == 1000
-    );
+    REQUIRE(call_intrinsic(&EXECUTION_array_store_call, &storage, replace, 3));
+    REQUIRE(array->stride == 1 && array->count == 42);
+    REQUIRE(pin_array_get(array, 0).u8 == 0 && pin_array_get(array, 3).u8 == 200);
     arena_free(&storage);
     return true;
 }

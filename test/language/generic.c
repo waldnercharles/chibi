@@ -15,6 +15,7 @@
 #include "types/value_document.h"
 #include "types/value_wire.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,7 @@ static execution_program *program;
 static ecs_world *world;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap heap;
 static behavior_run_scope runs;
 static arena storage;
 static pin_value result;
@@ -54,6 +56,7 @@ static void cleanup()
     }
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
     context = (behavior_function_context){ 0 };
     activation = (behavior_function_activation){ 0 };
     arena_free(&storage);
@@ -577,11 +580,44 @@ static bool migration_file_is(const char *path, const char *expected)
     text[size] = 0;
     return complete && !strcmp(text, expected);
 }
+static bool migration_directory(char root[PATH_MAX])
+{
+    const char *temporary = getenv("TMPDIR");
+    int length = snprintf(
+        root,
+        PATH_MAX,
+        "%s/chibi-number-bindings-XXXXXX",
+        temporary && *temporary ? temporary : "/tmp"
+    );
+    REQUIRE(length > 0 && length < PATH_MAX);
+    REQUIRE(mkdtemp(root));
+    return true;
+}
+TEST_CASE(generic_migration_scratch_is_private_and_owned)
+{
+    char first[PATH_MAX], second[PATH_MAX], marker[PATH_MAX + 32];
+    REQUIRE(migration_directory(first) && migration_directory(second));
+    const char *temporary = getenv("TMPDIR");
+    const char *parent = temporary && *temporary ? temporary : "/tmp";
+    size_t length = strlen(parent);
+    REQUIRE(!strncmp(first, parent, length) && first[length] == '/');
+    REQUIRE(!strncmp(second, parent, length) && second[length] == '/');
+    REQUIRE(strcmp(first, second));
+    struct stat info;
+    REQUIRE(!stat(first, &info) && S_ISDIR(info.st_mode) && (info.st_mode & 0777) == 0700);
+    REQUIRE(!stat(second, &info) && S_ISDIR(info.st_mode) && (info.st_mode & 0777) == 0700);
+    snprintf(marker, sizeof marker, "%s/owned", first);
+    REQUIRE(migration_write(marker, "first"));
+    REQUIRE(!unlink(marker) && !rmdir(first));
+    REQUIRE(!stat(second, &info) && S_ISDIR(info.st_mode));
+    REQUIRE(!rmdir(second));
+    return true;
+}
 TEST_CASE(generic_version_34_cross_file_collisions_preserve_project)
 {
-    char root[] = "/tmp/chibi-number-bindings-XXXXXX", content[256],
-         paths[4][300], error[512] = { 0 };
-    REQUIRE(mkdtemp(root));
+    char root[PATH_MAX], content[PATH_MAX + 32], paths[4][PATH_MAX + 64],
+        error[512] = { 0 };
+    REQUIRE(migration_directory(root));
     snprintf(content, sizeof content, "%s/content", root);
     REQUIRE(!mkdir(content, 0700));
     snprintf(paths[0], sizeof paths[0], "%s/project.kdl", root);
@@ -626,6 +662,7 @@ TEST_CASE(generic_version_34_cross_file_collisions_preserve_project)
 void test_language_migration34_generic_repro()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(generic_migration_scratch_is_private_and_owned);
     RUN_TEST_CASE(generic_version_34_quantity_type_arguments_migrate);
     RUN_TEST_CASE(generic_version_34_argument_roles_preserve_user_names);
     RUN_TEST_CASE(generic_version_34_bindings_and_uncertain_roles_refuse);
@@ -972,9 +1009,12 @@ TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifi
         behavior_function_prepare_results(function, &result, &storage);
         behavior_function_activation_init(function, &activation);
         pin_value variables[] = { *saved };
+        /* Run's dynamic arrays live in the caller's managed heap. */
+        behavior_managed_heap_init(&heap);
         context = (behavior_function_context){ .activation = &activation,
                                                .variables = variables,
                                                .results = &result,
+                                               .managed_heap = &heap,
                                                .budget = 10000 };
         behavior_function_bind_storage(&context, &storage);
         REQUIRE(behavior_function_bind(function, &context, NULL, 0));

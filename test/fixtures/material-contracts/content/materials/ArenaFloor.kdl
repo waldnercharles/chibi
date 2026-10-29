@@ -62,15 +62,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
                 }
             }
             - {
-                id 665
-                type "Shader Parameter"
-                reference_id 6
-                reference_name "Beat Amount"
-                outputs {
-                    Value flags=0 group=0 default=0.045
-                }
-            }
-            - {
                 id 667
                 type "Shader WorldPosition"
                 outputs {
@@ -143,7 +134,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
                     Strength id=678 type="number"
                 }
             }
-            - id=679 type="Shader Beat Pulse"
             - {
                 id 694
                 type "Call Pure Function"
@@ -260,13 +250,11 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 2244
                 type "Behavior Expression"
-                reference_name "mix(idle_size, active_size, activity) + beat * beat_amount"
+                reference_name "mix(idle_size, active_size, activity)"
                 inputs {
                     idle_size id=2245 type="number"
                     active_size id=2246 type="number"
                     activity id=2247 type="number"
-                    beat id=2248 type="number"
-                    beat_amount id=2249 type="number"
                 }
                 outputs {
                     Result id=2250 type="number"
@@ -313,7 +301,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - from="659.Value" to="739.Width"
             - from="661.Value" to="2436.idle_glow"
             - from="663.Value" to="2436.reaction_gain"
-            - from="665.Value" to="2244.beat_amount"
             - from="667.Value" to="669.Position"
             - from="667.Value" to="694.Position"
             - from="667.Value" to="700.Position"
@@ -322,7 +309,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - from="673.Color" to="676.Color"
             - from="673.Color" to="2436.influence"
             - from="676.Strength" to="2244.activity"
-            - from="679.Value" to="2244.beat"
             - from="694.Mask" to="2394.breathing"
             - from="700.Mask" to="2394.resting"
             - from="739.Mask" to="2394.outline"
@@ -713,7 +699,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
     - id=1883 kind="function" math_expression="max(width, 0.002)" expression_mode=1 entry_id=1951
     - id=1912 kind="function" math_expression="1 - smoothstep(line_width, line_width + 0.006, abs(edge_distance - inset))" expression_mode=1 entry_id=2095
     - id=2127 kind="function" math_expression="saturate(max(max(color.x, color.y), color.z) * 2.5)" expression_mode=1 entry_id=2188
-    - id=2220 kind="function" math_expression="mix(idle_size, active_size, activity) + beat * beat_amount" expression_mode=1 entry_id=2348
+    - id=2220 kind="function" math_expression="mix(idle_size, active_size, activity)" expression_mode=1 entry_id=2348
     - id=2371 kind="function" math_expression="max(max(breathing, resting * 0.24), outline)" expression_mode=1 entry_id=2554
     - id=2399 kind="function" math_expression="(influence * reaction_gain + vec3(0.42, 0.55, 0.64) * idle_glow) * line_mask" expression_mode=1 entry_id=2651
 }

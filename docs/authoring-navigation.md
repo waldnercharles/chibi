@@ -25,6 +25,10 @@ its displayed name. Prepared runtime modules contain no parser references.
 
 Consumers use these shared APIs:
 
+Static [allocation and copy explanations](cost-explanations.md) expose finalized
+cost evidence through the SDK and `chibi check --explain-costs`, with source
+ranges and explicit uncertainty. They do not measure runtime traffic.
+
 - `authoring/source_navigation.h` indexes executable documents and exact external
   declaration ranges. Definitions, references and callers use resolved IDs;
   authored event aliases retain their own identity while call hierarchy can

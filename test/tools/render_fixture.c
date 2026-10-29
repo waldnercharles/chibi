@@ -49,7 +49,7 @@ static double field(yyjson_val *entity, const char *component, const char *name)
     return yyjson_is_num(value) ? yyjson_get_num(value) : NAN;
 }
 
-TEST_CASE(rendering_fixture_spawns_a_frame_part_and_animates_its_source)
+TEST_CASE(rendering_fixture_spawns_a_frame_part_and_preserves_its_source_pose)
 {
     REQUIRE(mkdtemp(directory));
     owns_directory = true;
@@ -101,13 +101,11 @@ TEST_CASE(rendering_fixture_spawns_a_frame_part_and_animates_its_source)
     REQUIRE(fabs(field(beam, "Transform", "x") - (-100 + 24.6 * sin(.5))) < .1);
     REQUIRE(fabs(field(beam, "Transform", "y") - (70 - 24.6 * cos(.5))) < .1);
 
-    REQUIRE(fabs(field(frame, "VisualTransform", "yaw") - (.5 + .8 * 4 / 60)) < .001);
-    double pitch = field(frame, "VisualTransform", "pitch");
-    double elevation = field(frame, "Geometry3D", "elevation");
-    double age = field(frame, "VisualMotion", "reaction_age");
-    REQUIRE(pitch > .05 && pitch < .2);
-    REQUIRE(elevation > 38 && elevation < 43);
-    REQUIRE(age > 0 && age <= 4.0 / 60 + .001);
+    REQUIRE(fabs(field(frame, "VisualTransform", "yaw") - .5) < .001);
+    REQUIRE(field(frame, "VisualTransform", "pitch") == 0);
+    REQUIRE(field(frame, "VisualTransform", "roll") == 0);
+    REQUIRE(field(frame, "VisualTransform", "scale") == 1);
+    REQUIRE(field(frame, "Geometry3D", "elevation") == 36);
     return true;
 }
 
@@ -115,6 +113,6 @@ void test_tool_render_fixture(const char *binary)
 {
     assert(realpath(binary, program));
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(rendering_fixture_spawns_a_frame_part_and_animates_its_source);
+    RUN_TEST_CASE(rendering_fixture_spawns_a_frame_part_and_preserves_its_source_pose);
     pu_clear_setup();
 }

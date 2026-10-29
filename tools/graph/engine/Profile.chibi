@@ -10,7 +10,7 @@ import strings "core:strings"
 // empty when the name is unknown or no compiler is found. Its C++ compiler
 // and archive depend on the compiler and sanitizers a caller may override, so
 // CxxCompiler and ThirdParty find them once they are final.
-pub Discover :: (name: string, source_root: string, build_dir: string) -> Profile {
+pub Discover :: (name: string, source_root: string, build_dir: string, libclang_root: string) -> Profile {
     compiler := DiscoverCompiler();
     profile: Profile = {
         compiler: compiler,
@@ -25,6 +25,7 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
         sanitizers: "",
         debug_compilation_dir: "",
         libclang_include: "",
+        opengl_library: "", opengl_include: "", glx_library: "",
         libclang_library: "",
         clang_resource_include: "",
         third_party: "",
@@ -45,8 +46,8 @@ pub Discover :: (name: string, source_root: string, build_dir: string) -> Profil
         profile.sysroot = DiscoverSysroot(compiler);
     }
     profile.debug_compilation_dir = CcacheDebugDirectory(source_root, build_dir);
-    profile.libclang_include = DiscoverLibclang("include");
-    profile.libclang_library = DiscoverLibclang("library");
+    profile.libclang_include = DiscoverLibclang("include", libclang_root);
+    profile.libclang_library = DiscoverLibclang("library", libclang_root);
     profile.clang_resource_include = ClangResourceInclude(profile.libclang_library);
     return profile;
 }
@@ -99,6 +100,10 @@ DiscoverCompiler :: () -> string {
     if (chosen == "" && build.file_exists("/opt/homebrew/opt/llvm/bin/clang")) {
         return "/opt/homebrew/opt/llvm/bin/clang";
     }
+    if (chosen == "" && build.environment("CXX") == "" && build.platform() == "Linux" &&
+        build.find_executable("clang") != "" && build.find_executable("clang++") != "") {
+        chosen = "clang";
+    }
     if (chosen == "") {
         chosen = "cc";
     }
@@ -116,8 +121,13 @@ pub CxxCompiler :: (compiler: string, compiler_id: string) -> string {
     directory := strings.Slice(compiler, 0, strings.LastIndex(compiler, "/") + 1);
     name := strings.Slice(compiler, strings.ByteLength(directory), strings.ByteLength(compiler));
     for (pair in ["clang=clang++", "gcc=g++", "cc=c++"]) {
-        if (name == build.before(pair, "=") && build.file_exists(Join([directory, build.after(pair, "=")]))) {
-            return Join([directory, build.after(pair, "=")]);
+        prefix := build.before(pair, "=");
+        if (name == prefix || strings.HasPrefix(name, Join([prefix, "-"]))) {
+            suffix := strings.Slice(name, strings.ByteLength(prefix), strings.ByteLength(name));
+            candidate := Join([directory, build.after(pair, "="), suffix]);
+            if (build.file_exists(candidate)) {
+                return candidate;
+            }
         }
     }
     if (compiler_id == "GNU") {
@@ -193,11 +203,81 @@ pub CcacheDebugDirectory :: (source_root: string, build_dir: string) -> string {
     return strings.Join(parts, "/");
 }
 
-// libclang's headers or library below the first LLVM prefix that has both,
-// in root CMakeLists.txt's order of hints: Homebrew's, then the newest of
-// Debian's /usr/lib/llvm-N.
-DiscoverLibclang :: (part: string) -> string {
-    prefixes := ["/opt/homebrew/opt/llvm", "/usr/local/opt/llvm"];
+// Environment path lists use the host's separator; spaces belong to a path.
+LibclangEnvironment :: (name: string) -> string[] {
+    separator := ":";
+    if (build.platform() == "Windows") {
+        separator = ";";
+    }
+    return strings.Split(build.environment(name), separator);
+}
+
+// Conventional include/library directories still identify one installation.
+// Keep its headers and library together instead of combining LLVM versions.
+LibclangPrefix :: (directory: string) -> string {
+    while (strings.ByteLength(directory) > 1 && strings.HasSuffix(directory, "/")) {
+        directory = strings.Slice(directory, 0, strings.ByteLength(directory) - 1);
+    }
+    if (directory == "include" || directory == "lib" || directory == "lib64") {
+        return ".";
+    }
+    for (suffix in ["/include", "/lib", "/lib64"]) {
+        if (strings.HasSuffix(directory, suffix)) {
+            return strings.Slice(directory, 0, strings.ByteLength(directory) - strings.ByteLength(suffix));
+        }
+    }
+    multiarch := strings.LastIndex(directory, "/lib/");
+    if (multiarch >= 0) {
+        return strings.Slice(directory, 0, multiarch);
+    }
+    if (strings.HasPrefix(directory, "lib/") && strings.LastIndex(directory, "/") == 3) {
+        return ".";
+    }
+    return "";
+}
+
+LibclangLibrary :: (prefix: string) -> string {
+    directories := [Join([prefix, "/lib"]), Join([prefix, "/lib64"])];
+    if (build.platform() == "Linux" && build.probe(["uname", "-m"]) == 0) {
+        machine := strings.TrimSpace(build.last_stdout());
+        if (machine == "arm64") {
+            machine = "aarch64";
+        }
+        directories.append(Join([prefix, "/lib/", machine, "-linux-gnu"]));
+    }
+    for (directory in directories) {
+        for (name in ["libclang.dylib", "libclang.so", "libclang-18.dylib", "libclang-18.so", "libclang.a", "libclang-18.a"]) {
+            path := Join([directory, "/", name]);
+            if (build.file_exists(path)) {
+                return path;
+            }
+        }
+    }
+    return "";
+}
+
+// Relative environment paths name directories below the engine source root.
+// Preserve absolute aliases, including drive paths, in generated commands.
+LibclangAbsolutePrefix :: (prefix: string) -> string {
+    drive := strings.ByteLength(prefix) >= 3 && strings.Slice(prefix, 1, 1) == ":" &&
+             (strings.Slice(prefix, 2, 1) == "/" || strings.Slice(prefix, 2, 1) == "\\");
+    if (strings.HasPrefix(prefix, "/") || strings.HasPrefix(prefix, "\\\\") || drive) {
+        return prefix;
+    }
+    return build.resolve_path(Join([build.root(), "/", prefix]));
+}
+
+// An explicit root wins, followed by environment prefixes, known LLVM installs
+// and ordinary system prefixes. Each candidate must own both headers/library.
+DiscoverLibclang :: (part: string, root: string) -> string {
+    prefixes := [root];
+    prefixes.extend(LibclangEnvironment("CMAKE_PREFIX_PATH"));
+    for (variable in ["CMAKE_INCLUDE_PATH", "CMAKE_LIBRARY_PATH"]) {
+        for (directory in LibclangEnvironment(variable)) {
+            prefixes.append(LibclangPrefix(directory));
+        }
+    }
+    prefixes.extend(["/opt/homebrew/opt/llvm", "/usr/local/opt/llvm"]);
     versions: string[] = [];
     for (name in build.list_directory("/usr/lib")) {
         if (strings.HasPrefix(name, "llvm-")) {
@@ -219,15 +299,21 @@ DiscoverLibclang :: (part: string) -> string {
     for (version in versions) {
         prefixes.append(Join(["/usr/lib/", version]));
     }
-    for (prefix in prefixes) {
-        include := Join([prefix, "/include"]);
-        shared := "";
-        for (name in ["libclang.dylib", "libclang.so"]) {
-            if (shared == "" && build.file_exists(Join([prefix, "/lib/", name]))) {
-                shared = Join([prefix, "/lib/", name]);
-            }
+    prefixes.extend(["/usr/local", "/usr", "/"]);
+    for (candidate in prefixes) {
+        if (candidate == "") {
+            continue;
         }
-        if (shared != "" && build.file_exists(Join([include, "/clang-c/Index.h"]))) {
+        prefix := LibclangAbsolutePrefix(candidate);
+        if (prefix == "") {
+            continue;
+        }
+        include := Join([prefix, "/include"]);
+        if (!build.file_exists(Join([include, "/clang-c/Index.h"]))) {
+            continue;
+        }
+        shared := LibclangLibrary(prefix);
+        if (shared != "") {
             if (part == "include") {
                 return include;
             }
@@ -245,4 +331,47 @@ pub DiscoverTool :: (compiler: string, llvm: string, name: string) -> string {
         return beside;
     }
     return build.find_executable(name);
+}
+
+// Linux development libraries, in explicit search paths then the compiler's
+// native library directories. Keep the unversioned linker name, as CMake does.
+pub SystemLibrary :: (compiler: string, name: string) -> string {
+    directories: string[] = [];
+    for (variable in ["CMAKE_LIBRARY_PATH", "LIBRARY_PATH"]) {
+        directories.extend(strings.Split(build.environment(variable), ":"));
+    }
+    if (compiler != "" && build.probe([compiler, "-print-search-dirs"]) == 0) {
+        for (line in build.lines(build.last_stdout())) {
+            if (strings.HasPrefix(line, "libraries: =")) {
+                directories.extend(strings.Split(build.after(line, "libraries: ="), ":"));
+            }
+        }
+    }
+    for (directory in directories) {
+        if (directory != "" && build.file_exists(Join([directory, "/", name]))) {
+            return Join([build.resolve_path(directory), "/", name]);
+        }
+    }
+    return "";
+}
+
+// Find OpenGL headers independently of the shared libraries, as FindOpenGL
+// does. The standard /usr/include remains implicit in compiler commands.
+pub OpenGLInclude :: () -> string {
+    directories: string[] = [];
+    for (variable in ["CMAKE_INCLUDE_PATH", "CPATH", "C_INCLUDE_PATH"]) {
+        directories.extend(strings.Split(build.environment(variable), ":"));
+    }
+    for (prefix in strings.Split(build.environment("CMAKE_PREFIX_PATH"), ":")) {
+        if (prefix != "") {
+            directories.append(Join([prefix, "/include"]));
+        }
+    }
+    directories.append("/usr/include");
+    for (directory in directories) {
+        if (directory != "" && build.file_exists(Join([directory, "/GL/gl.h"]))) {
+            return build.resolve_path(directory);
+        }
+    }
+    return "";
 }

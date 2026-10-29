@@ -787,7 +787,7 @@ pub Render :: (lines: string[], page: string, sources: string[], outputs: string
 // items followed by item until there are count of them; generated pages use
 // it to keep the source line of each Markdown line they write.
 pub Pad :: (items: int[], count: int, item: int) -> int[] {
-    padded := items;
+    padded := slice(items, 0, length(items));
     while (length(padded) < count) {
         padded.append(item);
     }

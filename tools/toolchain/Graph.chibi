@@ -16,7 +16,8 @@ import strings "core:strings"
 //   --debug-frame-pointers on|off (Debug only, default off)
 //   --launcher PATH --archiver PATH --ranlib PATH --libclang-include DIR
 //   --libclang-library PATH --clang-resource-include DIR --third-party DIR --reflect PATH
-//   --asset-generator-hosts DIR
+//   --asset-generator-hosts DIR --libclang-root DIR
+//   --opengl-library PATH --glx-library PATH --opengl-include DIR
 // The explicit profile performs no toolchain discovery; every required tool
 // and platform option must be provided. It can write commands without native
 // compilers or discovery tools installed.
@@ -92,6 +93,74 @@ Libraries :: () -> int {
     return LibrariesWithArguments(build.arguments());
 }
 
+// The SDK's native reflection host uses the same graph as ordinary builds.
+// Translate the retained Make toolchain definitions at this one boundary.
+SDKReflect :: () -> int {
+    return SDKReflectWithArguments(build.arguments());
+}
+
+SDKReflectWithArguments :: (arguments: string[]) -> int {
+    options := ["--profile", "release", "--target", "reflect"];
+    preferred_libclang := Option(arguments, "--libclang-root", "");
+    definitions := false;
+    split := false;
+    index := 0;
+    while (index < length(arguments)) {
+        argument := arguments[index];
+        index += 1;
+        if (!definitions && argument == "--") {
+            definitions = true;
+            continue;
+        }
+        if (!definitions) {
+            if ((argument != "--build" && argument != "--jobs" && argument != "--libclang-root") ||
+                index == length(arguments) || strings.HasPrefix(arguments[index], "--") || arguments[index] == "") {
+                build.report(format_text("graph: invalid native reflection option '{0}'", argument));
+                return 2;
+            }
+            options.extend([argument, arguments[index]]);
+            index += 1;
+            continue;
+        }
+        if (argument == "-D" && !split) {
+            split = true;
+            continue;
+        }
+        definition := argument;
+        if (split) {
+            definition = strings.Join(["-D", argument], "");
+            split = false;
+        }
+        mapped := engine.NativeToolchainOption(definition);
+        if (length(mapped) != 2) {
+            build.report(format_text("graph: unsupported native reflection toolchain argument '{0}'", definition));
+            return 2;
+        }
+        // CMake definitions select the last occurrence.
+        options = build.concat(mapped, options);
+    }
+    if (split) {
+        build.report("graph: -D requires a native toolchain definition");
+        return 2;
+    }
+    if (preferred_libclang != "") {
+        options = build.concat(["--libclang-root", preferred_libclang], options);
+    }
+    for (name in ["--compiler", "--cxx-compiler", "--archiver", "--ranlib"]) {
+        chosen := Option(options, name, "");
+        if (chosen == "") {
+            continue;
+        }
+        program := build.find_executable(chosen);
+        if (program == "") {
+            build.report(format_text("graph: native reflection tool not found for '{0}'", chosen));
+            return 2;
+        }
+        options = build.concat([name, program], options);
+    }
+    return LibrariesWithArguments(options);
+}
+
 // Keep argument evaluation independent so bounded verification cases can share
 // compilation without sharing a profile or a build result.
 LibrariesWithArguments :: (arguments: string[]) -> int {
@@ -109,10 +178,11 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         compiler: "", cxx_compiler: "", compiler_id: "", build_type: "Release",
         debug_optimization: "", debug_frame_pointers: false, architecture: "", sysroot: "", warnings: true, sanitizers: "",
         debug_compilation_dir: "", libclang_include: "", libclang_library: "",
+        opengl_library: "", opengl_include: "", glx_library: "",
         clang_resource_include: "", third_party: "", reflect: "", asset_generator_hosts: ""
     };
     if (discover) {
-        found = engine.Discover(profile_name, build.root(), build_dir);
+        found = engine.Discover(profile_name, build.root(), build_dir, Option(arguments, "--libclang-root", ""));
     }
     compiler := Option(arguments, "--compiler", found.compiler);
     warnings := "off";
@@ -137,6 +207,14 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         launcher = build.find_executable("ccache");
         archiver = build.find_executable("ar");
     }
+    opengl_library := "";
+    opengl_include := "";
+    glx_library := "";
+    if (discover && build.platform() == "Linux") {
+        opengl_include = engine.OpenGLInclude();
+        opengl_library = engine.SystemLibrary(compiler, "libOpenGL.so");
+        glx_library = engine.SystemLibrary(compiler, "libGLX.so");
+    }
     profile: engine.Profile = {
         compiler: compiler,
         cxx_compiler: Option(arguments, "--cxx-compiler", cxx_compiler),
@@ -150,6 +228,9 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         sanitizers: sanitizers,
         debug_compilation_dir: Option(arguments, "--debug-compilation-dir", found.debug_compilation_dir),
         libclang_include: Option(arguments, "--libclang-include", found.libclang_include),
+        opengl_library: Option(arguments, "--opengl-library", opengl_library),
+        opengl_include: Option(arguments, "--opengl-include", opengl_include),
+        glx_library: Option(arguments, "--glx-library", glx_library),
         libclang_library: libclang_library,
         clang_resource_include: Option(arguments, "--clang-resource-include", resource_include),
         // The archive for the profile as overridden.
@@ -198,6 +279,14 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
             selected.append(target);
         }
     }
+    if (Option(arguments, "--commands-only", "") != "on" &&
+        Selected(arguments, "reflect") && profile.reflect == "" &&
+        (!build.file_exists(strings.Join([profile.libclang_include, "/clang-c/Index.h"], "")) ||
+         !build.file_exists(profile.libclang_library) ||
+         !build.file_exists(strings.Join([profile.clang_resource_include, "/stdbool.h"], "")))) {
+        build.report("graph: native reflection requires libclang and its matching builtin headers; set --libclang-root");
+        return 2;
+    }
     if (engine.NeedsCxx(selected) && !strings.HasPrefix(profile.cxx_compiler, "/")) {
         build.report("graph: no C++ compiler was found for the C++ sources; set CXX or --cxx-compiler");
         return 2;
@@ -210,6 +299,16 @@ LibrariesWithArguments :: (arguments: string[]) -> int {
         !build.file_exists(strings.Join([profile.third_party, "/third-party.cmake"], ""))) {
         build.report("graph: the third-party archive is not unpacked; configure with make build first, or name it with --third-party");
         return 2;
+    }
+    if (build.platform() == "Linux") {
+        for (target in selected) {
+            if ((target == "chibi-player" || target == "chibi_ctl" || target == "test_tools") &&
+                (!strings.HasPrefix(profile.opengl_library, "/") || !strings.HasPrefix(profile.glx_library, "/") ||
+                 !strings.HasPrefix(profile.opengl_include, "/"))) {
+                build.report("graph: OpenGL development files not found; set --opengl-library, --glx-library and --opengl-include");
+                return 2;
+            }
+        }
     }
     build.make_directory(build_dir);
     commands := strings.Join([build_dir, "/compile_commands.json"], "");

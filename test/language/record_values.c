@@ -115,7 +115,7 @@ static size_t row_text_bytes(const pin_value *value)
 {
     size_t size = 0;
     for (int i = 0; i < 5; i++) {
-        size += sizeof(pin_string) + pin_text(member(value, i)).length + 1;
+        size += pin_text_footprint(pin_text(member(value, i)).length);
     }
     return size;
 }
@@ -635,8 +635,8 @@ TEST_CASE(text_bytes_ownership_and_c_boundary)
     pin_value read;
     REQUIRE(!pin_read_field(&other, &field, &native, &read));
     native_bytes[0] = 'x';
-    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ "native", 6 }));
-    const pin_string slice = { "abc", 2 };
+    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ .bytes = "native", .length = 6 }));
+    const pin_string slice = { .bytes = "abc", .length = 2 };
     REQUIRE(
         !pin_text_cstring(&other, (pin_value){ .type = PIN_STR, .text = &slice }, &converted, &offset)
     );
@@ -674,7 +674,8 @@ TEST_CASE(text_utf8_validation)
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         REQUIRE(
-            pin_text_valid_utf8((pin_string){ cases[i].bytes, cases[i].length }) ==
+            pin_text_valid_utf8((pin_string){ .bytes = cases[i].bytes,
+                                              .length = cases[i].length }) ==
             cases[i].valid
         );
     }
@@ -808,6 +809,68 @@ TEST_CASE(record_native_nested_resolution_is_call_owned)
     REQUIRE(unchanged.child.label == snapshot.child.label && !arena_storage_bytes(&reads));
     return true;
 }
+TEST_CASE(native_alias_snapshots_its_own_fields)
+{
+    /* A native alias declares its target's fields, so it snapshots without
+     * the target in the catalog. */
+    typedef struct
+    {
+        const char *label;
+        float x;
+    } tagged;
+    const type_field fields[] = {
+        { .name = "label", .type = PIN_STR, .size = sizeof(char *) },
+        { .name = "x", .type = PIN_F32, .offset = offsetof(tagged, x), .size = sizeof(float) }
+    };
+    const type_desc alias = { .name = "Alias.Tagged",
+                              .size = sizeof(tagged),
+                              .fields = fields,
+                              .field_count = 2,
+                              .alias_of = "Alias.Uncataloged" };
+    REQUIRE(!type_catalog_find(alias.alias_of) && !type_alias_layout(&alias));
+    arena storage;
+    arena_init(&storage, 256);
+    char label[] = "kept";
+    tagged value = { label, 2 };
+    REQUIRE(!pin_struct_snapshot_fields(&storage, &alias, &value));
+    REQUIRE(value.label != label && !strcmp(value.label, "kept") && value.x == 2);
+    arena_free(&storage);
+    return true;
+}
+/* A header persists only its native type, which the reader links, so it
+ * writes after the type leaves the catalog; a payload needs it current. */
+TEST_CASE(retired_native_header_writes_without_its_payload)
+{
+    typedef struct
+    {
+        float x;
+    } retired;
+    const type_field field = { .name = "x", .type = PIN_F32, .size = sizeof(float) };
+    const type_desc type = { .name = "Retired.Point",
+                             .size = sizeof(retired),
+                             .fields = &field,
+                             .field_count = 1 };
+    arena storage;
+    arena_init(&storage, 256);
+    const pin_record *record = pin_record_from_type(&storage, &type);
+    REQUIRE(record && record->native && !type_catalog_find(type.name));
+    retired payload = { 2 };
+    pin_value header = { .type = PIN_STRUCT, .type_name = type.name, .record = record },
+              value = header;
+    value.ptr = &payload;
+    execution_wire wire = { 0 };
+    execution_wire_value(&wire, &value);
+    REQUIRE(
+        wire.error && !strcmp(wire.error, "Native record type is retired or its layout is incompatible")
+    );
+    afree(wire.data);
+    wire = (execution_wire){ 0 };
+    execution_wire_value(&wire, &header);
+    REQUIRE(!wire.error && wire.size > 0);
+    afree(wire.data);
+    arena_free(&storage);
+    return true;
+}
 void test_language_record_values()
 {
     pu_setup(NULL, cleanup);
@@ -824,5 +887,7 @@ void test_language_record_values()
     RUN_TEST_CASE(text_utf8_validation);
     RUN_TEST_CASE(text_keys_preserve_suffix_after_nul);
     RUN_TEST_CASE(record_native_nested_resolution_is_call_owned);
+    RUN_TEST_CASE(native_alias_snapshots_its_own_fields);
+    RUN_TEST_CASE(retired_native_header_writes_without_its_payload);
     pu_clear_setup();
 }

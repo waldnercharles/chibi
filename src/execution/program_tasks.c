@@ -103,10 +103,18 @@ static int link_of(const execution_instance *instance, const execution_task *t)
 {
     return (int)(t - instance->tasks + 1);
 }
+static void release_results(execution_task *task)
+{
+    for (int i = 0; i < task->result_count; i++) {
+        pin_value_collection_release(&task->results[i]);
+    }
+    task->result_count = 0;
+}
 /* Collection recycles a finished task only after every observing handle is gone. */
 static void reclaim(execution_instance *instance, execution_task *t)
 {
     int link = link_of(instance, t);
+    release_results(t);
     arena_free(&t->storage);
     *t = (execution_task){ .next = instance->spare };
     instance->spare = link;
@@ -157,6 +165,7 @@ static void box_release(execution_box *box)
     if (--box->holders) {
         return;
     }
+    behavior_function_collection_clear(&box->detached);
     arena_free(&box->storage);
     free(box);
 }
@@ -181,7 +190,9 @@ static void box_detach(execution_box *box)
     assert(!status);
     (void)status;
     box->detached = (behavior_function_context){ .value_storage = &box->storage,
-                                                 .result_storage = &box->storage };
+                                                 .result_storage = &box->storage,
+                                                 .managed_heap = box->owner->managed_heap };
+    behavior_function_collection_transfer(box->owner, &box->detached, &box->kept);
     box->owner = &box->detached;
     box->value = &box->kept;
     box_release(box);
@@ -439,11 +450,15 @@ void program_task_finished(execution_activation *a, bool cancelled)
                        : NULL;
     t->result_count = count;
     for (int i = 0; i < count; i++) {
-        int status = pin_value_snapshot_to_arena(
-            &t->storage,
-            &t->results[i],
+        pin_value owned;
+        int status = pin_value_collection_copy(
+            &a->context.managed_heap->storage,
+            &owned,
             &a->context.results[i]
         );
+        if (!status) {
+            status = pin_value_snapshot_to_arena(&t->storage, &t->results[i], &owned);
+        }
         assert(!status);
         (void)status;
     }
@@ -765,6 +780,9 @@ static void mark_one(task_roots *roots, const pin_value *value)
     }
     if (value->container != PIN_CONTAINER_SINGLE) {
         const pin_array *array = value->ptr;
+        if (array && !pin_array_view_valid(array)) {
+            return;
+        }
         /* Packed pointer and record arrays can reach managed task handles. */
         if (array && array->stride && value->type != PIN_POINTER &&
             value->type != PIN_QUERY && value->type != PIN_STRUCT &&
@@ -919,6 +937,7 @@ void program_tasks_free(execution_instance *instance)
             flow_host_release(t->waiters[j].request);
         }
         afree(t->waiters);
+        release_results(t);
         arena_free(&t->storage);
     }
     afree(instance->tasks);

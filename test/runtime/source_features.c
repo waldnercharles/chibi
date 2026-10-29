@@ -3,9 +3,12 @@
 #include "authoring/source_edit.h"
 #include "authoring/source_prepare.h"
 #include "ecs/ecs.h"
+#include "execution/function.h"
 #include "execution/module.h"
 #include "execution/status.h"
+#include "host/native_default.h"
 #include "render/shader_catalog.h"
+#include "render/shader_parameters.h"
 #include "render/shader_publish.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/component_catalog.h"
@@ -44,8 +47,84 @@ static shader_prepared_asset shader_record;
 static unsigned char *shader_bytes;
 static player_resource_host resource_host;
 static void *resource_generation;
-static uint64_t done_id, rotation_id, target_id, phase_id, pulse_id, period_id,
-    duration_id;
+static uint64_t done_id, vector_id, target_id;
+static bool fixture_natives;
+static struct
+{
+    CF_V3 vector;
+    uint64_t target;
+    int calls;
+} captured;
+
+/* These fixture capabilities exercise argument retention and live runtime
+ * context without depending on an optional gameplay feature. */
+static const char *capture(void *, const pin_value *arguments, pin_value *)
+{
+    captured.vector = *(const CF_V3 *)arguments[0].ptr;
+    captured.target = arguments[1].u64;
+    captured.calls++;
+    return NULL;
+}
+static const char *read_clock(
+    const behavior_function_context *context,
+    void *,
+    const pin_value *,
+    pin_value *out
+)
+{
+    if (!context->instance_time) {
+        return "Fixture clock requires an instance clock";
+    }
+    out[0].d = *context->instance_time;
+    return NULL;
+}
+static const native_parameter_definition CAPTURE_INPUTS[] = {
+    { .name = "Exec", .kind = NATIVE_PARAMETER_EXEC, .storage = PIN_FLOW },
+    { .name = "Vector", .storage = PIN_STRUCT, .type_name = "vec3" },
+    { .name = "Target",
+      .storage = PIN_HANDLE,
+      .type_name = "ecs.entity",
+      .has_default = true,
+      .default_owner = true,
+      .default_value = { .type = PIN_HANDLE } },
+};
+static const native_parameter_definition CAPTURE_OUTPUTS[] = {
+    { .name = "Then", .kind = NATIVE_PARAMETER_EXEC, .storage = PIN_FLOW },
+};
+static const native_parameter_definition CLOCK_OUTPUTS[] = {
+    { .name = "Time", .storage = PIN_F64, .type_name = "f64" },
+};
+static const native_capability_definition FIXTURE_DEFINITIONS[] = {
+    { .canonical_name = "Source Fixture Capture",
+      .source_name = "fixture_capture",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .inputs = CAPTURE_INPUTS,
+      .input_count = NATIVE_COUNT(CAPTURE_INPUTS),
+      .outputs = CAPTURE_OUTPUTS,
+      .output_count = NATIVE_COUNT(CAPTURE_OUTPUTS),
+      .completion_output = 0 },
+    { .canonical_name = "Source Fixture Clock",
+      .source_name = "fixture_clock",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .outputs = CLOCK_OUTPUTS,
+      .output_count = NATIVE_COUNT(CLOCK_OUTPUTS),
+      .completion_output = -1,
+      .pure = true },
+};
+static const node_host_call CAPTURE_CALL = { .invoke = capture };
+static const node_host_call CLOCK_CALL = { .context = read_clock };
+static const native_definition_binding FIXTURE_BINDINGS[] = {
+    { .canonical_name = "Source Fixture Capture",
+      .implementation = { .call = &CAPTURE_CALL } },
+    { .canonical_name = "Source Fixture Clock",
+      .implementation = { .call = &CLOCK_CALL } },
+};
+static const native_definition_pack FIXTURE_PACK = {
+    .definitions = FIXTURE_DEFINITIONS,
+    .definition_count = NATIVE_COUNT(FIXTURE_DEFINITIONS),
+    .bindings = FIXTURE_BINDINGS,
+    .binding_count = NATIVE_COUNT(FIXTURE_BINDINGS),
+};
 static void cleanup()
 {
     execution_program_free(program);
@@ -95,6 +174,8 @@ static void cleanup()
     shader_prepared_asset_free(&shader_record);
     free(shader_bytes);
     shader_bytes = NULL;
+    fixture_natives = false;
+    memset(&captured, 0, sizeof captured);
 }
 static uint64_t state_id(const char *name)
 {
@@ -109,7 +190,14 @@ static uint64_t state_id(const char *name)
 static bool prepare(const char *text, behavior_backend backend)
 {
     char error[256];
-    native_capabilities *native = authoring_application_catalog_new(false, error, sizeof error);
+    native_capabilities *native;
+    if (fixture_natives) {
+        const native_definition_pack extra[] = { RENDER_SHADER_PARAMETER_DEFINITION_PACK,
+                                                 FIXTURE_PACK };
+        native = host_native_default_catalog_new(NULL, 0, extra, NATIVE_COUNT(extra), error, sizeof error);
+    } else {
+        native = authoring_application_catalog_new(false, error, sizeof error);
+    }
     if (!native) {
         fprintf(stderr, "source feature catalog: %s\n", error);
         return false;
@@ -141,12 +229,8 @@ static bool prepare(const char *text, behavior_backend backend)
         return false;
     }
     done_id = state_id("done");
-    rotation_id = state_id("rotation");
+    vector_id = state_id("vector");
     target_id = state_id("target");
-    phase_id = state_id("phase");
-    pulse_id = state_id("pulse");
-    period_id = state_id("period");
-    duration_id = state_id("duration");
     service_binding *services = NULL;
     if (test_urls) {
         apush(services, ((service_binding){ URL_SERVICE, test_urls }));
@@ -202,38 +286,28 @@ static int pump(double now, double delta, unsigned budget)
     }
     return status;
 }
-TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
+TEST_CASE(source_native_call_preserves_delay_snapshot_and_target)
 {
     const char
-        *format = "Reaction :: behavior { done:retain bool=false; "
-                  "rotation:retain vec3={x:-1.0,y:2.0,z:3.0}; "
+        *format = "Capture :: behavior { done:retain bool=false; "
+                  "vector:retain vec3={x:-1.0,y:2.0,z:3.0}; "
                   "target:retain entity=0; Apply :: "
-                  "(Rotation:vec3,Target:entity)->(){ "
+                  "(Vector:vec3,Target:entity)->(){ "
                   "await delay(Duration:0.125); await "
-                  "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } on "
-                  "Tick :: () { await Apply(Rotation:rotation,Target:target); "
+                  "fixture_capture(Vector:Vector%s); } on "
+                  "Tick :: () { await Apply(Vector:vector,Target:target); "
                   "done=true; } }";
     for (int backend = 0; backend < 2; backend++) {
         for (int explicit_target = 0; explicit_target < 2; explicit_target++) {
             char text[1024];
             snprintf(text, sizeof text, format, explicit_target ? ",Target:Target" : "");
             test_world = ecs_world_new();
-            REQUIRE(
-                ecs_world_register_component(test_world, &COMPONENT_VisualMotion, NULL) == 0
-            );
             ecs_entity owner = ecs_world_create_entity(test_world),
                        other = ecs_world_create_entity(test_world);
-            REQUIRE(VisualMotion_add(test_world, owner, 0) == 0);
-            REQUIRE(VisualMotion_add(test_world, other, 0) == 0);
-            REQUIRE(ecs_world_apply_commands(test_world) == 0);
-            VisualMotion initial = { .speed = 2,
-                                     .reaction_age = 7,
-                                     .reaction_duration = .25f };
-            *VisualMotion_get(test_world, owner) = initial;
-            *VisualMotion_get(test_world, other) = initial;
+            fixture_natives = true;
             REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
             uint64_t tick = execution_module_event(prepared->module, "Tick");
-            REQUIRE(tick && done_id && rotation_id && target_id);
+            REQUIRE(tick && done_id && vector_id && target_id);
             instance = execution_program_attach(program, ecs_entity_to_u64(owner));
             REQUIRE(instance);
             REQUIRE(
@@ -249,11 +323,12 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
             REQUIRE(dispatch(tick, 1024) >= 0);
             REQUIRE(execution_instance_pending(instance) > 0);
             REQUIRE(!execution_instance_state(instance, done_id)->b);
+            REQUIRE(captured.calls == 0);
             CF_V3 changed = { 99, 99, 99 };
             REQUIRE(
                 execution_instance_set_state(
                     instance,
-                    rotation_id,
+                    vector_id,
                     (pin_value){ .type = PIN_STRUCT, .type_name = "vec3", .ptr = &changed }
                 ) == 0
             );
@@ -262,61 +337,41 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
                 execution_instance_pending(instance) == 0 &&
                 execution_instance_state(instance, done_id)->b
             );
-            const VisualMotion *actual = VisualMotion_get_const(test_world, explicit_target ? other : owner);
+            REQUIRE(captured.calls == 1);
             REQUIRE(
-                actual->reaction_rotation.x == -1 &&
-                actual->reaction_rotation.y == 2 && actual->reaction_rotation.z == 3
+                captured.vector.x == -1 && captured.vector.y == 2 &&
+                captured.vector.z == 3
             );
-            REQUIRE(
-                actual->reaction_lift == 4 && actual->reaction_age == 0 &&
-                actual->speed == 2
-            );
-            REQUIRE(
-                VisualMotion_get_const(test_world, explicit_target ? owner : other)
-                    ->reaction_age == 7
-            );
+            REQUIRE(captured.target == ecs_entity_to_u64(explicit_target ? other : owner));
             cleanup();
         }
     }
     return true;
 }
-TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
+TEST_CASE(source_native_context_samples_live_clock_after_nested_wait)
 {
-    const char
-        *text = "Rhythm :: behavior { phase:retain f64=0; pulse:retain "
-                "f64=0; period:retain f64=0; duration:retain f64=0; "
-                "Read :: "
-                "()->(Phase:f64,Pulse:f64,Period:f64,Duration:f64){"
-                " r:=scene_rhythm(); "
-                "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
-                "Duration); } Apply :: "
-                "()->(Phase:f64,Pulse:f64,Period:f64,Duration:f64){"
-                " await delay(Duration:0.125); r:=Read(); "
-                "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
-                "Duration); } on Tick :: () { r:=await Apply(); phase=r.Phase; "
-                "pulse=r.Pulse; period=r.Period; duration=r.Duration; } }";
+    const char *text =
+        "Clock :: behavior { initial:retain f64=-1; resumed:retain f64=-1; "
+        "Read :: ()->f64 { return fixture_clock(); } "
+        "Apply :: ()->f64 { await delay(Duration:0.125); return Read(); } "
+        "on Tick :: () { initial=Read(); resumed=await Apply(); } }";
     for (int backend = 0; backend < 2; backend++) {
-        test_world = ecs_world_new();
-        REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Rhythm, NULL) == 0);
-        ecs_entity clock = ecs_world_create_entity(test_world);
-        Rhythm settings = { 60, .25f };
-        REQUIRE(ecs_world_record_add(test_world, clock, COMPONENT_Rhythm.id, &settings, 0) == 0);
-        REQUIRE(ecs_world_apply_commands(test_world) == 0);
+        fixture_natives = true;
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick");
-        REQUIRE(tick && phase_id && pulse_id && period_id && duration_id);
+        uint64_t initial = state_id("initial"), resumed = state_id("resumed");
+        REQUIRE(tick && initial && resumed);
         instance = execution_program_attach(program, 0);
         REQUIRE(instance);
         retire_producer();
         REQUIRE(dispatch(tick, 1024) >= 0);
         REQUIRE(execution_instance_pending(instance) > 0);
-        /* Pump only resumes work; update advances the instance rhythm clock. */
-        REQUIRE(execution_program_update(program, .125, .125, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, initial)->d == 0);
+        REQUIRE(execution_instance_state(instance, resumed)->d == -1);
+        /* Update advances the live instance clock beyond the wait deadline. */
+        REQUIRE(execution_program_update(program, .375, .375, 1024) >= 0);
         REQUIRE(execution_instance_pending(instance) == 0);
-        REQUIRE(execution_instance_state(instance, phase_id)->d == .125);
-        REQUIRE(execution_instance_state(instance, pulse_id)->d == .25);
-        REQUIRE(execution_instance_state(instance, period_id)->d == 1);
-        REQUIRE(execution_instance_state(instance, duration_id)->d == .25);
+        REQUIRE(execution_instance_state(instance, resumed)->d == .375);
         cleanup();
     }
     return true;
@@ -1175,8 +1230,8 @@ TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
 void test_source_native_features()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target);
-    RUN_TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait);
+    RUN_TEST_CASE(source_native_call_preserves_delay_snapshot_and_target);
+    RUN_TEST_CASE(source_native_context_samples_live_clock_after_nested_wait);
     RUN_TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission);
     RUN_TEST_CASE(url_requests_validate_copy_replace_and_cancel);
     RUN_TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation);

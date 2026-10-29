@@ -623,13 +623,16 @@ static bool invoke(
         behavior_function_activation_init(function, &activation);
     }
     behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     context = (behavior_function_context){ .managed_heap = &managed,
                                            .activation = resumable ? &activation : NULL,
                                            .arguments = arguments,
                                            .argument_count = argument_count,
                                            .results = results,
                                            .budget = budget };
-    behavior_function_bind_storage(&context, &storage);
+    /* Values live in the heap, so collections also reclaim what long-running
+     * frames stop using. */
+    behavior_function_bind_storage(&context, &managed.storage);
     if (!behavior_function_bind(function, &context, NULL, 0)) {
         failure = "compiler runtime binding failed";
         goto done;

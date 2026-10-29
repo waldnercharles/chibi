@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <unistd.h>
+#include <yyjson.h>
 
 static char root[128], launcher[256], log_path[256], compiler[256], built[256];
 
@@ -234,6 +235,55 @@ TEST_CASE(check_prepares_without_writing)
     return true;
 }
 
+TEST_CASE(check_forwards_cost_explanations)
+{
+    const char *explain[] = { launcher, "check", "checked", "--explain-costs", NULL };
+    REQUIRE(tool_run(explain, root, log_path) == 0);
+    char expected[512];
+    snprintf(expected, sizeof expected, "--project-root\n%s/checked\n--check\n--explain-costs\n", root);
+    REQUIRE(file_is("compile.args", expected));
+
+    char game[256];
+    path(game, "checked/content");
+    const char *implicit[] = { launcher, "check", "--json", "--explain-costs", NULL };
+    REQUIRE(tool_run(implicit, game, log_path) == 0);
+    snprintf(expected, sizeof expected, "--project-root\n%s/checked\n--check\n--explain-costs\n--json\n", root);
+    REQUIRE(file_is("compile.args", expected));
+    const char *json[] = { launcher,  "check",  "--explain-costs",
+                           "checked", "--json", NULL };
+    REQUIRE(tool_run(json, root, log_path) == 0);
+    REQUIRE(file_is("compile.args", expected));
+    REQUIRE(!exists("checked/.chibi"));
+
+    char *compiles = contents("compiles");
+    const char *help[] = { launcher, "check", "--help", NULL };
+    REQUIRE(tool_run(help, root, log_path) == 0);
+    char *text = contents("output.log");
+    bool documented = strstr(text, "--explain-costs [--json]") != NULL;
+    free(text);
+    REQUIRE(documented);
+    const char *invalid[][8] = {
+        { launcher, "check", "checked", "--json", NULL },
+        { launcher, "check", "checked", "--explain-costs", "--explain-costs", NULL },
+        { launcher, "check", "checked", "--explain-costs", "--json", "--json", NULL },
+        { launcher, "check", "checked", "--explain-costs", "--format", NULL },
+        { launcher, "check", "checked", "--explain-costs", "--test", NULL },
+        { launcher, "check", "checked", "--explain-costs", "--docs", NULL },
+        { launcher, "check", "checked", "more", "--explain-costs", NULL },
+        { launcher, "build", "checked", "--explain-costs", NULL },
+        { launcher, "test", "checked", "--explain-costs", NULL },
+        { launcher, "fmt", "checked", "--explain-costs", NULL },
+        { launcher, "doc", "checked", "--explain-costs", NULL }
+    };
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        REQUIRE(tool_run(invalid[i], root, log_path) == 2);
+    }
+    bool unrun = file_is("compiles", compiles);
+    free(compiles);
+    REQUIRE(unrun);
+    return true;
+}
+
 /* The real compiler's --check prepares a project, fails an invalid one and
  * leaves both, and an older one, exactly as they were. */
 TEST_CASE(compiler_check_writes_nothing)
@@ -267,6 +317,126 @@ TEST_CASE(compiler_check_writes_nothing)
     bool kept = file_is("real-old/project.kdl", manifest);
     free(manifest);
     REQUIRE(kept);
+    return true;
+}
+
+TEST_CASE(compiler_explains_costs_without_writing)
+{
+    project("costs", CHIBI_PROJECT_VERSION);
+    char game[256], folder[256];
+    path(game, "costs");
+    path(folder, "costs/content/behaviors");
+    REQUIRE(!mkdir(folder, 0700));
+    path(folder, "costs/content/libraries");
+    REQUIRE(!mkdir(folder, 0700));
+    const char *source = "Costs :: behavior {\n"
+                         "    seen: int = 0;\n"
+                         "    on Begin :: () {\n"
+                         "        values: int[] = [1, 2];\n"
+                         "        seen = values[0];\n"
+                         "    }\n"
+                         "    on Tick :: () { seen = Shared.Value(); }\n"
+                         "}\n";
+    write_file("costs/content/behaviors/Costs.chibi", source);
+    const char *library = "Shared :: library {\n"
+                          "    Value :: () -> int {\n"
+                          "        values: int[] = [3, 4];\n"
+                          "        return values[0];\n"
+                          "    }\n"
+                          "}\n";
+    write_file("costs/content/libraries/Shared.chibi", library);
+    char *manifest = contents("costs/project.kdl");
+    char *scene = contents("costs/content/scenes/Start.kdl");
+    const char *explain[] = { compiler,  "--project-root",  game,
+                              "--check", "--explain-costs", NULL };
+    REQUIRE(tool_run(explain, root, log_path) == 0);
+    char *text = contents("output.log");
+    bool named = strstr(text, "Costs.chibi") && strstr(text, "allocation");
+    free(text);
+    REQUIRE(named);
+
+    const char *json[] = { compiler,          "--project-root", game, "--check",
+                           "--explain-costs", "--json",         NULL };
+    REQUIRE(tool_run(json, root, log_path) == 0);
+    yyjson_doc *document = yyjson_read_file(log_path, 0, NULL, NULL);
+    REQUIRE(document);
+    yyjson_val *report = yyjson_doc_get_root(document);
+    bool valid = yyjson_get_int(yyjson_obj_get(report, "version")) == 1 &&
+                 yyjson_equals_str(yyjson_obj_get(report, "mode"), "static");
+    yyjson_val *functions = yyjson_obj_get(report, "functions");
+    valid &= yyjson_is_arr(functions) && yyjson_arr_size(functions) > 0;
+    bool found = false, linked = false;
+    size_t index, count;
+    yyjson_val *function;
+    yyjson_arr_foreach(functions, index, count, function)
+    {
+        valid &= yyjson_is_bool(yyjson_obj_get(function, "traversal_complete"));
+        bool tick = yyjson_equals_str(yyjson_obj_get(function, "name"), "Tick");
+        yyjson_val *costs = yyjson_obj_get(function, "costs");
+        size_t cost_index, cost_count;
+        yyjson_val *cost;
+        yyjson_arr_foreach(costs, cost_index, cost_count, cost)
+        {
+            yyjson_val *origin = yyjson_obj_get(cost, "origin");
+            yyjson_val *location = yyjson_obj_get(origin, "source");
+            const char *file = yyjson_get_str(yyjson_obj_get(location, "path"));
+            found |= yyjson_equals_str(yyjson_obj_get(cost, "kind"), "allocation") &&
+                     yyjson_equals_str(yyjson_obj_get(cost, "status"), "possible") &&
+                     yyjson_is_str(yyjson_obj_get(cost, "reason")) && file &&
+                     strstr(file, "Costs.chibi") &&
+                     yyjson_get_int(yyjson_obj_get(location, "line")) > 0;
+            linked |= tick && file && strstr(file, "Shared.chibi") &&
+                      yyjson_equals_str(yyjson_obj_get(cost, "kind"), "allocation") &&
+                      yyjson_equals_str(yyjson_obj_get(cost, "status"), "possible") &&
+                      yyjson_get_int(yyjson_obj_get(location, "line")) == 3;
+        }
+    }
+    yyjson_doc_free(document);
+    REQUIRE(valid && found && linked);
+
+    const char *help[] = { compiler, "--help", NULL };
+    REQUIRE(tool_run(help, root, log_path) == 0);
+    text = contents("output.log");
+    bool documented = strstr(text, "--explain-costs [--json]") != NULL;
+    free(text);
+    REQUIRE(documented);
+    const char *invalid[][10] = {
+        { compiler, "--project-root", game, "--explain-costs", NULL },
+        { compiler, "--project-root", game, "--check", "--json", NULL },
+        { compiler, "--project-root", game, "--check", "--explain-costs", "--explain-costs", NULL },
+        { compiler, "--project-root", game, "--check", "--explain-costs", "--json", "--json", NULL },
+        { compiler, "--project-root", game, "--check", "--explain-costs", "--format", NULL },
+        { compiler, "--project-root", game, "--explain-costs", "--test", NULL },
+        { compiler, "--project-root", game, "--explain-costs", "--docs", NULL },
+        { compiler, "--project-root", game, "--check", "--explain-costs", "--output", "out/game.chibip", NULL }
+    };
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        REQUIRE(tool_run(invalid[i], root, log_path) == 2);
+    }
+    REQUIRE(file_is("costs/project.kdl", manifest));
+    REQUIRE(file_is("costs/content/scenes/Start.kdl", scene));
+    REQUIRE(file_is("costs/content/behaviors/Costs.chibi", source));
+    REQUIRE(file_is("costs/content/libraries/Shared.chibi", library));
+    free(manifest);
+    free(scene);
+    REQUIRE(!exists("costs/.chibi") && !exists("out"));
+
+    const char
+        *invalid_scene = "version 1\nname \"Start\"\n(array)entities {\n";
+    write_file("costs/content/scenes/Start.kdl", invalid_scene);
+    REQUIRE(tool_run(json, root, log_path) == 1);
+    REQUIRE(file_is("costs/content/scenes/Start.kdl", invalid_scene));
+    REQUIRE(!exists("costs/.chibi"));
+
+    char older[256];
+    path(older, "real-old");
+    char *old_manifest = contents("real-old/project.kdl");
+    const char *old[] = { compiler,  "--project-root",  older,
+                          "--check", "--explain-costs", NULL };
+    REQUIRE(tool_run(old, root, log_path) == 1);
+    bool kept = file_is("real-old/project.kdl", old_manifest);
+    free(old_manifest);
+    REQUIRE(kept && !exists("real-old/.chibi"));
     return true;
 }
 
@@ -649,6 +819,20 @@ TEST_CASE(compiler_test_links_the_compiler_bridges)
     REQUIRE(file_is("bridged.log", "PASS words.Decodes\nPASS words.Parses\n2 tests, 0 failed\n"));
     return true;
 }
+TEST_CASE(compiler_runs_cost_explanation_regressions)
+{
+    const char *run[] = { compiler,
+                          "--project-root",
+                          CHIBI_SOURCE_ROOT "/tools/compiler/cost_explanations",
+                          "--test",
+                          NULL };
+    REQUIRE(tool_run(run, root, log_path) == 0);
+    REQUIRE(file_has("output.log", "PASS cost_explanations.EmptyReport\n"));
+    REQUIRE(file_has("output.log", "PASS cost_explanations.FullWidthIdentifiersAndJsonEscaping\n"));
+    REQUIRE(file_has("output.log", "6 tests, 0 failed\n"));
+    return true;
+}
+
 TEST_CASE(compiler_test_needs_the_core_collection)
 {
     const char *directories[] = { "sdk", "sdk/bin" };
@@ -1576,7 +1760,9 @@ void test_tool_chibi_cli(const char *binary)
     free(directory);
     RUN_TEST_CASE(build_and_run_use_the_prepared_project);
     RUN_TEST_CASE(check_prepares_without_writing);
+    RUN_TEST_CASE(check_forwards_cost_explanations);
     RUN_TEST_CASE(compiler_check_writes_nothing);
+    RUN_TEST_CASE(compiler_explains_costs_without_writing);
     RUN_TEST_CASE(version_reads_the_build_identity);
     RUN_TEST_CASE(version_of_the_built_launcher);
     RUN_TEST_CASE(doctor_reports_each_capability);
@@ -1584,6 +1770,7 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(test_runs_the_compiler_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
     RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
+    RUN_TEST_CASE(compiler_runs_cost_explanation_regressions);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(fmt_formats_each_project);
     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);

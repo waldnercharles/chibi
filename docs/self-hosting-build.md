@@ -131,9 +131,9 @@ then loads its prepared closure through the runtime-only native linker. This
 replaces `authoring_packages_prepare` and C semantic preparation in the build-host
 path. Native services still provide raw syntax facts, I/O, linking and execution.
 
-Direct or indirect `yield` currently fails during compilation with
-`unsupported syntax 'yield_statement'`. The host retains its runtime suspension
-and task guards as an execution boundary.
+The prepared compiler supports `yield` and task calls. The private host rejects
+direct suspension with `a build program cannot wait` and an unawaited task call
+with `a build program cannot start a task`.
 
 Compiler inputs are separate from the build program's imports:
 
@@ -222,8 +222,8 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-On macOS `make build` compiles with the Chibi build graph instead of CMake
-(since 2026-10-22). `Build.chibi third-party BUILD_DIR` prepares the pinned
+On Linux and macOS `make build` compiles with the Chibi build graph instead
+of CMake. `Build.chibi third-party BUILD_DIR` prepares the pinned
 third-party archives, then the host runs `tools/toolchain/Graph.chibi` with
 the Makefile's profile name (`BUILD_PROFILE`: `sanitizer`, or `debug` and
 `release` from `make build-debug` and `make build-release`) and
@@ -234,10 +234,51 @@ no longer apply there; the graph finds the profile's toolchain on the
 machine. Without a current host, `make stage-zero-build` builds the first
 one with CMake in `BUILD_DIR-cmake` and the graph builds its own. `make
 graph-reference` configures that tree with the sanitizer profile and builds
-what the build-graph checks compare with. Linux, the SDK, web and Studio
-builds still use CMake as below, so a source, define or library CMake gains
+what the build-graph checks compare with. The SDK, web and Studio builds
+still use CMake as below, so a source, define or library CMake gains
 belongs in `tools/graph/engine/Targets.chibi` too: `build-graph` fails until
 the graph's commands equal CMake's again.
+
+### Linux native graph
+
+Linux uses the same default graph for native products and the full
+tooling/language test drivers. For a fast Debug O1 build with Release generators:
+
+```sh
+make build-release BUILD_TARGET='chibi chibi_ctl chibi-build-host chibi-compiler-host'
+make build BUILD_PROFILE=debug BUILD_DEBUG_OPTIMIZATION=1 \
+  BUILD_DEBUG_FRAME_POINTERS=on BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+  ASSET_GENERATOR_HOSTS=build-release/sdk \
+  BUILD_TARGET='chibi chibi-compile chibi-player chibi_ctl test_tools test_language'
+```
+
+Use the existing Linux development prerequisites and pinned third-party archive;
+player, renderer and native-export support are not removed. `LIBCLANG_ROOT` is
+forwarded explicitly. Graph pairs versioned compiler drivers such as `clang-18`
+and `clang++-18`, and discovers OpenGL development headers/libraries through the
+explicit include/library search paths and the selected compiler. Direct Graph
+invocations can supply `--opengl-include`, `--opengl-library` and `--glx-library`;
+`--profile explicit` performs no discovery. `GRAPH_REFLECT` forwards the existing
+`--reflect` override for cross or relocated toolchains without extending the
+build host's environment allowlist.
+
+Plain `make build` retains the sanitizer profile. Native CI uses fast Debug O1
+on ordinary PRs/pushes and full ASan+UBSan Debug O1 for daily/manual sanitizer
+runs; actual compile/link records, assertions and sanitizer symbols are checked
+before the unchanged test groups. Release planning/generation helpers do not
+replace the selected-profile products or test drivers.
+
+The separate `ci-linux-graph` (fast) and `ci-linux-graph-sanitizers` labels request
+full parity, generated/resource, group and compiler-tools relocation proof for
+that exact same-repository PR head. Manual dispatch selects the same profiles.
+These checks are opt-in, not a second full suite on every push.
+
+`make graph-reference` supplies the separate `build-cmake` parity tree;
+`CHIBI_GRAPH_REFERENCE` selects another reference explicitly. To use the retained
+CMake native route, pass `GRAPH_BUILD=`. CMake also remains the temporary first
+host bootstrap, standalone tooling/language consumer build, and public SDK,
+web and Studio build. Changing the native default does not retire those
+responsibilities or change pinned dependency acquisition prerequisites.
 
 The graph parses compiler dependency files in Chibi, reading their bytes once
 and treating line continuations as spaces. It unescapes only paths that need
@@ -246,9 +287,10 @@ primitive rather than repeatedly copying an accumulated prefix. Small path
 joins remain ordinary Chibi strings so their temporary storage can be reclaimed.
 Unknown or missing `--target` names fail before toolchain discovery or writes.
 
-Elsewhere `make build` uses this program when its private host reports protocol version 12
+Elsewhere `make build` uses this program when its private host reports protocol version 14
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
-`Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
+the compiler bootstrap or `Build.chibi` needs a prepared format, capability or
+syntax an older host lacks; version 3 adds the
 file primitives and probes and the redesigned syntax, version 4 names the
 natives under `build.`, version 5 runs programs as packages that may import
 `core:`, version 6 has the array methods and the natives `append` and
@@ -258,10 +300,16 @@ arguments. Version 8 uses the validated Chibi compiler generation to compile
 build programs and adds the separate compiler source/core options above.
 Version 9 runs prepared format 21, which that compiler now writes, so an older
 host that cannot load the code it compiled is rebuilt.
+Version 13 loads the collections-as-values compiler bootstrap with prepared
+format 26. Protocol-12 hosts must take first-host recovery before loading that
+bootstrap, even when an existing build directory contains an executable host.
+Version 14 reuses native-result storage after the VM imports each callback's
+results. Older hosts take first-host recovery before a warm full graph can
+exhaust their retained helper storage while trying to rebuild them.
 `--protocol-version` reports the version without loading compiler inputs or
 starting a build. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
-path and builds the host for subsequent invocations (on macOS in
+path and builds the host for subsequent invocations (on Linux and macOS in
 `BUILD_DIR-cmake`, for the one graph run that builds `BUILD_DIR`'s own). `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
 target remains available if the authored driver cannot run.
@@ -299,10 +347,12 @@ executable lookup, bounded regular-text reads, atomic writes, directory creation
 last-process output, the file primitives below and string/array operations. File
 and text values are limited to 16 MiB, enough for a build graph's
 `compile_commands.json`, arrays to 8,192 entries and 16 MiB of text, and
-retained helper storage to 256 MiB of arena blocks per invocation. Last-output accessors
+each helper bank to 256 MiB of retained arena blocks. Native-result storage is
+reused on the next callback after the VM imports the results; invocation
+arguments remain in their own bank. Last-output accessors
 reject truncation and embedded NUL bytes, so authored protocol parsing cannot
-accept a partial result. Returned values remain owned by the invocation until it
-finishes; parent cwd and environment are never mutated.
+accept a partial result. Returned values keep their ordinary language lifetimes
+in VM storage; parent cwd and environment are never mutated.
 
 ### Build-host file primitives
 
@@ -382,12 +432,12 @@ build/sdk/chibi-build-host --root . --source tools/toolchain/Graph.chibi \
   recompiles a source when its record is missing, its command differs, or any
   recorded stamp changed; the archive is rebuilt when an object was or its own
   record differs. A failed compile leaves no record, so the next run retries
-  it. Records are read with `build.lines`, because `core:strings` copies the
-  rest of the text at each line and an up-to-date run took seconds. Paths and
-  stamps are separate lines because build values are never freed: with 363
-  sources an up-to-date run reads about 6 MB of records, and splitting each
-  line in two exceeded the host's then 32 MB of values. It now allows 256 MB of
-  arena blocks, about 128 MB of values.
+  it. `build.lines` scans each record once. Paths and stamps are separate
+  lines, so validation compares whole fields without another split. The VM
+  imports native results before another callback reuses the helper bank;
+  checking more records does not retain every old native line buffer. The
+  helper bank's 256 MiB retained-block bound, 16 MiB text bound and 8,192-entry
+  array bound remain in force.
 - Headers a library publishes are staged below `BUILD/sdk/public/COMPONENT`,
   and those only its sources include below `BUILD/sdk/private/COMPONENT`, as
   CMake stages them. A header is copied only when its contents differ, so
@@ -424,7 +474,7 @@ behavior, scene, mesh, tilemap and UI runtimes, the math, vector, arithmetic, co
 Studio capabilities, the prepared native catalog, model baking and the scene
 and prototype documents), and `chibi_native_types` and `chibi_native_bindings`,
 whose sources `reflect` writes, with the libraries over them (the spatial,
-entity, rhythm, particle, input and visual motion runtimes, declared
+entity, particle and input runtimes, declared
 components, the visual catalog, scene authoring and the scenario document),
 and, over the archive's prebuilt tree-sitter runtime, CSS and HTML grammars,
 Box2D and Box3D, the language and project syntax documents and UI authoring,
@@ -473,8 +523,8 @@ records the run as a link is recorded, over the inputs CMake names, and
 reruns it only when one changed. `--reflect PATH` runs another reflect
 instead, as a cross build's `CHIBI_REFLECT_EXECUTABLE` names one. Building
 a subset with `--target` also stages the headers of every library its
-includes name. On macOS `make build` builds them with the graph; elsewhere
-CMake still does, and `build-graph` checks that their compile commands agree
+includes name. On Linux and macOS `make build` builds them with the graph;
+`build-graph` checks that their compile commands agree
 with a configured CMake build's; `build-graph-support` compiles only
 `chibi_support`. Before the dependency-parser and join improvements, building
 everything, `test_tools` included, took about 25 to 32 minutes with sanitizers
@@ -509,7 +559,20 @@ executable link (the language and link
 flags, the sanitizers, the executable's `LinkOptions`, the objects, `-o`,
 then the profile's external libraries and `Links` in CMake's order, which
 may name a library twice and holds `-lm` where CMake puts it) and records it
-as it records compiles. An object library (`ObjectLibrary`, as
+as it records compiles. Compiler-driver execution compresses nonempty argument
+runs into quoted GNU response files beside the output when their paths are
+smaller than the original arguments. Empty arguments remain directly in argv,
+preserving option operands on older Clang versions. Transport never increases
+argument count or byte use. The command database and successful record retain
+the full ordered argv. Responses are removed after the child returns, and
+success is recorded only after cleanup. Failed or interrupted attempts have no
+success record; retry removes retained regular base and numbered responses.
+NUL and line endings are rejected because the record
+stores one argument per line. Other build steps and archivers keep their own
+command contracts.
+The native regression group uses the host in its selected `BUILD_DIR`;
+`CHIBI_BUILD_HOST` can explicitly select another matching host.
+An object library (`ObjectLibrary`, as
 `chibi_build_host`) compiles but is not archived; an executable's
 `LinkedObjects` put its objects before the executable's own. On macOS the
 graph also compiles the tooling tests' SDK contract consumers, object
@@ -530,7 +593,7 @@ configures them: the launcher's `BUILD/share/chibi`, which `chibi version`,
 `chibi_ctl`'s `BUILD/controller_resources`. Their `engine.json` is the build
 identity the graph writes to `BUILD/sdk/chibi_engine_metadata.json` as
 `sdk/artifact_formats.cmake` does: the SDK version from
-`sdk/CMakeLists.txt`, the project version from `src/assets/project.h`, the
+`sdk/VERSION`, the project version from `src/assets/project.h`, the
 platform, processors and backends, and each of `ArtifactFormats`' versions
 with the SHA-256 of the sources and headers that own it. A target's
 `SourceLists` (`OUTPUT=ROOT`) are written then too: every `.chibi` file below
@@ -913,9 +976,9 @@ to its executable. For the installed graph, pass
 `--collection graph=PREFIX/share/chibi/graph`.
 
 `python3 tools/test_policy.py tool build-sdk` runs the C packaging and relocation
-cases against the Release graph tools. Linux graph test-driver compilation and
-linking are not supported by this checkpoint, so build only the C harness with
-the supported CMake route in its own directory:
+cases against the Release graph tools. The separate SDK CI lane deliberately
+retains a CMake-built harness as a reference consumer; the full Graph validation
+lane builds the harness with Graph. To run the CMake reference harness:
 
 ```sh
 make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
@@ -944,6 +1007,7 @@ has no Linux/Windows packaging, full SDK, browser or Studio acceptance claim.
 
 The standalone SDK program adds `build.reserve_directory` and
 `build.publish_directory`. These private bindings reserve one fresh directory
-and publish without replacement on macOS and Linux. Normal `Build.chibi` is
-unchanged, so its protocol gate remains version 12. Use the matching newly built
-host to run `SDK.chibi`.
+and publish without replacement on macOS and Linux. These bindings do not change
+normal `Build.chibi` admission; its protocol gate follows the compiler bootstrap
+and build-program requirements above. Use the matching newly built host to run
+`SDK.chibi`.

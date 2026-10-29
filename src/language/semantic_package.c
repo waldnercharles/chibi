@@ -366,7 +366,7 @@ int script_analyzer_package_constant(analyzer *a, TSNode node)
         }
     }
     pin_value value;
-    if (pin_value_snapshot_to_arena(&a->out->constants, &value, &export->value)) {
+    if (pin_value_capture_to_arena(&a->out->constants, &value, &export->value)) {
         script_analyzer_diagnostic(a, node, "Cannot retain imported constant");
         return -1;
     }

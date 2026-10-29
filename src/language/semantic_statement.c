@@ -117,7 +117,8 @@ static bool reads_result(const script_analysis *a, int index, int symbol, int de
     if (reads_result(a, e->left, symbol, depth + 1)) {
         return true;
     }
-    if ((e->kind == SCRIPT_EXPR_BINARY || e->kind == SCRIPT_EXPR_INDEX) &&
+    if ((e->kind == SCRIPT_EXPR_BINARY || e->kind == SCRIPT_EXPR_INDEX ||
+         e->kind == SCRIPT_EXPR_SEQUENCE) &&
         reads_result(a, e->right, symbol, depth + 1)) {
         return true;
     }
@@ -238,9 +239,11 @@ void script_analyzer_union_results(analyzer *a, int function, TSNode body)
     for (int i = 0; i < acount(f->results); i++) {
         int symbol = f->results[i];
         const script_symbol *result = &a->out->symbols[symbol];
-        if ((result->type.storage != PIN_UNION && result->type.storage != PIN_POINTER) ||
-            result->type.container != PIN_CONTAINER_SINGLE ||
-            (result->type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        bool required = result->type.container == PIN_CONTAINER_VIEW ||
+                        ((result->type.storage == PIN_UNION ||
+                          result->type.storage == PIN_POINTER) &&
+                         result->type.container == PIN_CONTAINER_SINGLE);
+        if (!required || (result->type.flags & SCRIPT_TYPE_OPTIONAL)) {
             continue;
         }
         bool falls, valid = true;
@@ -257,7 +260,9 @@ void script_analyzer_union_results(analyzer *a, int function, TSNode body)
                 a,
                 body,
                 "%s result '%s' requires a value on every return path",
-                result->type.storage == PIN_POINTER ? "Pointer" : "Union",
+                result->type.container == PIN_CONTAINER_VIEW ? "View"
+                : result->type.storage == PIN_POINTER        ? "Pointer"
+                                                             : "Union",
                 result->name
             );
         }
@@ -622,7 +627,7 @@ uint64_t script_analyzer_component_target(const script_analysis *out, int index)
 }
 /* Member/index stores replace owned local values. A path through a reference,
  * component or reflected setter writes storage outside that value instead. */
-static bool writes_external_storage(const script_analysis *out, int index)
+bool script_analyzer_writes_external(const script_analysis *out, int index)
 {
     while (index >= 0) {
         const script_expression *e = &out->expressions[index];
@@ -665,52 +670,6 @@ static bool reduction_bounded(const analyzer *a, int index)
     }
     return false;
 }
-/* Whether `call` is a method that changes the array a name holds, such as
- * `xs.append(x)`. */
-static bool changes_array(analyzer *a, TSNode call)
-{
-    TSNode function = script_analyzer_field(call, "function"),
-           object = script_analyzer_field(function, "object");
-    if (!script_analyzer_is(call, "call_expression") ||
-        !script_analyzer_is(function, "member_expression") ||
-        !script_analyzer_is(object, "identifier")) {
-        return false;
-    }
-    int symbol = script_analyzer_lookup(a, object);
-    const script_catalog_capability *
-        method = symbol >= 0 && a->out->symbols[symbol].type.container == PIN_CONTAINER_ARRAY
-                   ? script_analyzer_array_method(a, script_analyzer_field(function, "member"))
-                   : NULL;
-    return method && script_analyzer_array_changer(method);
-}
-/* `xs.append(x)` and the other methods that change an array assign the name
- * its changed array, which lowering does in place for a local. */
-static int change_array(analyzer *a, TSNode call, script_statement result)
-{
-    TSNode object = script_analyzer_field(script_analyzer_field(call, "function"), "object");
-    result.kind = SCRIPT_STMT_ASSIGN;
-    int symbol = script_analyzer_lookup(a, object);
-    a->out->symbols[symbol].mutations++;
-    script_analyzer_invalidate_narrowing(a, symbol);
-    result.expression = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
-    script_expression address = a->out->expressions[result.expression];
-    if (!address.writable) {
-        script_analyzer_diagnostic(a, object, "Changing an array requires a writable value");
-    }
-    TSNode changing = a->changing;
-    a->changing = call;
-    result.second = script_analyzer_expression(a, call, address.type);
-    a->changing = changing;
-    script_analyzer_require_values(a, call, result.expression, result.second);
-    result.effects = address.effects | script_analyzer_expr_effects(a, result.second);
-    if (writes_external_storage(a->out, result.expression)) {
-        result.effects |= SCRIPT_EFFECT_WRITE;
-    }
-    if (address.symbol >= 0) {
-        script_analyzer_use(a, object, address.symbol, SCRIPT_WRITE, address.member);
-    }
-    return script_analyzer_statement_add(a, result);
-}
 /* `delete m[k]` and `m.delete(k)` assign the map without the key, which
  * lowering does in place for a local. */
 static int delete_key(analyzer *a, TSNode node, script_statement result, TSNode map, TSNode key)
@@ -736,7 +695,7 @@ static int delete_key(analyzer *a, TSNode node, script_statement result, TSNode 
         key
     );
     result.effects = script_analyzer_expr_effects(a, result.second);
-    if (writes_external_storage(a->out, result.expression)) {
+    if (script_analyzer_writes_external(a->out, result.expression)) {
         result.effects |= SCRIPT_EFFECT_WRITE;
     }
     if (address.symbol >= 0) {
@@ -929,7 +888,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         result.effects = address.effects |
                          script_analyzer_expr_effects(a, result.second);
-        if (writes_external_storage(a->out, result.expression)) {
+        if (script_analyzer_writes_external(a->out, result.expression)) {
             result.effects |= SCRIPT_EFFECT_WRITE;
             script_analyzer_invalidate_pointers(a);
         }
@@ -959,9 +918,6 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
             value = ts_node_named_child(node, i);
             TSNode function = script_analyzer_field(value, "function");
-            if (changes_array(a, value)) {
-                return change_array(a, value, result);
-            }
             if (script_analyzer_is(value, "call_expression") &&
                 script_analyzer_map_method(a, function, "delete")) {
                 TSNode arguments = script_analyzer_field(value, "arguments");
@@ -977,16 +933,20 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 );
             }
             if (!ts_node_is_extra(value)) {
+                TSNode changing = a->changing;
+                a->changing = value;
                 result.expression = script_analyzer_expression(
                     a,
                     value,
                     (script_type){ .storage = PIN_FLOW }
                 );
+                a->changing = changing;
                 break;
             }
         }
         if (result.expression >= 0 &&
             a->out->expressions[result.expression].kind != SCRIPT_EXPR_CALL &&
+            a->out->expressions[result.expression].kind != SCRIPT_EXPR_ARRAY_MUTATE &&
             a->out->expressions[result.expression].kind != SCRIPT_EXPR_JOIN) {
             script_analyzer_diagnostic(a, node, "Expression statements must invoke a callable");
         }
@@ -1143,10 +1103,12 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                         element.storage == PIN_STR &&
                         !(element.flags & SCRIPT_TYPE_OPTIONAL);
             if (element.container != PIN_CONTAINER_ARRAY &&
+                element.container != PIN_CONTAINER_VIEW &&
                 element.container != PIN_CONTAINER_MAP && !text && !query) {
                 script_analyzer_diagnostic(a, collection, "For requires an array, Map, string or query");
             }
-            if (result.reverse && (element.container != PIN_CONTAINER_ARRAY ||
+            if (result.reverse && ((element.container != PIN_CONTAINER_ARRAY &&
+                                    element.container != PIN_CONTAINER_VIEW) ||
                                    a->out->expressions[result.expression].kind ==
                                        SCRIPT_EXPR_RELATION)) {
                 script_analyzer_diagnostic(a, collection, "for < reverses only ranges and arrays");
@@ -1156,7 +1118,8 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 if (text || query) {
                     script_analyzer_diagnostic(a, key, "This iterator binds one value at a time");
                 }
-                if (element.container == PIN_CONTAINER_ARRAY) {
+                if (element.container == PIN_CONTAINER_ARRAY ||
+                    element.container == PIN_CONTAINER_VIEW) {
                     /* Arrays bind item,index; Maps bind key,value. */
                     result.key_symbol = script_analyzer_symbol_new(
                         a,
@@ -1205,6 +1168,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         result.effects = script_analyzer_expr_effects(a, result.expression) |
                          script_analyzer_expr_effects(a, result.second) |
                          a->out->statements[result.body].effects;
+        script_type source_type = script_analyzer_expr_type(a, result.expression);
+        if (source_type.container == PIN_CONTAINER_VIEW) {
+            result.effects |= SCRIPT_EFFECT_READ;
+        }
         a->scope = old_scope;
         return script_analyzer_statement_add(a, result);
     }

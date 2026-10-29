@@ -3,7 +3,7 @@
 #include "runtime/shaders/program.h"
 
 #include <stddef.h>
-#define SHADER_PREPARED_VERSION UINT64_C(3)
+#define SHADER_PREPARED_VERSION UINT64_C(4)
 /* Field-wise immutable IR, resource keys and sampler settings. No host callback,
  * process address, GPU object or authored source is persisted. Bytes use free(). */
 bool shader_graph_prepared_write(const shader_graph *, unsigned char **, size_t *, shader_error *);

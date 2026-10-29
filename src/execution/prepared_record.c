@@ -16,10 +16,15 @@ enum
 struct prepared_record_cache
 {
     size_t name_bytes, validation_work, hash_work;
-    arena *owner;
+    union
+    {
+        arena *owner;
+        /* A canonical or function-owned alias proved within this write only. */
+        const pin_record *validated_alias;
+    };
     const pin_record *owned;
-    /* The type at this position in name order. */
-    int by_name;
+    /* The type at this position in name order, and in id order. */
+    int by_name, by_id;
 };
 static bool work(prepared_context *c, size_t amount)
 {
@@ -60,10 +65,14 @@ static size_t validation_work(prepared_context *c, int count, size_t names)
     }
     return ((size_t)count + 8) * (names + (size_t)count + 1);
 }
-static size_t validate(prepared_context *c, const pin_record *record)
+static size_t validate(prepared_context *c, const pin_record *record, bool current)
 {
-    if (!record || !record->type.fields || record->type.field_count <= 0 ||
+    if (!record || record->bytes < sizeof *record ||
+        record->type.fields != (const type_field *)(record + 1) ||
+        record->type.field_count <= 0 ||
         (size_t)record->type.field_count > EXECUTION_WIRE_MAX_RECORDS ||
+        (size_t)record->type.field_count >
+            (record->bytes - sizeof *record) / sizeof(type_field) ||
         !work(c, (size_t)record->type.field_count)) {
         if (!c->wire.error) {
             c->wire.error = "invalid prepared authored layout";
@@ -93,9 +102,11 @@ static size_t validate(prepared_context *c, const pin_record *record)
         }
     }
     size_t cost = validation_work(c, record->type.field_count, names);
-    if (!cost || !work(c, cost) || !pin_record_valid(record)) {
+    if (!cost || !work(c, cost) ||
+        !(current ? pin_record_fields_current(record) : pin_record_valid(record))) {
         if (!c->wire.error) {
-            c->wire.error = "invalid prepared authored layout";
+            c->wire.error = "prepared authored nested layout is retired or "
+                            "incompatible";
         }
         return 0;
     }
@@ -127,6 +138,10 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
 {
     execution_wire *w = &c->wire;
     struct prepared_record_cache *cache = &c->records[index];
+    if (!w->reading && v->record && v->record->native) {
+        w->error = "native type requirements use linked descriptors";
+        return;
+    }
     bool authored = !w->reading && v->record;
     execution_wire_bool(w, &authored);
     if (w->error) {
@@ -165,7 +180,7 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
         return;
     }
     if (!w->reading) {
-        cache->validation_work = validate(c, v->record);
+        cache->validation_work = validate(c, v->record, true);
         if (w->error) {
             return;
         }
@@ -239,7 +254,20 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
                                       .text_descriptor = text_descriptor };
         }
     }
-    if (w->error || !w->reading) {
+    if (w->error) {
+        return;
+    }
+    if (!w->reading) {
+        cache->hash_work = 8 * (names + (size_t)count + 1);
+        for (int i = 0; i < count; i++) {
+            if (v->record->type.fields[i].type == PIN_STRUCT) {
+                cache->hash_work = cache->validation_work;
+                break;
+            }
+        }
+        if (work(c, sizeof cache->validated_alias)) {
+            cache->validated_alias = v->record;
+        }
         return;
     }
     size_t bytes = sizeof(pin_record) + (size_t)count * sizeof(type_field);
@@ -297,6 +325,21 @@ static int name_position(prepared_context *c, const char *name, size_t bytes, in
     }
     return low;
 }
+/* The first of the `count` id-ordered types whose id is not below `id`,
+ * found in log2(count) comparisons, each charged as eight bytes. */
+static int id_position(prepared_context *c, uint64_t id, int count)
+{
+    int low = 0, high = count;
+    while (low < high && work(c, sizeof id)) {
+        int middle = low + (high - low) / 2;
+        if (c->plan->types[c->records[middle].by_id].id < id) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    return low;
+}
 void prepared_types(prepared_context *c)
 {
     execution_wire *w = &c->wire;
@@ -340,23 +383,28 @@ void prepared_types(prepared_context *c)
             w->error = "invalid prepared type requirement";
             break;
         }
-        for (int j = 0; j < i && !w->error; j++) {
-            if (!work(c, c->records[i].name_bytes)) {
-                break;
-            }
-            if (p->types[j].id == v->id || !strcmp(p->types[j].name, v->name)) {
-                w->error = "duplicate prepared type requirement";
-            }
-        }
-        if (w->error) {
-            break;
-        }
+        /* The earlier types are kept in name and id order, so a repeat is
+         * found by two searches rather than a comparison with each. Making
+         * room for this type moves the indexes after both positions, which
+         * is charged too: a table listed in reverse order moves count^2. */
         bool found;
         int at = name_position(c, v->name, c->records[i].name_bytes, i, &found);
+        int id_at = id_position(c, v->id, i);
+        if (!work(c, (size_t)(i - at + i - id_at) * sizeof c->records->by_name)) {
+            break;
+        }
+        if (found || (id_at < i && p->types[c->records[id_at].by_id].id == v->id)) {
+            w->error = "duplicate prepared type requirement";
+            break;
+        }
         for (int k = i; k > at; k--) {
             c->records[k].by_name = c->records[k - 1].by_name;
         }
         c->records[at].by_name = i;
+        for (int k = i; k > id_at; k--) {
+            c->records[k].by_id = c->records[k - 1].by_id;
+        }
+        c->records[id_at].by_id = i;
         record_type(c, v, i);
     }
 }
@@ -375,6 +423,46 @@ static int requirement(prepared_context *c, const pin_value *v)
         c->wire.error = "value lacks stable nominal type requirement";
     }
     return -1;
+}
+/* Descriptors and the source module remain immutable for a write. Decoded
+ * functions own aliases of their module's layout, so validate each new alias
+ * before retaining its proof. Repeated headers still pay a nonzero charge. */
+static bool matches_record(
+    prepared_context *c,
+    int index,
+    const pin_record *record,
+    bool current,
+    const char *message
+)
+{
+    struct prepared_record_cache *cache = &c->records[index];
+    if (!work(c, cache->hash_work)) {
+        return false;
+    }
+    if (record == cache->validated_alias) {
+        /* Native children can retire between headers even when the authored
+         * descriptor is immutable. Their full check retains its full charge. */
+        if (current && cache->hash_work == cache->validation_work &&
+            !pin_record_fields_current(record)) {
+            c->wire.error = "prepared authored nested layout is retired or "
+                            "incompatible";
+            return false;
+        }
+        return true;
+    }
+    validate(c, record, current);
+    if (c->wire.error) {
+        return false;
+    }
+    if (!pin_record_same(c->plan->types[index].record, record)) {
+        c->wire.error = message;
+        return false;
+    }
+    if (!work(c, sizeof cache->validated_alias)) {
+        return false;
+    }
+    cache->validated_alias = record;
+    return true;
 }
 static const pin_record *resolve(execution_wire *w, void *user, const pin_value *v, bool authored)
 {
@@ -409,23 +497,27 @@ static const pin_record *resolve(execution_wire *w, void *user, const pin_value 
         w->error = "prepared authored/native type identity differs";
         return NULL;
     }
+    if (!w->reading && v->record && v->record->native) {
+        if (authored || !pin_record_valid(v->record) ||
+            v->record->layout != type->layout || v->record->type.size != type->size ||
+            strcmp(v->record->type.name, type->name)) {
+            w->error = "prepared native value layout differs";
+            return NULL;
+        }
+        return v->record;
+    }
     if (!w->reading) {
-        if (v->record) {
-            validate(c, v->record);
-            if (w->error) {
-                return NULL;
-            }
-            if (!pin_record_same(type->record, v->record)) {
-                w->error = "prepared authored value layout differs";
-                return NULL;
-            }
+        /* Only the outer value's retained schema exempts its native children
+         * from catalog freshness. The backing array keeps its separate
+         * structural and identity checks. */
+        if (v->record &&
+            !matches_record(c, index, v->record, !v->schema, "prepared authored value layout differs")) {
+            return NULL;
         }
         if (v->container != PIN_CONTAINER_SINGLE && v->ptr) {
             const pin_array *array = v->ptr;
-            if (array->record) {
-                validate(c, array->record);
-            }
-            if (w->error) {
+            if (array->record &&
+                !matches_record(c, index, array->record, false, "prepared authored/native collection identity differs")) {
                 return NULL;
             }
             if (!pin_record_same(array->record, v->record)) {
@@ -500,7 +592,7 @@ static bool header_work(
     bool diagnostic
 )
 {
-    if (!value.record) {
+    if (!value.record || value.record->native) {
         return true;
     }
     int at = requirement(c, &value);

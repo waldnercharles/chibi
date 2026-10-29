@@ -643,8 +643,17 @@ draw and to cut its shadows.
 
 ## Optional material inputs
 
-Rhythm, Surface Influence, trails and particles feed materials only when a scene
-has them. A scene without a valid rhythm clock draws with the beat at rest.
+Surface Influence, trails and particles feed materials only when a scene has
+them. Materials can animate with shader Time and ordinary math. The engine no
+longer supplies a rhythm clock or Beat Phase/Pulse shader inputs.
+
+Project version 39 removes stored Rhythm and VisualMotion components and
+replaces beat shader nodes with zero constants. Source that calls
+`scene_rhythm()` or `trigger_visual_reaction()`, or reads the removed native
+components, needs an authored decision before migration can finish. Remove
+those uses or express the desired effect through ordinary behaviors that write
+`VisualTransform` and `Geometry3D.elevation`. The canned spin and recoil system
+is retired; visual transforms, simulation clocks, math and tasks remain.
 
 ## Tests
 
@@ -656,7 +665,7 @@ clip range, panning dropping a lens, fog concealing rays that miss the ground,
 and ground rays and fog from an eye far from the origin, turned off the axes
 too. It checks ambient, the
 directional light, the one-light limit
-(hidden lights left out), drawing without a rhythm clock, both tone maps, auto
+(hidden lights left out), both tone maps, auto
 exposure's geometric mean, background rejection, easing (including slow easing
 finer than a half-float step), snapping and settings checks, and sun shadows: a
 box's shadow, no self-shadowing on lit faces, a solid the camera culls casting

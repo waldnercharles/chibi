@@ -414,7 +414,7 @@ QueryPointers :: (types: TypeDecl[], members: TypeMember[]) -> TypeDecl[] {
         index := native.first;
         while (index < native.first + native.count) {
             field := members[index];
-            declared = AddPointer(declared, {storage: field.storage, container: field.container, record: field.record}, false, 0);
+            EnsurePointer(&declared, {storage: field.storage, container: field.container, record: field.record}, false, 0);
             index += 1;
         }
     }
@@ -515,7 +515,8 @@ QueryType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], 
             index += 1;
         }
     }
-    return ReadType(forest, text, types, names, 0, node);
+    table := types;
+    return ReadType(forest, text, &table, names, 0, node);
 }
 // Type query expressions through the ordinary body emitter. It performs no
 // execution; its inferred result follows exactly the same operators, calls,
@@ -542,7 +543,8 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     functions := append(callables, expression);
     expressions := ops;
     expressions.debug = false;
-    switch EmitBody(forest, text, document, functions, params, types, members, [], natives, ports, [], [], [], [], names,
+    table := types;
+    switch EmitBody(forest, text, document, functions, params, &table, members, [], natives, ports, [], [], [], [], names,
                     "", SolidOffsets(text), 0, 0, length(functions) - 1, [], [], [], BodyContext.Unknown, [],
                     expressions, target, queries) {
         case .Inferred(value):
@@ -561,7 +563,7 @@ QueryValueType :: (forest: snapshot.SnapshotNode[], text: string, document: int,
 // QueryScope reconstructs types, not runtime locations. Actual captures use
 // the emitter's live names when the description is created.
 QueryScopeName :: (forest: snapshot.SnapshotNode[], text: string, node: int, value: ValueType) -> Name {
-    return {name: Text(forest, text, node), place: LocalPlace, index: 0, storage: value.storage,
+    return {owned: false, name: Text(forest, text, node), place: LocalPlace, index: 0, storage: value.storage,
             container: value.container, record: value.record, writable: false, node: node};
 }
 // A positive payload pattern is visible in its matching body and in the
@@ -648,7 +650,7 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
         index: int = 0;
         while (index < callable.count) {
             param := params[callable.first + index];
-            name: Name = {name: param.name, place: ParameterPlace, index: index, storage: param.storage,
+            name: Name = {owned: false, name: param.name, place: ParameterPlace, index: index, storage: param.storage,
                           container: param.container, record: param.record, writable: false, node: param.node};
             names.append(name);
             index += 1;
@@ -659,7 +661,7 @@ QueryScope :: (forest: snapshot.SnapshotNode[], text: string, document: int, typ
             continue;
         }
         for (field in QueryFields(forest, text, types, members, described)) {
-            name: Name = {name: field.name, place: QueryFieldPlace, index: 0, storage: field.storage,
+            name: Name = {owned: false, name: field.name, place: QueryFieldPlace, index: 0, storage: field.storage,
                           container: field.container, record: field.record, writable: false, node: field.node};
             names.append(name);
         }
@@ -939,7 +941,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                 if (Is(forest, nested, "query_expression")) {
                     scope := enclosing;
                     for (field in fields) {
-                        named: Name = {name: field.name, place: LocalPlace, index: 0,
+                        named: Name = {owned: false, name: field.name, place: LocalPlace, index: 0,
                                        storage: field.storage, container: field.container, record: field.record,
                                        writable: false, node: Field(forest, field.node, "name")};
                         scope.append(named);
@@ -1096,7 +1098,7 @@ CollectQuery :: (forest: snapshot.SnapshotNode[], text: string, identity: string
                              source_relationship: provider.relation, source_traversal: provider.traversal,
                              optional: Field(forest, clause, "type") >= 0 && HasToken(forest, Field(forest, clause, "type"), "?")};
         fields.append(field);
-        local: Name = {name: name, place: LocalPlace, index: length(fields) - 1, storage: typed.storage,
+        local: Name = {owned: false, name: name, place: LocalPlace, index: length(fields) - 1, storage: typed.storage,
                        container: typed.container, record: typed.record, writable: false, node: name_node};
         names.append(local);
     }
@@ -1273,7 +1275,7 @@ QueryCallStep :: (intrinsic: int, arguments: Value[], initial: Cell[], result: V
         }
         index += 1;
     }
-    host: Host = {command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(initial),
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(initial),
                   result_count: 1, written: false};
     code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
     storage := SlotStorage(result.storage, result.container, target);
@@ -1379,7 +1381,7 @@ QueryReadonlyDestination :: (forest: snapshot.SnapshotNode[], text: string, type
 
 QueryAccessPresent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], expression: int) -> bool {
     spelling := Text(forest, text, expression);
-    binding: Name = {name: spelling, place: LocalPlace, index: 0, storage: 0, container: 0, record: -1,
+    binding: Name = {owned: false, name: spelling, place: LocalPlace, index: 0, storage: 0, container: 0, record: -1,
                      writable: false, node: -1};
     if (PointerPresent(forest, text, binding, expression)) {
         return true;
@@ -1428,7 +1430,7 @@ QueryNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[],
     names: Name[] = [];
     index: int = 0;
     for (field in QueryFields(forest, text, types, members, described)) {
-        name: Name = {name: field.name, place: QueryFieldPlace, index: index, storage: field.storage,
+        name: Name = {owned: false, name: field.name, place: QueryFieldPlace, index: index, storage: field.storage,
                       container: field.container, record: field.record, writable: false, node: field.node};
         names.append(name);
         index += 1;
@@ -1864,7 +1866,7 @@ QueryEvaluateStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
     if (!Accepts(types, field.storage, field.container, field.record, value)) {
         return Fail(forest, item.node, document, "Query binding value differs from its type");
     }
-    bound: Name = {name: field.name, place: LocalPlace, index: at.local, storage: field.storage,
+    bound: Name = {owned: false, name: field.name, place: LocalPlace, index: at.local, storage: field.storage,
                    container: field.container, record: field.record, writable: false,
                    node: Field(forest, item.node, "name")};
     if (Pointer(field.storage, field.container)) {

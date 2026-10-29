@@ -188,7 +188,7 @@ TaskResultReadStep :: (types: TypeDecl[], binding: Name, ops: Ops, target: Targe
     tag.variant = first;
     cells: Cell[] = [TypedCell(UnionStorage, 0, binding.record), tag, TypedCell(IntStorage, 0, -1),
                      TypedCell(BoolStorage, 0, -1), TypedCell(value.storage, value.container, value.record)];
-    host: Host = {command: 0, syntax_node: 0, intrinsic: UnionGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: UnionGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 4,
                   result_count: 1, written: false};
     roots: Root[] = [];
     if (Pointer(value.storage, value.container)) {

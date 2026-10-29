@@ -1,6 +1,7 @@
 #include "types/map.h"
 
 #include "support/arena.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "types/record.h"
 #include "types/schema.h"
@@ -9,14 +10,14 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
 static bool same_type(pin_value a, pin_value b)
 {
     if (a.type != b.type || a.container != b.container ||
-        !pin_record_same(a.record, b.record) ||
-        strcmp(a.type_name ? a.type_name : "", b.type_name ? b.type_name : "")) {
+        !pin_value_layout_same(&a, &b)) {
         return false;
     }
     if (a.type != PIN_STRUCT || a.record || (!a.schema && !b.schema)) {
@@ -211,9 +212,14 @@ bool pin_map_entry_valid(const pin_map *map, const pin_value *key, const pin_val
            same_type(map->key_type, *key) && same_type(map->value_type, *value);
 }
 
+static void trace_backing(const pin_map *, arena_marker, void *);
 static void trace_map(const void *data, const void *, arena_marker mark, void *user)
 {
     const pin_map *map = data;
+    if (map->backing) {
+        trace_backing(map, mark, user);
+        return;
+    }
     pin_value_trace(&map->key_type, mark, user);
     pin_value_trace(&map->value_type, mark, user);
     mark(user, map->entries);
@@ -242,6 +248,8 @@ static pin_map *allocate(arena *storage, int count)
         return NULL;
     }
     memset(map, 0, size);
+    /* Raw copies are borrowed graphs; adoption establishes managed ownership. */
+    map->storage = NULL;
     map->capacity = count;
     map->entries = (pin_map_entry *)(map + 1);
     if (storage) {
@@ -307,6 +315,306 @@ static pin_map *copy_map(arena *storage, const pin_map *source, bool snapshot, i
     return index_build(storage, map, capacity) ? map : NULL;
 }
 
+static _Thread_local const pin_map **copying_maps;
+typedef struct
+{
+    pin_map_backing *backing;
+} map_anchor;
+struct pin_map_backing
+{
+    atomic_size_t references;
+    pin_map contents;
+    map_anchor *anchor;
+};
+static void trace_backing(const pin_map *map, arena_marker mark, void *user)
+{
+    mark(user, map->backing->anchor);
+}
+static size_t backing_bytes(const pin_map_backing *backing)
+{
+    const pin_map *map = &backing->contents;
+    return sizeof *backing + (size_t)map->capacity * sizeof *map->entries +
+           (map->slots ? ((size_t)map->slot_mask + 1) * sizeof *map->slots : 0);
+}
+static void release_backing(void *resource)
+{
+    pin_map_backing *backing = resource;
+    size_t before = atomic_fetch_sub_explicit(&backing->references, 1, memory_order_acq_rel);
+    assert(before);
+    if (before == 1) {
+        free(backing->contents.entries);
+        free(backing->contents.slots);
+        free(backing);
+    }
+}
+static void trace_anchor(const void *data, const void *, arena_marker mark, void *user)
+{
+    const map_anchor *anchor = data;
+    const pin_map *map = &anchor->backing->contents;
+    pin_value_trace(&map->key_type, mark, user);
+    pin_value_trace(&map->value_type, mark, user);
+    for (int i = 0; i < map->count; i++) {
+        pin_value_trace(&map->entries[i].key, mark, user);
+        pin_value_trace(&map->entries[i].value, mark, user);
+    }
+}
+static bool backing_index(pin_map *map, int capacity)
+{
+    uint64_t count = slot_count(capacity);
+    if (count > MAP_MAX_SLOTS) {
+        return false;
+    }
+    pin_map_slot *slots = count ? xmalloc((size_t)count * sizeof *slots) : NULL;
+    index_fill(map, slots, count);
+    return true;
+}
+static pin_map_backing *new_backing(arena *storage, const pin_map *source, int capacity)
+{
+    pin_map_backing *backing = xcalloc(1, sizeof *backing);
+    atomic_init(&backing->references, 1);
+    pin_map *map = &backing->contents;
+    map->storage = storage;
+    map->capacity = capacity;
+    map->entries = xcalloc((size_t)(capacity ? capacity : 1), sizeof *map->entries);
+    pin_value key_type = shape(source->key_type),
+              value_type = shape(source->value_type);
+    if (pin_value_snapshot_to_arena(storage, &map->key_type, &key_type) ||
+        pin_value_snapshot_to_arena(storage, &map->value_type, &value_type)) {
+        release_backing(backing);
+        return NULL;
+    }
+    for (int i = 0; i < source->count; i++) {
+        if (pin_value_collection_copy(
+                storage,
+                &map->entries[i].key,
+                &source->entries[i].key
+            ) ||
+            pin_value_collection_copy(
+                storage,
+                &map->entries[i].value,
+                &source->entries[i].value
+            )) {
+            release_backing(backing);
+            return NULL;
+        }
+        map->count++;
+    }
+    if (!backing_index(map, capacity)) {
+        release_backing(backing);
+        return NULL;
+    }
+    backing->anchor = arena_alloc(storage, sizeof *backing->anchor);
+    backing->anchor->backing = backing;
+    arena_set_trace(storage, backing->anchor, trace_anchor, NULL);
+    return backing;
+}
+static void install_backing(arena *storage, pin_map *map, pin_map_backing *backing)
+{
+    *map = backing->contents;
+    map->storage = storage;
+    map->backing = backing;
+    arena_replace_cleanup(storage, map, release_backing, backing, backing_bytes(backing));
+}
+static int adopt_backing(arena *storage, pin_map *map, bool fork_children)
+{
+    pin_map original = *map;
+    pin_map_backing *backing = xcalloc(1, sizeof *backing);
+    atomic_init(&backing->references, 1);
+    backing->contents = original;
+    backing->contents.storage = storage;
+    backing->contents.backing = NULL;
+    backing->contents.entries = xcalloc(
+        (size_t)(original.capacity ? original.capacity : 1),
+        sizeof(pin_map_entry)
+    );
+    if (original.count) {
+        memcpy(backing->contents.entries, original.entries, (size_t)original.count * sizeof(pin_map_entry));
+    }
+    backing->contents.slots = NULL;
+    if (!backing_index(&backing->contents, original.capacity)) {
+        release_backing(backing);
+        return -1;
+    }
+    backing->anchor = arena_alloc(storage, sizeof *backing->anchor);
+    backing->anchor->backing = backing;
+    arena_set_trace(storage, backing->anchor, trace_anchor, NULL);
+    /* Recursive imports must find this shell before its children are forked. */
+    install_backing(storage, map, backing);
+    if (!fork_children) {
+        return 0;
+    }
+    backing->contents.count = 0;
+    apush(copying_maps, map);
+    int copied = 0;
+    for (; copied < original.count; copied++) {
+        pin_map_entry entry;
+        if (pin_value_collection_copy(
+                storage,
+                &entry.key,
+                &original.entries[copied].key
+            )) {
+            break;
+        }
+        if (pin_value_collection_copy(
+                storage,
+                &entry.value,
+                &original.entries[copied].value
+            )) {
+            pin_value_collection_release(&entry.key);
+            break;
+        }
+        backing->contents.entries[copied] = entry;
+        backing->contents.count = copied + 1;
+    }
+    asetlen(copying_maps, acount(copying_maps) - 1);
+    if (!acount(copying_maps)) {
+        afree(copying_maps);
+        copying_maps = NULL;
+    }
+    if (copied != original.count) {
+        for (int i = 0; i < copied; i++) {
+            pin_value_collection_release(&backing->contents.entries[i].key);
+            pin_value_collection_release(&backing->contents.entries[i].value);
+        }
+        *map = original;
+        arena_replace_cleanup(storage, map, NULL, NULL, 0);
+        return -1;
+    }
+    return 0;
+}
+static pin_map *value_copy(arena *storage, const pin_map *source)
+{
+    if (!storage || !source || source->count < 0 ||
+        source->capacity < source->count || (source->count && !source->entries)) {
+        return NULL;
+    }
+    if (!storage->collectable || source->storage != storage) {
+        pin_value input = { .type = PIN_UNION,
+                            .container = PIN_CONTAINER_MAP,
+                            .ptr = (void *)source },
+                  copy;
+        if (pin_value_capture_to_arena(storage, &copy, &input)) {
+            return NULL;
+        }
+        if (storage->collectable) {
+            pin_value managed;
+            if (pin_value_array_promote(storage, &managed, &copy)) {
+                return NULL;
+            }
+            copy = managed;
+            if (pin_map_make_unique(storage, copy.ptr)) {
+                return NULL;
+            }
+        }
+        return copy.ptr;
+    }
+    if (!source->backing && source->storage && source->storage->collectable &&
+        arena_contains(source->storage, source)) {
+        if (pin_map_make_unique(source->storage, (pin_map *)source)) {
+            return NULL;
+        }
+    }
+    pin_map_backing *backing = source->backing;
+    if (backing) {
+        atomic_fetch_add_explicit(&backing->references, 1, memory_order_relaxed);
+    } else {
+        backing = new_backing(storage, source, source->count);
+        if (!backing) {
+            return NULL;
+        }
+    }
+    pin_map *copy = arena_alloc(storage, sizeof *copy);
+    *copy = source->backing ? *source : backing->contents;
+    copy->storage = storage;
+    copy->backing = backing;
+    /* During initial adoption the anchor traces only its forked prefix; a
+     * recursive VALUE copy still receives the complete source shell. */
+    arena_replace_cleanup(storage, copy, release_backing, backing, backing_bytes(backing));
+    pin_map_trace_storage(storage, copy);
+    return copy;
+}
+pin_map *pin_map_value_copy(arena *storage, const pin_map *source)
+{
+    /* Ordinary values cannot contain a recursive collection ownership path. */
+    for (int i = 0; i < acount(copying_maps); i++) {
+        if (copying_maps[i] == source) {
+            return NULL;
+        }
+    }
+    if (storage && storage->collectable && source && source->backing &&
+        source->storage == storage) {
+        return value_copy(storage, source);
+    }
+    apush(copying_maps, source);
+    pin_map *copy = value_copy(storage, source);
+    asetlen(copying_maps, acount(copying_maps) - 1);
+    if (!acount(copying_maps)) {
+        afree(copying_maps);
+        copying_maps = NULL;
+    }
+    return copy;
+}
+int pin_map_make_unique(arena *storage, pin_map *map)
+{
+    if (!storage || !map || map->count < 0 || map->capacity < map->count ||
+        (map->count && !map->entries)) {
+        return -1;
+    }
+    if (!storage->collectable) {
+        return map->backing ? -1 : 0;
+    }
+    if (!map->backing && map->storage == storage && arena_contains(storage, map)) {
+        if (adopt_backing(storage, map, true)) {
+            return -1;
+        }
+    }
+    if (map->backing &&
+        atomic_load_explicit(&map->backing->references, memory_order_acquire) == 1) {
+        return 0;
+    }
+    pin_map_backing *backing = new_backing(storage, map, map->capacity);
+    if (!backing) {
+        return -1;
+    }
+    install_backing(storage, map, backing);
+    return 0;
+}
+void pin_map_mutation_end(pin_map *map)
+{
+    if (map && map->backing) {
+        assert(atomic_load_explicit(&map->backing->references, memory_order_acquire) == 1);
+        map->backing->contents = *map;
+        map->backing->contents.backing = NULL;
+        /* Transfer a replacement reference before dropping the old attachment. */
+        atomic_fetch_add_explicit(&map->backing->references, 1, memory_order_relaxed);
+        arena_replace_cleanup(map->storage, map, release_backing, map->backing, backing_bytes(map->backing));
+    }
+}
+void pin_map_release(pin_map *map)
+{
+    if (!map || !map->backing) {
+        return;
+    }
+    pin_map_backing *backing = map->backing;
+    pin_map_entry *entries = map->entries;
+    int count = map->count;
+    bool last = atomic_load_explicit(&backing->references, memory_order_acquire) == 1;
+    /* Clear the owner before walking children: a legacy cyclic graph may
+     * refer back to this shell. Cleanup itself only touches malloc storage. */
+    map->backing = NULL;
+    map->count = map->capacity = 0;
+    map->entries = NULL;
+    map->slots = NULL;
+    map->slot_mask = 0;
+    if (last) {
+        for (int i = 0; i < count; i++) {
+            pin_value_collection_release(&entries[i].key);
+            pin_value_collection_release(&entries[i].value);
+        }
+    }
+    arena_replace_cleanup(map->storage, map, NULL, NULL, 0);
+}
+
 pin_map *pin_map_clone(const pin_map *source)
 {
     return source ? copy_map(NULL, source, false, source->count) : NULL;
@@ -341,34 +649,40 @@ pin_map *pin_map_create(
     }
     for (int i = 0; i < count; i++) {
         const pin_map_entry *entry = &entries[i];
-        if (!pin_map_key_supported(entry->key) ||
-            !same_type(map->key_type, entry->key) ||
-            !same_type(map->value_type, entry->value)) {
-            return NULL;
+        if (!pin_map_entry_valid(map, &entry->key, &entry->value)) {
+            goto invalid;
         }
         int index = pin_map_find(map, &entry->key);
+        pin_value value, key;
+        if (pin_value_collection_copy(storage, &value, &entry->value)) {
+            goto invalid;
+        }
         if (index < 0) {
+            if (pin_value_collection_copy(storage, &key, &entry->key)) {
+                pin_value_collection_release(&value);
+                goto invalid;
+            }
             index = map->count++;
-            if (pin_value_snapshot_to_arena(
-                    storage,
-                    &map->entries[index].key,
-                    &entry->key
-                )) {
-                return NULL;
-            }
+            map->entries[index].key = key;
             if (map->slots) {
-                index_insert(map, key_hash(&entry->key), index);
+                index_insert(map, key_hash(&key), index);
             }
+        } else {
+            pin_value_collection_release(&map->entries[index].value);
         }
-        if (pin_value_snapshot_to_arena(
-                storage,
-                &map->entries[index].value,
-                &entry->value
-            )) {
-            return NULL;
-        }
+        map->entries[index].value = value;
+    }
+    if (storage->collectable && adopt_backing(storage, map, false)) {
+        goto invalid;
     }
     return map;
+invalid:
+    for (int i = 0; i < map->count; i++) {
+        pin_value_collection_release(&map->entries[i].key);
+        pin_value_collection_release(&map->entries[i].value);
+    }
+    map->count = 0;
+    return NULL;
 }
 
 pin_map *pin_map_set(arena *storage, const pin_map *source, const pin_value *key, const pin_value *value)
@@ -378,23 +692,15 @@ pin_map *pin_map_set(arena *storage, const pin_map *source, const pin_value *key
         !same_type(source->value_type, *value)) {
         return NULL;
     }
-    int index = pin_map_find(source, key);
-    pin_map *map = copy_map(storage, source, true, source->count + (index < 0));
+    pin_map *map = pin_map_value_copy(storage, source);
     if (!map) {
         return NULL;
     }
-    if (index < 0) {
-        index = map->count++;
-        if (pin_value_snapshot_to_arena(storage, &map->entries[index].key, key)) {
-            return NULL;
-        }
-        if (map->slots) {
-            index_insert(map, key_hash(key), index);
-        }
+    if (pin_map_store_owned(storage, &map, key, value)) {
+        pin_map_release(map);
+        return NULL;
     }
-    return pin_value_snapshot_to_arena(storage, &map->entries[index].value, value)
-             ? NULL
-             : map;
+    return map;
 }
 /* Removing keeps the others in order: the entries after it move down, its
  * slot empties by Robin Hood backward shift, and the slots naming later
@@ -433,42 +739,71 @@ int pin_map_store_owned(arena *storage, pin_map **owner, const pin_value *key, c
         !same_type(map->key_type, *key) || !same_type(map->value_type, *value)) {
         return -1;
     }
-    int index = pin_map_find(map, key);
-    if (index < 0 && map->count == map->capacity) {
-        /* Doubling keeps appends amortized constant, as for local arrays. */
-        if (map->capacity > INT32_MAX / 2) {
-            return -1;
-        }
-        pin_map *grown = allocate(storage, map->capacity ? map->capacity * 2 : 4);
-        if (!grown) {
-            return -1;
-        }
-        grown->key_type = map->key_type;
-        grown->value_type = map->value_type;
-        grown->count = map->count;
-        memcpy(grown->entries, map->entries, (size_t)map->count * sizeof *map->entries);
-        if (!index_build(storage, grown, grown->capacity)) {
-            return -1;
-        }
-        *owner = map = grown;
+    if (map->backing) {
+        storage = map->storage;
     }
-    pin_value stored;
-    if (pin_value_snapshot_to_arena(storage, &stored, value)) {
+    int index = pin_map_find(map, key);
+    if (index < 0 && map->count == map->capacity && map->capacity > INT32_MAX / 2) {
         return -1;
     }
-    if (index < 0) {
-        index = map->count;
-        if (pin_value_snapshot_to_arena(storage, &map->entries[index].key, key)) {
-            return -1;
+    /* Stage before detaching or growing: either input may refer into this map. */
+    pin_value stored, stored_key;
+    if (pin_value_collection_copy(storage, &stored, value)) {
+        return -1;
+    }
+    if (index < 0 && pin_value_collection_copy(storage, &stored_key, key)) {
+        pin_value_collection_release(&stored);
+        return -1;
+    }
+    if (pin_map_make_unique(storage, map)) {
+        pin_value_collection_release(&stored);
+        if (index < 0) {
+            pin_value_collection_release(&stored_key);
         }
-        map->count++;
-        if (map->slots) {
-            index_insert(map, key_hash(key), index);
-        } else if (map->count >= MAP_INDEX_MIN_COUNT && !index_build(storage, map, map->capacity)) {
-            return -1;
+        return -1;
+    }
+    if (index < 0 && map->count == map->capacity) {
+        int capacity = map->capacity ? map->capacity * 2 : 4;
+        if (map->backing) {
+            map->entries = xrealloc(map->entries, (size_t)capacity * sizeof *map->entries);
+            map->capacity = capacity;
+            free(map->slots);
+            map->slots = NULL;
+            if (!backing_index(map, capacity)) {
+                pin_map_mutation_end(map);
+                pin_value_collection_release(&stored);
+                pin_value_collection_release(&stored_key);
+                return -1;
+            }
+        } else {
+            pin_map *grown = allocate(storage, capacity);
+            grown->key_type = map->key_type;
+            grown->value_type = map->value_type;
+            grown->count = map->count;
+            memcpy(
+                grown->entries,
+                map->entries,
+                (size_t)map->count * sizeof *map->entries
+            );
+            if (!index_build(storage, grown, capacity)) {
+                pin_value_collection_release(&stored);
+                pin_value_collection_release(&stored_key);
+                return -1;
+            }
+            *owner = map = grown;
         }
     }
+    if (index < 0) {
+        index = map->count++;
+        map->entries[index].key = stored_key;
+        if (map->slots) {
+            index_insert(map, key_hash(&stored_key), index);
+        }
+    } else {
+        pin_value_collection_release(&map->entries[index].value);
+    }
     map->entries[index].value = stored;
+    pin_map_mutation_end(map);
     return 0;
 }
 int pin_map_delete_owned(arena *storage, pin_map *map, const pin_value *key)
@@ -477,10 +812,20 @@ int pin_map_delete_owned(arena *storage, pin_map *map, const pin_value *key)
         !same_type(map->key_type, *key)) {
         return -1;
     }
-    int index = pin_map_find(map, key);
-    if (index >= 0) {
-        remove_entry(map, index);
+    if (map->backing) {
+        storage = map->storage;
     }
+    int index = pin_map_find(map, key);
+    if (index < 0) {
+        return 0;
+    }
+    if (pin_map_make_unique(storage, map)) {
+        return -1;
+    }
+    pin_value_collection_release(&map->entries[index].key);
+    pin_value_collection_release(&map->entries[index].value);
+    remove_entry(map, index);
+    pin_map_mutation_end(map);
     return 0;
 }
 
@@ -490,13 +835,13 @@ pin_map *pin_map_remove(arena *storage, const pin_map *source, const pin_value *
         !same_type(source->key_type, *key)) {
         return NULL;
     }
-    pin_map *map = copy_map(storage, source, true, source->count);
+    pin_map *map = pin_map_value_copy(storage, source);
     if (!map) {
         return NULL;
     }
-    int index = pin_map_find(map, key);
-    if (index >= 0) {
-        remove_entry(map, index);
+    if (pin_map_delete_owned(storage, map, key)) {
+        pin_map_release(map);
+        return NULL;
     }
     return map;
 }
@@ -504,6 +849,10 @@ pin_map *pin_map_remove(arena *storage, const pin_map *source, const pin_value *
 void pin_map_free(pin_map *map)
 {
     if (!map) {
+        return;
+    }
+    if (map->backing) {
+        pin_map_release(map);
         return;
     }
     pin_value_destroy(&map->key_type);

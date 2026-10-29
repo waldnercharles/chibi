@@ -3,9 +3,12 @@
 import importlib.util
 from pathlib import Path
 import shlex
+import runpy
+import sys
 import os
 import subprocess
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('native_profile', ROOT / '.github/native-profile.py')
@@ -42,6 +45,87 @@ class ProfileTests(unittest.TestCase):
         self.assertNotIn('--debug-optimization "1"', result)
         self.assertNotIn('--debug-frame-pointers "on"', result)
         self.assertNotIn('--asset-generator-hosts', result)
+
+    def test_graph_reference_tracks_platform_default_and_explicit_override(self):
+        for system, default in (('linux', 'build-cmake'), ('darwin', 'build-cmake'),
+                                ('win32', 'build')):
+            for override, host in ((None, None), ('custom-cmake', None),
+                                   (None, 'custom/sdk/chibi-build-host'),
+                                   ('custom-cmake', 'custom/sdk/chibi-build-host')):
+                with self.subTest(system=system, override=override, host=host), \
+                        patch.object(sys, 'platform', system), patch.dict(os.environ):
+                    os.environ.pop('CHIBI_GRAPH_REFERENCE', None)
+                    os.environ.pop('CHIBI_BUILD_HOST', None)
+                    if override is not None:
+                        os.environ['CHIBI_GRAPH_REFERENCE'] = override
+                    if host is not None:
+                        os.environ['CHIBI_BUILD_HOST'] = host
+                    policy = runpy.run_path(str(ROOT / 'tools/test_policy.py'))
+                    expected = str(ROOT / (override or default))
+                    expected_host = str(ROOT / (host or 'build/sdk/chibi-build-host'))
+                    self.assertEqual(policy['GRAPH_REFERENCE'], expected)
+                    for name, command in policy['TOOLS'].items():
+                        if name.startswith('build-graph'):
+                            selector = command.index('--' + name)
+                            arguments = command[selector + 1:]
+                            expected_arguments = [expected_host]
+                            if name != 'build-graph-link-response':
+                                expected_arguments.append(expected)
+                            self.assertEqual(arguments, expected_arguments, name)
+
+    def test_linux_graph_proof_is_bounded_and_explicit(self):
+        text = (ROOT / '.github/workflows/linux-graph.yml').read_text()
+        triggers = text.split('\non:\n', 1)[1].split('\npermissions:', 1)[0]
+        self.assertEqual([line for line in triggers.splitlines()
+                          if line.startswith('  ') and not line.startswith('   ')],
+                         ['  pull_request:', '  workflow_dispatch:'])
+        self.assertIn('types: [labeled]', triggers)
+        self.assertIn('type: boolean\n        default: false', triggers)
+        self.assertIn('permissions:\n  contents: read\n', text)
+        self.assertNotIn('write', text.split('\npermissions:', 1)[1].split('\njobs:', 1)[0])
+        self.assertIn('timeout-minutes: 45', text)
+        self.assertIn("JOBS: '2'", text)
+        self.assertIn('persist-credentials: false', text)
+        self.assertIn('GH_TOKEN: ${{ github.token }}', text)
+        self.assertIn('group: linux-graph-${{ github.event.pull_request.number || github.ref }}', text)
+        exact = '${{ github.event.pull_request.head.sha || github.sha }}'
+        self.assertIn('EXPECTED_SHA: ' + exact, text)
+        self.assertIn('ref: ' + exact, text)
+        self.assertEqual(text.count('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"'), 2)
+        gate = ' '.join(text.split('    if: >-\n', 1)[1].split('    concurrency:', 1)[0].split())
+        selection = next(line for line in text.splitlines() if 'CHIBI_CI_SANITIZERS:' in line)
+        selection = selection.split('${{', 1)[1].split('}}', 1)[0].strip()
+        expected_gate = (
+            "github.event_name == 'workflow_dispatch' || "
+            "((github.event.label.name == 'ci-linux-graph' || "
+            "github.event.label.name == 'ci-linux-graph-sanitizers') && "
+            "github.event.pull_request.head.repo.full_name == github.repository)")
+        expected_selection = (
+            "(inputs.sanitizers == true || github.event.label.name == "
+            "'ci-linux-graph-sanitizers') && 'ON' || 'OFF'")
+        self.assertEqual(gate, expected_gate)
+        self.assertEqual(selection, expected_selection)
+
+        def evaluate(expression, context):
+            for field in sorted(context, key=len, reverse=True):
+                expression = expression.replace(field, repr(context[field]))
+            expression = expression.replace('true', 'True').replace('&&', 'and').replace('||', 'or')
+            return eval(expression, {'__builtins__': {}}, {})
+
+        for event, label, same_repo, sanitizers, allowed, profile in (
+                ('pull_request', 'ci-linux-graph', True, False, True, 'OFF'),
+                ('pull_request', 'ci-linux-graph-sanitizers', True, False, True, 'ON'),
+                ('workflow_dispatch', '', True, False, True, 'OFF'),
+                ('workflow_dispatch', '', True, True, True, 'ON'),
+                ('pull_request', 'unrelated', True, False, False, 'OFF'),
+                ('pull_request', 'ci-linux-graph', False, False, False, 'OFF'),
+                ('pull_request', 'ci-linux-graph-sanitizers', False, False, False, 'ON')):
+            with self.subTest(event=event, label=label, same_repo=same_repo, sanitizers=sanitizers):
+                context = {'github.event_name': event, 'github.event.label.name': label,
+                           'github.event.pull_request.head.repo.full_name': 'owner/repo' if same_repo else 'fork/repo',
+                           'github.repository': 'owner/repo', 'inputs.sanitizers': sanitizers}
+                self.assertEqual(evaluate(gate, context), allowed)
+                self.assertEqual(evaluate(selection, context), profile)
 
     def test_invalid_profile_fails_closed(self):
         for value in ('', 'true', 'off', None):
@@ -95,10 +179,7 @@ class ProfileTests(unittest.TestCase):
             self.assertIn('shell: bash', selectors)
             self.assertIn('set -e', selectors)
             self.assertNotIn('if:', selectors)  # Default success gate must not be weakened.
-            if job == 'native':
-                self.assertLess(block.index('make test-build'), positions[0])
-            else:
-                self.assertNotIn('make test-build', block)
+            self.assertNotIn('make test-build', block)
             self.assertIn('run: python3 .github/verify-native-profile.py', block)
             release = block.index('run: make build-release')
             build = block.index('make build BUILD_TARGET=')
@@ -107,8 +188,25 @@ class ProfileTests(unittest.TestCase):
             self.assertLess(build, verify)
             self.assertLess(verify, positions[0])
             self.assertIn('chibi-compiler-host', block[release:build])
-            self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 2 if job == 'native' else 1)
-        self.assertNotIn('continue-on-error:', text.split('  native:\n')[1].split('  windows:\n')[0])
+            self.assertEqual(block.count('ASSET_GENERATOR_HOSTS=build-release/sdk'), 1)
+            self.assertIn('BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"', block[build:verify])
+            if job == 'native':
+                reference = block.index('make graph-reference LIBCLANG_ROOT=/usr/lib/llvm-18')
+                parity = block.index('python3 tools/test_policy.py tool build-graph-debug-optimization')
+                self.assertLess(verify, reference)
+                self.assertLess(reference, parity)
+        diagnostics = ['Capture macOS facade identities', 'Preserve macOS facade identities']
+        optional = []
+        native_jobs = text.split('  native:\n', 1)[1].split('  windows:\n', 1)[0]
+        for step in native_jobs.split('\n      - '):
+            if 'continue-on-error:' not in step:
+                continue
+            name = step.splitlines()[0].removeprefix('name: ')
+            self.assertIn(name, diagnostics)
+            self.assertEqual(step.count('continue-on-error:'), 1)
+            self.assertIn('\n        continue-on-error: true\n', step)
+            optional.append(name)
+        self.assertEqual(optional, diagnostics)
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
+#include "execution/managed.h"
 #include "execution/module_effects.h"
 #include "execution/preparation_budget.h"
 #include "execution/prepared.h"
@@ -26,6 +27,7 @@ static behavior_function *function;
 static behavior_function *helper_function;
 static behavior_function_context context;
 static behavior_function_activation activation;
+static behavior_managed_heap heap;
 static arena storage, string_inputs;
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -53,6 +55,7 @@ static void release_run()
 {
     behavior_function_release_host(&context);
     behavior_function_activation_free(&activation);
+    behavior_managed_heap_free(&heap);
     arena_free(&storage);
     context = (behavior_function_context){ 0 };
 }
@@ -482,11 +485,13 @@ static void prepare(pin_value *arguments, int count, pin_value *results, pin_val
     if (behavior_function_resumable(function)) {
         behavior_function_activation_init(function, &activation);
     }
+    behavior_managed_heap_init(&heap);
     context = (behavior_function_context){ .arguments = arguments,
                                            .argument_count = count,
                                            .results = results,
                                            .variables = variables,
                                            .activation = &activation,
+                                           .managed_heap = &heap,
                                            .budget = 10000,
                                            .source_pause = mode >= 2 ? inspect : NULL };
     behavior_function_bind_storage(&context, &storage);
@@ -500,23 +505,40 @@ static int begin(pin_value *arguments, int count, pin_value *results, pin_value 
     return behavior_function_run(function, &context, mode % 2);
 }
 
-static int guarded()
+static int guards(const behavior_function *f)
 {
     int guarded = 0;
-    for (int pc = 0; pc < acount(function->instructions); pc++) {
-        if (function->instructions[pc].op == BF_HOST_CALL) {
-            assert(!function->instructions[pc].right);
-            guarded += function->runtime_body[pc].right == BF_HOST_BORROW_ARRAY;
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        if (f->instructions[pc].op == BF_HOST_CALL) {
+            assert(!f->instructions[pc].right);
+            guarded += f->runtime_body[pc].right == BF_HOST_BORROW_ARRAY;
         }
     }
     return guarded;
 }
 
+static int guarded()
+{
+    return guards(function);
+}
+
+/* Guarded copies across every function of `m`. */
+static int module_guards(const execution_module *m)
+{
+    int guarded = 0;
+    for (int i = 0; i < execution_module_function_count(m); i++) {
+        guarded += guards(execution_module_function_at(m, i).body);
+    }
+    return guarded;
+}
+
+/* What the run allocated, in its storage and on its managed heap. */
 static size_t bytes()
 {
-    size_t used, capacity;
+    size_t used, managed, capacity;
     arena_usage(&storage, &used, &capacity);
-    return used;
+    arena_usage(&heap.storage, &managed, &capacity);
+    return used + managed;
 }
 
 static bool authored(const char *source)
@@ -557,8 +579,9 @@ TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
     REQUIRE(
         authored("Borrow :: library {Root :: (input: f64[]) -> f64 { copy := input; return Forward(copy); }Forward :: (input: f64[]) -> f64 { return Sum(input); }Sum :: (input: f64[]) -> f64 { total: f64 = 0; for value in input { total += value; } return total; } }")
     );
+    /* Root lends its unchanged copy; the loop's copy is the one guarded. */
     REQUIRE(function->readonly_collections);
-    REQUIRE(guarded() > 0);
+    REQUIRE(module_guards(module) > 0);
     for (int i = 0; i < execution_module_function_count(module); i++) {
         REQUIRE(execution_module_function_at(module, i).body->readonly_collections);
     }
@@ -582,7 +605,7 @@ TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
     decoded = execution_prepared_read(prepared, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
     REQUIRE(decoded);
     function = (behavior_function *)execution_module_function_at(decoded, 0).body;
-    REQUIRE(function->readonly_collections && guarded() > 0);
+    REQUIRE(function->readonly_collections && module_guards(decoded) > 0);
     REQUIRE(begin(&input, 1, &output, NULL, 0) == FLOW_OK);
     REQUIRE(output.d == 8256 && bytes() == 0);
     return true;
@@ -658,9 +681,12 @@ TEST_CASE(borrow_helper_pause_and_wait_retain_arguments_before_resuming)
             const behavior_function *active = function;
             behavior_function_context *child = behavior_function_active_context(&context, &active);
             REQUIRE(active == helper_function && child != &context);
+            /* The helper is not proven safe to lend to, so it reads its own
+             * copy, never the caller's snapshot or the input. */
             REQUIRE(
                 child->arguments[0].ptr !=
-                context.data->values[function->calls[0].first].ptr
+                    context.data->values[function->calls[0].first].ptr &&
+                child->arguments[0].ptr != input.ptr
             );
             const pin_array *retained = child->arguments[0].ptr;
             REQUIRE(pin_array_valid(retained));
@@ -693,7 +719,10 @@ TEST_CASE(borrow_helper_mutation_and_opaque_calls_remain_owning)
             input.ptr = &array;
             opaque_calls = 0;
             REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
-            REQUIRE(output.d == (i ? 1 : 7) && item.d == 7);
+            /* The helper's own copy shares its payload until a write: a raw
+             * write skips copy-on-write, so it reaches the snapshot sharing
+             * that payload, never the input. */
+            REQUIRE(output.d == (i ? 1 : 99) && item.d == 7);
             REQUIRE(opaque_calls == i);
             REQUIRE(bytes() > 0);
         }
@@ -704,7 +733,7 @@ TEST_CASE(borrow_helper_mutation_and_opaque_calls_remain_owning)
 TEST_CASE(borrow_call_guards_program_state_headers_before_commit)
 {
     REQUIRE(
-        authored("Borrow :: behavior { scalar: f64 = 7;Root :: (input: f64[]) -> f64 { copy := input; scalar = 99; Touch(); return copy[0]; }Touch :: () -> f64 { return 0; } }")
+        authored("Borrow :: behavior { scalar: f64 = 7;Root :: (input: f64[]) -> f64 { total: f64 = 0; for value in input { scalar = 99; Touch(); total += value; } return total; }Touch :: () -> f64 { return 0; } }")
     );
     REQUIRE(function->readonly_collections && guarded() > 0);
     uint64_t state = 0;
@@ -767,7 +796,8 @@ TEST_CASE(borrow_authored_readonly_loop_keeps_scalar_writes)
     }
     REQUIRE(function && behavior_function_compile(function));
     REQUIRE(function->variable_count == 2);
-    REQUIRE(guarded() == 2);
+    /* The state read's snapshot, and the loop's snapshot and its copy. */
+    REQUIRE(guarded() == 3);
     pin_value items[128];
     for (int j = 0; j < 128; j++) {
         items[j] = (pin_value){ .type = PIN_F64, .d = j + 1 };
@@ -800,7 +830,8 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
     REQUIRE(guarded() == 1);
     for (int mode = 0; mode < 4; mode++) {
         for (int variant = 0; variant < 8; variant++) {
-            const pin_string retained_text = { "retained", sizeof("retained") - 1 };
+            const pin_string retained_text = { .bytes = "retained",
+                                               .length = sizeof("retained") - 1 };
             pin_value item = { .type = PIN_F64, .d = 7 };
             pin_array array = { .element_type = PIN_F64,
                                 .count = 1,
@@ -827,10 +858,12 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
             }
             int status = begin(&input, 1, &output, NULL, mode);
             if (variant == 7) {
-                REQUIRE(status == FLOW_ERR_INVALID_GRAPH);
+                /* The call boundary rejects the unresolved record before
+                 * the body reads it. */
+                REQUIRE(status == FLOW_ERR_ARGUMENT);
                 REQUIRE(
                     context.error_message &&
-                    !strcmp(context.error_message, "Cannot retain language value")
+                    !strcmp(context.error_message, "Managed value requires a resolved record layout")
                 );
                 continue;
             }
@@ -838,21 +871,13 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
             REQUIRE(output.d == (variant < 2 ? 0 : 1));
             bool borrowed = mode < 2 && variant <= 2;
             REQUIRE(variant == 0 || (borrowed ? bytes() == 0 : bytes() > 0));
+            /* Only the bank's address is compared: a copy the run owned is
+             * released when it finishes. */
             REQUIRE(
                 borrowed ? context.data->values[result_bank].ptr == input.ptr
                          : variant == 0 ||
                                context.data->values[result_bank].ptr != input.ptr
             );
-            if (variant == 3) {
-                pin_array *retained = context.data->values[result_bank].ptr;
-                REQUIRE(
-                    pin_text(pin_array_get(retained, 0)).bytes != pin_text(item).bytes
-                );
-                REQUIRE(!strcmp(
-                    pin_text(pin_array_get(retained, 0)).bytes,
-                    pin_text(item).bytes
-                ));
-            }
         }
     }
     /* A bad negative length follows the canonical path, whose allocator asserts;
@@ -936,15 +961,17 @@ TEST_CASE(borrow_rejects_mutation_identity_headers_escape_and_opaque_calls)
             opaque_calls = 0;
             REQUIRE(begin(&input, 1, &output, NULL, mode) == FLOW_OK);
             REQUIRE(bytes() > 0);
+            /* The run reads its own copy of the input, which its snapshot
+             * shares, so a raw write reaches both and leaves the input. */
             if (kind == IDENTITY) {
-                REQUIRE(!output.b);
+                REQUIRE(output.b);
             } else if (kind == ESCAPE) {
                 REQUIRE(output.ptr && output.ptr != input.ptr);
                 REQUIRE(pin_array_get(output.ptr, 0).d == 7);
             } else {
-                REQUIRE(output.d == (kind == RAW_WRITE ? 7 : 1));
+                REQUIRE(output.d == (kind == RAW_WRITE ? 99 : 1));
             }
-            REQUIRE(kind != RAW_WRITE || item.d == 99);
+            REQUIRE(item.d == 7);
             REQUIRE(opaque_calls == (kind == OPAQUE ? 1 : 0));
         }
     }
@@ -1003,7 +1030,8 @@ TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code)
     REQUIRE(module);
     borrowed_function = true;
     function = (behavior_function *)execution_module_function_at(module, 0).body;
-    REQUIRE(function && guarded() == 1);
+    /* The loop's snapshot and its copy. */
+    REQUIRE(function && guarded() == 2);
     size_t length, corrupt_length;
     REQUIRE(execution_prepared_write(module, &prepared, &length, error, sizeof error));
     REQUIRE(length < 65536);
@@ -1011,7 +1039,7 @@ TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code)
     decoded = execution_prepared_read(prepared, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
     REQUIRE(decoded);
     function = (behavior_function *)execution_module_function_at(decoded, 0).body;
-    REQUIRE(function && guarded() == 1);
+    REQUIRE(function && guarded() == 2);
     pin_value items[] = { { .type = PIN_F64, .d = 2 }, { .type = PIN_F64, .d = 3 } };
     pin_array array = { .element_type = PIN_F64, .count = 2, .capacity = 2, .items = items };
     pin_value input = array_shape, output = { .type = PIN_F64 };
@@ -1617,7 +1645,8 @@ static pin_value strings(pin_array *array, pin_value *items, const char *const *
 {
     pin_string *descriptors = arena_alloc(&string_inputs, (size_t)count * sizeof *descriptors);
     for (int i = 0; i < count; i++) {
-        descriptors[i] = (pin_string){ texts[i], (uint32_t)strlen(texts[i]) };
+        descriptors[i] = (pin_string){ .bytes = texts[i],
+                                       .length = (uint32_t)strlen(texts[i]) };
         items[i] = (pin_value){ .type = PIN_STR, .text = &descriptors[i] };
     }
     *array = (pin_array){ .element_type = PIN_STR,
@@ -1738,24 +1767,15 @@ TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies)
     pin_value items[4];
     pin_array array;
     pin_value input = strings(&array, items, texts, 4);
-    uint64_t copied[2];
-    for (int run = 0; run < 2; run++) {
-        /* The second run forces the copying path the proof avoids. */
-        if (run) {
-            authored_function(1)->argument_sharing = BEHAVIOR_SHARING_COPY;
-        }
-        pin_value output = { .type = PIN_I32 };
-        pin_copy_scope copies = { 0 };
-        pin_copy_scope_begin(&copies);
-        int status = begin(&input, 1, &output, NULL, 0);
-        pin_copy_scope_end(&copies);
-        REQUIRE(
-            status == FLOW_OK && output.i == 1116 &&
-            !strcmp(pin_text(items[0]).bytes, "a")
-        );
-        copied[run] = copies.counts.text_bytes;
-    }
-    REQUIRE(copied[0] * 8 < copied[1]);
+    pin_value output = { .type = PIN_I32 };
+    pin_copy_scope copies = { 0 };
+    pin_copy_scope_begin(&copies);
+    int status = begin(&input, 1, &output, NULL, 0);
+    pin_copy_scope_end(&copies);
+    REQUIRE(status == FLOW_OK && output.i == 1116 && !strcmp(pin_text(items[0]).bytes, "a"));
+    /* Calls lend the table: copying it for each of the 64 matches would move
+     * its five headers every time. Text is shared, so it never copies. */
+    REQUIRE(copies.counts.value_header_moves < 64 * 5 && copies.counts.text_bytes < 64);
     release_run();
     char error[256];
     size_t length;
@@ -1800,8 +1820,83 @@ TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes)
     return true;
 }
 
-/* A callee that writes through a reference argument, and every caller of it,
- * keeps copying: its value argument stays the caller's original. */
+/* A helper's union result is fresh when no result comes from its arguments,
+ * even through another call, so the caller may keep it in its own array and
+ * still lend its table; a result that passes an argument on is not. */
+TEST_CASE(borrow_argument_sharing_keeps_fresh_call_results)
+{
+    REQUIRE(authored(
+        "Share :: library { Shape :: union { Circle(radius: int) | Empty }"
+        "Root :: (input: string[]) -> int {"
+        "empty := Shape.Empty; shapes: Shape[] = [empty, empty, empty, empty];"
+        "i: int = 0; while i < 4 { shapes[i] = Wrap(input, i); i += 1; }"
+        "shapes[0] = Shape.Empty; total: int = 0; for shape in shapes {"
+        "switch shape { case .Circle(radius): total += radius;"
+        "case .Empty: total += 100; } } return total; }"
+        "Wrap :: (input: string[], at: int) -> Shape {"
+        "return Make(input, at); }"
+        "Make :: (input: string[], at: int) -> Shape {"
+        "if input[at] == \"a\" { return Shape.Circle(at + 1); }"
+        "return Shape.Empty; }"
+        "Pass :: (shape: Shape) -> Shape { return shape; } }"
+    ));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(authored_function(i)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    }
+    REQUIRE(authored_function(1)->fresh_results && authored_function(2)->fresh_results);
+    REQUIRE(!authored_function(3)->fresh_results);
+    const char *texts[] = { "a", "b", "a", "a" };
+    pin_value items[4], output = { .type = PIN_I32 };
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 4);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+        REQUIRE(output.i == 207 && !strcmp(pin_text(items[0]).bytes, "a"));
+    }
+    return true;
+}
+
+/* The element reads of function `index` that copy the element, or, with
+ * `borrowed`, that read it in place. */
+static int element_reads(int index, bool borrowed)
+{
+    const behavior_function *f = authored_function(index);
+    execution_intrinsic kind = borrowed ? EXECUTION_INTRINSIC_SEQUENCE_BORROW
+                                        : EXECUTION_INTRINSIC_SEQUENCE_GET;
+    int count = 0;
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        count += execution_intrinsic_kind(f->host_calls[i].capability_id) == kind;
+    }
+    return count;
+}
+
+/* A scalar field, or a text field compared at once, is read from its element
+ * in place: neither copies the record. */
+TEST_CASE(borrow_field_reads_read_elements_in_place)
+{
+    REQUIRE(authored(
+        "Share :: library { Row :: struct { name: string; count: int; }"
+        "Root :: (input: string[]) -> int { rows: Row[] = [{name: \"a\", "
+        "count: 3}, {name: \"b\", count: 4}]; total: int = 0; i: int = 0;"
+        "while i < 2 { if rows[i].name == \"b\" { total += rows[i].count; } "
+        "i += 1; } return total; } }"
+    ));
+    REQUIRE(element_reads(0, false) == 0 && element_reads(0, true) == 2);
+    const char *texts[] = { "a", "b" };
+    pin_value items[2], output = { .type = PIN_I32 };
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 2);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+        REQUIRE(output.i == 4);
+    }
+    return true;
+}
+
+/* A callee that writes through a scoped pointer, and its caller, share their
+ * arguments: the caller copies a value argument that the pointer's location
+ * shares, so that argument stays the caller's original, and the caller's
+ * input stays unchanged. */
 TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
 {
     REQUIRE(authored(
@@ -1812,8 +1907,8 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
         "= \"z\";"
         "if values[0] == \"a\" { return 1; } return 0; } }"
     ));
-    REQUIRE(authored_function(1)->argument_sharing == BEHAVIOR_SHARING_COPY);
-    REQUIRE(authored_function(0)->argument_sharing == BEHAVIOR_SHARING_COPY);
+    REQUIRE(authored_function(1)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    REQUIRE(authored_function(0)->argument_sharing == BEHAVIOR_SHARING_SAFE);
     const char *texts[] = { "a" };
     pin_value items[1], output = { .type = PIN_I32 };
     pin_array array;
@@ -1825,6 +1920,33 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
     return true;
 }
 
+/* A write through a managed pointer copies its value into the pointee, which
+ * no lent argument holds, so the writer and its callers keep lending. */
+TEST_CASE(borrow_argument_sharing_lends_around_pointer_writes)
+{
+    REQUIRE(authored(
+        "Share :: library {"
+        "Root :: (input: string[]) -> int { kept := input; p := &kept; "
+        "n := Replace(input, p); "
+        "if kept[0] == \"z\" { return n; } return 0; }"
+        "Replace :: (values: string[], table: ^(string[])) -> int { "
+        "table^ = Grow(values); if values[0] == \"a\" { return 1; } return 0; }"
+        "Grow :: (values: string[]) -> string[] { grown := values; "
+        "grown[0] = \"z\"; return grown; } }"
+    ));
+    for (int i = 0; i < execution_module_function_count(module); i++) {
+        REQUIRE(authored_function(i)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    }
+    const char *texts[] = { "a" };
+    pin_value items[1], output = { .type = PIN_I32 };
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 1);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+        REQUIRE(output.i == 1 && !strcmp(pin_text(items[0]).bytes, "a"));
+    }
+    return true;
+}
 /* Pushes 2.0 onto the local array `local`, in the caller's storage when
  * `built`. */
 static void push_item(int local, bool built)
@@ -2537,7 +2659,10 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_union_constructor_tracks_payload_aliases);
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
+    RUN_TEST_CASE(borrow_argument_sharing_keeps_fresh_call_results);
+    RUN_TEST_CASE(borrow_field_reads_read_elements_in_place);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
+    RUN_TEST_CASE(borrow_argument_sharing_lends_around_pointer_writes);
     RUN_TEST_CASE(borrow_built_results_move_only_when_unchanged_elsewhere);
     RUN_TEST_CASE(borrow_shared_argument_returned_is_copied);
     RUN_TEST_CASE(borrow_result_reached_through_argument_builds_nothing);

@@ -18,10 +18,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 # The configured CMake build the build-graph checks compare the graph with:
-# on macOS `make build` uses the graph, so `make graph-reference` configures
-# one beside it.
+# on Linux and macOS `make build` uses the graph, so `make graph-reference`
+# configures one beside it. Explicit CMake callers can name their own tree.
 GRAPH_REFERENCE = str(ROOT / os.environ.get('CHIBI_GRAPH_REFERENCE',
-                                            'build-cmake' if sys.platform == 'darwin' else 'build'))
+                                            'build-cmake' if sys.platform in ('linux', 'darwin') else 'build'))
 PROCESS_GROUP = 'CHIBI_RUNNER_PROCESS_GROUP'
 # Process tables can take seconds to enumerate on a loaded host. Bound a stuck
 # inspection separately from the caller's test timeout.
@@ -130,6 +130,9 @@ TOOLS = {
                     '--build-graph',
                     str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
                     GRAPH_REFERENCE],
+    'build-graph-link-response': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                                 '--build-graph-link-response',
+                                 str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     'build-graph-support': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--build-graph-support',
                             str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
@@ -326,6 +329,8 @@ TOOLS = {
                                             '--integer-shift-counts-authored'],
     'language-integer-semantics': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                    '--integer-semantics'],
+    'language-integer-arithmetic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--integer-arithmetic'],
     'language-package-graph': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-graph'],
     'language-package-syntax': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -454,6 +459,8 @@ TOOLS = {
                                '--docs-markdown'],
     'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-tests'],
+    'language-argument-effects-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                       '--argument-effects-chibi'],
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],
     'language-component-write': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write'],
     'language-runtime-attribution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--runtime-attribution'],
@@ -474,6 +481,8 @@ TOOLS = {
     'language-scalarize': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--scalarize'],
     'language-migration34': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--migration34'],
     'language-migration34-generic-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--migration34-generic-repro'],
+    'language-native-char-results': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--native-char-results'],
     'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],
     'language-wasm': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--wasm'],
@@ -503,7 +512,7 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'integer-arithmetic', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
                  '-imports', '-imports-compiled', '-behaviors',
@@ -564,10 +573,10 @@ ASSET_COMPILER_HOST_PLATFORMS = ('linux', 'darwin')
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
+             'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-integer-arithmetic', 'wasm-outliner-projection',
              'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
-               'player-url', 'player-clock',
+               'player-url', 'player-clock', 'build-graph-link-response',
                'physics', 'physics3d',
                'transforms', 'box3d', 'sky-files', 'tilemap', 'runtime-scene', 'scene-prepared',
                'scene-hierarchy', 'render-resources', 'persistent-store', 'whole-alias',
@@ -596,12 +605,12 @@ GROUPS = {
                   'material-simulation', 'material-ecs', 'material-render'],
     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-query-migration', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
-                 'language-headless', 'language-format', 'language-package-tests', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
+                 'language-headless', 'language-format', 'language-package-tests', 'language-argument-effects-chibi', 'language-package-core', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',
                  'language-package-compiler-chibi-behaviors', 'language-package-compiler-chibi-behaviors-rest',
-                 'language-migration34-generic-repro', 'language-integer-semantics', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap',
+                 'language-migration34-generic-repro', 'language-integer-semantics', 'language-integer-arithmetic', 'language-integer-shift-counts', 'language-integer-shift-counts-authored', 'language-asset-packaging-chibi', 'compiler-bootstrap',
                  'language-native-census-flattening'],
 }
 if sys.platform in ASSET_COMPILER_HOST_PLATFORMS:
@@ -632,6 +641,7 @@ PARALLEL_RESOURCES = {
     name: frozenset() for name in (
         'language-package-compiler-chibi-behaviors',
         'language-package-compiler-chibi-behaviors-rest',
+        'language-migration34-generic-repro',
         'language-integer-semantics',
         'language-integer-shift-counts',
         'language-integer-shift-counts-authored',

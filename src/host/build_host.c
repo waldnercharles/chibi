@@ -2,6 +2,7 @@
 
 #include "authoring/source_package_io.h"
 #include "execution/function_builder.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/build_host_internal.h"
@@ -130,8 +131,14 @@ static const char *environment_value(const build_host *host, const char *name)
     }
     return "";
 }
+/* Calls that use helper storage start here. */
 const char *build_host_ready(build_host *host)
 {
+    /* Non-value native results have been copied into the VM's owned result
+     * bank before another callback can enter. Root arguments use a separate
+     * bank because build.arguments can return them again after this reset. */
+    arena_reset(&host->values.memory);
+    build_values_begin_call(&host->values);
     if (host->options->cancelled && *host->options->cancelled) {
         return "build process cancelled";
     }
@@ -836,8 +843,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     bool success = false;
     size_t argument_bytes = 0;
     if (!failure) {
-        host.arguments = build_values_array(&host.values, options->argument_count);
-        failure = host.arguments ? NULL : host.values.error;
+        host.arguments = build_values_array(&host.argument_values, options->argument_count);
+        failure = host.arguments ? NULL : host.argument_values.error;
     }
     for (int i = 0; !failure && i < options->argument_count; i++) {
         const char *text = options->arguments[i];
@@ -847,9 +854,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
             break;
         }
         argument_bytes += bytes;
-        const pin_string *copy = build_values_text(&host.values, text, bytes - 1);
+        const pin_string *copy = build_values_text(&host.argument_values, text, bytes - 1);
         if (!copy) {
-            failure = host.values.error;
+            failure = host.argument_values.error;
             break;
         }
         host.arguments->items[i] = (pin_value){ .type = PIN_STR, .text = copy };
@@ -920,6 +927,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     }
     pin_value value = { .type = PIN_I32 };
     behavior_managed_heap_init(&managed);
+    managed.call_collection_bytes = BEHAVIOR_CALL_COLLECTION_BYTES;
     context = (behavior_function_context){ .managed_heap = &managed,
                                            .activation = resumable ? &activation : NULL,
                                            .results = &value,
@@ -992,6 +1000,7 @@ done:
     free(host.program_directory);
     free(host.last_stdout);
     free(host.last_stderr);
-    arena_free(&host.values.memory);
+    build_values_free(&host.values);
+    build_values_free(&host.argument_values);
     return success;
 }

@@ -50,7 +50,6 @@ components {
     PointLight tab="Material" icon="light"
     Projectile tab="Gameplay" icon="projectile"
     Reflection tab="Material"
-    Rhythm tab="Gameplay"
     SdfSurface3D tab="Material"
     SensorContact tab="Physics"
     Shader tab="Material"

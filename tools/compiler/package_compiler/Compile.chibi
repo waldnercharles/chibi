@@ -509,7 +509,7 @@ Aliases :: (links: graph.Binding[], file: int) -> Name[] {
     aliases: Name[] = [];
     for (link in links) {
         if (link.file == file) {
-            alias: Name = {name: link.name, place: AliasPlace, index: link.target, storage: 0, container: 0,
+            alias: Name = {owned: false, name: link.name, place: AliasPlace, index: link.target, storage: 0, container: 0,
                            record: -1, writable: false, node: -1};
             if (link.import_index == -2) {
                 alias.place = LibraryPlace;
@@ -544,79 +544,38 @@ FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
 // The type a `type` node names: a field type, a record or union of package
 // `package` or, qualified by an alias in `names`, of an imported one, or an
 // array of one; storage 0 for any other.
-ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[]), names: Name[], package: int,
              node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
-    if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0) {
+    view := HasTypeTrait(forest, text, node, "view");
+    if (!Is(forest, node, "type") || !ViewTraits(forest, text, node) || Field(forest, node, "arguments") >= 0) {
         return none;
     }
     pointer := TypePointerNode(forest, node);
     if (pointer >= 0) {
-        element := ReadType(forest, text, types, names, package, Field(forest, pointer, "target"));
-        declared := FindPointer(types, element, HasToken(forest, node, "?"));
+        element := ReadType(forest, text, table, names, package, Field(forest, pointer, "target"));
+        declared := FindPointer(table^, element, false);
         if (declared < 0) {
             return none;
         }
-        container: int = 0;
-        child := forest[node].first_child;
-        while (child >= 0) {
-            if (forest[child].kind == "[") {
-                container += 1;
-            }
-            child = forest[child].next_sibling;
-        }
-        if (container > 1 || (container != 0 && HasToken(forest, node, "?"))) {
-            return none;
-        }
-        return {storage: PointerStorage, container: container, record: declared};
+        return ReadTypeSuffixes(forest, node, table, {storage: PointerStorage, container: 0, record: declared},
+                                package, view);
     }
     grouped := TypeGroupNode(forest, node);
     if (grouped >= 0) {
-        value := ReadType(forest, text, types, names, package, grouped);
-        child := forest[node].first_child;
-        while (child >= 0) {
-            if (forest[child].kind == "[") {
-                if (value.container != 0) {
-                    return none;
-                }
-                value.container = ArrayContainer;
-            }
-            child = forest[child].next_sibling;
-        }
-        if (HasToken(forest, node, "?")) {
-            if (value.storage != PointerStorage || value.container != 0 || value.record < 0) {
-                return none;
-            }
-            nullable := FindPointer(types, PointerElement(types, Typed(-1, value.storage, 0, value.record)), true);
-            if (nullable < 0) {
-                return none;
-            }
-            value.record = nullable;
-        }
-        return value;
-    }
-    if (HasToken(forest, node, "?")) {
-        return none;
-    }
-    container: int = 0;
-    child := forest[node].first_child;
-    while (child >= 0) {
-        if (!forest[child].is_extra && forest[child].kind == "[") {
-            container += 1;
-        }
-        child = forest[child].next_sibling;
-    }
-    if (container > 1) {
-        return none;
+        return ReadTypeSuffixes(forest, node, table, ReadType(forest, text, table, names, package, grouped),
+                                package, view);
     }
     map := Field(forest, node, "map");
     if (map >= 0) {
-        declared := FindMap(types, ReadType(forest, text, types, names, package, Field(forest, map, "key")),
-                            ReadType(forest, text, types, names, package, Field(forest, map, "value")));
-        if (container != 0 || declared < 0) {
+        key := ReadType(forest, text, table, names, package, Field(forest, map, "key"));
+        value := ReadType(forest, text, table, names, package, Field(forest, map, "value"));
+        declared := FindMap(table^, key, value);
+        if (declared < 0) {
             return none;
         }
-        return {storage: UnionStorage, container: MapContainer, record: declared};
+        return ReadTypeSuffixes(forest, node, table, {storage: UnionStorage, container: MapContainer, record: declared},
+                                package, view);
     }
     first := FirstMember(forest, Field(forest, node, "name"));
     name := Text(forest, text, first);
@@ -629,19 +588,96 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], n
             return none;
         }
     } else if (ScalarStorage(name) != 0) {
-        return {storage: ScalarStorage(name), container: container, record: -1};
+        return ReadTypeSuffixes(forest, node, table, {storage: ScalarStorage(name), container: 0, record: -1},
+                                package, view);
     }
-    declared := FindType(types, home, name);
+    declared := FindType(table^, home, name);
     if (declared < 0) {
         return none;
     }
-    if (types[declared].kind == NativeDecl || types[declared].kind == NamespaceDecl) {
-        return {storage: types[declared].storage, container: container, record: declared};
+    storage := StructStorage;
+    if (table^[declared].kind == NativeDecl || table^[declared].kind == NamespaceDecl) {
+        storage = table^[declared].storage;
+    } else if (table^[declared].kind == UnionDecl) {
+        storage = UnionStorage;
     }
-    if (types[declared].kind == UnionDecl) {
-        return {storage: UnionStorage, container: container, record: declared};
+    return ReadTypeSuffixes(forest, node, table, {storage: storage, container: 0, record: declared}, package, view);
+}
+// Whether the type `node` has the trait `trait`. Native signatures may
+// repeat a trait, so look at every trait child.
+HasTypeTrait :: (forest: snapshot.SnapshotNode[], text: string, node: int, trait: string) -> bool {
+    if (node < 0) {
+        return false;
     }
-    return {storage: StructStorage, container: container, record: declared};
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (forest[child].field == "trait" && Text(forest, text, child) == trait) {
+            return true;
+        }
+        child = forest[child].next_sibling;
+    }
+    return false;
+}
+// Whether every trait of the type `node` is `view`, the only one ReadType
+// reads.
+ViewTraits :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    if (node < 0) {
+        return false;
+    }
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (forest[child].field == "trait" && Text(forest, text, child) != "view") {
+            return false;
+        }
+        child = forest[child].next_sibling;
+    }
+    return true;
+}
+// Suffixes are applied in source order. int?[] holds optional integers;
+// int[]? is an optional array. Pointer presence remains its own nullable flag.
+ReadTypeSuffixes :: (forest: snapshot.SnapshotNode[], node: int, table: ^(TypeDecl[]), base: ValueType,
+                     package: int, view: bool) -> ValueType {
+    value := base;
+    if (value.storage == 0) {
+        return value;
+    }
+    child := forest[node].first_child;
+    while (child >= 0) {
+        token := forest[child].kind;
+        if (!forest[child].is_extra && token == "[") {
+            if (value.container != 0 || SequenceFlags(table^, value) != 0) {
+                EnsureSequenceCollection(table, value, package);
+            }
+            value = SequenceArrayType(table^, value);
+        } else if (!forest[child].is_extra && token == "?") {
+            if (value.storage == PointerStorage && value.container == 0) {
+                element := PointerElement(table^, Typed(-1, value.storage, value.container, value.record));
+                value.record = EnsurePointer(table, element, true, package);
+            } else {
+                optional := EnsureOptional(table, value, package);
+                value = {storage: UnionStorage, container: 0, record: optional};
+            }
+        }
+        child = forest[child].next_sibling;
+    }
+    if (view) {
+        return ReadViewType(table, value, package);
+    }
+    return value;
+}
+ReadViewType :: (table: ^(TypeDecl[]), value: ValueType, package: int) -> ValueType {
+    element := OptionalElement(table^, Typed(-1, value.storage, value.container, value.record));
+    if (element.storage != 0) {
+        viewed := ReadViewType(table, element, package);
+        if (viewed.storage == 0) {
+            return viewed;
+        }
+        return {storage: UnionStorage, container: 0, record: EnsureOptional(table, viewed, package)};
+    }
+    if (value.container != ArrayContainer) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    return {storage: value.storage, container: ViewContainer, record: value.record};
 }
 // The map type keyed by `key` holding `value`, -1 when none is declared.
 FindMap :: (types: TypeDecl[], key: ValueType, value: ValueType) -> int {
@@ -692,22 +728,22 @@ DeclareMaps :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[]
             child = forest[child].next_sibling;
         }
     }
-    // The caller's `types` stays unwritten, so its appends stay in place.
+    // Candidate map declarations belong to the returned table until accepted.
     known := types;
     at := length(found) - 1;
     while (at >= 0) {
         map := found[at];
         at -= 1;
-        key := ReadType(forest, text, known, aliases, package, Field(forest, map, "key"));
-        value := ReadType(forest, text, known, aliases, package, Field(forest, map, "value"));
-        if (key.storage == 0 || key.container != 0 || key.record >= 0 || value.storage == 0 || value.container != 0 ||
-            value.storage == UnionStorage || FindMap(known, key, value) >= 0) {
+        key := ReadType(forest, text, &known, aliases, package, Field(forest, map, "key"));
+        value := ReadType(forest, text, &known, aliases, package, Field(forest, map, "value"));
+        if (key.storage == 0 || key.container != 0 || key.record >= 0 || value.storage == 0 ||
+            FindMap(known, key, value) >= 0) {
             continue;
         }
-        id := binding.ID("collection-type", format_text("{}:{}:{}", MapContainer, TypeTag(known, key.storage, -1),
-                                                        TypeTag(known, value.storage, value.record)));
+        id := binding.ID("collection-type", format_text("{}:{}:{}", MapContainer, OptionalTag(known, key),
+                                                        OptionalTag(known, value)));
         declared: TypeDecl = {name: "", type_name: format_text("__collection_{}", id), package: package, node: -1, kind: MapDecl,
-                              first: 0, count: 0, size: 0, parent: -1, storage: 0, id: 0, layout: 0, component: 0,
+                              first: 0, count: 0, size: 0, parent: -1, storage: UnionStorage, id: id, layout: 0, component: 0,
                               key: key.storage, value_storage: value.storage, value_container: value.container,
                               value_record: value.record};
         known.append(declared);
@@ -893,8 +929,46 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
         types = DeclarePointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
         types = DeclareMaps(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
         types = DeclarePointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
+    }
+    // Resolve nested collection spellings from their element types outwards.
+    // Each source bracket/map can introduce at most one dependency level.
+    depth: int = 0;
+    for (syntax_node in forest) {
+        if (syntax_node.kind == "type") {
+            brackets: int = 0;
+            child := syntax_node.first_child;
+            while (child >= 0) {
+                if (!forest[child].is_extra && forest[child].kind == "[") {
+                    brackets += 1;
+                }
+                child = forest[child].next_sibling;
+            }
+            if (brackets > depth) {
+                depth = brackets;
+            }
+
+        }
+    }
+    passes: int = 0;
+    changed := true;
+    while (changed && passes <= length(forest)) {
+        before := length(types);
+        types = DeclareSequenceCollections(types, depth, package);
+        types = DeclareSequenceOptionals(types, package);
+        for (file in files) {
+            types = DeclarePointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
+            types = DeclareMaps(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
+        }
+        changed = length(types) != before;
+        passes += 1;
+    }
+    // An address points to any declared type, so its pointers are added once
+    // the other types stop changing; adding them inside the loop would add
+    // a pointer to every new pointer and optional on each pass.
+    for (file in files) {
         types = DeclareAddressPointers(forest, documents[file].text, types, Aliases(links, file), package, documents[file].syntax_root);
     }
+    types = DeclareSequenceOptionals(types, package);
     // Resolve pointer fields after every record name and constructor exists,
     // including self-referential nullable links.
     for (file in files) {
@@ -905,7 +979,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                 for (field_node in Members(forest, Field(forest, declaration, "body"))) {
                     field := members[index];
                     if (field.storage == PointerStorage) {
-                        resolved := ReadType(forest, documents[file].text, types, Aliases(links, file), package,
+                        resolved := ReadType(forest, documents[file].text, &types, Aliases(links, file), package,
                                              Field(forest, field_node, "type"));
                         if (resolved.storage != PointerStorage || resolved.container != 0) {
                             return Declarations.Failed(Diagnose(forest, field_node, file, "record pointer field type is invalid"));
@@ -939,7 +1013,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                                 return Declarations.Failed(Diagnose(forest, hidden, file,
                                                                     PrivateMessage(Text(forest, text, hidden))));
                             }
-                            payload := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
+                            payload := ReadType(forest, text, &types, aliases, package, Field(forest, parameter, "type"));
                             if (payload.storage == 0) {
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
@@ -974,7 +1048,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     FindConstant(constants, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
-                switch FunctionSignature(forest, text, documents[file].key, solid, types, aliases, package, file,
+                switch FunctionSignature(forest, text, documents[file].key, solid, &types, aliases, package, file,
                                          member, name, length(params)) {
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);
@@ -1001,7 +1075,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         return Declarations.Failed(Diagnose(forest, hidden, file,
                                                             PrivateMessage(Text(forest, text, hidden))));
                     }
-                    constant_type := ReadType(forest, text, types, aliases, package, declared);
+                    constant_type := ReadType(forest, text, &types, aliases, package, declared);
                     storage = constant_type.storage;
                     if ((!Integer(storage) && !Floating(storage)) || constant_type.container != 0) {
                         return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
@@ -1543,6 +1617,9 @@ Default :: union {
 // A parameter's default, as the literal stage zero folds it to: an integer of
 // the parameter's type, a bool or a string.
 LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, node: int, declared: ValueType) -> Default {
+    if (declared.container == ViewContainer) {
+        return Default.Failed(Diagnose(forest, node, file, "view requires an initialized value"));
+    }
     if (declared.container != 0) {
         return Default.Failed(Diagnose(forest, node, file, "a parameter default needs a literal yet"));
     }
@@ -1593,13 +1670,13 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 }
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. A named result is a scalar or a single record.
-FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], types: TypeDecl[],
+FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], table: ^(TypeDecl[]),
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
     while (parameter >= 0) {
         type_node := Field(forest, parameter, "type");
-        hidden := PrivateType(forest, text, types, aliases, package, type_node);
+        hidden := PrivateType(forest, text, table^, aliases, package, type_node);
         if (hidden >= 0) {
             return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
         }
@@ -1609,7 +1686,7 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         if (reference) {
             type_node = Field(forest, pointer, "target");
         }
-        declared := ReadType(forest, text, types, aliases, package, type_node);
+        declared := ReadType(forest, text, table, aliases, package, type_node);
         if (declared.storage == 0) {
             return Signature.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
         }
@@ -1632,7 +1709,11 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
                         default_occurrence: default_occurrence, reference: reference,
                         node: Field(forest, parameter, "name")};
         if (default_value >= 0 && declared.storage == PointerStorage && declared.container == 0 &&
-            declared.record >= 0 && types[declared.record].key != 0 && Is(forest, default_value, "nil")) {
+            declared.record >= 0 && table^[declared.record].key != 0 && Is(forest, default_value, "nil")) {
+            param.has_default = true;
+        } else if (default_value >= 0 && OptionalElement(table^, Typed(-1, declared.storage, declared.container,
+                                                                       declared.record)).storage != 0 &&
+                   Is(forest, default_value, "nil")) {
             param.has_default = true;
         } else if (default_value >= 0) {
             switch LiteralDefault(forest, text, file, default_value, declared) {
@@ -1656,11 +1737,11 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             return Signature.Failed(Diagnose(forest, results, file, "named results need at least one result"));
         }
         while (named >= 0) {
-            hidden := PrivateType(forest, text, types, aliases, package, Field(forest, named, "type"));
+            hidden := PrivateType(forest, text, table^, aliases, package, Field(forest, named, "type"));
             if (hidden >= 0) {
                 return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
             }
-            declared := ReadType(forest, text, types, aliases, package, Field(forest, named, "type"));
+            declared := ReadType(forest, text, table, aliases, package, Field(forest, named, "type"));
             if (declared.storage == 0 || declared.storage == TextStorage || declared.storage == UnionStorage ||
                 declared.storage == PointerStorage || declared.container != 0) {
                 return Signature.Failed(Diagnose(forest, named, file, "named result type is not supported yet"));
@@ -1674,11 +1755,11 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
             named = NextMember(forest, named);
         }
     } else if (results >= 0) {
-        hidden := PrivateType(forest, text, types, aliases, package, results);
+        hidden := PrivateType(forest, text, table^, aliases, package, results);
         if (hidden >= 0) {
             return Signature.Failed(Diagnose(forest, hidden, file, PrivateMessage(Text(forest, text, hidden))));
         }
-        result = ReadType(forest, text, types, aliases, package, results);
+        result = ReadType(forest, text, table, aliases, package, results);
         if (result.storage == 0) {
             return Signature.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
         }
@@ -1696,6 +1777,9 @@ ScalarValue :: (storage: int, wide: int) -> writer.Value {
 // array of records, like a record, names its type, and so does a handle of a
 // game type, such as an entity. A native type's header lists no fields.
 Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts: int[]) -> writer.Value {
+    if (record >= 0 && types[record].kind == CollectionDecl) {
+        return SequenceHeader({storage: storage, container: container, record: record}, types);
+    }
     if (storage == QueryStorage && record >= 0) {
         described := ScalarValue(storage, 0);
         described.container = container;
@@ -1820,6 +1904,43 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
     }
     return seen;
 }
+// Every project package is a checked root, even when another project package
+// does not import it. Collection packages enter the compile only through an
+// import from one of those roots. Keep graph indices and dependency order;
+// snapshot validation still checks the complete structural graph.
+ActivePackageOrder :: (documents: snapshot.Document[], packages: graph.Package[], files_of: int[],
+                       order: int[], edges: graph.Edge[], root: int) -> int[] {
+    active := resize([false], length(packages));
+    pending: int[] = [];
+    package: int = 0;
+    while (package < length(packages)) {
+        identity := documents[files_of[packages[package].member_start]].identity;
+        // paths[0] still names the requested root, including a direct compile
+        // of a collection package with no project package in its snapshot.
+        if (package == root || strings.HasPrefix(identity, "project:")) {
+            active[package] = true;
+            pending.append(package);
+        }
+        package += 1;
+    }
+    next: int = 0;
+    while (next < length(pending)) {
+        for (edge in edges) {
+            if (edge.from == pending[next] && !active[edge.to]) {
+                active[edge.to] = true;
+                pending.append(edge.to);
+            }
+        }
+        next += 1;
+    }
+    selected: int[] = [];
+    for (listed in order) {
+        if (active[listed]) {
+            selected.append(listed);
+        }
+    }
+    return selected;
+}
 // The closure of every package, each a prepared module, rooted at package
 // `root`. Dependencies come first, so an importer has every module it imports.
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
@@ -1844,8 +1965,9 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
     }
     context: BodyContext = BodyContext.Known(native_effects);
     prepared: Body[] = [];
+    // Bodies may declare types, which every module then reads.
     switch PreparePackages(forest, documents, packages, files_of, order, edges, links, package_names,
-                           callables, params, types, members, constants, natives, ports, identities,
+                           callables, params, &types, members, constants, natives, ports, identities,
                            context, ops, target) {
         case .Failed(diagnostic):
             return Result.Rejected(diagnostic);
@@ -1854,8 +1976,10 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
     }
     fingerprints := resize([u64(0)], length(packages));
     data: u8[] = [];
-    starts := resize([int(0)], length(packages));
-    lengths := resize([int(0)], length(packages));
+    closure_ids: u64[] = [];
+    closure_names: string[] = [];
+    starts: int[] = [];
+    lengths: int[] = [];
     effects := resize([int(0)], length(callables));
     for (package in order) {
         switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
@@ -1870,13 +1994,15 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
                 if (package != root) {
                     fingerprints[package] = writer.Fingerprint(bytes);
                 }
-                starts[package] = length(data);
-                lengths[package] = length(bytes);
+                closure_ids.append(package_ids[package]);
+                closure_names.append(package_names[package]);
+                starts.append(length(data));
+                lengths.append(length(bytes));
                 data.extend(bytes);
         }
     }
     return Result.Compiled(package_ids[root],
-                           writer.Closure(package_ids[root], package_ids, package_names, data, starts, lengths));
+                           writer.Closure(package_ids[root], closure_ids, closure_names, data, starts, lengths));
 }
 // The prepared module of package `package`, or of a behavior, whose
 // functions are its handlers; its bytes are the Compiled result's. Each body
@@ -2091,7 +2217,7 @@ Preparation :: union {
 // Constants keep the importing package's first-use symbol occurrence.
 PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
                     files_of: int[], order: int[], edges: graph.Edge[], links: graph.Binding[],
-                    package_names: string[], callables: Callable[], params: Param[], types: TypeDecl[],
+                    package_names: string[], callables: Callable[], params: Param[], table: ^(TypeDecl[]),
                     members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[],
                     identities: u64[], context: BodyContext, ops: Ops, target: Target) -> Preparation {
     bodies: Body[] = [];
@@ -2142,7 +2268,7 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                     meaning := binding.ID("package-symbol",
                                           format_text("{}:{}:{}:callable", package_names[package], FunctionKind,
                                                       callable.name));
-                    body := FunctionBody(scoped, documents, callables, params, types, members, used, natives, ports,
+                    body := FunctionBody(scoped, documents, callables, params, table, members, used, natives, ports,
                                          identities, Aliases(links, callable.document), [], [], [], index, solid,
                                          undeclared, meaning, context, generic, ops, target, []);
                     switch body {
@@ -2170,10 +2296,11 @@ PreparePackages :: (forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     }
     return Preparation.Read(bodies);
 }
-// A query evaluator's analysis covers its parameter list, which holds the
+// A body may declare the sequence and optional types it uses in `table`. A
+// query evaluator's analysis covers its parameter list, which holds the
 // query's predicate; every other callable's covers its body.
 FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
-                 params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                 params: Param[], table: ^(TypeDecl[]), members: TypeMember[], constants: ConstDecl[],
                  natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], aliases: Name[],
                  operators: NumericOperator[], makes: NativeMake[], make_fields: int[], index: int,
                  solid: int[], undeclared: u64, meaning: u64, context: BodyContext, generic_updates: int[],
@@ -2196,9 +2323,9 @@ FunctionBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]
     mutated := MutatedNames(forest, document.text, analysis_body, referenced);
     built: int[] = [];
     if (callable.results == 0) {
-        built = BuiltLocals(forest, document.text, types, aliases, callable.package, analysis_body, referenced);
+        built = BuiltLocals(forest, document.text, table^, aliases, callable.package, analysis_body, referenced);
     }
-    return EmitBody(forest, document.text, callable.document, callables, params, types, members, constants,
+    return EmitBody(forest, document.text, callable.document, callables, params, table, members, constants,
                     natives, ports, identities, operators, makes, make_fields, aliases, document.key, solid,
                     undeclared, meaning, index, referenced, mutated, built, context, generic_updates, ops, target,
                     query_specs);
@@ -2547,7 +2674,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     } else {
                         wide.append(IntrinsicBase | u64(host.intrinsic));
                     }
-                    row: writer.Host = {capability: capability, abi: host_abi, first: host.first,
+                    row: writer.Host = {owned_arguments: host.owned_arguments, capability: capability, abi: host_abi, first: host.first,
                                         result_first: host.result_first, result_count: host.result_count, outcome_first: 0,
                                         outcome_count: 0};
                     hosts.append(row);
@@ -2641,7 +2768,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                         foreign: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
                         references.append(foreign);
                     }
-                    call: writer.Call = {function: length(references) - 1, first: invocation.first,
+                    call: writer.Call = {owned_arguments: invocation.owned_arguments, function: length(references) - 1, first: invocation.first,
                                          count: invocation.count, result_first: invocation.result_first,
                                          result_count: invocation.result_count, task: invocation.task};
                     calls.append(call);
@@ -2920,11 +3047,12 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
                 case .Rejected(error, cycle):
                     return InputFailure(-1, "package graph is invalid");
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
-                    switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
+                    active_order := ActivePackageOrder(documents, packages, files_of, order, edges, file_packages[0]);
+                    switch Declare(nodes, documents, packages, files_of, active_order, imports, links, target) {
                         case .Failed(diagnostic):
                             return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members, constants):
-                            return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
+                            return Link(nodes, documents, packages, files_of, file_packages[0], active_order, edges, links,
                                         callables, params, types, members, constants, resolved_natives, resolved_ports, identities, native_effects, ops, target,
                                         abi);
                     }

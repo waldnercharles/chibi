@@ -5,6 +5,10 @@ authoring packages. Studio is a separate repository that consumes these public
 targets. The deployed player accepts prepared projects; the compiler and
 controller prepare/inspect authored content before deployment.
 
+`sdk/VERSION` owns the SDK version. The Chibi graph's build identity and retained
+CMake SDK/config-version generation read that file. Changing it invalidates
+CMake configuration and updates the graph identity on the next build.
+
 The Make convenience profiles are complete native products:
 
 ```sh
@@ -18,9 +22,12 @@ includes `chibi-compile`, `chibi-player`, and the authoring interfaces Studio ne
 `package-runtime-sdk` enables native/desktop runtime with compiler disabled; its
 only product executable is `chibi-player`. `package-player` derives a deployment
 containing that executable, resources, licenses and exact SDK pin. It carries no
-SDK headers/libraries or authoring tools. Native profiles build a standalone
-reflection generator from `tools/reflect`; matching libclang headers belong to
-that host tool. `SDK_CMAKE_FLAGS` selects Debug by default or an explicit Release
+SDK headers/libraries or authoring tools. Native profiles construct the
+`tools/reflect` generator with the Chibi graph on Linux/macOS; matching libclang
+headers belong to that host tool. Private host recovery stays inside
+`SDK_REFLECT_BUILD_DIR`, alongside its `reflect` executable. Windows retains the
+restricted standalone CMake construction until its authored replacement passes.
+`SDK_CMAKE_FLAGS` selects Debug by default or an explicit Release
 profile. `package-player` requests Release.
 
 For a library-only compiler or headless runtime, configure explicitly:
@@ -118,7 +125,7 @@ to omit language, parser, compiler and authoring packages entirely. The runtime
 package can then load prepared modules with explicit capability and type linkage.
 
 Set `CHIBI_SDK_BUILD_NATIVE=ON` to include the engine's built-in component layouts
-and the entity, audio, rhythm and vector packages. Standalone native builds require
+and the entity, audio and vector packages. Standalone native builds require
 `CHIBI_REFLECT_EXECUTABLE`, a native host reflection generator. When its libclang
 needs an explicit builtin-header directory, supply
 `CHIBI_REFLECT_RESOURCE_INCLUDE_DIR`. Cute math headers come from the

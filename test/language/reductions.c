@@ -289,7 +289,7 @@ TEST_CASE(reductions_prepared_ordered_fold_preserves_storage_and_clamps)
         REQUIRE(pending.system_row_bytes >= 3 * (sizeof(uint64_t) + sizeof(pin_value)));
         REQUIRE(
             pending.system_row_bytes <= pending.system_row_capacity &&
-            pending.payload_bytes > 0
+            pending.managed_bytes > 0
         );
         REQUIRE(execution_program_finish_system(program) == FLOW_OK);
         const reduction_result *result = value(entity);

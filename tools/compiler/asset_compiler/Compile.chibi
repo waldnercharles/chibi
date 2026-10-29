@@ -6,6 +6,11 @@ import binding "project:lexical_binding"
 import source "project:asset_source"
 import packaging "project:asset_packaging"
 import strings "core:strings"
+import costs "project:cost_explanations"
+
+pub ExplainCosts :: (functions: costs.Function[], values: costs.Cost[], json: bool) -> u8[] {
+    return costs.Report(functions, values, json);
+}
 
 // A union result admits owned arrays/text on both bootstrap and authored
 // compiler paths. Named aggregate results are not supported by stage one yet.

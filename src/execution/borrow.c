@@ -176,7 +176,7 @@ const char *behavior_function_borrow_snapshot(behavior_function_context *ctx, in
     if (behavior_function_borrow_argument(f, ctx, input, output)) {
         return NULL;
     }
-    return EXECUTION_snapshot_call.value(ctx->value_storage, input, 1, output);
+    return behavior_function_value_call(ctx, host);
 }
 
 typedef enum
@@ -220,25 +220,71 @@ static bool array(borrow_value value)
     return value.kind == ARRAY || value.kind == EMPTY;
 }
 
-static bool snapshot(const behavior_function *f, const behavior_function_instruction *i)
+/* The intrinsic `i` calls when it is `canonical` exactly. */
+static bool calls_intrinsic(
+    const behavior_function *f,
+    const behavior_function_instruction *i,
+    const node_host_call *canonical
+)
 {
-    if (i->op != BF_HOST_CALL || i->left != BEHAVIOR_FUNCTION_HOST_DATA) {
+    /* An element read reports an index outside its array as an argument
+     * failure; neither kind of failure changes control flow. */
+    if (i->op != BF_HOST_CALL || (i->left != BEHAVIOR_FUNCTION_HOST_DATA &&
+                                  i->left != BEHAVIOR_FUNCTION_ARGUMENT)) {
         return false;
     }
     const behavior_function_host_call *h = &f->host_calls[i->target];
-    const node_host_call *call = h->call, *canonical = &EXECUTION_snapshot_call;
-    if (h->capability_id != execution_intrinsic_id(canonical) ||
-        h->capability_abi != execution_intrinsic_abi(h->capability_id) ||
-        call->service || call->missing_service || call->invoke ||
-        call->context || call->action || call->value != canonical->value ||
-        call->optional_service || call->variadic || call->reusable ||
-        h->result_first != h->first + 1 || h->result_count != 1) {
+    const node_host_call *call = h->call;
+    return h->capability_id == execution_intrinsic_id(canonical) &&
+           h->capability_abi == execution_intrinsic_abi(h->capability_id) &&
+           !call->service && !call->missing_service && !call->invoke &&
+           !call->context && !call->action && call->value == canonical->value &&
+           !call->optional_service && !call->variadic && !call->reusable &&
+           !call->language_values && !call->owned_result;
+}
+
+/* A snapshot or value copy of a plain array, which may borrow its input. */
+static bool snapshot(const behavior_function *f, const behavior_function_instruction *i)
+{
+    if (!calls_intrinsic(f, i, &EXECUTION_snapshot_call) &&
+        !calls_intrinsic(f, i, &EXECUTION_value_copy_call)) {
+        return false;
+    }
+    const behavior_function_host_call *h = &f->host_calls[i->target];
+    if (h->result_first != h->first + 1 || h->result_count != 1) {
         return false;
     }
     pin_value input = f->data_values[h->first].initial,
               output = f->data_values[h->result_first].initial;
     return array_type(input) && array_type(output) && input.type == output.type &&
            behavior_borrow_name(input.type_name, output.type_name);
+}
+
+/* Dropping a plain array releases only a copy this call owns, never a
+ * borrowed input. */
+static bool drop(const behavior_function *f, const behavior_function_instruction *i)
+{
+    if (!calls_intrinsic(f, i, &EXECUTION_value_drop_call)) {
+        return false;
+    }
+    const behavior_function_host_call *h = &f->host_calls[i->target];
+    return h->result_first == h->first + 1 && h->result_count == 1 &&
+           array_type(f->data_values[h->first].initial) &&
+           behavior_borrow_plain(f->data_values[h->result_first].initial);
+}
+
+/* An element read of a plain array. */
+static bool element(const behavior_function *f, const behavior_function_instruction *i)
+{
+    if (!calls_intrinsic(f, i, &EXECUTION_sequence_get_call)) {
+        return false;
+    }
+    const behavior_function_host_call *h = &f->host_calls[i->target];
+    return h->result_first == h->first + 2 && h->result_count == 1 &&
+           array_type(f->data_values[h->first].initial) &&
+           f->data_values[h->first + 1].initial.type == PIN_I32 &&
+           behavior_borrow_plain(f->data_values[h->first + 1].initial) &&
+           behavior_borrow_plain(f->data_values[h->result_first].initial);
 }
 
 /* The whole synchronous body must leave every collection owner unchanged.
@@ -376,7 +422,7 @@ static bool instruction(
             pin_value header = f->data_values[b.bank].initial;
             return array_type(header) ? array(a) && i->type == BF_POINTER_TYPE
                                       : a.kind == VALUE && i->type == header.type;
-        case BF_HOST_CALL: return snapshot(f, i);
+        case BF_HOST_CALL: return snapshot(f, i) || drop(f, i) || element(f, i);
         case BF_INVOKE: {
             const behavior_function_invocation *call = &f->calls[i->left];
             const behavior_function *callee = call->function;

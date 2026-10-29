@@ -37,7 +37,8 @@ size_t execution_module_storage_bytes(const execution_module *);
 bool execution_module_components_valid(const execution_module *, const ecs_world *);
 typedef struct
 {
-    size_t payload_bytes, payload_capacity;
+    size_t payload_bytes, payload_capacity; /* Activation payloads. */
+    size_t managed_bytes, managed_capacity; /* The program family's managed heap. */
     int task_slots, retained_tasks;
     size_t task_result_bytes;
     uint64_t task_lookup_steps; /* Handle-index probes in the last collection. */
@@ -279,10 +280,10 @@ int execution_instance_dispatch(
 const pin_value *execution_instance_state(const execution_instance *instance, uint64_t id);
 int execution_instance_set_state(execution_instance *instance, uint64_t id, pin_value value);
 int execution_instance_pending(const execution_instance *instance);
-/* Matching stable IDs and reflected layouts preserve state. A replacement that
- * would drop a kept value fails and leaves the program running; a restart
- * applies it. Replacement cancels old activations before releasing the prior
- * module generation. */
+/* Matching stable IDs keep state, converted when its type changed. A reload
+ * always applies: state that cannot convert, or that reaches a record layout
+ * the replacement changed, restarts from its initializer. Replacement cancels
+ * old activations before releasing the prior module generation. */
 int execution_program_replace(execution_program *program, execution_module *module, bool restart);
 /* Preparation leaves live state/work untouched. Discard with program_free.
  * The original program must outlive its staged candidate. Commit consumes the
@@ -301,9 +302,9 @@ execution_program *execution_program_prepare_replace_services(
     const service_binding *defaults,
     const service_binding *overrides
 );
-/* Fails, freeing prepared and leaving the program running, when a value kept
- * since preparation now reaches a record layout the replacement changed. */
-int execution_program_commit_replace(execution_program *, execution_program *prepared);
+/* Resets kept values that reach a record layout the replacement changed: the
+ * program may change them between preparation and commit. */
+void execution_program_commit_replace(execution_program *, execution_program *prepared);
 /* Borrowed current finalized generation; ends at replacement or program free. */
 const execution_module *execution_program_module(const execution_program *);
 #endif

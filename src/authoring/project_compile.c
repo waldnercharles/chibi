@@ -8,6 +8,7 @@
 #include "authoring/source_package_files.h"
 #include "execution/backend.h"
 #include "execution/function.h"
+#include "execution/managed.h"
 #include "execution/module.h"
 #include "execution/status.h"
 #include "host/native_default.h"
@@ -199,7 +200,8 @@ static int compile(
     const char *scene,
     const package_module *modules,
     int count,
-    const char *output
+    const char *output,
+    authoring_cost_report_mode cost_report
 )
 {
     char error[512] = { 0 };
@@ -215,7 +217,8 @@ static int compile(
                                           .components = { REGISTRY_COMPONENTS,
                                                           REGISTRY_COMPONENT_COUNT },
                                           .modules = WORLD_MODULES_ALL,
-                                          .read_only = !output };
+                                          .read_only = !output,
+                                          .cost_report = cost_report };
     bool valid = modules
                    ? authoring_project_assemble(&options, modules, count, &artifact, error, sizeof error)
                    : authoring_project_prepare(&options, &artifact, error, sizeof error);
@@ -225,6 +228,8 @@ static int compile(
     }
     if (valid && output) {
         printf("Prepared project: %s (%zu bytes)\n", output, artifact.size);
+    } else if (valid && cost_report) {
+        fputs(artifact.cost_report, stdout);
     } else if (valid) {
         printf("Checked project: %s\n", project);
     } else {
@@ -235,7 +240,11 @@ static int compile(
 }
 int authoring_project_compile(const char *project, const char *scene, const char *output)
 {
-    return compile(project, scene, NULL, 0, output);
+    return compile(project, scene, NULL, 0, output, AUTHORING_COST_REPORT_NONE);
+}
+int authoring_project_explain_costs(const char *project, const char *scene, bool json)
+{
+    return compile(project, scene, NULL, 0, NULL, json ? AUTHORING_COST_REPORT_JSON : AUTHORING_COST_REPORT_TEXT);
 }
 int authoring_project_compile_modules(
     const char *project,
@@ -246,7 +255,7 @@ int authoring_project_compile_modules(
 {
     assert(count >= 0 && (!count || modules) && output);
     static const package_module none;
-    return compile(project, NULL, count ? modules : &none, count, output);
+    return compile(project, NULL, count ? modules : &none, count, output, AUTHORING_COST_REPORT_NONE);
 }
 
 static void print_diagnostic(const char *path, const script_diagnostic *diagnostic)
@@ -586,6 +595,7 @@ static bool generate(
     behavior_function_activation_free(&activation);
     behavior_managed_heap_free(&managed);
     arena_free(&storage);
+    behavior_managed_heap_free(&managed);
     return written;
 }
 
@@ -902,10 +912,18 @@ static bool check_package_examples(
             );
             const source_packages *resolved = source_package_snapshot_graph(snapshot);
             documents = source_package_snapshot_documents(snapshot, &count);
-            for (int i = 0; i < authoring_packages_count(packages); i++) {
+            for (int i = 0; i < source_packages_count(resolved); i++) {
                 int index = source_packages_order(resolved, i);
-                const authoring_package *package = authoring_packages_at(packages, index);
-                if (!package->diagnostic_count) {
+                const char *identity = source_package_snapshot_identity(snapshot, index);
+                const authoring_package *package = NULL;
+                for (int j = 0; j < authoring_packages_count(packages); j++) {
+                    const authoring_package *candidate = authoring_packages_at(packages, j);
+                    if (!strcmp(candidate->identity, identity)) {
+                        package = candidate;
+                        break;
+                    }
+                }
+                if (!package || !package->diagnostic_count) {
                     continue;
                 }
                 const script_diagnostic *diagnostic = &package->diagnostics[0];

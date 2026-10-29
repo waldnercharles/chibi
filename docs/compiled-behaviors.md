@@ -299,8 +299,8 @@ order. `behavior_last_pump_count` exposes visited queues for inspection and
 performance assertions. Attached instances borrow their world's simulation clock,
 so advancing time and delta time performs constant work regardless of attachment
 count. Standalone instances retain independent clocks. Activations snapshot their
-start time and delta time; waits and Scene Rhythm still read the current clock
-where their contracts require it. Pool release detaches the borrowed clock.
+start time and delta time; waits still read the current clock where their
+contracts require it. Pool release detaches the borrowed clock.
 
 ## Prepared Tick updates
 
@@ -370,17 +370,9 @@ including null-to-empty normalization and owned results. The native path uses
 the existing arena-copy helper for string retention. SpawnTelegraph.Tick now
 qualifies for whole-function execution.
 
-Runtime capabilities may provide `node_desc.lower`, a publication-only expansion
-into the shared behavior IR. Trigger Visual Reaction uses it for direct checked
-component access, finite validation and stores, preserving argument/state errors.
-Its ordinary generated body makes no runtime helper calls. The descriptor
-declares component reads/writes and conservatively serializes arbitrary Target
-writes.
-
-Scene Rhythm now expands into shared context reads, component-column metadata
-and clock arithmetic. ECS population/singleton metadata avoids a query scan on
-every sample. Compiled activations and prepared Tick rows read their own instance
-simulation clock, preserving its distinction from wait time.
+The specialized Visual Reaction and Scene Rhythm runtime features have been
+retired. Generic visual transforms, simulation time, math and tasks remain
+available to authored behaviors.
 
 Reflection automatically emits compiled native-call adapters for eligible pure
 `NODE_READ` functions with supported value signatures. The adapter calls C with

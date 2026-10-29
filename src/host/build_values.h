@@ -8,21 +8,28 @@
  * passed 1 MB at about 580 sources. */
 #define BUILD_TEXT_LIMIT (16 * 1024 * 1024)
 #define BUILD_ARRAY_LIMIT 8192
-/* Values are never freed. An up-to-date build graph holds every compile
- * record it reads, about 15 MB for 362 sources with sanitizers. The limit
- * counts the arena's doubling blocks, so it holds about half as many bytes of
- * values: room for the whole engine, while still stopping a runaway program. */
+/* Bound a bank's retained arena blocks. The host reuses its native-result
+ * bank after the VM imports a callback's results; root arguments have a
+ * separate bank that lives for the invocation. */
 #define BUILD_STORAGE_LIMIT (256 * 1024 * 1024)
 
 typedef struct
 {
     arena memory;
+    /* C strings converted for the current host call. A slice shares its
+     * source's bytes without a terminating NUL, so converting it copies, and
+     * a build graph converts millions of them. */
+    arena scratch;
     const char *error;
 } build_values;
 
 const pin_string *build_values_text(build_values *, const char *, size_t);
 pin_array *build_values_array(build_values *, int);
+/* The C string lives until the next build_values_begin_call. */
 const char *build_values_cstring(build_values *, pin_value, const char **);
+/* Starts a host call, ending the last call's C strings. */
+void build_values_begin_call(build_values *);
+void build_values_free(build_values *);
 bool build_values_string(const pin_value *);
 bool build_values_strings(const pin_value *);
 const char *build_values_join(build_values *, const pin_value *, pin_value *);

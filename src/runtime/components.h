@@ -885,14 +885,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(SurfaceInfluence)
 }
 SurfaceInfluence;
 
-/* Shared simulation rhythm. Pulse width is measured in seconds. */
-typedef NODE_COMPONENT_TYPE_DENSE(Rhythm)
-{
-    float bpm NODE_UNIT("bpm");
-    float pulse_width;
-}
-Rhythm;
-
 /* Visual-only local rotations in radians; gameplay heading remains independent. */
 typedef NODE_COMPONENT_TYPE_DENSE(VisualTransform)
 {
@@ -902,21 +894,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(VisualTransform)
     float scale;
 }
 VisualTransform;
-
-/* Optional native visual integration. Rotation axes are pitch/yaw/roll in
-   radians; angular velocity is radians/second. Physics heading stays separate. */
-typedef NODE_COMPONENT_TYPE_DENSE(VisualMotion)
-{
-    CF_V3 rotation;
-    CF_V3 angular_velocity;
-    float speed;
-    float rest_elevation;
-    CF_V3 reaction_rotation;
-    float reaction_lift;
-    float reaction_age;
-    float reaction_duration;
-}
-VisualMotion;
 
 /* Opts a 3D visual into the planar material renderer; collision remains 2D. */
 typedef NODE_COMPONENT_TYPE_DENSE(MeshSurface2D)
@@ -1323,8 +1300,7 @@ typedef enum
 /* 2D lighting by holographic radiance cascades: light from emissive
  * materials, with shadows, bounce and fog. The first entity's settings light
  * the scene; a scene without one draws its materials unlit. HRC's
- * experiments and internal tuning are not authored here; tests and the HRC
- * lab set them (docs/hrc-lab.md). */
+ * experiments and internal tuning are not authored here; tests set them. */
 typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
 {
     /* Finest light grid as a fraction of the padded canvas; 0.5 solves one

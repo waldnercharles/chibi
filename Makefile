@@ -1,5 +1,5 @@
 # Convenience wrapper around the build. `make` builds: with the Chibi build
-# graph on macOS, otherwise by configuring CMake.
+# graph on Linux and macOS, otherwise by configuring CMake.
 BUILD_DIR ?= build
 SDK_BUILD_DIR ?= build-sdk
 SDK_PREFIX ?= dist/sdk
@@ -9,6 +9,9 @@ RUNTIME_SDK_PREFIX ?= dist/runtime-sdk
 DEBUG_BUILD_DIR ?= build-debug
 RELEASE_BUILD_DIR ?= build-release
 SDK_REFLECT_BUILD_DIR ?= build-sdk-reflect
+# Make's abspath splits paths at spaces. Preserve this shared SDK handoff.
+SDK_REFLECT_PATH = $(if $(or $(filter /%,$(firstword $(SDK_REFLECT_BUILD_DIR))),$(findstring :/,$(firstword $(SDK_REFLECT_BUILD_DIR)))),$(SDK_REFLECT_BUILD_DIR),$(CURDIR)/$(SDK_REFLECT_BUILD_DIR))
+SDK_REFLECT_LLVM_ROOT = $(if $(or $(filter /%,$(firstword $(LIBCLANG_ROOT))),$(findstring :/,$(firstword $(LIBCLANG_ROOT)))),$(LIBCLANG_ROOT),$(CURDIR)/$(LIBCLANG_ROOT))
 PLAYER_OUTPUT ?= dist/chibi-player-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 UPDATE_RUNTIME ?= 1
 WEB_THREADS ?= 0
@@ -27,6 +30,7 @@ FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
 BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
+CHIBI_BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
 # Another build's sdk directory, such as build-release/sdk, whose
 # chibi-build-host and chibi-compiler-host generate the asset compiler instead
 # of this build's. The resource is the same; Release hosts generate it faster.
@@ -34,19 +38,22 @@ ASSET_GENERATOR_HOSTS ?=
 ASSET_GENERATOR_HOSTS_PATH = $(if $(strip $(ASSET_GENERATOR_HOSTS)),$(abspath $(ASSET_GENERATOR_HOSTS)),)
 BUILD_PROGRAM ?= tools/toolchain/Build.chibi
 BUILD_TIMEOUT_MS ?= 1800000
-# On macOS `make build` compiles with the Chibi build graph, by
+# On Linux and macOS `make build` compiles with the Chibi build graph (PLAN.md M6), by
 # profile name: sanitizer, or debug and release for build-debug and
 # build-release. CMake builds only the first build host, in a tree beside the
 # build directory, which the build-graph checks also compare against
-# (graph-reference). Linux, the SDK, web and Studio builds still use CMake.
+# (graph-reference). The SDK, web and Studio builds still use CMake.
+# GRAPH_BUILD= explicitly selects the retained CMake native route.
 # CCACHE_BASEDIR, as CMake sets it, lets worktrees share ccache objects.
 BUILD_PROFILE ?= sanitizer
 # Opt-in Graph experiment; pair with matching CMAKE_<LANG>_FLAGS_DEBUG.
 BUILD_DEBUG_OPTIMIZATION ?=
 BUILD_DEBUG_FRAME_POINTERS ?=
-GRAPH_BUILD = $(filter Darwin,$(shell uname -s))
+GRAPH_BUILD = $(filter Linux Darwin,$(shell uname -s))
 GRAPH_PROGRAM ?= tools/toolchain/Graph.chibi
 GRAPH_TIMEOUT_MS ?= 3600000
+# Optional existing native reflection tool, including cross-build wrappers.
+GRAPH_REFLECT ?=
 CMAKE_REFERENCE_DIR ?= $(BUILD_DIR)-cmake
 BUILD_HOST_TARGET = $(if $(filter Linux Darwin,$(shell uname -s)),chibi-build-host,)
 VERBOSE ?= 0
@@ -126,13 +133,13 @@ help:
 		'make clean          Remove default engine build outputs'
 
 build:
-	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 12 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 14 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
 
 .PHONY: toolchain-build stage-zero-build graph-reference
 ifneq ($(GRAPH_BUILD),)
 toolchain-build:
 	@$(QUIET) third-party -- "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --core packages/core --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- third-party "$(BUILD_DIR)"
-	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_PATH),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_PATH)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
+	@$(QUIET) graph -- env CCACHE_BASEDIR="$(CURDIR)" "$(BUILD_HOST)" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry Libraries --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(abspath $(BUILD_DIR))" --profile "$(BUILD_PROFILE)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(abspath $(LIBCLANG_ROOT))",) $(if $(strip $(GRAPH_REFLECT)),--reflect "$(abspath $(GRAPH_REFLECT))",) $(if $(strip $(BUILD_DEBUG_OPTIMIZATION)),--debug-optimization "$(BUILD_DEBUG_OPTIMIZATION)",) $(if $(strip $(BUILD_DEBUG_FRAME_POINTERS)),--debug-frame-pointers "$(BUILD_DEBUG_FRAME_POINTERS)",) --jobs "$(JOBS)" $(if $(ASSET_GENERATOR_HOSTS_PATH),--asset-generator-hosts "$(ASSET_GENERATOR_HOSTS_PATH)",) --all-commands on $(foreach target,$(BUILD_TARGET) $(if $(strip $(BUILD_TARGET)),$(BUILD_HOST_TARGET),),--target $(target))
 	@ln -sfn "$(abspath $(BUILD_DIR))/compile_commands.json" compile_commands.json
 
 # Recovery builds the first build host with CMake beside the build directory;
@@ -164,12 +171,33 @@ build-debug:
 	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_PROFILE=debug BUILD_TARGET="$(BUILD_TARGET)"
 
 .PHONY: sdk-reflect-build sdk-build sdk-install package-sdk runtime-sdk-build package-runtime-sdk
+ifneq ($(filter Linux Darwin,$(shell uname -s)),)
+sdk-reflect-build:
+	@host="$(BUILD_HOST)"; \
+	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
+		host="$(SDK_REFLECT_BUILD_DIR)/host/chibi-build-host"; \
+		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
+			$(MAKE) sdk-reflect-bootstrap || exit $$?; \
+		fi; \
+	fi; \
+	$(QUIET) build-sdk-reflect -- env CCACHE_BASEDIR="$(CURDIR)" "$$host" --compiler tools/compiler --compiler-core packages/core --root "$(CURDIR)" --source "$(GRAPH_PROGRAM)" --core packages/core --collection graph=tools/graph --entry SDKReflect --timeout-ms "$(GRAPH_TIMEOUT_MS)" -- --build "$(SDK_REFLECT_PATH)" --jobs "$(JOBS)" $(if $(strip $(LIBCLANG_ROOT)),--libclang-root "$(SDK_REFLECT_LLVM_ROOT)",) -- $(NATIVE_TOOLCHAIN_FLAGS)
+
+# Cold recovery constructs only the host that runs the authored graph. Remove
+# this with the first-host bootstrap replacement, not with reflection policy.
+.PHONY: sdk-reflect-bootstrap
+sdk-reflect-bootstrap:
+	@$(QUIET) configure-sdk-reflect-host -- sh tools/configure.sh sdk-native "$(SDK_REFLECT_BUILD_DIR)/host" $(NATIVE_TOOLCHAIN_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF
+	@$(QUIET) build-sdk-reflect-host -- cmake --build "$(SDK_REFLECT_BUILD_DIR)/host" --target chibi-build-host --parallel $(JOBS)
+else
+# Windows retains native construction until its build host can run processes.
+# Keep its restricted C-only SDK profile until that replacement is verified.
 sdk-reflect-build:
 	@$(QUIET) configure-sdk-reflect -- cmake -S tools/reflect -B "$(SDK_REFLECT_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	@$(QUIET) build-sdk-reflect -- cmake --build "$(SDK_REFLECT_BUILD_DIR)" --target reflect --parallel $(JOBS)
+endif
 
 sdk-build: sdk-reflect-build
-	@$(QUIET) configure-sdk -- sh tools/configure.sh sdk-native "$(SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) configure-sdk -- sh tools/configure.sh sdk-native "$(SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(SDK_REFLECT_PATH)/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 	@$(QUIET) build-sdk -- cmake --build "$(SDK_BUILD_DIR)" --parallel $(JOBS)
 
 sdk-install: sdk-build
@@ -179,7 +207,7 @@ package-sdk: sdk-build
 	@python3 tools/package_sdk.py --build "$(SDK_BUILD_DIR)" --output "$(SDK_PREFIX)" --kind sdk
 
 runtime-sdk-build: sdk-reflect-build
-	@$(QUIET) configure-runtime-sdk -- sh tools/configure.sh sdk-native "$(RUNTIME_SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=OFF -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) configure-runtime-sdk -- sh tools/configure.sh sdk-native "$(RUNTIME_SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=OFF -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(SDK_REFLECT_PATH)/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 	@$(QUIET) build-runtime-sdk -- cmake --build "$(RUNTIME_SDK_BUILD_DIR)" --parallel $(JOBS)
 
 package-runtime-sdk: runtime-sdk-build
@@ -265,7 +293,7 @@ benchmark: test-build
 # Browser Studio consumes a separately packaged Emscripten SDK generation.
 .PHONY: web-sdk-build package-web-sdk
 web-sdk-build: sdk-reflect-build
-	@$(QUIET) configure-web-sdk -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_SDK_BUILD_DIR)" $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF) -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) configure-web-sdk -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_SDK_BUILD_DIR)" $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF) -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) -DCHIBI_REFLECT_EXECUTABLE="$(SDK_REFLECT_PATH)/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 	@$(QUIET) build-web-sdk -- cmake --build "$(WEB_SDK_BUILD_DIR)" --parallel $(JOBS)
 
 package-web-sdk: web-sdk-build
@@ -278,7 +306,7 @@ WEB_PLAYER_BUILD_DIR ?= build-web-player
 WEB_PLAYER_OUTPUT ?= dist/web-player
 .PHONY: package-web-player
 package-web-player: sdk-reflect-build
-	@$(QUIET) configure-web-player -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_PLAYER_BUILD_DIR)" $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_WEB_PLAYER=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect"
+	@$(QUIET) configure-web-player -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_PLAYER_BUILD_DIR)" $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_WEB_PLAYER=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_REFLECT_EXECUTABLE="$(SDK_REFLECT_PATH)/reflect"
 	@$(QUIET) build-web-player -- cmake --build "$(WEB_PLAYER_BUILD_DIR)" --target chibi-player chibi-compile --parallel $(JOBS)
 	@rm -rf "$(WEB_PLAYER_OUTPUT)"
 	@cmake --install "$(WEB_PLAYER_BUILD_DIR)" --component web_player --prefix "$(abspath $(WEB_PLAYER_OUTPUT))"
@@ -329,7 +357,7 @@ test-build:
 	@$(MAKE) build BUILD_TARGET='chibi_ctl test_tools test_language'
 
 test-native: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group native
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_BUILD_HOST="$(CHIBI_BUILD_HOST)" python3 tools/test_policy.py group native
 
 test-materials: test-build
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py group materials

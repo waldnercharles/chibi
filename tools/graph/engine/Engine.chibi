@@ -29,6 +29,9 @@ pub Profile :: struct {
     // libclang, which the reflection tool links: its headers, its library and
     // the builtin headers of the clang it belongs to.
     libclang_include: string;
+    opengl_library: string;
+    opengl_include: string;
+    glx_library: string;
     libclang_library: string;
     clang_resource_include: string;
     // The unpacked third-party archive the profile builds with, as
@@ -48,16 +51,65 @@ pub Profile :: struct {
 // tools/reflect/resource.cmake finds them: that clang's resource directory.
 // Empty when it has none.
 pub ClangResourceInclude :: (libclang_library: string) -> string {
+    if (libclang_library == "") {
+        return "";
+    }
     library_dir := strings.Slice(libclang_library, 0, strings.LastIndex(libclang_library, "/"));
+    parent_end := strings.LastIndex(library_dir, "/");
+    parent := strings.Slice(library_dir, 0, parent_end);
+    target := strings.Slice(library_dir, parent_end + 1, strings.ByteLength(library_dir) - parent_end - 1);
+    // A conventional GNU multiarch library still belongs to prefix/lib and
+    // prefix/bin, not to a separate toolchain below lib/<target>.
+    if (strings.HasSuffix(parent, "/lib") && strings.HasSuffix(target, "-linux-gnu")) {
+        library_dir = parent;
+    }
+    // The installation's own driver owns its resource path. CLANG_RESOURCE_DIR
+    // may use any directory name; only the driver-absent fallback filters versions.
     clang := Join([library_dir, "/../bin/clang"]);
-    if (!build.file_exists(clang) || build.probe([clang, "-print-resource-dir"]) != 0) {
+    if (build.file_exists(clang) && build.probe([clang, "-print-resource-dir"]) == 0) {
+        include := Join([strings.TrimSpace(build.last_stdout()), "/include"]);
+        if (build.file_exists(Join([include, "/stdbool.h"]))) {
+            return include;
+        }
+    }
+    // libclang can be installed without its driver. Match resource.cmake's
+    // unique matching resource directory fallback; ambiguity is not success.
+    resolved := build.resolve_path(libclang_library);
+    basename_start := strings.LastIndex(resolved, "/") + 1;
+    basename := strings.Slice(resolved, basename_start, strings.ByteLength(resolved) - basename_start);
+    version := "";
+    if (strings.HasPrefix(basename, "libclang-")) {
+        version = build.after(basename, "libclang-");
+    } else if (strings.HasPrefix(basename, "libclang.")) {
+        version = build.after(basename, "libclang.");
+    }
+    digits := 0;
+    for (byte in strings.Bytes(version)) {
+        if (byte < 48 || byte > 57) {
+            break;
+        }
+        digits += 1;
+    }
+    major := strings.Slice(version, 0, digits);
+    found := "";
+    resources := Join([library_dir, "/clang"]);
+    for (name in build.list_directory(resources)) {
+        if (major != "" && name != major && !strings.HasPrefix(name, Join([major, "."]))) {
+            continue;
+        }
+        include := Join([resources, "/", name, "/include"]);
+        if (build.file_kind(include) == "") {
+            continue;
+        }
+        if (found != "") {
+            return "";
+        }
+        found = include;
+    }
+    if (found == "" || !build.file_exists(Join([found, "/stdbool.h"]))) {
         return "";
     }
-    include := Join([strings.TrimSpace(build.last_stdout()), "/include"]);
-    if (!build.file_exists(Join([include, "/stdbool.h"]))) {
-        return "";
-    }
-    return include;
+    return found;
 }
 
 // Defines the profile gives a target's compiles, after its own.
@@ -135,7 +187,11 @@ LinkFlags :: (profile: Profile, build_dir: string, target: string) -> string[] {
 LinkLibraries :: (source_root: string, build_dir: string, target: string, profile: Profile) -> string[] {
     libraries := ProfileLibraries(target, profile);
     for (linked in Links(target)) {
-        if (strings.HasPrefix(linked, "third-party/")) {
+        if (linked == "system/libOpenGL.so") {
+            libraries.append(profile.opengl_library);
+        } else if (linked == "system/libGLX.so") {
+            libraries.append(profile.glx_library);
+        } else if (strings.HasPrefix(linked, "third-party/")) {
             libraries.append(Resolve(source_root, build_dir, profile.third_party, linked));
         } else if (strings.HasPrefix(linked, "chibi_")) {
             libraries.append(Library(source_root, build_dir, profile.third_party, linked).output);
@@ -309,15 +365,20 @@ Configure :: (source_root: string, build_dir: string, profile: Profile, target: 
     return true;
 }
 
+// The shared SDK version authority, also read by the CMake compatibility path.
+pub SDKVersion :: (source_root: string) -> string {
+    return strings.TrimSpace(build.read_file(Join([source_root, "/sdk/VERSION"])));
+}
+
 // The build identity document sdk/artifact_formats.cmake writes, which
 // `chibi version` and `chibi doctor` read: the SDK and project versions, the
 // platform, the processors and execution backends, and for each artifact
 // format its version and the SHA-256 of the sources and headers that own it.
 // Empty when an owner declares no version.
 Identity :: (source_root: string, profile: Profile) -> string {
-    sdk := build.read_file(Join([source_root, "/sdk/CMakeLists.txt"]));
+    sdk := SDKVersion(source_root);
     project := Version(Join([source_root, "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
-    if (project == "") {
+    if (sdk == "" || project == "") {
         return "";
     }
     processor := profile.architecture;
@@ -333,7 +394,7 @@ Identity :: (source_root: string, profile: Profile) -> string {
         records.append(record);
     }
     return Join([
-        "{\"sdk_version\": \"", build.before(build.after(sdk, "set(CHIBI_SDK_VERSION "), ")"), "\", \"system\": \"",
+        "{\"sdk_version\": \"", sdk, "\", \"system\": \"",
         build.platform(), "\", \"processors\": [\"", processor,
         "\"], \"backends\": [\"bytecode\", \"sljit\"], \"project_version\": ", project,
         ", \"artifact_formats\": {\n", build.join(records, ",\n"), "\n}}\n"
@@ -661,8 +722,10 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
         return -1;
     }
     output := Join([folder, "/sdk/generated/assets"]);
+    // Unoptimized or sanitized hosts take minutes to compile the asset compiler.
+    slow := profile.sanitizers != "" || profile.build_type != "Release";
     timeout := "240000";
-    if (profile.sanitizers != "") {
+    if (slow) {
         timeout = "600000";
     }
     build_host := Executable(folder, "chibi-build-host");
@@ -676,7 +739,7 @@ AssetCompiler :: (tools: c.Tools, profile: Profile, root: string, folder: string
                 "--source", "tools/toolchain/AssetCompiler.chibi", "--core", "packages/core",
                 "--collection", "asset_generator=tools/graph/asset_compiler", "--entry", "Build", "--timeout-ms", timeout, "--",
                 compiler_host, output];
-    if (profile.sanitizers != "") {
+    if (slow) {
         command.append("--compiler-timeout-ms=600000");
     }
     inputs := [build_host, compiler_host];
@@ -868,6 +931,12 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
         flags.append(Join(["-I", IncludeDirectory(source_root, build_dir, profile.third_party, include)]));
     }
     for (include in SystemIncludes(target)) {
+        if (include == "system/opengl") {
+            if (profile.opengl_include != "" && profile.opengl_include != "/usr/include") {
+                flags.extend(["-isystem", profile.opengl_include]);
+            }
+            continue;
+        }
         flags.extend(["-isystem", IncludeDirectory(source_root, build_dir, profile.third_party, include)]);
     }
     flags.extend(Flags(profile, build_dir, target, language));
@@ -1058,6 +1127,31 @@ Add :: (names: string[], name: string) -> string[] {
 // wait for another's archive. The number of sources compiled, or -1 on failure.
 pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: string, targets: string[]) -> int {
     source_dir := Join([source_root, "/src"]);
+    // The fixture corpus depends only on source paths, never on a compiled
+    // generator. Publish it even when a later prerequisite compile fails.
+    for (target in targets) {
+        if (!WriteSourceLists(source_root, build_dir, target)) {
+            build.report(Join(["graph: writing ", target, "'s source lists failed"]));
+            return -1;
+        }
+    }
+    // Install resources before generators, which may compile prerequisite
+    // hosts. CMake writes these files during configuration. Write the
+    // identity first, since the resource lists copy it.
+    installs := false;
+    for (target in targets) {
+        installs = installs || length(Resources(target)) > 0;
+    }
+    if (installs && !WriteIdentity(source_root, build_dir, profile)) {
+        build.report("graph: writing the build identity failed");
+        return -1;
+    }
+    for (target in targets) {
+        if (!Install(source_root, build_dir, profile.third_party, target)) {
+            build.report(Join(["graph: installing ", target, "'s resources failed"]));
+            return -1;
+        }
+    }
     generated := 0;
     if (Reflects(targets)) {
         generated = Reflect(tools, profile, source_root, build_dir);
@@ -1084,23 +1178,6 @@ pub Build :: (tools: c.Tools, profile: Profile, source_root: string, build_dir: 
             !c.StageHeaders(published, PublicHeaders(target), HeaderRoot(build_dir, target, "public"), []) ||
             !c.StageHeaders(source_dir, PrivateHeaders(target), HeaderRoot(build_dir, target, "private"), kept)) {
             build.report(Join(["graph: staging ", target, "'s headers failed"]));
-            return -1;
-        }
-    }
-    // Resources are written before any compile, as CMake writes them when it
-    // configures; the identity first, since they copy it.
-    installs := false;
-    for (target in targets) {
-        installs = installs || length(Resources(target)) > 0;
-    }
-    if (installs && !WriteIdentity(source_root, build_dir, profile)) {
-        build.report("graph: writing the build identity failed");
-        return -1;
-    }
-    for (target in targets) {
-        if (!Install(source_root, build_dir, profile.third_party, target) ||
-            !WriteSourceLists(source_root, build_dir, target)) {
-            build.report(Join(["graph: installing ", target, "'s resources failed"]));
             return -1;
         }
     }

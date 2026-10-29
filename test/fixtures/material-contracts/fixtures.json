@@ -25,8 +25,8 @@
     "source": "projects/arena2d/content/libraries/FieldShapes.chibi"
   },
   "content/materials/ArenaFloor.kdl": {
-    "purpose": "CPU shader contour and beat arithmetic assertions",
-    "sha256": "5bc9998716a5ad357cb4553ac04260095d0715c84557ea1c9d8e2fb48cbfb762",
+    "purpose": "CPU shader contour and surface influence arithmetic assertions",
+    "sha256": "94f22ec596f800a33ac55fcd68fa20c206d49c7b1d282b1df036af935b289f89",
     "source": "content/materials/ArenaFloor.kdl"
   }
 }

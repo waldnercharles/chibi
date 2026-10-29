@@ -98,15 +98,13 @@ void test_tool_build_process(const char *worker, const char *host);
 void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
-void test_build_graph(const char *host, const char *cmake_build);
+void test_build_graph(const char *host);
 void test_build_graph_link_response(const char *host);
-void test_build_graph_support(const char *host, const char *cmake_build);
-void test_build_graph_reflect(const char *host, const char *cmake_build);
-void test_build_graph_archive(const char *host, const char *cmake_build);
-void test_build_graph_generated(const char *host, const char *cmake_build);
-void test_build_graph_debug_optimization(const char *host, const char *cmake_build);
-void test_build_graph_programs(const char *host, const char *cmake_build);
-void test_build_graph_resources(const char *host, const char *cmake_build);
+void test_build_graph_support(const char *host);
+void test_build_graph_reflect(const char *host);
+void test_build_graph_generated(const char *host);
+void test_build_graph_debug_optimization(const char *host);
+void test_build_graph_programs(const char *host);
 #ifndef _WIN32
 void test_build_sdk(const char *host, const char *build, const char *third_party);
 void test_runtime_sdk(const char *host);
@@ -618,33 +616,27 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if (argc == 4 && (!strcmp(argv[1], "--build-graph") ||
+    if (argc == 3 && (!strcmp(argv[1], "--build-graph") ||
                       !strcmp(argv[1], "--build-graph-support") ||
                       !strcmp(argv[1], "--build-graph-reflect") ||
-                      !strcmp(argv[1], "--build-graph-archive") ||
                       !strcmp(argv[1], "--build-graph-generated") ||
                       !strcmp(argv[1], "--build-graph-programs") ||
-                      !strcmp(argv[1], "--build-graph-debug-optimization") ||
-                      !strcmp(argv[1], "--build-graph-resources"))) {
+                      !strcmp(argv[1], "--build-graph-debug-optimization"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
         if (!strcmp(argv[1], "--build-graph")) {
-            test_build_graph(argv[2], argv[3]);
+            test_build_graph(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-support")) {
-            test_build_graph_support(argv[2], argv[3]);
+            test_build_graph_support(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-reflect")) {
-            test_build_graph_reflect(argv[2], argv[3]);
-        } else if (!strcmp(argv[1], "--build-graph-archive")) {
-            test_build_graph_archive(argv[2], argv[3]);
+            test_build_graph_reflect(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-debug-optimization")) {
-            test_build_graph_debug_optimization(argv[2], argv[3]);
+            test_build_graph_debug_optimization(argv[2]);
         } else if (!strcmp(argv[1], "--build-graph-programs")) {
-            test_build_graph_programs(argv[2], argv[3]);
-        } else if (!strcmp(argv[1], "--build-graph-resources")) {
-            test_build_graph_resources(argv[2], argv[3]);
+            test_build_graph_programs(argv[2]);
         } else {
-            test_build_graph_generated(argv[2], argv[3]);
+            test_build_graph_generated(argv[2]);
         }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;

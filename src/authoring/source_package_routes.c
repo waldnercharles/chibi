@@ -131,15 +131,17 @@ const char *source_package_routes_file(
         storage,
         roots[0].root,
         input_path,
-        input_path[0] == '/' ? NULL : roots[0].root
+        source_package_path_absolute(input_path) ? NULL : roots[0].root
     );
-    if (!path || !strcmp(path, "/")) {
+    if (!path || path[strlen(path) - 1] == '/') {
         return "Invalid package file path or root escape";
     }
     const char *slash = strrchr(path, '/');
-    const char *directory = slash == path
-                              ? "/"
-                              : copy(storage, path, (size_t)(slash - path));
+    size_t directory_size = (size_t)(slash - path);
+#ifdef _WIN32
+    directory_size += slash == path + 2 && path[1] == ':';
+#endif
+    const char *directory = slash == path ? "/" : copy(storage, path, directory_size);
     int root = owning_root(roots, root_count, directory);
     if (root < 0) {
         return "Package file is outside the configured roots";

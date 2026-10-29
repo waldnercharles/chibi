@@ -9,6 +9,13 @@
 
 ## Recoverable errors, approved 2026-10-27 and revised 2026-10-28
 
+Status 2026-10-29: PR #813 carries the integration on main with PR #831's
+runtime pair. The checked bootstrap was regenerated from the complete source
+closure (28 sources, including `package_compiler/Fallible.chibi`) with a fresh
+native host built from the `@error` grammar, and its runtime seed was published
+and pinned by the `ci-seed` route. The paragraphs below record the earlier
+offline integration steps and are history.
+
 The current offline integration combines accepted main
 `79743c5675e5a18eeea14193d729cc6e45bdf926` with the preceding reviewed source
 checkpoint `bd6751c3b185b314e2311d752d7a896436994bde`. Preserve the accepted
@@ -125,6 +132,145 @@ exact asset status, token offsets, source line/column and message text. Check
 source recovery and applicable repository groups on the integrated candidate;
 record actual results, elapsed time and unexecuted coverage. See
 [recoverable errors](docs/recoverable-errors.md) for the contract.
+
+## Ordinary Chibi CLI application and shared program sessions, 2026-10-28
+
+The owner approved making the public CLI an ordinary Chibi application with
+Main and a shared compiler/runtime interface. The isolated branch
+codex/chibi-main-app-20261028 started at 2c6d3ed5c and now includes accepted
+origin/main 79743c567, including SDK VERSION, compiler reachability and accepted
+private build-host lifetime fixes (protocol14; compiler/E1 unchanged).
+The original checkout and its tracked/untracked edits remain byte-identical.
+Earlier native and private authored-runner checkpoints are preserved under
+.chibi/main-runner-reload; ordinary-cli-pre-reachability-forward-port preserves
+the candidate before the latest accepted-main integration.
+
+apps/chibi owns all public command routing, argument validation, watching,
+retry, exit policy, game-cache decisions and subprocess construction. The SDK
+installs that package. chibi_main.c resolves app/core resources, starts the
+generic application host and returns Main's result. The private Run entry,
+runner pack and compiler --run bridge are removed. Program argv is ordinary
+application argv; chibi apps/chibi -- version runs the CLI through the same
+program service used for user Main functions.
+
+Chibi::program exposes owned immutable source snapshots, including editor
+buffers, candidate/accepted generations, structured diagnostics, transactional
+prepare/commit/discard and synchronous invocation. CLI and user programs share
+program.open/update/call/diagnostic/close/test. Existing compiler preparation and
+runtime replacement own compilation and retained-state migration. Invalid edits
+preserve accepted state; active/reentrant sessions reject mutation, caller and
+target heaps remain distinct, and catalogs/services outlive their sessions.
+Root invocation cooperates with authored cancellation policy; nested calls stay
+interruptible. Pure tests use an injected bounded executor and isolated runtime
+scopes, with no worker pool retained during compilation.
+
+Generic application services provide OS/file/process/network leaves. Typed SDK
+and project adapters expose facts and export operations without parsing argv.
+Owned child groups/jobs support parent-only interruption, escalation and cleanup.
+Terminal ownership is restored across suspension; Darwin foreground children
+start suspended until handoff so they cannot read before receiving the terminal.
+Export passes the same cancellation flag through compiler/native/sign/archive
+phases and checks before publishing; staging, listeners and temporary paths are
+cleaned before authored exit policy runs. Export-phase interruption returns the
+signal status; stopping an active preview server remains graceful.
+
+SDK/CMake/graph descriptions export program headers and dependencies and own the
+installed app/core resources. A compiler-only profile of the existing test_tools
+dispatcher isolates installed Chibi::program and explicit core dependencies.
+Studio's separate CMake change copies these resources with its embedded CLI.
+Its UI standalone Run flow is outside this increment. Windows source/path input
+now uses pinned Win32 handles, reparse/limit checks and public snapshot coverage.
+Compiler/application capabilities remain outside deployed game catalogs.
+
+Accepted-main integration preserved identity-based project diagnostics. Shared
+sessions already use package identities rather than public enumeration indices.
+A new regression places an unused invalid core package before the root, executes
+a required import, then checks a required-import error's source path while the
+accepted Main remains callable. Disk test sessions also cover unused invalid core.
+
+Validation on accepted a253ef4b5: native release build passes in 123.7s plus 1.8s
+for dependencies. Focused runtime/session coverage passes 280 cases / 22,420
+assertions in 1.564s summed process time. POSIX source/path/import coverage passes
+41 / 17,381 in 0.366s parallel outer wall time. Process boundary checks pass
+3 / 50 in 14.998s: parent-only SIGINT/SIGTERM, child/descendant cleanup, five
+terminal scenarios and Export/Web interruption with staging/temp/listener cleanup.
+Full CLI integration passes 35 / 524 in 39.041s. Both pre-fix binary controls
+still fail the expected stop/export oracles and clean their owned processes. SDK public-header consumer passes 1 / 13 in 0.409s;
+graph/CMake version/resource/staging parity passes 3 / 26 in 53.957s. The CLI runs
+its own seven authored tests and nested version output matches direct invocation.
+
+Strict MinGW syntax passes for twelve production files and the Windows fixture
+using actual staged include paths in 2.795s; no source-root include fallback.
+Clang-format22 and diff checks pass. Real Windows and Linux execution, broad
+aggregates, browser and Studio UI checks remain unrun. Native-build execution is
+Linux-only; macOS ran its portable argv-forwarding fixture, not Linux LLVM output.
+
+Final-tip validation on 7134851ef (macOS; main 7c5fa4af1 merged, program.test
+reentry guard 9ccb1477d): `program.test` called from an active test now fails with
+status 1; without the guard the regression fails (11 / 12), with it 12 / 12.
+Program-session 12 / 181, execution-scope 9 / 315, program 211 / 14,167 and
+integer-arithmetic 1 / 4,016 pass. Tools: package-ownership 5 / 275,
+build-graph-resources 3 / 26, build-sdk 8 / 212 (264.5s). Raw build-tree CLI
+35 / 550, process 3 / 50, build 4 / 39, doctor 1 / 60, program-sdk 2 / 17. Against
+the packaged SDK built from the same head: installed CLI 15 / 213, export and
+relocation 2 / 25, isolated program consumer. These supersede the receipts bound
+to 1dd12f7c1. Installed and export selectors need the packaged SDK, not the raw
+build tree. Still unrun: Windows, Linux, wasm, the aggregate suites and Studio
+build/UI.
+Studio resource copying passed its nine-file CMake fixture in 0.506s. The
+guide game example is current format39 and passes check plus fmt --check
+in 0.770s.
+
+Clean implementation candidate fee955dc2 / tree a2f1c02a6 passes direct full
+public SDK construction: configure 1.094s, Release ALL build 111.017s and package
+20.606s. Installed/relocated CLI coverage passes 15 / 213 in 26.293s, including
+Main, independent sessions, retained/imported reload, invalid drafts, cancellation
+and source-free relocation. The isolated existing-dispatcher C consumer links
+only installed Chibi::program and explicit core capabilities and passes 1 / 13
+in 0.534s (configure 0.451s, build 0.828s), with no engine/private include roots.
+Its primitive-only host supplies the documented empty type composition.
+
+Actual exported-game startup and relocation pass 2 / 25 in 9.975s, including
+hidden-frame/pixel assertions after removing the source project and scratch SDK.
+The successful fixture did not retain backend/device names; no hardware identity
+is inferred from the host platform. Studio's current-main resource copy/install
+block matches all 155 SDK resource files and engine metadata; its copied CLI
+imports core and prints Hello, Studio. The separate Studio companion is
+30d7650 on be7709f; no editor compile or UI interaction is claimed.
+
+Final receipts are under .chibi/main-runner-reload, including public-sdk-validation,
+public-sdk-consumer-validation, ordinary-cli-validation and studio-real-sdk/result.
+The test-only host composition and this evidence update follow fee955dc2; refresh
+package identity and affected installed checks on the final clean tip. Product
+sources are unchanged by that follow-up. Private compiler-tools packaging is
+separate proof. No global SDK installation or new checked seed occurred.
+
+Independent review of fee955dc2 found three additional parity/interaction issues.
+Nested program calls now explicitly inherit the caller's instruction budget,
+cancellation, purity and VM preference; default compiler/asset scopes remain
+exclusive. Finite-loop, repeated-call and live-cancellation controls fail on the
+old implementation and pass after the fix. The repeated-call fixture uses a
+measured 256-instruction budget because 32 cannot complete one retained call;
+no wall-clock policy is introduced. Runtime scope/session/host/test and existing
+replacement coverage pass 309 / 23,211 in 42.755s summed subprocess time.
+
+Standalone full-SDK CMake builds put all five sibling tools in bin and stage
+the authoritative generated engine identity beside the existing app/core data.
+Compiler-host-only and embedded/Graph layouts retain their paths. Raw build-tree
+help, version, doctor, Main and private-driver lookup pass 4 / 39 in 6.677s;
+raw ALL build passes in 86.437s. Browser diagnosis uses shared files.readable
+rather than presence; all five unreadable payload controls now fail correctly
+and restore to healthy status (doctor 1 / 60 in 4.548s).
+
+The complete CLI passes 35 / 550 in 40.954s, resource/version parity 3 / 26 in
+56.004s and public program consumer 2 / 17 in 0.472s. POSIX source/import checks
+pass 41 / 17,381 in 0.908s parallel outer wall; actual-staged-header MinGW syntax
+passes thirteen production files plus the Windows fixture in 3.423s. The native
+combined build uses matching protocol14 hosts and passes in 123.0s plus 1.8s
+for dependencies. All C sources pass clang-format22 (25.611s). Final installed
+SDK evidence must use this clean combined repair candidate; earlier fee955dc2
+receipts remain attributed to that checkpoint. Root review continues before PR
+acceptance; no held #814/#818 code is included.
 
 ## Coordinated named struct results, 2026-10-22
 

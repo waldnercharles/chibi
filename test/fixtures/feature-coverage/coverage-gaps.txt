@@ -6,8 +6,10 @@
 # as scenes start using them.
 
 # Native compiler helpers Text Byte Length, Text Byte At, Text Slice and Text
-# Bytes are exercised by the package-core language fixture. Their uncategorized pure
-# declarations are excluded by feature_function, so no function gaps apply here.
+# Bytes are exercised by the package-core language fixture. Text From Bytes is
+# exercised by package-portable's authored byte tests and native ownership cases.
+# These uncategorized pure declarations are excluded by feature_function, so no
+# function gaps apply here.
 
 # Precise Sine, Precise Cosine and Floating Remainder are narrow libm helpers
 # exercised by core:math's authored tests and the package-math boundary fixture.

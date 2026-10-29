@@ -747,6 +747,7 @@ Files :: (target: string) -> string[] {
             "test/language/package_execution.c", "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",
             "test/language/package_core.c", "test/language/package_math.c", "test/language/package_tests.c",
+            "test/language/package_portable.c", "test/language/package_portable_compiler.c",
             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
             "test/language/argument_effects_chibi.c", "test/language/program_session.c",
             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
@@ -3586,6 +3587,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/numeric.c",
         "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
         "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
+        "test/language/package_portable.c", "test/language/package_portable_compiler.c",
         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
         "test/language/package_syntax_chibi.c", "test/language/package_tests.c",
         "test/language/prepared_writer_chibi.c",
@@ -3622,7 +3624,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
     }
     if (target == "test_language" &&
         (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c" ||
-         file == "test/language/integer_semantics.c")) {
+         file == "test/language/integer_semantics.c" || file == "test/language/package_portable_compiler.c")) {
         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
     }
     return [];
@@ -3695,6 +3697,9 @@ pub Configures :: (target: string) -> string[] {
             "test/parallel.h=test/parallel.h",
             "package_core_source.h=test/language/package_core_source.h.in",
             "core_strings_tests_source.h=test/language/core_strings_tests_source.h.in",
+            "portable_asset_source.h=test/language/portable_asset_source.h.in",
+            "package_portable_source.h=test/language/package_portable_source.h.in",
+            "package_portable_consumer.h=test/language/package_portable_consumer.h.in",
             "integer_arithmetic_source.h=test/language/integer_arithmetic_source.h.in",
             "docs_markdown_source.h=test/language/docs_markdown_source.h.in",
             "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",
@@ -3752,6 +3757,7 @@ pub Substitutions :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
             "CHIBI_ASSET_PACKAGING_BYTES=bytes:tools/compiler/asset_packaging/Packaging.chibi",
+            "CHIBI_PORTABLE_ASSET_BYTES=bytes:test/fixtures/portable-byte-asset/Build.chibi",
             "CHIBI_ASSET_GENERATOR_BYTES=bytes:tools/graph/asset_compiler/Generate.chibi",
             "CHIBI_ANALYSIS_STATE_BYTES=bytes:tools/compiler/analysis_state/State.chibi",
             "CHIBI_BOUNDED_COMPILE_BYTES=bytes:tools/compiler/bounded_compiler/Compile.chibi",
@@ -3767,6 +3773,17 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_CORE_STRINGS_BYTES=bytes:packages/core/strings/Strings.chibi",
             "CHIBI_CORE_STRINGS_TEST_SOURCES=test-sources:CORE_STRINGS_TEST_SOURCE:core_strings:test/core_strings",
             "CHIBI_CORE_STRINGS_TEST_INPUTS=test-inputs:CORE_STRINGS_TEST_SOURCE:core_strings:test/core_strings",
+            "CHIBI_PORTABLE_CONSUMER_BYTES=bytes:test/packages/portable_consumer/Consumer.chibi",
+            "CHIBI_PORTABLE_BYTES_SOURCES=test-sources:PORTABLE_BYTES:bytes:packages/core/bytes",
+            "CHIBI_PORTABLE_BYTES_INPUTS=test-inputs:PORTABLE_BYTES:bytes:packages/core/bytes",
+            "CHIBI_PORTABLE_MATH_BITS_SOURCES=test-sources:PORTABLE_MATH_BITS:math/bits:packages/core/math/bits",
+            "CHIBI_PORTABLE_MATH_BITS_INPUTS=test-inputs:PORTABLE_MATH_BITS:math/bits:packages/core/math/bits",
+            "CHIBI_PORTABLE_HASH_FNV_SOURCES=test-sources:PORTABLE_HASH_FNV:hash/fnv:packages/core/hash/fnv",
+            "CHIBI_PORTABLE_HASH_FNV_INPUTS=test-inputs:PORTABLE_HASH_FNV:hash/fnv:packages/core/hash/fnv",
+            "CHIBI_PORTABLE_HASH_ADLER32_SOURCES=test-sources:PORTABLE_HASH_ADLER32:hash/adler32:packages/core/hash/adler32",
+            "CHIBI_PORTABLE_HASH_ADLER32_INPUTS=test-inputs:PORTABLE_HASH_ADLER32:hash/adler32:packages/core/hash/adler32",
+            "CHIBI_PORTABLE_HASH_CRC32_SOURCES=test-sources:PORTABLE_HASH_CRC32:hash/crc32:packages/core/hash/crc32",
+            "CHIBI_PORTABLE_HASH_CRC32_INPUTS=test-inputs:PORTABLE_HASH_CRC32:hash/crc32:packages/core/hash/crc32",
             "CHIBI_INTEGER_ARITHMETIC_BYTES=bytes:test/integer_arithmetic/Arithmetic.chibi",
             "CHIBI_DOCS_GRAMMAR_BYTES=bytes:tools/docs/grammar/Grammar.chibi",
             "CHIBI_DOCS_MARKDOWN_BYTES=bytes:tools/docs/markdown/Markdown.chibi",

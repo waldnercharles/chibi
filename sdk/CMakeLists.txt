@@ -307,8 +307,8 @@ set_target_properties(chibi_text_capabilities PROPERTIES EXPORT_NAME text_capabi
 chibi_sdk_headers(chibi_text_capabilities PUBLIC runtime/text_format.h runtime/text_definition.h)
 target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
 # Authored core collection sources are explicit snapshot inputs for SDK users.
-install(FILES "${CHIBI_SDK_ROOT}/packages/core/strings/Strings.chibi"
-    DESTINATION share/chibi/core/strings)
+install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
+    FILES_MATCHING PATTERN "*.chibi")
 # chibi doc's site generator is authored package source the SDK compiles.
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/markdown/Markdown.chibi" DESTINATION share/chibi/docs/markdown)
 install(FILES "${CHIBI_SDK_ROOT}/tools/docs/site/Site.chibi" DESTINATION share/chibi/docs/site)
@@ -666,8 +666,6 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY AND
     install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/native_aot/" DESTINATION share/chibi/tools/native_aot
         FILES_MATCHING PATTERN "*.chibi")
     install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/compiler/" DESTINATION share/chibi/compiler)
-    install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
-        FILES_MATCHING PATTERN "*.chibi")
     install(FILES "${CHIBI_SDK_ROOT}/tools/toolchain/Build.chibi"
         DESTINATION share/chibi/tools/toolchain)
     install(FILES "${CHIBI_SDK_ROOT}/tools/configure_inputs.py" DESTINATION share/chibi/tools)

@@ -102,6 +102,8 @@ void test_language_package_files();
 void test_language_package_core();
 void test_language_package_math();
 void test_language_package_math_benchmark();
+void test_language_package_portable();
+void test_language_package_portable_compiler();
 void test_language_package_tests();
 void test_language_argument_effects_chibi();
 void test_language_docs_markdown();
@@ -326,6 +328,9 @@ int main(int argc, char **argv)
     bool package_math = argc == 2 && !strcmp(argv[1], "--package-math");
     bool package_math_benchmark = argc == 2 &&
                                   !strcmp(argv[1], "--package-math-benchmark");
+    bool package_portable_compiler = argc == 2 &&
+                                     !strcmp(argv[1], "--package-portable-compiler");
+    bool package_portable = argc == 2 && !strcmp(argv[1], "--package-portable");
     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
     bool argument_effects_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--argument-effects-chibi");
@@ -392,13 +397,13 @@ int main(int argc, char **argv)
          !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
          !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
          !effect_analysis_chibi && !record_members_chibi && !package_execution &&
-         !package_resolution && !package_imports && !package_files &&
-         !package_core && !package_math && !package_math_benchmark &&
-         !package_tests && !argument_effects_chibi && !docs_markdown &&
-         !component_write && !component_write_layout && !scalarize && !borrow &&
-         !reductions && !binding_schedule && !activation_cache && !headless &&
-         !build_workflow && !navigation && !publication && !field_runtime &&
-         !prototype && !source_prototype_edits && !ui_authoring &&
+         !package_resolution && !package_imports && !package_files && !package_core &&
+         !package_math && !package_math_benchmark && !package_portable &&
+         !package_portable_compiler && !package_tests && !argument_effects_chibi &&
+         !docs_markdown && !component_write && !component_write_layout && !scalarize &&
+         !borrow && !reductions && !binding_schedule && !activation_cache &&
+         !headless && !build_workflow && !navigation && !publication &&
+         !field_runtime && !prototype && !source_prototype_edits && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -457,8 +462,9 @@ int main(int argc, char **argv)
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
-            "--package-math | --package-math-benchmark | --package-tests | "
-            "--argument-effects-chibi | --docs-markdown | "
+            "--package-math | --package-math-benchmark | --package-portable | "
+            "--package-portable-compiler | "
+            "--package-tests | --argument-effects-chibi | --docs-markdown | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -737,6 +743,10 @@ int main(int argc, char **argv)
         test_language_package_math();
     } else if (package_math_benchmark) {
         test_language_package_math_benchmark();
+    } else if (package_portable_compiler) {
+        test_language_package_portable_compiler();
+    } else if (package_portable) {
+        test_language_package_portable();
     } else if (package_tests) {
         test_language_package_tests();
     } else if (argument_effects_chibi) {

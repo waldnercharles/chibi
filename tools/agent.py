@@ -173,14 +173,13 @@ def clone_project(source, target):
 
 
 def external_project(data):
-    """Whether `data` is Studio's fixture project.kdl at a version the engine
-    upgrades when it opens it. Studio's projects lag the engine's version."""
+    """Whether `data` is Studio's fixture project.kdl at the version the engine
+    opens."""
     header = (ROOT / 'src/assets/project.h').read_text()
-    oldest, current = (int(re.search(rf'^#define {name} (\d+)$', header, re.M)[1])
-                       for name in ('CHIBI_PROJECT_OLDEST_VERSION', 'CHIBI_PROJECT_VERSION'))
+    current = int(re.search(r'^#define CHIBI_PROJECT_VERSION (\d+)$', header, re.M)[1])
     line, _, rest = data.partition(b'\n')
     version = re.fullmatch(rb'version ([1-9][0-9]*)', line)
-    return (version is not None and oldest <= int(version[1]) <= current and
+    return (version is not None and int(version[1]) == current and
             rest == b'name "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n')
 
 

@@ -21,15 +21,5 @@ char *authoring_source_canonical(
     char *error,
     size_t size
 );
-/* One-time graph/project import. Accepts generated component accessors only
- * while proving equivalent property rewrites, then requires strict ordinary
- * analysis. Returns malloc-owned text or NULL with an actionable error. */
-char *authoring_source_migrate_generated(
-    const char *,
-    const script_catalog *,
-    const char *identity,
-    char *error,
-    size_t size
-);
 
 #endif

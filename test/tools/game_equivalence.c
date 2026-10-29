@@ -478,8 +478,7 @@ static bool assembles_from_its_own_modules(const char *story)
                                           .native = application.native,
                                           .components = { REGISTRY_COMPONENTS,
                                                           REGISTRY_COMPONENT_COUNT },
-                                          .modules = WORLD_MODULES_ALL,
-                                          .read_only = true };
+                                          .modules = WORLD_MODULES_ALL };
     authoring_project_artifact prepared = { 0 }, assembled = { 0 }, refused = { 0 };
     bool valid = authoring_project_prepare(&options, &prepared, error, sizeof error);
     arena names = { 0 };
@@ -673,8 +672,7 @@ TEST_CASE(stage_one_input_lists_what_stage_zero_modules_require)
                                           .native = application.native,
                                           .components = { REGISTRY_COMPONENTS,
                                                           REGISTRY_COMPONENT_COUNT },
-                                          .modules = WORLD_MODULES_ALL,
-                                          .read_only = true };
+                                          .modules = WORLD_MODULES_ALL };
     authoring_project_artifact artifact = { 0 };
     arena names = { 0 };
     package_module *modules = NULL;

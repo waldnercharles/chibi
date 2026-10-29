@@ -1983,7 +1983,7 @@ TEST_CASE(resources_install_as_cmake)
 }
 
 /* The language tests' corpus lists every fixture source below test/fixtures
- * by absolute path, sorted, without the migration originals, as CMake writes
+ * by absolute path, sorted, as CMake writes
  * it; like resources, before any compile. */
 TEST_CASE(language_corpus_lists_as_cmake)
 {

@@ -500,16 +500,6 @@ script_analysis *script_analyze_document_requested(
 );
 /* Signature discovery does not resolve bodies; useful for project catalogs. */
 script_analysis *script_declarations(const script_syntax *, const script_catalog *);
-/* Import normalization only: obsolete native accessors may be analyzed but
- * must be rewritten and pass ordinary analysis before publication. */
-script_analysis *script_analyze_migration_document(
-    const script_syntax *,
-    const script_catalog *,
-    const char *identity,
-    const script_specialization_request *,
-    int count,
-    bool declarations
-);
 script_analysis *script_declarations_document(
     const script_syntax *,
     const script_catalog *,

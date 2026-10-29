@@ -3,7 +3,7 @@
 #include "runtime/geometry/mesh_asset.h"
 /* Portable field-wise indexed triangle/part/material payload. It is also the
  * `.mesh` content format, so changing the version or the value wire codec
- * needs a project migration step that rewrites projects' `.mesh` files.
+ * needs a project version bump that rewrites projects' `.mesh` files.
  * Resident identity is assigned by the catalog after publication, never
  * persisted as a process ID. Writer bytes use free(); initialized result and
  * budget survive failed reads. */

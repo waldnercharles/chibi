@@ -364,9 +364,9 @@ TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity)
         filename,
         "#!/bin/sh\nset -eu\n"
         "test \"$1\" = --build\n"
-        "mkdir -p \"$2\"\n"
-        "cp host-template \"$2/chibi-build-host\"\n"
-        "chmod 700 \"$2/chibi-build-host\"\n"
+        "mkdir -p \"$2/bin\"\n"
+        "cp host-template \"$2/bin/chibi-build-host\"\n"
+        "chmod 700 \"$2/bin/chibi-build-host\"\n"
     );
     assert(!chmod(filename, 0700));
     path(filename, source, "host-template");
@@ -562,10 +562,10 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
         "printf '%s\\n' \"$@\" > build-arguments\n"
         "if [ -f build-fails ]; then exit 35; fi\n"
         "test \"$1\" = --build\n"
-        "mkdir -p \"$2\"\n"
-        "cp host-template \"$2/chibi-build-host\"\n"
-        "chmod 700 \"$2/chibi-build-host\"\n"
-        "rm -f \"$2/chibi-build-host.old\"\n"
+        "mkdir -p \"$2/bin\"\n"
+        "cp host-template \"$2/bin/chibi-build-host\"\n"
+        "chmod 700 \"$2/bin/chibi-build-host\"\n"
+        "rm -f \"$2/bin/chibi-build-host.old\"\n"
     );
     assert(!chmod(filename, 0700));
     snprintf(search, sizeof search, "PATH=%s:%s", bin, getenv("PATH"));
@@ -651,11 +651,11 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     path(filename, source, "graph-arguments");
     REQUIRE(file_equals(filename, expected));
     path(filename, source, "graph-program");
-    REQUIRE(file_equals(filename, "reflection build/host/chibi-build-host\n"));
+    REQUIRE(file_equals(filename, "reflection build/host/bin/chibi-build-host\n"));
     tool_write(calls, "");
     REQUIRE(tool_run(args, source, log_path) == 0);
     REQUIRE(file_equals(calls, "graph\n"));
-    REQUIRE(file_equals(filename, "reflection build/host/chibi-build-host\n"));
+    REQUIRE(file_equals(filename, "reflection build/host/bin/chibi-build-host\n"));
 
     path(filename, source, "fixture-host");
     tool_write(filename, host);
@@ -666,8 +666,8 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     REQUIRE(tool_run(args, source, log_path) == 0);
     REQUIRE(file_equals(calls, "graph\n"));
     path(filename, source, "graph-program");
-    REQUIRE(file_equals(filename, "reflection build/host/chibi-build-host\n"));
-    path(filename, source, "reflection build/host/chibi-build-host.old");
+    REQUIRE(file_equals(filename, "reflection build/host/bin/chibi-build-host\n"));
+    path(filename, source, "reflection build/host/bin/chibi-build-host.old");
     tool_write(filename, "");
     tool_write(calls, "");
     REQUIRE(tool_run(args, source, log_path) == 0);

@@ -8,19 +8,269 @@
 #include <string.h>
 
 #ifdef _WIN32
-TEST_CASE(package_files_windows_adapter_reports_unsupported)
+#include "support/array.h"
+
+#include <assert.h>
+#include <stdlib.h>
+#include <windows.h>
+#include <winioctl.h>
+
+static char temporary[1024], project[1024], core[1024];
+static struct
 {
-    const source_package_disk_options options = { .project_root = "C:/unused" };
-    source_package_load_error error;
-    source_package_snapshot *snapshot = source_package_snapshot_load(&options, &error);
-    bool unsupported = !snapshot && strstr(error.message, "unsupported on Windows");
+    char path[1024];
+    bool directory;
+} paths[24];
+static int path_count;
+static source_package_snapshot *snapshot;
+static source_package_input *files;
+static source_package_load_error load_error;
+
+static void path(char out[1024], const char *base, const char *name)
+{
+    int size = snprintf(out, 1024, "%s/%s", base, name);
+    assert(size > 0 && size < 1024);
+}
+static void remember(const char *name, bool directory)
+{
+    for (int i = 0; i < path_count; i++) {
+        if (!strcmp(paths[i].path, name)) {
+            return;
+        }
+    }
+    assert(path_count < 24 && strlen(name) < sizeof paths[0].path);
+    strcpy(paths[path_count].path, name);
+    paths[path_count++].directory = directory;
+}
+static void directory(const char *base, const char *name)
+{
+    char full[1024];
+    path(full, base, name);
+    assert(CreateDirectoryA(full, NULL));
+    remember(full, true);
+}
+static void write_bytes(const char *base, const char *name, const char *bytes, size_t size)
+{
+    char full[1024];
+    path(full, base, name);
+    FILE *file = fopen(full, "wb");
+    assert(file);
+    assert(fwrite(bytes, 1, size, file) == size && !fclose(file));
+    remember(full, false);
+}
+static void setup()
+{
+    char base[1024];
+    DWORD length = GetTempPathA(sizeof base, base);
+    assert(length && length < sizeof base);
+    assert(GetTempFileNameA(base, "cbp", 0, temporary));
+    assert(DeleteFileA(temporary) && CreateDirectoryA(temporary, NULL));
+    for (char *part = temporary; *part; part++) {
+        if (*part == '\\') {
+            *part = '/';
+        }
+    }
+    remember(temporary, true);
+    directory(temporary, "project");
+    directory(temporary, "core");
+    path(project, temporary, "project");
+    path(core, temporary, "core");
+    directory(core, "base");
+    const char *main = "package app\nimport core \"core:base\"\nMain :: () -> "
+                       "int { return Add() + core.Bias() }\n";
+    const char *helper = "package app\nAdd :: () -> int { return 2 }\n";
+    const char *library = "package base\npub Bias :: () -> int { return 3 }\n";
+    write_bytes(project, "A.chibi", main, strlen(main));
+    write_bytes(project, "Z.chibi", helper, strlen(helper));
+    write_bytes(core, "base/Base.chibi", library, strlen(library));
+}
+static void cleanup()
+{
     source_package_snapshot_free(snapshot);
-    REQUIRE(unsupported);
+    snapshot = NULL;
+    source_package_files_free(files);
+    files = NULL;
+    for (int i = path_count - 1; i >= 0; i--) {
+        bool removed = paths[i].directory ? RemoveDirectoryA(paths[i].path)
+                                          : DeleteFileA(paths[i].path);
+        assert(removed || GetLastError() == ERROR_FILE_NOT_FOUND);
+    }
+    path_count = 0;
+}
+static source_package_snapshot *load()
+{
+    const source_package_collection collection = { "core", core };
+    const source_package_disk_options options = { .project_root = project,
+                                                  .collections = &collection,
+                                                  .collection_count = 1 };
+    return source_package_snapshot_load(&options, &load_error);
+}
+TEST_CASE(package_files_windows_loads_canonical_sources_and_imports)
+{
+    directory(project, ".hidden");
+    write_bytes(project, ".hidden/Broken.chibi", "invalid", 7);
+    snapshot = load();
+    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
+    int count = 0;
+    const script_package_document *documents = source_package_snapshot_documents(snapshot, &count);
+    REQUIRE(count == 3 && source_packages_count(source_package_snapshot_graph(snapshot)) == 2);
+    for (int i = 0; i < count; i++) {
+        REQUIRE(
+            (documents[i].path[0] == '/' && documents[i].path[1] == '/') ||
+            (documents[i].path[1] == ':' && documents[i].path[2] == '/')
+        );
+        REQUIRE(!strchr(documents[i].path, '\\'));
+        REQUIRE(!i || strcmp(documents[i - 1].path, documents[i].path) < 0);
+    }
+    return true;
+}
+TEST_CASE(package_files_windows_reads_only_the_explicit_source)
+{
+    write_bytes(project, "Broken.chibi", "invalid", 7);
+    char selected[1024];
+    path(selected, project, "Z.chibi");
+    REQUIRE(source_package_file_read(selected, &files, &load_error));
+    REQUIRE(acount(files) == 1);
+    REQUIRE(strstr(files[0].path, "/Z.chibi"));
+    REQUIRE(strstr(files[0].text, "return 2"));
+    REQUIRE(files[0].size == strlen(files[0].text));
+    return true;
+}
+TEST_CASE(package_files_windows_rejects_nul_and_oversized_sources)
+{
+    char selected[1024];
+    path(selected, project, "Bad.chibi");
+    write_bytes(project, "Bad.chibi", "bad\0bytes", 9);
+    REQUIRE(!source_package_file_read(selected, &files, &load_error));
+    REQUIRE(!files && strstr(load_error.message, "NUL"));
+    HANDLE file = CreateFileA(selected, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    REQUIRE(file != INVALID_HANDLE_VALUE);
+    LARGE_INTEGER size = { .QuadPart = 512 * 1024 + 1 };
+    bool extended = SetFilePointerEx(file, size, NULL, FILE_BEGIN) &&
+                    SetEndOfFile(file);
+    bool closed = CloseHandle(file);
+    REQUIRE(extended && closed);
+    REQUIRE(!source_package_file_read(selected, &files, &load_error));
+    REQUIRE(!files && strstr(load_error.message, "byte limit"));
+    return true;
+}
+/* Directory junctions need no symbolic-link privilege. The only target is our
+ * disposable fixture; cleanup removes the junction itself with RemoveDirectory. */
+static bool junction(const char *name, const char *target)
+{
+    char destination[1024], absolute[1024];
+    path(destination, temporary, name);
+    DWORD size = GetFullPathNameA(target, sizeof absolute, absolute, NULL);
+    if (!size || size >= sizeof absolute || !CreateDirectoryA(destination, NULL)) {
+        return false;
+    }
+    remember(destination, true);
+    struct
+    {
+        DWORD tag;
+        WORD size, reserved;
+        WORD substitute_offset, substitute_size, print_offset, print_size;
+        WCHAR path[2056];
+    } reparse = { .tag = IO_REPARSE_TAG_MOUNT_POINT };
+    WCHAR wide[1024];
+    int length = MultiByteToWideChar(CP_ACP, 0, absolute, -1, wide, 1024);
+    if (!length) {
+        return false;
+    }
+    memcpy(reparse.path, L"\\??\\", 4 * sizeof(WCHAR));
+    memcpy(reparse.path + 4, wide, (size_t)length * sizeof(WCHAR));
+    reparse.substitute_size = (WORD)((length + 3) * sizeof(WCHAR));
+    reparse.print_offset = (WORD)(reparse.substitute_size + sizeof(WCHAR));
+    reparse.print_size = (WORD)((length - 1) * sizeof(WCHAR));
+    memcpy((char *)reparse.path + reparse.print_offset, wide, (size_t)length * sizeof(WCHAR));
+    reparse.size = (WORD)(8 + reparse.print_offset + reparse.print_size + sizeof(WCHAR));
+    HANDLE file = CreateFileA(
+        destination,
+        GENERIC_WRITE,
+        0,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+        NULL
+    );
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    DWORD written = 0;
+    bool ok = DeviceIoControl(
+        file,
+        FSCTL_SET_REPARSE_POINT,
+        &reparse,
+        (DWORD)reparse.size + 8,
+        NULL,
+        0,
+        &written,
+        NULL
+    );
+    return CloseHandle(file) && ok;
+}
+TEST_CASE(package_files_windows_canonicalizes_roots_and_rejects_descendant_junctions)
+{
+    REQUIRE(junction("root-link", project));
+    char root_link[1024];
+    path(root_link, temporary, "root-link");
+    REQUIRE(source_package_files_read(root_link, &files, &load_error));
+    REQUIRE(acount(files) == 2);
+    REQUIRE(!strstr(files[0].path, "root-link"));
+    source_package_files_free(files);
+    files = NULL;
+    REQUIRE(junction("project/escape", core));
+    snapshot = load();
+    REQUIRE(!snapshot && strstr(load_error.message, "reparse"));
+    return true;
+}
+TEST_CASE(package_files_windows_normalizes_drive_and_unc_roots)
+{
+    static const struct
+    {
+        const char *root, *file, *normalized, *error;
+    } cases[] = {
+        { "C:/project/./app", "C:/project/./app/Main.chibi", "C:/project/app/Main.chibi", NULL },
+        { "//server/share/project/../app", "Main.chibi", "//server/share/app/Main.chibi", NULL },
+        { "C:/", "C:/Main.chibi", "C:/Main.chibi", NULL },
+        { "//server/share", "//server/share/Main.chibi", "//server/share/Main.chibi", NULL },
+        { "C:/project", "../project/Main.chibi", NULL, "Invalid package file path or root escape" },
+        { "//server/share/../outside", "Main.chibi", NULL, "Invalid absolute collection root" },
+        { "C:/", "C:/", NULL, "Invalid package file path" },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        const source_package_input file = { cases[i].file, "package app\n", 12 };
+        const source_package_snapshot_options options = {
+            .project_root = cases[i].root,
+            .files = &file,
+            .file_count = 1
+        };
+        snapshot = source_package_snapshot_new(&options);
+        const source_package_snapshot_error *error = source_package_snapshot_error_at(snapshot);
+        if (cases[i].error) {
+            REQUIRE(error && strstr(error->diagnostic.message, cases[i].error));
+        } else {
+            REQUIRE(!error);
+            int count = 0;
+            const script_package_document
+                *documents = source_package_snapshot_documents(snapshot, &count);
+            REQUIRE(count == 1 && !strcmp(documents[0].path, cases[i].normalized));
+            REQUIRE(!strcmp(documents[0].key, "project:Main.chibi"));
+            REQUIRE(!strcmp(source_package_snapshot_identity(snapshot, 0), "project:"));
+        }
+        source_package_snapshot_free(snapshot);
+        snapshot = NULL;
+    }
     return true;
 }
 void test_language_package_files()
 {
-    RUN_TEST_CASE(package_files_windows_adapter_reports_unsupported);
+    pu_setup(setup, cleanup);
+    RUN_TEST_CASE(package_files_windows_loads_canonical_sources_and_imports);
+    RUN_TEST_CASE(package_files_windows_reads_only_the_explicit_source);
+    RUN_TEST_CASE(package_files_windows_rejects_nul_and_oversized_sources);
+    RUN_TEST_CASE(package_files_windows_canonicalizes_roots_and_rejects_descendant_junctions);
+    RUN_TEST_CASE(package_files_windows_normalizes_drive_and_unc_roots);
 }
 #elif defined(__EMSCRIPTEN__)
 TEST_CASE(package_files_route_requires_native_filesystem)

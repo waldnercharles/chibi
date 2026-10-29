@@ -36,6 +36,14 @@ target_link_libraries(chibi_source_catalog PUBLIC chibi_authoring chibi_input_ma
     chibi_prototype_document
     PRIVATE chibi_asset_text chibi_ui_document chibi_json chibi_tasks)
 
+add_library(chibi_program STATIC
+    "${CHIBI_SDK_ROOT}/src/authoring/program.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/program_service.c")
+add_library(Chibi::program ALIAS chibi_program)
+set_target_properties(chibi_program PROPERTIES EXPORT_NAME program)
+chibi_sdk_headers(chibi_program PUBLIC authoring/program.h authoring/program_service.h)
+target_link_libraries(chibi_program PUBLIC chibi_source_catalog chibi_native_capabilities chibi_behavior_runtime)
+
 add_library(chibi_source_presentation STATIC)
 foreach(unit graph_expression presentation_schema source_presentation source_presentation_graph source_presentation_anchors
     source_presentation_values source_presentation_flow source_presentation_layout
@@ -66,4 +74,4 @@ chibi_sdk_headers(chibi_graph_catalog PUBLIC authoring/graph_catalog.h)
 target_link_libraries(chibi_graph_catalog PUBLIC chibi_graph_model chibi_native_capabilities chibi_ecs
     PRIVATE chibi_source_presentation chibi_graph_compilation)
 
-list(APPEND CHIBI_SDK_TARGETS chibi_source_catalog chibi_source_presentation chibi_graph_catalog)
+list(APPEND CHIBI_SDK_TARGETS chibi_source_catalog chibi_program chibi_source_presentation chibi_graph_catalog)

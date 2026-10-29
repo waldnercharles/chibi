@@ -329,6 +329,50 @@ TEST_CASE(scoped_native_shared_budget_and_pure_fallback)
     REQUIRE(value.status == FLOW_OK && outer.remaining == 9 && inner.remaining == 122);
     return true;
 }
+
+TEST_CASE(inherited_scopes_share_live_constraints_without_partial_budget_charges)
+{
+    REQUIRE(prepare());
+    behavior_execution_scope outer = { .remaining = 7,
+                                       .pure = true,
+                                       .prefer_compiled = true };
+    behavior_execution_scope inner = { .remaining = 128,
+                                       .prefer_compiled = true,
+                                       .inherit = true };
+    behavior_execution_scope_begin(&outer);
+    behavior_execution_scope_begin(&inner);
+    bool inherited_pure = behavior_execution_scope_pure();
+    behavior_execution_scope_end(&inner);
+    observation first = run(scalar, &inner);
+    uint64_t first_remaining = outer.remaining;
+    observation second = run(scalar, &inner);
+    uint64_t inner_remaining = inner.remaining;
+    observation third = run(scalar, &inner);
+    bool pure_restored = behavior_execution_scope_pure();
+    behavior_execution_scope_end(&outer);
+    REQUIRE(first.status == FLOW_OK && first.value == 42 && first_remaining == 1);
+    REQUIRE(first.counts.bytecode_entries && !first.counts.sljit_entries);
+    REQUIRE(second.status == FLOW_ERR_STEP_BUDGET && !outer.remaining && inner_remaining == 121);
+    REQUIRE(third.status == FLOW_ERR_STEP_BUDGET && inner.remaining == inner_remaining);
+    REQUIRE(inherited_pure && pure_restored && !behavior_execution_scope_active());
+
+    outer = (behavior_execution_scope){ .remaining = 128,
+                                        .prefer_compiled = true,
+                                        .cancelled = cancelled };
+    outer.user = &outer;
+    inner = (behavior_execution_scope){ .remaining = 128,
+                                        .prefer_compiled = true,
+                                        .inherit = true };
+    behavior_execution_scope_begin(&outer);
+    observation cancelled_call = run(scalar, &inner);
+    behavior_execution_scope_end(&outer);
+    REQUIRE(
+        cancelled_call.status == FLOW_ERR_STEP_BUDGET &&
+        outer.remaining == 125 && inner.remaining == 125
+    );
+    REQUIRE(cancelled_call.has_message && !strcmp(cancelled_call.message, "execution cancelled"));
+    return true;
+}
 static bool package_value_body(behavior_function *body, behavior_function *callee)
 {
     execution_module_plan *plan = execution_module_plan_new();
@@ -712,6 +756,7 @@ void test_language_execution_scope()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(scoped_native_matches_canonical_vm);
     RUN_TEST_CASE(scoped_native_shared_budget_and_pure_fallback);
+    RUN_TEST_CASE(inherited_scopes_share_live_constraints_without_partial_budget_charges);
     RUN_TEST_CASE(values_host_rejects_nonpure_outer_without_side_effects);
     RUN_TEST_CASE(values_host_preserves_pure_outer_budget_and_cancellation);
     RUN_TEST_CASE(values_host_target_facts_and_entry_queries_match_profile);

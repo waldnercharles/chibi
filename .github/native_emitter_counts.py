@@ -13,12 +13,15 @@ ENTRY = "0x140a9546d9e8c296"
 REASONS = frozenset(('trace_invalid', 'trace_escape', 'trace_exec_shape',
                      'trace_exec_status', 'trace_argv_shape', 'trace_options',
                      'trace_paths', 'trace_case', 'trace_resume',
-                     'trace_unexpected_record', 'trace_unfinished'))
+                     'trace_unexpected_record', 'trace_unfinished',
+                     'trace_exec_supersession', 'trace_exec_pid_change'))
 _QUOTED = r'"(?:[^"\\]|\\.)*"'
 _PATH = re.compile(r'\s*(' + _QUOTED + r')\s*,')
 _ARGV = re.compile(r'\s*(\[(?:' + _QUOTED + r'|[^"\]])*\])\s*,')
 _ARRAY = re.compile(r'\[\s*(?:' + _QUOTED + r'(?:\s*,\s*' + _QUOTED + r')*)?\s*\]')
 _PREFIX = re.compile(r'^(?:\[pid\s+(\d+)\]\s+|(\d+)\s+)?(.*)$')
+# Linux strace 6.8 signame() prints kernel signals 32..64 as SIGRT_0..32.
+_SIGNAL = r'(?:SIG[A-Z0-9]+|SIGRT_(?:[0-9]|[12][0-9]|3[0-2]))'
 _SUITE = r'/tmp/chibi-native-build-[A-Za-z0-9]+'
 _CASE = re.compile(_SUITE + r'/([^/]+)/game with spaces( moved)?/build/native/O[02]-[0-9a-f]{16}\.work')
 _EXPORT = re.compile(_SUITE + r'/native game/\.chibi/build/native/libraries\.work')
@@ -120,15 +123,22 @@ def parse_counts(text):
                 _invalid('trace_resume')
             record = pending.pop(pid) + resumed[2]
         elif not record.startswith(('execve(', 'execveat(')):
+            # This changes pending-exec PID ownership. Do not silently skip it.
+            if re.fullmatch(r'\+\+\+ superseded by execve in pid [0-9]+ \+\+\+', record):
+                _invalid('trace_exec_supersession')
             # A detached/lost process could hide a candidate compilation.
             # Admit only normal signal/exit records and harmless attach notices.
-            if (re.fullmatch(r'--- SIG[A-Z0-9]+ .* ---', record) or
-                    re.fullmatch(r'\+\+\+ (?:exited with [0-9]+|killed by SIG[A-Z0-9]+(?: \(core dumped\))?) \+\+\+', record) or
+            # Signals/group stops never create, consume or remap pending execs.
+            if (re.fullmatch(r'--- ' + _SIGNAL + r' .* ---', record) or
+                    re.fullmatch(r'--- stopped by SIG(?:STOP|TSTP|TTIN|TTOU) ---', record) or
+                    re.fullmatch(r'\+\+\+ (?:exited with [0-9]+|killed by ' + _SIGNAL + r'(?: \(core dumped\))?) \+\+\+', record) or
                     re.fullmatch(r'strace: Process [0-9]+ attached', record)):
                 continue
             _invalid('trace_unexpected_record')
         elif pid in pending:
             _invalid('trace_resume')
+        if re.search(r' <pid changed to [0-9]+ \.\.\.>$', record):
+            _invalid('trace_exec_pid_change')
         marker = ' <unfinished ...>'
         if record.endswith(marker):
             pending[pid] = record[:-len(marker)]

@@ -66,6 +66,7 @@ void test_tool_build_process_files(const char *worker, const char *host);
 void test_tool_build_timings(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
 void test_build_graph(const char *host, const char *cmake_build);
+void test_build_graph_link_response(const char *host);
 void test_build_graph_support(const char *host, const char *cmake_build);
 void test_build_graph_reflect(const char *host, const char *cmake_build);
 void test_build_graph_archive(const char *host, const char *cmake_build);
@@ -596,6 +597,18 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_runtime_sdk(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--build-graph-link-response")) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        test_build_graph_link_response(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

@@ -5,123 +5,125 @@ package source_tokenizer
 // count bytes; rows and byte columns count from zero, as Tree-sitter's do.
 
 // Token kinds, in the order of Odin's Token_Kind; KindNames spells each.
-Invalid: int : 0;
-EOF: int : 1;
-Comment: int : 2;
-Ident: int : 3;
-Integer: int : 4;
-Float: int : 5;
-String: int : 6;
-Eq: int : 7;
-Not: int : 8;
-At: int : 9;
-Dollar: int : 10;
-Question: int : 11;
-Add: int : 12;
-Sub: int : 13;
-Mul: int : 14;
-Quo: int : 15;
-Mod: int : 16;
-And: int : 17;
-Or: int : 18;
-Xor: int : 19;
-Complement: int : 20;
-Shl: int : 21;
-Shr: int : 22;
-CmpAnd: int : 23;
-CmpOr: int : 24;
-AddEq: int : 25;
-SubEq: int : 26;
-MulEq: int : 27;
-QuoEq: int : 28;
-ModEq: int : 29;
-AndEq: int : 30;
-OrEq: int : 31;
-XorEq: int : 32;
-ArrowRight: int : 33;
-FatArrow: int : 34;
-CmpEq: int : 35;
-NotEq: int : 36;
-Lt: int : 37;
-Gt: int : 38;
-LtEq: int : 39;
-GtEq: int : 40;
-OpenParen: int : 41;
-CloseParen: int : 42;
-OpenBracket: int : 43;
-CloseBracket: int : 44;
-OpenBrace: int : 45;
-CloseBrace: int : 46;
-Colon: int : 47;
-Semicolon: int : 48;
-Period: int : 49;
-Comma: int : 50;
-Ellipsis: int : 51;
-ColonColon: int : 52;
-ColonEq: int : 53;
+pub Invalid: int : 0;
+pub EOF: int : 1;
+pub Comment: int : 2;
+pub Ident: int : 3;
+pub Integer: int : 4;
+pub Float: int : 5;
+pub String: int : 6;
+pub Eq: int : 7;
+pub Not: int : 8;
+pub At: int : 9;
+pub Dollar: int : 10;
+pub Question: int : 11;
+pub Add: int : 12;
+pub Sub: int : 13;
+pub Mul: int : 14;
+pub Quo: int : 15;
+pub Mod: int : 16;
+pub And: int : 17;
+pub Or: int : 18;
+pub Xor: int : 19;
+pub Complement: int : 20;
+pub Shl: int : 21;
+pub Shr: int : 22;
+pub CmpAnd: int : 23;
+pub CmpOr: int : 24;
+pub AddEq: int : 25;
+pub SubEq: int : 26;
+pub MulEq: int : 27;
+pub QuoEq: int : 28;
+pub ModEq: int : 29;
+pub AndEq: int : 30;
+pub OrEq: int : 31;
+pub XorEq: int : 32;
+pub ArrowRight: int : 33;
+pub FatArrow: int : 34;
+pub CmpEq: int : 35;
+pub NotEq: int : 36;
+pub Lt: int : 37;
+pub Gt: int : 38;
+pub LtEq: int : 39;
+pub GtEq: int : 40;
+pub OpenParen: int : 41;
+pub CloseParen: int : 42;
+pub OpenBracket: int : 43;
+pub CloseBracket: int : 44;
+pub OpenBrace: int : 45;
+pub CloseBrace: int : 46;
+pub Colon: int : 47;
+pub Semicolon: int : 48;
+pub Period: int : 49;
+pub Comma: int : 50;
+pub Ellipsis: int : 51;
+pub ColonColon: int : 52;
+pub ColonEq: int : 53;
 // Keywords, in the order grammar.js lists them. Odin's names for `!`, `&` and
 // `|` are taken, so the words `not`, `and` and `or` end in Keyword.
-Package: int : 54;
-Import: int : 55;
-Behavior: int : 56;
-Library: int : 57;
-System: int : 58;
-State: int : 59;
-Retain: int : 60;
-Action: int : 61;
-Event: int : 62;
-Disabled: int : 63;
-On: int : 64;
-After: int : 65;
-As: int : 66;
-Bind: int : 67;
-Events: int : 68;
-Union: int : 69;
-Struct: int : 70;
-Switch: int : 71;
-Is: int : 72;
-NotKeyword: int : 73;
-AndKeyword: int : 74;
-OrKeyword: int : 75;
-Macro: int : 76;
-Entry: int : 77;
-Exit: int : 78;
-Query: int : 79;
-If: int : 80;
-Else: int : 81;
-While: int : 82;
-For: int : 83;
-In: int : 84;
-Case: int : 85;
-Sequence: int : 86;
-Branch: int : 87;
-Return: int : 88;
-Reduce: int : 89;
-Unordered: int : 90;
-Goto: int : 91;
-Break: int : 92;
-Continue: int : 93;
-Await: int : 94;
-Yield: int : 95;
-Cancel: int : 96;
-True: int : 97;
-False: int : 98;
-Nil: int : 99;
-Null: int : 100;
-Plain: int : 101;
-Ref: int : 102;
-Service: int : 103;
-Setting: int : 104;
-Wildcard: int : 105;
-From: int : 106;
-Split: int : 107;
-Component: int : 108;
-Prototype: int : 109;
-Relationship: int : 110;
-Pub: int : 111;
-Delete: int : 112;
-HalfOpenRange: int : 113;
-KindCount: int : 114;
+pub Package: int : 54;
+pub Import: int : 55;
+pub Behavior: int : 56;
+pub Library: int : 57;
+pub System: int : 58;
+pub State: int : 59;
+pub Retain: int : 60;
+pub Action: int : 61;
+pub Event: int : 62;
+pub Disabled: int : 63;
+pub On: int : 64;
+pub After: int : 65;
+pub As: int : 66;
+pub Bind: int : 67;
+pub Events: int : 68;
+pub Union: int : 69;
+pub Struct: int : 70;
+pub Switch: int : 71;
+pub Is: int : 72;
+pub NotKeyword: int : 73;
+pub AndKeyword: int : 74;
+pub OrKeyword: int : 75;
+pub Macro: int : 76;
+pub Entry: int : 77;
+pub Exit: int : 78;
+pub Query: int : 79;
+pub If: int : 80;
+pub Else: int : 81;
+pub While: int : 82;
+pub For: int : 83;
+pub In: int : 84;
+pub Case: int : 85;
+pub Sequence: int : 86;
+pub Branch: int : 87;
+pub Return: int : 88;
+pub Reduce: int : 89;
+pub Unordered: int : 90;
+pub Goto: int : 91;
+pub Break: int : 92;
+pub Continue: int : 93;
+pub Await: int : 94;
+pub Yield: int : 95;
+pub Cancel: int : 96;
+pub True: int : 97;
+pub False: int : 98;
+pub Nil: int : 99;
+pub Null: int : 100;
+pub Plain: int : 101;
+pub Service: int : 102;
+pub Setting: int : 103;
+pub Wildcard: int : 104;
+pub From: int : 105;
+pub Split: int : 106;
+pub Component: int : 107;
+pub Prototype: int : 108;
+pub Relationship: int : 109;
+pub Pub: int : 110;
+pub Delete: int : 111;
+pub Emit: int : 112;
+pub HalfOpenRange: int : 113;
+pub Coalesce: int : 114;
+pub Char: int : 115;
+pub KindCount: int : 116;
 
 // Byte classes.
 SpaceClass: int : 1;
@@ -137,6 +139,7 @@ Fields: int : 4; // a prototype's components and fields
 Embedded: int : 5; // a literal that ends nothing: a prototype's component or a relationship
 
 Quote: int : 34;
+Apostrophe: int : 39;
 Slash: int : 47;
 Star: int : 42;
 Backslash: int : 92;
@@ -149,7 +152,7 @@ KeywordSlots: int : 512;
 KeywordHashBasis: u64 : 0x811C9DC5;
 KeywordHashPrime: u64 : 0x01000193;
 
-Tokens :: union {
+pub Tokens :: union {
     Scanned(kinds: int[], starts: int[], ends: int[], rows: int[], columns: int[],
             errors: string[], error_offsets: int[], error_rows: int[], error_columns: int[])
 }
@@ -178,7 +181,7 @@ pub KindNames :: () -> string[] {
             "branch", "return", "reduce", "unordered", "goto", "break", "continue",
             "await", "yield", "cancel", "true", "false", "nil", "null", "plain",
             "service", "setting", "wildcard", "from", "split", "component",
-            "prototype", "relationship", "pub", "delete", "..<"];
+            "prototype", "relationship", "pub", "delete", "emit", "..<", "??", "Char"];
 }
 
 pub Tokenize :: (text: string) -> Tokens {
@@ -341,7 +344,7 @@ pub Tokenize :: (text: string) -> Tokens {
         }
         // A word after `.` is a member name, which can end a statement; an
         // attribute's name cannot.
-        ends := endings[kind] || dereference || (previous == Period && kind >= Package && kind <= Delete);
+        ends := endings[kind] || dereference || (previous == Period && kind >= Package && kind <= Emit);
         insert = (ends && previous != At) || (kind == CloseBrace && closed == Literal) ||
                  (kind == Colon && label);
         if (kind == Invalid) {
@@ -460,7 +463,7 @@ Continues :: (c: int) -> bool {
 // name, and `?`, `>` and `>>` end a type.
 Endings :: () -> bool[] {
     endings := resize([false], KindCount);
-    for (kind in [Ident, Integer, Float, String, CloseParen, CloseBracket, Question, Gt, Shr,
+    for (kind in [Ident, Integer, Float, String, Char, CloseParen, CloseBracket, Question, Gt, Shr,
                   True, False, Nil, Null, State, Event, Entry, Unordered, Break, Continue,
                   Yield, Return, Package, Import, Struct, From, Split, Component,
                   NotKeyword]) {
@@ -523,7 +526,7 @@ ValueFollows :: (kind: int) -> bool {
            kind == Not || (kind >= Add && kind <= Shl) || kind == CmpAnd ||
            kind == CmpOr || kind == CmpEq || kind == NotEq || kind == Lt ||
            kind == LtEq || kind == GtEq || kind == NotKeyword ||
-           kind == AndKeyword || kind == OrKeyword || kind == Return ||
+           kind == AndKeyword || kind == OrKeyword || kind == Coalesce || kind == Return ||
            kind == Await || kind == In;
 }
 
@@ -542,7 +545,7 @@ Scan :: (text: string, bytes: int[], offset: int) -> Lexeme {
     if (IsDigit(c)) {
         return ScanNumber(bytes, offset);
     }
-    if (c == Quote) {
+    if (c == Quote || c == Apostrophe) {
         return ScanString(bytes, offset, offset + 1);
     }
     if (c == Slash) {
@@ -563,7 +566,7 @@ ScanIdentifier :: (bytes: int[], classes: int[], offset: int) -> int {
 KeywordTable :: (names: string[]) -> int[] {
     table := resize([int(0)], KeywordSlots);
     kind: int = Package;
-    while (kind <= Delete) {
+    while (kind <= Emit) {
         name := names[kind];
         hash: u64 = KeywordHashBasis;
         index: int = 0;
@@ -672,23 +675,30 @@ ScanMantissa :: (bytes: int[], offset: int) -> int {
 // its end, so that every failure is reported as Odin reports them.
 ScanString :: (bytes: int[], start: int, from: int) -> Lexeme {
     count := length(bytes);
+    quote := bytes[start];
+    kind := String;
+    message := "String literal not terminated";
+    if (quote == Apostrophe) {
+        kind = Char;
+        message = "Character literal not terminated";
+    }
     at := from;
     while (at < count && bytes[at] != Newline) {
         c := bytes[at];
         at += 1;
-        if (c == Quote) {
-            return Done(String, at);
+        if (c == quote) {
+            return Done(kind, at);
         }
         if (c == Backslash) {
             escape := ScanEscape(bytes, at);
             if (escape.message != "") {
-                return {kind: String, end: escape.end, message: escape.message,
+                return {kind: kind, end: escape.end, message: escape.message,
                         at: escape.at, partial: true};
             }
             at = escape.end;
         }
     }
-    return Failed(String, at, "String literal not terminated", start);
+    return Failed(kind, at, message, start);
 }
 
 // The escape whose character is at `offset`, after its backslash. Like Odin,
@@ -810,6 +820,9 @@ Pair :: (c: int, next: int) -> int {
     }
     if (c == 46) {
         return Ellipsis;
+    }
+    if (c == 63) {
+        return Coalesce;
     }
     return Invalid;
 }

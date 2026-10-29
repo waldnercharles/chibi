@@ -206,8 +206,8 @@ bool authoring_program_prepare(authoring_program *program, const char *name, boo
     }
     const authoring_package *package = root(program->candidate);
     bool found = false;
-    program->pending_entry = package ? entry(package, name, &found) : 0;
-    if (!program->pending_entry) {
+    program->pending_entry = package && *name ? entry(package, name, &found) : 0;
+    if (*name && !program->pending_entry) {
         char message[256];
         snprintf(
             message,
@@ -266,8 +266,9 @@ bool authoring_program_commit(authoring_program *program)
     return true;
 }
 
-int authoring_program_call(
+static int invoke(
     authoring_program *program,
+    uint64_t function,
     const authoring_program_call_options *options,
     int *result
 )
@@ -295,7 +296,7 @@ int authoring_program_call(
                                        .inherit = true };
     behavior_execution_scope_begin(&scope);
     execution_instance *instance = execution_program_instance(program->runtime, PROGRAM_OWNER);
-    int status = execution_instance_call(instance, program->entry, result, 0, 0, UINT_MAX);
+    int status = execution_instance_call(instance, function, result, 0, 0, UINT_MAX);
     behavior_execution_scope_end(&scope);
     program->calling = false;
     if (status != FLOW_OK) {
@@ -314,6 +315,54 @@ int authoring_program_call(
         clear_error(program);
     }
     return status;
+}
+
+int authoring_program_call(
+    authoring_program *program,
+    const authoring_program_call_options *options,
+    int *result
+)
+{
+    return invoke(program, program->entry, options, result);
+}
+
+bool authoring_program_has(const authoring_program *program, const char *name)
+{
+    assert(program && name);
+    const authoring_package *package = program->accepted ? root(program->accepted)
+                                                         : NULL;
+    bool found = false;
+    return package && entry(package, name, &found);
+}
+
+int authoring_program_call_entry(
+    authoring_program *program,
+    const char *name,
+    const authoring_program_call_options *options,
+    int *result
+)
+{
+    assert(program && name && result);
+    if (!idle(program)) {
+        return FLOW_ERR_STATE;
+    }
+    const authoring_package *package = program->accepted ? root(program->accepted)
+                                                         : NULL;
+    bool found = false;
+    uint64_t function = package ? entry(package, name, &found) : 0;
+    if (!function) {
+        char message[256];
+        snprintf(
+            message,
+            sizeof message,
+            found ? "%.180s must take no arguments and return nothing or int"
+                  : "No runnable %.180s in the root package",
+            name
+        );
+        diagnostic(program, FLOW_ERR_ARGUMENT, NULL, (script_range){ 0 }, message);
+        return FLOW_ERR_ARGUMENT;
+    }
+    return invoke(program, function, options, result);
 }
 
 const authoring_program_diagnostic *authoring_program_error(const authoring_program *program)

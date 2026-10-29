@@ -174,7 +174,7 @@ ifneq ($(filter Linux Darwin,$(shell uname -s)),)
 sdk-reflect-build:
 	@host="$(BUILD_HOST)"; \
 	if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
-		host="$(SDK_REFLECT_BUILD_DIR)/host/chibi-build-host"; \
+		host="$(SDK_REFLECT_BUILD_DIR)/host/bin/chibi-build-host"; \
 		if [ ! -x "$$host" ] || [ "$$("$$host" --protocol-version 2>/dev/null)" != 14 ]; then \
 			$(MAKE) sdk-reflect-bootstrap || exit $$?; \
 		fi; \

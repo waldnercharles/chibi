@@ -1,3 +1,8 @@
+#if defined(__linux__) && !defined(_XOPEN_SOURCE)
+/* glibc declares the pseudo-terminal functions only for XSI conformance. */
+#define _XOPEN_SOURCE 700
+#endif
+
 #include "assets/project.h"
 #include "host/process.h"
 #include "support/xalloc.h"
@@ -2039,8 +2044,10 @@ int tool_tty_echo_child(bool terminal)
 TEST_CASE(program_process_run_hands_the_terminal_to_its_child)
 {
     directory("pty-process");
-    for (int i = 0; i < 5; i++) {
-        bool suspend = i >= 2, watching = i == 1 || i == 3, redirect = i == 4;
+    for (int i = 0; i < 6; i++) {
+        bool suspend = i >= 2 && i < 5, watching = i == 1 || i == 3, redirect = i == 4;
+        /* A child that already exited must hand the terminal back for the next. */
+        bool after_exit = i == 5;
         yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
         yyjson_mut_doc_set_root(doc, yyjson_mut_strcpy(doc, suspend ? driver : "/bin/cat"));
         char *executable = yyjson_mut_write(doc, 0, NULL);
@@ -2050,8 +2057,10 @@ TEST_CASE(program_process_run_hands_the_terminal_to_its_child)
             source,
             sizeof source,
             "package pty_process\nMain :: () -> int { "
+            "%s"
             "print_string(\"CAT_READY\"); "
             "return process.run([%s%s]) }\n",
+            after_exit ? "process.run([\"/usr/bin/true\"]); " : "",
             executable,
             redirect  ? ", \"--tty-echo-child\", \"--tty\""
             : suspend ? ", \"--tty-echo-child\""

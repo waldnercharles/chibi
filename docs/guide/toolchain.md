@@ -29,20 +29,22 @@ from 0 to 255. Returning nothing means success, exit status 0.
 
 Read command-line arguments with `application.arguments()`. The returned
 `string[]` includes the resolved source file or package directory at index 0,
-followed by the arguments passed to the program. Replace the Hello World
-program's `Main` with this function:
+followed by the arguments passed to the program. A function can take them as a
+parameter and print the first one:
 
 ```chibi
-Main :: () {
-    arguments := application.arguments()
+package hello
+
+Greet :: (arguments: string[]) {
     if length(arguments) > 1 {
         print_string(arguments[1])
     }
 }
 ```
 
-Run this version with `chibi Hello.chibi -- Ada` to print `Ada`. `Main` still
-takes no parameters; `--` separates program arguments from command options.
+Call `Greet(application.arguments())` from `Main`, then run `chibi Hello.chibi -- Ada`
+to print `Ada`. `Main` still takes no parameters; `--` separates program
+arguments from command options.
 
 Every source file must start with `package NAME`. Running a file compiles only
 the selected file and the core library, so unrelated sibling files do not
@@ -75,7 +77,7 @@ Each accepted source change replaces the program and calls `Main` again.
 Use `retain` for a value that should survive those replacements:
 
 ```chibi
-package hello
+package reload
 
 Main :: () {
     count: retain int = 0

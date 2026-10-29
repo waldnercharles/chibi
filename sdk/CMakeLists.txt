@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-set(CHIBI_SDK_VERSION 0.1.0)
+include("${CMAKE_CURRENT_LIST_DIR}/version.cmake")
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(ChibiSDK VERSION ${CHIBI_SDK_VERSION} LANGUAGES C)
     if(WIN32)

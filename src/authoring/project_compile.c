@@ -910,10 +910,18 @@ static bool check_package_examples(
             );
             const source_packages *resolved = source_package_snapshot_graph(snapshot);
             documents = source_package_snapshot_documents(snapshot, &count);
-            for (int i = 0; i < authoring_packages_count(packages); i++) {
+            for (int i = 0; i < source_packages_count(resolved); i++) {
                 int index = source_packages_order(resolved, i);
-                const authoring_package *package = authoring_packages_at(packages, index);
-                if (!package->diagnostic_count) {
+                const char *identity = source_package_snapshot_identity(snapshot, index);
+                const authoring_package *package = NULL;
+                for (int j = 0; j < authoring_packages_count(packages); j++) {
+                    const authoring_package *candidate = authoring_packages_at(packages, j);
+                    if (!strcmp(candidate->identity, identity)) {
+                        package = candidate;
+                        break;
+                    }
+                }
+                if (!package || !package->diagnostic_count) {
                     continue;
                 }
                 const script_diagnostic *diagnostic = &package->diagnostics[0];

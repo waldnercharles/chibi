@@ -11,6 +11,25 @@ Trace-Transport 'fixture-enter'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $output = $args[0]
 $fixtureRoot = $output
+$digestPath = [IO.Path]::Combine($output, 'digest[☃].bin')
+[IO.File]::WriteAllBytes($digestPath, [byte[]]@())
+Write-Host ('digest-empty=' + (Digest $digestPath))
+[IO.File]::WriteAllBytes($digestPath, [byte[]]@(0,1,128,255,10,13))
+Write-Host ('digest-binary=' + (Digest $digestPath))
+$changedBytes = [byte[]]@(13,10,255,128,1,0)
+$stream = [IO.File]::Open($digestPath, [IO.FileMode]::Open, [IO.FileAccess]::Write, [IO.FileShare]::None)
+try { $stream.Write($changedBytes, 0, $changedBytes.Length) }
+finally { $stream.Dispose() }
+Write-Host ('digest-overwrite=' + (Digest $digestPath))
+[IO.File]::WriteAllBytes($digestPath, [byte[]]@(0,127,255))
+Write-Host ('digest-three-byte=' + (Digest $digestPath))
+[IO.File]::WriteAllText($digestPath, 'changed', $utf8)
+Write-Host ('digest-changed=' + (Digest $digestPath))
+[IO.File]::Delete($digestPath)
+try { $null = Digest $digestPath; Write-Host 'digest-missing accepted' }
+catch { Write-Host 'digest-missing rejected' }
+try { $null = Digest $output; Write-Host 'digest-directory accepted' }
+catch { Write-Host 'digest-directory rejected' }
 $evidence = [ordered]@{ batch_members = @(); cases = @() }
 $source = Join-Path $output 'transport.json'
 $text = ' [ [ {"text":"☃\\n\\\"[]","value":18446744073709551615} ], [true,1e-30], [] ] '
@@ -81,8 +100,9 @@ $script:failClassifications = $true
 function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
                      [string]$request, [string]$backend, [string]$raw = '',
                      [switch]$Compile, [switch]$Batch) {
-    $path = Join-Path $output ($name + '.stdout')
+    $path = [IO.Path]::Combine($output, $name + '.stdout')
     if ($name.EndsWith('-produce-batch')) {
+        if ($entry -cne '0xebbc43e46769862a') { throw 'Unexpected CollectScalar entry' }
         $values = (Read-Node $request).AsArray()
         $results = [System.Text.Json.Nodes.JsonArray]::new()
         foreach ($value in $values) {
@@ -97,6 +117,7 @@ function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
         }
         Write-Node $path $results
     } elseif ($name.EndsWith('-check-batch')) {
+        if ($entry -cne '0x5cea9b3c83676f06') { throw 'Unexpected Check entry' }
         $results = [System.Text.Json.Nodes.JsonArray]::new()
         $count = (Read-Node $request).AsArray().Count
         for ($i = 0; $i -lt $count; $i++) {
@@ -107,6 +128,7 @@ function Invoke-Host([string]$name, [string]$artifact, [string]$entry,
         }
         Write-Node $path $results
     } else {
+        if ($entry -cne '0x12d0cb1864fd29cc') { throw 'Unexpected EmitBytes entry' }
         $script:published += $name
         [IO.File]::WriteAllText($raw, 'IR', $utf8)
         [IO.File]::WriteAllText($path, '[]', $utf8)
@@ -133,8 +155,14 @@ New-Item -ItemType Directory -Path $output | Out-Null
 $script:published = @()
 $script:failClassifications = $false
 $evidence = [ordered]@{ batch_members = @(); cases = @() }
+Trace-Transport 'partial-start'
 . (Join-Path $fixtureRoot 'loop.ps1')
+Trace-Transport 'partial-done'
 Write-Host ("partial-crossings=" + $evidence.cases.Count)
 Write-Host ("partial-raw=" + $published.Count)
 Write-Host ("partial-last=" + $published[-1])
 Write-Host ("partial-size=" + (Read-Node (Join-Path $output "batch-$batchSize.json")).AsArray().Count)
+$expected = @(0..64 | ForEach-Object {
+    "$_-bytecode-bytecode-raw"; "$_-bytecode-sljit-raw"; "$_-sljit-bytecode-raw"; "$_-sljit-sljit-raw"
+})
+Write-Host ("partial-order=" + (($published -join ',') -ceq ($expected -join ',')))

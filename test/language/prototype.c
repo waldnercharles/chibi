@@ -4,6 +4,8 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/copy.h"
+#include "types/text.h"
 
 #include <assert.h>
 #include <math.h>
@@ -75,6 +77,9 @@ static prototype *document, *loaded;
 static scene_document *scene, *reloaded;
 static char *saved;
 static av_value *before, *after, *values, *rebased;
+static pin_value shared_text;
+static ecs_world *text_world;
+static char **owned_strings;
 
 static void cleanup()
 {
@@ -91,6 +96,155 @@ static void cleanup()
     scene = reloaded = NULL;
     free(saved);
     saved = NULL;
+    pin_text_destroy(shared_text.text);
+    shared_text = (pin_value){ 0 };
+    ecs_world_free(text_world);
+    text_world = NULL;
+    prototype_owned_strings_free(owned_strings);
+    owned_strings = NULL;
+}
+
+typedef struct
+{
+    const char *name, *label;
+    const pin_string *text;
+    int count;
+} text_default;
+static const type_field text_fields[] = {
+    { .name = "name",
+      .type = PIN_NAME,
+      .offset = offsetof(text_default, name),
+      .size = sizeof(char *) },
+    { .name = "label",
+      .type = PIN_STR,
+      .offset = offsetof(text_default, label),
+      .size = sizeof(char *) },
+    { .name = "text",
+      .type = PIN_STR,
+      .offset = offsetof(text_default, text),
+      .size = sizeof(pin_string *),
+      .text_descriptor = true },
+    { .name = "count",
+      .type = PIN_I32,
+      .offset = offsetof(text_default, count),
+      .size = sizeof(int) },
+};
+static const type_desc text_type = {
+    .name = "TextOwner",
+    .size = sizeof(text_default),
+    .fields = text_fields,
+    .field_count = 4,
+};
+static const ecs_component_desc text_component = {
+    .id = 9004,
+    .key = "test.TextOwner",
+    .name = "TextOwner",
+    .element_size = sizeof(text_default),
+    .type = &text_type,
+};
+
+/* Both cleanup paths must release managed backing, not just its descriptor.
+ * Names share the ownership vector but remain ordinary native C strings. */
+TEST_CASE(prototype_text_ownership_releases_backing_and_preserves_shares)
+{
+    char name[] = "identity", label[] = "plain", bytes[] = { 'A', 0, 'B', 0 };
+    pin_string text = { .bytes = bytes, .length = 3 };
+    text_default data = { name, label, &text, 7 };
+    prototype_default initial = { text_component.id, &data, sizeof data };
+    const ecs_component_desc *descs[] = { &text_component };
+    prototype_registry registry = { .components = descs,
+                                    .component_count = 1,
+                                    .defaults = &initial,
+                                    .default_count = 1 };
+    document = prototype_new("TextOwner");
+    document->registry_storage = registry;
+    REQUIRE(prototype_add_graph(document, "retained.chibi") == 0);
+    pin_copy_scope copies = { 0 };
+    pin_copy_scope_begin(&copies);
+    int added = prototype_add_component(document, &text_component);
+    pin_copy_scope_end(&copies);
+    REQUIRE(added == 0);
+    REQUIRE(copies.counts.text_bytes == sizeof label + sizeof bytes);
+    const text_default *row = document->components[0].data;
+    REQUIRE(row->text->owner && row->text->length == 3);
+    REQUIRE(row->text->bytes != bytes && !memcmp(row->text->bytes, bytes, sizeof bytes));
+    REQUIRE(
+        !pin_value_text_share(NULL, &shared_text, (pin_value){ .type = PIN_STR, .text = row->text })
+    );
+    REQUIRE(shared_text.text->owner == row->text->owner);
+    memset(name, 'X', sizeof name - 1);
+    memset(label, 'X', sizeof label - 1);
+    memset(bytes, 'X', sizeof bytes);
+    REQUIRE(!strcmp(row->name, "identity") && !strcmp(row->label, "plain"));
+    REQUIRE(!prototype_write_field(document, "TextOwner", "text", shared_text));
+    REQUIRE(prototype_write_field(document, "TextOwner", "label", shared_text) == -1);
+    REQUIRE(!strcmp(row->label, "plain"));
+    REQUIRE(
+        !prototype_write_field(document, "TextOwner", "name", (pin_value){ .type = PIN_NAME, .str = "" })
+    );
+    REQUIRE(!row->name[0]);
+    REQUIRE(!prototype_write_field(document, "TextOwner", "text", (pin_value){ .type = PIN_STR }));
+    REQUIRE(!row->text);
+    prototype_free(document);
+    document = NULL;
+    REQUIRE(shared_text.text->length == 3 && !memcmp(shared_text.text->bytes, "A\0B", 4));
+
+    /* Fail only after all three string fields allocated their owned copies. */
+    type_field malformed_fields[4];
+    memcpy(malformed_fields, text_fields, sizeof malformed_fields);
+    malformed_fields[3].offset = sizeof data;
+    type_desc malformed_type = text_type;
+    malformed_type.fields = malformed_fields;
+    ecs_component_desc malformed = text_component;
+    malformed.type = &malformed_type;
+    data.text = shared_text.text;
+    document = prototype_new("Rollback");
+    document->registry_storage = registry;
+    REQUIRE(!prototype_add_graph(document, "preserved.chibi"));
+    int strings = acount(document->strings);
+    REQUIRE(prototype_add_component(document, &malformed) == -1);
+    REQUIRE(!acount(document->components) && acount(document->strings) == strings);
+    REQUIRE(prototype_has_graph(document, "preserved.chibi"));
+    return true;
+}
+
+TEST_CASE(prototype_override_text_ownership_transfers_on_success_and_error)
+{
+    const ecs_component_desc *descs[] = { &text_component };
+    prototype_registry registry = { .components = descs, .component_count = 1 };
+    text_world = ecs_world_new();
+    REQUIRE(ecs_world_register_component(text_world, &text_component, NULL) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(text_world);
+    char error[192];
+    for (int failure = 0; failure < 2; failure++) {
+        av_doc *input = av_doc_new();
+        av_value *root = av_obj(input);
+        av_doc_set_root(input, root);
+        av_value *fields = av_obj_add_obj(input, root, "TextOwner");
+        av_obj_add_str(input, fields, "name", "name");
+        av_obj_add_str(input, fields, "label", "label");
+        av_obj_add_str(input, fields, "text", "text");
+        if (failure) {
+            av_obj_add_int(input, fields, "unknown", 1);
+        }
+        int result = prototype_apply_components_value(
+            text_world,
+            entity,
+            root,
+            &registry,
+            &owned_strings,
+            error,
+            sizeof error
+        );
+        av_doc_free(input);
+        REQUIRE(result == (failure ? -1 : 0));
+        const text_default
+            *row = ecs_component_data_const(text_world, entity, text_component.id);
+        REQUIRE(row && !strcmp(row->name, "name") && !strcmp(row->label, "label"));
+        REQUIRE(row->text->length == 4 && !memcmp(row->text->bytes, "text", 5));
+        REQUIRE(acount(owned_strings) == 3 * (failure + 1));
+    }
+    return true;
 }
 
 TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
@@ -881,6 +1035,8 @@ TEST_CASE(prototype_ranges_validate_load_defaults_reload_and_nonfinite_values)
 void test_prototype_document()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(prototype_text_ownership_releases_backing_and_preserves_shares);
+    RUN_TEST_CASE(prototype_override_text_ownership_transfers_on_success_and_error);
     RUN_TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence);
     RUN_TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own);
     RUN_TEST_CASE(scene_children_nest_by_path);

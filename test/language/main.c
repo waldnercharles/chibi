@@ -50,6 +50,7 @@ void test_language_source_assets();
 void test_language_source_prototype_edits();
 void test_language_symbol_references();
 void test_language_program();
+void test_language_program_session();
 void test_language_native_char_results();
 void test_language_migration34();
 void test_language_migration34_generic_repro();
@@ -204,6 +205,7 @@ int main(int argc, char **argv)
                                      !strcmp(argv[1], "--migration34-generic-repro");
     bool native_char_results = argc == 2 && !strcmp(argv[1], "--native-char-results");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
+    bool program_session = argc == 2 && !strcmp(argv[1], "--program-session");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool query_values = argc == 2 && !strcmp(argv[1], "--query-values");
     bool query_migration = argc == 2 && !strcmp(argv[1], "--query-migration");
@@ -349,18 +351,19 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !compiler_artifact && !record_producer && !execution &&
-         !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
-         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
-         !borrow_benchmark && !incremental_benchmark && !record_publication &&
-         !record_publication_repro && !record_values && !record_document &&
-         !record_state && !record_services && !record_compatibility &&
-         !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_array && !record_runtime && !compositional_records &&
-         !runtime_attribution && !runtime_attribution_benchmark &&
-         !query_binding_benchmark && !scalar_read_benchmark && !packed_benchmark &&
-         !wasm && !migration34 && !migration34_generic_repro && !native_char_results &&
-         !program && !query_program && !query_values && !query_migration &&
+        (!format && !prepared && !compiler_artifact && !record_producer &&
+         !execution && !execution_scope && !semantic && !inferred_arrays &&
+         !inferred_array_repro && !root_state && !benchmark &&
+         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
+         !incremental_benchmark && !record_publication && !record_publication_repro &&
+         !record_values && !record_document && !record_state &&
+         !record_services && !record_compatibility && !record_semantic &&
+         !record_prepared_runtime && !outliner_projection && !row_array &&
+         !record_runtime && !compositional_records && !runtime_attribution &&
+         !runtime_attribution_benchmark && !query_binding_benchmark &&
+         !scalar_read_benchmark && !packed_benchmark && !wasm && !migration34 &&
+         !migration34_generic_repro && !native_char_results && !program &&
+         !program_session && !query_program && !query_values && !query_migration &&
          !incremental && !operations && !modules && !native_calls && !ranges &&
          !numeric_exact_core && !integer_semantics && !integer_arithmetic &&
          !integer_shift_counts && !integer_shift_counts_authored &&
@@ -402,7 +405,8 @@ int main(int argc, char **argv)
             "--execution | "
             "--execution-scope | --semantic | --compositional-records "
             "| --inferred-string-arrays | --inferred-string-array-repro "
-            "| --root-state | --program | --native-char-results | "
+            "| --root-state | --program | --program-session | "
+            "--native-char-results | "
             "--query-program | --query-values | "
             "--query-migration | --incremental | "
             "--operations | "
@@ -777,6 +781,8 @@ int main(int argc, char **argv)
         test_language_retention();
         test_language_capture();
         test_language_query_boundary();
+    } else if (program_session) {
+        test_language_program_session();
     } else if (semantic) {
         test_language_semantic();
         test_language_effects();

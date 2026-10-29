@@ -277,6 +277,19 @@ int execution_instance_dispatch(
     double delta,
     unsigned budget
 );
+/* Calls one package-level authored function in the attached instance, keeping
+ * its retained state and imported owners. The function takes no arguments and
+ * returns nothing or one int; result receives zero or that value on success.
+ * The instance and its program must be quiescent, with no pending activations.
+ * Waiting and starting tasks fail without leaving work queued. */
+int execution_instance_call(
+    execution_instance *,
+    uint64_t function,
+    int *result,
+    double now,
+    double delta,
+    unsigned budget
+);
 const pin_value *execution_instance_state(const execution_instance *instance, uint64_t id);
 int execution_instance_set_state(execution_instance *instance, uint64_t id, pin_value value);
 int execution_instance_pending(const execution_instance *instance);

@@ -912,6 +912,12 @@ static const type_catalog_pack writer_native_packs[] = {
     { .types = writer_native_first, .type_count = 1 },
     { .types = writer_native_replacement, .type_count = 1 }
 };
+/* The catalog holds one project pack, so replacing it clears it first. */
+static void use_native_pack(int index)
+{
+    type_catalog_set_project(NULL);
+    type_catalog_set_project(&writer_native_packs[index]);
+}
 TEST_CASE(record_prepared_writer_cached_alias_rechecks_native_catalog)
 {
     type_catalog_set_project(&writer_native_packs[0]);
@@ -934,7 +940,7 @@ TEST_CASE(record_prepared_writer_cached_alias_rechecks_native_catalog)
     header.type_name = alias->type.name;
     prepared_value(&writer, &header);
     REQUIRE(!writer.wire.error && !header.schema && !header.ptr);
-    type_catalog_set_project(&writer_native_packs[1]);
+    use_native_pack(1);
     /* The frozen alias is still internally valid. Its captured native child
      * is no longer the current same-name, same-size descriptor. */
     REQUIRE(pin_record_valid(alias) && !pin_record_fields_current(alias));
@@ -942,7 +948,7 @@ TEST_CASE(record_prepared_writer_cached_alias_rechecks_native_catalog)
     prepared_value(&writer, &header);
     REQUIRE(writer.wire.error && strstr(writer.wire.error, "incompatible"));
     REQUIRE(writer.wire.size == before);
-    type_catalog_set_project(&writer_native_packs[0]);
+    use_native_pack(0);
     REQUIRE(fresh_writer());
     prepared_value(&writer, &header);
     REQUIRE(!writer.wire.error && writer.wire.size);
@@ -967,13 +973,13 @@ TEST_CASE(record_prepared_writer_schema_keeps_native_layout_across_catalog_chang
     REQUIRE(captured.record && captured.record != record && captured.record->frozen);
     REQUIRE(captured.schema && !captured.ptr);
     for (int cached = 0; cached < 2; cached++) {
-        type_catalog_set_project(&writer_native_packs[0]);
+        use_native_pack(0);
         REQUIRE(fresh_writer());
         if (cached) {
             prepared_value(&writer, &captured);
             REQUIRE(!writer.wire.error);
         }
-        type_catalog_set_project(&writer_native_packs[1]);
+        use_native_pack(1);
         REQUIRE(
             pin_record_valid(captured.record) &&
             !pin_record_fields_current(captured.record)
@@ -1035,7 +1041,7 @@ TEST_CASE(record_prepared_writer_array_freshness_uses_outer_schema)
     pin_value outer = captured;
     outer.container = PIN_CONTAINER_ARRAY;
     outer.ptr = &array;
-    type_catalog_set_project(&writer_native_packs[1]);
+    use_native_pack(1);
     REQUIRE(pin_record_valid(backing) && !pin_record_fields_current(backing));
     size_t before = writer.wire.size;
     prepared_value(&writer, &outer);

@@ -315,6 +315,17 @@ by code: `48` for `'0'`, `46` for `'.'`, `101` for `'e'`; `core:strings` writes
 `ByteAt(path, index) == 47` for `'/'` and tests `c >= 65 && c <= 90` (#503);
 the tokenizer writes `c == 34` for `'"'` (#518).
 
+Update (2026-10-27): stage one accepts nominal `char` parameters, ordinary and
+named results, and locals. `char(integer)` checks Unicode scalar validity
+before narrowing; a `char` widens to `int`, `u32`, `i64` or `u64`, and explicit
+integer conversions extract its value. Exact decimal literals such as
+`char(65.0)` take the same integer context as stage zero. Character literals,
+char arithmetic, generic native results retaining char, char container
+elements, fields, payloads, pointers, optionals, parameter defaults and typed
+constants remain unsupported. Untyped
+compound decimal expressions such as `char(64.0 + 1.0)` and projecting a named
+char result after widening it to an integer also remain unsupported.
+
 - C, C++, C#, Odin and Zig have `'0'`; Rust has `'0'` and `b'0'`; Python uses
   `ord("0")`.
 

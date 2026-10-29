@@ -16,9 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 28 fixed requests plus eight from four actual annotation analyses: 36 C
- * queries and 72 authored calls at two million instructions each. Four
- * authored files per backend plus four analyzed sources give twelve parses.
+/* 28 fixed requests plus ten from five actual annotation analyses: 38 C
+ * queries and 76 authored calls at two million instructions each. Four
+ * authored files per backend plus five analyzed sources give thirteen parses.
  * Caps: 32 symbols, eight scopes, four functions, two documents, eight catalog
  * entries, three imports/exports, four uses, eight tokens, 64 semantic types,
  * 128 exact uint64 IDs, 220 name bytes and 256 fallback text bytes. Three
@@ -906,9 +906,10 @@ TEST_CASE(named_binding_analyzer_annotations_match)
         "(value: Thing?) -> Thing? { return value; } }",
         "Facts :: library { Run :: (value: ^int) -> ^int { return value; "
         "} }",
+        "Facts :: library { Run :: (value: char) -> char { return value; } }",
     };
     const script_catalog native = { 0 };
-    for (int c = 0; c < 4; c++) {
+    for (int c = 0; c < (int)(sizeof sources / sizeof *sources); c++) {
         REQUIRE(strlen(sources[c]) < 256);
         script_analysis_free(analysis);
         script_syntax_free(syntax);

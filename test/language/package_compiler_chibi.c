@@ -15,6 +15,7 @@
 #include "language/lower.h"
 #include "language/semantic.h"
 #include "package_compiler_chibi_source.h"
+#include "runtime/arithmetic_definition.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/native_capabilities.h"
@@ -136,7 +137,7 @@ typedef struct
     sample_group group;
     bool core, updates, boxed, game, moves, aliases, variants, built, lends,
         drops, same_rejection, c_string_probe, host_effects, update_order,
-        debug_metadata, traced;
+        debug_metadata, traced, char_checks;
     /* Its calls run with the probe natives linked, take no arguments and
      * return one int. */
     bool probe_calls;
@@ -993,6 +994,88 @@ static const sample samples[] = {
       .collection_source = HOST_ONLY_SOURCE,
       .project_modules = 2,
       .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "char parameters locals and named results keep their type",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Echo :: (value: char) -> char { return value; }\n"
+                "Named :: (n: int) -> (scalar: char) { scalar = char(n); "
+                "return; }\n"
+                "RoundTrip :: (n: int) -> int { value: char = char(n); "
+                "kept := Echo(value); return int(kept); }\n"
+                "NamedRead :: (n: int) -> i64 { return Named(n).scalar; }\n"
+                "ImplicitWide :: (n: int) -> u32 { return Echo(char(n)); }\n"
+                "ExactDecimal :: () -> int { return int(char(65.0)); }\n"
+                "ExactInteger :: () -> int { return int(char((+(65)))); }\n"
+                "PlainInt :: (n: int) -> int { return n; }",
+      .calls = { { .function = "RoundTrip", .arguments = "[0]", .expected = "[0]" },
+                 { .function = "RoundTrip", .arguments = "[55295]", .expected = "[55295]" },
+                 { .function = "RoundTrip", .arguments = "[57344]", .expected = "[57344]" },
+                 { .function = "RoundTrip", .arguments = "[1114111]", .expected = "[1114111]" },
+                 { .function = "NamedRead", .arguments = "[128008]", .expected = "[128008]" },
+                 { .function = "ImplicitWide", .arguments = "[1114111]", .expected = "[1114111]" },
+                 { .function = "ExactDecimal", .arguments = "[]", .expected = "[65]" },
+                 { .function = "ExactInteger", .arguments = "[]", .expected = "[65]" },
+                 { .function = "PlainInt", .arguments = "[-1]", .expected = "[-1]" } } },
+    { .name = "char validates dynamic scalars before narrowing",
+      .group = TYPE_SAMPLES,
+      .char_checks = true,
+      .source = "package facts\n"
+                "Signed :: (n: i64) -> int { return int(char(n)); }\n"
+                "Unsigned :: (n: u64) -> int { return int(char(n)); }\n"
+                "Narrow :: (n: int) -> int { return int(char(n)); }",
+      .calls = { { .function = "Narrow", .arguments = "[-1]", .diagnostic = "Value does not fit in char" },
+                 { .function = "Narrow", .arguments = "[55296]", .diagnostic = "Value does not fit in char" },
+                 { .function = "Narrow", .arguments = "[57343]", .diagnostic = "Value does not fit in char" },
+                 { .function = "Narrow", .arguments = "[1114112]", .diagnostic = "Value does not fit in char" },
+                 { .function = "Signed", .arguments = "[4294967296]", .diagnostic = "Value does not fit in char" },
+                 { .function = "Signed",
+                   .arguments = "[-9223372036854775808]",
+                   .diagnostic = "Value does not fit in char" },
+                 { .function = "Unsigned",
+                   .arguments = "[18446744073709551615]",
+                   .diagnostic = "Value does not fit in char" },
+                 { .function = "Unsigned",
+                   .arguments = "[4294967296]",
+                   .diagnostic = "Value does not fit in char" },
+                 { .function = "Signed", .arguments = "[1114111]", .expected = "[1114111]" },
+                 { .function = "Unsigned", .arguments = "[0]", .expected = "[0]" } } },
+    { .name = "public char calls and UTF8 encode",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Encode :: (n: int) -> u8[] { return lib.Encode(char(n)); }\n"
+                "NamedRead :: (n: int) -> int { return "
+                "int(lib.Result(char(n)).scalar); }",
+      .library = "package lib\n"
+                 "pub Result :: (value: char) -> (scalar: char) { scalar = "
+                 "value; return; }\n"
+                 "pub Encode :: (value: char) -> u8[] { scalar := int(value); "
+                 "if (scalar <= 127) { return [u8(scalar)]; } "
+                 "if (scalar <= 2047) { return [u8(192 | (scalar >> 6)), "
+                 "u8(128 | (scalar & 63))]; } "
+                 "if (scalar <= 65535) { return [u8(224 | (scalar >> 12)), "
+                 "u8(128 | ((scalar >> 6) & 63)), "
+                 "u8(128 | (scalar & 63))]; } "
+                 "return [u8(240 | (scalar >> 18)), u8(128 | ((scalar >> 12) & "
+                 "63)), "
+                 "u8(128 | ((scalar >> 6) & 63)), u8(128 | (scalar & 63))]; }",
+      .calls = { { .function = "Encode", .arguments = "[0]", .expected = "[[0]]" },
+                 { .function = "Encode", .arguments = "[127]", .expected = "[[127]]" },
+                 { .function = "Encode", .arguments = "[128]", .expected = "[[194,128]]" },
+                 { .function = "Encode", .arguments = "[2047]", .expected = "[[223,191]]" },
+                 { .function = "Encode", .arguments = "[2048]", .expected = "[[224,160,128]]" },
+                 { .function = "Encode", .arguments = "[55295]", .expected = "[[237,159,191]]" },
+                 { .function = "Encode", .arguments = "[57344]", .expected = "[[238,128,128]]" },
+                 { .function = "Encode", .arguments = "[65535]", .expected = "[[239,191,191]]" },
+                 { .function = "Encode", .arguments = "[65536]", .expected = "[[240,144,128,128]]" },
+                 { .function = "Encode", .arguments = "[1114111]", .expected = "[[244,143,191,191]]" },
+                 { .function = "NamedRead", .arguments = "[128008]", .expected = "[128008]" } } },
+    { .name = "ordinary native numeric overload remains available",
+      .group = TYPE_SAMPLES,
+      .c_string_probe = true,
+      .traced = true,
+      .source = "package facts\nRun :: () -> int { value: int = 65; return "
+                "native.kernel(value); }",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[1]" } } },
     { .name = "array update debug order",
       .group = COLLECTION_SAMPLES,
       .update_order = true,
@@ -6232,6 +6315,32 @@ static bool project_closure_only(const unsigned char *bytes, size_t length, int 
     }
     compiler_artifact_rows_free(rows, count);
     REQUIRE(project_only);
+/* Invalid Unicode scalars are authored data failures, as stage zero's
+ * char_check emits, rather than failures attributed to a native host call. */
+static bool char_failures_use_data_status(const unsigned char *bytes, size_t length)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
+    REQUIRE(packages);
+    int checked = 0;
+    for (int p = 0; p < package_collection_count(packages); p++) {
+        const execution_module_plan *plan = &package_collection_module(packages, p)
+                                                 ->plan;
+        for (int f = 0; f < plan->function_count; f++) {
+            const behavior_function *body = plan->functions[f].body;
+            for (int op = 0; op < acount(body->instructions); op++) {
+                const behavior_function_instruction *instruction = &body->instructions[op];
+                if (instruction->op == BF_ASSERT && instruction->message &&
+                    !strcmp(instruction->message, "Value does not fit in char")) {
+                    REQUIRE(instruction->target == BEHAVIOR_FUNCTION_DATA);
+                    checked++;
+                }
+            }
+        }
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    REQUIRE(checked > 0);
     return true;
 }
 static bool run_samples(sample_group group, int b)
@@ -6333,7 +6442,8 @@ static bool run_samples(sample_group group, int b)
         }
         unsigned char *expected = NULL;
         size_t expected_length = 0;
-        bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
+        bool ran = (!s->char_checks || char_failures_use_data_status(bytes, length)) &&
+                   (!s->updates || updates_in_place(bytes, length, s->name)) &&
                    (!s->boxed || reads_boxed(bytes, length)) &&
                    (!s->moves || moves_fresh_values(bytes, length)) &&
                    (!s->aliases || reads_in_place(bytes, length)) &&
@@ -9557,7 +9667,8 @@ static bool library_result_plays(
     }
     return true;
 }
-static bool libraries_with_results(
+static bool libraries_with_results_catalog(
+    const script_catalog *provided,
     const char *const *identities,
     const char *const *sources,
     int count,
@@ -9575,7 +9686,7 @@ static bool libraries_with_results(
         snprintf(paths[i], sizeof paths[i], "%s/%s", root, identities[i]);
         apush(edits, ((source_catalog_edit){ .path = paths[i], .text = sources[i] }));
     }
-    script_catalog native = game_catalog();
+    script_catalog native = provided ? *provided : game_catalog();
     script_catalog_capability
         capabilities[sizeof game_capabilities / sizeof *game_capabilities + NATIVE_COUNT(LIBRARY_ALIAS_DEFINITIONS)];
     char definition_error[256];
@@ -9733,6 +9844,18 @@ static bool libraries_with_results(
     native_definition_catalog_free(definitions);
     REQUIRE(!rmdir(root));
     return true;
+}
+static bool libraries_with_results(
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    bool playing,
+    bool namespace_native,
+    const library_result *results,
+    int result_count
+)
+{
+    return libraries_with_results_catalog(NULL, identities, sources, count, playing, namespace_native, results, result_count);
 }
 static bool libraries_alike(
     const char *const *identities,
@@ -10160,14 +10283,316 @@ TEST_CASE(package_compiler_resolves_library_array_updates)
     native_capabilities_free(arrays);
     return true;
 }
+/* These sources are independently rejected by stage zero. The stage-one
+ * checks exercise nominal scalar identity and constant scalar validation,
+ * rather than trusting an integer storage code or the UTF-8 library itself. */
+TEST_CASE(package_compiler_rejects_invalid_char_conversions)
+{
+    static const char *const sources[] = {
+        "package facts\nBad :: () -> char { return char(-1); }",
+        "package facts\nBad :: () -> char { return char(0xD800); }",
+        "package facts\nBad :: () -> char { return char(0xDFFF); }",
+        "package facts\nBad :: () -> char { return char(0x110000); }",
+        "package facts\nBad :: () -> char { return char(4294967296); }",
+        "package facts\nBad :: () -> char { return char(18446744073709551615); "
+        "}",
+        "package facts\nBad :: () -> char { return char(wrap: 65); }",
+        "package facts\nBad :: (value: number) -> char { return char(value); }",
+        "package facts\nBad :: (value: int) -> char { return value; }",
+        "package facts\nTake :: (value: char) -> int { return int(value); }\n"
+        "Bad :: (value: int) -> int { return Take(value); }",
+        "package facts\nBad :: (n: int) -> int { value: char = char(65); "
+        "value = n; return int(value); }",
+        "package facts\nBad :: (value: char) -> u8 { return value; }",
+        "package facts\nBad :: (n: int) -> (value: char) { value = n; return; "
+        "}",
+        "package facts\nBad :: (n: int) -> (value: char) { return(n); }",
+        "package facts\nBad :: () -> char { return char(65.5); }",
+        "package facts\nFloat: number : 0;\nBad :: () -> char { return "
+        "char(Float); }",
+        "package facts\nFloat: f64 : 0;\nBad :: () -> char { return "
+        "char(Float); }",
+        "package facts\nRow :: struct { x: number; }\n"
+        "Bad :: () -> number { row: Row = {x: 0.0}; row.x = char(65); return "
+        "row.x; }",
+        "package facts\nRow :: struct { x: f64; }\n"
+        "Bad :: () -> f64 { row: Row = {x: 0.0}; row.x = char(65); return "
+        "row.x; }",
+        "package facts\nBad :: (value: char) -> int { return "
+        "native.kernel(value); }"
+    };
+    REQUIRE(prepare());
+    for (int i = 0; i < NATIVE_COUNT(sources); i++) {
+        sample s = { .source = sources[i] };
+        const authoring_package *root;
+        authoring_packages *native = oracle_packages(&s, &root);
+        REQUIRE(!authoring_packages_valid(native));
+        REQUIRE(root->diagnostic_count > 0);
+        authoring_packages_free(native);
+        source_package_input inputs[SAMPLE_INPUTS];
+        int count = sample_inputs(&s, inputs);
+        for (int b = 0; b < 2; b++) {
+            pin_value out, message;
+            bool probe = strstr(sources[i], "native.kernel") != NULL;
+            REQUIRE(compile(b, false, probe, false, inputs, count, COMPILE_BUDGET, &out));
+            const pin_union *value = out.ptr;
+            if (out.type != PIN_UNION || !value || value->tag != tag(b, "Rejected")) {
+                fprintf(stderr, "stage one accepted invalid char source: %s\n", sources[i]);
+            }
+            REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
+            REQUIRE(get(&value->values[0], "message", &message));
+            if (i < 6) {
+                REQUIRE(strstr(pin_text(message).bytes, "Constant does not fit in char"));
+            }
+            arena_free(&detached);
+        }
+    }
+    return true;
+}
+/* The bounded scalar-char prerequisite deliberately does not enable its
+ * container, pointer, field or arithmetic forms. Native acceptance proves
+ * these failures describe stage-one coverage rather than invalid Chibi. */
+TEST_CASE(package_compiler_rejects_deferred_char_forms)
+{
+    static const struct
+    {
+        const char *name, *source;
+    } cases[] = {
+        { "explicit array",
+          "package facts\nRun :: () -> int { values: char[] = [char(65)]; "
+          "return int(values[0]); }" },
+        { "grouped array", "package facts\nRun :: () -> int { values: (char)[] = [char(65)]; return int(values[0]); }" },
+        { "nested grouped array", "package facts\nRun :: () -> int { values: ((char))[] = [char(65)]; return int(values[0]); }" },
+        { "grouped array type", "package facts\nRun :: () -> int { values: (char[]) = [char(65)]; return int(values[0]); }" },
+        { "inferred array",
+          "package facts\nRun :: () -> int { values := [char(65)]; "
+          "return int(values[0]); }" },
+        { "scoped pointer",
+          "package facts\nRead :: (value: ^char) -> int { return int(value^); "
+          "}\n"
+          "Run :: () -> int { value: char = char(65); return Read(&value); }" },
+        { "addressed local",
+          "package facts\nRun :: () -> int { value: char = char(65); "
+          "pointer := &value; return int(pointer^); }" },
+        { "map key after int key",
+          "package facts\nKnown :: (n: int) -> int { known: [int: int] = [:]; "
+          "known[n] = 1; return known[n]; }\n"
+          "Run :: () -> int { values: [char: int] = [:]; "
+          "values[char(65)] = 7; return values[char(65)]; }" },
+        { "map value",
+          "package facts\nRun :: () -> int { values: [int: char] = [:]; "
+          "values[0] = char(65); return int(values[0]); }" },
+        { "unary arithmetic",
+          "package facts\nRun :: (value: char) -> char { return -value; }" },
+        { "binary arithmetic",
+          "package facts\nRun :: (value: char) -> char { return value + 1; }" },
+        { "compound arithmetic", "package facts\nRun :: (value: char) -> int { value += 1; return int(value); }" },
+        { "record field",
+          "package facts\nRow :: struct { value: char; }\n"
+          "Run :: () -> int { row: Row = {value: char(65)}; return "
+          "int(row.value); }" },
+        { "optional", "package facts\nRun :: () -> char? { return char(65); }" },
+        { "union payload",
+          "package facts\nValue :: union { Rune(value: char) | Empty }\n"
+          "Run :: () -> Value { return Value.Rune(char(65)); }" },
+        { "character literal", "package facts\nRun :: () -> int { return int('A'); }" },
+        { "contextual decimal expression",
+          "package facts\nRun :: () -> int { return int(char(64.0 + 1.0)); }" },
+        { "nested contextual decimal expression", "package facts\nRun :: () -> int { return int(char((32.0 * 2.0) + 1.0)); }" },
+        { "widened named char result projection",
+          "package facts\nNamed :: () -> (scalar: char) { return char(65); }\n"
+          "Run :: () -> char { value: int = Named(); value = -1; return "
+          "value.scalar; }" },
+        { "wide named char result projection",
+          "package facts\nNamed :: () -> (scalar: char) { return char(65); }\n"
+          "Run :: () -> char { value: i64 = Named(); value = 4294967296; "
+          "return value.scalar; }" },
+        { "compound int field with char",
+          "package facts\nRow :: struct { x: int; }\n"
+          "Run :: () -> int { row: Row = {x: 0}; row.x += char(65); return "
+          "row.x; }" },
+        { "compound int array with char",
+          "package facts\nRun :: () -> int { values: int[] = [0]; "
+          "values[0] += char(65); return values[0]; }" },
+        { "inferred generic array",
+          "package facts\nRun :: () -> int { values := make_array(char(65)); "
+          "return int(values[0]); }" }
+    };
+    REQUIRE(prepare());
+    bool rejected_all = true;
+    for (int i = 0; i < NATIVE_COUNT(cases); i++) {
+        sample s = { .source = cases[i].source };
+        const authoring_package *root;
+        authoring_packages *native = oracle_packages(&s, &root);
+        if (!authoring_packages_valid(native)) {
+            for (int j = 0; j < root->diagnostic_count; j++) {
+                fprintf(
+                    stderr,
+                    "native deferred char %s: %s\n",
+                    cases[i].name,
+                    root->diagnostics[j].message
+                );
+            }
+        }
+        REQUIRE(authoring_packages_valid(native));
+        authoring_packages_free(native);
+        source_package_input inputs[SAMPLE_INPUTS];
+        int count = sample_inputs(&s, inputs);
+        for (int b = 0; b < 2; b++) {
+            pin_value out, message;
+            REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
+            const pin_union *value = out.ptr;
+            if (out.type != PIN_UNION || !value || value->tag != tag(b, "Rejected")) {
+                fprintf(
+                    stderr,
+                    "stage one accepted deferred char form: %s\n",
+                    cases[i].name
+                );
+            }
+            REQUIRE(out.type == PIN_UNION && value);
+            bool rejected = value->tag == tag(b, "Rejected");
+            rejected_all &= rejected;
+            if (rejected) {
+                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(pin_text(message).length > 0);
+            }
+            arena_free(&detached);
+        }
+    }
+    REQUIRE(rejected_all);
+    return true;
+}
+/* A state's resolved nominal type must be checked after grouping, before
+ * its integer storage or default can enter the behavior state table. */
+TEST_CASE(package_compiler_rejects_deferred_char_states)
+{
+    static const struct
+    {
+        const char *name, *source;
+        bool native_valid;
+    } cases[] = {
+        { "grouped negative", "Bad :: behavior { value: (char) = -1; Read :: () -> char { return value; } }", false },
+        { "nested surrogate", "Bad :: behavior { value: ((char)) = 0xD800; Read :: () -> char { return value; } }", false },
+        { "grouped valid", "Bad :: behavior { value: (char) = 65; Read :: () -> char { return value; } }", true },
+        { "nested valid", "Bad :: behavior { value: ((char)) = 65; Read :: () -> char { return value; } }", true }
+    };
+    REQUIRE(prepare());
+    script_catalog native = game_catalog();
+    const char *identities[] = { "behaviors/CharState.chibi" };
+    bool native_matches = true, rejected_all = true;
+    for (int i = 0; i < NATIVE_COUNT(cases); i++) {
+        char root[] = "/tmp/chibi-char-states-XXXXXX", path[256];
+        REQUIRE(mkdtemp(root));
+        snprintf(path, sizeof path, "%s/%s", root, identities[0]);
+        source_catalog_edit edit = { .path = path, .text = cases[i].source };
+        source_catalog *snapshot = source_catalog_replaced(root, &native, &edit, 1);
+        script_lower_bindings bindings = { .host = library_host, .global = game_global };
+        authoring_sources *oracle = authoring_sources_prepare_catalog(snapshot, &bindings, BEHAVIOR_BYTECODE);
+        native_matches &= authoring_sources_valid(oracle) == cases[i].native_valid;
+        for (int b = 0; b < 2; b++) {
+            const char *sources[] = { cases[i].source };
+            pin_value out;
+            REQUIRE(
+                catalog_compile_sources(b, &native, identities, sources, 1, "CompileBehaviorsWithCatalog", &out)
+            );
+            const pin_array *bytes = out.ptr;
+            bool rejected = !bytes || !bytes->count;
+            if (!rejected) {
+                fprintf(
+                    stderr,
+                    "stage one accepted deferred char state %s on backend %d\n",
+                    cases[i].name,
+                    b
+                );
+            }
+            rejected_all &= rejected;
+            arena_free(&detached);
+            if (rejected) {
+                REQUIRE(
+                    catalog_compile_sources(b, &native, identities, sources, 1, "BehaviorRejectionWithCatalog", &out)
+                );
+                REQUIRE(strstr(pin_text(out).bytes, "state type is not supported yet"));
+                arena_free(&detached);
+            }
+        }
+        authoring_sources_free(oracle);
+        REQUIRE(!rmdir(root));
+    }
+    REQUIRE(native_matches);
+    REQUIRE(rejected_all);
+    return true;
+}
+/* The production generic arithmetic native retains its input type. Its
+ * char form is deferred until every such result preserves Unicode validity. */
+TEST_CASE(package_compiler_defers_generic_char_native_results)
+{
+    REQUIRE(prepare());
+    char error[256];
+    const native_definition_pack pack = NATIVE_ARITHMETIC_DEFINITION_PACK;
+    native_capabilities *
+        arithmetic = native_capabilities_from_definition_packs(NULL, 0, &pack, 1, error, sizeof error);
+    REQUIRE(arithmetic);
+    const script_catalog *catalog = native_capabilities_catalog(arithmetic);
+    const char *sources[] = {
+        "package facts\nRun :: () -> char { return negate(char(65)); }",
+        "package facts\nRun :: (value: int) -> int { return negate(value); }"
+    };
+    for (int i = 0; i < NATIVE_COUNT(sources); i++) {
+        source_package_input source = { "facts/Main.chibi",
+                                        sources[i],
+                                        strlen(sources[i]) };
+        source_package_snapshot_options options = { .project_root = "/compiler",
+                                                    .files = &source,
+                                                    .file_count = 1 };
+        source_package_snapshot *snapshot = source_package_snapshot_new(&options);
+        REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
+        script_lower_bindings bindings = authoring_native_bindings(arithmetic);
+        authoring_packages *native = authoring_packages_prepare(snapshot, catalog, &bindings, BEHAVIOR_BYTECODE, NULL);
+        REQUIRE(native && authoring_packages_valid(native));
+        authoring_packages_free(native);
+        for (int b = 0; b < 2; b++) {
+            pin_value args[ARGUMENTS + 1], out;
+            REQUIRE(arguments(b, false, &source, 1, args));
+            REQUIRE(
+                compiler_fixture_natives(&fixture, b, PACKAGE, catalog, &input, &args[9], &args[ARGUMENTS])
+            );
+            REQUIRE(compiler_fixture_call(
+                &fixture,
+                b,
+                PACKAGE,
+                "CompileWithEffects",
+                args,
+                ARGUMENTS + 1,
+                COMPILE_BUDGET,
+                &detached,
+                &out
+            ));
+            const pin_union *value = out.ptr;
+            REQUIRE(out.type == PIN_UNION && value);
+            REQUIRE(value->tag == tag(b, i == 0 ? "Rejected" : "Compiled"));
+            if (i == 0) {
+                pin_value message;
+                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(
+                    strstr(pin_text(message).bytes, "generic char native results are not supported yet")
+                );
+            }
+            arena_free(&detached);
+        }
+    }
+    native_capabilities_free(arithmetic);
+    return true;
+}
 TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
 {
     REQUIRE(prepare());
     const char *identities[] = { "behaviors/Unsupported.chibi", "libraries/Leaf.chibi" };
-    /* number is f32, so number(7) is a supported conversion; char is the
-     * conversion name stage one still rejects. */
-    const char *behaviors[] = { "Unsupported :: behavior { Read :: () -> bool "
-                                "{ return char(65) == char(65); } }" };
+    /* A primitive conversion wins over a library or native export with the
+     * same name, including char's checked scalar conversion. */
+    const char *behaviors[] = {
+        "Unsupported :: behavior { observed: int = 0; "
+        "on Tick :: () { observed = int(char(65)); } }"
+    };
     const char
         *library = "Leaf :: library { char :: (value: int) -> int { return "
                    "value + 5; } "
@@ -10208,11 +10633,27 @@ TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions)
     with_native.capability_count = acount(capabilities);
     for (int i = 0; i < NATIVE_COUNT(behaviors); i++) {
         const char *sources[] = { behaviors[i], library };
+        const library_result result = { identities[0], 65, 0, 0 };
+        REQUIRE(libraries_with_results(identities, sources, 2, false, false, &result, 1));
         REQUIRE(
-            library_rejects_catalog(&native, identities, sources, 2, "numeric conversion", LIBRARY_ORACLE_VALID)
+            libraries_with_results_catalog(&with_native, identities, sources, 1, false, false, &result, 1)
+        );
+        const char *invalid[] = {
+            "Unsupported :: behavior { Read :: () -> "
+            "char { return char(wrap: 65); } }",
+            "Unsupported :: behavior { Read :: (value: number) -> "
+            "char { return char(value); } }",
+            "Unsupported :: behavior { Read :: () -> int { "
+            "value := char(65); value = -1; return int(value); } }"
+        };
+        REQUIRE(
+            library_rejects_catalog(&with_native, identities, invalid, 1, "char converts only with char(value)", LIBRARY_ORACLE_INVALID)
         );
         REQUIRE(
-            library_rejects_catalog(&with_native, identities, sources, 1, "numeric conversion", LIBRARY_ORACLE_VALID)
+            library_rejects_catalog(&with_native, identities, invalid + 1, 1, "char converts from an integer", LIBRARY_ORACLE_INVALID)
+        );
+        REQUIRE(
+            library_rejects_catalog(&with_native, identities, invalid + 2, 1, "assigned value differs from its local", LIBRARY_ORACLE_INVALID)
         );
     }
     afree(capabilities);
@@ -19746,6 +20187,12 @@ void test_language_package_compiler_chibi_types()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
+    RUN_TEST_CASE(package_compiler_rejects_invalid_char_conversions);
+    RUN_TEST_CASE(package_compiler_rejects_deferred_char_forms);
+    RUN_TEST_CASE(package_compiler_rejects_deferred_char_states);
+    RUN_TEST_CASE(package_compiler_defers_generic_char_native_results);
+    RUN_TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions);
+    RUN_TEST_CASE(package_compiler_resolves_library_primitive_names);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_imports()
@@ -19915,11 +20362,9 @@ void test_language_package_compiler_chibi_libraries()
     RUN_TEST_CASE(package_compiler_compiles_executable_libraries);
     RUN_TEST_CASE(package_compiler_links_executable_libraries);
     RUN_TEST_CASE(package_compiler_resolves_unqualified_libraries);
-    RUN_TEST_CASE(package_compiler_resolves_library_primitive_names);
     RUN_TEST_CASE(package_compiler_resolves_native_canonical_names);
     RUN_TEST_CASE(package_compiler_resolves_library_names);
     RUN_TEST_CASE(package_compiler_resolves_library_array_updates);
-    RUN_TEST_CASE(package_compiler_rejects_unsupported_numeric_conversions);
     RUN_TEST_CASE(package_compiler_rejects_invalid_library_closures);
     RUN_TEST_CASE(package_compiler_folds_constants_as_stage_zero_does);
     RUN_TEST_CASE(package_compiler_preserves_receiver_before_writing_item);

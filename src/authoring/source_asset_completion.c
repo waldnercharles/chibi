@@ -194,3 +194,16 @@ void authoring_asset_source_complete(
         offer(out, prefix, length, properties[i], "prototype property", AUTHORING_TYPE, 0, 0);
     }
 }
+void authoring_completions_free(authoring_completions *out)
+{
+    if (!out) {
+        return;
+    }
+    for (int i = 0; i < out->count; i++) {
+        free(out->items[i].label);
+        free(out->items[i].detail);
+        free(out->items[i].insert);
+    }
+    afree(out->items);
+    *out = (authoring_completions){ 0 };
+}

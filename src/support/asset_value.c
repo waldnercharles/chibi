@@ -342,14 +342,6 @@ bool av_obj_remove_str(av_value *obj, const char *key)
 {
     return av_obj_remove_key(obj, key);
 }
-bool av_obj_replace(av_value *obj, av_value *key, av_value *value)
-{
-    assert(av_is_obj(obj) && av_is_str(key) && value);
-    if (field_index(obj, av_get_str(key)) < 0) {
-        return false;
-    }
-    return av_obj_add(obj, key, value);
-}
 av_value *av_obj_key_at(const av_value *obj, size_t index)
 {
     return index < av_obj_size(obj) ? obj->data.fields[index].key : NULL;

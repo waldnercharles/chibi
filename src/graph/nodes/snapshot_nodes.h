@@ -5,6 +5,5 @@
 
 /* An activation-local value, evaluated once when its execution input runs. */
 extern node_desc NODE_Snapshot;
-int behavior_lower_snapshot(struct behavior_lower_builder *, node *, int);
 
 #endif

@@ -693,11 +693,6 @@ int graph_exec_output_edges(const graph *g, const node *n, int pin, const edge *
     return index->outputs[id].count;
 }
 
-int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin)
-{
-    return graph_exec_output_target(g, n, pin, order, dst, dst_pin);
-}
-
 node *graph_node_by_id(const graph *g, uint64_t id)
 {
     if (!g || id == 0 || id >= (uint64_t)acount(g->id_table)) {

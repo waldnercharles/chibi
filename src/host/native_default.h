@@ -14,8 +14,10 @@ native_capabilities *host_native_default_catalog_new(
 );
 /* The natives that need no running game and none of its services: core, text,
  * arrays, vectors, math and value operations, for code that runs alone, then
- * the `extra` packs. */
+ * explicit application capability and definition packs. */
 native_capabilities *host_native_standalone_catalog_new(
+    const native_capability_pack *,
+    int native_count,
     const native_definition_pack *extra,
     int extra_count,
     char *error,

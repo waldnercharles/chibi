@@ -1,6 +1,7 @@
 #ifndef CHIBI_HOST_EXPORT_H
 #define CHIBI_HOST_EXPORT_H
 
+#include <signal.h>
 #include <stdbool.h>
 
 typedef enum
@@ -35,6 +36,10 @@ typedef struct
     /* A command, up to NULL, that writes the game's native libraries into the
      * absent folder appended to it, the data folder's natives/; or NULL */
     const char *const *natives;
+    /* Optional controlling-thread cancellation signal. Child processes are
+     * owned and interrupted through this flag; NULL retains legacy waiting.
+     * A child control signal may update it, as chibi_process_run documents. */
+    volatile sig_atomic_t *stop_signal;
 } chibi_export_spec;
 
 /* Compiles the project and assembles a runnable game folder in `layout`: the

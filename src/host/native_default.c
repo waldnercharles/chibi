@@ -96,6 +96,8 @@ native_capabilities *host_native_default_catalog_new(
     return out;
 }
 native_capabilities *host_native_standalone_catalog_new(
+    const native_capability_pack *native,
+    int native_count,
     const native_definition_pack *extra,
     int extra_count,
     char *error,
@@ -121,8 +123,14 @@ native_capabilities *host_native_standalone_catalog_new(
     for (int i = 0; i < extra_count; i++) {
         apush(packs, extra[i]);
     }
-    native_capabilities *
-        out = native_capabilities_from_definition_packs(NULL, 0, packs, acount(packs), error, size);
+    native_capabilities *out = native_capabilities_from_definition_packs(
+        native,
+        native_count,
+        packs,
+        acount(packs),
+        error,
+        size
+    );
     afree(packs);
     return out;
 }

@@ -2104,6 +2104,7 @@ TEST_CASE(native_make_keeps_selected_build_host_and_overrides)
                                 "host";
             }
             argv[count++] = "make";
+            argv[count++] = "--no-print-directory";
             argv[count++] = "-o";
             argv[count++] = "test-build";
             argv[count++] = "test-native";

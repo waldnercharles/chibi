@@ -243,7 +243,7 @@ the graph's commands equal CMake's again.
 ### Linux native graph
 
 Linux uses the same default graph for native products and the full
-tooling/language test drivers. For a fast Debug O1 build with Release generators:
+tooling/language test drivers. `make build` builds the Release `chibi-build-host` and `chibi-compiler-host` in `build-release` first and generates the asset compiler with them, because Debug hosts exceed the compiler deadline from a cold tree; `ASSET_GENERATOR_HOSTS=DIR` names other hosts. For a fast Debug O1 build with Release generators:
 
 ```sh
 make build-release BUILD_TARGET='chibi chibi_ctl chibi-build-host chibi-compiler-host'

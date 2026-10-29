@@ -23,7 +23,7 @@ The default install directory is `~/.local`. Use `make install PREFIX=/absolute/
 to select another directory. The SDK includes the `chibi` command, compiler,
 player, headers and libraries.
 
-For a development build, use `make build`. Run the command as `build/sdk/chibi`.
+For a development build, use `make build`. Run the command as `build/sdk/chibi`. From a cold tree it first builds the Release hosts in `build-release` (about three minutes) so the asset compiler is generated quickly, then the Debug build; the whole run takes about ten minutes on an Apple M-series machine.
 
 ## Hello World
 

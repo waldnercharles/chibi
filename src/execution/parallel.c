@@ -303,36 +303,3 @@ bool behavior_function_parallel(const behavior_function *f)
 {
     return f && f->parallel;
 }
-int behavior_function_parallel_work(const behavior_function *f)
-{
-    f = f->fast ? f->fast : f;
-    const behavior_function_instruction *code = f->runtime_instructions
-                                                  ? f->runtime_instructions
-                                                  : f->instructions;
-    int work = 0;
-    for (int i = 0; i < acount(code); i++) {
-        work += behavior_function_call(code[i].op) ? 64 : 1;
-    }
-    return work;
-}
-bool behavior_function_parallel_with(const behavior_function *a, const behavior_function *b)
-{
-    if (!behavior_function_parallel(a) || !behavior_function_parallel(b)) {
-        return false;
-    }
-    for (int i = 0; i < acount(a->parallel_reads); i++) {
-        for (int j = 0; j < acount(b->component_writes); j++) {
-            if (a->parallel_reads[i] == b->component_writes[j]) {
-                return false;
-            }
-        }
-    }
-    for (int i = 0; i < acount(b->parallel_reads); i++) {
-        for (int j = 0; j < acount(a->component_writes); j++) {
-            if (b->parallel_reads[i] == a->component_writes[j]) {
-                return false;
-            }
-        }
-    }
-    return true;
-}

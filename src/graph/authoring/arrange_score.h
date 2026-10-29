@@ -21,7 +21,4 @@ typedef struct arrange_score
 
 arrange_score arrange_measure(const arrange_graph *g, const arrange_point *pos, arrange_route_style style);
 
-/* The single scalar a placement is judged by. */
-float arrange_cost(arrange_score score);
-
 #endif

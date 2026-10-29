@@ -124,26 +124,6 @@ bool input_map_read(const char *text, input_action **out, char *error, size_t si
     }
     return valid;
 }
-bool input_map_load(const char *content, input_action **out, char *error, size_t size)
-{
-    *out = NULL;
-    size_t length = strlen(content) + sizeof "/" INPUT_MAP_FILE;
-    char *path = xmalloc(length);
-    snprintf(path, length, "%s/" INPUT_MAP_FILE, content);
-    struct stat info;
-    bool missing = stat(path, &info) && errno == ENOENT;
-    char *text = missing ? NULL : file_read_text(path);
-    free(path);
-    if (missing) {
-        return true;
-    }
-    if (!text) {
-        return fail(error, size, NULL, "cannot read the file");
-    }
-    bool valid = input_map_read(text, out, error, size);
-    free(text);
-    return valid;
-}
 char *input_map_write(const input_action *map)
 {
     av_doc *document = av_doc_new();

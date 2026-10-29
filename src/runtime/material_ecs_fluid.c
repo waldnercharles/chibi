@@ -584,18 +584,6 @@ static void emit_contact_effects(materials *materials)
     }
 }
 
-void material_ecs_tick_fluid(
-    materials *materials,
-    float delta,
-    fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
-)
-{
-    material_ecs_tick_fluid_profiled(materials, delta, bodies, body_count, obstacles, obstacle_count, NULL);
-}
-
 void material_ecs_tick_fluid_profiled(
     materials *materials,
     float delta,

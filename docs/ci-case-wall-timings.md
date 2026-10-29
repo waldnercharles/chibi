@@ -1,9 +1,9 @@
 # Tooling case wall timings
 
 `CHIBI_TEST_TIMINGS` privately opts the native `test_tools` driver into a separate
-TSV file in an existing directory. CI sets it only for the tooling step and keeps
-the files with the existing seven-day native-profile evidence. It is off by
-default; pico's output, assertions, hooks and CPU-time reporting are unchanged.
+TSV file in an existing directory. CI sets it for tooling and Linux project
+selectors and keeps the files with the existing seven-day native-profile evidence.
+It is off by default; pico's output, assertions, hooks and CPU-time reporting are unchanged.
 The vendor header is unchanged. Both the CMake and authored Graph source lists
 include the test-only wrapper.
 

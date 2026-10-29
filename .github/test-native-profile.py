@@ -186,6 +186,30 @@ class ProfileTests(unittest.TestCase):
                 self.assertLess(reference, parity)
         self.assertNotIn('continue-on-error:', text.split('  native:\n')[1].split('  windows:\n')[0])
 
+    def test_linux_projects_keep_private_case_timings(self):
+        text = (ROOT / '.github/workflows/ci.yml').read_text()
+        for job, following in (('native', 'native-macos'), ('native-macos', 'windows')):
+            block = text.split(f'  {job}:\n', 1)[1].split(f'\n  {following}:\n', 1)[0]
+            selectors = block.split('- name: Native, material, project and language selectors', 1)[1].split('      - name:', 1)[0]
+            timed = [line.strip() for line in selectors.splitlines() if 'CHIBI_TEST_TIMINGS' in line]
+            if job == 'native':
+                self.assertEqual(timed, [
+                    'CHIBI_TEST_TIMINGS="$RUNNER_TEMP/case-timings" '
+                    'CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi '
+                    'CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin '
+                    'python3 tools/test_policy.py group projects'])
+                tooling = block.split('- name: Tooling and process integrations', 1)[1].split('      - name:', 1)[0]
+                self.assertIn('CHIBI_TEST_TIMINGS: ${{ runner.temp }}/case-timings', tooling)
+                self.assertIn('mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"', tooling)
+                self.assertLess(block.index('mkdir -m 700 -p "$CHIBI_TEST_TIMINGS"'),
+                                block.index(timed[0]))
+                evidence = block.split('- name: Preserve native profile evidence', 1)[1].split('      - name:', 1)[0]
+                self.assertIn('if: always()', evidence)
+                self.assertIn('${{ runner.temp }}/case-timings/', evidence)
+                self.assertIn('retention-days: 7', evidence)
+            else:
+                self.assertEqual(timed, [])
+
 
 if __name__ == '__main__':
     unittest.main()

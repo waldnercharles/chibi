@@ -147,7 +147,7 @@ jobs:
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/bin/chibi_ctl build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
           python3 tools/test_policy.py group native
           python3 tools/test_policy.py group materials
-          CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
+          CHIBI_TEST_TIMINGS="$RUNNER_TEMP/case-timings" CHIBI_CTL=build-release/bin/chibi_ctl CHIBI_CLI=build-release/sdk/chibi CHIBI_COMPILE=build-release/sdk/chibi-compile CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group projects
           CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin python3 tools/test_policy.py group language
       - name: Keep the macOS and Windows native modules
         uses: actions/upload-artifact@v4

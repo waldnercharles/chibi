@@ -1,0 +1,932 @@
+package integer_arithmetic
+
+Inner :: (a: u64, b: u64) -> u64 {
+    return (a + b) * 3;
+}
+
+Fold :: () -> u64 {
+    return Inner(9007199254740993, 9007199254740991);
+}
+
+@test
+WideConstantFoldingIsExact :: () {
+    actual: u64 = Fold();
+    expected: u64 = 54043195528445952;
+    assert(actual == expected);
+    return;
+}
+
+// Fixed runtime inputs and oracles from packed.c at 7c6ca2f5.
+// Each operation reads ordinary typed parameters; no expected value is computed.
+
+AddI8 :: (a: i8, b: i8) -> i8 {
+    return a + b;
+}
+
+SubtractI8 :: (a: i8, b: i8) -> i8 {
+    return a - b;
+}
+
+MultiplyI8 :: (a: i8, b: i8) -> i8 {
+    return a * b;
+}
+
+LessI8 :: (a: i8, b: i8) -> bool {
+    return a < b;
+}
+
+DivideI8 :: (a: i8, b: i8) -> i8 {
+    return a / b;
+}
+
+RemainderI8 :: (a: i8, b: i8) -> i8 {
+    return a % b;
+}
+
+@test
+I8Addition :: () {
+    left: i8 = -1;
+    right: i8 = 1;
+    actual: i8 = AddI8(left, right);
+    expected: i8 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8Subtraction :: () {
+    left: i8 = 0;
+    right: i8 = 1;
+    actual: i8 = SubtractI8(left, right);
+    expected: i8 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8Multiplication :: () {
+    left: i8 = -127;
+    right: i8 = 3;
+    actual: i8 = MultiplyI8(left, right);
+    expected: i8 = -125;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8Ordering :: () {
+    left: i8 = -128;
+    right: i8 = 1;
+    actual: bool = LessI8(left, right);
+    expected: bool = true;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8Division :: () {
+    left: i8 = -2;
+    right: i8 = 2;
+    actual: i8 = DivideI8(left, right);
+    expected: i8 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8Remainder :: () {
+    left: i8 = -1;
+    right: i8 = 2;
+    actual: i8 = RemainderI8(left, right);
+    expected: i8 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8DivideByZero :: () {
+    left: i8 = -128;
+    right: i8 = 0;
+    actual: i8 = DivideI8(left, right);
+    expected: i8 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8RemainderByZero :: () {
+    left: i8 = -128;
+    right: i8 = 0;
+    actual: i8 = RemainderI8(left, right);
+    expected: i8 = -128;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8DivideMinimumByMinusOne :: () {
+    left: i8 = -128;
+    right: i8 = -1;
+    actual: i8 = DivideI8(left, right);
+    expected: i8 = -128;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I8RemainderMinimumByMinusOne :: () {
+    left: i8 = -128;
+    right: i8 = -1;
+    actual: i8 = RemainderI8(left, right);
+    expected: i8 = 0;
+    assert(actual == expected);
+    return;
+}
+
+AddU8 :: (a: u8, b: u8) -> u8 {
+    return a + b;
+}
+
+SubtractU8 :: (a: u8, b: u8) -> u8 {
+    return a - b;
+}
+
+MultiplyU8 :: (a: u8, b: u8) -> u8 {
+    return a * b;
+}
+
+LessU8 :: (a: u8, b: u8) -> bool {
+    return a < b;
+}
+
+DivideU8 :: (a: u8, b: u8) -> u8 {
+    return a / b;
+}
+
+RemainderU8 :: (a: u8, b: u8) -> u8 {
+    return a % b;
+}
+
+@test
+U8Addition :: () {
+    left: u8 = 255;
+    right: u8 = 1;
+    actual: u8 = AddU8(left, right);
+    expected: u8 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U8Subtraction :: () {
+    left: u8 = 0;
+    right: u8 = 1;
+    actual: u8 = SubtractU8(left, right);
+    expected: u8 = 255;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U8Multiplication :: () {
+    left: u8 = 129;
+    right: u8 = 3;
+    actual: u8 = MultiplyU8(left, right);
+    expected: u8 = 131;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U8Ordering :: () {
+    left: u8 = 128;
+    right: u8 = 1;
+    actual: bool = LessU8(left, right);
+    expected: bool = false;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U8Division :: () {
+    left: u8 = 254;
+    right: u8 = 2;
+    actual: u8 = DivideU8(left, right);
+    expected: u8 = 127;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U8Remainder :: () {
+    left: u8 = 255;
+    right: u8 = 2;
+    actual: u8 = RemainderU8(left, right);
+    expected: u8 = 1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U8DivideByZero :: () {
+    left: u8 = 128;
+    right: u8 = 0;
+    actual: u8 = DivideU8(left, right);
+    expected: u8 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U8RemainderByZero :: () {
+    left: u8 = 128;
+    right: u8 = 0;
+    actual: u8 = RemainderU8(left, right);
+    expected: u8 = 128;
+    assert(actual == expected);
+    return;
+}
+
+AddI16 :: (a: i16, b: i16) -> i16 {
+    return a + b;
+}
+
+SubtractI16 :: (a: i16, b: i16) -> i16 {
+    return a - b;
+}
+
+MultiplyI16 :: (a: i16, b: i16) -> i16 {
+    return a * b;
+}
+
+LessI16 :: (a: i16, b: i16) -> bool {
+    return a < b;
+}
+
+DivideI16 :: (a: i16, b: i16) -> i16 {
+    return a / b;
+}
+
+RemainderI16 :: (a: i16, b: i16) -> i16 {
+    return a % b;
+}
+
+@test
+I16Addition :: () {
+    left: i16 = -1;
+    right: i16 = 1;
+    actual: i16 = AddI16(left, right);
+    expected: i16 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16Subtraction :: () {
+    left: i16 = 0;
+    right: i16 = 1;
+    actual: i16 = SubtractI16(left, right);
+    expected: i16 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16Multiplication :: () {
+    left: i16 = -32767;
+    right: i16 = 3;
+    actual: i16 = MultiplyI16(left, right);
+    expected: i16 = -32765;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16Ordering :: () {
+    left: i16 = -32768;
+    right: i16 = 1;
+    actual: bool = LessI16(left, right);
+    expected: bool = true;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16Division :: () {
+    left: i16 = -2;
+    right: i16 = 2;
+    actual: i16 = DivideI16(left, right);
+    expected: i16 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16Remainder :: () {
+    left: i16 = -1;
+    right: i16 = 2;
+    actual: i16 = RemainderI16(left, right);
+    expected: i16 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16DivideByZero :: () {
+    left: i16 = -32768;
+    right: i16 = 0;
+    actual: i16 = DivideI16(left, right);
+    expected: i16 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16RemainderByZero :: () {
+    left: i16 = -32768;
+    right: i16 = 0;
+    actual: i16 = RemainderI16(left, right);
+    expected: i16 = -32768;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16DivideMinimumByMinusOne :: () {
+    left: i16 = -32768;
+    right: i16 = -1;
+    actual: i16 = DivideI16(left, right);
+    expected: i16 = -32768;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I16RemainderMinimumByMinusOne :: () {
+    left: i16 = -32768;
+    right: i16 = -1;
+    actual: i16 = RemainderI16(left, right);
+    expected: i16 = 0;
+    assert(actual == expected);
+    return;
+}
+
+AddU16 :: (a: u16, b: u16) -> u16 {
+    return a + b;
+}
+
+SubtractU16 :: (a: u16, b: u16) -> u16 {
+    return a - b;
+}
+
+MultiplyU16 :: (a: u16, b: u16) -> u16 {
+    return a * b;
+}
+
+LessU16 :: (a: u16, b: u16) -> bool {
+    return a < b;
+}
+
+DivideU16 :: (a: u16, b: u16) -> u16 {
+    return a / b;
+}
+
+RemainderU16 :: (a: u16, b: u16) -> u16 {
+    return a % b;
+}
+
+@test
+U16Addition :: () {
+    left: u16 = 65535;
+    right: u16 = 1;
+    actual: u16 = AddU16(left, right);
+    expected: u16 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U16Subtraction :: () {
+    left: u16 = 0;
+    right: u16 = 1;
+    actual: u16 = SubtractU16(left, right);
+    expected: u16 = 65535;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U16Multiplication :: () {
+    left: u16 = 32769;
+    right: u16 = 3;
+    actual: u16 = MultiplyU16(left, right);
+    expected: u16 = 32771;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U16Ordering :: () {
+    left: u16 = 32768;
+    right: u16 = 1;
+    actual: bool = LessU16(left, right);
+    expected: bool = false;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U16Division :: () {
+    left: u16 = 65534;
+    right: u16 = 2;
+    actual: u16 = DivideU16(left, right);
+    expected: u16 = 32767;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U16Remainder :: () {
+    left: u16 = 65535;
+    right: u16 = 2;
+    actual: u16 = RemainderU16(left, right);
+    expected: u16 = 1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U16DivideByZero :: () {
+    left: u16 = 32768;
+    right: u16 = 0;
+    actual: u16 = DivideU16(left, right);
+    expected: u16 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U16RemainderByZero :: () {
+    left: u16 = 32768;
+    right: u16 = 0;
+    actual: u16 = RemainderU16(left, right);
+    expected: u16 = 32768;
+    assert(actual == expected);
+    return;
+}
+
+AddInt :: (a: int, b: int) -> int {
+    return a + b;
+}
+
+SubtractInt :: (a: int, b: int) -> int {
+    return a - b;
+}
+
+MultiplyInt :: (a: int, b: int) -> int {
+    return a * b;
+}
+
+LessInt :: (a: int, b: int) -> bool {
+    return a < b;
+}
+
+DivideInt :: (a: int, b: int) -> int {
+    return a / b;
+}
+
+RemainderInt :: (a: int, b: int) -> int {
+    return a % b;
+}
+
+@test
+IntAddition :: () {
+    left: int = -1;
+    right: int = 1;
+    actual: int = AddInt(left, right);
+    expected: int = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntSubtraction :: () {
+    left: int = 0;
+    right: int = 1;
+    actual: int = SubtractInt(left, right);
+    expected: int = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntMultiplication :: () {
+    left: int = -2147483647;
+    right: int = 3;
+    actual: int = MultiplyInt(left, right);
+    expected: int = -2147483645;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntOrdering :: () {
+    left: int = -2147483648;
+    right: int = 1;
+    actual: bool = LessInt(left, right);
+    expected: bool = true;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntDivision :: () {
+    left: int = -2;
+    right: int = 2;
+    actual: int = DivideInt(left, right);
+    expected: int = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntRemainder :: () {
+    left: int = -1;
+    right: int = 2;
+    actual: int = RemainderInt(left, right);
+    expected: int = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntDivideByZero :: () {
+    left: int = -2147483648;
+    right: int = 0;
+    actual: int = DivideInt(left, right);
+    expected: int = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntRemainderByZero :: () {
+    left: int = -2147483648;
+    right: int = 0;
+    actual: int = RemainderInt(left, right);
+    expected: int = -2147483648;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntDivideMinimumByMinusOne :: () {
+    left: int = -2147483648;
+    right: int = -1;
+    actual: int = DivideInt(left, right);
+    expected: int = -2147483648;
+    assert(actual == expected);
+    return;
+}
+
+@test
+IntRemainderMinimumByMinusOne :: () {
+    left: int = -2147483648;
+    right: int = -1;
+    actual: int = RemainderInt(left, right);
+    expected: int = 0;
+    assert(actual == expected);
+    return;
+}
+
+AddU32 :: (a: u32, b: u32) -> u32 {
+    return a + b;
+}
+
+SubtractU32 :: (a: u32, b: u32) -> u32 {
+    return a - b;
+}
+
+MultiplyU32 :: (a: u32, b: u32) -> u32 {
+    return a * b;
+}
+
+LessU32 :: (a: u32, b: u32) -> bool {
+    return a < b;
+}
+
+DivideU32 :: (a: u32, b: u32) -> u32 {
+    return a / b;
+}
+
+RemainderU32 :: (a: u32, b: u32) -> u32 {
+    return a % b;
+}
+
+@test
+U32Addition :: () {
+    left: u32 = 4294967295;
+    right: u32 = 1;
+    actual: u32 = AddU32(left, right);
+    expected: u32 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U32Subtraction :: () {
+    left: u32 = 0;
+    right: u32 = 1;
+    actual: u32 = SubtractU32(left, right);
+    expected: u32 = 4294967295;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U32Multiplication :: () {
+    left: u32 = 2147483649;
+    right: u32 = 3;
+    actual: u32 = MultiplyU32(left, right);
+    expected: u32 = 2147483651;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U32Ordering :: () {
+    left: u32 = 2147483648;
+    right: u32 = 1;
+    actual: bool = LessU32(left, right);
+    expected: bool = false;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U32Division :: () {
+    left: u32 = 4294967294;
+    right: u32 = 2;
+    actual: u32 = DivideU32(left, right);
+    expected: u32 = 2147483647;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U32Remainder :: () {
+    left: u32 = 4294967295;
+    right: u32 = 2;
+    actual: u32 = RemainderU32(left, right);
+    expected: u32 = 1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U32DivideByZero :: () {
+    left: u32 = 2147483648;
+    right: u32 = 0;
+    actual: u32 = DivideU32(left, right);
+    expected: u32 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U32RemainderByZero :: () {
+    left: u32 = 2147483648;
+    right: u32 = 0;
+    actual: u32 = RemainderU32(left, right);
+    expected: u32 = 2147483648;
+    assert(actual == expected);
+    return;
+}
+
+AddI64 :: (a: i64, b: i64) -> i64 {
+    return a + b;
+}
+
+SubtractI64 :: (a: i64, b: i64) -> i64 {
+    return a - b;
+}
+
+MultiplyI64 :: (a: i64, b: i64) -> i64 {
+    return a * b;
+}
+
+LessI64 :: (a: i64, b: i64) -> bool {
+    return a < b;
+}
+
+DivideI64 :: (a: i64, b: i64) -> i64 {
+    return a / b;
+}
+
+RemainderI64 :: (a: i64, b: i64) -> i64 {
+    return a % b;
+}
+
+@test
+I64Addition :: () {
+    left: i64 = -1;
+    right: i64 = 1;
+    actual: i64 = AddI64(left, right);
+    expected: i64 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64Subtraction :: () {
+    left: i64 = 0;
+    right: i64 = 1;
+    actual: i64 = SubtractI64(left, right);
+    expected: i64 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64Multiplication :: () {
+    left: i64 = -9223372036854775807;
+    right: i64 = 3;
+    actual: i64 = MultiplyI64(left, right);
+    expected: i64 = -9223372036854775805;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64Ordering :: () {
+    left: i64 = -9223372036854775808;
+    right: i64 = 1;
+    actual: bool = LessI64(left, right);
+    expected: bool = true;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64Division :: () {
+    left: i64 = -2;
+    right: i64 = 2;
+    actual: i64 = DivideI64(left, right);
+    expected: i64 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64Remainder :: () {
+    left: i64 = -1;
+    right: i64 = 2;
+    actual: i64 = RemainderI64(left, right);
+    expected: i64 = -1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64DivideByZero :: () {
+    left: i64 = -9223372036854775808;
+    right: i64 = 0;
+    actual: i64 = DivideI64(left, right);
+    expected: i64 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64RemainderByZero :: () {
+    left: i64 = -9223372036854775808;
+    right: i64 = 0;
+    actual: i64 = RemainderI64(left, right);
+    expected: i64 = -9223372036854775808;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64DivideMinimumByMinusOne :: () {
+    left: i64 = -9223372036854775808;
+    right: i64 = -1;
+    actual: i64 = DivideI64(left, right);
+    expected: i64 = -9223372036854775808;
+    assert(actual == expected);
+    return;
+}
+
+@test
+I64RemainderMinimumByMinusOne :: () {
+    left: i64 = -9223372036854775808;
+    right: i64 = -1;
+    actual: i64 = RemainderI64(left, right);
+    expected: i64 = 0;
+    assert(actual == expected);
+    return;
+}
+
+AddU64 :: (a: u64, b: u64) -> u64 {
+    return a + b;
+}
+
+SubtractU64 :: (a: u64, b: u64) -> u64 {
+    return a - b;
+}
+
+MultiplyU64 :: (a: u64, b: u64) -> u64 {
+    return a * b;
+}
+
+LessU64 :: (a: u64, b: u64) -> bool {
+    return a < b;
+}
+
+DivideU64 :: (a: u64, b: u64) -> u64 {
+    return a / b;
+}
+
+RemainderU64 :: (a: u64, b: u64) -> u64 {
+    return a % b;
+}
+
+@test
+U64Addition :: () {
+    left: u64 = 18446744073709551615;
+    right: u64 = 1;
+    actual: u64 = AddU64(left, right);
+    expected: u64 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U64Subtraction :: () {
+    left: u64 = 0;
+    right: u64 = 1;
+    actual: u64 = SubtractU64(left, right);
+    expected: u64 = 18446744073709551615;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U64Multiplication :: () {
+    left: u64 = 9223372036854775809;
+    right: u64 = 3;
+    actual: u64 = MultiplyU64(left, right);
+    expected: u64 = 9223372036854775811;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U64Ordering :: () {
+    left: u64 = 9223372036854775808;
+    right: u64 = 1;
+    actual: bool = LessU64(left, right);
+    expected: bool = false;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U64Division :: () {
+    left: u64 = 18446744073709551614;
+    right: u64 = 2;
+    actual: u64 = DivideU64(left, right);
+    expected: u64 = 9223372036854775807;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U64Remainder :: () {
+    left: u64 = 18446744073709551615;
+    right: u64 = 2;
+    actual: u64 = RemainderU64(left, right);
+    expected: u64 = 1;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U64DivideByZero :: () {
+    left: u64 = 9223372036854775808;
+    right: u64 = 0;
+    actual: u64 = DivideU64(left, right);
+    expected: u64 = 0;
+    assert(actual == expected);
+    return;
+}
+
+@test
+U64RemainderByZero :: () {
+    left: u64 = 9223372036854775808;
+    right: u64 = 0;
+    actual: u64 = RemainderU64(left, right);
+    expected: u64 = 9223372036854775808;
+    assert(actual == expected);
+    return;
+}

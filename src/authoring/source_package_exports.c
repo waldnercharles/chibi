@@ -15,6 +15,10 @@ struct source_package_exports
     arena storage;
     script_catalog metadata;
     script_package_exports view;
+    script_package_environment environment;
+    script_syntax **syntaxes;
+    source_package_exports **dependencies;
+    int references;
     char error[192];
 };
 typedef struct
@@ -24,9 +28,12 @@ typedef struct
     const script_catalog *metadata;
     const script_lower_package_result *lowered;
     script_package_export *members;
+    script_package_export *bindings;
+    bool environment;
     const char **private_names;
     script_catalog_capability *functions, *capabilities;
     script_catalog_type *types;
+    script_catalog_template *templates;
 } exports_builder;
 
 static const char *own(source_package_exports *owner, const char *text)
@@ -119,9 +126,20 @@ static bool include_signature(exports_builder *b, script_type type)
 }
 static const pin_value *constant_value(const exports_builder *b, uint64_t id)
 {
-    for (int i = 0; i < b->lowered->constant_count; i++) {
+    for (int i = 0; b->lowered && i < b->lowered->constant_count; i++) {
         if (b->lowered->constants[i].id == id) {
             return &b->lowered->constants[i].value;
+        }
+    }
+    if (!b->lowered) {
+        for (int i = 0; i < b->analysis->symbol_count; i++) {
+            const script_symbol *symbol = &b->analysis->symbols[i];
+            if (symbol->id == id && symbol->initializer >= 0) {
+                const script_expression *e = &b->analysis->expressions[symbol->initializer];
+                if (e->kind == SCRIPT_EXPR_CONSTANT) {
+                    return &e->constant;
+                }
+            }
         }
     }
     return NULL;
@@ -137,6 +155,9 @@ static bool parameters(exports_builder *b, const int *symbols, int count, const 
         if (symbol->initializer >= 0) {
             const pin_value *value = constant_value(b, symbol->id);
             if (!value) {
+                if (!b->lowered) {
+                    continue;
+                }
                 return reject(b, "Package parameter default has no lowered constant value");
             }
             values[i].default_value = *value;
@@ -180,16 +201,15 @@ static bool members(exports_builder *b)
     const script_analysis *a = b->analysis;
     for (int i = 0; i < a->symbol_count; i++) {
         const script_symbol *symbol = &a->symbols[i];
-        /* A template has no function until a call specializes it, and only
-         * its own package specializes it. */
         if (symbol->scope != a->package_scope ||
-            symbol->declaration.start < 0 || symbol->disabled ||
-            (symbol->kind == SCRIPT_FUNCTION && symbol->function < 0)) {
+            symbol->declaration.start < 0 || symbol->disabled) {
             continue;
         }
         if (!symbol->pub) {
             apush(b->private_names, symbol->name);
-            continue;
+            if (!b->environment) {
+                continue;
+            }
         }
         script_package_export member = { .name = symbol->name,
                                          .id = symbol->id,
@@ -197,6 +217,21 @@ static bool members(exports_builder *b)
                                          .unit = symbol->unit };
         switch (symbol->kind) {
             case SCRIPT_FUNCTION:
+                if (symbol->function < 0) {
+                    const script_catalog_template *t = NULL;
+                    for (int j = 0; j < a->template_count; j++) {
+                        if (a->templates[j].id == symbol->id && a->templates[j].generic &&
+                            a->templates[j].kind == SCRIPT_TEMPLATE_FUNCTION) {
+                            t = &a->templates[j];
+                        }
+                    }
+                    if (!t) {
+                        continue;
+                    }
+                    member.kind = SCRIPT_PACKAGE_TEMPLATE;
+                    apush(b->templates, *t);
+                    break;
+                }
                 member.kind = SCRIPT_PACKAGE_FUNCTION;
                 if (!function(b, symbol)) {
                     return false;
@@ -207,6 +242,9 @@ static bool members(exports_builder *b)
                 member.kind = SCRIPT_PACKAGE_CONSTANT;
                 const pin_value *value = constant_value(b, symbol->id);
                 if (!value) {
+                    if (!b->lowered) {
+                        continue;
+                    }
                     return reject(b, "Package export has no lowered constant value");
                 }
                 member.value = *value;
@@ -214,7 +252,12 @@ static bool members(exports_builder *b)
             }
             default: continue;
         }
-        apush(b->members, member);
+        if (symbol->pub) {
+            apush(b->members, member);
+        }
+        if (b->environment) {
+            apush(b->bindings, member);
+        }
     }
     return true;
 }
@@ -233,6 +276,20 @@ static bool closure(exports_builder *b)
 {
     for (int i = 0; i < acount(b->members); i++) {
         const script_package_export *member = &b->members[i];
+        if (member->kind == SCRIPT_PACKAGE_TEMPLATE) {
+            continue;
+        }
+        if (!(member->kind == SCRIPT_PACKAGE_FUNCTION
+                  ? include_capability(b, member->id)
+                  : include_signature(b, member->type))) {
+            return false;
+        }
+    }
+    for (int i = 0; i < acount(b->bindings); i++) {
+        const script_package_export *member = &b->bindings[i];
+        if (member->kind == SCRIPT_PACKAGE_TEMPLATE) {
+            continue;
+        }
         if (!(member->kind == SCRIPT_PACKAGE_FUNCTION
                   ? include_capability(b, member->id)
                   : include_signature(b, member->type))) {
@@ -287,22 +344,58 @@ source_package_exports *source_package_exports_new(
     const script_lower_package_result *lowered
 )
 {
-    assert(analysis && metadata && lowered);
+    assert(analysis && metadata);
     source_package_exports *owner = xcalloc(1, sizeof *owner);
+    owner->references = 1;
     exports_builder b = { .owner = owner,
                           .analysis = analysis,
                           .metadata = metadata,
                           .lowered = lowered };
-    if (!analysis->valid || analysis->package_scope < 0 || !lowered->plan ||
-        !lowered->plan->valid) {
+    for (int i = 0; i < analysis->template_count; i++) {
+        bool exported = false;
+        for (int j = 0; j < analysis->symbol_count; j++) {
+            const script_symbol *symbol = &analysis->symbols[j];
+            exported |= symbol->id == analysis->templates[i].id &&
+                        symbol->pub && symbol->scope == analysis->package_scope;
+        }
+        if (!exported) {
+            continue;
+        }
+        b.environment |= analysis->templates[i].generic &&
+                         analysis->templates[i].kind == SCRIPT_TEMPLATE_FUNCTION;
+        for (int j = 0; j < analysis->templates[i].parameter_count; j++) {
+            b.environment |= analysis->templates[i].parameters[j].callable_type != NULL;
+        }
+    }
+    if (analysis->package_scope < 0 ||
+        (lowered && (!analysis->valid || !lowered->plan || !lowered->plan->valid))) {
         reject(&b, "Package exports require a valid lowered package");
         return owner;
     }
-    if (members(&b) && closure(&b)) {
+    bool valid = members(&b);
+    for (int i = 0; valid && i < analysis->specialization_count; i++) {
+        const script_catalog_specialization *s = &analysis->specializations[i];
+        if (!s->executable) {
+            continue;
+        }
+        for (int j = 0; j < analysis->function_count; j++) {
+            const script_function *f = &analysis->functions[j];
+            if (f->symbol >= 0 && analysis->symbols[f->symbol].id == s->id) {
+                valid = function(&b, &analysis->symbols[f->symbol]) &&
+                        include_capability(&b, s->id);
+                break;
+            }
+        }
+    }
+    if (valid && closure(&b)) {
         script_catalog selected = { .types = b.types,
                                     .type_count = acount(b.types),
                                     .capabilities = b.capabilities,
                                     .capability_count = acount(b.capabilities),
+                                    .templates = b.templates,
+                                    .template_count = acount(b.templates),
+                                    .specializations = analysis->specializations,
+                                    .specialization_count = analysis->specialization_count,
                                     .entity_type = metadata->entity_type,
                                     .tick_event = metadata->tick_event };
         if (!script_catalog_snapshot(&owner->storage, &selected, &owner->metadata)) {
@@ -339,8 +432,51 @@ source_package_exports *source_package_exports_new(
                 .members = retained,
                 .member_count = acount(b.members),
                 .private_names = hidden,
-                .private_count = acount(b.private_names)
+                .private_count = acount(b.private_names),
+                .owner = owner
             };
+            if (b.environment) {
+                int document_count = analysis->package_document_count;
+                script_package_document *documents = arena_alloc(
+                    &owner->storage,
+                    (size_t)document_count * sizeof *documents
+                );
+                for (int i = 0; i < document_count; i++) {
+                    const script_source_document *source = &analysis->documents[i];
+                    script_syntax *syntax = script_parse(source->text);
+                    apush(owner->syntaxes, syntax);
+                    documents[i] = (script_package_document){ own(owner, source->path),
+                                                              own(owner, source->key),
+                                                              syntax };
+                }
+                script_package_export *bindings = arena_alloc(
+                    &owner->storage,
+                    (size_t)acount(b.bindings) * sizeof *bindings
+                );
+                for (int i = 0; i < acount(b.bindings); i++) {
+                    bindings[i] = b.bindings[i];
+                    bindings[i].name = own(owner, bindings[i].name);
+                    bindings[i].unit = own(owner, bindings[i].unit);
+                    if (bindings[i].kind == SCRIPT_PACKAGE_CONSTANT) {
+                        int error = pin_value_capture_to_arena(
+                            &owner->storage,
+                            &bindings[i].value,
+                            &b.bindings[i].value
+                        );
+                        assert(!error);
+                        (void)error;
+                    }
+                }
+                owner->environment = (script_package_environment){
+                    .identity = owner->view.identity,
+                    .documents = documents,
+                    .document_count = document_count,
+                    .bindings = bindings,
+                    .binding_count = acount(b.bindings),
+                    .owner = owner
+                };
+                owner->view.environment = &owner->environment;
+            }
         }
     }
     afree(b.members);
@@ -348,6 +484,8 @@ source_package_exports *source_package_exports_new(
     afree(b.functions);
     afree(b.types);
     afree(b.capabilities);
+    afree(b.templates);
+    afree(b.bindings);
     return owner;
 }
 const script_package_exports *source_package_exports_view(const source_package_exports *owner)
@@ -360,8 +498,42 @@ const char *source_package_exports_error(const source_package_exports *owner)
 }
 void source_package_exports_free(source_package_exports *owner)
 {
-    if (owner) {
+    if (owner && !--owner->references) {
+        for (int i = 0; i < acount(owner->syntaxes); i++) {
+            script_syntax_free(owner->syntaxes[i]);
+        }
+        for (int i = 0; i < acount(owner->dependencies); i++) {
+            source_package_exports_free(owner->dependencies[i]);
+        }
+        afree(owner->syntaxes);
+        afree(owner->dependencies);
         arena_free(&owner->storage);
         free(owner);
     }
+}
+void source_package_exports_bind_imports(
+    source_package_exports *owner,
+    const script_package_import *imports,
+    int count
+)
+{
+    if (!owner->view.environment || !count) {
+        return;
+    }
+    script_package_import *retained = arena_alloc(&owner->storage, (size_t)count * sizeof *retained);
+    for (int i = 0; i < count; i++) {
+        retained[i] = imports[i];
+        retained[i].alias = own(owner, imports[i].alias);
+        retained[i].identity = own(owner, imports[i].identity);
+        source_package_exports *dependency = imports[i].exports
+                                               ? imports[i].exports->owner
+                                               : NULL;
+        if (dependency) {
+            assert(dependency && dependency != owner && dependency->references > 0);
+            dependency->references++;
+            apush(owner->dependencies, dependency);
+        }
+    }
+    owner->environment.imports = retained;
+    owner->environment.import_count = count;
 }

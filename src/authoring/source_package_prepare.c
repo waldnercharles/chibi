@@ -36,6 +36,7 @@ struct package_generation
     package_generation **dependencies;
     source_package_exports *export_owner;
     script_diagnostic *diagnostics;
+    script_specialization_request *requests;
 };
 struct authoring_packages
 {
@@ -44,7 +45,11 @@ struct authoring_packages
     int count, reused;
     bool valid;
     char error[192];
+    arena storage;
+    script_specialization_request *requests;
 };
+
+#define PACKAGE_SPECIALIZATIONS 256
 
 static const char *copy(arena *storage, const char *text)
 {
@@ -52,6 +57,64 @@ static const char *copy(arena *storage, const char *text)
     char *owned = arena_alloc(storage, bytes);
     memcpy(owned, text, bytes);
     return owned;
+}
+
+static script_specialization_request own_request(arena *storage, const script_specialization_request *source)
+{
+    script_specialization_request result = *source;
+    result.owner = copy(storage, source->owner);
+    script_compile_binding
+        *bindings = arena_alloc(storage, (size_t)source->binding_count * sizeof *bindings);
+    for (int i = 0; i < source->binding_count; i++) {
+        bindings[i] = source->bindings[i];
+        bindings[i].name = (char *)copy(storage, bindings[i].name);
+        if (!bindings[i].value.is_type && !bindings[i].value.is_callable) {
+            int error = pin_value_capture_to_arena(
+                storage,
+                &bindings[i].value.value,
+                &source->bindings[i].value.value
+            );
+            assert(!error);
+            (void)error;
+        }
+    }
+    result.bindings = bindings;
+    return result;
+}
+static bool same_request(const script_specialization_request *a, const script_specialization_request *b)
+{
+    if (a->id != b->id || a->template_id != b->template_id ||
+        strcmp(a->owner, b->owner) || a->evaluate != b->evaluate ||
+        a->binding_count != b->binding_count) {
+        return false;
+    }
+    for (int i = 0; i < a->binding_count; i++) {
+        const script_compile_binding *x = &a->bindings[i], *y = &b->bindings[i];
+        if (strcmp(x->name, y->name) || x->value.is_type != y->value.is_type ||
+            x->value.is_callable != y->value.is_callable ||
+            (x->value.is_type && !script_type_equal(x->value.type, y->value.type)) ||
+            (x->value.is_callable && x->value.callable != y->value.callable)) {
+            return false;
+        }
+    }
+    script_catalog_specialization x = { .id = a->id,
+                                        .template_id = a->template_id,
+                                        .bindings = a->bindings,
+                                        .binding_count = a->binding_count },
+                                  y = { .id = b->id,
+                                        .template_id = b->template_id,
+                                        .bindings = b->bindings,
+                                        .binding_count = b->binding_count };
+    script_catalog left = { .specializations = &x, .specialization_count = 1 },
+                   right = { .specializations = &y, .specialization_count = 1 };
+    unsigned char *left_key = NULL, *right_key = NULL;
+    bool equal = script_catalog_values_key(&left, &left_key) &&
+                 script_catalog_values_key(&right, &right_key) &&
+                 acount(left_key) == acount(right_key) &&
+                 !memcmp(left_key, right_key, (size_t)acount(left_key));
+    afree(left_key);
+    afree(right_key);
+    return equal;
 }
 
 static package_generation *retain(package_generation *generation)
@@ -79,6 +142,7 @@ static void release(package_generation *generation)
     afree(generation->dependencies);
     afree(generation->imports);
     afree(generation->diagnostics);
+    afree(generation->requests);
     afree(generation->defaults);
     free(generation->documents);
     arena_free(&generation->storage);
@@ -145,8 +209,14 @@ static bool reusable(const package_generation *old, const package_generation *cu
          memcmp(old->defaults, current->defaults, (size_t)acount(old->defaults))) ||
         old->document_count != current->document_count ||
         acount(old->imports) != acount(current->imports) ||
-        acount(old->dependencies) != acount(current->dependencies)) {
+        acount(old->dependencies) != acount(current->dependencies) ||
+        acount(old->requests) != acount(current->requests)) {
         return false;
+    }
+    for (int i = 0; i < acount(current->requests); i++) {
+        if (!same_request(&old->requests[i], &current->requests[i])) {
+            return false;
+        }
     }
     for (int i = 0; i < current->document_count; i++) {
         const script_source_document *a = &old->documents[i],
@@ -214,6 +284,12 @@ static package_generation *generation_new(
         source_package_snapshot_identity(owner->snapshot, index)
     );
     generation->view.generation = generation;
+    for (int i = 0; i < acount(owner->requests); i++) {
+        if (!strcmp(owner->requests[i].owner, generation->view.identity)) {
+            apush(generation->requests, own_request(&generation->storage, &owner->requests[i]));
+        }
+    }
+
     generation->document_count = package->file_count;
     generation
         ->documents = xcalloc((size_t)package->file_count, sizeof *generation->documents);
@@ -323,15 +399,27 @@ static void catalog_append(catalog_members *members, const script_catalog *catal
     }
 }
 
-static void lower_generation(package_generation *generation)
+static void dependency_closure(catalog_members *members, execution_module ***libraries, package_generation *generation)
+{
+    for (int i = 0; i < acount(*libraries); i++) {
+        if ((*libraries)[i] == generation->view.module) {
+            return;
+        }
+    }
+    catalog_append(members, generation->view.exports->metadata);
+    apush(*libraries, generation->view.module);
+    for (int i = 0; i < acount(generation->dependencies); i++) {
+        dependency_closure(members, libraries, generation->dependencies[i]);
+    }
+}
+static void lower_generation(package_generation *generation, const script_package_import *imports, int import_count)
 {
     catalog_members members = { 0 };
     execution_module **libraries = NULL;
     catalog_append(&members, &generation->native);
     for (int i = 0; i < acount(generation->dependencies); i++) {
         package_generation *dependency = generation->dependencies[i];
-        catalog_append(&members, dependency->view.exports->metadata);
-        apush(libraries, dependency->view.module);
+        dependency_closure(&members, &libraries, dependency);
     }
     script_catalog catalog = {
         .types = members.types,
@@ -370,7 +458,9 @@ static void lower_generation(package_generation *generation)
         );
     }
     if (plan->valid) {
+        source_package_exports_free(generation->export_owner);
         generation->export_owner = source_package_exports_new(generation->view.analysis, &catalog, &lowered);
+        source_package_exports_bind_imports(generation->export_owner, imports, import_count);
         const char *error = source_package_exports_error(generation->export_owner);
         if (error) {
             diagnostic(generation, (script_range){ .document = -1 }, error);
@@ -405,7 +495,7 @@ static void prepare_generation(
     }
     for (int i = 0; i < acount(generation->dependencies); i++) {
         const package_generation *dependency = generation->dependencies[i];
-        if (dependency->view.valid) {
+        if (dependency->view.exports) {
             continue;
         }
         for (int j = 0; j < acount(generation->imports); j++) {
@@ -424,14 +514,59 @@ static void prepare_generation(
         .native = &generation->native,
         .imports = imports,
         .import_count = import_count,
+        .requests = generation->requests,
+        .request_count = acount(generation->requests),
     };
     generation->view.analysis = script_analyze_package(&options);
     for (int i = 0; i < generation->view.analysis->diagnostic_count; i++) {
         const script_diagnostic *item = &generation->view.analysis->diagnostics[i];
         diagnostic(generation, item->range, item->message);
     }
-    if (generation->view.analysis->valid) {
-        lower_generation(generation);
+    /* Publish declarations while requests are discovered. Only finalized valid
+     * generations escape this preparation transaction. */
+    catalog_members members = { 0 };
+    catalog_append(&members, &generation->native);
+    for (int i = 0; i < acount(generation->dependencies); i++) {
+        const script_package_exports *exports = generation->dependencies[i]
+                                                    ->view.exports;
+        if (exports) {
+            catalog_append(&members, exports->metadata);
+        }
+    }
+    script_catalog metadata = { .types = members.types,
+                                .type_count = acount(members.types),
+                                .capabilities = members.capabilities,
+                                .capability_count = acount(members.capabilities),
+                                .entity_type = generation->native.entity_type,
+                                .tick_event = generation->native.tick_event };
+    generation->export_owner = source_package_exports_new(generation->view.analysis, &metadata, NULL);
+    source_package_exports_bind_imports(generation->export_owner, imports, import_count);
+    afree(members.types);
+    afree(members.capabilities);
+    afree(members.globals);
+    afree(members.relationships);
+    generation->view.exports = source_package_exports_view(generation->export_owner);
+    bool ready = generation->view.analysis->valid && generation->view.exports;
+    for (int i = 0; ready && i < generation->view.analysis->request_count; i++) {
+        uint64_t id = generation->view.analysis->requests[i].id;
+        bool found = false;
+        for (int j = 0; j < acount(generation->dependencies); j++) {
+            const script_package_exports *exports = generation->dependencies[j]
+                                                        ->view.exports;
+            for (int k = 0; exports && k < exports->metadata->specialization_count;
+                 k++) {
+                found |= exports->metadata->specializations[k].id == id;
+            }
+        }
+        ready = found;
+    }
+    if (ready) {
+        for (int i = 0; i < acount(generation->dependencies); i++) {
+            ready &= generation->dependencies[i]->view.valid;
+        }
+    }
+    if (ready) {
+        lower_generation(generation, imports, import_count);
     }
 }
 
@@ -490,29 +625,85 @@ authoring_packages *authoring_packages_prepare(
     owner->count = source_packages_count(graph);
     owner->packages = xcalloc((size_t)owner->count, sizeof *owner->packages);
     bool *needed = needed_packages(owner, graph);
-    owner->valid = true;
-    for (int ordinal = 0; ordinal < owner->count; ordinal++) {
-        int index = source_packages_order(graph, ordinal);
-        if (!needed[index]) {
-            continue;
+    for (int pass = 0; pass <= PACKAGE_SPECIALIZATIONS; pass++) {
+        bool changed = false;
+        owner->valid = true;
+        for (int ordinal = 0; ordinal < owner->count; ordinal++) {
+            int index = source_packages_order(graph, ordinal);
+            if (!needed[index]) {
+                continue;
+            }
+            script_package_document documents[SOURCE_PACKAGE_MAX_FILES];
+            script_package_import *imports = NULL;
+            package_generation *
+                generation = generation_new(owner, index, native, bindings, backend, documents, &imports);
+            package_generation
+                *old = previous_package(previous, generation->view.identity);
+            if (reusable(old, generation)) {
+                release(generation);
+                generation = retain(old);
+            } else {
+                prepare_generation(generation, documents, imports, acount(imports));
+            }
+            afree(imports);
+            release(owner->packages[index]);
+            owner->packages[index] = generation;
+            owner->valid &= generation->view.valid;
+            const script_analysis *analysis = generation->view.analysis;
+            for (int i = 0; analysis && i < analysis->request_count; i++) {
+                const script_specialization_request *input = &analysis->requests[i];
+                bool known = false;
+                for (int j = 0; j < acount(owner->requests); j++) {
+                    if (owner->requests[j].id == input->id) {
+                        known = true;
+                        if (!same_request(&owner->requests[j], input)) {
+                            snprintf(owner->error, sizeof owner->error, "Imported specialization identity collides with different arguments");
+                        }
+                        break;
+                    }
+                }
+                if (known) {
+                    continue;
+                }
+                if (acount(owner->requests) >= PACKAGE_SPECIALIZATIONS) {
+                    snprintf(owner->error, sizeof owner->error, "Project polymorphic specialization budget exceeded");
+                    continue;
+                }
+                apush(owner->requests, own_request(&owner->storage, input));
+                changed = true;
+            }
         }
-        script_package_document documents[SOURCE_PACKAGE_MAX_FILES];
-        script_package_import *imports = NULL;
-        package_generation *
-            generation = generation_new(owner, index, native, bindings, backend, documents, &imports);
-        package_generation *old = previous_package(previous, generation->view.identity);
-        if (reusable(old, generation)) {
-            release(generation);
-            generation = retain(old);
-            owner->reused++;
-        } else {
-            prepare_generation(generation, documents, imports, acount(imports));
+        if (!changed) {
+            break;
         }
-        afree(imports);
-        owner->packages[index] = generation;
-        owner->valid = owner->valid && generation->view.valid;
     }
     free(needed);
+    owner->valid = !owner->error[0];
+    for (int i = 0; i < owner->count; i++) {
+        package_generation *generation = owner->packages[i];
+        if (!generation) {
+            continue;
+        }
+        const script_analysis *analysis = generation->view.analysis;
+        if (!generation->view.valid && !generation->view.diagnostic_count) {
+            bool reported = false;
+            for (int j = 0; analysis && j < analysis->request_count; j++) {
+                diagnostic(generation, analysis->requests[j].origin, "Imported template has no concrete specialization; inspect its defining package");
+                reported = true;
+            }
+            if (!reported) {
+                diagnostic(generation, (script_range){ .document = -1 }, "Imported package is invalid");
+            }
+        }
+        owner->valid &= generation->view.valid;
+        if (!generation->view.valid) {
+            source_package_exports_free(generation->export_owner);
+            generation->export_owner = NULL;
+            generation->view.exports = NULL;
+        }
+        owner->reused += previous_package(previous, generation->view.identity) ==
+                         generation;
+    }
     /* Dependency construction above uses graph indices. Public enumeration
      * contains only prepared packages, in the graph's original index order. */
     int count = 0;
@@ -561,5 +752,7 @@ void authoring_packages_free(authoring_packages *owner)
     }
     free(owner->packages);
     source_package_snapshot_free(owner->snapshot);
+    afree(owner->requests);
+    arena_free(&owner->storage);
     free(owner);
 }

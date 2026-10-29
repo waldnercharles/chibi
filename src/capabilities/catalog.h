@@ -247,6 +247,8 @@ typedef struct
 typedef struct
 {
     bool is_type;
+    bool is_callable;
+    uint64_t callable; /* Compile-time identity; never a runtime closure value. */
     script_type type;
     pin_value value;
 } script_compile_value;
@@ -266,6 +268,7 @@ typedef struct
     const char *name, *binder;
     script_type type;
     bool comptime, type_value, binds_type;
+    const char *callable_type; /* Signature source when this parameter is callable. */
 } script_template_parameter;
 typedef struct
 {

@@ -1314,6 +1314,9 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             return Fail(forest, item.node, document, format_text("Unknown name '{}'", wanted));
         }
         binding := names[found];
+        if (binding.place == GenericFunctionPlace || binding.place == GenericTypePlace) {
+            return Fail(forest, item.node, document, "Non-escaping functions may only be called or forwarded to a callable parameter");
+        }
         if (binding.place == NarrowedPlace) {
             // A narrowed name reads its optional, then takes the payload,
             // each watched.
@@ -2765,20 +2768,39 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
         count: int = 0;
+        callback_signature := GenericCallbackSignature(forest, text, names, item.node);
+        labeled := callback_signature >= 0 || GenericResolvedCall(names, item.node);
+        callback_parameters: int[] = [];
+        position: int = 0;
         argument := FirstMember(forest, Field(forest, item.node, "arguments"));
         while (argument >= 0) {
+            if (GenericOmitted(names, argument)) {
+                argument = NextMember(forest, argument);
+                continue;
+            }
             // A callable takes neither yet; reject them before an argument
             // is read positionally.
-            if (Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument")) {
+            if ((Is(forest, argument, "named_argument") && !labeled) || Is(forest, argument, "typed_argument")) {
                 return Fail(forest, argument, document, format_text("unsupported syntax '{}'", forest[argument].kind));
             }
-            expected := Visit(argument);
-            if (found >= 0 && count < expected_count) {
-                param := params[callables[found].first + count];
-                expected = Expect(argument, param.storage, param.container, param.record);
-                if (param.reference && Is(forest, argument, "address_expression")) {
+            parameter_index := GenericCallParameter(forest, text, callables, params, names, found, item.node, argument, position);
+            if (labeled) {
+                if (parameter_index < 0 || callback_parameters.contains(parameter_index)) {
+                    return Fail(forest, argument, document, "Unknown or repeated callable parameter label");
+                }
+                callback_parameters.append(parameter_index);
+            }
+            value_node := argument;
+            if (labeled && Is(forest, argument, "named_argument")) {
+                value_node = Field(forest, argument, "value");
+            }
+            expected := Visit(value_node);
+            if (found >= 0 && parameter_index < expected_count) {
+                param := params[callables[found].first + parameter_index];
+                expected = Expect(value_node, param.storage, param.container, param.record);
+                if (param.reference && Is(forest, value_node, "address_expression")) {
                     // `&x` lends x's location for the call.
-                    expected.node = Unparenthesized(forest, Field(forest, argument, "operand"));
+                    expected.node = Unparenthesized(forest, Field(forest, value_node, "operand"));
                     expected.phase = ReferencePhase;
                 } else if (param.reference) {
                     expected.phase = ScopedPhase;
@@ -2787,17 +2809,18 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             next.append(expected);
             if (native >= 0) {
                 next.extend(NativeArgumentWork(forest, text, names, item.node, argument));
-            } else if (found >= 0 && count < expected_count && !params[callables[found].first + count].reference &&
+            } else if (found >= 0 && parameter_index < expected_count && !params[callables[found].first + parameter_index].reference &&
                        !LentArgument(forest, text, names, argument)) {
-                next.append(Resume(argument, CopyValuePhase, 0, 0));
+                next.append(Resume(value_node, CopyValuePhase, 0, 0));
             }
             count += 1;
+            if (!Is(forest, argument, "named_argument")) { position += 1; }
             argument = NextMember(forest, argument);
         }
         // A variadic native's last parameter takes any number of arguments,
         // and an omitted argument of a function takes its default.
         arity := count == expected_count;
-        if (found >= 0 && count < expected_count) {
+        if (!labeled && found >= 0 && count < expected_count) {
             // Every omitted argument needs a default.
             arity = true;
             at_omitted := count;
@@ -2810,6 +2833,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             return Fail(forest, item.node, document, "call has the wrong number of arguments");
         }
         finish := Resume(item.node, 1, found, count);
+        if (labeled) {
+            finish.c = 8;
+        }
         next.append(finish);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
     }
@@ -3017,6 +3043,20 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     // The given arguments, then the defaults of those the call omits.
     arguments: Value[] = slice(values, first, count);
+    if (item.c == 8) {
+        source_arguments := Members(forest, Field(forest, item.node, "arguments"));
+        ordered := arguments;
+        ordinal: int = 0;
+        position: int = 0;
+        for (source_argument in source_arguments) {
+            if (GenericOmitted(names, source_argument)) { continue; }
+            parameter := GenericCallParameter(forest, text, callables, params, names, item.a, item.node, source_argument, position);
+            ordered[parameter] = arguments[ordinal];
+            if (!Is(forest, source_argument, "named_argument")) { position += 1; }
+            ordinal += 1;
+        }
+        arguments = ordered;
+    }
     given: NativeArgument[] = [];
     if (linked) {
         switch BindNative(forest, text, item.node, NativeSources(forest, item.node, item.c == 7),

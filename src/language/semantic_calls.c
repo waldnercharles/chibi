@@ -889,20 +889,18 @@ static bool field_argument(
     if (ts_node_is_null(value)) {
         value = script_analyzer_field(argument, "source");
     }
-    int expression = script_analyzer_expression(a, value, record->fields[field].type);
-    script_analyzer_require(a, value, record->fields[field].type, script_analyzer_expr_type(a, expression));
+    script_catalog_field selected = record->fields[field];
+    int expression = script_analyzer_expression(a, value, selected.type);
+    script_analyzer_require(a, value, selected.type, script_analyzer_expr_type(a, expression));
     script_expression *structure = &a->out->expressions[aggregate];
     for (int i = 0; i < acount(structure->arguments); i++) {
-        if (structure->arguments[i].member == record->fields[field].id) {
+        if (structure->arguments[i].member == selected.id) {
             script_analyzer_diagnostic(a, argument, "Duplicate structured argument '%s'", name);
         }
     }
     apush(
         structure->arguments,
-        ((script_argument){ expression,
-                            field,
-                            record->fields[field].id,
-                            script_analyzer_range(a, argument) })
+        ((script_argument){ expression, field, selected.id, script_analyzer_range(a, argument) })
     );
     structure->argument_count = acount(structure->arguments);
     structure->effects |= script_analyzer_expr_effects(a, expression);
@@ -920,7 +918,8 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
     }
     int found = -1, best_cost = INT_MAX, best_literal_cost = INT_MAX;
     for (int c = 0; c < a->catalog->capability_count; c++) {
-        const script_catalog_capability *candidate = &a->catalog->capabilities[c];
+        script_catalog_capability row = a->catalog->capabilities[c];
+        const script_catalog_capability *candidate = &row;
         const char *full = candidate->qualified_name ? candidate->qualified_name
                                                      : candidate->name;
         if (!script_analyzer_native_capability(a, candidate->id) ||
@@ -1497,6 +1496,10 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         return component_reference(a, node);
     }
     const script_catalog_capability *sender = emitting ? event_sender(a) : NULL;
+    script_catalog_capability sender_signature = sender
+                                                   ? *sender
+                                                   : (script_catalog_capability){ 0 };
+    sender = sender ? &sender_signature : NULL;
     if (emitting && !sender) {
         script_analyzer_diagnostic(a, node, "This program cannot send events");
         free(name);
@@ -1584,6 +1587,12 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                           : script_analyzer_callable_symbol(a, name);
     const script_catalog_capability *capability = sender;
     int function_index = symbol >= 0 ? a->out->symbols[symbol].function : -1;
+    if (symbol >= 0 && function_index < 0 && a->out->symbols[symbol].callable_binding) {
+        capability = script_catalog_capability_by_id(
+            a->catalog,
+            a->out->symbols[symbol].capability
+        );
+    }
     int entry_index = -1;
     if (sender) {
         receiver = event_receiver(a, target, sender);
@@ -1595,6 +1604,13 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     if (specialized >= 0) {
         function_index = specialized;
         symbol = a->out->functions[specialized].symbol;
+    }
+    if (symbol < 0 && !emitting) {
+        int specialized_import = script_analyzer_package_specialize(a, node, name, &resolved_arguments);
+        if (specialized_import >= 0) {
+            function_index = specialized_import;
+            symbol = a->out->functions[specialized_import].symbol;
+        }
     }
     if (symbol < 0 && !emitting) {
         int imported = -1;
@@ -1774,6 +1790,12 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             script_analyzer_diagnostic(a, target, "Use self instead of Self()");
         }
     }
+    /* Argument analysis may import another template environment and grow the
+     * catalog. Signature spans are arena-owned; the catalog row can move. */
+    if (capability && capability != &selected) {
+        selected = *capability;
+        capability = &selected;
+    }
     const script_function *function = function_index >= 0
                                         ? &a->out->functions[function_index]
                                         : NULL;
@@ -1844,13 +1866,18 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             if (script_analyzer_named_count(name_node) > 1 &&
                 field_argument(a, &result, capability, function, seen, argument_name, argument)) {
                 free(argument_name);
+                function = function_index >= 0 ? &a->out->functions[function_index]
+                                               : NULL;
                 continue;
             }
-            parameter = capability
-                          ? script_analyzer_parameter_index(capability->parameters, parameter_count, argument_name)
-                      : function
-                          ? script_analyzer_authored_parameter_index(a, function, argument_name)
-                          : -1;
+            parameter = script_analyzer_callable_parameter_index(a, symbol, argument_name);
+            if (parameter == -2) {
+                parameter = capability
+                              ? script_analyzer_parameter_index(capability->parameters, parameter_count, argument_name)
+                          : function
+                              ? script_analyzer_authored_parameter_index(a, function, argument_name)
+                              : -1;
+            }
             if (parameter == -1 && capability) {
                 parameter = variadic_parameter(
                     capability,
@@ -2027,6 +2054,8 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         result.effects |= argument_effects(a, expression_index);
         function = function_index >= 0 ? &a->out->functions[function_index] : NULL;
     }
+    bool callable_parameter = script_analyzer_callable_parameter_index(a, symbol, "") !=
+                            -2;
     for (int i = 0; i < parameter_count; i++) {
         if (!seen[i] && symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION &&
             a->out->symbols[symbol].initializer >= 0) {
@@ -2043,9 +2072,10 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             }
         }
         int authored_default = -1;
-        if (!seen[i] && function) {
+        if (!seen[i] && function && !callable_parameter) {
             int parameter = function->parameters[i];
             script_analyzer_resolve_initializer(a, parameter);
+            function = &a->out->functions[function_index];
             authored_default = a->out->symbols[parameter].initializer;
             if (authored_default >= 0) {
                 apush(
@@ -2056,7 +2086,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             }
         }
         if (!seen[i] && authored_default < 0 &&
-            (!capability || !capability->parameters[i].has_default)) {
+            (callable_parameter || !capability || !capability->parameters[i].has_default)) {
             script_analyzer_diagnostic(
                 a,
                 arguments,
@@ -2065,8 +2095,8 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                            : a->out->symbols[function->parameters[i]].name
             );
         }
-        if (!seen[i] && capability && capability->parameters[i].default_owner &&
-            a->out->owner_symbol >= 0) {
+        if (!seen[i] && capability && !callable_parameter &&
+            capability->parameters[i].default_owner && a->out->owner_symbol >= 0) {
             int owner = a->out->owner_symbol;
             int index = script_analyzer_expr_add(
                 a,
@@ -2087,7 +2117,8 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             result.effects |= script_analyzer_expr_effects(a, index);
             seen[i] = true;
         }
-        if (!seen[i] && capability && capability->parameters[i].has_default) {
+        if (!seen[i] && capability && !callable_parameter &&
+            capability->parameters[i].has_default) {
             pin_value value = { 0 };
             if (pin_value_capture_to_arena(
                     &a->out->constants,

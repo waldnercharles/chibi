@@ -82,6 +82,12 @@ static size_t field_bytes(const type_field *field)
         [PIN_POINTER] = sizeof(void *),
         [PIN_QUERY] = sizeof(void *),
     };
+    if (field->container == PIN_CONTAINER_ARRAY) {
+        return sizeof(pin_array *);
+    }
+    if (field->container != PIN_CONTAINER_SINGLE) {
+        return SIZE_MAX;
+    }
     if (field->type == PIN_STRUCT) {
         const type_desc *type = type_field_type(field, (type_resolver){ 0 });
         return type && field->size == type->size ? type->size : SIZE_MAX;
@@ -250,7 +256,8 @@ static int read_struct(
             read_error(reader, "missing struct field %s.%s", type->name, field->name);
             return -1;
         }
-        if (field->type == PIN_STRUCT && !av_is_obj(value)) {
+        if (field->type == PIN_STRUCT &&
+            field->container == PIN_CONTAINER_SINGLE && !av_is_obj(value)) {
             read_error(reader, "invalid struct field %s.%s", type->name, field->name);
             return -1;
         }
@@ -267,15 +274,26 @@ static int read_struct(
                 const type_desc *child = type_field_type(field, (type_resolver){ 0 });
                 reader->record = child ? child->carrier : NULL;
             }
-            result = read_value_into(
-                field->type,
-                field->type_name,
-                value,
-                &member,
-                reader,
-                field->type == PIN_STRUCT ? (unsigned char *)block + field->offset : NULL,
-                true
-            );
+            if (field->container == PIN_CONTAINER_ARRAY) {
+                pin_value declaration = { .type = field->type,
+                                          .container = field->container,
+                                          .type_name = field->type_name,
+                                          .record = field->layout
+                                                      ? field->layout->carrier
+                                                      : NULL };
+                result = read_typed(declaration, value, &member, reader);
+            } else {
+                result = read_value_into(
+                    field->type,
+                    field->type_name,
+                    value,
+                    &member,
+                    reader,
+                    field->type == PIN_STRUCT ? (unsigned char *)block + field->offset
+                                              : NULL,
+                    true
+                );
+            }
             reader->record = record;
         }
         if (result && !reader->failed && field->range_contract &&
@@ -294,7 +312,9 @@ static int read_struct(
             }
             return -1;
         }
-        if (field->type == PIN_STR) {
+        if (field->container == PIN_CONTAINER_ARRAY) {
+            memcpy((char *)block + field->offset, &member.ptr, sizeof member.ptr);
+        } else if (field->type == PIN_STR) {
             void *destination = (unsigned char *)block + field->offset;
             if (field->text_descriptor) {
                 *(const pin_string **)destination = member.text;

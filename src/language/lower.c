@@ -8227,6 +8227,7 @@ static behavior_function *query_evaluator(lower *parent, int index)
     lower l = *parent;
     l.slot_schemas = l.local_schemas = NULL;
     l.schema_builder = NULL;
+    l.temporaries = NULL;
     l.function = -1;
     l.query_evaluating = index + 1;
     l.query_banks = indices(l.a->symbol_count);
@@ -8378,6 +8379,7 @@ static behavior_function *query_evaluator(lower *parent, int index)
     free(l.results);
     free(l.captured);
     free(l.query_banks);
+    afree(l.temporaries);
     parent->failed = l.failed;
     parent->occurrences = l.occurrences;
     return function;
@@ -9153,6 +9155,44 @@ conflict:
     error(l, range, message);
     return false;
 }
+static const pin_record *lower_record_layout(
+    arena *storage,
+    const script_catalog *catalog,
+    int index,
+    const pin_record **records
+)
+{
+    if (records[index]) {
+        return records[index];
+    }
+    const script_catalog_type *type = &catalog->types[index];
+    type_field *fields = NULL;
+    for (int i = 0; i < type->field_count; i++) {
+        const script_catalog_field *field = &type->fields[i];
+        const script_catalog_type
+            *child = script_catalog_type_by_id(catalog, field->type.nominal);
+        type_field shape = { .name = field->name,
+                             .type = field->type.storage,
+                             .container = field->type.container,
+                             .type_name = child ? child->name : NULL };
+        if (field->type.storage == PIN_STRUCT && child && child->authored_record) {
+            const pin_record *nested = lower_record_layout(
+                storage,
+                catalog,
+                (int)(child - catalog->types),
+                records
+            );
+            shape.layout = &nested->type;
+        }
+        apush(fields, shape);
+    }
+    const pin_record *record = pin_record_create(storage, type->name, type->id, fields, acount(fields));
+    afree(fields);
+    assert(record && record->layout == type->layout && record->type.size == type->size);
+    records[index] = record;
+    return record;
+}
+
 static execution_module_plan *lower_analysis(
     const script_analysis *a,
     const script_catalog *catalog,
@@ -9218,6 +9258,7 @@ static execution_module_plan *lower_analysis(
     merged.type_count = acount(types);
     catalog = &merged;
     m->id = script_catalog_id("module", a->identity);
+    const pin_record **records = xcalloc((size_t)catalog->type_count, sizeof *records);
     for (int i = 0; i < catalog->type_count; i++) {
         const script_catalog_type *type = &catalog->types[i];
         if ((type->internal && type->type.storage != PIN_POINTER &&
@@ -9227,22 +9268,7 @@ static execution_module_plan *lower_analysis(
         }
         const pin_record *record = NULL;
         if (type->authored_record) {
-            type_field *fields = NULL;
-            for (int j = 0; j < type->field_count; j++) {
-                const script_catalog_type *nominal = script_catalog_type_by_id(
-                    catalog,
-                    type->fields[j].type.nominal
-                );
-                apush(
-                    fields,
-                    ((type_field){ .name = type->fields[j].name,
-                                   .type = type->fields[j].type.storage,
-                                   .type_name = nominal ? nominal->name : NULL })
-                );
-            }
-            record = pin_record_create(&m->storage, type->name, type->id, fields, acount(fields));
-            afree(fields);
-            assert(record && record->layout == type->layout && record->type.size == type->size);
+            record = lower_record_layout(&m->storage, catalog, i, records);
         }
         const char *name = type->name;
         if (name) {
@@ -9261,6 +9287,7 @@ static execution_module_plan *lower_analysis(
                                            .size = type->size })
         );
     }
+    free(records);
     bool entity_declared = false;
     for (int i = 0; i < acount(m->types); i++) {
         entity_declared |= m->types[i].id == catalog->entity_type;

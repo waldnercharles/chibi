@@ -514,23 +514,24 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably)
     snprintf(migration_canonical, sizeof migration_canonical, "%s/Canonical.chibi", migration_behaviors);
     REQUIRE(!mkdir(migration_content, 0700));
     REQUIRE(!mkdir(migration_behaviors, 0700));
-    const char *incomplete = "Incomplete :: behavior { on MissingEvent {} }\n";
+    const char
+        *incomplete = "Incomplete :: behavior { on MissingEvent :: () {} }\n";
     REQUIRE(write_migration_fixture(migration_incomplete, incomplete));
     const char *canonical = "Canonical :: behavior {\n    count: retain int = "
-                            "1\n    on Tick { count = count + 1 }\n}\n";
+                            "1\n    on Tick :: () { count = count + 1 }\n}\n";
     REQUIRE(write_migration_fixture(migration_canonical, canonical));
     REQUIRE(
-        write_migration_fixture(migration_manifest, "version 25\nname \"Native migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
+        write_migration_fixture(migration_manifest, "version 38\nname \"Native migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
     );
     /* A generated call with an unresolved receiver cannot be proven equivalent.
      * Unlike the unrelated MissingEvent document, it must block finalization. */
     REQUIRE(
-        write_migration_fixture(migration_source, "Demo :: behavior { on Tick { set_transform_x(2.0, missing_entity) } }\n")
+        write_migration_fixture(migration_source, "Demo :: behavior { on Tick :: () { set_transform_x(2.0, missing_entity) } }\n")
     );
     REQUIRE(authoring_project_migrate(migration_root, native, error, sizeof error) == -1);
     REQUIRE(error[0]);
     migration_text = file_read_text(migration_manifest);
-    REQUIRE(migration_text && strstr(migration_text, "version 25"));
+    REQUIRE(migration_text && strstr(migration_text, "version 38"));
     /* The failed upgrade left every source at the current version and said so
      * in the manifest, so going back to an old source means restoring the
      * manifest too. */
@@ -538,17 +539,17 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably)
     free(migration_text);
     migration_text = NULL;
     const char
-        *input = "Demo :: behavior { on Tick { e := Self()\n"
+        *input = "Demo :: behavior { on Tick :: () { e := Self()\n"
                  "x := get_transform().Value.x\nset_transform_x(x, self) } }\n";
     REQUIRE(
-        write_migration_fixture(migration_manifest, "version 25\nname \"Native migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
+        write_migration_fixture(migration_manifest, "version 38\nname \"Native migration\"\ncontent \"content\"\nstart_scene \"Start.kdl\"\n")
     );
     REQUIRE(write_migration_fixture(migration_source, input));
     int steps = authoring_project_migrate(migration_root, native, error, sizeof error);
     if (steps < 0) {
         fprintf(stderr, "native project migration: %s\n", error);
     }
-    REQUIRE(steps == CHIBI_PROJECT_VERSION - 25);
+    REQUIRE(steps == CHIBI_PROJECT_VERSION - 38);
     migration_text = file_read_text(migration_source);
     REQUIRE(migration_text);
     REQUIRE(strstr(migration_text, "e := self"));
@@ -570,22 +571,11 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably)
     migration_reopened = file_read_text(migration_source);
     REQUIRE(migration_reopened && !strcmp(migration_text, migration_reopened));
     free(migration_reopened);
-    /* Version 30 names every handler's payload, even an empty one. */
     migration_reopened = file_read_text(migration_incomplete);
-    REQUIRE(
-        migration_reopened &&
-        !strcmp("Incomplete :: behavior { on MissingEvent :: () {} }\n", migration_reopened)
-    );
+    REQUIRE(migration_reopened && !strcmp(incomplete, migration_reopened));
     free(migration_reopened);
     migration_reopened = file_read_text(migration_canonical);
-    REQUIRE(
-        migration_reopened &&
-        !strcmp(
-            "Canonical :: behavior {\n    count: retain int = "
-            "1\n    on Tick :: () { count = count + 1 }\n}\n",
-            migration_reopened
-        )
-    );
+    REQUIRE(migration_reopened && !strcmp(canonical, migration_reopened));
     return true;
 }
 #endif

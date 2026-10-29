@@ -1,0 +1,6 @@
+Hero :: prototype (Base, Other) {
+    Health {
+        current: 10,
+        maximum: 10
+    }
+}

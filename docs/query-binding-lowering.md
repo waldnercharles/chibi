@@ -91,29 +91,3 @@ execution. Browser execution was not attempted during the main/schema refresh.
 Browser loader, isolation, iframe and worker delivery remain unrun, as do
 GPU/Studio suites and other platform architectures. This does not waive server
 checks, review requirements or holds.
-
-## Historical measurements
-
-These samples belong to the original baseline and candidate described above,
-before the main/schema refresh. They remain provenance, not measurements of the
-refreshed candidate. Fresh exact-head validation is recorded separately.
-
-Linux x86-64; CMake 4.4.3, Ninja 1.13.2, Clang 19.1.7 native Release and
-Emscripten 6.0.10 Release with bundled Node 24.19.0. Baseline and candidate use
-matching toolchains/flags per target. Each function gets one warmup and five
-trials of 512 fresh-context invocations; compilation is outside timing. Correct
-results and actual compiled entry availability are checked. Timing never decides
-whether a regression test passes.
-
-| Native Release path | Baseline median µs/read | Direct median µs/read | Allocation calls/read, before → after | Requested bytes/read, before → after |
-| --- | ---: | ---: | ---: | ---: |
-| VM | 0.146119 | 0.040334 | 5 → 1 | 1,616 → 64 |
-| SLJIT | 0.094869 | 0.011951 | 4 → 0 | 1,456 → 0 |
-
-The structurally eliminated work is one host call and three data-bank values per
-read. Both versions allocate zero arena blocks. These very short samples include
-fresh-context setup/teardown and scheduling noise; an existing query row can
-reuse host banks. They are not whole-application speedups, steady-row costs,
-peak-memory measurements, or evidence of parity with hand-written C. [Raw trials](query-binding-measurements.json) retain all five samples, allocation
-traffic and matching build descriptions. Exact-head test/build results and final
-commit identities are recorded with the PR evidence.

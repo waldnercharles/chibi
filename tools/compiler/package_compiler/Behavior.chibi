@@ -580,7 +580,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
         }
         callable: Callable = {name: Text(forest, source, Field(forest, declaration, "name")), package: package,
                               document: package, node: declaration, first: length(params), count: 0, result: 0,
-                              result_container: 0, result_record: -1, results: 0, waits: false};
+                              result_container: 0, result_record: -1, results: 0, waits: false, identity: 0, owner_package: package};
         callables.append(callable);
         handled.append(tick);
     }
@@ -590,6 +590,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
             declared := StateType(forest, source, table, entity, member);
             if ((!Numeric(declared.storage) && declared.storage != BoolStorage && declared.storage != TextStorage &&
                  declared.storage != HandleStorage) || declared.container != 0 ||
+                CharType(table^, declared.storage, declared.container, declared.record) ||
                 (declared.storage == HandleStorage && declared.record < 0)) {
                 return SourceMembers.Failed(Diagnose(forest, member, package, "state type is not supported yet"));
             }
@@ -633,7 +634,7 @@ DeclareSource :: (forest: snapshot.SnapshotNode[], document: snapshot.Document, 
             }
             callable: Callable = {name: name, package: package, document: package, node: member, first: first,
                                   count: game_events[found].count, result: 0, result_container: 0, result_record: -1,
-                                  results: 0, waits: false};
+                                  results: 0, waits: false, identity: 0, owner_package: package};
             callables.append(callable);
             handled.append(found);
         } else if (Is(forest, member, "function_declaration")) {
@@ -799,7 +800,7 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
         }
         index += 1;
     }
-    declared_types := NativeTypes(types);
+    declared_types := CharTypes(NativeTypes(types));
     members := NativeFields(type_fields);
     switch DeclareMath(forest, documents, declared_types, members, target) {
         case .Failed(message):
@@ -935,6 +936,8 @@ CompileSources :: (identities: string[], sources: string[], target: Target, abi:
                 switch body {
                     case .Failed(diagnostic):
                         return Result.Rejected(diagnostic);
+                    case .Specialize(template, call, arguments, caller_names):
+                        return InputFailure(callable.document, "unresolved generic call");
                     case .Inferred(value):
                         return InputFailure(callable.document, "expression inferred where a callable body was required");
                     case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,

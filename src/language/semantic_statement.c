@@ -1260,8 +1260,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
     }
     if (script_analyzer_is(node, "return_statement")) {
         result.kind = SCRIPT_STMT_RETURN;
-        script_function *function = a->function >= 0 ? &a->out->functions[a->function]
-                                                     : NULL;
+        int result_function = a->function;
+        script_function *function = result_function >= 0
+                                      ? &a->out->functions[result_function]
+                                      : NULL;
         if (!function) {
             script_analyzer_diagnostic(a, node, "Return requires a callable body");
             return script_analyzer_statement_add(a, result);
@@ -1271,7 +1273,8 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         while (function->parent >= 0 &&
                (function->kind == SCRIPT_FUNCTION_MACRO_ENTRY ||
                 function->kind == SCRIPT_FUNCTION_CONTINUATION)) {
-            function = &a->out->functions[function->parent];
+            result_function = function->parent;
+            function = &a->out->functions[result_function];
         }
         TSNode values = script_analyzer_field(node, "value"),
                outcome = script_analyzer_field(node, "outcome");
@@ -1319,6 +1322,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                              ? a->out->symbols[function->results[parameter]].type
                              : script_analyzer_bad_type();
                 int expr = script_analyzer_expression(a, value, type);
+                function = &a->out->functions[result_function];
                 script_analyzer_require(a, value, type, script_analyzer_expr_type(a, expr));
                 if (type.flags & SCRIPT_TYPE_UNTYPED) {
                     infer_type(a, function->results[parameter], expr, value);

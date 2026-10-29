@@ -130,7 +130,7 @@ if(TARGET Chibi::program)
 endif()
 if(TARGET chibi_build_host)
     target_sources(test_tools PRIVATE native_aot_driver.c)
-    target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c build_sdk.c)
+    target_sources(test_tools PRIVATE build_process.c build_toolchain.c build_graph.c build_sdk.c runtime_sdk.c)
     target_link_libraries(test_tools PRIVATE chibi_build_host)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_BUILD_PROCESS=1)
     add_dependencies(test_tools chibi-build-host)
@@ -313,23 +313,6 @@ if(TARGET Chibi::project_document AND TARGET Chibi::text_source AND TARGET Chibi
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_project_document_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::project_document Chibi::text_source Chibi::asset_text)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_DOCUMENT=1)
-endif()
-
-# Exact Studio declaration migration through the public document/syntax owners.
-if(TARGET Chibi::project_document AND TARGET Chibi::language_syntax AND
-   TARGET Chibi::authoring AND TARGET Chibi::json)
-    configure_file("${CHIBI_TOOL_ROOT}/test/tools/fixture.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/tools/fixture.h" COPYONLY)
-    add_library(chibi_project_declarations_consumer OBJECT project_declarations.c)
-    target_include_directories(chibi_project_declarations_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_compile_definitions(chibi_project_declarations_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
-    target_link_libraries(chibi_project_declarations_consumer PRIVATE Chibi::project_document
-        Chibi::language_syntax Chibi::authoring Chibi::json)
-    target_compile_options(chibi_project_declarations_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_project_declarations_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::project_document Chibi::language_syntax
-        Chibi::authoring Chibi::json)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_DECLARATIONS=1)
 endif()
 
 # Reflection cases drive the native generator that SDK packages are built with.

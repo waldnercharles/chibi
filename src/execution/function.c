@@ -1272,8 +1272,8 @@ static bool managed_plain_record(const type_desc *layout, type_resolver resolver
 {
     for (int i = 0; i < layout->field_count; i++) {
         const type_field *field = &layout->fields[i];
-        if (field->type == PIN_UNION || field->type == PIN_POINTER ||
-            field->type == PIN_QUERY) {
+        if (field->container != PIN_CONTAINER_SINGLE || field->type == PIN_UNION ||
+            field->type == PIN_POINTER || field->type == PIN_QUERY) {
             return false;
         }
         if (field->type != PIN_STRUCT) {
@@ -1457,10 +1457,14 @@ static const char *managed_scan(
                     continue;
                 }
                 pin_value member = { .type = field->type,
+                                     .container = field->container,
                                      .type_name = field->type_name,
                                      .schema = value.schema };
                 const void *data = (const char *)value.ptr + field->offset;
-                if (field->type == PIN_STRUCT) {
+                if (field->container == PIN_CONTAINER_ARRAY) {
+                    memcpy(&member.ptr, data, sizeof member.ptr);
+                    member.record = field->layout ? field->layout->carrier : NULL;
+                } else if (field->type == PIN_STRUCT) {
                     const type_desc *child = type_field_type(field, value_resolver(&value));
                     if (!child) {
                         error = "Managed value requires a resolved nested "

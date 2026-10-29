@@ -1,2 +1,0 @@
-Assertion failed: (folded), function script_analysis_fold_constants, file semantic_constant.c, line 166.
-Running: negative-below-int64 Test command wall time: 0.104s; includes in-test fixture setup; external configuration/build excluded.

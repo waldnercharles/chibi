@@ -69,74 +69,9 @@ opcode changes neither existing payload layout nor existing opcode semantics and
 does not require a manual prepared version bump. No used project storage contract
 changes, so no project migration/version bump is needed.
 
-## Baseline and validation
+## Checks
 
-Before implementation, four fixed generic C/pico cases independently passed on
-native ASan/UBSan and serial Wasm: 492 assertions each, with 16 small source
-compilations, 22 event dispatches and 12 direct calls, budget 100 per invocation.
-They cover scalar bits and ranges, versions/deferred observers, managed siblings,
-ordinary and compound fallbacks, managed publication, and six callback/storage
-failure cases. An initial malformed fixture and missing activation were repaired
-before those baseline passes; the failed revision's evidence was retained.
-
-The dedicated `language-component-write` and `wasm-component-write` routes keep
-the production supervisor. Review expanded implementation fixtures and generated-C
-checks for the affected contracts, and record the source/binary identities and
-actual results. The fixed selector is included once
-in each regular language and Wasm group, preserving the other members and their
-order. Run those complete groups on the candidate when their coverage is required.
-Historical selected results do not establish a full-suite pass.
-
-The native `language-component-write-layout` route selects only the same eight-map
-C sizing case, using the actual internal layout helper without building or executing
-authored code. It is a duplicate subset, deliberately omitted from `GROUPS` because
-`language-component-write` already runs it once. This bounded diagnostic route is
-for safe sizing negative controls, not a replacement for complete validation.
-
-Independent validation at checkpoint `519d9d79` passed, with source and binary
-identities checked before each serial route and after the matrix:
-
-- Native ASan/UBSan dedicated cases: 14 cases, 2,944 assertions, 0.143 seconds.
-- Serial Wasm dedicated cases: 14 cases, 2,906 assertions, 0.342 seconds.
-- Complete 29-member language group: 396 cases, 38,908 assertions, 21.172 seconds.
-- Complete 17-member Wasm group: 240 cases, 34,987 assertions, 4.635 seconds.
-- Generated C parity: 1 case, 6,039 assertions, 0.857 seconds.
-- Prepared integration: 19 cases, 833 assertions, 0.260 seconds.
-- Complete native tooling: 116 cases, 33,227 assertions, 23.787 seconds.
-
-Each route used the production supervisor; configuration and
-build time were separate. Before these passes, source review caught and repaired
-the native operand-cell reservation defect without executing unsafe generated
-code. The first candidate runtime then caught a fixture catalog-lifecycle error;
-balanced installation and static borrowed metadata fixed it. Both failures remain
-recorded.
-
-At checkpoint `42448f3c`, independent validation also passed the isolated layout
-route (1 case, 14 assertions), both complete language/Wasm groups, native tooling
-and prepared integration. In a separate worktree, removing only the checked-write
-stack reservation scan made the unchanged third sizing assertion fail as expected
-(3 cells instead of 16). That diagnostic never emitted or executed generated code.
-Restoring the exact source and rebuilding passed all 14 native write cases again,
-including ordinary/inspection compiled execution with live local sentinels.
-
-Integration with eligible main `f1bfe133` retains the reviewed module-composition
-fix and checked-write product bytes. Both selectors appear exactly once in the
-combined regular groups (30 language, 18 Wasm). Independent review and execution
-of exact integrated checkpoint `b38abe0e` passed:
-
-- Language group: 403 cases, 39,346 assertions, 22.575 seconds.
-- Wasm group: 247 cases, 35,425 assertions, 3.367 seconds.
-- Native tooling, including generated C: 116 cases, 33,227 assertions, 23.789 seconds.
-- Prepared integration: 19 cases, 833 assertions, 0.250 seconds.
-
-All four commands ran serially under the production supervisor, with
-source/artifact identities checked before each run and afterward. Native used
-Clang 19 Debug ASan/UBSan with leak detection disabled; Wasm used serial Release
-with test assertions. The earlier safe control was reverified, not replayed:
-its helper, guards and fixture bodies are identical in the integration.
-
-[Machine-readable validation evidence](scalar-component-writes-validation.json)
-records exact commits, hashes, configurations, workloads, failures and results.
-The subsequent documentation-only change does not alter product, fixture or
-policy bytes. Full suites were not run; no whole-app,
-performance, leak-check or unpublished historical-results claim is made.
+`language-component-write` and `wasm-component-write` cover scalar bits and
+ranges, versions and deferred observers, managed siblings, ordinary and compound
+fallbacks, managed publication, and callback/storage failures. Run them through
+`python3 tools/test_policy.py tool <route>`.

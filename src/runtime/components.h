@@ -1300,8 +1300,7 @@ typedef enum
 /* 2D lighting by holographic radiance cascades: light from emissive
  * materials, with shadows, bounce and fog. The first entity's settings light
  * the scene; a scene without one draws its materials unlit. HRC's
- * experiments and internal tuning are not authored here; tests and the HRC
- * lab set them (docs/hrc-lab.md). */
+ * experiments and internal tuning are not authored here; tests set them. */
 typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
 {
     /* Finest light grid as a fraction of the padded canvas; 0.5 solves one

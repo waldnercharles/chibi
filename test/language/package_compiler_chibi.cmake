@@ -1,5 +1,5 @@
 # Source-only standalone package compiler fixture.
-foreach(component Compile Body Steps Maps References Pointers Tasks TaskResults Tree Number Optional Sequences Queries QueryLoops Behavior Scalar Math)
+foreach(component Compile Body Generics Steps Maps References Pointers Tasks TaskResults Tree Number Optional Sequences Queries QueryLoops Behavior Scalar Math)
     string(TOUPPER "${component}" component_upper)
     set(source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/package_compiler/${component}.chibi")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")

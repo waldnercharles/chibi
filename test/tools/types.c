@@ -2162,9 +2162,403 @@ TEST_CASE(types_authored_wrappers_retain_native_children)
     return true;
 }
 
+TEST_CASE(types_compositional_layout_preflight_bounds_repeated_children)
+{
+    enum
+    {
+        LEVELS = 9,
+        FANOUT = 10
+    };
+    type_desc types[LEVELS] = { 0 };
+    type_field fields[LEVELS][FANOUT] = { 0 };
+    char names[LEVELS][32];
+    for (int level = 0; level < LEVELS; level++) {
+        snprintf(names[level], sizeof names[level], "Bounded.Level%d", level);
+        types[level] = (type_desc){ .name = names[level],
+                                    .fields = fields[level],
+                                    .field_count = level ? FANOUT : 1,
+                                    .size = level ? FANOUT * sizeof(pin_array *)
+                                                  : sizeof(int32_t) };
+        for (int field = 0; field < types[level].field_count; field++) {
+            static const char *const labels[] = { "a", "b", "c", "d", "e",
+                                                  "f", "g", "h", "i", "j" };
+            fields[level][field] = (type_field){
+                .name = labels[field],
+                .type = level ? PIN_STRUCT : PIN_I32,
+                .container = level ? PIN_CONTAINER_ARRAY : PIN_CONTAINER_SINGLE,
+                .offset = level ? (size_t)field * sizeof(pin_array *) : 0,
+                .size = level ? sizeof(pin_array *) : sizeof(int32_t),
+                .type_name = level ? types[level - 1].name : NULL,
+                .layout = level ? &types[level - 1] : NULL
+            };
+        }
+    }
+    const pin_record *small = pin_record_from_type(&snapshots, &types[2]);
+    REQUIRE(small && pin_record_valid(small));
+    REQUIRE(small->type.size == FANOUT * sizeof(pin_array *));
+    type_field field = { .name = "rows",
+                         .type = PIN_STRUCT,
+                         .container = PIN_CONTAINER_ARRAY,
+                         .type_name = types[LEVELS - 1].name,
+                         .layout = &types[LEVELS - 1] };
+    size_t before = arena_storage_bytes(&snapshots);
+    REQUIRE(!pin_record_from_type(&snapshots, &types[LEVELS - 1]));
+    REQUIRE(!pin_record_create_bytes("Bounded.Parent", 9998, &field, 1));
+    REQUIRE(!pin_record_create(&snapshots, "Bounded.Parent", 9998, &field, 1));
+    REQUIRE(arena_storage_bytes(&snapshots) == before);
+    return true;
+}
+
+TEST_CASE(types_native_boundary_rejects_unsupported_container_fields)
+{
+    type_field field = { .name = "values", .type = PIN_I32, .size = sizeof(int32_t) };
+    type_desc type = { .name = "test.unsupported_container_field",
+                       .size = sizeof(int32_t),
+                       .fields = &field,
+                       .field_count = 1 };
+    const type_desc *types[] = { &type };
+    type_catalog_pack pack = { .types = types, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    pointer_project_catalog = true;
+    int32_t payload = 0;
+    pin_value value = { .type = PIN_STRUCT, .type_name = type.name, .ptr = &payload };
+    const pin_container unsupported[] = { PIN_CONTAINER_SET,
+                                          PIN_CONTAINER_MAP,
+                                          PIN_CONTAINER_VIEW };
+    for (int i = 0; i < 3; i++) {
+        field.container = unsupported[i];
+        REQUIRE(pin_value_managed_boundary_error(&value));
+    }
+    type_catalog_set_project(NULL);
+    pointer_project_catalog = false;
+    return true;
+}
+
+TEST_CASE(types_compositional_record_depth_counts_records_once)
+{
+    for (int arrays_only = 0; arrays_only < 2; arrays_only++) {
+        type_field scalar = { .name = "value", .type = PIN_I32 };
+        const pin_record *record = pin_record_create(&snapshots, "Depth.Leaf", 9980, &scalar, 1);
+        REQUIRE(record && pin_record_valid(record));
+        for (int level = 1; level < TYPE_MAX_NESTING; level++) {
+            char name[64];
+            snprintf(name, sizeof name, "Depth.%d.Level%d", arrays_only, level);
+            type_field field = { .name = "next",
+                                 .type = PIN_STRUCT,
+                                 .container = arrays_only || level % 2
+                                                ? PIN_CONTAINER_ARRAY
+                                                : PIN_CONTAINER_SINGLE,
+                                 .type_name = record->type.name,
+                                 .layout = &record->type };
+            record = pin_record_create(&snapshots, name, 9980 + (uint64_t)level, &field, 1);
+            REQUIRE(record && pin_record_valid(record));
+        }
+        type_field extra = { .name = "next",
+                             .type = PIN_STRUCT,
+                             .container = PIN_CONTAINER_ARRAY,
+                             .type_name = record->type.name,
+                             .layout = &record->type };
+        REQUIRE(!pin_record_create_bytes("Depth.TooDeep", 9999, &extra, 1));
+        REQUIRE(!pin_record_create(&snapshots, "Depth.TooDeep", 9999, &extra, 1));
+        const pin_record *copy = pin_record_snapshot(&cow_producer, record);
+        REQUIRE(copy && pin_record_valid(copy) && pin_record_same(copy, record));
+    }
+    return true;
+}
+
+TEST_CASE(types_compositional_records_preserve_child_nominal_identity)
+{
+    const type_field scalar = { .name = "value", .type = PIN_I32 };
+    const pin_record *first = pin_record_create(&snapshots, "Nominal.Child", 92, &scalar, 1);
+    const pin_record *second = pin_record_create(&snapshots, "Nominal.Child", 93, &scalar, 1);
+    REQUIRE(first && second && first->layout == second->layout);
+    const pin_record *parents[2] = { 0 };
+    for (int array = 0; array < 2; array++) {
+        type_field field = { .name = "child",
+                             .type = PIN_STRUCT,
+                             .container = array ? PIN_CONTAINER_ARRAY : PIN_CONTAINER_SINGLE,
+                             .type_name = first->type.name,
+                             .layout = &first->type };
+        const pin_record *left = pin_record_create(&snapshots, "Nominal.Parent", 94, &field, 1);
+        field.layout = &second->type;
+        const pin_record *right = pin_record_create(&snapshots, "Nominal.Parent", 94, &field, 1);
+        REQUIRE(left && right && pin_record_valid(left) && pin_record_valid(right));
+        REQUIRE(left->frozen && right->frozen && left->layout == right->layout);
+        REQUIRE(!pin_record_same(left, right));
+        REQUIRE(!pin_value_layout_same(
+            &(pin_value){ .type = PIN_STRUCT, .type_name = left->type.name, .record = left },
+            &(pin_value){ .type = PIN_STRUCT, .type_name = right->type.name, .record = right }
+        ));
+        if (!array) {
+            parents[0] = left;
+            parents[1] = right;
+        }
+    }
+    type_desc native = first->type;
+    native.carrier = NULL;
+    const type_desc *native_types[] = { &native };
+    const type_catalog_pack pack = { .types = native_types, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    pointer_project_catalog = true;
+    type_field field = { .name = "child",
+                         .type = PIN_STRUCT,
+                         .type_name = native.name };
+    const pin_record *legacy = pin_record_create(&snapshots, "Nominal.Parent", 94, &field, 1);
+    REQUIRE(legacy && !legacy->frozen && pin_record_valid(legacy));
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(parents[i]->layout == legacy->layout);
+        REQUIRE(!pin_record_same(parents[i], legacy));
+        REQUIRE(!pin_record_same(legacy, parents[i]));
+        REQUIRE(!pin_value_layout_same(
+            &(pin_value){ .type = PIN_STRUCT,
+                          .type_name = parents[i]->type.name,
+                          .record = parents[i] },
+            &(pin_value){ .type = PIN_STRUCT, .type_name = legacy->type.name, .record = legacy }
+        ));
+    }
+    const pin_record *owned_native = pin_record_from_type(&snapshots, &native);
+    REQUIRE(owned_native && owned_native->native && pin_record_valid(owned_native));
+    REQUIRE(pin_value_layout_same(
+        &(pin_value){ .type = PIN_STRUCT, .type_name = native.name, .record = owned_native },
+        &(pin_value){ .type = PIN_STRUCT, .type_name = native.name }
+    ));
+    field.layout = &owned_native->type;
+    const pin_record *native_parent = pin_record_create(&snapshots, "Nominal.Parent", 94, &field, 1);
+    REQUIRE(
+        native_parent && native_parent->frozen &&
+        native_parent->layout == legacy->layout
+    );
+    REQUIRE(pin_record_same(native_parent, legacy) && pin_record_same(legacy, native_parent));
+    type_catalog_set_project(NULL);
+    pointer_project_catalog = false;
+    return true;
+}
+
+TEST_CASE(types_compositional_records_copy_arrays_and_retain_pointer_identity)
+{
+    arena_init_collectable(&cow_heap);
+    const type_field child_fields[] = {
+        { .name = "values", .type = PIN_I32, .container = PIN_CONTAINER_ARRAY },
+        { .name = "shared", .type = PIN_POINTER, .type_name = "^int" }
+    };
+    const pin_record *child = pin_record_create(&snapshots, "Composition.Child", 9971, child_fields, 2);
+    REQUIRE(child && pin_record_valid(child));
+    const type_field fields[] = { { .name = "child",
+                                    .type = PIN_STRUCT,
+                                    .type_name = child->type.name,
+                                    .layout = &child->type },
+                                  { .name = "rows",
+                                    .type = PIN_STRUCT,
+                                    .container = PIN_CONTAINER_ARRAY,
+                                    .type_name = child->type.name,
+                                    .layout = &child->type } };
+    const pin_record *record = pin_record_create(&cow_heap, "Composition.Parent", 9972, fields, 2);
+    REQUIRE(record && pin_record_valid(record) && record->frozen);
+    REQUIRE(record->type.fields[0].layout != &child->type);
+    REQUIRE(record->type.fields[0].layout->carrier->id == child->id);
+    REQUIRE(!record->type.fields[0].layout->carrier->native);
+    pin_pointer *pointer = arena_alloc(&cow_heap, sizeof *pointer);
+    *pointer = (pin_pointer){ .value = { .type = PIN_I32, .i = 91 },
+                              .storage = &cow_heap };
+    pin_arena_trace_pointer(&cow_heap, pointer);
+    pin_value integers = cow_integers(2, 10);
+    REQUIRE(integers.ptr);
+    void *child_data = arena_alloc(&snapshots, child->type.size);
+    memset(child_data, 0, child->type.size);
+    REQUIRE(!pin_write_field(&snapshots, child_data, &child->type.fields[0], integers));
+    REQUIRE(!pin_write_field(
+        &snapshots,
+        child_data,
+        &child->type.fields[1],
+        (pin_value){ .type = PIN_POINTER, .type_name = "^int", .ptr = pointer }
+    ));
+    pin_value child_value = { .type = PIN_STRUCT,
+                              .type_name = child->type.name,
+                              .record = child,
+                              .ptr = child_data };
+    pin_array shape = { .element_type = PIN_STRUCT,
+                        .type_name = child->type.name,
+                        .record = child };
+    pin_array *rows = pin_array_snapshot_like(&cow_heap, &shape, 1);
+    REQUIRE(rows && !pin_array_set(rows, 0, &child_value));
+    void *data = arena_alloc(&cow_heap, record->type.size);
+    memset(data, 0, record->type.size);
+    REQUIRE(!pin_write_field(&cow_heap, data, &record->type.fields[0], child_value));
+    REQUIRE(!pin_write_field(
+        &cow_heap,
+        data,
+        &record->type.fields[1],
+        (pin_value){ .type = PIN_STRUCT,
+                     .container = PIN_CONTAINER_ARRAY,
+                     .type_name = child->type.name,
+                     .record = child,
+                     .ptr = rows }
+    ));
+    pin_arena_trace_struct(&cow_heap, data, &record->type);
+    pin_value original = { .type = PIN_STRUCT,
+                           .type_name = record->type.name,
+                           .record = record,
+                           .ptr = data },
+              copy;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &copy, &original));
+    arena_free(&snapshots);
+    pin_value first_child, copied_child, before, after, first_pointer, copied_pointer;
+    REQUIRE(!pin_read_field(&cow_heap, original.ptr, &record->type.fields[0], &first_child));
+    REQUIRE(!pin_read_field(&cow_heap, copy.ptr, &record->type.fields[0], &copied_child));
+    REQUIRE(
+        !pin_read_field(&cow_heap, first_child.ptr, &first_child.record->type.fields[0], &before)
+    );
+    REQUIRE(
+        !pin_read_field(&cow_heap, copied_child.ptr, &copied_child.record->type.fields[0], &after)
+    );
+    REQUIRE(cow_append_integer(&after, 77));
+    REQUIRE(
+        ((pin_array *)before.ptr)->count == 2 && pin_array_get(before.ptr, 1).i == 11
+    );
+    REQUIRE(((pin_array *)after.ptr)->count == 3 && pin_array_get(after.ptr, 2).i == 77);
+    REQUIRE(
+        !pin_read_field(&cow_heap, first_child.ptr, &first_child.record->type.fields[1], &first_pointer)
+    );
+    REQUIRE(
+        !pin_read_field(&cow_heap, copied_child.ptr, &copied_child.record->type.fields[1], &copied_pointer)
+    );
+    REQUIRE(first_pointer.ptr == pointer && copied_pointer.ptr == pointer);
+    pointer->value.i = 103;
+    pin_value roots[] = { original, copy };
+    cow_collect(roots, 2);
+    REQUIRE(
+        arena_contains(&cow_heap, pointer) &&
+        ((pin_pointer *)copied_pointer.ptr)->value.i == 103
+    );
+    pin_value original_rows, copied_rows;
+    REQUIRE(!pin_read_field(&cow_heap, original.ptr, &record->type.fields[1], &original_rows));
+    REQUIRE(!pin_read_field(&cow_heap, copy.ptr, &record->type.fields[1], &copied_rows));
+    REQUIRE(
+        ((pin_array *)original_rows.ptr)->count == 1 &&
+        ((pin_array *)copied_rows.ptr)->count == 1
+    );
+    pin_value_collection_release(&copy);
+    REQUIRE(
+        ((pin_array *)before.ptr)->count == 2 && pin_array_get(before.ptr, 0).i == 10
+    );
+    cow_collect(&original, 1);
+    REQUIRE(arena_contains(&cow_heap, pointer) && pointer->value.i == 103);
+    return true;
+}
+
+static const pin_record *compositional_wire_layout(
+    execution_wire *wire,
+    void *user,
+    const pin_value *value,
+    bool authored
+)
+{
+    if (!wire->reading) {
+        return value->record;
+    }
+    type_resolver resolver = pin_record_resolver(user);
+    const type_desc *type = authored ? type_resolve(resolver, value->type_name) : NULL;
+    return type ? type->carrier : NULL;
+}
+TEST_CASE(types_compositional_record_documents_keep_owned_child_layouts)
+{
+    type_field scalar = { .name = "value", .type = PIN_I32 };
+    const pin_record *child = pin_record_create(&snapshots, "Document.Child", 9973, &scalar, 1);
+    REQUIRE(child);
+    const type_field fields[] = {
+        { .name = "child",
+          .type = PIN_STRUCT,
+          .type_name = child->type.name,
+          .layout = &child->type },
+        { .name = "values", .type = PIN_I32, .container = PIN_CONTAINER_ARRAY }
+    };
+    const pin_record *parent = pin_record_create(&cow_producer, "Document.Parent", 9974, fields, 2);
+    REQUIRE(parent && pin_record_valid(parent));
+    int32_t integer = 37;
+    pin_value row = { .type = PIN_STRUCT,
+                      .record = child,
+                      .type_name = child->type.name,
+                      .ptr = &integer };
+    pin_array *values = pin_array_allocate(&cow_producer, PIN_I32, NULL, 2);
+    REQUIRE(values);
+    pin_value item = { .type = PIN_I32, .i = 12 };
+    REQUIRE(!pin_array_set(values, 0, &item));
+    item.i = 34;
+    REQUIRE(!pin_array_set(values, 1, &item));
+    void *data = arena_alloc(&cow_producer, parent->type.size);
+    memset(data, 0, parent->type.size);
+    REQUIRE(!pin_write_field(&cow_producer, data, &parent->type.fields[0], row));
+    REQUIRE(!pin_write_field(
+        &cow_producer,
+        data,
+        &parent->type.fields[1],
+        (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = values }
+    ));
+    pin_value original = { .type = PIN_STRUCT,
+                           .record = parent,
+                           .type_name = parent->type.name,
+                           .ptr = data },
+              kept;
+    REQUIRE(!pin_value_collection_copy(&cow_heap, &kept, &original));
+    arena_free(&snapshots);
+    arena_free(&cow_producer);
+    source_document = av_doc_new();
+    av_value *document = pin_value_to_document(source_document, &kept);
+    REQUIRE(document);
+    pin_value restored;
+    char error[192];
+    REQUIRE(!pin_value_read_document(&cow_heap, kept, document, &restored, error, sizeof error));
+    REQUIRE(pin_value_equal(&kept, &restored));
+    pin_value nested, numbers;
+    REQUIRE(
+        !pin_read_field(&cow_heap, restored.ptr, &restored.record->type.fields[0], &nested)
+    );
+    REQUIRE(nested.record && !nested.record->native && *(int32_t *)nested.ptr == 37);
+    REQUIRE(
+        !pin_read_field(&cow_heap, restored.ptr, &restored.record->type.fields[1], &numbers)
+    );
+    REQUIRE(
+        ((pin_array *)numbers.ptr)->count == 2 &&
+        pin_array_get(numbers.ptr, 0).i == 12 && pin_array_get(numbers.ptr, 1).i == 34
+    );
+    execution_wire writer = { 0 };
+    execution_wire_value_owned(
+        &writer,
+        &kept,
+        compositional_wire_layout,
+        (void *)kept.record
+    );
+    REQUIRE(!writer.error && writer.size);
+    execution_wire reader = { .data = writer.data,
+                              .size = writer.size,
+                              .reading = true,
+                              .storage = &cow_heap };
+    pin_value decoded = { 0 };
+    execution_wire_value_owned(
+        &reader,
+        &decoded,
+        compositional_wire_layout,
+        (void *)kept.record
+    );
+    afree(writer.data);
+    REQUIRE(!reader.error && reader.offset == reader.size);
+    REQUIRE(pin_value_equal(&kept, &decoded));
+    pin_value snapshot;
+    REQUIRE(!pin_value_snapshot_owned_to_arena(&cow_heap, &snapshot, &kept));
+    REQUIRE(pin_value_equal(&kept, &snapshot));
+
+    return true;
+}
+
 void test_tool_types()
 {
     pu_setup(NULL, release_values);
+    RUN_TEST_CASE(types_compositional_layout_preflight_bounds_repeated_children);
+    RUN_TEST_CASE(types_native_boundary_rejects_unsupported_container_fields);
+    RUN_TEST_CASE(types_compositional_record_depth_counts_records_once);
+    RUN_TEST_CASE(types_compositional_records_preserve_child_nominal_identity);
+    RUN_TEST_CASE(types_compositional_records_copy_arrays_and_retain_pointer_identity);
+    RUN_TEST_CASE(types_compositional_record_documents_keep_owned_child_layouts);
     RUN_TEST_CASE(types_array_value_copy_isolates_elements_and_length);
     RUN_TEST_CASE(types_nested_array_value_copy_isolates_child_mutation);
     RUN_TEST_CASE(types_map_value_copy_preserves_order_and_isolates_updates);

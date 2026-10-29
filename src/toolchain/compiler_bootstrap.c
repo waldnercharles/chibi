@@ -851,66 +851,6 @@ static compiler_host *validated(
     return host;
 }
 
-compiler_bootstrap_reuse_result compiler_bootstrap_reuse(
-    const compiler_bootstrap *b,
-    const char *captured_json,
-    size_t captured_length,
-    const char *output,
-    char *why,
-    size_t why_size
-)
-{
-    assert(captured_json && output && *output);
-    artifact a = { 0 };
-    char *json = NULL;
-    size_t length = 0;
-    int changed = 0;
-    compiler_host *host = validated(b, &a, &json, &length, &changed, why, why_size);
-    if (host) {
-        uint64_t closure_entry = entry("CompileClosure");
-        char id[19];
-        snprintf(id, sizeof id, "0x%016" PRIx64, closure_entry);
-        bool valid_entry = yyjson_equals_str(yyjson_obj_get(a.root, "entry"), id);
-        if (!valid_entry) {
-            snprintf(why, why_size, "the artifact records another compiler entry");
-        }
-        if (valid_entry) {
-            valid_entry = compiler_host_accepts_byte_entry(host, closure_entry, ARGUMENTS, why, why_size);
-        }
-        if (!valid_entry) {
-            compiler_host_free(host);
-            host = NULL;
-        }
-    }
-    yyjson_doc *captured = host ? yyjson_read(captured_json, captured_length, YYJSON_READ_ALLOW_INVALID_UNICODE)
-                                : NULL;
-    yyjson_doc *expected = host ? yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE)
-                                : NULL;
-    compiler_bootstrap_reuse_result result = COMPILER_BOOTSTRAP_REUSE_ERROR;
-    if (host && (!captured || !expected)) {
-        snprintf(why, why_size, "cannot decode the captured compiler request");
-    }
-    if (host && captured && expected) {
-        bool matches = !changed &&
-                       yyjson_equals(yyjson_doc_get_root(captured), yyjson_doc_get_root(expected));
-        result = COMPILER_BOOTSTRAP_DIFFERENT;
-        if (!matches) {
-            snprintf(why, why_size, "the captured compiler request differs from the validated bootstrap snapshot");
-        } else if (written(output, a.closure, a.closure_length, why, why_size)) {
-            snprintf(why, why_size, "reused the validated bootstrap closure without compilation");
-            result = COMPILER_BOOTSTRAP_REUSED;
-        } else {
-            result = COMPILER_BOOTSTRAP_REUSE_ERROR;
-        }
-    }
-    yyjson_doc_free(expected);
-    yyjson_doc_free(captured);
-    compiler_host_free(host);
-    free(json);
-    free_artifact(&a);
-    return result;
-}
-
 bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
 {
     artifact a = { 0 };

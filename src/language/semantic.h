@@ -40,7 +40,8 @@ typedef struct
     script_range declaration;
     int scope, initializer, function;
     bool writable, disabled, resolving, outcome;
-    bool pub;         /* Package declaration other packages import. */
+    bool pub;              /* Package declaration other packages import. */
+    bool callable_binding; /* Specialization-only alias, never a stored value. */
     bool addressed;   /* A managed cell owns this local from its declaration. */
     bool boxed;       /* A task keeps this local by reference. */
     bool mixed_tasks; /* Holds tasks of different functions. */
@@ -364,6 +365,7 @@ typedef enum
     SCRIPT_PACKAGE_FUNCTION,
     SCRIPT_PACKAGE_TYPE,
     SCRIPT_PACKAGE_CONSTANT,
+    SCRIPT_PACKAGE_TEMPLATE,
 } script_package_export_kind;
 typedef struct
 {
@@ -374,6 +376,18 @@ typedef struct
     pin_value value; /* Constant payload; other kinds use metadata by ID. */
     const char *unit;
 } script_package_export;
+typedef struct script_package_import script_package_import;
+typedef struct
+{
+    const char *identity;
+    const script_package_document *documents;
+    int document_count;
+    const script_package_import *imports;
+    int import_count;
+    const script_package_export *bindings; /* Definition-site names, including private helpers. */
+    int binding_count;
+    void *owner; /* Opaque retained source-export owner. */
+} script_package_environment;
 typedef struct
 {
     const char *identity;
@@ -383,12 +397,14 @@ typedef struct
     /* Declarations without pub, named so a use can say why it fails. */
     const char *const *private_names;
     int private_count;
+    const script_package_environment *environment;
+    void *owner; /* Opaque source-export owner, or NULL for externally supplied views. */
 } script_package_exports;
 /* Whether exports' package declares member without pub. */
 bool script_package_private(const script_package_exports *, const char *member);
 #define SCRIPT_PRIVATE_MEMBER                                                  \
     "'%s' is private: declare it pub to use it from another package"
-typedef struct
+struct script_package_import
 {
     int document;
     script_range range; /* Import start through path token end; terminator excluded. */
@@ -398,7 +414,7 @@ typedef struct
      * their own independent lifetime and invalidation contract.
      * NULL only for self or blank imports. */
     const script_package_exports *exports;
-} script_package_import;
+};
 typedef struct
 {
     const script_package_document *documents;
@@ -407,6 +423,8 @@ typedef struct
     const script_catalog *native; /* The only ambient source-visible names. */
     const script_package_import *imports;
     int import_count;
+    const struct script_specialization_request *requests;
+    int request_count;
 } script_package_options;
 
 typedef struct
@@ -414,7 +432,7 @@ typedef struct
     char *path, *key, *text;
 } script_source_document;
 
-typedef struct
+typedef struct script_specialization_request
 {
     uint64_t id, template_id;
     const char *owner;
@@ -434,6 +452,7 @@ typedef struct
      * package text retains only the first document for legacy field ownership. */
     script_source_document *documents;
     int document_count;
+    int package_document_count; /* Original inputs; imported definition sources follow. */
     int package_scope; /* Shared package declaration scope; -1 for legacy roots. */
     arena constants;
     script_program_kind kind;

@@ -163,6 +163,13 @@ pub ArrayContains: int : 46;
 // index, or as it is for an index outside it; type is the array type. The
 // elements after the removed move down in place.
 pub ArrayRemove: int : 47;
+// output = symbol(arguments...) for a C function the module declares and the
+// linker resolves, as an Odin foreign procedure is: `symbol` is
+// texts[literal], and the argument slots are this function's
+// arguments[right, right + target), each a number or a bool, as is the result,
+// the instruction's type. It passes no context and never fails. A small
+// integer or bool carries the extension the C ABI asks of its caller.
+pub ForeignCall: int : 48;
 
 Index :: (value: int, count: int) -> bool {
     return value >= 0 && value < count;
@@ -171,7 +178,8 @@ Typed :: (slots: int[], slot: int, type: int) -> bool {
     return Index(slot, length(slots)) && slots[slot] == type;
 }
 Produces :: (op: int) -> bool {
-    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayRemove);
+    return op <= Local || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayRemove) ||
+           op == ForeignCall;
 }
 Comparison :: (op: int) -> bool {
     return op >= Lt && op <= Ne;
@@ -216,7 +224,7 @@ ReadsRight :: (op: int) -> bool {
 // Whether an array instruction reads a right slot: an index, an element,
 // another array or a length.
 ArrayReadsRight :: (op: int) -> bool {
-    return op >= ArrayGet && op != ArrayCopy;
+    return op >= ArrayGet && op <= ArrayRemove && op != ArrayCopy;
 }
 // Whether an instruction reads the slot its target names: an array store's
 // value or a slice's count.
@@ -231,7 +239,7 @@ ArrayCalls :: (op: int) -> bool {
 }
 // Whether an instruction reads argument slots: a call's or a format's.
 ReadsArguments :: (op: int) -> bool {
-    return op == Call || op == Format;
+    return op == Call || op == Format || op == ForeignCall;
 }
 // The element type of array type `type`, or 0 when it is no array of a
 // scalar, a string or one of the module's records.
@@ -501,7 +509,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
     pc: int = 0;
     while (pc < length(code)) {
         item := code[pc];
-        if (item.op < Constant || item.op > ArrayRemove) {
+        if (item.op < Constant || item.op > ForeignCall) {
             return Result.Rejected(base + pc, "unsupported native scalar instruction");
         }
         if (Produces(item.op)) {
@@ -566,6 +574,9 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
         }
         if (item.op == Format && !FormatValid(slots, arguments, item)) {
             return Result.Rejected(base + pc, "native format differs from its operands");
+        }
+        if (item.op == ForeignCall && !ForeignValid(slots, arguments, texts, item)) {
+            return Result.Rejected(base + pc, "native foreign call differs from its operands");
         }
         if (item.op == Call && !CallValid(functions, module_parameters, slots, arguments, item)) {
             return Result.Rejected(base + pc, "native call differs from its callee's signature");
@@ -1335,6 +1346,81 @@ CallInstruction :: (functions: Function[], parameters: int[], arguments: int[], 
     out = format_text("{}  %failed{} = icmp ne ptr %failure{}, null\n", out, pc, pc);
     return format_text("{}  br i1 %failed{}, label %failed, label %p{}\n", out, pc, pc + 1);
 }
+// The extension the C ABI asks of the caller for a bool or an integer under
+// 32 bits, as an attribute with its leading space, and none for other types.
+CExtension :: (type: int) -> string {
+    if (type == abi.BoolStorage) {
+        return " zeroext";
+    }
+    if (Integer(type) && abi.IntegerBits(type) < 32) {
+        if (abi.Unsigned(type)) {
+            return " zeroext";
+        }
+        return " signext";
+    }
+    return "";
+}
+// Whether a foreign call names a C symbol the module does not define and has
+// number or bool operands and result.
+ForeignValid :: (slots: int[], arguments: int[], texts: string[], item: Instruction) -> bool {
+    if (item.literal < 0 || item.literal >= i64(length(texts))) {
+        return false;
+    }
+    symbol := texts[int(item.literal)];
+    if (!Identifier(symbol) || symbol == "main" || symbol == "chibi_scalar" || abi.ScalarType(item.type) == "") {
+        return false;
+    }
+    if (item.right < 0 || item.target < 0 || item.target > length(arguments) - item.right) {
+        return false;
+    }
+    for (index in 0..<item.target) {
+        slot := arguments[item.right + index];
+        if (!Index(slot, length(slots)) || abi.ScalarType(slots[slot]) == "") {
+            return false;
+        }
+    }
+    return true;
+}
+// The declaration of each foreign symbol the module calls, once.
+ForeignDeclarations :: (functions: Function[], slots: int[], code: Instruction[], arguments: int[],
+                        texts: string[]) -> string {
+    out := "";
+    for (shape in functions) {
+        for (pc in 0..<shape.code) {
+            item := code[shape.first_code + pc];
+            if (item.op != ForeignCall) {
+                continue;
+            }
+            listed: string[] = [];
+            for (index in 0..<item.target) {
+                type := slots[shape.first_slot + arguments[shape.first_argument + item.right + index]];
+                listed.append(format_text("{}{}", TypeName(type), CExtension(type)));
+            }
+            declaration := format_text("declare{} {} @{}({})\n", CExtension(item.type), TypeName(item.type),
+                                       texts[int(item.literal)], strings.Join(listed, ", "));
+            if (!strings.Contains(out, declaration)) {
+                out = format_text("{}{}", out, declaration);
+            }
+        }
+    }
+    return out;
+}
+// A call of a foreign symbol: the arguments load in order and nothing else
+// is passed.
+ForeignInstruction :: (slots: int[], arguments: int[], texts: string[], item: Instruction, pc: int) -> string {
+    out := format_text("p{}:\n", pc);
+    listed: string[] = [];
+    for (index in 0..<item.target) {
+        slot := arguments[item.right + index];
+        type := slots[slot];
+        out = format_text("{}{}", out, Load(format_text("c{}_{}", pc, index), type, "s", slot));
+        listed.append(format_text("{}{} %c{}_{}", TypeName(type), CExtension(type), pc, index));
+    }
+    out = format_text("{}  %v{} = call{} {} @{}({})\n", out, pc, CExtension(item.type), TypeName(item.type),
+                      texts[int(item.literal)], strings.Join(listed, ", "));
+    out = format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
 // Fail names its failure in the context, then the function fails.
 FailInstruction :: (function: int, pc: int) -> string {
     out := format_text("p{}:\n  %fail{}.at = getelementptr inbounds {}, ptr %ctx, i32 0, i32 1\n", pc, pc,
@@ -1390,6 +1476,8 @@ EmitFunction :: (functions: Function[], function: int, parameters: int[], slots:
         if (item.op == Call) {
             out = format_text("{}{}", out, CallInstruction(functions, parameters, own, item, pc, mode, runtime,
                                                            fallible[item.left]));
+        } else if (item.op == ForeignCall) {
+            out = format_text("{}{}", out, ForeignInstruction(Part(slots, shape.first_slot, shape.slots), own, texts, item, pc));
         } else if (item.op == Fail) {
             out = format_text("{}{}", out, FailInstruction(function, pc));
         } else if (item.op == Format) {
@@ -1490,7 +1578,7 @@ Failures :: (functions: Function[], code: Instruction[]) -> string {
 // Whether `code` moves array elements, which the module's copy does.
 Copies :: (code: Instruction[]) -> bool {
     for (item in code) {
-        if (item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op != ArrayContains)) {
+        if (item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains)) {
             return true;
         }
     }
@@ -1650,7 +1738,8 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots: 
         out = format_text("{}@{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n", out, TextSymbol(index),
                           strings.ByteLength(texts[index]) + 1, Escaped(texts[index]));
     }
-    out = format_text("{}{}declare void @llvm.trap()\n{}", out, Failures(functions, code), Declarations(code));
+    out = format_text("{}{}declare void @llvm.trap()\n{}{}", out, Failures(functions, code), Declarations(code),
+                      ForeignDeclarations(functions, slots, code, arguments, texts));
     debug := source.file != "";
     compares := Compares(code);
     fallible := Fallible(functions, code);

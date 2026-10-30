@@ -21,7 +21,7 @@ jobs:
   recover:
     name: Compiler recovery (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +69,16 @@ jobs:
             if ($LASTEXITCODE) { throw 'Installing LLVM for the native runtime failed' }
             $llvm = & brew --prefix llvm
             "$llvm/bin" >> $env:GITHUB_PATH
+            "LLVM=$llvm" >> $env:GITHUB_ENV
+          } else {
+            sudo apt-get update -q
+            sudo apt-get install -y -q ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 `
+              libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev `
+              libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+            if ($LASTEXITCODE) { throw 'Installing the native build dependencies failed' }
+            'LLVM=/usr/lib/llvm-18' >> $env:GITHUB_ENV
+            'CC=clang-18' >> $env:GITHUB_ENV
+            'CXX=clang++-18' >> $env:GITHUB_ENV
           }
           $python = if ($IsWindows) { 'python' } else { 'python3' }
           $venv = Join-Path $env:RUNNER_TEMP 'compiler-recovery-build-tools'
@@ -78,18 +88,30 @@ jobs:
           & (Join-Path $bin 'pip') install --only-binary=:all: --require-hashes -r .github/build-tools.txt
           if ($LASTEXITCODE) { throw 'Installing the pinned native build tools failed' }
           $bin >> $env:GITHUB_PATH
+      # Linux and macOS build the host with the graph and the pinned build host.
+      # Windows has no graph build host yet and keeps CMake.
       - name: Configure the native runtime
         id: configure
         run: |
           $timer = [Diagnostics.Stopwatch]::StartNew()
-          cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
-          if ($LASTEXITCODE) { throw 'Configuring the native runtime failed' }
+          if ($IsWindows) {
+            cmake -S sdk -B runtime-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_COMPILER_HOST_ONLY=ON -DCMAKE_C_COMPILER=clang
+            if ($LASTEXITCODE) { throw 'Configuring the native runtime failed' }
+          }
           "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
       - name: Build the native runtime
         id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIBCLANG_ROOT: ${{ env.LLVM }}
         run: |
           $timer = [Diagnostics.Stopwatch]::StartNew()
-          cmake --build runtime-build --target chibi-compiler-host --parallel 4
+          if ($IsWindows) {
+            cmake --build runtime-build --target chibi-compiler-host --parallel 4
+          } else {
+            if ($env:CC) { $env:NATIVE_TOOLCHAIN_FLAGS = "-DCMAKE_C_COMPILER=$env:CC -DCMAKE_CXX_COMPILER=$env:CXX" }
+            make build-release BUILD_TARGET=chibi-compiler-host
+          }
           if ($LASTEXITCODE) { throw 'Building the native runtime failed' }
           "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT
       - name: Copy the recovery inputs into an isolated directory
@@ -98,7 +120,8 @@ jobs:
           $proof = Join-Path $env:RUNNER_TEMP 'compiler-recovery-proof'
           New-Item -ItemType Directory -Path "$proof/tools", "$proof/packages" | Out-Null
           $hostName = 'chibi-compiler-host' + $(if ($IsWindows) { '.exe' } else { '' })
-          Copy-Item "runtime-build/$hostName" $proof
+          $built = if ($IsWindows) { "runtime-build/$hostName" } else { "build-release/sdk/$hostName" }
+          Copy-Item $built $proof
           Copy-Item tools/compiler "$proof/tools/compiler" -Recurse
           Copy-Item packages/core "$proof/packages/core" -Recurse
           $nativeSources = Get-ChildItem $proof -Recurse -File | Where-Object { $_.Extension -in '.c', '.h', '.cc', '.cpp', '.cxx', '.m', '.mm' }

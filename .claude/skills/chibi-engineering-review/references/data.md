@@ -1,0 +1,22 @@
+# Data and representation
+
+Representation defects show up in every later pass, so this pass comes first. Each check gives the question, the evidence to collect, and the usual fix.
+
+- **Counts.** How many of each changed record exist in the typical and worst case, and how many does the hot pass touch? *Evidence:* count them from fixtures, the bootstrap or a scene, or estimate with arithmetic. Without counts, layout findings are guesses; list them under "What I would measure".
+- **Kinds as text or bare numbers.** Is a closed set of kinds encoded as a name string, a bare integer, a list of hand-numbered constants, or a packed ASCII value? *Patterns:* `strcmp(ts_node_type(`, `Is(forest, node, "…")`, field lookup by name string, `Value.Typed(6, …)`, byte tests such as `== 58`. *Fix:* give the set one definition (an enum when the language has one, otherwise named constants declared once), dispatch on the tag, and write bytes as character literals.
+- **One fact, one place.** Is a fact stored twice (two fields that must agree, a cached copy, a type recorded several ways)? Does a mode flag select between structures that are really different? When a table or set of kinds is defined in several places (constants, a name list, a grammar, a test), compare the copies now: a current mismatch is the strongest evidence for the finding. *Fix:* keep one representation, and make different structures different types.
+- **Domain-noun records.** Is a record named for a domain noun while its fields serve unrelated transforms? Split it by the transforms that read it.
+- **Derivable fields.** Is a stored field cheap to recompute (line and column, end offset, a decoded literal)? *Fix:* recompute it at the rare point of use.
+- **Sparse fields.** Is a field used by only a few records but stored on all of them? *Fix:* move it to a side table keyed by index. The same goes for nullable fields and `has_` flags: an optional fact is a row in its own table.
+- **Worklists.** Is "needs work" a flag checked on every pass instead of membership in a worklist that gets drained?
+- **Zero value.** Is each new record's all-zero value valid and empty? Does a lookup return expected absence as `none` or an empty value rather than a sentinel callers must test?
+- **Identity by id.** Are identifiers interned when lexing and types deduplicated, so equality is one integer compare? Are kinds ordered so a class of kinds is a range check?
+- **Bools on high-count records.** Does a new `bool` encode list membership that a loop filters on? Do several bools form an implicit state machine with 2ⁿ states, of which only a few are legal? *Fix:* keep separate lists, or make the states an explicit enumeration.
+- **References.** Pointer or typed index? Could two index types be swapped without a compile error? Is a sentinel (`-1`, `0`) undocumented? Must the reference survive serialization or an Edit-and-Continue patch? *Fix:* a typed index or generational handle with a named `none`.
+- **Pass-owned facts.** Are facts a pass derives stored in side arrays indexed by node and owned by the pass that reads them, rather than as fields widening every syntax node? Is one generic node record used where per-category records would give typed children?
+- **Tokens.** Does each token store more than its kind and start? Rows, columns and ends can come from a line-start index searched only when a diagnostic needs them.
+- **Record size.** Did a high-count record (token, node, IR instruction, bytecode instruction, runtime value) grow, or gain padding from its field order? Is its byte budget pinned with a static assert? *Fix:* reorder or narrow the fields, move rare payloads to side arrays, and pin the size with its reason.
+- **Single-variant union as a record.** Is it `X :: union { Only(…) }`, unpacked by a `switch` at every use? *Fix:* a plain record.
+- **Encoding.** Does a polymorphic high-count record pay for its largest variant? Could common properties fold into the tag, chosen from the observed distribution? *Fix:* a small tag, with a payload index into an extra-data array.
+- **Layout claims.** Does a proposed SoA, AoS, packing, handle or SIMD change name the loop, the fields that loop reads, and the batch size? A proposal without those is not a finding.
+- **Lost context.** Does a step discard information a later step will need, so the later step rebuilds or re-parses it? *Fix:* carry the resolved fact (an interned index or tag) across the boundary.

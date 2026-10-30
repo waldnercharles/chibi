@@ -1,5 +1,7 @@
 package toolchain
 
+import os "core:os"
+
 Join :: (parts: string[]) -> string {
     return build.join(parts, "");
 }
@@ -8,61 +10,76 @@ Contains :: (text: string, part: string) -> bool {
 }
 // Removes a file, link or directory tree; true when nothing is left.
 RemoveTree :: (path: string) -> bool {
-    if (build.file_kind(path) == "directory") {
-        for (name in build.list_directory(path)) {
+    if (os.IsDirectory(path)) {
+        listed := os.List(path);
+        if (listed.error) {
+            return false;
+        }
+        for (name in listed.names) {
             if (!RemoveTree(Join([path, "/", name]))) {
                 return false;
             }
         }
     }
-    return build.remove(path);
+    failed := os.Remove(path);
+    return !failed;
 }
 // Where unpacked third-party archives live, one directory per SHA-256:
 // .git/chibi/third_party in the clone's Git directory, which all of its
 // worktrees share, or .chibi/third_party in a checkout without Git.
 ThirdPartyCache :: () -> string {
-    if (build.probe(["git", "-C", build.root(), "rev-parse", "--path-format=absolute",
-                     "--git-common-dir"]) == 0) {
-        return Join([build.trim(build.last_stdout()), "/chibi/third_party"]);
+    git := os.Capture(["git", "-C", os.Root(), "rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    if (git.status == 0) {
+        return Join([build.trim(git.stdout), "/chibi/third_party"]);
     }
-    return Join([build.root(), "/.chibi/third_party"]);
+    return Join([os.Root(), "/.chibi/third_party"]);
 }
 // This host's target as third_party/archives.tsv names it.
 ThirdPartyTarget :: () -> string {
-    if (build.probe(["uname", "-m"]) != 0) {
+    uname := os.Capture(["uname", "-m"]);
+    if (uname.status != 0) {
         return "";
     }
-    machine := build.trim(build.last_stdout());
-    os := "linux";
-    if (build.platform() == "Darwin") {
-        os = "macos";
+    machine := build.trim(uname.stdout);
+    family := "linux";
+    if (os.Platform() == "Darwin") {
+        family = "macos";
     }
     if (machine == "arm64" || machine == "aarch64") {
-        return Join([os, "-arm64"]);
+        return Join([family, "-arm64"]);
     }
-    return Join([os, "-x64"]);
+    return Join([family, "-x64"]);
 }
 // Downloads one archive with the GitHub CLI, checks its SHA-256 and
 // unpacks it into cache/SHA256. Another build may publish it first.
 ThirdPartyArchive :: (cache: string, buildDir: string, repository: string, release: string,
                       asset: string, sha256: string) -> bool {
     destination := Join([cache, "/", sha256]);
-    partial := Join([destination, ".", build.hash_text(build.resolve_path(buildDir)), ".partial"]);
+    partial := Join([destination, ".", build.hash_text(os.RealPath(buildDir)), ".partial"]);
     file := Join([partial, "/", asset]);
     tree := Join([partial, "/tree"]);
-    if (!RemoveTree(partial) || !build.make_directory(tree)) {
+    if (!RemoveTree(partial)) {
         return false;
     }
-    build.report(Join(["downloading ", asset, " from ", repository, " ", release]));
-    ok := build.run(["gh", "release", "download", release, "--repo", repository,
-                     "--pattern", asset, "--dir", partial]) == 0;
-    if (ok && build.hash_file(file) != sha256) {
-        build.report(Join([asset, " does not match the SHA-256 third_party/archives.tsv pins"]));
-        ok = false;
+    made := os.MakeDirectory(tree);
+    if (made) {
+        return false;
     }
-    ok = ok && build.run(["tar", "-xzf", file, "-C", tree]) == 0;
-    ok = ok && (build.rename(tree, destination) ||
-                build.file_kind(Join([destination, "/third-party.cmake"])) == "file");
+    os.Print(Join(["downloading ", asset, " from ", repository, " ", release]));
+    ok := os.Run(["gh", "release", "download", release, "--repo", repository,
+                  "--pattern", asset, "--dir", partial]) == 0;
+    if (ok) {
+        hashed := os.HashFile(file);
+        if (hashed.error || hashed.digest != sha256) {
+            os.Print(Join([asset, " does not match the SHA-256 third_party/archives.tsv pins"]));
+            ok = false;
+        }
+    }
+    ok = ok && os.Run(["tar", "-xzf", file, "-C", tree]) == 0;
+    if (ok) {
+        moved := os.Rename(tree, destination);
+        ok = !moved || os.IsFile(Join([destination, "/third-party.cmake"]));
+    }
     return RemoveTree(partial) && ok;
 }
 // Makes sure the cache holds every archive third_party/archives.tsv lists
@@ -70,7 +87,12 @@ ThirdPartyArchive :: (cache: string, buildDir: string, repository: string, relea
 ThirdParty :: (cache: string, buildDir: string) -> bool {
     target := ThirdPartyTarget();
     repository := "";
-    for (line in build.lines(build.read_file(Join([build.root(), "/third_party/archives.tsv"])))) {
+    manifest := os.ReadText(Join([os.Root(), "/third_party/archives.tsv"]));
+    if (manifest.error) {
+        os.Print("third_party/archives.tsv cannot be read");
+        return false;
+    }
+    for (line in build.lines(manifest.text)) {
         if (build.starts_with(line, "# repository ")) {
             repository = build.after(line, "# repository ");
         }
@@ -81,7 +103,7 @@ ThirdParty :: (cache: string, buildDir: string) -> bool {
         release := build.before(build.after(build.after(line, "\t"), "\t"), "\t");
         sha256 := build.after(build.after(build.after(line, "\t"), "\t"), "\t");
         asset := Join(["third-party-", target, "-", variant, ".tar.gz"]);
-        if (build.file_kind(Join([cache, "/", sha256, "/third-party.cmake"])) != "file" &&
+        if (!os.IsFile(Join([cache, "/", sha256, "/third-party.cmake"])) &&
             !ThirdPartyArchive(cache, buildDir, repository, release, asset, sha256)) {
             return false;
         }
@@ -92,22 +114,30 @@ ThirdParty :: (cache: string, buildDir: string) -> bool {
 // cache holds only what its checkouts can link. Downloads in progress
 // (".partial") stay. Without Git nothing is pruned.
 PruneThirdParty :: (cache: string) -> bool {
-    if (build.probe(["git", "-C", build.root(), "worktree", "list", "--porcelain"]) != 0) {
+    worktrees := os.Capture(["git", "-C", os.Root(), "worktree", "list", "--porcelain"]);
+    if (worktrees.status != 0) {
         return true;
     }
     pinned := "|";
-    for (line in build.lines(build.last_stdout())) {
+    for (line in build.lines(worktrees.stdout)) {
         if (!build.starts_with(line, "worktree ")) {
             continue;
         }
-        manifest := Join([build.after(line, "worktree "), "/third_party/archives.tsv"]);
-        for (row in build.lines(build.read_file(manifest))) {
+        pins := os.ReadText(Join([build.after(line, "worktree "), "/third_party/archives.tsv"]));
+        if (pins.error) {
+            continue;
+        }
+        for (row in build.lines(pins.text)) {
             if (!build.starts_with(row, "#")) {
                 pinned = Join([pinned, build.after(build.after(build.after(row, "\t"), "\t"), "\t"), "|"]);
             }
         }
     }
-    for (name in build.list_directory(cache)) {
+    cached := os.List(cache);
+    if (cached.error) {
+        return false;
+    }
+    for (name in cached.names) {
         if (!Contains(name, ".") && !Contains(pinned, Join(["|", name, "|"])) &&
             !RemoveTree(Join([cache, "/", name]))) {
             return false;
@@ -119,17 +149,22 @@ PruneThirdParty :: (cache: string) -> bool {
 // (tools/toolchain/Graph.chibi) compiles instead of CMake.
 PrepareThirdParty :: (buildDir: string) -> int {
     cache := ThirdPartyCache();
-    if (!build.make_directory(buildDir) || !build.make_directory(cache) || !ThirdParty(cache, buildDir) ||
-        !PruneThirdParty(cache)) {
-        build.report("cannot prepare the third-party archives");
+    made := os.MakeDirectory(buildDir);
+    if (made) {
+        os.Print("cannot prepare the third-party archives");
+        return 1;
+    }
+    made = os.MakeDirectory(cache);
+    if (made || !ThirdParty(cache, buildDir) || !PruneThirdParty(cache)) {
+        os.Print("cannot prepare the third-party archives");
         return 1;
     }
     return 0;
 }
 Build :: () -> int {
-    arguments := build.arguments();
-    if (build.length(arguments) != 2 || arguments[0] != "third-party") {
-        build.report("usage: third-party BUILD_DIR");
+    arguments := os.Arguments();
+    if (length(arguments) != 2 || arguments[0] != "third-party") {
+        os.Print("usage: third-party BUILD_DIR");
         return 2;
     }
     return PrepareThirdParty(arguments[1]);

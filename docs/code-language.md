@@ -742,12 +742,14 @@ symbol, so a target that does not link the library cannot load a program that
 calls it; the VM never runs foreign code. Names are global like other natives,
 so two foreign functions cannot share one.
 
-### Procedure values
+### Function values from C
 
-A C function's address has a procedure type, as in Odin: `proc "c" (n: i32) ->
-i32`. It is a 64-bit word that holds the address, so a foreign function can
-return one, a local or a parameter can hold one, and a call through it is a
-C-ABI call.
+A C function's address has a function type, spelled like the callback types in
+[passing functions](#passing-functions): `fn(n: i32) -> i32`. In a callback
+parameter of an authored function it names a function the compiler knows, and
+the algorithm is specialized for it. A function type that types a local, or a
+foreign function's parameter or result, holds the address itself: a 64-bit
+word, and a call through it is a C-ABI call.
 
 ```chibi
 foreign import libc "system:c"
@@ -756,22 +758,20 @@ foreign libc {
     dlsym :: (handle: rawptr, name: cstring) -> rawptr
 }
 
-Apply :: (f: proc "c" (n: i32) -> i32, value: i32) -> i32 {
-    return f(value)
-}
-
 Main :: () -> int {
-    absolute: proc "c" (n: i32) -> i32 = dlsym(0, "abs")
-    return Apply(absolute, -42)
+    absolute: fn(n: i32) -> i32 = dlsym(0, "abs")
+    return absolute(-42)
 }
 ```
 
-A procedure type spells its parameters with names, like a foreign function,
-and the `"c"` calling convention is required. The parameters and result follow
-the foreign rules above. A variable holding one is declared with its type, or
-takes it from the foreign function whose result type spells one. Unlike Odin,
-a `rawptr` converts to a procedure type without a cast. An authored function
-cannot yet be turned into a procedure value for C to call.
+A foreign function may return a function type directly,
+`dlsym :: (handle: rawptr, name: cstring) -> fn(n: i32) -> i32`, so
+`absolute := dlsym(0, "abs")` takes its type from the result. A `rawptr` converts
+to a function type without a cast, which is how one `dlsym` declaration serves
+every signature. The parameters and result follow the foreign rules above. A
+runtime address cannot yet be passed to an authored function's `fn` parameter;
+call it where the local is. An authored function cannot yet be turned into a
+function value for C to call.
 
 Planned after that: a `u8[]` passed as a data pointer with its length given
 separately, `@variadic` with the number of fixed arguments for variadic C

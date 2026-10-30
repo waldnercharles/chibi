@@ -725,23 +725,20 @@ TEST_CASE(native_build_links_a_vendored_archive)
     return true;
 }
 
-static const char *const PROC_SOURCE =
-    "package scalar\n"
-    "foreign import libc \"system:c\"\n"
-    "foreign libc {\n"
-    "    dlsym :: (handle: rawptr, name: cstring) -> rawptr\n"
-    "}\n"
-    "Main :: () -> int {\n"
-    "    absolute: proc \"c\" (n: i32) -> i32 = dlsym(0, \"abs\");\n"
-    "    return Apply(absolute, -42) + 1;\n"
-    "}\n"
-    "Apply :: (f: proc \"c\" (n: i32) -> i32, value: i32) -> i32 {\n"
-    "    return f(value);\n"
-    "}\n";
+static const char *const
+    PROC_SOURCE = "package scalar\n"
+                  "foreign import libc \"system:c\"\n"
+                  "foreign libc {\n"
+                  "    dlsym :: (handle: rawptr, name: cstring) -> rawptr\n"
+                  "}\n"
+                  "Main :: () -> int {\n"
+                  "    absolute: fn(n: i32) -> i32 = dlsym(0, \"abs\");\n"
+                  "    return absolute(-42) + 1;\n"
+                  "}\n";
 
 /* A program calls a C function through an address: dlsym finds libc's abs, a
- * procedure-typed local holds it, and a function takes it as a parameter and
- * calls it. libc is linked dynamically by default, which is where dlsym lives. */
+ * local of function type holds it, and the call goes through the address. libc
+ * is linked dynamically by default, which is where dlsym lives. */
 TEST_CASE(native_build_calls_through_a_function_pointer)
 {
     const char *bin = getenv("CHIBI_LLVM_BIN");

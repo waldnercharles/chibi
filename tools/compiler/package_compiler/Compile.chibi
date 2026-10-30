@@ -324,10 +324,10 @@ ForeignRows :: union {
     Declared(natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[], effects: int[])
 }
 // The type `node` spells as a native port storage, 0 when a foreign signature
-// may not use it. A procedure type is the address it holds, a word, and a
+// may not use it. A function type is the address it holds, a word, and a
 // cstring is a string the call copies, with its NUL, for the callee to read.
 ForeignStorage :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
-    if (Field(forest, node, "proc") >= 0) {
+    if (GenericCallableType(forest, node) >= 0) {
         return WordStorage;
     }
     spelled := Text(forest, text, node);
@@ -389,7 +389,29 @@ ProcName :: (forest: snapshot.SnapshotNode[], text: string, proc: int) -> string
     }
     return name;
 }
-// The procedure type of the variable `callee` names, -1 when it holds none: the
+// Whether the function type `callable` holds a runtime address: it types a local
+// or a foreign function's parameter or result, or sits inside such a type. A
+// function type that types an authored function's parameter is a callback the
+// compiler specializes, and holds none.
+RuntimeCallable :: (forest: snapshot.SnapshotNode[], callable: int) -> bool {
+    typed := forest[callable].parent;
+    owner := forest[typed].parent;
+    if (owner < 0) {
+        return false;
+    }
+    if (Is(forest, owner, "local_declaration") || Is(forest, owner, "foreign_function")) {
+        return true;
+    }
+    if (!Is(forest, owner, "parameter")) {
+        return false;
+    }
+    declaration := forest[forest[owner].parent].parent;
+    if (Is(forest, declaration, "callable_type")) {
+        return RuntimeCallable(forest, declaration);
+    }
+    return Is(forest, declaration, "foreign_function");
+}
+// The function type of the variable `callee` names, -1 when it holds none: the
 // type its declaration spells, or the result type of the foreign function its
 // initializer calls.
 ProcOf :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], callee: int) -> int {
@@ -400,7 +422,7 @@ ProcOf :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], callee:
     declaration := forest[names[found].node].parent;
     declared := Field(forest, declaration, "type");
     if (declared >= 0) {
-        return Field(forest, declared, "proc");
+        return GenericCallableType(forest, declared);
     }
     value := Field(forest, declaration, "value");
     if (value < 0 || !Is(forest, Unparenthesized(forest, value), "call_expression")) {
@@ -410,7 +432,7 @@ ProcOf :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], callee:
     if (function < 0 || Field(forest, function, "results") < 0) {
         return -1;
     }
-    return Field(forest, Field(forest, function, "results"), "proc");
+    return GenericCallableType(forest, Field(forest, function, "results"));
 }
 ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], natives: ResolvedNative[],
                    ports: ResolvedPort[], identities: u64[], effects: int[]) -> ForeignRows {
@@ -463,7 +485,7 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         }
                         if (storage == 0) {
                             return ForeignRows.Failed(Diagnose(forest, parameter, file,
-                                                               "A foreign parameter is an integer, float, bool, rawptr, cstring or procedure"));
+                                                               "A foreign parameter is an integer, float, bool, rawptr, cstring or function type"));
                         }
                         port: ResolvedPort = {name: Text(forest, text, Field(forest, parameter, "name")),
                                               storage: storage, container: 0, c_string: false, record: -1,
@@ -479,7 +501,7 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         storage := ForeignResultStorage(forest, text, result);
                         if (storage == 0) {
                             return ForeignRows.Failed(Diagnose(forest, result, file,
-                                                               "A foreign result is an integer, float, bool, rawptr or procedure"));
+                                                               "A foreign result is an integer, float, bool, rawptr or function type"));
                         }
                         output: ResolvedPort = {name: "Result", storage: storage, container: 0, c_string: false,
                                                 record: -1, has_default: false, default_owner: false,
@@ -508,6 +530,9 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
             top -= 1;
             node := pending[top];
             kind := forest[node].kind;
+            if (kind == "callable_type" && !RuntimeCallable(forest, node)) {
+                continue;
+            }
             child := forest[node].first_child;
             while (child >= 0 && !Expression(kind)) {
                 if (forest[child].is_named && !forest[child].is_extra) {
@@ -520,13 +545,13 @@ ForeignNatives :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 }
                 child = forest[child].next_sibling;
             }
-            if (kind != "proc_type") {
+            if (kind != "callable_type") {
                 continue;
             }
             name := ProcName(forest, text, node);
             if (name == "") {
                 return ForeignRows.Failed(Diagnose(forest, node, file,
-                                                   "A procedure type's parameters and result are integers, floats, bool, rawptr, cstring or procedures"));
+                                                   "A function type's parameters and result are integers, floats, bool, rawptr, cstring or function types"));
             }
             declared := false;
             for (native in natives) {
@@ -929,9 +954,9 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         return ReadTypeSuffixes(forest, node, table, {storage: UnionStorage, container: MapContainer, record: declared},
                                 package, view);
     }
-    proc := Field(forest, node, "proc");
-    if (proc >= 0) {
-        if (ProcName(forest, text, proc) == "") {
+    callable := GenericCallableType(forest, node);
+    if (callable >= 0) {
+        if (ProcName(forest, text, callable) == "") {
             return none;
         }
         return ReadTypeSuffixes(forest, node, table, {storage: WordStorage, container: 0, record: -1}, package, view);
@@ -957,8 +982,6 @@ ReadType :: (forest: snapshot.SnapshotNode[], text: string, table: ^(TypeDecl[])
         if (home < 0 || NextMember(forest, part) >= 0) {
             return none;
         }
-    } else if (name == "rawptr") {
-        return ReadTypeSuffixes(forest, node, table, {storage: WordStorage, container: 0, record: -1}, package, view);
     } else if (name == "char") {
         declared := CharIndex(table^);
         if (declared < 0) { return none; }

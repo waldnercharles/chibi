@@ -373,6 +373,61 @@ DeclareSequenceOptionals :: (types: TypeDecl[], package: int) -> TypeDecl[] {
     }
     return declared;
 }
+// The optional declared for `payload` when the expected type is that optional
+// and the payload is a plain scalar of its element, -1 otherwise.
+OptionalFor :: (types: TypeDecl[], storage: int, container: int, record: int, payload: Value) -> int {
+    if (storage != UnionStorage || container != 0 || record < 0 || record >= length(types) ||
+        types[record].kind != OptionalDecl || payload.storage == UnionStorage) {
+        return -1;
+    }
+    element := OptionalElement(types, Typed(-1, storage, container, record));
+    if (element.container != 0 || element.record >= 0 || Pointer(element.storage, element.container) ||
+        !Accepts(types, element.storage, element.container, element.record, payload)) {
+        return -1;
+    }
+    return record;
+}
+// The code that makes a present optional from a scalar `payload`: the union
+// intrinsic takes the optional's tag cell, then the payload, and returns the
+// union. `slot`, `cell` and `host` are the first unused indices; the address
+// slots, cells, host and value it needs follow below.
+OptionalWrapCode :: (payload: Value, ops: Ops, target: Target, slot: int, cell: int, host: int,
+                     node: snapshot.SnapshotNode) -> Code[] {
+    code: Code[] = [Instruction(ops.host_slot, target.pointer_storage, slot, cell + 1, 0, 0, node)];
+    write := Instruction(ops.write, SlotStorage(payload.storage, payload.container, target), 0, payload.slot, slot, 0, node);
+    write.offset = target.payload_offset;
+    code.append(write);
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));
+    code.append(Instruction(ops.host_slot, target.pointer_storage, slot + 1, cell + 2, 0, 0, node));
+    load := Instruction(ops.load, UnionStorage, slot + 2, slot + 1, 0, 0, node);
+    load.offset = target.payload_offset;
+    code.append(load);
+    return code;
+}
+OptionalWrapSlots :: (target: Target) -> Slot[] {
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    made: Slot = {storage: UnionStorage, kind: ValueKind};
+    return [address, address, made];
+}
+OptionalWrapCells :: (types: TypeDecl[], optional: int, payload: Value) -> Cell[] {
+    element := OptionalElement(types, Typed(-1, UnionStorage, 0, optional));
+    tag: Cell = {storage: WordStorage, container: 0, record: -1, constant: OptionalTag(types, element), variant: -1,
+                 kind: ValueKind};
+    held: Cell = {storage: payload.storage, container: payload.container, record: payload.record, constant: 0,
+                  variant: -1, kind: ValueKind};
+    made: Cell = {storage: UnionStorage, container: 0, record: optional, constant: 0, variant: -1, kind: ValueKind};
+    return [tag, held, made];
+}
+OptionalWrapHost :: (cell: int) -> Host {
+    return {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: UnionMakeIntrinsic, linked: -1,
+            first: cell, result_first: cell + 2, result_count: 1, written: false};
+}
+OptionalWrapValue :: (slot: int, cell: int, optional: int) -> Value {
+    value := Typed(slot + 2, UnionStorage, 0, optional);
+    value.cell = cell + 2;
+    value.owned = true;
+    return value;
+}
 // Presence tests inspect the box pointer. A successful empty sequence still
 // has a box, even when the sequence payload itself has no allocation.
 OptionalPresentStep :: (value: Value, negated: bool, popped: int, ops: Ops, target: Target,

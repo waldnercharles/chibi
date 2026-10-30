@@ -70,6 +70,18 @@ av_doc *asset_source_read(
     const asset_compiler_options *,
     asset_compiler_diagnostic *
 );
+/* Compiles the package of the first file of a request, which
+ * compiler_package_request_json builds, and the packages it imports, on the
+ * packaged compiler. Returns the closure as a caller-freed artifact, readable
+ * by compiler_artifact_read, or NULL with a copied diagnostic whose document is
+ * the index of the request's file. */
+unsigned char *asset_compiler_compile_closure(
+    const char *request,
+    size_t request_length,
+    size_t *length,
+    const asset_compiler_options *,
+    asset_compiler_diagnostic *
+);
 /* Writes new static source through the packaged Chibi writer. Returns caller-
  * freed source (free), or NULL with a copied diagnostic. Uses compile_budget,
  * not evaluation_budget, with the same borrowed-option and restored-scope

@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <yyjson.h>
 
@@ -578,4 +579,58 @@ char *compiler_behavior_catalog_input_json(
     add_effects(doc, yyjson_mut_arr_add_arr(doc, root), &input);
     afree(input.natives);
     return written(doc, length, true);
+}
+
+char *compiler_package_request_json(
+    const char *project,
+    const char *const *names,
+    const char *const *roots,
+    int collections,
+    const char *const *paths,
+    const char *const *texts,
+    const size_t *sizes,
+    int files,
+    const script_catalog *catalog,
+    size_t *length
+)
+{
+    size_t target_length = 0, effects_length = 0;
+    char *target = compiler_target_json(catalog, &target_length);
+    char *effects = compiler_target_effects_json(catalog, &effects_length);
+    yyjson_doc *target_doc = yyjson_read(target, target_length, 0);
+    yyjson_doc *effects_doc = yyjson_read(effects, effects_length, 0);
+    char *json = NULL;
+    if (target_doc && effects_doc) {
+        yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+        yyjson_mut_val *arguments = yyjson_mut_arr(doc);
+        yyjson_mut_doc_set_root(doc, arguments);
+        yyjson_mut_arr_add_strcpy(doc, arguments, project);
+        yyjson_mut_val *name_list = yyjson_mut_arr_add_arr(doc, arguments);
+        yyjson_mut_val *root_list = yyjson_mut_arr_add_arr(doc, arguments);
+        for (int i = 0; i < collections; i++) {
+            yyjson_mut_arr_add_strcpy(doc, name_list, names[i]);
+            yyjson_mut_arr_add_strcpy(doc, root_list, roots[i]);
+        }
+        yyjson_mut_val *path_list = yyjson_mut_arr_add_arr(doc, arguments);
+        yyjson_mut_val *text_list = yyjson_mut_arr_add_arr(doc, arguments);
+        for (int i = 0; i < files; i++) {
+            yyjson_mut_arr_add_strcpy(doc, path_list, paths[i]);
+            yyjson_mut_arr_add_strncpy(doc, text_list, texts[i], sizes[i]);
+        }
+        yyjson_mut_arr_add_false(doc, arguments);
+        yyjson_val *item;
+        size_t at, count;
+        yyjson_arr_foreach(yyjson_doc_get_root(target_doc), at, count, item)
+        {
+            yyjson_mut_arr_append(arguments, yyjson_val_mut_copy(doc, item));
+        }
+        yyjson_mut_arr_append(arguments, yyjson_val_mut_copy(doc, yyjson_doc_get_root(effects_doc)));
+        json = yyjson_mut_write(doc, YYJSON_WRITE_ALLOW_INVALID_UNICODE, length);
+        yyjson_mut_doc_free(doc);
+    }
+    yyjson_doc_free(effects_doc);
+    yyjson_doc_free(target_doc);
+    free(effects);
+    free(target);
+    return json;
 }

@@ -122,7 +122,6 @@ void test_language_binding_schedule();
 void test_language_activation_cache();
 void test_language_headless();
 void test_language_build_workflow();
-void test_language_root_state();
 void test_language_navigation();
 void test_language_publication();
 void test_field_runtime();
@@ -161,7 +160,6 @@ int main(int argc, char **argv)
     bool inferred_arrays = argc == 2 && !strcmp(argv[1], "--inferred-string-arrays");
     bool inferred_array_repro = argc == 2 &&
                                 !strcmp(argv[1], "--inferred-string-array-repro");
-    bool root_state = argc == 2 && !strcmp(argv[1], "--root-state");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool execution_scope = argc == 2 && !strcmp(argv[1], "--execution-scope");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
@@ -352,7 +350,7 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((!prepared && !compiler_artifact && !record_producer && !execution &&
          !execution_scope && !semantic && !inferred_arrays && !inferred_array_repro &&
-         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
+         !benchmark && !activation_benchmark && !binding_benchmark &&
          !borrow_benchmark && !incremental_benchmark && !record_publication &&
          !record_publication_repro && !record_values && !record_document &&
          !record_state && !record_services && !record_compatibility &&
@@ -405,7 +403,7 @@ int main(int argc, char **argv)
             "--execution | "
             "--execution-scope | --semantic | --compositional-records "
             "| --inferred-string-arrays | --inferred-string-array-repro "
-            "| --root-state | --program | --program-session | "
+            "| --program | --program-session | "
             "--native-char-results | "
             "--query-program | --query-values | "
             "--incremental | "
@@ -572,8 +570,6 @@ int main(int argc, char **argv)
         test_language_navigation();
     } else if (publication) {
         test_language_publication();
-    } else if (root_state) {
-        test_language_root_state();
     } else if (prepared) {
         test_language_prepared_write(argv[2]);
     } else if (compiler_artifact) {

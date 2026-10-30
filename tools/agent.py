@@ -54,8 +54,6 @@ CPU_SELECTORS = {
     '--particles': 'particles',
     '--png-encoding': 'png-encoding',
     
-    '--project-document': 'project-document',
-    '--prototype-documents': 'prototype-documents',
     
     '--render-geometry': 'render-geometry',
     

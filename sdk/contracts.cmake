@@ -146,24 +146,14 @@ endif()
 if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_asset_json "${CHIBI_SDK_ROOT}/src/support" chibi_asset_values chibi_json)
     chibi_sdk_contract(chibi_source_catalog "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_authoring chibi_input_map chibi_asset_text chibi_ui_document chibi_prototype_document chibi_json chibi_tasks)
+        chibi_authoring chibi_asset_text chibi_ui_document chibi_json chibi_tasks)
     chibi_sdk_contract(chibi_studio_capabilities "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_native_capabilities chibi_execution)
     chibi_sdk_contract(chibi_text_source "${CHIBI_SDK_ROOT}/src/support" chibi_support chibi_text_search)
     chibi_sdk_contract(chibi_ui_document "${CHIBI_SDK_ROOT}/src" chibi_text_source chibi_ui_document_values)
     chibi_sdk_contract(chibi_ui_authoring "${CHIBI_SDK_ROOT}/src/assets"
         chibi_text_source chibi_ui_document)
-    chibi_sdk_contract(chibi_scene_document "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_ecs chibi_asset_values chibi_scene_runtime chibi_asset_text chibi_support)
-    chibi_sdk_contract(chibi_prototype_document "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_ecs chibi_asset_values chibi_scene_document chibi_asset_text)
     chibi_sdk_contract(chibi_reference_index "${CHIBI_SDK_ROOT}/src/authoring" chibi_support chibi_events)
-    chibi_sdk_contract(chibi_input_map "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_input_action chibi_types chibi_asset_values chibi_asset_text chibi_support)
-    chibi_sdk_contract(chibi_project_document "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_input_action chibi_asset_text chibi_language_syntax chibi_json chibi_support)
-    chibi_sdk_contract(chibi_component_presentation "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_ecs chibi_asset_text)
     chibi_sdk_contract(chibi_asset_text "${CHIBI_SDK_ROOT}/src/support"
         chibi_asset_values chibi_asset_kdl)
     chibi_sdk_contract(chibi_language_syntax "${CHIBI_SDK_ROOT}/src/language"
@@ -199,27 +189,19 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
         chibi_language_syntax chibi_native_capabilities)
     chibi_sdk_contract(chibi_compiler_json "${CHIBI_SDK_ROOT}/src/toolchain"
         chibi_json chibi_native_capabilities)
-    chibi_sdk_contract(chibi_scene_authoring "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_native_types chibi_scene_document)
-    chibi_sdk_contract(chibi_asset_authoring "${CHIBI_SDK_ROOT}/src"
-        chibi_prototype_document chibi_reference_index chibi_field_catalog chibi_authoring
-        chibi_asset_text chibi_scene_document chibi_ui_document
-        chibi_native_types chibi_text_source chibi_declared_components)
-    chibi_sdk_contract(chibi_scenario_document "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_asset_values chibi_input_runtime chibi_native_types chibi_asset_text)
     chibi_sdk_contract(chibi_shader_preparation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_visual_catalog chibi_player chibi_asset_text chibi_json chibi_image_catalog)
     chibi_sdk_contract(chibi_project_compilation "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_source_catalog chibi_prototype_document chibi_scene_document chibi_player chibi_native_prepared
+        chibi_source_catalog chibi_player chibi_native_prepared
         chibi_shader_preparation chibi_host_native_default
-        chibi_asset_authoring chibi_asset_text chibi_project_document chibi_text_source chibi_ui_authoring chibi_builtin_fonts
+        chibi_asset_text chibi_text_source chibi_ui_authoring chibi_builtin_fonts
         chibi_image_preparation chibi_json chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities chibi_task_pool_runtime
         chibi_asset_compiler_host)
     if(CHIBI_SDK_BUILD_DESKTOP)
         chibi_sdk_contract(chibi_project_preparation "${CHIBI_SDK_ROOT}/src/authoring"
             chibi_project_compilation chibi_engine chibi_ui_host chibi_renderer
  chibi_host_native_default
- chibi_asset_authoring chibi_asset_text chibi_project_document chibi_ui_authoring chibi_image_preparation
+ chibi_asset_text chibi_ui_authoring chibi_image_preparation
             chibi_declared_components)
     endif()
 endif()

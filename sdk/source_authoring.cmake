@@ -26,8 +26,7 @@ configure_file("${CHIBI_SDK_ROOT}/src/capabilities/catalog_index.h"
 target_include_directories(chibi_source_catalog PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/private/source_catalog"
     "${CHIBI_SDK_ROOT}/third_party/yyjson")
-target_link_libraries(chibi_source_catalog PUBLIC chibi_authoring chibi_input_map
-    chibi_prototype_document
+target_link_libraries(chibi_source_catalog PUBLIC chibi_authoring
     PRIVATE chibi_asset_text chibi_ui_document chibi_json chibi_tasks)
 
 add_library(chibi_program STATIC

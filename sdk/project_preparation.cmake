@@ -53,9 +53,9 @@ configure_file("${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/toolchain/compiler_json.h" COPYONLY)
 target_include_directories(chibi_project_compilation PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation")
 target_include_directories(chibi_project_compilation SYSTEM PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation")
-target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chibi_prototype_document chibi_project_document
-    chibi_scene_document chibi_player chibi_native_prepared chibi_shader_preparation
-    PRIVATE chibi_host_native_default chibi_asset_authoring
+target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog
+    chibi_player chibi_native_prepared chibi_shader_preparation
+    PRIVATE chibi_host_native_default
     chibi_asset_text chibi_text_source chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json
     chibi_compiler_syntax chibi_compiler_json chibi_text_capabilities chibi_array_capabilities chibi_task_pool_runtime)
 list(APPEND CHIBI_SDK_TARGETS chibi_compiler_syntax chibi_compiler_json chibi_shader_preparation chibi_project_compilation)
@@ -68,7 +68,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
             "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-target/toolchain/${header}.h" COPYONLY)
     endforeach()
     target_include_directories(chibi-compile PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-target")
-    target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation Chibi::project_document
+    target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation
         chibi_behavior_runtime chibi_asset_json chibi_host_native_default chibi_compiler_syntax chibi_compiler_json
         chibi_task_pool_runtime)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

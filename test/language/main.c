@@ -64,7 +64,6 @@ void test_language_component_write_ir();
 void test_language_component_write_layout();
 void test_language_build_workflow();
 void test_field_runtime();
-void test_prototype_document();
 void test_language_text_format();
 void test_language_compiler_artifact_write(const char *directory);
 void test_language_native_census(const char *report);
@@ -208,7 +207,6 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--component-write-layout");
     bool build_workflow = argc == 2 && !strcmp(argv[1], "--build-workflow");
     bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
-    bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     if ((!compiler_artifact && !execution && !execution_scope && !record_values &&
          !record_document && !record_services && !record_compatibility &&
@@ -240,7 +238,7 @@ int main(int argc, char **argv)
          !package_core && !package_math && !package_math_benchmark &&
          !package_portable && !package_portable_compiler && !package_tests &&
          !argument_effects_chibi && !component_write && !component_write_layout &&
-         !build_workflow && !field_runtime && !prototype && !text_format &&
+         !build_workflow && !field_runtime && !text_format &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
@@ -316,7 +314,7 @@ int main(int argc, char **argv)
             "--build-workflow | "
             ""
             ""
-            "--field-runtime | --prototype-document "
+            "--field-runtime "
             "| "
             "--text-format | "
             ""
@@ -353,8 +351,6 @@ int main(int argc, char **argv)
         test_language_record_values();
     } else if (text_format) {
         test_language_text_format();
-    } else if (prototype) {
-        test_prototype_document();
     } else if (field_runtime) {
         test_field_runtime();
     } else if (compiler_artifact) {

@@ -22,7 +22,6 @@
 #include "types/text.h"
 
 #ifdef CHIBI_TEST_PREPARATION
-#include "assets/scenario_document.h"
 #endif
 
 #include <assert.h>
@@ -1164,89 +1163,7 @@ TEST_CASE(native_controller_device_handoff_keeps_action_held)
     return true;
 }
 #ifdef CHIBI_TEST_PREPARATION
-TEST_CASE(native_pointer_scenario_roundtrip)
-{
-    const char *text = "scene \"Pointer\"\nframes 2\n(array)keys {\n"
-                       "- frame=0 { pointer { origin x=2 y=3 z=10; direction "
-                       "x=0 y=0 z=-1; } }\n"
-                       "- frame=1\n}\n";
-    char error[256];
-    scenario_document *document = scenario_document_load(text, error, sizeof error);
-    REQUIRE(document && acount(document->keys) == 2);
-    input_keyframe expected = { .pointer = { .origin = { 2, 3, 10 },
-                                             .direction = { 0, 0, -1 },
-                                             .active = true } };
-    REQUIRE(input_keyframe_same(&document->keys[0], &expected));
-    REQUIRE(!document->keys[1].pointer.active);
-    char *saved = scenario_document_save(document);
-    scenario_document *read = scenario_document_load(saved, error, sizeof error);
-    free(saved);
-    REQUIRE(read && acount(read->keys) == 2);
-    REQUIRE(input_keyframe_same(&read->keys[0], &expected));
-    REQUIRE(!read->keys[1].pointer.active);
-    scenario_document_free(read);
-    scenario_document_free(document);
-    const char *invalid[] = {
-        "origin x=0 y=0 z=1; direction x=0 y=0 z=0;",
-        "origin x=0 y=0; direction x=0 y=0 z=-1;",
-        "origin x=0 y=0 z=1; direction x=0 y=0 z=1e100;",
-    };
-    for (int i = 0; i < 3; i++) {
-        char source[256];
-        snprintf(source, sizeof source, "scene \"Pointer\"\nframes 1\n(array)keys { - frame=0 { pointer { %s } } }", invalid[i]);
-        REQUIRE(!scenario_document_load(source, error, sizeof error));
-        REQUIRE(strstr(error, "pointer"));
-    }
-    return true;
-}
 
-TEST_CASE(native_controller_scenario_roundtrip)
-{
-    const char
-        *text = "scene \"Controllers\"\nframes 3\nseed 7\n(array)keys {\n"
-                "- frame=0 { (array)controls \"Z\"; (array)controllers {\n"
-                "- connected=#true { (array)buttons \"Dpad Left\" \"Left Stick "
-                "Left\"; }\n"
-                "- connected=#true { (array)buttons \"A\"; }\n"
-                "- connected=#false\n- connected=#false\n}\n}\n"
-                "- frame=1\n}\n";
-    char error[256];
-    scenario_document *document = scenario_document_load(text, error, sizeof error);
-    REQUIRE(document && acount(document->keys) == 2);
-    input_keyframe expected = {
-        .controls = Z_DOWN,
-        .controllers = { { .buttons = PAD_LEFT | STICK_LEFT, .connected = true },
-                         { .buttons = PAD_A, .connected = true } }
-    };
-    REQUIRE(input_keyframe_same(&document->keys[0], &expected));
-    REQUIRE(input_keyframe_same(&document->keys[1], &(input_keyframe){ 0 }));
-    char *saved = scenario_document_save(document);
-    REQUIRE(saved && !strstr(saved, "#false"));
-    scenario_document *read = scenario_document_load(saved, error, sizeof error);
-    free(saved);
-    REQUIRE(read && acount(read->keys) == 2);
-    REQUIRE(read->frames == 3 && read->seed == 7 && !strcmp(read->scene, "Controllers"));
-    for (int i = 0; i < 2; i++) {
-        REQUIRE(read->keys[i].step == document->keys[i].step);
-        REQUIRE(input_keyframe_same(&read->keys[i], &document->keys[i]));
-    }
-    scenario_document_free(read);
-    scenario_document_free(document);
-    const char *invalid[] = {
-        "scene \"Controllers\"\nframes 1\n(array)keys { - frame=0 { "
-        "(array)controllers {\n"
-        "- connected=#false\n- connected=#false\n- connected=#false\n"
-        "- connected=#false\n- connected=#false\n}\n}\n}\n",
-        "scene \"Controllers\"\nframes 1\n(array)keys { - frame=0 { "
-        "(array)controllers {\n"
-        "- connected=#false { (array)buttons \"A\"; }\n}\n}\n}\n",
-    };
-    for (int i = 0; i < 2; i++) {
-        REQUIRE(!scenario_document_load(invalid[i], error, sizeof error));
-        REQUIRE(strstr(error, "controllers"));
-    }
-    return true;
-}
 #endif
 static ecs_entity crate;
 /* Pushes the crate through the 2D physics the world bound, as Apply Impulse
@@ -2315,8 +2232,6 @@ void test_tool_native()
     RUN_TEST_CASE(native_controller_device_handoff_keeps_action_held);
     RUN_TEST_CASE(native_pointer_ray_records_replays_and_clears_focus);
 #ifdef CHIBI_TEST_PREPARATION
-    RUN_TEST_CASE(native_controller_scenario_roundtrip);
-    RUN_TEST_CASE(native_pointer_scenario_roundtrip);
 #endif
     RUN_TEST_CASE(native_pause_keeps_held_actions);
     RUN_TEST_CASE(native_world_binds_physics_for_pushes);

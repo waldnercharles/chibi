@@ -1,5 +1,4 @@
 #include "assets/project.h"
-#include "authoring/prototype_prepare.h"
 #include "authoring/source_asset.h"
 #include "authoring/source_catalog.h"
 #include "backend.h"

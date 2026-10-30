@@ -12,7 +12,6 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #ifdef CHIBI_TEST_PREPARATION
-#include "authoring/scene_prepare.h"
 #include "runtime/scenes/prepared.h"
 #endif
 

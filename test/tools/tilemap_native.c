@@ -6,7 +6,6 @@
 
 #ifdef CHIBI_TEST_PREPARATION
 #include "authoring/image_prepare.h"
-#include "authoring/prototype_prepare.h"
 #include "runtime/images/catalog.h"
 #endif
 
@@ -16,10 +15,6 @@
 
 static ecs_world *world;
 static entities *test_entities;
-#ifdef CHIBI_TEST_PREPARATION
-static prototype *fixture_prototype;
-static scene *fixture_scene;
-#endif
 
 static void setup()
 {
@@ -38,10 +33,6 @@ static void teardown()
     entities_free(test_entities);
     ecs_world_free(world);
 #ifdef CHIBI_TEST_PREPARATION
-    prototype_free(fixture_prototype);
-    fixture_prototype = NULL;
-    scene_free(fixture_scene);
-    fixture_scene = NULL;
     render_image_catalog_clear();
 #endif
 }

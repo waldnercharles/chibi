@@ -14,7 +14,6 @@
 
 #if defined(CHIBI_TEST_SOURCE_ASSETS) && !defined(__EMSCRIPTEN__)
 #include "authoring/asset_compiler_host.h"
-#include "authoring/source_costs.h"
 #endif
 
 static const script_catalog_field source_field = {

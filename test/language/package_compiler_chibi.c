@@ -12279,7 +12279,15 @@ TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
     REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
     for (int b = 0; b < 2; b++) {
         const pin_array *rows = produced[b].ptr;
-        REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && rows->count > 2);
+        REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && rows->count > 1);
+        if (rows->count == 2) {
+            fprintf(
+                stderr,
+                "scalar packages: %s\n",
+                pin_text(scalar_field(guard_row(&produced[b], 1), "text")).bytes
+            );
+        }
+        REQUIRE(rows->count > 2);
         REQUIRE(scalar_field(&rows->items[2], "kind").i != SCALAR_REJECTION_ROW);
         REQUIRE(retained_text(&rows->items[2], "name", "Main"));
         REQUIRE(validated(b, &produced[b], ""));

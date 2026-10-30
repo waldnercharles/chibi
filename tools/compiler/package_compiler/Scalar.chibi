@@ -2323,9 +2323,14 @@ ScalarCollect :: (project: string, collection_names: string[], collection_paths:
                                         }
                                         entered = ScalarEntryFirst(concrete);
                                     }
+                                    // Import aliases name a package set's qualified calls; a lone source has none.
+                                    module_links: graph.Binding[] = [];
+                                    if (packaged) {
+                                        module_links = links;
+                                    }
                                     switch ScalarModule(nodes, text, document.key, entered, concrete_params, table, members,
                                                         constants, ops, target, text_natives, text_ports, text_identities, false,
-                                                        bindings, documents, links) {
+                                                        bindings, documents, module_links) {
                                         case .Failed(diagnostic):
                                             return ScalarFailure(path, text, diagnostic);
                                         case .Built(rows):

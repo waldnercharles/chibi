@@ -708,6 +708,34 @@ Scoring :: library {
 A game calls this function as `Scoring.Reward(10)`.
 Library, behavior and system blocks do not take `pub`.
 
+## Foreign libraries
+
+Native builds call C libraries that were built beforehand, the way Odin's
+`foreign import` does. A project never compiles the library's C source.
+
+```chibi
+foreign import libc "system:c"
+
+foreign libc {
+    getpid :: () -> i32
+    abs :: (value: i32) -> i32
+}
+```
+
+`foreign import alias "path"` names the library. A `system:` path asks the
+linker for a system library; any other path is a prebuilt archive, relative to
+the importing package. `foreign alias { ... }` declares the library's functions
+by signature alone. A function's name is its C symbol.
+
+Status: the parser reads both forms and the compiler reports
+`unsupported declaration` for them. Declaring the functions, calling them from
+native builds (a call from the VM is rejected), and linking the archive are the
+next steps. Planned parameter types are integers, floats, `bool`, an opaque
+64-bit `rawptr`, a `u8[]` passed as a data pointer with its length given
+separately, and text for `const char *` when the text is NUL-terminated.
+Variadic C functions will take `@variadic` with the number of fixed
+arguments.
+
 ## Generics and compile-time values
 
 `$T` binds a type from an argument. Later uses of `T` refer to that type.
@@ -737,6 +765,29 @@ Example :: library {
 Compile-time execution supports scalar and type values, authored calls, locals,
 assignment, `if` and `while`. It does not support arrays, `for`, closures or
 native calls. Each evaluation has a 65,536-step budget and a 128-call limit.
+
+### Choosing declarations per platform
+
+`when` at package scope keeps the declarations of the branch whose constant
+condition holds, so one source can pick a value or a function per target. The
+condition reads literals and the constants of imported packages; `core:target`
+supplies `Os`, `Arch` and `PointerBits` beside `Linux`, `Darwin`, `Windows`,
+`X86_64` and `Arm64`. Conditions combine `==`, `!=`, `<`, `<=`, `>`, `>=`,
+`and`, `or` and `not`. A branch that is not kept is parsed but never
+compiled.
+
+```chibi
+package files
+import target "core:target"
+
+when target.Os == target.Darwin {
+    StatSizeOffset: int : 96
+} else when target.Os == target.Windows {
+    StatSizeOffset: int : 72
+} else {
+    StatSizeOffset: int : 48
+}
+```
 
 ### Generic records
 

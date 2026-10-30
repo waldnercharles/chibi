@@ -1,0 +1,16 @@
+package app
+import target "core:target"
+
+when target.Os == target.Darwin {
+    pub Offset: int : 96
+} else when target.Os == target.Windows {
+    pub Offset: int : 72
+} else {
+    pub Offset: int : 48
+}
+
+when target.PointerBits == 64 and not (target.Arch == target.Arm64) {
+    Wide :: () -> int {
+        return 1
+    }
+}

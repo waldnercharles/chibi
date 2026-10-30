@@ -3,7 +3,6 @@
 #include "execution/prepared.h"
 #include "execution/status.h"
 #include "support/binary_cache.h"
-#include "support/file_io.h"
 #include "support/sha256.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_host.h"
@@ -731,31 +730,14 @@ static char *disk_arguments(
 
 /* The cache holds recovered compilers, each under the digest of everything
  * that decides its bytes: the seed, Compile's arguments (the sources and
- * the target), the prepared format and the host binary that ran the
- * recovery. */
-#define CACHE_VERSION "chibi-compiler-cache-1"
+ * the target) and the prepared format. The host that ran the recovery is
+ * not part of it: recovery is deterministic and proves its fixed point, so
+ * every host build (Debug, Release, sanitized, relocated) shares an entry. */
+#define CACHE_VERSION "chibi-compiler-cache-2"
 
-/* The digest of this host's own executable. */
-static bool host_identity(char digest[65])
+static void cache_key(const artifact *a, const char *json, size_t length, char key[BINARY_CACHE_KEY_BYTES + 1])
 {
-    char *path = file_executable_path();
-    size_t length = 0;
-    unsigned char *bytes = read_bytes(path, COMPILER_HOST_MAX_CLOSURE_BYTES, &length);
-    free(path);
-    if (!bytes) {
-        return false;
-    }
-    sha256_hex(bytes, length, digest);
-    free(bytes);
-    return true;
-}
-
-static bool cache_key(const artifact *a, const char *json, size_t length, char key[BINARY_CACHE_KEY_BYTES + 1])
-{
-    char host[65], seed[65], arguments[65], digest[65];
-    if (!host_identity(host)) {
-        return false;
-    }
+    char seed[65], arguments[65], digest[65];
     sha256_hex(a->closure, a->closure_length, seed);
     sha256_hex(json, length, arguments);
     sha256 hash;
@@ -764,16 +746,14 @@ static bool cache_key(const artifact *a, const char *json, size_t length, char k
     int used = snprintf(
         text,
         sizeof text,
-        CACHE_VERSION " prepared %d seed %s arguments %s host %s",
+        CACHE_VERSION " prepared %d seed %s arguments %s",
         EXECUTION_PREPARED_VERSION,
         seed,
-        arguments,
-        host
+        arguments
     );
     sha256_add(&hash, text, (size_t)used);
     sha256_end(&hash, digest);
     snprintf(key, BINARY_CACHE_KEY_BYTES + 1, "compiler-%s", digest);
-    return true;
 }
 
 /* Keeps the recovered compiler for the next start. Losing the lock or the
@@ -977,9 +957,10 @@ compiler_host *compiler_bootstrap_load(const compiler_bootstrap *b, char *error,
     compiler_host *host = NULL;
     if (inputs(b, &a, &json, &length, &changed, error, size)) {
         char key[BINARY_CACHE_KEY_BYTES + 1];
-        const char *cache = changed && b->cache && cache_key(&a, json, length, key)
-                              ? b->cache
-                              : NULL;
+        const char *cache = changed ? b->cache : NULL;
+        if (cache) {
+            cache_key(&a, json, length, key);
+        }
         size_t kept_length = 0;
         unsigned char *kept = cache
                                 ? binary_cache_read(cache, key, COMPILER_HOST_MAX_CLOSURE_BYTES, &kept_length)

@@ -96,6 +96,8 @@ typedef struct
 {
     const char *function, *arguments, *expected;
     const char *diagnostic;
+    /* Instructions the call may run; TARGET_BUDGET when zero. */
+    int budget;
 } sample_call;
 /* Focused selectors group unions, constants, patterns and integer types
  * (TYPE_SAMPLES); imports, core-pack calls, moves, reads in place and array
@@ -3297,6 +3299,17 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "returned structs with array fields survive collections",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Pair :: struct { a: int; b: int; }\n"
+                "Bundle :: struct { codes: int[]; pairs: Pair[]; tail: Pair; }\n"
+                "Make :: (n: int) -> Bundle { p: Pair = {a: n, b: n + 1}; "
+                "return {codes: [n, n + 1, n + 2], pairs: [p, p], tail: p}; }\n"
+                "Main :: () -> int { total := 0; i := 0; while i < 400000 { "
+                "b := Make(i); total += b.codes[2] - b.pairs[1].b + b.tail.a - i; "
+                "i += 1; } return total; }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[400000]", .budget = 200000000 } } },
     { .name = "optional locals start absent and become present",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -5843,7 +5856,7 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
         function_id(call->function),
         call->arguments,
         strlen(call->arguments),
-        TARGET_BUDGET,
+        call->budget ? call->budget : TARGET_BUDGET,
         &result
     );
     bool passed = valid && result.flow_status == FLOW_OK;
@@ -7651,7 +7664,7 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
     }
     for (int i = 0; i < table_count; i++) {
         const sample *s = &table[i];
-        if (group != MATH_SAMPLES && s->group != group) {
+        if ((group != MATH_SAMPLES && s->group != group)) {
             continue;
         }
         source_package_input inputs[SAMPLE_INPUTS];

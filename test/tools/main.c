@@ -167,8 +167,6 @@ void test_render_material_coefficients();
 void test_render_material_lod();
 void test_render_scene2d();
 void test_render_material_terrain_seams();
-void test_render_scene3d(bool gles);
-void test_render_scene3d_gi(bool gles);
 void test_device_controls();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
@@ -862,10 +860,9 @@ int main(int argc, char **argv)
 #endif
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
-         render_resources = false, interior_border = false,
-         viewport_resize = false, sdf_visibility = false, radiance = false,
-         radiance_depth = false, material_sampling = false, scene2d = false,
-         terrain_seams = false, scene3d = false, material_ramps = false,
+         render_resources = false, interior_border = false, viewport_resize = false,
+         sdf_visibility = false, radiance = false, radiance_depth = false,
+         material_sampling = false, scene2d = false, terrain_seams = false,
          radiance_surface = false, material_pixels = false, box3d = false,
          sky_files = false, mesh_files = false, model_import = false,
          model_graphs = false, model_catalog = false, render_geometry = false,
@@ -942,12 +939,6 @@ int main(int argc, char **argv)
     material_render = argc == 2 && !strcmp(argv[1], "--material-render");
     scene2d = argc == 2 && !strcmp(argv[1], "--scene2d");
     terrain_seams = argc == 2 && !strcmp(argv[1], "--material-terrain-seams");
-    bool scene3d_gi = argc == 2 && (!strcmp(argv[1], "--scene3d-gi") ||
-                                    !strcmp(argv[1], "--scene3d-gi-gles"));
-    bool scene3d_gles = argc == 2 && (!strcmp(argv[1], "--scene3d-gles") ||
-                                      !strcmp(argv[1], "--scene3d-gi-gles"));
-    scene3d = scene3d_gi || scene3d_gles ||
-              (argc == 2 && !strcmp(argv[1], "--scene3d"));
 #endif
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
@@ -971,13 +962,12 @@ int main(int argc, char **argv)
     if (argc != 1 && !corpus && !unit_fixtures && !shader_parameters && !new_asset &&
         !asset_refactor && !tilemap && !package && !third_party_publish &&
         !collab && !unit && !test_runner && !validation_plan && !web_storage &&
-        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
-        !read && !scene && !scene_prepared && !scene_hierarchy &&
-        !scene_snapshot_read && !native && !native_values && !native_catalog &&
-        !physics && !physics3d && !transforms && !render_resources &&
-        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
-        !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
-        !scene3d && !material_ramps && !texture_transform && !arena && !types &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared && !read &&
+        !scene && !scene_prepared && !scene_hierarchy && !scene_snapshot_read &&
+        !native && !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
+        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
+        !scene2d && !terrain_seams && !texture_transform && !arena && !types &&
         !render_geometry && !radiance_surface && !radiance_horizons &&
         !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
@@ -1021,8 +1011,7 @@ int main(int argc, char **argv)
             "--viewport-resize | "
             "--sdf-visibility | "
             "--radiance | --radiance-depth | --material-sampling | --scene2d | "
-            "--scene3d | --scene3d-gles | --scene3d-gi | --scene3d-gi-gles | "
-            "--material-ramps | --radiance-surface | --radiance-horizons4 | "
+            "--radiance-surface | --radiance-horizons4 | "
             "--radiance-horizons8 | --material-pixels | "
             "--texture-transform | "
             "--box3d | "
@@ -1164,7 +1153,7 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     if (render_resources || interior_border || viewport_resize || radiance ||
         radiance_depth || material_sampling || scene2d || terrain_seams ||
-        scene3d || material_render) {
+        material_render) {
         if (interior_border) {
             test_render_interior_border();
         } else if (viewport_resize) {
@@ -1179,10 +1168,6 @@ int main(int argc, char **argv)
             test_render_material_terrain_seams();
         } else if (scene2d) {
             test_render_scene2d();
-        } else if (scene3d_gi) {
-            test_render_scene3d_gi(scene3d_gles);
-        } else if (scene3d) {
-            test_render_scene3d(scene3d_gles);
         } else if (material_render) {
             test_render_material_coefficients();
             test_render_material_lod();

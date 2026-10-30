@@ -10779,7 +10779,7 @@ static const malformed_guard MALFORMED_LOOPS[] = {
      * flags or no name. */
     { { EDIT(LOOP_FOR, "value", 5) }, LOCAL },
     { { EDIT(LOOP_FOR, "type", SCALAR_BOOL) }, LOCAL },
-    { { EDIT(LOOP_FOR, "literal", 4) }, LOCAL },
+    { { EDIT(LOOP_FOR, "literal", 8) }, LOCAL },
     { { { .row = LOOP_FOR, .field = "name", .text = "", .from = -1 } }, LOCAL },
     /* An assignment to the index, and reads of the index in its own bound
      * and after its loop. */
@@ -10846,10 +10846,10 @@ static const malformed_guard MALFORMED_RECORDS[] = {
     { { { .row = RECORD_DECLARATION, .field = "name", .text = "", .from = -1 } },
       RECORD_ROW },
     { { EDIT(RECORD_DECLARATION, "type", SCALAR_INT) }, RECORD_ROW },
-    /* A member of a record type, out of order, named as another, or
-     * outside its record. */
-    { { EDIT(RECORD_Y, "type", SCALAR_RECORD) }, MEMBER_ROW },
-    { { EDIT(RECORD_Y, "type", SCALAR_STRING) }, MEMBER_ROW },
+    /* A member of its own record type, which holds itself, out of order,
+     * named as another, or outside its record. */
+    { { EDIT(RECORD_Y, "type", SCALAR_RECORD) }, RECORD_ROW },
+    { { EDIT(RECORD_Y, "type", SCALAR_STRING) }, FIELD_WRITE },
     { { EDIT(RECORD_X, "value", 1) }, MEMBER_ROW },
     { { { .row = RECORD_Y, .field = "name", .text = "x", .from = -1 } }, MEMBER_ROW },
     { { COPY(RECORD_Y, "end", RECORD_MAKE) }, MEMBER_ROW },
@@ -10901,11 +10901,12 @@ static const malformed_guard MALFORMED_UNIONS[] = {
     { { EDIT(UNION_DOT, "count", INT32_MAX) }, UNION_ROW },
     { { EDIT(UNION_BOX, "count", INT32_MAX) }, UNION_ROW },
     { { EDIT(UNION_DECLARATION, "count", INT32_MAX) }, UNION_ROW },
-    /* A payload numbered as another, of a record type, named as another in
-     * its variant, or outside its variant. */
+    /* A payload numbered as another, of a record type that holds the union
+     * (a cycle), of a string, which reads back as another type, named as
+     * another in its variant, or outside its variant. */
     { { EDIT(UNION_H, "value", 0) }, PAYLOAD_ROW },
-    { { EDIT(UNION_H, "type", SCALAR_RECORD) }, PAYLOAD_ROW },
-    { { EDIT(UNION_H, "type", SCALAR_STRING) }, PAYLOAD_ROW },
+    { { EDIT(UNION_H, "type", SCALAR_RECORD) }, UNION_ROW },
+    { { EDIT(UNION_H, "type", SCALAR_STRING) }, PAYLOAD },
     { { { .row = UNION_H, .field = "name", .text = "w", .from = -1 } }, PAYLOAD_ROW },
     { { COPY(UNION_H, "end", UNION_MAIN) }, PAYLOAD_ROW },
     /* A variant made with another's payloads, too few of them or as a
@@ -11145,11 +11146,11 @@ static bool rejects_guard(int b, pin_value *rows, const malformed_guard *malform
         }
         write_row(rows, edit->row, edit->field, value);
     }
-    REQUIRE(validated(b, rows, malformed->message));
+    bool rejected = validated(b, rows, malformed->message);
     for (int i = count - 1; i >= 0; i--) {
         write_row(rows, malformed->edits[i].row, malformed->edits[i].field, saved[i]);
     }
-    return true;
+    return rejected;
 }
 /* scalar_llvm accepts the producer's rows, of the `kinds` it gives, rejects
  * each malformed variant of them when its layout, operators, operand types,
@@ -11168,9 +11169,14 @@ static bool rejects_malformed(
         REQUIRE(scalar_field(guard_row(rows, i), "kind").i == kinds[i]);
     }
     REQUIRE(validated(b, rows, ""));
+    bool rejected = true;
     for (int i = 0; i < variants; i++) {
-        REQUIRE(rejects_guard(b, rows, &malformed[i]));
+        if (!rejects_guard(b, rows, &malformed[i])) {
+            fprintf(stderr, "malformed variant %d\n", i);
+            rejected = false;
+        }
     }
+    REQUIRE(rejected);
     REQUIRE(validated(b, rows, ""));
     return true;
 }
@@ -11363,8 +11369,8 @@ static bool asserted_rows(int b, pin_value *rows)
                    strstr(ir, "  br i1 %a6, label %p8, label %p7\n") &&
                    strstr(
                        ir,
-                       "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr "
-                       "}, ptr %ctx, i32 0, i32 1\n"
+                       "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr, "
+                       "ptr, ptr }, ptr %ctx, i32 0, i32 1\n"
                        "  store ptr @chibi_scalar.failure.0.7, ptr "
                        "%fail7.at\n  br label %failed\n"
                    ) &&
@@ -12601,7 +12607,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 71
+    SCALAR_ACCEPTED_CASES = 72
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on

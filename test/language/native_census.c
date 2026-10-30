@@ -1073,9 +1073,9 @@ static void write_report(FILE *out)
     fprintf(
         out,
         "\n## Functions\n\n*Rejected* is the text the producer's rejection "
-        "covers.\n\n"
-        "| Source | Function | Package | Through | Also | Rejected |\n"
-        "| --- | --- | --- | --- | --- | --- |\n"
+        "covers; *Message* is what the producer said.\n\n"
+        "| Source | Function | Package | Through | Also | Rejected | Message |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
     );
     for (int i = 0; i < acount(rows); i++) {
         const census_row *r = &rows[i];
@@ -1085,7 +1085,7 @@ static void write_report(FILE *out)
                                                       : "";
         fprintf(
             out,
-            "| `%s` | `%s` | %s | %s%s%s | %s | %s%s%s |\n",
+            "| `%s` | `%s` | %s | %s%s%s | %s | %s%s%s | %s |\n",
             r->path,
             r->function,
             CATEGORIES[r->category].package,
@@ -1095,7 +1095,8 @@ static void write_report(FILE *out)
             also,
             r->excerpt ? "`" : "",
             r->excerpt ? r->excerpt : "",
-            r->excerpt ? "`" : ""
+            r->excerpt ? "`" : "",
+            r->message ? r->message : ""
         );
     }
 }

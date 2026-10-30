@@ -219,6 +219,13 @@ Opens :: (kind: int) -> bool {
 Loop :: (kind: int) -> bool {
     return kind == facts.WhileRow || kind == facts.ForRow;
 }
+// Whether `row` is a loop over an array, and whether it also names the index.
+Arrayed :: (row: facts.Row) -> bool {
+    return row.kind == facts.ForRow && (row.literal == i64(facts.RangeArray) || Keyed(row));
+}
+Keyed :: (row: facts.Row) -> bool {
+    return row.kind == facts.ForRow && row.literal == i64(facts.RangeArray + facts.RangeKeyed);
+}
 // The row after the declaration at `at`: a Record row and its members, or a
 // Union row and its variants, each with its members; -1 when a count is
 // empty or negative, runs past `rows`, or a union's variant row is missing.
@@ -776,7 +783,7 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
     }
     // A range's two bounds, or one value.
     wanted: int = 1;
-    if (rows[at].kind == facts.ForRow && rows[at].literal != i64(facts.RangeArray)) {
+    if (rows[at].kind == facts.ForRow && !Arrayed(rows[at])) {
         wanted = 2;
     }
     if (length(stack) != wanted || stack[0] != result || stack[wanted - 1] != result) {
@@ -868,7 +875,7 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
             }
         }
         ranged := row.kind == facts.ForRow;
-        arrayed := ranged && row.literal == i64(facts.RangeArray);
+        arrayed := Arrayed(row);
         // A local holding the union a switch is on, followed by that switch.
         subject := row.kind == facts.LocalRow && row.literal == i64(facts.SwitchSubject);
         declares := row.kind == facts.LocalRow || ranged;
@@ -1004,6 +1011,11 @@ ValidFunction :: (rows: facts.Row[], records: int[], heads: int[], function: int
                 variables.append(row.type);
                 visible.append(row.value);
                 fixed.append(row.value);
+            }
+            if (Keyed(row)) {
+                variables.append(facts.IntType);
+                visible.append(row.value + 1);
+                fixed.append(row.value + 1);
             }
             earliest = Operated(rows, at);
         }
@@ -1602,7 +1614,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
             }
             value := stack[0];
             ends = false;
-            if (row.kind == facts.ForRow && row.literal == i64(facts.RangeArray)) {
+            if (Arrayed(row)) {
                 // The array and the index of the next element are locals of
                 // their own, before the element's variable.
                 array := NativeType(facts.ArrayType + row.type);
@@ -1612,6 +1624,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                                 exits: 0, armed: false, fallback: -1};
                 locals.extend([array, integer, element]);
                 places.append(local + 2);
+                if (Keyed(row)) {
+                    places.append(local + 1);
+                }
                 slots.append(integer);
                 body.extend([Op(native.Save, array, 0, stack[0], 0, local), Op(native.Constant, integer, slot, 0, 0, 0),
                              Op(native.Save, integer, 0, slot, 0, local + 1)]);

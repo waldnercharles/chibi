@@ -134,11 +134,6 @@ pub Rejection :: union {
     | Rejected(document: int, line: int, column: int, message: string)
 }
 
-// RejectPackages' outcome, which the native host reads by position.
-pub Result :: union {
-    Completed(ok: bool, entry_id: u64, prepared: u8[], document: int, start: int,
-              end: int, line: int, column: int, message: string)
-}
 // The first diagnostic CompilePackages' input is rejected with.
 pub RejectPackages :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                        sources: string[], debug: bool, target: compiler.Target, abi: u64, names: string[],

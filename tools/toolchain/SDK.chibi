@@ -42,7 +42,6 @@ Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
         Join(["share/chibi/licenses/fmt/LICENSE=", root, "/third_party/fmt/LICENSE"]),
         Join(["share/chibi/licenses/fmt/README.md=", root, "/third_party/fmt/README.md"]),
         Join(["share/chibi/licenses/yyjson/LICENSE=", root, "/third_party/yyjson/LICENSE"]),
-        Join(["share/chibi/licenses/ckdl/COPYING=", root, "/third_party/ckdl/COPYING"]),
         Join(["share/chibi/licenses/vendor/tree_sitter/LICENSE=", third_party, "/share/chibi/licenses/vendor/tree_sitter/LICENSE"]),
         Join(["share/chibi/licenses/vendor/sljit/LICENSE=", third_party, "/share/chibi/licenses/vendor/sljit/LICENSE"])
     ];

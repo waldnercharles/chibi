@@ -12270,6 +12270,87 @@ static bool native_strings_emit(int b)
     REQUIRE(!contains(ir, "text_equal"));
     return true;
 }
+/* CollectScalarPackages' arguments for the project files `inputs`: no
+ * collection, the paths and sources, this host's target and the natives. */
+static bool scalar_package_arguments(
+    int b,
+    const source_package_input *inputs,
+    int count,
+    pin_value args[10]
+)
+{
+    args[0] = text("/project");
+    args[1] = strings(NULL, 0);
+    args[2] = strings(NULL, 0);
+    args[3] = files(inputs, count, false);
+    args[4] = files(inputs, count, true);
+    REQUIRE(target(b, &args[5]));
+    args[6] = instruction_names();
+    REQUIRE(natives(b, false, false, &args[7]));
+    return true;
+}
+/* A function of an imported project package is one module with its caller:
+ * the entry is the first function of the first file, whichever package order
+ * puts the dependency in front, and the qualified call is a call row to the
+ * import's function, which the emitter lowers as a call. */
+TEST_CASE(package_compiler_scalar_rows_span_imported_packages)
+{
+    REQUIRE(prepare());
+    static const source_package_input packages[] = {
+        { .path = "Main.chibi",
+          .text = "package main\nimport lib \"project:lib\"\n"
+                  "Main :: () -> int { return lib.Add(3, lib.Twice(2)) * 2; "
+                  "}\n" },
+        { .path = "lib/Lib.chibi",
+          .text = "package lib\npub Twice :: (n: int) -> int { return n * 2; "
+                  "}\n"
+                  "pub Add :: (a: int, b: int) -> int { return a + b; }\n" },
+    };
+    pin_value produced[2];
+    for (int b = 0; b < 2; b++) {
+        pin_value args[10];
+        REQUIRE(scalar_package_arguments(b, packages, 2, args));
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            b,
+            PACKAGE,
+            "CollectScalarPackages",
+            args,
+            10,
+            COMPILE_BUDGET,
+            &detached,
+            &produced[b]
+        ));
+    }
+    compiler_fixture_free(&fixture);
+    arena_free(&input);
+    const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
+    for (int b = 0; b < 2; b++) {
+        const pin_array *rows = produced[b].ptr;
+        REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && rows->count > 2);
+        REQUIRE(scalar_field(&rows->items[2], "kind").i != SCALAR_REJECTION_ROW);
+        REQUIRE(retained_text(&rows->items[2], "name", "Main"));
+        REQUIRE(validated(b, &produced[b], ""));
+        pin_value emitted;
+        REQUIRE(emit_bytes(b, "LinuxX64", &produced[b], &emitted));
+        const pin_array *bytes = emitted.ptr;
+        char *ir = xmalloc((size_t)bytes->count + 1);
+        for (int i = 0; i < bytes->count; i++) {
+            ir[i] = (char)bytes->items[i].u8;
+        }
+        ir[bytes->count] = 0;
+        bool spans = strstr(ir, "define internal i32 @chibi_scalar.1(") &&
+                     strstr(ir, "define internal i32 @chibi_scalar.2(") &&
+                     strstr(ir, "call i32 @chibi_scalar.");
+        if (!spans) {
+            fprintf(stderr, "%s\n", ir);
+        }
+        free(ir);
+        REQUIRE(spans);
+    }
+    return true;
+}
 /* llvm_native's call and float contracts: definitions, argument order,
  * floating encodings and conversions, and the malformed or cyclic plans it
  * rejects before writing IR. */
@@ -12314,14 +12395,14 @@ static const struct
       "return 0; }\n",
       "scalar proof binds payloads only in switch arms",
       ".Box(w)" },
-    { "package scalar\nNamed :: union { Tag(text: string) }\nMain :: () -> int "
+    { "package scalar\nNamed :: union { Tag(items: int[]) }\nMain :: () -> int "
       "{ return 1; }\n",
-      "scalar proof requires number and bool union payloads",
-      "text: string" },
+      "scalar proof requires number, bool and string union payloads",
+      "items: int[]" },
     { "package scalar\nPoint :: struct { x: int; }\nWrapped :: union { Of(p: "
       "Point) }\n"
       "Main :: () -> int { return 1; }\n",
-      "scalar proof requires number and bool union payloads",
+      "scalar proof requires number, bool and string union payloads",
       "p: Point" },
     { "package scalar\nMain :: () -> int { return text_byte_length(Value: "
       "\"ab\"); }\n",
@@ -13566,6 +13647,43 @@ ue;
        "    return n;\n"
        "}\n",
        3127061 },
+     /* Strings held by records and union payloads: written, copied, passed,
+      * returned and compared. Fields() 15 (one bit per check) and Variants()
+      * 7, so Main is 15 + 7 * 1000. */
+     { "string fields",
+       "package scalar\n"
+       "Label :: struct { name: string; count: int; }\n"
+       "Shape :: union { Named(text: string, size: int) | Empty }\n"
+       "Main :: () -> int { return Fields() + Variants() * 1000; }\n"
+       "Rename :: (label: Label, name: string) -> Label {\n"
+       "    renamed := label;\n"
+       "    renamed.name = name;\n"
+       "    return renamed;\n"
+       "}\n"
+       "Make :: (text: string) -> Shape { return Shape.Named(text, 7); }\n"
+       "Bit :: (b: bool, weight: int) -> int {\n"
+       "    if (b) { return weight; }\n"
+       "    return 0;\n"
+       "}\n"
+       "Fields :: () -> int {\n"
+       "    label: Label = {name: \"left\", count: 2};\n"
+       "    other := Rename(label, \"right\");\n"
+       "    return Bit(label.name == \"left\", 1) + Bit(other.name == "
+       "\"right\", 2) +\n"
+       "        Bit(label.name != other.name, 4) + Bit(other.count == 2, 8);\n"
+       "}\n"
+       "Variants :: () -> int {\n"
+       "    shape := Make(\"abc\");\n"
+       "    switch shape {\n"
+       "        case .Named(text, size):\n"
+       "            if (text == \"abc\") { return size; }\n"
+       "            return 0;\n"
+       "        case .Empty:\n"
+       "            return -1;\n"
+       "    }\n"
+       "    return 0;\n"
+       "}\n",
+       7015 },
      /* Package constants are their folded values: alone, in folded
       * expressions, as a shift count and typed number, f64 and u64 values,
       * declared after a constant that names them.
@@ -16576,6 +16694,7 @@ void test_language_package_compiler_chibi_scalar()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_scalar_rows_outlive_the_producer);
+    RUN_TEST_CASE(package_compiler_scalar_rows_span_imported_packages);
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);

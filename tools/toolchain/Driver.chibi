@@ -1,0 +1,202 @@
+package driver
+
+import strings "core:strings"
+
+// The engine's one build command, `chibi build` in an engine checkout. It
+// runs under the private build host: `chibi-build-host --source
+// tools/toolchain/Driver.chibi --entry Main -- build [OPTIONS]`.
+//
+//   build [--release|--debug] [--build DIR] [--release-build DIR] [--target NAME]... [--all]
+//         [--jobs N]
+//         [--host PATH] [--libclang-root DIR] [--reflect PATH]
+//         [--asset-generator-hosts DIR] [--debug-optimization 0|1]
+//         [--debug-frame-pointers on|off] [--dry-run]
+//
+// A sanitized build in `build` is the default; --release builds `build-release`
+// and --debug `build-debug`. Without --target it builds chibi, chibi-compile,
+// chibi-player and chibi_ctl; --all builds every target. --dry-run prints the
+// commands instead of running them.
+
+Join :: (parts: string[]) -> string {
+    return build.join(parts, "")
+}
+
+Flag :: (arguments: string[], name: string) -> bool {
+    for (argument in arguments) {
+        if (argument == name) {
+            return true
+        }
+    }
+    return false
+}
+
+Option :: (arguments: string[], name: string, fallback: string) -> string {
+    for (i in 0..<length(arguments) - 1) {
+        if (arguments[i] == name) {
+            return arguments[i + 1]
+        }
+    }
+    return fallback
+}
+
+Values :: (arguments: string[], name: string) -> string[] {
+    values: string[] = []
+    for (i in 0..<length(arguments) - 1) {
+        if (arguments[i] == name) {
+            values = build.concat(values, [arguments[i + 1]])
+        }
+    }
+    return values
+}
+
+Absolute :: (path: string) -> string {
+    if (strings.HasPrefix(path, "/")) {
+        return path
+    }
+    return Join([build.root(), "/", path])
+}
+
+// Prints or runs one step and reports a failure under its name.
+Step :: (name: string, command: string[], dry: bool) -> int {
+    if (dry) {
+        build.report(Join([name, ": ", strings.Join(command, " ")]))
+        return 0
+    }
+    status := build.run(command)
+    if (status != 0) {
+        build.report(format_text("{}: failed with status {}", name, status))
+    }
+    return status
+}
+
+Profile :: (arguments: string[]) -> string {
+    if (Flag(arguments, "--release")) {
+        return "release"
+    }
+    if (Flag(arguments, "--debug")) {
+        return "debug"
+    }
+    return "sanitizer"
+}
+
+DefaultDirectory :: (profile: string) -> string {
+    if (profile == "release") {
+        return "build-release"
+    }
+    if (profile == "debug") {
+        return "build-debug"
+    }
+    return "build"
+}
+
+HostUsable :: (host: string) -> bool {
+    if (!build.file_exists(host)) {
+        return false
+    }
+    return build.probe([host, "--protocol-version"]) == 0 && build.trim(build.last_stdout()) == "14"
+}
+
+// The command that runs an authored program under the private host.
+Program :: (host: string, source: string, function: string, collections: string[], timeout: string) -> string[] {
+    command := [
+        host, "--compiler", "tools/compiler", "--compiler-core", "packages/core", "--root", build.root(),
+        "--source", source, "--core", "packages/core"
+    ]
+    for (collection in collections) {
+        command = build.concat(command, ["--collection", collection])
+    }
+    return build.concat(command, ["--entry", function, "--timeout-ms", timeout, "--"])
+}
+
+// Builds a profile, first the Release hosts a non-Release graph borrows to
+// generate the asset compiler, which a Debug host cannot do from a cold tree
+// within its deadline.
+Build :: (arguments: string[]) -> int {
+    dry := Flag(arguments, "--dry-run")
+    profile := Profile(arguments)
+    directory := Option(arguments, "--build", DefaultDirectory(profile))
+    jobs := Option(arguments, "--jobs", "8")
+    releases := Option(arguments, "--release-build", "build-release")
+    host := Absolute(Option(arguments, "--host", Join([directory, "/sdk/chibi-build-host"])))
+    if (!HostUsable(host)) {
+        // A cold tree fetches the pinned first build host (tools/bootstrap/hosts.tsv).
+        status := Step("bootstrap", ["sh", "tools/bootstrap.sh", host], dry)
+        if (status != 0) {
+            return status
+        }
+    }
+    generators := Option(arguments, "--asset-generator-hosts", "")
+    if (generators == "" && profile != "release") {
+        nested := [
+            "--release", "--build", releases, "--host", host, "--jobs", jobs, "--target", "chibi-build-host",
+            "--target", "chibi-compiler-host"
+        ]
+        if (dry) {
+            nested = build.concat(nested, ["--dry-run"])
+        }
+        status := Build(nested)
+        if (status != 0) {
+            return status
+        }
+        generators = Absolute(Join([releases, "/sdk"]))
+    }
+    timeout := Option(arguments, "--timeout-ms", "3600000")
+    status := Step(
+        "third-party",
+        build.concat(Program(host, "tools/toolchain/Build.chibi", "Build", [], "1800000"), ["third-party", directory]),
+        dry
+    )
+    if (status != 0) {
+        return status
+    }
+    graph := ["--build", Absolute(directory), "--profile", profile]
+    for (name in ["--libclang-root", "--reflect"]) {
+        value := Option(arguments, name, "")
+        if (value != "") {
+            graph = build.concat(graph, [name, Absolute(value)])
+        }
+    }
+    for (name in ["--debug-optimization", "--debug-frame-pointers"]) {
+        value := Option(arguments, name, "")
+        if (value != "" && profile == "debug") {
+            graph = build.concat(graph, [name, value])
+        }
+    }
+    graph = build.concat(graph, ["--jobs", jobs])
+    if (generators != "") {
+        graph = build.concat(graph, ["--asset-generator-hosts", Absolute(generators)])
+    }
+    graph = build.concat(graph, ["--all-commands", "on"])
+    targets := Values(arguments, "--target")
+    if (length(targets) == 0 && !Flag(arguments, "--all")) {
+        targets = ["chibi", "chibi-compile", "chibi-player", "chibi_ctl"]
+    }
+    if (length(targets) > 0) {
+        targets = build.concat(targets, ["chibi-build-host"])
+    }
+    for (target in targets) {
+        graph = build.concat(graph, ["--target", target])
+    }
+    command := build.concat(
+        ["env", Join(["CCACHE_BASEDIR=", build.root()])],
+        build.concat(Program(host, "tools/toolchain/Graph.chibi", "Libraries", ["graph=tools/graph"], timeout), graph)
+    )
+    status = Step("graph", command, dry)
+    if (status != 0) {
+        return status
+    }
+    return Step("compile-commands", ["ln", "-sfn", Join([Absolute(directory), "/compile_commands.json"]), "compile_commands.json"], dry)
+}
+
+Usage :: () -> int {
+    build.report("usage: build [--release|--debug] [--build DIR] [--target NAME]... [--all] [--jobs N] [--dry-run]")
+    return 2
+}
+
+Main :: () -> int {
+    arguments := build.arguments()
+    if (length(arguments) == 0 || arguments[0] != "build") {
+        return Usage()
+    }
+    return Build(build.concat([], arguments))
+}

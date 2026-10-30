@@ -236,7 +236,7 @@ pub Int64Type: int : 8;
 pub WordType: int : 9;
 pub FloatType: int : 10;
 pub DoubleType: int : 11;
-// An immutable string of bytes. No record field or union payload is one.
+// An immutable string of bytes.
 pub StringType: int : 12;
 // The d-th record or union of the module is type RecordType + d.
 pub RecordType: int : 32;

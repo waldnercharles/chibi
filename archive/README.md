@@ -24,3 +24,12 @@ Editing, rename, completion/hover/highlighting and prototype-source editing for 
 - `src/authoring/project_docs.c`: the site runner, cut from `project_compile.c`.
 - `tools/docs/`: the Chibi site generator (Markdown, reference, grammar, site).
 - `test/language/format.c`, `test/language/docs_markdown*`, `test/tools/published_docs.c`: their tests.
+
+## Game-project compile path (authoring, host)
+
+`chibi-compile --output/--check/--explain-costs/--modules/--resources-only/--stage-one-input` and the `chibi build/check/export/web` and run-a-game paths prepared game projects through the C front end. `chibi-compile` now only runs `--test`; the CLI reports "game projects are archived".
+
+- `src/authoring/project_compile.c` (and its full header), `project_prepare*`, `component_declarations`, `prototype_prepare`, `scene_prepare`, `material_prepare`, `sound_prepare`, `ui_prepare*`, `source_costs`, `material_attach`, `prototype_attach`.
+- `src/host/export.c` and `export.h`: exported folders, apps and web sites.
+- `tools/toolchain/StageOne.chibi`: the stage-one project route.
+- `test/host/export.c`, `test/tools/GameEquivalence.chibi`.

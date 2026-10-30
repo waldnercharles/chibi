@@ -352,30 +352,6 @@ TEST_CASE(headless_source_cost_facts_preserve_linked_library_evidence)
 }
 
 #if defined(CHIBI_TEST_SOURCE_ASSETS) && !defined(__EMSCRIPTEN__)
-TEST_CASE(headless_cost_formatter_failure_preserves_prepared_sources)
-{
-    prepare_cost_library(BEHAVIOR_BYTECODE);
-    REQUIRE(authoring_sources_valid(cost_sources));
-    const authoring_source *caller = cost_source("Caller");
-    REQUIRE(caller && caller->cost_count == 1);
-    const asset_compiler_options *defaults = asset_source_default_options();
-    REQUIRE(defaults);
-    asset_compiler_options unavailable = *defaults;
-    unavailable.compiler = NULL;
-    unavailable.compiler_length = 0;
-    asset_source_set_default(&unavailable);
-    char error[512] = { 0 };
-    char *report = authoring_sources_cost_report(cost_sources, true, error, sizeof error);
-    asset_source_set_default(defaults);
-    bool failed = !report && strstr(error, "Cost reporter failed") &&
-                  strstr(error, "unavailable");
-    free(report);
-    REQUIRE(failed);
-    REQUIRE(authoring_sources_valid(cost_sources));
-    REQUIRE(cost_source("Caller") == caller && caller->cost_count == 1);
-    REQUIRE(asset_source_default_options() == defaults);
-    return true;
-}
 #endif
 
 void test_language_headless()
@@ -386,7 +362,6 @@ void test_language_headless()
     RUN_TEST_CASE(headless_source_cost_facts_keep_unknown_native_costs_and_quiet_bodies);
     RUN_TEST_CASE(headless_source_cost_facts_preserve_linked_library_evidence);
 #if defined(CHIBI_TEST_SOURCE_ASSETS) && !defined(__EMSCRIPTEN__)
-    RUN_TEST_CASE(headless_cost_formatter_failure_preserves_prepared_sources);
 #endif
     pu_clear_setup();
 }

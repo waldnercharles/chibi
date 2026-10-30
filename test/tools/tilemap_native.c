@@ -122,110 +122,7 @@ TEST_CASE(native_queries_and_cache_lifecycle)
 }
 
 #ifdef CHIBI_TEST_PREPARATION
-TEST_CASE(decorative_fixture_prepares_atlas_and_owns_cells)
-{
-    char text[4096];
-    FILE *file = fopen(CHIBI_SOURCE_ROOT "/test/fixtures/sprites/content/prototypes/TileMosaic.kdl", "rb");
-    REQUIRE(file);
-    size_t length = fread(text, 1, sizeof text - 1, file);
-    bool complete = !ferror(file) && feof(file);
-    REQUIRE(fclose(file) == 0);
-    REQUIRE(complete);
-    text[length] = 0;
-    const ecs_component_desc *components[] = { &COMPONENT_Tilemap,
-                                               &COMPONENT_Transform,
-                                               &COMPONENT_Orientation };
-    prototype_registry registry = { .components = components, .component_count = 3 };
-    char error[256] = { 0 };
-    fixture_prototype = prototype_load(text, &registry, error, sizeof error);
-    REQUIRE(fixture_prototype);
-    render_image_catalog_clear();
-    REQUIRE(
-        render_image_mount_content(CHIBI_SOURCE_ROOT "/test/fixtures/sprites/content", error, sizeof error)
-    );
-    REQUIRE(render_image_source_count() == 0);
-    fixture_scene = authoring_prototype_prepare(fixture_prototype, error, sizeof error);
-    REQUIRE(fixture_scene);
-    /* The atlas and its normal and height maps, each laid out like it. */
-    const char *images[] = { "content/images/props.png",
-                             "content/images/props_normal.png",
-                             "content/images/props_height.png" };
-    REQUIRE(render_image_source_count() == 3);
-    for (int i = 0; i < 3; i++) {
-        REQUIRE(!strcmp(render_image_source_key(i), images[i]));
-        int width = 0, height = 0;
-        REQUIRE(render_image_info(images[i], &width, &height));
-        REQUIRE(width == 64 && height == 16);
-    }
-    /* Prepared data outlives the authored prototype and its input text. */
-    prototype_free(fixture_prototype);
-    fixture_prototype = NULL;
-    memset(text, 0, sizeof text);
-    REQUIRE(scene_object_count(fixture_scene) == 1);
-    REQUIRE(scene_object_behavior_count(fixture_scene, 0) == 0);
-    const Tilemap *map = NULL;
-    const Transform *transform = NULL;
-    const Orientation *orientation = NULL;
-    for (int i = 0; i < scene_object_component_count(fixture_scene, 0); i++) {
-        scene_component component = scene_object_component_at(fixture_scene, 0, i);
-        if (component.desc->id == COMPONENT_Tilemap.id) {
-            map = component.data;
-        }
-        if (component.desc->id == COMPONENT_Transform.id) {
-            transform = component.data;
-        }
-        if (component.desc->id == COMPONENT_Orientation.id) {
-            orientation = component.data;
-        }
-        REQUIRE(component.desc->id != COMPONENT_Collider.id);
-    }
-    REQUIRE(map && transform && orientation);
-    REQUIRE(!strcmp(map->image, images[0]) && !strcmp(map->normal_map, images[1]));
-    REQUIRE(!strcmp(map->height_map, images[2]) && map->relief == 4);
-    REQUIRE(
-        map->columns == 2 && map->rows == 2 && map->frame_width == 16 &&
-        map->frame_height == 16
-    );
-    REQUIRE(!strcmp(map->cells, "1 2 -1 3"));
-    REQUIRE(transform->x == -120 && transform->y == 40 && orientation->radians == .35f);
-    tilemap_grid parsed = { 0 };
-    bool valid = tilemap_grid_update(&parsed, map->cells, map->columns, map->rows, map->frame_width, map->frame_height);
-    int frames[4] = { -2, -2, -2, -2 };
-    if (valid) {
-        memcpy(frames, parsed.frames, sizeof frames);
-    }
-    tilemap_grid_free(&parsed);
-    REQUIRE(valid && frames[0] == 1 && frames[1] == 2 && frames[2] == -1 && frames[3] == 3);
-    return true;
-}
 
-/* A tilemap whose normal map is another size than its atlas fails to prepare,
- * naming the map. */
-TEST_CASE(mismatched_maps_fail_preparation)
-{
-    static const char
-        text[] = "name \"Mismatched\"\n"
-                 "components {\n"
-                 "    Tilemap cells=\"1\" columns=1 frame_height=16 "
-                 "frame_width=16 image=\"content/images/props.png\" "
-                 "normal_map=\"content/textures/EnergyCells.png\" rows=1\n"
-                 "}\n";
-    const ecs_component_desc *components[] = { &COMPONENT_Tilemap };
-    prototype_registry registry = { .components = components, .component_count = 1 };
-    char error[256] = { 0 };
-    fixture_prototype = prototype_load(text, &registry, error, sizeof error);
-    REQUIRE(fixture_prototype);
-    render_image_catalog_clear();
-    REQUIRE(
-        render_image_mount_content(CHIBI_SOURCE_ROOT "/test/fixtures/sprites/content", error, sizeof error)
-    );
-    REQUIRE(
-        render_image_mount_content(CHIBI_SOURCE_ROOT "/test/fixtures/content", error, sizeof error)
-    );
-    REQUIRE(!authoring_prototype_prepare(fixture_prototype, error, sizeof error));
-    REQUIRE(strstr(error, "content/textures/EnergyCells.png is 128x128, not the 64x16 of its image"));
-    return true;
-}
 #endif
 
 void test_tool_tilemap_native()
@@ -233,8 +130,6 @@ void test_tool_tilemap_native()
     pu_setup(setup, teardown);
     RUN_TEST_CASE(native_queries_and_cache_lifecycle);
 #ifdef CHIBI_TEST_PREPARATION
-    RUN_TEST_CASE(decorative_fixture_prepares_atlas_and_owns_cells);
-    RUN_TEST_CASE(mismatched_maps_fail_preparation);
 #endif
     pu_setup(NULL, NULL);
 }

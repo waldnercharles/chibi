@@ -688,6 +688,18 @@ ValidOperands :: (rows: facts.Row[], records: int[], heads: int[], at: int, resu
                 }
             }
             stack = slice(stack, 0, base);
+        } else if (operand.kind == facts.ForeignRow) {
+            base := length(stack) - operand.count;
+            if (operand.name == "" || operand.text == "" || operand.value != 0 || !Scalar(operand.type) ||
+                operand.count < 0 || base < floor) {
+                return "scalar foreign call differs from its operands";
+            }
+            for (argument in 0..<operand.count) {
+                if (!Scalar(stack[base + argument])) {
+                    return "scalar foreign call takes numbers and bools";
+                }
+            }
+            stack = slice(stack, 0, base);
         } else if (operand.kind == facts.ZeroRow) {
             if (operand.name != "" || operand.count != 0 || operand.value != 0 ||
                 MemberType(rows, records, operand.type, 0) == 0) {
@@ -1501,6 +1513,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool)
                     stack = slice(stack, 0, base);
                 } else if (operand.kind == facts.CallRow) {
                     item = Op(native.Call, type, slot, operand.value, shape.arguments, operand.count);
+                    base := length(stack) - operand.count;
+                    for (argument in 0..<operand.count) {
+                        arguments.append(stack[base + argument]);
+                    }
+                    shape.arguments += operand.count;
+                    stack = slice(stack, 0, base);
+                } else if (operand.kind == facts.ForeignRow) {
+                    item = Op(native.ForeignCall, type, slot, 0, shape.arguments, operand.count);
+                    item.literal = i64(length(texts));
+                    texts.append(operand.name);
                     base := length(stack) - operand.count;
                     for (argument in 0..<operand.count) {
                         arguments.append(stack[base + argument]);

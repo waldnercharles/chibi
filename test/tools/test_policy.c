@@ -3478,10 +3478,7 @@ static void experiment_evidence(bool complete, bool exported, bool database, int
     path(name, "build/test/tools/testing/include");
     const char *mkdir_argv[] = { "mkdir", "-p", name, NULL };
     assert(tool_run(mkdir_argv, tool_root(), logpath) == 0);
-    const char *targets[] = { "chibi_engine",
-                              "chibi_compiler",
-                              "test_tools",
-                              "test_language" };
+    const char *targets[] = { "chibi_engine", "chibi_compiler", "test_tools", "test_language" };
     const char *sources[] = { "src/runtime/engine.c",
                               "src/language/lower.c",
                               "test/tools/main.c",

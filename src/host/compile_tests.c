@@ -1,7 +1,6 @@
-#include "authoring/project_compile.h"
-
 #include "authoring/package_compile.h"
 #include "authoring/package_tests.h"
+#include "authoring/project_compile.h"
 #include "authoring/source_package_io.h"
 #include "execution/backend.h"
 #include "execution/function.h"
@@ -95,7 +94,8 @@ static char *tests_package(const source_package_snapshot_options *inputs)
             continue;
         }
         size_t length = (size_t)(slash - (path + root + 1));
-        if (previous && previous_length == length && !memcmp(previous, path + root + 1, length)) {
+        if (previous && previous_length == length &&
+            !memcmp(previous, path + root + 1, length)) {
             continue;
         }
         previous = path + root + 1;
@@ -128,7 +128,14 @@ static package_collection *compile_tests(
     package_compile_error error;
     package_collection *packages = package_compile(&inputs, path, package, native, backend, &error);
     if (!packages && *error.path) {
-        fprintf(stderr, "%s:%d:%d: %s\n", error.path, error.line, error.column, error.message);
+        fprintf(
+            stderr,
+            "%s:%d:%d: %s\n",
+            error.path,
+            error.line,
+            error.column,
+            error.message
+        );
     } else if (!packages) {
         fprintf(stderr, "%s\n", error.message);
     }

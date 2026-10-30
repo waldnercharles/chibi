@@ -45,13 +45,7 @@ typedef struct
     int start, end, line, column;
 } position;
 
-static void diagnostic(
-    authoring_program *program,
-    int status,
-    const char *path,
-    position at,
-    const char *message
-)
+static void diagnostic(authoring_program *program, int status, const char *path, position at, const char *message)
 {
     clear_error(program);
     program->diagnostic = (authoring_program_diagnostic){ .status = status,
@@ -100,7 +94,8 @@ static uint64_t entry(const execution_module *module, const char *name, bool *fo
         if (!arguments && results <= 1 &&
             (!results ||
              (signature[0].type == PIN_I32 && signature[0].container == PIN_CONTAINER_SINGLE &&
-              behavior_function_kind(function.body, BEHAVIOR_BANK_RESULT, 0) == BEHAVIOR_VALUE))) {
+              behavior_function_kind(function.body, BEHAVIOR_BANK_RESULT, 0) ==
+                  BEHAVIOR_VALUE))) {
             return function.id;
         }
     }
@@ -196,7 +191,11 @@ bool authoring_program_prepare(authoring_program *program, const char *name, boo
             restart
         );
     } else {
-        program->prepared = execution_program_new((execution_module *)module, NULL, program->services);
+        program->prepared = execution_program_new(
+            (execution_module *)module,
+            NULL,
+            program->services
+        );
         if (program->prepared &&
             !execution_program_attach(program->prepared, PROGRAM_OWNER)) {
             execution_program_free(program->prepared);
@@ -276,9 +275,9 @@ static int invoke(
             status,
             error && error->asset_name[0] ? error->asset_name : NULL,
             (position){ .start = error ? error->start : 0,
-                            .end = error ? error->end : 0,
-                            .line = error ? error->line : 0,
-                            .column = error ? error->column : 0 },
+                        .end = error ? error->end : 0,
+                        .line = error ? error->line : 0,
+                        .column = error ? error->column : 0 },
             error && error->message[0] ? error->message : "Program invocation failed"
         );
     } else {

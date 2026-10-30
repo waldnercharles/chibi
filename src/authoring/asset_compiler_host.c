@@ -1282,7 +1282,8 @@ unsigned char *asset_compiler_compile_closure(
     if (!host) {
         return NULL;
     }
-    uint64_t budget = options->compile_budget ? options->compile_budget : CLOSURE_COMPILE_BUDGET;
+    uint64_t budget = options->compile_budget ? options->compile_budget
+                                              : CLOSURE_COMPILE_BUDGET;
     behavior_execution_scope scope = { .remaining = budget,
                                        .prefer_compiled = true,
                                        .cancelled = options->cancelled,

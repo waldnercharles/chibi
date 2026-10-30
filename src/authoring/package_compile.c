@@ -49,7 +49,16 @@ static package_collection *read_closure(
     size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
     uint64_t root = 0;
     char reason[256] = { 0 };
-    package_collection *packages = compiler_artifact_read(closure, length, &linker, backend, &remaining, &root, reason, sizeof reason);
+    package_collection *packages = compiler_artifact_read(
+        closure,
+        length,
+        &linker,
+        backend,
+        &remaining,
+        &root,
+        reason,
+        sizeof reason
+    );
     if (!packages) {
         fail(error, NULL, 0, 0, reason);
     }
@@ -116,12 +125,24 @@ package_collection *package_compile(
     } else {
         asset_compiler_diagnostic diagnostic;
         size_t length = 0;
-        unsigned char *closure = asset_compiler_compile_closure(request, request_length, &length, NULL, &diagnostic);
+        unsigned char *closure = asset_compiler_compile_closure(
+            request,
+            request_length,
+            &length,
+            NULL,
+            &diagnostic
+        );
         if (closure) {
             packages = read_closure(closure, length, native, backend, error);
         } else {
             bool known = diagnostic.document >= 0 && diagnostic.document < count;
-            fail(error, known ? paths[diagnostic.document] : NULL, diagnostic.line, diagnostic.column, diagnostic.message);
+            fail(
+                error,
+                known ? paths[diagnostic.document] : NULL,
+                diagnostic.line,
+                diagnostic.column,
+                diagnostic.message
+            );
         }
         free(closure);
     }

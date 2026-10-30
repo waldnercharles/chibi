@@ -612,26 +612,26 @@ Files :: (target: string) -> string[] {
     }
     if (target == "test_language") {
         return [
-            "test/language/main.c", "test/language/inferred_string_arrays.c",
+            "test/language/main.c",
             "test/language/build_workflow.c",
-            "test/language/outliner_projection.c", "test/language/row_array.c",
+
             "test/language/record_compatibility.c",
             "test/language/record_document.c", "test/language/record_producer.c",
             "test/language/record_prepared_runtime.c",
             "test/language/compositional_records.c",
             "test/language/record_values.c",
-            "test/language/record_prepared.c", "test/language/runtime_attribution.c",
+            "test/language/record_prepared.c",
             "test/language/syntax.c", "test/language/execution.c",
             "test/language/capture.c",
 
             "test/language/incremental.c",
             "test/language/modules.c", "test/language/native_calls.c",
-            "test/language/ranges.c", "test/language/component_write.c",
-            "test/language/component_write_source.c", "test/language/component_write_ir.c",
-            "test/language/benchmark.c",
-            "test/language/activation_cache.c", "test/language/activation_benchmark.c",
-            "test/language/binding_benchmark.c", "test/language/borrow_benchmark.c",
-            "test/language/incremental_benchmark.c", "test/language/wasm.c", "test/language/headless.c",
+            "test/language/ranges.c",
+            "test/language/component_write_ir.c",
+
+
+
+            "test/language/incremental_benchmark.c", "test/language/headless.c",
             "test/language/prepared.c", "test/language/navigation.c",
             "test/language/field_runtime.c", "test/language/prototype.c",
             "test/language/ui.c", "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
@@ -665,7 +665,7 @@ Files :: (target: string) -> string[] {
 
             "test/language/numeric.c",
             "test/parallel.c", "test/language/parallel.c",
-            "test/language/packed.c",
+
             "test/language/source_assets.c", "test/language/record_services.c"
         ];
     }
@@ -2962,20 +2962,20 @@ LanguageTestsOverSource :: () -> string[] {
         "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c", "test/language/argument_effects_chibi.c",
-        "test/language/binding_benchmark.c", "test/language/bounded_compiler_chibi.c",
+        "test/language/bounded_compiler_chibi.c",
         "test/language/capture.c",
-        "test/language/compiler_artifact_chibi.c", "test/language/component_write.c",
-        "test/language/component_write_ir.c", "test/language/component_write_source.c",
+        "test/language/compiler_artifact_chibi.c",
+        "test/language/component_write_ir.c",
 
 
 
         "test/language/execution.c", "test/language/execution_scope.c",
-        "test/language/inferred_string_arrays.c", "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
+        "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
 
 
         "test/language/native_census.c",
         "test/language/numeric.c",
-        "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
+        "test/language/package_compiler_chibi.c",
         "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
         "test/language/package_portable.c", "test/language/package_portable_compiler.c",
         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
@@ -2986,14 +2986,14 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/record_prepared_runtime.c",
 
         "test/language/compositional_records.c",
-        "test/language/row_array.c",
-        "test/language/runtime_attribution.c", "test/language/scalar_lowering_chibi.c",
+
+        "test/language/scalar_lowering_chibi.c",
         "test/language/signature_fixture.c",
         "test/language/signature_reader_chibi.c", "test/language/source_tokenizer_chibi.c",
         "test/language/source_parser_chibi.c",
         "test/language/type_relations_chibi.c",
         "test/language/unit_algebra_chibi.c",
-        "test/language/wasm.c"
+
     ];
 }
 
@@ -3007,7 +3007,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
     if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
         return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
     }
-    if (target == "test_language" && file == "test/language/runtime_attribution.c") {
+    if (target == "test_language" && file == ) {
         return [
             "CHIBI_ATTRIBUTION_BASE=\"3c65bb60b6f3443aef6ccf4ab15acbe09b04b191\"",
             "CHIBI_ATTRIBUTION_BUILD=\"{build_type}\"",

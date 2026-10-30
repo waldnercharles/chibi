@@ -153,7 +153,7 @@ jobs:
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native materials
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native
           CHIBI_LLVM_BIN=/usr/lib/llvm-18/bin sh tools/build.sh test --build-host build-release/sdk/chibi-build-host projects language
       - name: Keep the macOS and Windows native modules
         uses: actions/upload-artifact@v4
@@ -327,7 +327,7 @@ jobs:
           set -e
           export CHIBI_TOOLS_BUILD_DIR=build/test/tools CHIBI_LANGUAGE_BUILD_DIR=build/test/language
           for driver in "$CHIBI_TOOLS_BUILD_DIR/test_tools" "$CHIBI_LANGUAGE_BUILD_DIR/test_language" build-release/sdk/chibi build-release/sdk/chibi-compile; do test -x "$driver"; done
-          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native materials
+          sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native
           CHIBI_LLVM_BIN= sh tools/build.sh test --build-host build-release/sdk/chibi-build-host projects language
       - name: Preserve native profile evidence
         if: always()

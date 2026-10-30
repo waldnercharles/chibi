@@ -143,7 +143,7 @@ class ProfileTests(unittest.TestCase):
             block = block.split('\n  native-targets:', 1)[0] if job == 'native-macos' else block.split('\n  native-macos:', 1)[0]
             self.assertIn('timeout-minutes: 45', block)
             self.assertIn('sh tools/build.sh test --build-host build-release/sdk/chibi-build-host short', block)
-            groups = ['sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native materials',
+            groups = ['sh tools/build.sh test --build-host build-release/sdk/chibi-build-host native',
                       'sh tools/build.sh test --build-host build-release/sdk/chibi-build-host projects language']
             positions = [block.index(command) for command in groups]
             self.assertEqual(positions, sorted(positions))

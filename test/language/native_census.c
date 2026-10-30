@@ -1267,7 +1267,13 @@ TEST_CASE(native_census_covers_every_compiler_function)
         }
     }
     if (acount(rows) != functions || count_of(CENSUS_NATIVE) == 0) {
-        fprintf(stderr, "census: %d rows for %d functions, %d pass\n", acount(rows), functions, count_of(CENSUS_NATIVE));
+        fprintf(
+            stderr,
+            "census: %d rows for %d functions, %d pass\n",
+            acount(rows),
+            functions,
+            count_of(CENSUS_NATIVE)
+        );
     }
     REQUIRE(acount(rows) == functions && count_of(CENSUS_NATIVE) > 0);
     write_summary(stdout);

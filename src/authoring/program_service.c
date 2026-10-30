@@ -1,6 +1,5 @@
 #include "authoring/program_service.h"
 
-#include "authoring/package_tests.h"
 #include "authoring/source_package_io.h"
 #include "execution/status.h"
 #include "runtime/tasks.h"
@@ -30,13 +29,6 @@ typedef struct
     pin_array arguments;
 } program_entry;
 
-typedef struct test_context
-{
-    const execution_program *runtime;
-    const pin_array *arguments;
-    struct test_context *previous;
-} test_context;
-
 struct program_service
 {
     char *core;
@@ -46,7 +38,6 @@ struct program_service
     /* Host results are copied by execution/host.c before returning to authored
      * code. This scratch ends on the next callback; it never grows per poll. */
     arena scratch;
-    test_context *test;
     bool configured;
 };
 
@@ -140,261 +131,6 @@ static bool unchanged(const source_package_snapshot_options *before, const sourc
         }
     }
     return true;
-}
-
-static void print_invalid(const authoring_packages *packages)
-{
-    const source_package_snapshot *snapshot = authoring_packages_snapshot(packages);
-    const source_package_snapshot_error *error = source_package_snapshot_error_at(snapshot);
-    if (error) {
-        int count = 0;
-        const script_package_document
-            *documents = source_package_snapshot_documents(snapshot, &count);
-        int document = error->diagnostic.range.document;
-        fprintf(
-            stderr,
-            "%s:%d:%d: %s\n",
-            document >= 0 && document < count ? documents[document].path : "",
-            error->diagnostic.range.line,
-            error->diagnostic.range.column,
-            error->diagnostic.message
-        );
-        return;
-    }
-    const char *message = authoring_packages_error(packages);
-    if (message) {
-        fprintf(stderr, "%s\n", message);
-    }
-    for (int i = 0; i < authoring_packages_count(packages); i++) {
-        const authoring_package *package = authoring_packages_at(packages, i);
-        for (int j = 0; j < package->diagnostic_count; j++) {
-            const script_diagnostic *diagnostic = &package->diagnostics[j];
-            int document = diagnostic->range.document;
-            const script_analysis *analysis = package->analysis;
-            const char *path = analysis && document >= 0 && document < analysis->document_count
-                                 ? analysis->documents[document].path
-                                 : "";
-            fprintf(
-                stderr,
-                "%s:%d:%d: %s\n",
-                path,
-                diagnostic->range.line,
-                diagnostic->range.column,
-                diagnostic->message
-            );
-        }
-    }
-}
-
-static execution_module *test_module(
-    const authoring_packages *packages,
-    const package_test *test,
-    uint64_t *id
-)
-{
-    for (int i = 0; i < authoring_packages_count(packages); i++) {
-        execution_module *module = authoring_packages_at(packages, i)->module;
-        for (int j = 0; j < execution_module_function_count(module); j++) {
-            execution_module_function_info function = execution_module_function_at(module, j);
-            if (function.body == test->body) {
-                *id = function.id;
-                return module;
-            }
-        }
-    }
-    assert(false);
-    return NULL;
-}
-
-typedef struct
-{
-    const package_test *tests;
-    package_test_result *results;
-    const authoring_program_options *options;
-    int count, chunks;
-} pure_tests;
-
-static void run_pure_tests(int first, int end, uint32_t, void *user)
-{
-    pure_tests *span = user;
-    for (int i = first; i < end; i++) {
-        behavior_execution_scope scope = { .remaining = PACKAGE_TEST_BUDGET,
-                                           .cancelled = span->options->cancelled,
-                                           .user = span->options->cancel_user,
-                                           .pure = true };
-        behavior_execution_scope_begin(&scope);
-        span->results[i].passed = package_test_run(
-            &span->tests[i],
-            BEHAVIOR_BYTECODE,
-            PACKAGE_TEST_BUDGET,
-            &span->results[i].failure
-        );
-        behavior_execution_scope_end(&scope);
-    }
-}
-
-static void run_pure_chunks(int first, int end, uint32_t, void *user)
-{
-    pure_tests *span = user;
-    for (int chunk = first; chunk < end; chunk++) {
-        for (int i = chunk; i < span->count; i += span->chunks) {
-            run_pure_tests(i, i + 1, 0, span);
-        }
-    }
-}
-
-static int print_test(const package_test *test, const package_test_result *result)
-{
-    printf("%s %s.%s\n", result->passed ? "PASS" : "FAIL", test->package, test->name);
-    if (result->passed) {
-        return 0;
-    }
-    const package_test_failure *failure = &result->failure;
-    printf(
-        "  %s:%d:%d: %s\n",
-        failure->path ? failure->path : test->path,
-        failure->line,
-        failure->column,
-        failure->message
-    );
-    return 1;
-}
-
-int program_service_test(program_service *service, const char *path)
-{
-    assert(service && service->configured && path);
-    const char *setting = getenv("CHIBI_TEST_WORKERS");
-    int workers = 0;
-    if (setting) {
-        char *end;
-        errno = 0;
-        long value = strtol(setting, &end, 10);
-        if (!*setting || strspn(setting, "0123456789") != strlen(setting) ||
-            *end || errno || value < 1 || value > TASK_WORKER_MAX) {
-            fprintf(stderr, "CHIBI_TEST_WORKERS must be an integer from 1 to %d\n", TASK_WORKER_MAX);
-            return 1;
-        }
-        workers = (int)value;
-    }
-    char *selected = absolute(path);
-    program_entry entry = { .path = selected };
-    source_package_snapshot_options inputs = { 0 };
-    source_package_load_error load = { 0 };
-    if (!load_sources(service, &entry, &inputs, &load)) {
-        fprintf(stderr, "%s: %s\n", load.path, load.message);
-        free(selected);
-        return 1;
-    }
-    free(selected);
-    source_package_snapshot *snapshot = source_package_snapshot_new(&inputs);
-    source_package_files_release(&inputs);
-    authoring_packages *packages = authoring_packages_prepare(
-        snapshot,
-        native_capabilities_catalog(service->options.native),
-        &service->options.bindings,
-        service->options.backend,
-        NULL
-    );
-    if (!authoring_packages_valid(packages)) {
-        print_invalid(packages);
-        authoring_packages_free(packages);
-        return 1;
-    }
-    package_test *tests = package_tests_find(packages);
-    int failed = 0;
-    /* Pure spans borrow immutable functions and own per-invocation heaps; no
-     * module references or shared service values are mutated by workers.
-     * Impure tests bind explicit services in separate serial runtimes. */
-    for (int i = 0; i < acount(tests);) {
-        if (tests[i].parallel) {
-            int end = i + 1;
-            while (end < acount(tests) && tests[end].parallel) {
-                end++;
-            }
-            int count = end - i;
-            package_test_result *results = xcalloc((size_t)count, sizeof *results);
-            pure_tests span = { .tests = tests + i,
-                                .results = results,
-                                .options = &service->options,
-                                .count = count };
-            const task_system *tasks = service->options.test_tasks;
-            if (tasks && tasks->workers > 1 && count > 1 && workers != 1) {
-                span.chunks = workers && workers < tasks->workers ? workers
-                                                                  : tasks->workers;
-                if (span.chunks > count) {
-                    span.chunks = count;
-                }
-                void *task = tasks->enqueue(
-                    run_pure_chunks,
-                    span.chunks,
-                    1,
-                    &span,
-                    tasks->user
-                );
-                tasks->finish(task, tasks->user);
-            } else {
-                run_pure_tests(0, count, 0, &span);
-            }
-            for (int j = i; j < end; j++) {
-                failed += print_test(&tests[j], &results[j - i]);
-            }
-            free(results);
-            i = end;
-            continue;
-        }
-        uint64_t id = 0;
-        execution_module *module = test_module(packages, &tests[i], &id);
-        execution_program *runtime = execution_program_new(module, NULL, service->services);
-        execution_instance *instance = execution_program_attach(runtime, 1);
-        assert(instance);
-        arena argument_storage = { 0 };
-        pin_value argument = { 0 };
-        const char *argument_error = pin_value_text(
-            &argument_storage,
-            &argument,
-            tests[i].path,
-            strlen(tests[i].path)
-        );
-        assert(!argument_error);
-        (void)argument_error;
-        pin_array arguments = { .element_type = PIN_STR,
-                                .items = &argument,
-                                .count = 1,
-                                .capacity = 1 };
-        test_context context = { runtime, &arguments, service->test };
-        service->test = &context;
-        behavior_execution_scope scope = { .remaining = PACKAGE_TEST_BUDGET,
-                                           .cancelled = service->options.cancelled,
-                                           .user = service->options.cancel_user,
-                                           .prefer_compiled = true };
-        behavior_execution_scope_begin(&scope);
-        int result = 0;
-        int status = execution_instance_call(instance, id, &result, 0, 0, PACKAGE_TEST_BUDGET);
-        behavior_execution_scope_end(&scope);
-        const execution_program_failure *error = execution_program_error(runtime);
-        package_test_result outcome = {
-            .passed = status == FLOW_OK,
-            .failure = { .path = error && error->asset_name[0] ? error->asset_name
-                                                               : tests[i].path,
-                         .line = error ? error->line : tests[i].line,
-                         .column = error ? error->column : tests[i].column }
-        };
-        snprintf(
-            outcome.failure.message,
-            sizeof outcome.failure.message,
-            "%s",
-            error && error->message[0] ? error->message : "Test invocation failed"
-        );
-        failed += print_test(&tests[i], &outcome);
-        service->test = context.previous;
-        execution_program_free(runtime);
-        arena_free(&argument_storage);
-        i++;
-    }
-    printf("%d tests, %d failed\n", acount(tests), failed);
-    afree(tests);
-    authoring_packages_free(packages);
-    return failed ? 1 : 0;
 }
 
 program_service *program_service_new(const char *core)
@@ -622,12 +358,6 @@ const pin_array *program_service_arguments(const program_service *service, const
             return &entry->arguments;
         }
     }
-    for (const test_context *context = service->test; context;
-         context = context->previous) {
-        if (execution_program_managed_heap((execution_program *)context->runtime) == heap) {
-            return context->arguments;
-        }
-    }
     return NULL;
 }
 
@@ -748,29 +478,6 @@ static const char *native_close(void *user, const pin_value *arguments, pin_valu
              : "Program is executing, closed, or belongs to another service";
 }
 
-static const char *native_test(
-    const behavior_function_context *,
-    void *user,
-    const pin_value *arguments,
-    pin_value *results
-)
-{
-    program_service *service = user;
-    if (service->test) {
-        /* A nested run would get a fresh runtime and instruction budget. */
-        results[0].i = 1;
-        fprintf(stderr, "program.test cannot run inside a test\n");
-        return NULL;
-    }
-    arena_reset(&service->scratch);
-    const char *path = NULL;
-    const char *error = pin_text_cstring(&service->scratch, arguments[0], &path, NULL);
-    if (!error) {
-        results[0].i = program_service_test(service, path);
-    }
-    return error;
-}
-
 static const script_catalog_type program_type = { .id = PROGRAM_TYPE,
                                                   .name = "Program",
                                                   .source_name = "Program",
@@ -806,7 +513,6 @@ static const script_catalog_parameter call_results[] = {
     X(3, "program.call", &handle_parameter, 1, call_results, 2, context, native_call)            \
     X(4, "program.diagnostic", &handle_parameter, 1, &text_result, 1, invoke, native_diagnostic) \
     X(5, "program.close", &handle_parameter, 1, NULL, 0, invoke, native_close)                   \
-    X(6, "program.test", open_parameters, 1, &int_result, 1, context, native_test)               \
     X(7, "program.call_entry", entry_parameters, 2, call_results, 2, context, native_call_entry) \
     X(8, "program.has", entry_parameters, 2, &bool_result, 1, invoke, native_has)
 

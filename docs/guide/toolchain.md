@@ -275,9 +275,9 @@ chibi test apps/chibi
 ```
 
 The nested CLI receives its own argument vector through
-`application.arguments()`. Its tests run through the shared `program.test`
-service, with the same explicit application catalog and services. The CLI and
-other applications use the same program API.
+`application.arguments()`. `chibi test` runs the tests through
+`chibi-compile --test`, on the authored compiler with the standalone native
+catalog. The CLI and other applications use the same program API.
 
 The [program service](../../src/authoring/program_service.h) has these operations:
 
@@ -290,7 +290,6 @@ The [program service](../../src/authoring/program_service.h) has these operation
 | `program.has(handle, name)` | Whether the accepted generation has a runnable function of that name. |
 | `program.diagnostic(handle)` | The current source or runtime diagnostic. |
 | `program.close(handle)` | Releases the session and its generations; a closed handle cannot name another program. |
-| `program.test(path)` | Runs package `@test` functions and returns 0 on success or 1 on failure. |
 
 An invalid update preserves the accepted program and retained state. A valid
 update uses the runtime's existing replacement and migration rules before the

@@ -23,8 +23,14 @@ int authoring_project_test(const char *, const char *)
     return 1;
 }
 #else
-/* Runs each test and prints its outcome; the number that failed. */
-static int run_tests(const package_collection *packages, behavior_backend backend, int workers)
+/* Runs each test, prints its outcome and adds to the totals. */
+static void run_tests(
+    const package_collection *packages,
+    behavior_backend backend,
+    int workers,
+    int *total,
+    int *failed
+)
 {
     package_test *tests = package_tests_find_compiled(packages);
     int count = acount(tests);
@@ -34,7 +40,7 @@ static int run_tests(const package_collection *packages, behavior_backend backen
     package_tests_run(tests, count, backend, PACKAGE_TEST_BUDGET, task_pool_tasks(pool), results);
     task_pool_end(pool);
     task_pool_release(pool);
-    int failed = 0;
+    *total += count;
     for (int i = 0; i < count; i++) {
         package_test_failure failure = results[i].failure;
         bool passed = results[i].passed;
@@ -47,7 +53,7 @@ static int run_tests(const package_collection *packages, behavior_backend backen
         if (passed) {
             continue;
         }
-        failed++;
+        (*failed)++;
         if (failure.path) {
             printf(
                 "  %s:%d:%d: %s\n",
@@ -60,14 +66,13 @@ static int run_tests(const package_collection *packages, behavior_backend backen
             printf("  %s\n", failure.message);
         }
     }
-    printf("%d tests, %d failed\n", count, failed);
     free(results);
     afree(tests);
-    return failed;
 }
-/* Where the tests' packages compile: a package of its own that imports every
- * package below the project root that declares a test, so one closure reaches
- * them and what they import. */
+/* Where each tested package compiles: a package of its own that imports it, so
+ * its closure holds only it and what it imports. One closure per package keeps
+ * each compile within its budget however many packages declare tests, as Go
+ * builds one test binary per package. */
 #define TESTS_PACKAGE "__tests__"
 
 /* An `@test` attribute alone on a line, as a test function is declared. */
@@ -87,7 +92,7 @@ static bool has_test_marker(const source_package_input *file)
 }
 
 /* Whether a file of the directory named by the first `prefix` bytes of `path`
- * declares a test. What that directory imports joins the closure anyway. */
+ * declares a test. */
 static bool directory_has_tests(const source_package_snapshot_options *inputs, const char *path, size_t prefix)
 {
     for (int i = 0; i < inputs->file_count; i++) {
@@ -101,16 +106,16 @@ static bool directory_has_tests(const source_package_snapshot_options *inputs, c
     return false;
 }
 
-/* The text of that package, which imports the directory of each project file
- * outside the collections that declares a test. */
-static char *tests_package(const source_package_snapshot_options *inputs)
+/* The import path, below `project:`, of each project package outside the
+ * collections that declares a test: "." for files directly in the root. The
+ * caller owns the array and its strings. */
+static char **tested_packages(const source_package_snapshot_options *inputs)
 {
     size_t root = strlen(inputs->project_root);
-    char *text = xstrdup("package tests\n");
+    char **packages = NULL;
     const char *previous = NULL;
     size_t previous_length = 0;
-    int imports = 0;
-    bool root_imported = false;
+    bool root_seen = false;
     for (int i = 0; i < inputs->file_count; i++) {
         const char *path = inputs->files[i].path;
         bool collected = false;
@@ -125,11 +130,9 @@ static char *tests_package(const source_package_snapshot_options *inputs)
         const char *slash = strrchr(path + root + 1, '/');
         if (!slash) {
             /* The project root is itself a package when files sit directly in it. */
-            if (!root_imported && directory_has_tests(inputs, path, root)) {
-                root_imported = true;
-                size_t used = strlen(text);
-                text = xrealloc(text, used + 48);
-                snprintf(text + used, 48, "import p%d \"project:.\"\n", imports++);
+            if (!root_seen && directory_has_tests(inputs, path, root)) {
+                root_seen = true;
+                apush(packages, xstrdup("."));
             }
             continue;
         }
@@ -140,38 +143,33 @@ static char *tests_package(const source_package_snapshot_options *inputs)
         }
         previous = path + root + 1;
         previous_length = length;
-        if (!directory_has_tests(inputs, path, root + 1 + length)) {
-            continue;
+        if (directory_has_tests(inputs, path, root + 1 + length)) {
+            char *package = xmalloc(length + 1);
+            memcpy(package, previous, length);
+            package[length] = 0;
+            apush(packages, package);
         }
-        size_t used = strlen(text);
-        text = xrealloc(text, used + length + 48);
-        snprintf(text + used, length + 48, "import p%d \"project:%.*s\"\n", imports++, (int)length, previous);
     }
-    return text;
+    return packages;
 }
 
+/* The closure of one tested package, or NULL after printing why it failed. */
 static package_collection *compile_tests(
-    const char *root,
-    const char *core,
+    const source_package_snapshot_options *inputs,
+    const char *tested,
     const native_capabilities *native,
     behavior_backend backend
 )
 {
-    source_package_collection collections[] = { { "core", core } };
-    source_package_disk_options options = { root, collections, 1 };
-    source_package_snapshot_options inputs = { 0 };
-    source_package_load_error load = { 0 };
-    if (!source_package_files_load(&options, &inputs, &load)) {
-        fprintf(stderr, "%s: %s\n", load.path, load.message);
-        return NULL;
-    }
-    char *package = tests_package(&inputs);
-    size_t path_size = strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE
-                                                            "/Tests.chibi";
+    size_t text_size = strlen(tested) + 48;
+    char *package = xmalloc(text_size);
+    snprintf(package, text_size, "package tests\nimport tested \"project:%s\"\n", tested);
+    size_t path_size = strlen(inputs->project_root) + sizeof "/" TESTS_PACKAGE
+                                                             "/Tests.chibi";
     char *path = xmalloc(path_size);
-    snprintf(path, path_size, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
+    snprintf(path, path_size, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs->project_root);
     package_compile_error error;
-    package_collection *packages = package_compile(&inputs, path, package, native, backend, &error);
+    package_collection *packages = package_compile(inputs, path, package, native, backend, &error);
     if (!packages && *error.path) {
         fprintf(
             stderr,
@@ -186,7 +184,6 @@ static package_collection *compile_tests(
     }
     free(path);
     free(package);
-    source_package_files_release(&inputs);
     return packages;
 }
 /* Tests run without a game, so they get the natives that need none of it, and
@@ -217,15 +214,36 @@ int authoring_project_test(const char *root, const char *core)
         fprintf(stderr, "Test preparation failed: %s\n", error);
         return 1;
     }
-    behavior_backend backend = behavior_default_backend();
-    package_collection *packages = compile_tests(root, core, native, backend);
-    int status = 1;
-    if (packages) {
-        status = run_tests(packages, backend, workers) ? 1 : 0;
-        package_collection_free(packages);
+    source_package_collection collections[] = { { "core", core } };
+    source_package_disk_options options = { root, collections, 1 };
+    source_package_snapshot_options inputs = { 0 };
+    source_package_load_error load = { 0 };
+    if (!source_package_files_load(&options, &inputs, &load)) {
+        fprintf(stderr, "%s: %s\n", load.path, load.message);
+        native_capabilities_free(native);
+        return 1;
     }
+    behavior_backend backend = behavior_default_backend();
+    char **tested = tested_packages(&inputs);
+    int total = 0, failed = 0;
+    bool compiled = true;
+    for (int i = 0; i < acount(tested); i++) {
+        package_collection *packages = compile_tests(&inputs, tested[i], native, backend);
+        compiled &= packages != NULL;
+        if (packages) {
+            run_tests(packages, backend, workers, &total, &failed);
+            package_collection_free(packages);
+        }
+        free(tested[i]);
+    }
+    afree(tested);
+    source_package_files_release(&inputs);
     native_capabilities_free(native);
-    return status;
+    if (!compiled) {
+        return 1;
+    }
+    printf("%d tests, %d failed\n", total, failed);
+    return failed ? 1 : 0;
 }
 
 #endif

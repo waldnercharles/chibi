@@ -46,6 +46,13 @@ static const char SCALAR_CASES_SOURCE[] = { @CHIBI_SCALAR_CASES_BYTES@ 0 };
     PACKAGE_COMPILER_SOURCE("syntax_diagnostics/Diagnostics.chibi", SYNTAX_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE), \
     PACKAGE_COMPILER_SOURCE("source_snapshot/Snapshot.chibi", PACKAGE_SNAPSHOT_CHIBI_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("source_tokenizer/Tokenizer.chibi", SOURCE_TOKENIZER_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("source_parser/Tree.chibi", SOURCE_PARSER_TREE_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("source_parser/Types.chibi", SOURCE_PARSER_TYPES_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("source_parser/Expressions.chibi", SOURCE_PARSER_EXPRESSIONS_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("source_parser/Statements.chibi", SOURCE_PARSER_STATEMENTS_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("source_parser/Declarations.chibi", SOURCE_PARSER_DECLARATIONS_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("source_parser/Parser.chibi", SOURCE_PARSER_PARSER_SOURCE), \
     PACKAGE_COMPILER_SOURCE("compiler_syntax/Syntax.chibi", COMPILER_SYNTAX_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("package_routes/Routes.chibi", PACKAGE_ROUTES_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("package_syntax/Extract.chibi", PACKAGE_SYNTAX_CHIBI_SOURCE), \

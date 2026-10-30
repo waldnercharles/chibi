@@ -709,7 +709,9 @@ TEST_CASE(dependency_link_records_require_whole_archive_paths)
     return true;
 }
 
-/* Validate the source receipts against installed bytes after the prefix moves. */
+/* The installed compiler and core sources against the checked-out ones after
+ * the prefix moves. bootstrap.json lists the files; its digests describe the
+ * seed, not these sources, so they are not compared. */
 static bool receipts_match(const char *prefix)
 {
     char path[SDK_PATH], compiler[SDK_PATH], core[SDK_PATH];
@@ -727,8 +729,7 @@ static bool receipts_match(const char *prefix)
     for (size_t i = 0; same && i < yyjson_arr_size(sources); i++) {
         yyjson_val *source = yyjson_arr_get(sources, i);
         const char *name = yyjson_get_str(yyjson_obj_get(source, "path"));
-        const char *expected = yyjson_get_str(yyjson_obj_get(source, "sha256"));
-        same = name && expected;
+        same = name != NULL;
         if (!same) {
             break;
         }
@@ -737,10 +738,13 @@ static bool receipts_match(const char *prefix)
         has_core |= in_core;
         has_compiler |= !in_core;
         join(path, in_core ? core : compiler, in_core ? name + core_length + 1 : name);
-        char digest[65];
-        same = file_digest(path, digest) && !strcmp(digest, expected);
+        char original[SDK_PATH], base[SDK_PATH], digest[65], expected[65];
+        join(base, CHIBI_SOURCE_ROOT, "tools/compiler");
+        join(original, in_core ? CHIBI_SOURCE_ROOT : base, name);
+        same = file_digest(path, digest) && file_digest(original, expected) &&
+               !strcmp(digest, expected);
         if (!same) {
-            fprintf(stderr, "installed compiler source differs from its receipt: %s\n", path);
+            fprintf(stderr, "installed compiler source differs from the checked-out source: %s\n", path);
         }
     }
     yyjson_doc_free(doc);

@@ -848,13 +848,6 @@ and leaves both worlds on the generation they had; a preview scene launch that
 fails destroys its entities before releasing their component override strings.
 11 assertions in 0.23 seconds with ASan/UBSan; a temporary folder.
 
-`chibi build test native-runtime` includes two fixed player
-Panic-relationship cases: a refused scene change preserves its current instance,
-entities, links, globals, scene-flow name and unsaved values, while shutdown
-releases its entire owned world, including a disabled external Panic source.
-These additions create three in-memory player worlds with at most two live
-entities each, without frames, processes, GPU work or files.
-
 Studio's `studio-source-edit` check also covers the production Undo/Redo
 dispatch for prototype and relationship source tabs, including typed reopening
 of their saved tab snapshots. One temporary file below 65 MiB verifies that the

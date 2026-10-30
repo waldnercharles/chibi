@@ -31,6 +31,13 @@ static const char BOUNDED_PREPARE_SOURCE[] = { @CHIBI_BOUNDED_PREPARE_BYTES@ 0 }
     BOUNDED_SOURCE("syntax_diagnostics/Diagnostics.chibi", SYNTAX_CHIBI_SOURCE), \
     BOUNDED_SOURCE("/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE), \
     BOUNDED_SOURCE("source_snapshot/Snapshot.chibi", PACKAGE_SNAPSHOT_CHIBI_SOURCE), \
+    BOUNDED_SOURCE("source_tokenizer/Tokenizer.chibi", SOURCE_TOKENIZER_SOURCE), \
+    BOUNDED_SOURCE("source_parser/Tree.chibi", SOURCE_PARSER_TREE_SOURCE), \
+    BOUNDED_SOURCE("source_parser/Types.chibi", SOURCE_PARSER_TYPES_SOURCE), \
+    BOUNDED_SOURCE("source_parser/Expressions.chibi", SOURCE_PARSER_EXPRESSIONS_SOURCE), \
+    BOUNDED_SOURCE("source_parser/Statements.chibi", SOURCE_PARSER_STATEMENTS_SOURCE), \
+    BOUNDED_SOURCE("source_parser/Declarations.chibi", SOURCE_PARSER_DECLARATIONS_SOURCE), \
+    BOUNDED_SOURCE("source_parser/Parser.chibi", SOURCE_PARSER_PARSER_SOURCE), \
     BOUNDED_SOURCE("compiler_syntax/Syntax.chibi", COMPILER_SYNTAX_CHIBI_SOURCE), \
     BOUNDED_SOURCE("package_routes/Routes.chibi", PACKAGE_ROUTES_CHIBI_SOURCE), \
     BOUNDED_SOURCE("package_syntax/Extract.chibi", PACKAGE_SYNTAX_CHIBI_SOURCE), \

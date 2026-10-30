@@ -3349,6 +3349,11 @@ static const sample samples[] = {
       .source = "package facts\n"
                 "Main :: () -> int { absent: int? = nil; present: int? = 4; r := 0; if absent { r += 100; } if present { r += present - 1; } return r; }" "\n",
       .calls = { { .function = "Main", .arguments = "[]", .expected = "[3]" } } },
+    { .name = "optional locals become absent and present again",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Main :: () -> int { x: int? = 4; r := 0; if x { r += x; } x = nil; if x { r += 100; } x = 5; if x { r += x * 10; } return r; }" "\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[54]" } } },
     { .name = "optional results wrap values and return nil",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -5470,6 +5475,10 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
             selected[count++] = NATIVE_MATH_DEFINITION_PACK;
+            /* With the arrays', its length overload makes a call of length
+             * ambiguous among natives; a collection argument still takes the
+             * collection's. */
+            selected[count++] = NATIVE_VECTOR_DEFINITION_PACK;
         }
         if (probe) {
             selected[count++] = CSTRING_PACK;

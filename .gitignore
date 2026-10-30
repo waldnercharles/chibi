@@ -9,6 +9,7 @@ build-language/
 # verification session is running out of build/.
 build-verify/
 build-release/
+build-host-local/
 build-package/
 dist/
 build-debug/

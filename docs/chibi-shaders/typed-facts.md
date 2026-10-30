@@ -8,8 +8,8 @@ vec3 spelling and no public fully typed expression table. It resolves types
 while lowering. Shader work must not consume private Value/Name/Work records or
 decode prepared bytecode to rediscover meaning.
 
-The example uses the function form in [PLAN.md](PLAN.md) (P2), built-in
-vectors (S2) and parameter types inferred from defaults (S2b). `sample()`
+The example uses the function form, built-in vectors and parameter types
+inferred from defaults. `sample()`
 returns the per-sample inputs, `Surface` is the engine shader package's
 result record, and unset Surface fields keep their defaults.
 `number` is `f32` on the CPU and the GPU (D3), so no narrowing rule applies.

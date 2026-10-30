@@ -157,9 +157,12 @@ are visible.
 `chibi_build_compiler_load` validates the closure checksum, bootstrap version
 contract, full prepared target/native ABI and source completeness. Matching
 source hashes load the recorded closure directly. Changed existing source bytes
-use the self-hosted recovery path: the seed compiles the current compiler, and
-that compiler must reproduce itself in a second compile, which takes minutes.
-Both paths return an owned generation and write no artifact into the SDK.
+load stage one: the seed compiles the current compiler, which has the sources'
+logic. That costs one whole-compiler compile on the VM instead of the two or
+three the recovery proof needs (stage one, stage two, and stage three when stage
+two differs). The proof stays in `chibi build bootstrap-recover` and the
+compiler self-build workflow, which run it on every push. Both paths return an
+owned generation and write no artifact into the SDK.
 
 The recovered compiler is kept in a cache so that only the first start after a
 compiler-source change pays for the recovery, as Zig keeps its global cache. The
@@ -178,7 +181,11 @@ loads it as a compiler for this target; any failure removes it and recovers
 again. This is safe where a snapshot of the sources would not be: the key
 covers every input, nothing is trusted unread, and a stale entry is never
 named. It has no eviction, because a key changes only with a compiler edit;
-delete the directory to reclaim it. Windows does not cache. The recovery proofs
+delete the directory to reclaim it. Build hosts keep the build programs they
+compile in the same directory, as `program-` entries named by the SHA-256 of
+the compiling closure and the compile input, so a host start reuses its
+program instead of recompiling it (about 13 s for the graph program on Linux
+CI). Windows does not cache. The recovery proofs
 never use it: `chibi-compiler-host --bootstrap ... [--recover FILE]`, `chibi build
 test bootstrap-recovery` and the compiler-recovery workflow call the check path, which
 neither reads nor writes the cache, so they always recover from the seed.

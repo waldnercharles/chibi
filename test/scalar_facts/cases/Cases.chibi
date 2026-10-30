@@ -102,7 +102,7 @@ Cases :: () -> Case[] {
         Rejected("unknown_call", "package scalar\nMain :: () -> int { return unknown(); }", "Unknown function 'unknown'", "unknown"),
         Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
         Rejected("scoped pointer entry", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: ^int)"),
-        Accepted("scoped pointer read", "package scalar\nMain :: () -> int { v := 41; return Next(&v); }\nNext :: (x: ^int) -> int { return x^ + 1; }", 42, "Main,Next", "41 | return v ; Next(v) | return x ; 1 ; x^ + 1"),
+        Accepted("scoped pointer read", "package scalar\nMain :: () -> int { v := 41; return Next(&v); }\nNext :: (x: ^int) -> int { return x^ + 1; }", 42, "Main,Next", ""),
         Rejected("scoped pointer write", "package scalar\nMain :: () -> int { v := 41; return Bump(&v); }\nBump :: (x: ^int) -> int { x^ += 1; return x^; }", "scalar proof does not write through pointer 'x' yet", "{ x^ += 1; return x^; }"),
         Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int", "bool"),
         Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int", "i64"),

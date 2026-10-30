@@ -560,14 +560,23 @@ static void diagnose(chibi_build_result *result, const char *message)
 {
     snprintf(result->diagnostic, sizeof(result->diagnostic), "%s", message);
 }
-chibi_build_compiler *chibi_build_compiler_load(const char *sources, const char *core, char *error, size_t size)
+chibi_build_compiler *chibi_build_compiler_load(
+    const char *sources,
+    const char *core,
+    const char *cache,
+    char *error,
+    size_t size
+)
 {
     if (!sources || !*sources || !core || !*core) {
         snprintf(error, size, "compiler sources and core collection are required");
         return NULL;
     }
     char *folder = join(sources, "bootstrap");
-    compiler_bootstrap input = { .folder = folder, .compiler = sources, .core = core };
+    compiler_bootstrap input = { .folder = folder,
+                                 .compiler = sources,
+                                 .core = core,
+                                 .cache = cache };
     compiler_host *host = compiler_bootstrap_load(&input, error, size);
     free(folder);
     if (!host) {

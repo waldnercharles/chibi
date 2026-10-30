@@ -697,6 +697,52 @@ TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing)
     return true;
 }
 
+/* A load with a cache directory keeps the compiler it recovers, and a later
+ * load of the same sources takes it from there without recovering. The test
+ * host is the same binary for both. A source edit names another entry. */
+TEST_CASE(bootstrap_load_reuses_a_recovered_compiler_from_its_cache)
+{
+    char source[PATH_MAX], cache[PATH_MAX];
+    path(source, "tools/compiler/package_compiler/Compile.chibi");
+    path(cache, "compiler-cache");
+    size_t length = 0;
+    unsigned char *original = read_bytes(source, &length);
+    REQUIRE(original && length);
+    FILE *file = fopen(source, "ab");
+    REQUIRE(file);
+    bool changed = fputs("\npub BootstrapCacheMarker :: () -> int { return 53; }\n", file) >=
+                   0;
+    changed = !fclose(file) && changed;
+    REQUIRE(changed);
+    compiler_bootstrap options = { .folder = artifact_path,
+                                   .compiler = compiler,
+                                   .core = core,
+                                   .cache = cache };
+    api_error[0] = 0;
+    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
+    bool recovered = api_host &&
+                     strstr(api_error, "compiler sources changed since revision");
+    cleanup_load();
+    /* The second load stops reporting a recovery: it read the entry. */
+    api_error[0] = 0;
+    api_host = compiler_bootstrap_load(&options, api_error, sizeof api_error);
+    bool reused = api_host && !api_error[0];
+    uint64_t entry = compiler_host_entry(
+        "project:package_compiler:1:BootstrapCacheMarker:callable"
+    );
+    bool works = reused &&
+                 compiler_host_invoke(api_host, entry, "[]", 2, 1000, &api_result) &&
+                 api_result.flow_status == FLOW_OK && api_result.json &&
+                 !strcmp(api_result.json, "[53]");
+    file = fopen(source, "wb");
+    assert(file && fwrite(original, 1, length, file) == length && !fclose(file));
+    free(original);
+    REQUIRE(recovered);
+    REQUIRE(reused);
+    REQUIRE(works);
+    return true;
+}
+
 /* A source file the list adds to a package is a changed source, not a reason
  * for a new artifact: the checked artifact only has to compile it. An unlisted
  * file is refused first, naming the list. */
@@ -751,6 +797,9 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact)
     RUN_TEST_CASE(bootstrap_recovers_from_a_clean_checkout);
     pu_setup(NULL, cleanup_load);
     RUN_TEST_CASE(bootstrap_load_recovers_changed_sources_without_writing);
+    cleanup_load();
+    cleanup_load();
+    RUN_TEST_CASE(bootstrap_load_reuses_a_recovered_compiler_from_its_cache);
     cleanup_load();
     RUN_TEST_CASE(bootstrap_load_recovers_a_new_listed_source_without_a_new_artifact);
     pu_clear_setup();

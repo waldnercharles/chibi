@@ -552,7 +552,8 @@ Files :: (target: string) -> string[] {
         return [
             "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
             "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
-            "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c"
+            "src/toolchain/compiler_target.c", "src/toolchain/compiler_bootstrap.c", "src/support/sha256.c",
+            "src/support/binary_cache.c"
         ];
     }
     if (target == "chibi-compiler-host") {

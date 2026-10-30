@@ -3297,6 +3297,18 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "constants run authored functions at compile time",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Factorial :: (n: int) -> int { if n <= 1 { return 1; } return n * Factorial(n - 1); }\n"
+                "Sum :: (limit: int) -> int { total := 0; i := 1; while i <= limit { "
+                "if i == 3 { i += 1; continue; } total += i; i += 1; if total > 1000 { break; } } return total; }\n"
+                "IsBig :: (n: int) -> bool { return n > 100; }\n"
+                "Pick :: (n: int) -> int { if IsBig(n) { return 1; } return 2; }\n"
+                "Size :: Factorial(5)\nTotal :: Sum(5)\nChosen :: Pick(Size) + Pick(3)\n"
+                "Wide: i64 : i64(Factorial(10))\n"
+                "Main :: () -> int { if Wide == 3628800 { return Size + Total + Chosen; } return 0; }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[135]" } } },
     { .name = "when keeps the declarations a constant condition selects",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"

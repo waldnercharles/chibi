@@ -1,0 +1,526 @@
+package shader_source_tests
+
+import bytes "core:bytes"
+import facts "project:compiler_facts"
+import ss "project:shader_source"
+import strings "core:strings"
+import syntax "project:syntax_diagnostics"
+
+// The provenance policy and scalar lowering cases of the former C
+// differential (shader_source_chibi.c), with the results it checked.
+Caller: u64 : 18364758544493064720;
+Helper: u64 : 18364758544493064721;
+Alias: u64 : 18364758544493064722;
+// The supplied origin occurrences start here.
+Occurrence: u64 : 9223372036854775824;
+FactsOccurrence: u64 : 18364553380510040064;
+// Linked transport codes of the native shader program and value storage.
+FloatStorage: int : 10;
+DoubleStorage: int : 11;
+ConstantOp: int : 0;
+AddOp: int : 4;
+MultiplyOp: int : 6;
+
+// A caller in the material document calls a helper document; an alias in the
+// caller has its own origin.
+Documents :: () -> ss.Document[] {
+    material: ss.Document = {identity: "project:material", text: "call helper; alias"};
+    helper: ss.Document = {identity: "project:helper", text: "float(0.125)"};
+    return [material, helper];
+}
+Origins :: () -> ss.Origin[] {
+    caller: ss.Origin = {source_id: Caller, occurrence: Occurrence, call_site: u64(0), document: 0, start: 0, end: 11};
+    helper: ss.Origin = {source_id: Helper, occurrence: Occurrence + u64(1), call_site: Caller, document: 1,
+                         start: 0, end: 12};
+    alias: ss.Origin = {source_id: Alias, occurrence: Occurrence + u64(2), call_site: u64(0), document: 0,
+                        start: 13, end: 18};
+    return [caller, helper, alias];
+}
+Results :: () -> ss.SourceResult[] {
+    helper: ss.SourceResult = {source_id: Helper, node: 0, field: -1};
+    alias: ss.SourceResult = {source_id: Alias, node: 0, field: -1};
+    return [helper, alias];
+}
+Nodes :: () -> u64[] {
+    return [Helper, u64(0)];
+}
+
+Checked :: (validation: ss.Validation) -> bool {
+    switch validation {
+        case .Checked:
+            return true;
+        case .Failed(failure):
+            return false;
+    }
+}
+Failed :: (validation: ss.Validation) -> ss.Failure {
+    switch validation {
+        case .Checked:
+            assert(false, "the tables are invalid");
+            return {source_id: u64(0), node: -1, document: -1, start: 0, end: 0, message: ""};
+        case .Failed(failure):
+            return failure;
+    }
+}
+Fails :: (failure: ss.Failure, message: string, document: int, start: int, end: int, node: int) {
+    assert(failure.message == message, "failure message");
+    assert(failure.document == document, "failure document");
+    assert(failure.start == start && failure.end == end, "failure range");
+    assert(failure.node == node, "failure node");
+}
+
+@test
+PreservedSourcesValidate :: () {
+    assert(Checked(ss.Validate(Documents(), Origins(), Results(), Nodes())));
+}
+
+@test
+InvalidProvenanceIsRejected :: () {
+    documents := Documents();
+    documents[0].identity = "";
+    Fails(Failed(ss.Validate(documents, Origins(), Results(), Nodes())), "Shader source needs a document identity",
+          0, 0, 0, -1);
+    documents = Documents();
+    documents[1].identity = "project:material";
+    Fails(Failed(ss.Validate(documents, Origins(), Results(), Nodes())),
+          "Shader source document identities must be unique", 1, 0, 0, -1);
+    origins := Origins();
+    origins[1].source_id = u64(0);
+    Fails(Failed(ss.Validate(Documents(), origins, Results(), Nodes())),
+          "Shader source origin has an invalid identity or document", -1, 0, 0, -1);
+    origins = Origins();
+    origins[1].document = 2;
+    Fails(Failed(ss.Validate(Documents(), origins, Results(), Nodes())),
+          "Shader source origin has an invalid identity or document", -1, 0, 0, -1);
+    origins = Origins();
+    origins[1].end = 13;
+    Fails(Failed(ss.Validate(Documents(), origins, Results(), Nodes())),
+          "Shader source origin has an invalid byte range", -1, 0, 0, -1);
+    origins = Origins();
+    origins[1].source_id = Caller;
+    Fails(Failed(ss.Validate(Documents(), origins, Results(), Nodes())), "Shader source IDs must have unique origins",
+          1, 0, 12, -1);
+    origins = Origins();
+    origins[1].call_site = u64(42);
+    Fails(Failed(ss.Validate(Documents(), origins, Results(), Nodes())),
+          "Shader source call chain has a missing origin", 1, 0, 12, -1);
+    origins = Origins();
+    origins[0].call_site = Helper;
+    Fails(Failed(ss.Validate(Documents(), origins, Results(), Nodes())), "Shader source call chain contains a cycle",
+          0, 0, 11, -1);
+}
+
+@test
+InvalidNodesAndResultsAreRejected :: () {
+    nodes := Nodes();
+    nodes[1] = u64(42);
+    Fails(Failed(ss.Validate(Documents(), Origins(), Results(), nodes)), "Shader operation has no source origin",
+          -1, 0, 0, 1);
+    results := Results();
+    results[0].source_id = u64(42);
+    Fails(Failed(ss.Validate(Documents(), Origins(), results, Nodes())), "Shader source result has no origin",
+          -1, 0, 0, 0);
+    results = Results();
+    results[0].node = 2;
+    Fails(Failed(ss.Validate(Documents(), Origins(), results, Nodes())),
+          "Shader source result has an invalid node or field", 1, 0, 12, 2);
+    results = Results();
+    results[0].field = -2;
+    Fails(Failed(ss.Validate(Documents(), Origins(), results, Nodes())),
+          "Shader source result has an invalid node or field", 1, 0, 12, 0);
+    results = Results();
+    results[1].source_id = Helper;
+    Fails(Failed(ss.Validate(Documents(), Origins(), results, Nodes())),
+          "Shader source result bindings must be unique per field", 1, 0, 12, -1);
+}
+
+@test
+TablesAndBytesAreBounded :: () {
+    empty: ss.Document = {identity: "", text: ""};
+    documents: ss.Document[] = [];
+    origin: ss.Origin = {source_id: u64(0), occurrence: u64(0), call_site: u64(0), document: 0, start: 0, end: 0};
+    origins: ss.Origin[] = [];
+    result: ss.SourceResult = {source_id: u64(0), node: 0, field: 0};
+    results: ss.SourceResult[] = [];
+    i: int = 0;
+    while (i < 1025) {
+        documents.append(empty);
+        origins.append(origin);
+        results.append(result);
+        i += 1;
+    }
+    failure := Failed(ss.Validate(documents, Origins(), Results(), Nodes()));
+    assert(failure.message == "Shader source document limit exceeded" && failure.document == -1);
+    failure = Failed(ss.Validate(Documents(), origins, Results(), Nodes()));
+    assert(failure.message == "Shader source origin limit exceeded" && failure.document == -1);
+    failure = Failed(ss.Validate(Documents(), Origins(), results, Nodes()));
+    assert(failure.message == "Shader source result limit exceeded" && failure.document == -1);
+    failure = Failed(ss.Validate(Documents(), Origins(), Results(), resize([u64(0)], 1025)));
+    assert(failure.message == "Shader source node limit exceeded" && failure.document == -1);
+    documents = Documents();
+    documents[0].identity = strings.Repeat("x", 4097);
+    failure = Failed(ss.Validate(documents, Origins(), Results(), Nodes()));
+    assert(failure.message == "Shader source identity byte limit exceeded" && failure.document == 0);
+    documents = Documents();
+    documents[0].text = strings.Repeat("x", 524289);
+    failure = Failed(ss.Validate(documents, Origins(), Results(), Nodes()));
+    assert(failure.message == "Shader source text byte limit exceeded" && failure.document == 0);
+}
+
+@test
+AliasesAndCallChainsResolve :: () {
+    assert(ss.ResultNode(Results(), Alias, -1) == 0);
+    assert(ss.FindNode(Nodes(), Helper, -1) == 0);
+    assert(ss.FindNode(Nodes(), Helper, 0) == -1);
+    switch ss.CallChain(Origins(), Helper) {
+        case .Found(chain):
+            assert(length(chain) == 2);
+            assert(chain[0].source_id == Helper && chain[0].occurrence == Occurrence + u64(1));
+            assert(chain[0].document == 1 && chain[0].end == 12);
+            assert(chain[1].source_id == Caller);
+        case .Failed(failure):
+            assert(false, "the call chain resolves");
+    }
+}
+
+ChainFailure :: (chain: ss.ChainResult) -> ss.Failure {
+    switch chain {
+        case .Found(origins):
+            assert(false, "the call chain is broken");
+            return {source_id: u64(0), node: -1, document: -1, start: 0, end: 0, message: ""};
+        case .Failed(failure):
+            return failure;
+    }
+}
+
+@test
+AbsentQueriesAndBrokenChainsAreRejected :: () {
+    assert(ss.FindNode(Nodes(), u64(0), -1) == -1);
+    assert(ss.FindNode(Nodes(), Helper, -2) == -1);
+    assert(ss.FindNode(Nodes(), Helper, 2) == -1);
+    assert(ss.ResultNode(Results(), Caller, -1) == -1);
+    failure := ChainFailure(ss.CallChain(Origins(), u64(42)));
+    assert(failure.message == "Shader source origin was not found");
+    origins := Origins();
+    origins[1].call_site = u64(42);
+    failure = ChainFailure(ss.CallChain(origins, Helper));
+    assert(failure.message == "Shader source call chain has a missing origin" && failure.source_id == Helper);
+    origins[1].call_site = Caller;
+    origins[0].call_site = Helper;
+    failure = ChainFailure(ss.CallChain(origins, Helper));
+    assert(failure.message == "Shader source call chain contains a cycle" && failure.source_id == Helper);
+}
+
+@test
+DocumentClosuresMatchInOrder :: () {
+    captured := Documents();
+    current := Documents();
+    assert(ss.DocumentsMatch(captured, current));
+    assert(!ss.DocumentsMatch(captured, [current[1], current[0]]));
+    current[1].text = "float(0.25)";
+    assert(!ss.DocumentsMatch(captured, current));
+    current[1].text = "float(0.125)";
+    current[1].identity = "project:other";
+    assert(!ss.DocumentsMatch(captured, current));
+    // Text is length-carrying: bytes after an embedded NUL still count.
+    current[1].identity = "project:helper";
+    current[1].text = bytes.ToString([u8(120), u8(0), u8(121)]);
+    captured[1].text = bytes.ToString([u8(120), u8(0), u8(122)]);
+    assert(!ss.DocumentsMatch(captured, current));
+    current[1].text = captured[1].text;
+    assert(ss.DocumentsMatch(captured, current));
+}
+
+@test
+ClosuresNeedOneGenerationAndEveryDocument :: () {
+    assert(ss.ClosureMatches(Helper, Helper, 2, 2, [true, true]));
+    assert(!ss.ClosureMatches(Helper, Caller, 2, 2, [true, true]));
+    assert(!ss.ClosureMatches(u64(0), u64(0), 2, 2, [true, true]));
+    assert(!ss.ClosureMatches(Helper, Helper, 2, 1, [true, true]));
+    assert(!ss.ClosureMatches(Helper, Helper, 2, 2, [true, false]));
+}
+
+// Supplied semantic rows only, not output from an Analyze producer:
+//   value := 0.5; alias := value; return (alias + 0.125) * 2;
+// Origin i covers bytes [i, i + 1) and lowers to source ID i + 1.
+Facts :: struct {
+    documents: facts.Document[];
+    origins: facts.Origin[];
+    types: facts.Type[];
+    fields: facts.Field[];
+    functions: facts.Function[];
+    bindings: facts.Binding[];
+    statements: facts.Statement[];
+    expressions: facts.Expression[];
+    arguments: facts.Argument[];
+}
+Binding :: (origin: int, name: string, ordinal: int) -> facts.Binding {
+    return {function: 0, type: 0, origin: origin, name: name, role: facts.LocalBinding, ordinal: ordinal,
+            initializer: ordinal, write_origin: -1, ref_origin: -1};
+}
+Statement :: (kind: int, origin: int, binding: int, expression: int) -> facts.Statement {
+    return {kind: kind, origin: origin, binding: binding, expression: expression, unsupported: ""};
+}
+Expression :: (kind: int, origin: int, binding: int, operation: int, bits: u64, first: int) -> facts.Expression {
+    operand_type: int = -1;
+    count: int = 0;
+    if (kind == facts.BinaryExpression) {
+        operand_type = 0;
+        count = 2;
+    }
+    return {kind: kind, origin: origin, type: 0, operand_type: operand_type, binding: binding, callee: -1, field: -1,
+            operation: operation, conversion: 0, bits: bits, first_argument: first, argument_count: count,
+            unsupported: ""};
+}
+Argument :: (expression: int, origin: int) -> facts.Argument {
+    return {expression: expression, parameter: -1, field: -1, origin: origin, defaulted: false};
+}
+Scalar :: () -> Facts {
+    document: facts.Document = {key: "scalar", identity: "supplied-facts:scalar", path: "scalar.chibi",
+                                text: "scalar fixture provenance"};
+    origins: facts.Origin[] = [];
+    i: int = 0;
+    while (i < 13) {
+        origin: facts.Origin = {document: 0, node: 10000 + i, start: i, end: i + 1, line: 1, column: i + 1,
+                                occurrence: FactsOccurrence + u64(i)};
+        origins.append(origin);
+        i += 1;
+    }
+    type: facts.Type = {storage: FloatStorage, container: 0, nominal: u64(0), qualifiers: 0, first_field: 0,
+                        field_count: 0};
+    fields: facts.Field[] = [];
+    function: facts.Function = {semantic: u64(9223372036854775809), name: "Shade", origin: 0,
+                                kind: facts.SourceFunction, first_parameter: 0, parameter_count: 0, result_type: 0,
+                                first_statement: 0, statement_count: 3, effects: 0, native_kind: -1, intrinsic: -1,
+                                direct: false, unsupported: ""};
+    return {documents: [document], origins: origins, types: [type, type], fields: fields, functions: [function],
+            bindings: [Binding(2, "value", 0), Binding(5, "alias", 1)],
+            statements: [Statement(facts.InitializeStatement, 1, 0, 0), Statement(facts.InitializeStatement, 4, 1, 1),
+                         Statement(facts.ReturnStatement, 7, -1, 6)],
+            expressions: [Expression(facts.ConstantExpression, 3, -1, 0, u64(1056964608), 0),
+                          Expression(facts.ReadExpression, 6, 0, 0, u64(0), 0),
+                          Expression(facts.ReadExpression, 8, 1, 0, u64(0), 0),
+                          Expression(facts.ConstantExpression, 9, -1, 0, u64(1040187392), 0),
+                          Expression(facts.BinaryExpression, 10, -1, facts.AddOperation, u64(0), 0),
+                          Expression(facts.ConstantExpression, 11, -1, 0, u64(1073741824), 0),
+                          Expression(facts.BinaryExpression, 12, -1, facts.MultiplyOperation, u64(0), 2)],
+            arguments: [Argument(2, 8), Argument(3, 9), Argument(4, 10), Argument(5, 11)]};
+}
+Lower :: (f: Facts) -> ss.ScalarLowering {
+    target: ss.ScalarTarget = {float_storage: FloatStorage, constant_op: ConstantOp, add_op: AddOp,
+                               multiply_op: MultiplyOp};
+    return ss.LowerScalar(facts.Result.Accepted(0, f.documents, f.origins, f.types, f.fields, f.functions, f.bindings,
+                                                f.statements, f.expressions, f.arguments), target);
+}
+
+Lowered :: struct {
+    nodes: ss.ScalarNode[];
+    output: int;
+    documents: ss.Document[];
+    origins: ss.Origin[];
+    results: ss.SourceResult[];
+}
+Ready :: (lowering: ss.ScalarLowering) -> Lowered {
+    switch lowering {
+        case .Ready(nodes, output, documents, origins, results):
+            return {nodes: nodes, output: output, documents: documents, origins: origins, results: results};
+        case .Rejected(failure):
+            assert(false, "the scalar facts lower");
+            empty: ss.ScalarNode[] = [];
+            return {nodes: empty, output: -1, documents: Documents(), origins: Origins(), results: Results()};
+    }
+}
+Rejected :: (lowering: ss.ScalarLowering) -> ss.Failure {
+    switch lowering {
+        case .Ready(nodes, output, documents, origins, results):
+            assert(false, "the scalar facts are rejected");
+            return {source_id: u64(0), node: -1, document: -1, start: 0, end: 0, message: ""};
+        case .Rejected(failure):
+            return failure;
+    }
+}
+Node :: (node: ss.ScalarNode, op: int, left: int, right: int, bits: u64, source_id: u64) -> bool {
+    return node.op == op && node.left == left && node.right == right && node.bits == bits &&
+           node.source_id == source_id;
+}
+// A rejection at supplied origin `origin`, after its bundle-local renumbering.
+RejectedAt :: (failure: ss.Failure, message: string, origin: int) {
+    assert(failure.message == message, "rejection message");
+    assert(failure.document == 0, "rejection document");
+    assert(failure.start == origin && failure.end == origin + 1, "rejection range");
+    assert(failure.source_id == u64(origin + 1), "rejection source");
+}
+
+@test
+ScalarFactsLowerToShaderNodes :: () {
+    lowered := Ready(Lower(Scalar()));
+    nodes := lowered.nodes;
+    assert(length(nodes) == 5);
+    assert(Node(nodes[0], ConstantOp, -1, -1, u64(1056964608), u64(4)));
+    assert(Node(nodes[1], ConstantOp, -1, -1, u64(1040187392), u64(10)));
+    assert(Node(nodes[2], AddOp, 0, 1, u64(0), u64(11)));
+    assert(Node(nodes[3], ConstantOp, -1, -1, u64(1073741824), u64(12)));
+    assert(Node(nodes[4], MultiplyOp, 2, 3, u64(0), u64(13)));
+    assert(lowered.output == 4);
+    assert(length(lowered.results) == 13);
+    aliases: int = 0;
+    for (result in lowered.results) {
+        assert(result.field == -1);
+        id := result.source_id;
+        if (id == u64(3) || id == u64(6) || id == u64(7) || id == u64(9)) {
+            assert(result.node == 0, "reads and bindings alias the constant");
+            aliases += 1;
+        }
+    }
+    assert(aliases == 4);
+    assert(length(lowered.origins) == 13);
+    assert(lowered.origins[3].occurrence == FactsOccurrence + u64(3));
+    assert(length(lowered.documents) == 1);
+    assert(lowered.documents[0].identity == "supplied-facts:scalar");
+    assert(lowered.documents[0].text == "scalar fixture provenance");
+    again := Ready(Lower(Scalar()));
+    assert(length(again.nodes) == 5 && Node(again.nodes[4], MultiplyOp, 2, 3, u64(0), u64(13)));
+}
+
+@test
+SharedExpressionsReuseNodes :: () {
+    // The return multiplies the same add expression by itself.
+    f := Scalar();
+    f.arguments[3].expression = 4;
+    lowered := Ready(Lower(f));
+    assert(length(lowered.nodes) == 4);
+    assert(Node(lowered.nodes[2], AddOp, 0, 1, u64(0), u64(11)));
+    assert(Node(lowered.nodes[3], MultiplyOp, 2, 2, u64(0), u64(13)));
+    assert(lowered.output == 3);
+}
+
+@test
+OrdinaryRejectionIsPreserved :: () {
+    f := Scalar();
+    diagnostic: syntax.Diagnostic = {start: 2, end: 8, line: 0, column: 0, document: 0,
+                                     message: "Ordinary source diagnostic"};
+    target: ss.ScalarTarget = {float_storage: FloatStorage, constant_op: ConstantOp, add_op: AddOp,
+                               multiply_op: MultiplyOp};
+    failure := Rejected(ss.LowerScalar(facts.Result.Rejected(f.documents, diagnostic), target));
+    assert(failure.message == "Ordinary source diagnostic");
+    assert(failure.document == 0 && failure.start == 2 && failure.end == 8);
+    assert(failure.node == -1 && failure.source_id == u64(0));
+}
+
+@test
+ConstantsKeepExactBits :: () {
+    for (bits in [u64(2147483648), u64(1), u64(2139095039), u64(0)]) {
+        f := Scalar();
+        f.functions[0].first_statement = 2;
+        f.functions[0].statement_count = 1;
+        f.statements[2].expression = 0;
+        f.expressions[0].bits = bits;
+        lowered := Ready(Lower(f));
+        assert(length(lowered.nodes) == 1);
+        assert(Node(lowered.nodes[0], ConstantOp, -1, -1, bits, u64(4)));
+        assert(lowered.output == 0);
+    }
+}
+
+@test
+UnsupportedEntriesAndStatementsAreRejected :: () {
+    f := Scalar();
+    f.functions[0].effects = 1;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar entry must be pure", 0);
+    f = Scalar();
+    f.functions[0].parameter_count = 1;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar entry must be a nullary source function returning number", 0);
+    f = Scalar();
+    f.functions[0].kind = facts.NativeFunction;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar entry must be a nullary source function returning number", 0);
+    f = Scalar();
+    f.statements[0].kind = facts.UnsupportedStatement;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar statement", 1);
+    f = Scalar();
+    f.statements[0].kind = facts.ReturnStatement;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar return must be the final statement", 1);
+    f = Scalar();
+    f.functions[0].statement_count = 2;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar entry needs a final return", 0);
+    f = Scalar();
+    f.bindings[0].initializer = 1;
+    RejectedAt(Rejected(Lower(f)), "Invalid shader scalar initialization", 1);
+}
+
+@test
+MutableAndEscapingBindingsAreRejected :: () {
+    f := Scalar();
+    f.bindings[0].write_origin = 2;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar bindings must be immutable", 2);
+    f = Scalar();
+    f.bindings[0].ref_origin = 2;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar bindings cannot escape by reference", 2);
+    f = Scalar();
+    f.expressions[1].binding = 1;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar read requires an initialized immutable local", 6);
+}
+
+@test
+UnsupportedExpressionsAreRejected :: () {
+    f := Scalar();
+    f.expressions[0].kind = facts.CallExpression;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar expression", 3);
+    f = Scalar();
+    f.expressions[0].kind = facts.ConstructExpression;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar expression", 3);
+    // The return reads two unsupported operands; the left one is reported.
+    f = Scalar();
+    f.expressions[2].kind = facts.CallExpression;
+    f.expressions[3].kind = facts.CallExpression;
+    f.arguments[0].expression = 3;
+    f.arguments[1].expression = 2;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar expression", 9);
+    // The unsupported initializer is never read by the return.
+    f = Scalar();
+    f.functions[0].statement_count = 2;
+    f.statements[1].kind = facts.ReturnStatement;
+    f.statements[1].expression = 5;
+    f.expressions[0].kind = facts.CallExpression;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar expression", 3);
+    f = Scalar();
+    f.expressions[4].operation = 999;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar binary operation", 10);
+    f = Scalar();
+    f.expressions[4].operand_type = -1;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar binary operation", 10);
+    f = Scalar();
+    f.expressions[4].first_argument = 4;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar binary operation", 10);
+    f = Scalar();
+    f.arguments[0].expression = 7;
+    RejectedAt(Rejected(Lower(f)), "Invalid shader scalar operands", 10);
+    f = Scalar();
+    f.arguments[0].expression = 4;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar expressions contain a cycle", 10);
+    f = Scalar();
+    f.expressions[3].origin = 3;
+    RejectedAt(Rejected(Lower(f)), "Shader scalar origin has conflicting results", 3);
+}
+
+@test
+NonScalarTypesAndConstantsAreRejected :: () {
+    f := Scalar();
+    f.types[1].qualifiers = facts.OptionalQualifier;
+    f.expressions[0].type = 1;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar expression or type", 3);
+    f = Scalar();
+    f.types[1].storage = DoubleStorage;
+    f.expressions[0].type = 1;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar expression or type", 3);
+    f = Scalar();
+    f.types[1].nominal = u64(9223372036854775809);
+    f.expressions[0].type = 1;
+    RejectedAt(Rejected(Lower(f)), "Unsupported shader scalar expression or type", 3);
+    // A NaN, and float32 bits with a set high word.
+    f = Scalar();
+    f.expressions[0].bits = u64(2143289345);
+    RejectedAt(Rejected(Lower(f)), "Shader scalar constants must be finite f32 bits", 3);
+    f = Scalar();
+    f.expressions[0].bits = u64(5351931904);
+    RejectedAt(Rejected(Lower(f)), "Shader scalar constants must be finite f32 bits", 3);
+}

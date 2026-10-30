@@ -192,6 +192,10 @@ Cases :: () -> Case[] {
         // Several named results may hold a string and an array: a label of two
         // bytes and the items 0, 1, 2.
         Accepted("results_with_arrays", "package scalar\nMain :: () -> int {\n    r := Pair(3);\n    return text_byte_length(r.label) * 10 + length(r.items) + r.items[2];\n}\nPair :: (n: int) -> (label: string, items: int[]) {\n    label = \"ab\";\n    for (i in 0..<n) { items.append(i); }\n}\n", 25, "Main,Pair", ""),
+        // text_bytes widens each byte of a string to an int: 65 + 98 + 90 is 253,
+        // the string has three bytes and an empty one none, and the second byte
+        // is 98.
+        Accepted("array_text_bytes", "package scalar\nMain :: () -> int {\n    bytes := text_bytes(\"AbZ\");\n    total: int = 0;\n    for (b in bytes) { total += b; }\n    empty := text_bytes(\"\");\n    return total + length(bytes) * 1000 + length(empty) * 100000 + bytes[1];\n}\n", 3351, "Main", ""),
         // Assigning an array copies it: b changes alone, then a alone. a ends
         // as [1, 2, 3, 4] and b as [10, 2, 3].
         Accepted("array_copy_independence", "package scalar\nMain :: () -> int {\n    a: int[] = [1, 2, 3];\n    b := a;\n    b[0] = 10;\n    a.append(4);\n    return a[0] * 100 + b[0] + length(a) * 1000 + length(b) * 10000;\n}\n", 34110, "Main", ""),

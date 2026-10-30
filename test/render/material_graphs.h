@@ -14,7 +14,6 @@
 bool test_register_surface(const char *name, float roughness, float metallic);
 /* An unlit material whose base color is a ramp from `from` to `to` over
  * `count` evenly spaced stops, read a quarter of the way along. */
-bool test_register_ramp(const char *name, int count, const float from[4], const float to[4]);
 /* An unlit material whose base color is a black-to-white ramp of the x of
  * coordinate node `input`, such as "Shader UV". */
 bool test_register_coordinate(const char *name, const char *input);

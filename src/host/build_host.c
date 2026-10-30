@@ -675,8 +675,8 @@ static void compile_rejection(build_host *host, const char *json, size_t length)
     );
     yyjson_doc *doc = called ? yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS)
                              : NULL;
-    yyjson_val *rejected = yyjson_arr_get(yyjson_doc_get_root(doc), 0);
-    yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(rejected, "values"), 0);
+    yyjson_val *error = yyjson_arr_get(yyjson_doc_get_root(doc), 2);
+    yyjson_val *diagnostic = yyjson_arr_get(yyjson_obj_get(error, "values"), 0);
     const char *message = yyjson_get_str(yyjson_obj_get(diagnostic, "message"));
     if (message) {
         diagnose(host->result, message);

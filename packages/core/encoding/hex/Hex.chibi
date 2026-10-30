@@ -11,6 +11,7 @@ pub InvalidCharacter: int : 1;
 pub InvalidLength: int : 2;
 pub OutputTooLarge: int : 3;
 
+@error
 pub Error :: struct {
     kind: int;
     offset: int;

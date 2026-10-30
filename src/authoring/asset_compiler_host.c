@@ -1254,12 +1254,12 @@ static void closure_rejection(
     yyjson_doc *doc = called ? yyjson_read(result.json, result.length, COMPILER_HOST_JSON_READ_FLAGS)
                              : NULL;
     yyjson_val *values = yyjson_obj_get(yyjson_arr_get(yyjson_doc_get_root(doc), 0), "values");
-    const char *message = yyjson_get_str(yyjson_arr_get(values, 8));
+    const char *message = yyjson_get_str(yyjson_arr_get(values, 3));
     if (message && *message) {
         failure(diagnostic, message);
-        diagnostic->document = (int)yyjson_get_int(yyjson_arr_get(values, 3));
-        diagnostic->line = (int)yyjson_get_int(yyjson_arr_get(values, 6));
-        diagnostic->column = (int)yyjson_get_int(yyjson_arr_get(values, 7));
+        diagnostic->document = (int)yyjson_get_int(yyjson_arr_get(values, 0));
+        diagnostic->line = (int)yyjson_get_int(yyjson_arr_get(values, 1));
+        diagnostic->column = (int)yyjson_get_int(yyjson_arr_get(values, 2));
     } else {
         failure(diagnostic, result.diagnostic[0] ? result.diagnostic : "The package compiler rejected its input");
     }

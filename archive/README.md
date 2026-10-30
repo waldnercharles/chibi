@@ -24,3 +24,31 @@ Editing, rename, completion/hover/highlighting and prototype-source editing for 
 - `src/authoring/project_docs.c`: the site runner, cut from `project_compile.c`.
 - `tools/docs/`: the Chibi site generator (Markdown, reference, grammar, site).
 - `test/language/format.c`, `test/language/docs_markdown*`, `test/tools/published_docs.c`: their tests.
+
+## Stage-zero script tests (test/language)
+
+These tests compiled the stage-zero script dialect (`library` blocks, scriptless top level, paren-less `if`, `and`/`or`, handler/component/system script syntax) with `script_parse`/`script_analyze`/`script_lower`, so they leave with stage zero. Re-add the behavior as authored `@test` (or package-dialect fixtures) when needed:
+
+- **Analyzer subject tests:** `semantic.c`, `record_semantic.c`, and the `*_chibi.c` differentials (named, lexical and nominal binding, unit and effect analysis, constant proof and scalar, type constructors, callable headers, union and record members). Diagnostics, ranges, recovery and C-vs-authored equivalence.
+- **Language features through the VM:** borrow, iteration, maps, operations, generic, scalarize, effects, symbol references. Borrow flags and call-scoped views, map insertion order and nesting, iteration lifetimes, operator ABI generation, generic constructed types, scalar optimization patterns, effect publication.
+- **Program and query runtime:** program (313 cases: bindings, handlers, scene bindings), query program/values/boundary, publication, retention of prepared results, reductions, native char results.
+- **Records:** record publication, runtime and state.
+- **Execution paths:** SLJIT and wasm execution of script modules (`wasm.c`), binding schedule, activation cache, component write, runtime attribution, packed and row array layouts, outliner projection, inferred string arrays, and the script/binding/activation/borrow benchmarks.
+- **Not yet archived** (they cross the stage-zero producer and the `test_tools` consumer): the prepared round trip (`prepared.c`, `record_producer.c`, `record_prepared_runtime.c`, `test/tools/prepared.c`, `c_export.c`, `record_c_export.c`) and `compositional_records.c`, whose source generators `package_compiler_chibi.c` uses.
+
+## Game-project compile path (authoring, host)
+
+`chibi-compile --output/--check/--explain-costs/--modules/--resources-only/--stage-one-input` and the `chibi build/check/export/web` and run-a-game paths prepared game projects through the C front end. `chibi-compile` now only runs `--test`; the CLI reports "game projects are archived".
+
+- `src/authoring/project_compile.c` (and its full header), `project_prepare*`, `component_declarations`, `prototype_prepare`, `scene_prepare`, `material_prepare`, `sound_prepare`, `ui_prepare*`, `source_costs`, `material_attach`, `prototype_attach`.
+- `src/host/export.c` and `export.h`: exported folders, apps and web sites.
+- `tools/toolchain/StageOne.chibi`: the stage-one project route.
+- `test/host/export.c`, `test/tools/GameEquivalence.chibi`.
+
+## Project script pipeline tests (test/language, test/runtime, test/tools)
+
+These compiled project scripts through the stage-zero `authoring/source_prepare`/`source_collection`/`source_catalog` pipeline; they leave with it. Parked with the games, the runtime port and script behaviors (focus.md). Re-add as authored `@test` when script behaviors come back:
+
+- **ECS sessions running script behaviors:** `headless`, `incremental`, `incremental_benchmark` (reload of changed sources, binding schedule), `modules` (imports between project scripts), `native_calls` (natives called from scripts on both backends), `navigation` (references/definitions over analyzed documents), `source_assets`, `scene_snapshot_read` (authored state from scenes).
+- **Runtime behavior from source (test/runtime):** `owned_tick`, `parallel_tick` (tick ownership and parallel ticks), `whole_alias` (compiled aliases), `source_features` (native features, numeric queries, material features, input save), `source_reductions` (reductions and benchmarks).
+- **Cases removed from kept files** (text in `archive/test/*/…_group1_cases.txt`): 12 `package_compiler_chibi.c` cases that compared the authored compiler with script libraries compiled through the project pipeline (executable libraries, library name resolution, scalar-runs-natively-like-the-VM, deferred char states, numeric conversion rejection, constant folding as stage zero does, invalid library closures), and one `build_process.c` case.

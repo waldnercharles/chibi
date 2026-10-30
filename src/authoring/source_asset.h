@@ -3,7 +3,6 @@
 
 #include "assets/prototype.h"
 #include "authoring/source_catalog.h"
-#include "authoring/source_completion.h"
 
 /* Static authored defaults in the ordinary prototype value schema. Source
  * ranges remain attached to values for shared navigation/refactoring. */
@@ -13,6 +12,5 @@ bool authoring_relationship_declarations_load(const char *, ecs_relationship_des
 /* The returned descriptor owns its name/key; release it with the paired free. */
 ecs_relationship_desc *authoring_relationship_source_read(const char *, char *, size_t);
 void authoring_relationship_source_free(ecs_relationship_desc *);
-void authoring_asset_source_complete(const script_syntax *, const source_catalog *, int, authoring_completions *);
 
 #endif

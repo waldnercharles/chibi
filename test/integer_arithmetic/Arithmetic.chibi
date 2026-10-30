@@ -37,8 +37,8 @@ LiteralOnlyInitializersDefaultToInt :: () {
 
 @test
 LiteralOnlyInitializersWithFractionsDefaultToNumber :: () {
-    half := 1 + 0.5;
-    scaled := 2.0 * 3 - 1;
+    half := 1.0 + 0.5;
+    scaled := 2.0 * 3.0 - 1.0;
     checked: number = half;
     assert(checked == 1.5);
     assert(scaled == 5.0);

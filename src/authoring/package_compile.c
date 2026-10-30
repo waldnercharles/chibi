@@ -2,6 +2,7 @@
 
 #include "authoring/asset_compiler_host.h"
 #include "runtime/native_prepared.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
@@ -65,6 +66,140 @@ static package_collection *read_closure(
     return packages;
 }
 
+/* A package is the files of one directory. A compile reads only the packages
+ * the root package reaches through `import NAME "COLLECTION:PATH"` lines, as
+ * every file of a snapshot costs the compiler parsing and graph work. */
+static char *directory_of(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    size_t length = slash ? (size_t)(slash - path) : 0;
+    char *copy = xmalloc(length + 1);
+    memcpy(copy, path, length);
+    copy[length] = 0;
+    return copy;
+}
+
+static bool contains(char *const *directories, const char *directory)
+{
+    for (int i = 0; i < acount(directories); i++) {
+        if (!strcmp(directories[i], directory)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The directory a `COLLECTION:PATH` import names, or NULL for an unknown
+ * collection, which the compiler then rejects. Malloc-owned. */
+static char *imported_directory(
+    const source_package_snapshot_options *inputs,
+    const char *target,
+    size_t length
+)
+{
+    const char *colon = memchr(target, ':', length);
+    if (!colon) {
+        return NULL;
+    }
+    size_t name_length = (size_t)(colon - target);
+    const char *root = NULL;
+    if (name_length == strlen("project") && !memcmp(target, "project", name_length)) {
+        root = inputs->project_root;
+    }
+    for (int i = 0; i < inputs->collection_count; i++) {
+        if (strlen(inputs->collections[i].name) == name_length &&
+            !memcmp(inputs->collections[i].name, target, name_length)) {
+            root = inputs->collections[i].root;
+        }
+    }
+    if (!root) {
+        return NULL;
+    }
+    const char *path = colon + 1;
+    size_t path_length = length - name_length - 1;
+    if (!path_length || (path_length == 1 && *path == '.')) {
+        return xstrdup(root);
+    }
+    size_t root_length = strlen(root);
+    char *directory = xmalloc(root_length + 1 + path_length + 1);
+    memcpy(directory, root, root_length);
+    directory[root_length] = '/';
+    memcpy(directory + root_length + 1, path, path_length);
+    directory[root_length + 1 + path_length] = 0;
+    return directory;
+}
+
+static void reach_imports(
+    const source_package_snapshot_options *inputs,
+    const char *text,
+    size_t size,
+    char ***reached
+)
+{
+    const char *end = text + size;
+    for (const char *line = text; line < end;) {
+        const char *next = memchr(line, '\n', (size_t)(end - line));
+        const char *stop = next ? next : end;
+        const char *at = line;
+        while (at < stop && (*at == ' ' || *at == '\t')) {
+            at++;
+        }
+        if (stop - at > 7 && !memcmp(at, "import", 6) &&
+            (at[6] == ' ' || at[6] == '\t')) {
+            const char *open = memchr(at, '"', (size_t)(stop - at));
+            const char *close = open
+                                  ? memchr(open + 1, '"', (size_t)(stop - open - 1))
+                                  : NULL;
+            char *directory = close
+                                ? imported_directory(inputs, open + 1, (size_t)(close - open - 1))
+                                : NULL;
+            if (directory && !contains(*reached, directory)) {
+                apush(*reached, directory);
+            } else {
+                free(directory);
+            }
+        }
+        line = next ? next + 1 : end;
+    }
+}
+
+/* Marks the input files of the packages reachable from `root_directory`,
+ * whose own text is `first_text` when the root file is virtual. */
+static bool *reachable_files(
+    const source_package_snapshot_options *inputs,
+    const char *root_directory,
+    const char *first_text
+)
+{
+    char **directories = xmalloc((size_t)(inputs->file_count + 1) * sizeof *directories);
+    for (int i = 0; i < inputs->file_count; i++) {
+        directories[i] = directory_of(inputs->files[i].path);
+    }
+    char **reached = NULL;
+    apush(reached, xstrdup(root_directory));
+    if (first_text) {
+        reach_imports(inputs, first_text, strlen(first_text), &reached);
+    }
+    for (int at = 0; at < acount(reached); at++) {
+        for (int i = 0; i < inputs->file_count; i++) {
+            if (!strcmp(directories[i], reached[at])) {
+                reach_imports(inputs, inputs->files[i].text, inputs->files[i].size, &reached);
+            }
+        }
+    }
+    bool *keep = xcalloc((size_t)(inputs->file_count + 1), sizeof *keep);
+    for (int i = 0; i < inputs->file_count; i++) {
+        keep[i] = contains(reached, directories[i]);
+        free(directories[i]);
+    }
+    for (int i = 0; i < acount(reached); i++) {
+        free(reached[i]);
+    }
+    afree(reached);
+    free(directories);
+    return keep;
+}
+
 package_collection *package_compile(
     const source_package_snapshot_options *inputs,
     const char *first_path,
@@ -81,7 +216,15 @@ package_collection *package_compile(
         return NULL;
     }
     bool virtual_file = first_path != NULL;
-    int count = inputs->file_count + (virtual_file ? 1 : 0);
+    char *root_directory = directory_of(
+        virtual_file ? first_path : inputs->files[first].path
+    );
+    bool *keep = reachable_files(inputs, root_directory, virtual_file ? first_text : NULL);
+    free(root_directory);
+    int count = virtual_file ? 1 : 0;
+    for (int i = 0; i < inputs->file_count; i++) {
+        count += keep[i];
+    }
     const char **paths = xmalloc((size_t)count * sizeof *paths);
     const char **texts = xmalloc((size_t)count * sizeof *texts);
     size_t *sizes = xmalloc((size_t)count * sizeof *sizes);
@@ -93,7 +236,7 @@ package_collection *package_compile(
     }
     for (int i = -1; i < inputs->file_count; i++) {
         int index = i < 0 ? first : i;
-        if (index < 0 || (i >= 0 && i == first)) {
+        if (index < 0 || (i >= 0 && (i == first || !keep[i]))) {
             continue;
         }
         paths[at] = inputs->files[index].path;
@@ -150,6 +293,7 @@ package_collection *package_compile(
     free(request);
     free(roots);
     free(names);
+    free(keep);
     free(sizes);
     free(texts);
     free(paths);

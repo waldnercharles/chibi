@@ -1,7 +1,6 @@
-#include "authoring/project_compile.h"
-
 #include "authoring/asset_compiler_host.h"
 #include "authoring/package_tests.h"
+#include "authoring/project_compile.h"
 #include "authoring/source_package_io.h"
 #include "execution/backend.h"
 #include "execution/function.h"
@@ -100,7 +99,8 @@ static char *tests_package(const source_package_snapshot_options *inputs)
             continue;
         }
         size_t length = (size_t)(slash - (path + root + 1));
-        if (previous && previous_length == length && !memcmp(previous, path + root + 1, length)) {
+        if (previous && previous_length == length &&
+            !memcmp(previous, path + root + 1, length)) {
             continue;
         }
         previous = path + root + 1;
@@ -128,7 +128,9 @@ static package_collection *compile_tests(
         return NULL;
     }
     char *package = tests_package(&inputs);
-    char *tests_path = xmalloc(strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE "/Tests.chibi");
+    char *tests_path = xmalloc(
+        strlen(inputs.project_root) + sizeof "/" TESTS_PACKAGE "/Tests.chibi"
+    );
     sprintf(tests_path, "%s/" TESTS_PACKAGE "/Tests.chibi", inputs.project_root);
     int count = inputs.file_count + 1;
     const char **paths = xmalloc((size_t)count * sizeof *paths);
@@ -172,11 +174,19 @@ static package_collection *compile_tests(
                                        )
                                      : NULL;
     if (!closure) {
-        const char *path = request && diagnostic.document >= 0 && diagnostic.document < count
+        const char *path = request && diagnostic.document >= 0 &&
+                                   diagnostic.document < count
                              ? paths[diagnostic.document]
                              : NULL;
         if (path) {
-            fprintf(stderr, "%s:%d:%d: %s\n", path, diagnostic.line, diagnostic.column, diagnostic.message);
+            fprintf(
+                stderr,
+                "%s:%d:%d: %s\n",
+                path,
+                diagnostic.line,
+                diagnostic.column,
+                diagnostic.message
+            );
         } else {
             fprintf(stderr, "%s\n", request ? diagnostic.message : "The target cannot be described");
         }
@@ -188,7 +198,16 @@ static package_collection *compile_tests(
         linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
         size_t remaining = COMPILE_STORAGE_LIMIT;
         char error[256] = { 0 };
-        packages = compiler_artifact_read(closure, closure_length, &linker, backend, &remaining, &(uint64_t){ 0 }, error, sizeof error);
+        packages = compiler_artifact_read(
+            closure,
+            closure_length,
+            &linker,
+            backend,
+            &remaining,
+            &(uint64_t){ 0 },
+            error,
+            sizeof error
+        );
         if (!packages) {
             fprintf(stderr, "%s\n", error);
         }

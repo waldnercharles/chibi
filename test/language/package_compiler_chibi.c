@@ -12422,13 +12422,6 @@ static const struct
       "\"ab\"); }\n",
       "scalar proof passes a text native's arguments in order",
       "Value: \"ab\"" },
-    /* A record among several named results. */
-    { "package scalar\nPoint :: struct { x: int; }\n"
-      "Main :: () -> int { return 1; }\n"
-      "Pair :: () -> (p: Point, n: int) { return; }\n",
-      "scalar proof requires number and bool results where a function has "
-      "several",
-      "p: Point" },
     { "package scalar\nPoint :: struct { x: int; }\n"
       "Main :: () -> int { p: Point = {x: 1}; return "
       "text_byte_length(format_text(\"{}\", p)); }\n",
@@ -12628,7 +12621,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 72
+    SCALAR_ACCEPTED_CASES = 75
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on

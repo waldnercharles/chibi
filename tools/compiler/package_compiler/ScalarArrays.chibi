@@ -33,6 +33,43 @@ ScalarArrayType :: (types: TypeDecl[], storage: int, record: int) -> int {
 ScalarArrayElement :: (storage: int) -> bool {
     return ScalarTypeOf(storage) != 0 || storage == StructStorage || storage == UnionStorage;
 }
+// The array the literal `node` is, from its first element when that names its
+// own storage: a string, a bool, a number conversion such as `u8(0)`, a call of
+// a function of the source, or a variable that holds one number, bool or string.
+// An element of another form, such as a bare number, has storage 0.
+ScalarLiteralShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                       package: int, node: int) -> ValueType {
+    head := FirstMember(forest, node);
+    storage: int = 0;
+    record: int = -1;
+    if (head < 0) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    first := Unparenthesized(forest, head);
+    if (Is(forest, first, "string")) {
+        storage = TextStorage;
+    } else if (Is(forest, first, "boolean")) {
+        storage = BoolStorage;
+    } else if (Is(forest, first, "call_expression")) {
+        callee := CalledFunction(forest, text, callables, [], names, package, first);
+        if (callee >= 0 && callables[callee].result_container == 0) {
+            storage = callables[callee].result;
+            record = callables[callee].result_record;
+        } else if (callee < 0) {
+            storage = NumberConversionType(forest, text, first);
+        }
+    } else if (Is(forest, first, "identifier")) {
+        found := Lookup(names, Text(forest, text, first));
+        if (found >= 0 && names[found].container == 0) {
+            storage = names[found].storage;
+            record = names[found].record;
+        }
+    }
+    if (!ScalarArrayElement(storage)) {
+        return {storage: 0, container: 0, record: -1};
+    }
+    return {storage: storage, container: ArrayContainer, record: record};
+}
 // The array the value `node` is, as the storage of its elements: a variable,
 // a field of a record, or a call of a function of the source that returns one.
 // Any other value has storage 0.
@@ -40,6 +77,9 @@ ScalarArrayShape :: (forest: snapshot.SnapshotNode[], text: string, callables: C
                      names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     value := Unparenthesized(forest, node);
+    if (Is(forest, value, "array_expression")) {
+        return ScalarLiteralShape(forest, text, callables, names, package, value);
+    }
     if (Is(forest, value, "identifier")) {
         found := Lookup(names, Text(forest, text, value));
         if (found >= 0 && names[found].container == ArrayContainer) {

@@ -287,7 +287,8 @@ ScalarResultsReturn :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], para
         operands = [ScalarAt(forest, node, facts.ZeroRow, type, 0, 0, "")];
         for (index in 0..<callable.results) {
             named := params[callable.first + callable.count + index];
-            operands.append(ScalarAt(forest, node, facts.ReadRow, ScalarTypeOf(named.storage),
+            operands.append(ScalarAt(forest, node, facts.ReadRow,
+                                     ScalarValueType(types, named.storage, named.container, named.record),
                                      callable.count + index, 0, ""));
             operands.append(ScalarAt(forest, node, facts.UpdateRow, type, index, 2, ""));
         }
@@ -1632,7 +1633,9 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
         named := params[callable.first + callable.count + index];
         type := ScalarValueType(types, named.storage, named.container, named.record);
         rows.append(ScalarAt(forest, named.node, facts.LocalRow, type, callable.count + index, 1, named.name));
-        if (named.storage == StructStorage) {
+        if (named.container == ArrayContainer) {
+            rows.append(ScalarAt(forest, named.node, facts.ArrayRow, type, facts.ArrayNew, 0, ""));
+        } else if (named.storage == StructStorage) {
             rows.append(ScalarAt(forest, named.node, facts.ZeroRow, type, 0, 0, ""));
         } else {
             rows.append(ScalarLiteral(forest, named.node, type, 0));
@@ -1656,6 +1659,24 @@ ScalarFunction :: (forest: snapshot.SnapshotNode[], text: string, key: string, s
     }
     variables := callable.count + callable.results;
     body := Field(forest, callable.node, "body");
+    // A written array parameter is a local copy of the caller's array, which
+    // a call lends; a record is copied by value.
+    written := MutatedNames(forest, text, body, []);
+    opening := forest[body].first_child;
+    for (index in 0..<callable.count) {
+        param := params[callable.first + index];
+        if (param.container != ArrayContainer || NamePosition(written, param.name) < 0) {
+            continue;
+        }
+        type := ScalarValueType(types, param.storage, param.container, param.record);
+        rows.append(ScalarAt(forest, opening, facts.LocalRow, type, variables, 2, param.name));
+        rows.append(ScalarAt(forest, opening, facts.ReadRow, type, index, 0, ""));
+        rows.append(ScalarAt(forest, opening, facts.ArrayRow, type, facts.ArrayCopy, 1, ""));
+        copy: Name = {owned: false, name: param.name, place: LocalPlace, index: variables, storage: param.storage,
+                      container: ArrayContainer, record: param.record, writable: true, node: param.node};
+        names.append(copy);
+        variables += 1;
+    }
     work := ScalarBlock(forest, body, length(names));
     operands: facts.Row[] = [];
     switches: ScalarSwitch[] = [];
@@ -2182,9 +2203,11 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     // No native writes: the text natives are pure.
     writes := resize([int(0)], length(natives));
     table := types;
+    // A written record or array parameter is a copy of its argument.
+    mutated := MutatedNames(forest, text, Field(forest, callables[function].node, "body"), []);
     switch EmitBody(forest, text, callables[function].document, callables, params, &table, members, constants, natives, ports, identities,
                     operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
-                    empty_names, indices, BodyContext.Known(writes), indices, ops, target, []) {
+                    mutated, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):
             return diagnostic;
         case .Specialize(template, call, arguments, caller_names):
@@ -2300,10 +2323,6 @@ ScalarRecords :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: T
         for (index in 0..<declared.count) {
             field := members[declared.first + index];
             type := ScalarMemberType(types, members, declared.first + index);
-            if (results && (type == 0 || type == facts.StringType || type >= facts.RecordType)) {
-                return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
-                                                      "scalar proof requires number and bool results where a function has several"));
-            }
             if (type == 0) {
                 return ScalarOperands.Failed(Diagnose(forest, fields[index], 0,
                                                       "scalar proof requires number, bool, string, array, record and union record fields"));

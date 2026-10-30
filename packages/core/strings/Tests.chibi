@@ -1,0 +1,8 @@
+package strings
+
+@test
+FormatTextTakesNoArguments :: () {
+    assert(format_text("plain") == "plain");
+    assert(format_text("{}{}", 1, 2) == "12");
+    return;
+}

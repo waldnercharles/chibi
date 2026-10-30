@@ -3534,6 +3534,23 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
             return (compiled_module, prepared, nil);
     }
 }
+// Whether `path` is the file of the core collection's target package, whose
+// text a compile with a platform replaces.
+TargetPackagePath :: (collection_names: string[], collection_paths: string[], path: string) -> bool {
+    index: int = 0;
+    while (index < length(collection_names)) {
+        if (collection_names[index] == "core" && path == format_text("{}/target/Target.chibi", collection_paths[index])) {
+            return true;
+        }
+        index += 1;
+    }
+    return false;
+}
+// The constants of core:target for a platform: os 1 Linux, 2 Darwin, 3 Windows;
+// arch 1 x86-64, 2 Arm64.
+TargetPackageText :: (os: int, arch: int, pointer_bits: int) -> string {
+    return format_text("package target\n\npub Linux: int : 1\npub Darwin: int : 2\npub Windows: int : 3\n\npub X86_64: int : 1\npub Arm64: int : 2\n\npub Os: int : {}\npub Arch: int : {}\npub PointerBits: int : {}\n", os, arch, pointer_bits);
+}
 CompileInput :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                  sources: string[], debug: bool, target: Target, abi: u64, names: string[], natives: Native[],
                  ports: Port[], identities: u64[], native_effects: int[]) -> Result {
@@ -3541,14 +3558,15 @@ CompileInput :: (project: string, collection_names: string[], collection_paths: 
     no_members: TypeMember[] = [];
     return CompileResolved(project, collection_names, collection_paths, paths, sources, debug, target, abi, names,
                            LegacyNatives(natives, names), LegacyPorts(ports), identities, native_effects, no_types,
-                           no_members);
+                           no_members, 0, 0);
 }
 // The same compile for a resolved native catalog. `seed_types` and
 // `seed_members` are the catalog's native types, which every package shares.
 CompileResolved :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                     sources: string[], debug: bool, target: Target, abi: u64, names: string[],
                     resolved_natives: ResolvedNative[], resolved_ports: ResolvedPort[], identities: u64[],
-                    native_effects: int[], seed_types: TypeDecl[], seed_members: TypeMember[]) -> Result {
+                    native_effects: int[], seed_types: TypeDecl[], seed_members: TypeMember[], os: int,
+                    arch: int) -> Result {
     ops := ResolveOps(names, debug);
     complete := NativeInputValid(resolved_natives, resolved_ports, identities, native_effects);
     if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources) ||
@@ -3567,9 +3585,13 @@ CompileResolved :: (project: string, collection_names: string[], collection_path
     sizes: u64[] = [];
     index = 0;
     while (index < length(paths)) {
-        input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
+        text := sources[index];
+        if (os != 0 && TargetPackagePath(collection_names, collection_paths, paths[index])) {
+            text = TargetPackageText(os, arch, target.pointer_size * 8);
+        }
+        input: snapshot.Input = {path: paths[index], text: text, has_path: true, has_text: true};
         inputs.append(input);
-        sizes.append(u64(strings.ByteLength(sources[index])));
+        sizes.append(u64(strings.ByteLength(text)));
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
@@ -3602,12 +3624,12 @@ CompileResolved :: (project: string, collection_names: string[], collection_path
 pub CompileWithCatalog :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
                            sources: string[], debug: bool, target: Target, abi: u64, names: string[],
                            natives: CatalogNative[], ports: CatalogPort[], identities: u64[], types: GameType[],
-                           type_fields: GameField[], entity: u64, native_effects: int[])
+                           type_fields: GameField[], entity: u64, os: int, arch: int, native_effects: int[])
 -> (module: u64, bytes: u8[], error: syntax.Diagnostic?) {
     native_types := NativeTypes(types);
     switch CompileResolved(project, collection_names, collection_paths, paths, sources, debug, target, abi, names,
                            CatalogNatives(natives), CatalogPorts(ports, native_types, entity), identities,
-                           native_effects, native_types, NativeFields(type_fields)) {
+                           native_effects, native_types, NativeFields(type_fields), os, arch) {
         case .Rejected(diagnostic):
             return (0, [], diagnostic);
         case .Compiled(compiled_module, prepared):
@@ -3617,10 +3639,11 @@ pub CompileWithCatalog :: (project: string, collection_names: string[], collecti
 pub CompileClosureWithCatalog :: (project: string, collection_names: string[], collection_paths: string[],
                                   paths: string[], sources: string[], debug: bool, target: Target, abi: u64,
                                   names: string[], natives: CatalogNative[], ports: CatalogPort[], identities: u64[],
-                                  types: GameType[], type_fields: GameField[], entity: u64,
+                                  types: GameType[], type_fields: GameField[], entity: u64, os: int, arch: int,
                                   native_effects: int[]) -> u8[] {
     compiled := CompileWithCatalog(project, collection_names, collection_paths, paths, sources, debug, target, abi,
-                                   names, natives, ports, identities, types, type_fields, entity, native_effects);
+                                   names, natives, ports, identities, types, type_fields, entity, os, arch,
+                                   native_effects);
     if (compiled.error) {
         return [];
     }

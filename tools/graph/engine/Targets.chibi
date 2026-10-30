@@ -391,28 +391,15 @@ Files :: (target: string) -> string[] {
             "test/language/ranges.c",
             "test/language/component_write_ir.c",
             "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
-
-
             "test/language/package_imports.c", "test/language/package_files.c",
             "test/language/package_math.c",
-
-
             "test/language/program_session.c",
             "test/language/syntax_corpus.c",
             "test/language/compiler_fixture.c",
-
-
-
-
-
             "test/language/package_compiler_chibi.c",
             "src/host/native_libraries.c", "src/host/process.c", "src/host/stack_overflow.c",
             "test/language/native_census.c",
             "test/language/execution_scope.c", "test/language/integer_semantics.c",
-
-
-
-
             "test/parallel.c", "test/language/parallel.c"
         ];
     }
@@ -1674,28 +1661,15 @@ LanguageTestsOverSource :: () -> string[] {
         "src/toolchain/compiler_artifact.c", "src/toolchain/compiler_host.c",
         "src/toolchain/compiler_json.c", "src/toolchain/compiler_syntax.c",
         "src/toolchain/compiler_target.c",
-
         "test/language/capture.c",
-
         "test/language/component_write_ir.c",
         "test/language/execution.c", "test/language/execution_scope.c",
         "test/language/integer_semantics.c", "test/language/host_packages_compiler.c",
         "test/language/native_census.c",
-
         "test/language/package_compiler_chibi.c",
-
-
-
-
         "test/language/ranges.c",
         "test/language/record_prepared.c",
-        "test/language/compositional_records.c",
-
-
-
-
-
-
+        "test/language/compositional_records.c"
     ];
 }
 
@@ -1767,39 +1741,17 @@ pub Configures :: (target: string) -> string[] {
             "test/prepared_fixture.h=test/prepared_fixture.h",
             "test/parallel.h=test/parallel.h",
             "package_core_source.h=test/language/package_core_source.h.in",
-            "core_strings_tests_source.h=test/language/core_strings_tests_source.h.in",
             "host_packages_source.h=test/language/host_packages_source.h.in",
             "portable_asset_source.h=test/language/portable_asset_source.h.in",
-            "package_portable_source.h=test/language/package_portable_source.h.in",
-            "package_portable_consumer.h=test/language/package_portable_consumer.h.in",
-            "integer_arithmetic_source.h=test/language/integer_arithmetic_source.h.in",
             "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",
             "syntax_chibi_source.h=test/language/syntax_chibi_source.h.in",
-            "source_tokenizer_chibi_source.h=test/language/source_tokenizer_chibi_source.h.in",
             "package_syntax_chibi_source.h=test/language/package_syntax_chibi_source.h.in",
             "package_paths_chibi_source.h=test/language/package_paths_chibi_source.h.in",
             "package_routes_chibi_source.h=test/language/package_routes_chibi_source.h.in",
             "package_snapshot_chibi_source.h=test/language/package_snapshot_chibi_source.h.in",
-            "constant_proof_chibi_source.h=test/language/constant_proof_chibi_source.h.in",
-            "constant_scalar_chibi_source.h=test/language/constant_scalar_chibi_source.h.in",
-            "shader_source_chibi_source.h=test/language/shader_source_chibi_source.h.in",
-            "asset_packaging_chibi_source.h=test/language/asset_packaging_chibi_source.h.in",
-            "scalar_lowering_chibi_source.h=test/language/scalar_lowering_chibi_source.h.in",
             "lexical_binding_chibi_source.h=test/language/lexical_binding_chibi_source.h.in",
-            "nominal_binding_chibi_source.h=test/language/nominal_binding_chibi_source.h.in",
-            "named_binding_chibi_source.h=test/language/named_binding_chibi_source.h.in",
-            "type_constructors_chibi_source.h=test/language/type_constructors_chibi_source.h.in",
-            "type_relations_chibi_source.h=test/language/type_relations_chibi_source.h.in",
-            "unit_algebra_chibi_source.h=test/language/unit_algebra_chibi_source.h.in",
-            "signature_reader_chibi_source.h=test/language/signature_reader_chibi_source.h.in",
-            "callable_headers_chibi_source.h=test/language/callable_headers_chibi_source.h.in",
-            "unit_analysis_chibi_source.h=test/language/unit_analysis_chibi_source.h.in",
-            "union_members_chibi_source.h=test/language/union_members_chibi_source.h.in",
-            "effect_analysis_chibi_source.h=test/language/effect_analysis_chibi_source.h.in",
-            "record_members_chibi_source.h=test/language/record_members_chibi_source.h.in",
             "compositional_records_source.h=test/language/compositional_records_source.h.in",
             "build_workflow_source.h=test/language/build_workflow_source.h.in",
-            "bounded_compiler_chibi_source.h=test/language/bounded_compiler_chibi_source.h.in",
             "prepared_writer_chibi_source.h=test/language/prepared_writer_chibi_source.h.in",
             "package_compiler_chibi_source.h=test/language/package_compiler_chibi_source.h.in"
         ];
@@ -1825,58 +1777,17 @@ pub Configures :: (target: string) -> string[] {
 pub Substitutions :: (target: string) -> string[] {
     if (target == "chibi_language_testing") {
         return [
-            "CHIBI_ASSET_PACKAGING_BYTES=bytes:tools/compiler/asset_packaging/Packaging.chibi",
             "CHIBI_PORTABLE_ASSET_BYTES=bytes:test/fixtures/portable-byte-asset/Build.chibi",
-            "CHIBI_ASSET_GENERATOR_BYTES=bytes:tools/graph/asset_compiler/Generate.chibi",
-            "CHIBI_ANALYSIS_STATE_BYTES=bytes:tools/compiler/analysis_state/State.chibi",
-            "CHIBI_BOUNDED_COMPILE_BYTES=bytes:tools/compiler/bounded_compiler/Compile.chibi",
-            "CHIBI_BOUNDED_EXPRESSION_BYTES=bytes:tools/compiler/bounded_compiler/Expression.chibi",
-            "CHIBI_BOUNDED_PREPARE_BYTES=bytes:tools/compiler/bounded_compiler/Prepare.chibi",
-            "CHIBI_CALLABLE_HEADERS_BYTES=bytes:tools/compiler/callable_headers/Headers.chibi",
-            "CHIBI_COMPILER_FACTS_BYTES=bytes:tools/compiler/compiler_facts/Facts.chibi",
             "CHIBI_COMPILER_SYNTAX_BYTES=bytes:tools/compiler/compiler_syntax/Syntax.chibi",
-            "CHIBI_CONSTANT_FOLDING_BYTES=bytes:tools/compiler/constant_folding/Fold.chibi",
-            "CHIBI_CONSTANT_IR_BYTES=bytes:tools/compiler/constant_ir/IR.chibi",
-            "CHIBI_CONSTANT_PROOF_BYTES=bytes:tools/compiler/constant_admissibility/Proof.chibi",
-            "CHIBI_CONSTANT_SCALAR_BYTES=bytes:tools/compiler/constant_scalar/Scalar.chibi",
             "CHIBI_CORE_STRINGS_BYTES=bytes:packages/core/strings/Strings.chibi",
-            "CHIBI_CORE_STRINGS_TEST_SOURCES=test-sources:CORE_STRINGS_TEST_SOURCE:core_strings:test/core_strings",
-            "CHIBI_CORE_STRINGS_TEST_INPUTS=test-inputs:CORE_STRINGS_TEST_SOURCE:core_strings:test/core_strings",
             "CHIBI_CORE_TIME_BYTES=bytes:packages/core/time/Time.chibi",
             "CHIBI_CORE_TIME_TEST_BYTES=bytes:test/standard_library/time/TimeTests.chibi",
             "CHIBI_HOST_CLOCK_BYTES=bytes:packages/host/clock/Clock.chibi",
-            "CHIBI_PORTABLE_CONSUMER_BYTES=bytes:test/packages/portable_consumer/Consumer.chibi",
-            "CHIBI_PORTABLE_BYTES_SOURCES=test-sources:PORTABLE_BYTES:bytes:packages/core/bytes",
-            "CHIBI_PORTABLE_BYTES_INPUTS=test-inputs:PORTABLE_BYTES:bytes:packages/core/bytes",
-            "CHIBI_PORTABLE_ENCODING_ENDIAN_SOURCES=test-sources:PORTABLE_ENCODING_ENDIAN:encoding/endian:packages/core/encoding/endian",
-            "CHIBI_PORTABLE_ENCODING_ENDIAN_INPUTS=test-inputs:PORTABLE_ENCODING_ENDIAN:encoding/endian:packages/core/encoding/endian",
-            "CHIBI_PORTABLE_UTF8_SOURCES=test-sources:PORTABLE_UTF8:utf8:packages/core/utf8",
-            "CHIBI_PORTABLE_UTF8_INPUTS=test-inputs:PORTABLE_UTF8:utf8:packages/core/utf8",
-            "CHIBI_PORTABLE_PATH_SLASHPATH_SOURCES=test-sources:PORTABLE_PATH_SLASHPATH:path/slashpath:packages/core/path/slashpath",
-            "CHIBI_PORTABLE_PATH_SLASHPATH_INPUTS=test-inputs:PORTABLE_PATH_SLASHPATH:path/slashpath:packages/core/path/slashpath",
-            "CHIBI_PORTABLE_MATH_BITS_SOURCES=test-sources:PORTABLE_MATH_BITS:math/bits:packages/core/math/bits",
-            "CHIBI_PORTABLE_MATH_BITS_INPUTS=test-inputs:PORTABLE_MATH_BITS:math/bits:packages/core/math/bits",
-            "CHIBI_PORTABLE_HASH_FNV_SOURCES=test-sources:PORTABLE_HASH_FNV:hash/fnv:packages/core/hash/fnv",
-            "CHIBI_PORTABLE_HASH_FNV_INPUTS=test-inputs:PORTABLE_HASH_FNV:hash/fnv:packages/core/hash/fnv",
-            "CHIBI_PORTABLE_HASH_ADLER32_SOURCES=test-sources:PORTABLE_HASH_ADLER32:hash/adler32:packages/core/hash/adler32",
-            "CHIBI_PORTABLE_HASH_ADLER32_INPUTS=test-inputs:PORTABLE_HASH_ADLER32:hash/adler32:packages/core/hash/adler32",
-            "CHIBI_PORTABLE_HASH_CRC32_SOURCES=test-sources:PORTABLE_HASH_CRC32:hash/crc32:packages/core/hash/crc32",
-            "CHIBI_PORTABLE_HASH_CRC32_INPUTS=test-inputs:PORTABLE_HASH_CRC32:hash/crc32:packages/core/hash/crc32",
-            "CHIBI_PORTABLE_HASH_SHA256_SOURCES=test-sources:PORTABLE_HASH_SHA256:hash/sha256:packages/core/hash/sha256",
-            "CHIBI_PORTABLE_HASH_SHA256_INPUTS=test-inputs:PORTABLE_HASH_SHA256:hash/sha256:packages/core/hash/sha256",
-            "CHIBI_INTEGER_ARITHMETIC_BYTES=bytes:test/integer_arithmetic/Arithmetic.chibi",
-            "CHIBI_PORTABLE_ENCODING_HEX_SOURCES=test-sources:PORTABLE_ENCODING_HEX:encoding/hex:packages/core/encoding/hex",
-            "CHIBI_PORTABLE_ENCODING_HEX_INPUTS=test-inputs:PORTABLE_ENCODING_HEX:encoding/hex:packages/core/encoding/hex",
-            "CHIBI_PORTABLE_ENCODING_BASE64_SOURCES=test-sources:PORTABLE_ENCODING_BASE64:encoding/base64:packages/core/encoding/base64",
-            "CHIBI_PORTABLE_ENCODING_BASE64_INPUTS=test-inputs:PORTABLE_ENCODING_BASE64:encoding/base64:packages/core/encoding/base64",
             "CHIBI_EMITTER_TEST_SOURCES=test-sources:EMITTER_TEST_SOURCE:llvm_native_calls:test/native_aot/emitter_calls",
             "CHIBI_EMITTER_TEST_INPUTS=test-inputs:EMITTER_TEST_SOURCE:llvm_native_calls:test/native_aot/emitter_calls",
-            "CHIBI_EFFECT_ANALYSIS_BYTES=bytes:tools/compiler/effect_analysis/Effects.chibi",
             "CHIBI_LEXICAL_BINDING_BYTES=bytes:tools/compiler/lexical_binding/Binding.chibi",
             "CHIBI_LLVM_NATIVE_BYTES=bytes:tools/compiler/llvm_native/Emit.chibi",
-            "CHIBI_NAMED_BINDING_BYTES=bytes:tools/compiler/named_binding/Binding.chibi",
             "CHIBI_NATIVE_ABI_BYTES=bytes:tools/compiler/native_abi/Abi.chibi",
-            "CHIBI_NOMINAL_BINDING_BYTES=bytes:tools/compiler/nominal_binding/Nominal.chibi",
             "CHIBI_PACKAGE_COMPILER_BEHAVIOR_BYTES=bytes:tools/compiler/package_compiler/Behavior.chibi",
             "CHIBI_PACKAGE_COMPILER_QUERIES_BYTES=bytes:tools/compiler/package_compiler/Queries.chibi",
             "CHIBI_PACKAGE_COMPILER_QUERYLOOPS_BYTES=bytes:tools/compiler/package_compiler/QueryLoops.chibi",
@@ -1906,17 +1817,10 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_PACKAGE_SNAPSHOT_BYTES=bytes:tools/compiler/source_snapshot/Snapshot.chibi",
             "CHIBI_PACKAGE_SYNTAX_BYTES=bytes:tools/compiler/package_syntax/Extract.chibi",
             "CHIBI_PREPARED_WRITER_BYTES=bytes:tools/compiler/prepared_writer/Writer.chibi",
-            "CHIBI_RECORD_MEMBERS_BYTES=bytes:tools/compiler/record_members/Members.chibi",
             "CHIBI_COMPOSITIONAL_RECORDS_BYTES=bytes:test/language/fixtures/compositional_records/Values.chibi",
             "CHIBI_SCALAR_CASES_BYTES=bytes:test/scalar_facts/cases/Cases.chibi",
             "CHIBI_SCALAR_FACTS_BYTES=bytes:tools/compiler/scalar_facts/Facts.chibi",
-            "CHIBI_SCALAR_IR_BYTES=bytes:tools/compiler/constant_ir/IR.chibi",
             "CHIBI_SCALAR_LLVM_BYTES=bytes:tools/compiler/scalar_llvm/Emit.chibi",
-            "CHIBI_SCALAR_LOWERING_BYTES=bytes:tools/compiler/scalar_lowering/Lower.chibi",
-            "CHIBI_SCALAR_PROOF_BYTES=bytes:tools/compiler/constant_admissibility/Proof.chibi",
-            "CHIBI_SHADER_SOURCE_BYTES=bytes:tools/compiler/shader_source/SourceMap.chibi",
-            "CHIBI_SHADER_LOWER_BYTES=bytes:tools/compiler/shader_source/Lower.chibi",
-            "CHIBI_SIGNATURE_READER_BYTES=bytes:tools/compiler/signature_reader/Reader.chibi",
             "CHIBI_SOURCE_TOKENIZER_BYTES=bytes:tools/compiler/source_tokenizer/Tokenizer.chibi",
             "CHIBI_SOURCE_PARSER_TREE_BYTES=bytes:tools/compiler/source_parser/Tree.chibi",
             "CHIBI_SOURCE_PARSER_TYPES_BYTES=bytes:tools/compiler/source_parser/Types.chibi",
@@ -1925,11 +1829,6 @@ pub Substitutions :: (target: string) -> string[] {
             "CHIBI_SOURCE_PARSER_DECLARATIONS_BYTES=bytes:tools/compiler/source_parser/Declarations.chibi",
             "CHIBI_SOURCE_PARSER_PARSER_BYTES=bytes:tools/compiler/source_parser/Parser.chibi",
             "CHIBI_SYNTAX_DIAGNOSTICS_BYTES=bytes:tools/compiler/syntax_diagnostics/Diagnostics.chibi",
-            "CHIBI_TYPE_CONSTRUCTORS_BYTES=bytes:tools/compiler/type_constructors/Constructors.chibi",
-            "CHIBI_TYPE_RELATIONS_BYTES=bytes:tools/compiler/type_relations/Relations.chibi",
-            "CHIBI_UNION_MEMBERS_BYTES=bytes:tools/compiler/union_members/Members.chibi",
-            "CHIBI_UNIT_ALGEBRA_BYTES=bytes:tools/compiler/unit_algebra/Units.chibi",
-            "CHIBI_UNIT_ANALYSIS_BYTES=bytes:tools/compiler/unit_analysis/Analysis.chibi",
             "CHIBI_BUILD_WORKFLOW_SOURCE=cstring:test/language/BuildWorkflow.chibi"
         ];
     }

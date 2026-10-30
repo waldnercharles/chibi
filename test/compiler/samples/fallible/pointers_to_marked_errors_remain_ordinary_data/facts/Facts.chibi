@@ -1,0 +1,4 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> ^Failure { value: Failure = {code: 3}; return &value; }
+Use :: () -> int { Read(); return 9; }

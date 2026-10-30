@@ -1,0 +1,13 @@
+package facts
+
+// shadowing
+@test
+Calls :: () {
+    a1_0: int = 3;
+    r1: int = Shadow(a1_0);
+    e1: int = 13;
+    assert(r1 == e1, "Shadow call 1");
+    r2: int = Arm();
+    e2: int = 2;
+    assert(r2 == e2, "Arm call 2");
+}

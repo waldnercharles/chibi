@@ -1,0 +1,5 @@
+package facts
+Bump :: (v: ^int) { v^ += 1; }
+Run :: () { Bump(&3); }
+
+// error: 3:19: Pointer argument requires a writable location

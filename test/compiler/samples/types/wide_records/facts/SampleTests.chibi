@@ -1,0 +1,10 @@
+package facts
+
+// wide records
+@test
+Calls :: () {
+    a4_0: int = 3;
+    r4: i64 = Total(a4_0);
+    e4: i64 = -14999999994;
+    assert(r4 == e4, "Total call 4");
+}

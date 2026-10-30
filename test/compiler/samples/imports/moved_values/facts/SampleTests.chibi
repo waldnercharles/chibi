@@ -1,0 +1,13 @@
+package facts
+
+// moved values
+@test
+Calls :: () {
+    r2: int = MovedResults();
+    e2: int = 12;
+    assert(r2 == e2, "MovedResults call 2");
+    a3_0: int = 4;
+    r3: int = MovedSecond(a3_0);
+    e3: int = 5;
+    assert(r3 == e3, "MovedSecond call 3");
+}

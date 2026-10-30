@@ -1,0 +1,5 @@
+package facts
+U :: union { A(x: int) | B }
+One :: (u: U) -> int { if (u is not .A(x)) { return 1; } return 0; }
+
+// error: 3:40: Pattern bindings require a matching if, while or switch arm

@@ -1,0 +1,4 @@
+package facts
+Shift :: (a: int) -> int { return a << (2 - 3); }
+
+// error: 2:41: Shift count must not be negative

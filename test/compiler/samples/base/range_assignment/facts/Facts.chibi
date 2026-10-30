@@ -1,0 +1,4 @@
+package facts
+One :: () -> int { for i in 0..3 { i = 1; } return 0; }
+
+// error: 2:36: Assignment requires a writable value

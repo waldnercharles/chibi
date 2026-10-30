@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { return step(2.0, 1.0) == 0.0 && step(2.0, 2.0) == 1.0 && step(0.5, vec3(0.25, 0.5, 0.75)) == vec3(0, 1, 1) && step(vec3(0.25, 0.5, 0.75), 0.5) == vec3(1, 1, 0); }

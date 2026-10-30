@@ -1,0 +1,2 @@
+package facts
+Count :: () -> int { x: int = 1; y: int = 2; ps: ^int[] = [&x]; ps.append(&y); ps[1]^ = 7; return length(ps) * 10 + y; }

@@ -1,0 +1,5 @@
+package facts
+@error Failure :: struct { code: int; }
+Use :: () -> Failure? | int { return 1; }
+
+// error: 3:14: result type is not supported yet

@@ -1,0 +1,18 @@
+package facts
+
+// optional mutation before a fresh presence guard is safe
+@test
+Calls :: () {
+    r1: int = Use();
+    e1: int = 17;
+    assert(r1 == e1, "Use call 1");
+    r2: int = Before();
+    e2: int = 17;
+    assert(r2 == e2, "Before call 2");
+    r3: int = Again();
+    e3: int = 17;
+    assert(r3 == e3, "Again call 3");
+    r4: int = Direct();
+    e4: int = 17;
+    assert(r4 == e4, "Direct call 4");
+}

@@ -1,0 +1,41 @@
+package facts
+Point :: struct { x: int; y: int; }
+Value :: union { Int(n: int) | Text(s: string) | Pair(a: int, b: int) | Spot(at: Point) | Nothing }
+Make :: (k: int) -> Value {
+    if (k == 0) { return Value.Int(5); }
+    if (k == 1) { return Value.Text("hey"); }
+    if (k == 2) { return Value.Pair(3, 4); }
+    if (k == 3) { return Value.Pair(4, 3); }
+    return Value.Nothing;
+}
+Score :: (k: int) -> int {
+    v := Make(k);
+    if (v is .Int(n)) { return n; }
+    if (v is .Pair(a, b) && a < b) { return a * 10 + b; }
+    if (v is not .Nothing && !(v is .Text)) { return -1; }
+    if ((v is .Text(s)) && s == "hey") { return 100; } else { return 0; }
+    return -2;
+}
+Kind :: (k: int) -> int {
+    v := Make(k);
+    if (v is .Int(n)) { return n; } else if (v is .Pair(a, b)) { return a + b; } else { return -5; }
+    return 0;
+}
+Count :: () -> int {
+    v := Make(2);
+    total: int = 0;
+    while (v is .Pair(a, b) && a < 10) { total += a; v = Value.Pair(a + b, b); }
+    return total;
+}
+Walk :: () -> int {
+    start: Point = {x: 0, y: 1};
+    v := Value.Spot(start);
+    total: int = 0;
+    while (v is .Spot(at) and at.x < 3) {
+        total += at.x * 10 + at.y;
+        next: Point = {x: at.x + 1, y: at.y};
+        v = Value.Spot(next);
+    }
+    return total;
+}
+Empty :: (k: int) -> bool { return Make(k) is .Nothing; }

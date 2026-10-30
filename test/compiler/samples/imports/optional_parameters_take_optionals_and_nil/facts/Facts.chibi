@@ -1,0 +1,3 @@
+package facts
+Pick :: (v: int?) -> int { if v { return v; } return 9; }
+Main :: () -> int { some: int? = 3; none: int? = nil; return Pick(some) * 10 + Pick(none) + Pick(nil); }

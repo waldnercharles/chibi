@@ -1,0 +1,40 @@
+package facts
+
+// unsigned arithmetic
+@test
+Calls :: () {
+    a1_0: u64 = 10;
+    a1_1: u64 = 3;
+    r1: u64 = Diff(a1_0, a1_1);
+    e1: u64 = 7;
+    assert(r1 == e1, "Diff call 1");
+    a2_0: u64 = 9223372036854775808;
+    a2_1: u64 = 1;
+    r2: bool = Less(a2_0, a2_1);
+    e2: bool = false;
+    assert(r2 == e2, "Less call 2");
+    a3_0: u64 = 1;
+    a3_1: u64 = 9223372036854775808;
+    r3: bool = Less(a3_0, a3_1);
+    e3: bool = true;
+    assert(r3 == e3, "Less call 3");
+    a4_0: u64 = 18446744073709551615;
+    a4_1: u64 = 10;
+    r4: u64 = Div(a4_0, a4_1);
+    e4: u64 = 1844674407370955166;
+    assert(r4 == e4, "Div call 4");
+    a5_0: u8 = 20;
+    a5_1: u8 = 30;
+    r5: u8 = Bytes(a5_0, a5_1);
+    e5: u8 = 79;
+    assert(r5 == e5, "Bytes call 5");
+    a6_0: u8 = 5;
+    a6_1: u8 = 3;
+    r6: bool = Order(a6_0, a6_1);
+    e6: bool = true;
+    assert(r6 == e6, "Order call 6");
+    a7_0: u8 = 12;
+    r7: u8 = Shift(a7_0);
+    e7: u8 = 6;
+    assert(r7 == e7, "Shift call 7");
+}

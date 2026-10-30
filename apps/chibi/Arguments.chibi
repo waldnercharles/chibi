@@ -5,31 +5,24 @@ import strings "core:strings"
 Options :: struct {
     command: string
     path: string
-    output: string
-    web: string
     llvm: string
     target: string
     mode: string
     error: string
     tail_first: int
-    port: int
     valid: bool
     help: bool
     watch: bool
     native: bool
-    archive: bool
-    explain: bool
-    json: bool
     debug: bool
     static_link: bool
 }
 
 NewOptions :: (command: string) -> Options {
-    return {command: command, path: "", output: "", web: "", llvm: "",
+    return {command: command, path: "", llvm: "",
             target: "x86_64-unknown-linux-gnu", mode: "2", error: "",
-            tail_first: 0, port: 8000, valid: true, help: false, watch: false,
-            native: false, archive: false, explain: false,
-            json: false, debug: false, static_link: false}
+            tail_first: 0, valid: true, help: false, watch: false,
+            native: false, debug: false, static_link: false}
 }
 
 Tail :: (arguments: string[], first: int) -> string[] {
@@ -56,29 +49,6 @@ HelpOption :: (value: string) -> bool {
 
 Option :: (value: string) -> bool {
     return strings.HasPrefix(value, "-")
-}
-
-Port :: (text: string) -> int {
-    if text == "" {
-        return -1
-    }
-    value := 0
-    index := 0
-    if strings.HasPrefix(text, "+") {
-        index = 1
-    }
-    if index == strings.ByteLength(text) {
-        return -1
-    }
-    while index < strings.ByteLength(text) {
-        digit := strings.ByteAt(text, index) - 48
-        if digit < 0 || digit > 9 || value > 6553 || (value == 6553 && digit > 5) {
-            return -1
-        }
-        value = value * 10 + digit
-        index += 1
-    }
-    return value
 }
 
 Invalid :: (options: Options, message: string) -> Options {
@@ -137,8 +107,7 @@ Parse :: (arguments: string[]) -> Options {
         return ParseRun(arguments, 1)
     }
     known := command == "version" || command == "doctor" || command == "build" ||
-             command == "check" || command == "test" || command == "web" ||
-             command == "export"
+             command == "test"
     if !known {
         options = ParseRun(arguments, 1)
         options.command = "shorthand"
@@ -163,14 +132,12 @@ Parse :: (arguments: string[]) -> Options {
     located := false
     targeted := false
     optimized := false
-    ported := false
     while index < length(arguments) {
         argument := arguments[index]
         if argument == "" {
             return Invalid(options, format_text("A {} path must not be empty", command))
         }
-        valued := argument == "--web" || argument == "--player" || argument == "--llvm" ||
-                  argument == "--output" || argument == "--target"
+        valued := argument == "--llvm" || argument == "--target"
         if valued && index + 1 < length(arguments) && arguments[index + 1] == "" {
             return Invalid(options, format_text("{} needs a nonempty value", argument))
         }
@@ -178,35 +145,8 @@ Parse :: (arguments: string[]) -> Options {
             options.help = true
             return options
         }
-        if command == "check" && argument == "--explain-costs" && !options.explain {
-            options.explain = true
-        } else if command == "check" && argument == "--json" && !options.json {
-            options.json = true
-        } else if command == "web" && argument == "--port" &&
-                  index + 1 < length(arguments) && !ported {
-            index += 1
-            options.port = Port(arguments[index])
-            ported = true
-            if options.port < 0 {
-                return Invalid(options, format_text("Invalid {} option; use --help.", command))
-            }
-        } else if ((command == "doctor" || command == "export") && argument == "--web" && options.web == "") ||
-                  (command == "web" && argument == "--player" && options.web == "") {
-            if index + 1 >= length(arguments) {
-                return Invalid(options, format_text("Invalid {} option; use --help.", command))
-            }
-            index += 1
-            options.web = arguments[index]
-        } else if command == "export" && argument == "--output" && options.output == "" &&
-                  index + 1 < length(arguments) {
-            index += 1
-            options.output = arguments[index]
-        } else if command == "export" && argument == "--archive" {
-            options.archive = true
-        } else if command == "export" && argument == "--native" {
-            options.native = true
-        } else if (command == "export" || (command == "build" && options.native)) &&
-                  argument == "--llvm" && index + 1 < length(arguments) && !located {
+        if command == "build" && options.native && argument == "--llvm" &&
+           index + 1 < length(arguments) && !located {
             index += 1
             options.llvm = arguments[index]
             located = true
@@ -230,18 +170,6 @@ Parse :: (arguments: string[]) -> Options {
         }
         index += 1
     }
-    if options.json && !options.explain {
-        return Invalid(options, "--json requires --explain-costs; use --help.")
-    }
-    if command == "web" && options.web == "" {
-        return Invalid(options, "web needs --player PLAYER, the browser player's folder")
-    }
-    if command == "export" && options.output == "" {
-        return Invalid(options, "Export needs --output DIR")
-    }
-    if command == "export" && located && !options.native {
-        return Invalid(options, "export --llvm needs --native")
-    }
     return options
 }
 
@@ -263,61 +191,33 @@ CommandArgumentsKeepProgramArguments :: () {
 
 @test
 CommandArgumentsRejectInvalidCombinations :: () {
-    assert(!Parse(["chibi", "check", "--json"]).valid)
-    assert(!Parse(["chibi", "web"]).valid)
-    assert(!Parse(["chibi", "export", "--output", "site", "--llvm", "llvm"]).valid)
     assert(!Parse(["chibi", "test", "first", "second"]).valid)
     assert(!Parse(["chibi", "doctor", "--unknown"]).valid)
     assert(!Parse(["chibi"]).valid)
-    assert(!Parse(["chibi", "doctor", "--web", ""]).valid)
-    assert(!Parse(["chibi", "export", "--output", "site", "--web", ""]).valid)
-    assert(!Parse(["chibi", "web", "--player", ""]).valid)
-    assert(!Parse(["chibi", "export", "--output", ""]).valid)
     assert(!Parse(["chibi", "build", "--native", "--llvm", ""]).valid)
-    assert(!Parse(["chibi", "export", "--native", "--output", "game", "--llvm", ""]).valid)
     assert(!Parse(["chibi", "build", "--native", "--target", ""]).valid)
     assert(!Parse(["chibi", "build", ""]).valid)
     assert(!Parse(["chibi", "build", "--native", ""]).valid)
-    assert(!Parse(["chibi", "check", ""]).valid)
     assert(!Parse(["chibi", "test", ""]).valid)
-    assert(!Parse(["chibi", "web", "", "--player", "browser"]).valid)
-    assert(!Parse(["chibi", "export", "", "--output", "site"]).valid)
     assert(!Parse(["chibi", "run", ""]).valid)
     assert(!Parse(["chibi", ""]).valid)
 }
 
 @test
-CommandArgumentsSelectNativeAndExportOptions :: () {
+CommandArgumentsSelectNativeOptions :: () {
     native := Parse(["chibi", "build", "--native", "-O0", "-g", "--target", "aarch64-apple-darwin", "--llvm", "/tools", "source"])
     assert(native.valid && native.native && native.mode == "0" && native.debug)
     assert(native.path == "source" && native.llvm == "/tools" && native.target == "aarch64-apple-darwin")
     linked := Parse(["chibi", "build", "--native", "--static", "source"])
     assert(linked.valid && linked.static_link && !native.static_link)
     assert(!Parse(["chibi", "build", "--static"]).valid)
-    exported := Parse(["chibi", "export", "game", "--web", "browser", "--output", "site", "--archive"])
-    assert(exported.valid && exported.path == "game" && exported.web == "browser")
-    assert(exported.output == "site" && exported.archive)
-    checked := Parse(["chibi", "check", "game", "--json", "--explain-costs"])
-    assert(checked.valid && checked.json && checked.explain)
-}
-
-@test
-CommandPortsAreBounded :: () {
-    assert(Port("0") == 0 && Port("65535") == 65535)
-    assert(Port("") == -1 && Port("-1") == -1 && Port("65536") == -1)
-    assert(Port("8000x") == -1 && Port("9999999999999999999") == -1)
 }
 
 @test
 CommandArgumentsCoverProjectTools :: () {
     built := Parse(["chibi", "build", "game"])
     assert(built.valid && built.path == "game" && !built.native)
-    checked := Parse(["chibi", "check", "--explain-costs", "game", "--json"])
-    assert(checked.valid && checked.explain && checked.json && checked.path == "game")
     tested := Parse(["chibi", "test", "packages"])
     assert(tested.valid && tested.path == "packages")
-    web := Parse(["chibi", "web", "game", "--player", "browser", "--port", "42"])
-    assert(web.valid && web.path == "game" && web.web == "browser" && web.port == 42)
-    doctor := Parse(["chibi", "doctor", "--web", "browser"])
-    assert(doctor.valid && doctor.web == "browser")
+    assert(Parse(["chibi", "doctor"]).valid)
 }

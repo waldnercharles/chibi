@@ -1,0 +1,38 @@
+package facts
+Note :: struct { text: string; count: int; }
+Change :: (note: Note, xs: int[]) -> int {
+    note.count = 9;
+    xs.append(7);
+    xs[0] = 9;
+    return length(xs) * 10 + note.count;
+}
+Same :: (xs: int[]) -> int[] { return xs; }
+Read :: (note: Note, xs: int[]) -> int { return note.count * 10 + length(xs); }
+Grow :: (xs: ^(int[])) -> int { xs^[0] = 5; return 0; }
+Observe :: (xs: int[], ignored: int) -> int { return xs[0]; }
+Peek :: (p: ^(int[]), xs: int[]) -> int { p^[0] = 5; return xs[0]; }
+Writes :: () -> int {
+    xs: int[] = [1];
+    note: Note = {text: "a", count: 1};
+    n := Change(note, xs);
+    if (note.count != 1 || xs[0] != 1) { return -1; }
+    return n * 100 + note.count * 10 + length(xs);
+}
+Returns :: () -> int {
+    xs: int[] = [1, 2];
+    kept := Same(xs);
+    xs.append(3);
+    xs[0] = 5;
+    return kept[0] * 100 + length(kept) * 10 + length(xs);
+}
+Temporaries :: () -> int { return Read({text: "t", count: 3}, Same([4, 5])); }
+Referenced :: () -> int {
+    a: int[] = [1];
+    n := Observe(a, Grow(&a));
+    return n * 10 + a[0];
+}
+ReferencedEarlier :: () -> int {
+    a: int[] = [1];
+    n := Peek(&a, a);
+    return n * 10 + a[0];
+}

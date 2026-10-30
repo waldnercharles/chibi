@@ -1794,7 +1794,9 @@ int execution_instance_call(
     a->context.begin_command = synchronous_wait;
     a->context.start_task = synchronous_task;
     int status = program_activation_run(a, now, delta, budget);
-    if (status > 0 || (status == FLOW_OK && !a->context.returned)) {
+    /* A function that ends without `return` still completed: void functions and
+     * named results end this way. Only a pending status means it waited. */
+    if (status > 0) {
         const behavior_function *active = function;
         behavior_function_context *context = behavior_function_active_context(&a->context, &active);
         context

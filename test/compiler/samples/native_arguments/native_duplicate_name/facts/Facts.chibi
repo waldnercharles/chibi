@@ -1,0 +1,4 @@
+package facts
+Run :: () -> string { return text_slice(Value: "abcd", Start: 1, Start: 2, Count: 2); }
+
+// error: 2:66: Argument supplied more than once

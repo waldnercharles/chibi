@@ -1,0 +1,5 @@
+package facts
+A: int : B + 1;
+B: int : A;
+
+// error: 2:10: Constant 'A' depends on itself

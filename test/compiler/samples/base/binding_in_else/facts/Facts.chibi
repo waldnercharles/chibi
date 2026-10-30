@@ -1,0 +1,5 @@
+package facts
+U :: union { A(x: int) | B }
+One :: (u: U) -> int { if (u is .A(x)) { return x; } else { return x; } }
+
+// error: 3:68: Unknown name 'x'

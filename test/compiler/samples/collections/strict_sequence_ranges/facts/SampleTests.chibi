@@ -1,0 +1,52 @@
+package facts
+
+// strict sequence ranges
+@test
+Calls :: () {
+    r1: int = Bracket();
+    e1: int = 292;
+    assert(r1 == e1, "Bracket call 1");
+    r2: int = Method();
+    e2: int = 28;
+    assert(r2 == e2, "Method call 2");
+    r3: int = Empty();
+    e3: int = 1;
+    assert(r3 == e3, "Empty call 3");
+    r4: int = EmptySource();
+    e4: int = 1;
+    assert(r4 == e4, "EmptySource call 4");
+    a5_0: int = -1;
+    a5_1: int = 1;
+    r5: int = Bounds(a5_0, a5_1);
+    e5: int = 0;
+    assert(r5 == e5, "Bounds call 5");
+    a6_0: int = 1;
+    a6_1: int = 0;
+    r6: int = Bounds(a6_0, a6_1);
+    e6: int = 0;
+    assert(r6 == e6, "Bounds call 6");
+    a7_0: int = 0;
+    a7_1: int = 3;
+    r7: int = Bounds(a7_0, a7_1);
+    e7: int = 0;
+    assert(r7 == e7, "Bounds call 7");
+    a8_0: int = 2;
+    a8_1: int = 2;
+    r8: int = Bounds(a8_0, a8_1);
+    e8: int = 1;
+    assert(r8 == e8, "Bounds call 8");
+    a9_0: int = 0;
+    a9_1: int = 2;
+    r9: int = Bounds(a9_0, a9_1);
+    e9: int = 3;
+    assert(r9 == e9, "Bounds call 9");
+    r10: string = Text();
+    e10: string = "bc|bc";
+    assert(r10 == e10, "Text call 10");
+    r11: int = Bytes();
+    e11: int = 1;
+    assert(r11 == e11, "Bytes call 11");
+    r12: int = EmptyText();
+    e12: int = 1;
+    assert(r12 == e12, "EmptyText call 12");
+}

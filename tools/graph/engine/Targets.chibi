@@ -58,8 +58,8 @@ pub Targets :: () -> string[] {
 // archive for a `third-party/` entry.
 Files :: (target: string) -> string[] {
     if (target == "chibi_asset_compiler_host") {
-        return ["src/authoring/asset_compiler_host.c", "src/support/binary_cache.c",
-                "build/sdk/generated/assets/asset_compiler_packaged.c"];
+        return ["src/authoring/asset_compiler_host.c", "src/authoring/package_compile.c",
+                "src/support/binary_cache.c", "build/sdk/generated/assets/asset_compiler_packaged.c"];
     }
     if (target == "chibi_asset_compiler_consumer") {
         return ["test/language/asset_compiler_host.c"];
@@ -807,7 +807,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["toolchain/compiler_host.h"];
     }
     if (target == "chibi_asset_compiler_host") {
-        return ["authoring/asset_compiler_host.h"];
+        return ["authoring/asset_compiler_host.h", "authoring/package_compile.h"];
     }
     if (target == "chibi_save_runtime") {
         return ["runtime/save.h", "runtime/save_definition.h", "runtime/save_native.h"];
@@ -1464,7 +1464,9 @@ pub Includes :: (target: string) -> string[] {
             "public/asset_compiler_host", "private/asset_compiler_host", "build/sdk/generated/assets",
             "third_party/yyjson", "public/asset_values", "public/support", "public/compiler_host",
             "public/behavior_runtime", "public/execution", "public/types", "public/execution_contract", "public/capabilities",
-            "public/ecs", "public/tasks", "public/events", "public/asset_json", "public/json"
+            "public/ecs", "public/tasks", "public/events", "public/asset_json", "public/json",
+            "public/source_catalog", "private/compiler-target", "public/native_prepared",
+            "public/native_capabilities"
         ];
     }
     if (target == "reflect") {

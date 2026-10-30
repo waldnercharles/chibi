@@ -992,7 +992,7 @@ TEST_CASE(driver_lists_and_plans_test_selectors)
                                  "--release-build", "rel",     "chibi-cli",
                                  "projects",        NULL };
     REQUIRE(driver_verb("test", plan, &log));
-    bool planned = strstr(log, "chibi-cli: env ") &&
+    bool planned = strstr(log, "chibi-cli: sh tools/with-timeout.sh 900 env ") &&
                    strstr(log, "/out/test/tools/test_tools --chibi-cli /") &&
                    strstr(log, "CHIBI_CLI=") && strstr(log, "/rel/sdk/chibi ");
     if (!planned) {
@@ -1000,6 +1000,11 @@ TEST_CASE(driver_lists_and_plans_test_selectors)
     }
     free(log);
     REQUIRE(planned);
+    const char *const bounded[] = { "--dry-run", "--timeout", "30", "chibi-cli", NULL };
+    REQUIRE(driver_verb("test", bounded, &log));
+    bool deadline = strstr(log, "chibi-cli: sh tools/with-timeout.sh 30 env ");
+    free(log);
+    REQUIRE(deadline);
     const char *const unknown[] = { "no-such-selector", NULL };
     REQUIRE(!driver_verb("test", unknown, &log));
     bool rejected = log && strstr(log, "unknown selector 'no-such-selector'");
@@ -1048,6 +1053,22 @@ TEST_CASE(driver_plans_the_other_verbs)
     return true;
 }
 
+/* tools/with-timeout.sh stops a hung selector's whole process group at its
+ * deadline with status 124, and passes any other status through. */
+TEST_CASE(with_timeout_stops_a_hung_command_and_its_children)
+{
+    const char *const hung[] = { "sh", "tools/with-timeout.sh", "1", "sh",
+                                 "-c", "sleep 30 & sleep 30",   NULL };
+    REQUIRE(tool_run_within(hung, CHIBI_SOURCE_ROOT, log_path, 20) == 124);
+    const char *const failing[] = {
+        "sh", "tools/with-timeout.sh", "20", "sh", "-c", "exit 3", NULL
+    };
+    REQUIRE(tool_run_within(failing, CHIBI_SOURCE_ROOT, log_path, 25) == 3);
+    const char *const passing[] = { "sh", "tools/with-timeout.sh", "20", "true", NULL };
+    REQUIRE(tool_run_within(passing, CHIBI_SOURCE_ROOT, log_path, 25) == 0);
+    return true;
+}
+
 /* A separate route: another commands-only run of the whole graph takes
  * seconds. */
 void test_build_graph_programs(const char *host)
@@ -1057,6 +1078,7 @@ void test_build_graph_programs(const char *host)
     RUN_TEST_CASE(driver_plans_the_engine_build_steps);
     RUN_TEST_CASE(driver_lists_and_plans_test_selectors);
     RUN_TEST_CASE(driver_plans_the_other_verbs);
+    RUN_TEST_CASE(with_timeout_stops_a_hung_command_and_its_children);
     RUN_TEST_CASE(invalid_arguments_fail_before_writing_commands);
     RUN_TEST_CASE(debug_optimization_preserves_instrumentation);
     RUN_TEST_CASE(debug_optimization_rejects_invalid_profiles);

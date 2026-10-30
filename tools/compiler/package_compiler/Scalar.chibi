@@ -2326,15 +2326,15 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         if (length(generic_bindings) > 0) {
             used = GenericConstants(forest, constants, generic_bindings, function, callables[function], documents);
         }
-        emitted := ScalarEmits(scoped, text, key, callables, params, types, members, used, solid, function,
-                               ops, target, natives, ports, identities, aliases);
-        if (emitted.message != "") {
-            return ScalarOperands.Failed(emitted);
-        }
         written := ScalarWritten(scoped, text, callables[function], params);
         if (written != "") {
             return ScalarOperands.Failed(Diagnose(scoped, Field(scoped, callables[function].node, "body"), 0,
                                                   format_text("scalar proof does not write through pointer '{}' yet", written)));
+        }
+        emitted := ScalarEmits(scoped, text, key, callables, params, types, members, used, solid, function,
+                               ops, target, natives, ports, identities, aliases);
+        if (emitted.message != "") {
+            return ScalarOperands.Failed(emitted);
         }
         lent := ScalarLent(scoped, text, callables, params, natives, aliases, callables[function]);
         switch ScalarFunction(lent, text, key, solid, seen, params, records, fields, used,

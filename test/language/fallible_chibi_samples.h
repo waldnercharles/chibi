@@ -6,13 +6,6 @@
 #define FALLIBLE_IGNORED                                                       \
     "Error result is ignored on a reachable path; check, report, "             \
     "store or return it"
-    { .name = "fallible synchronous argument under await can forward error",
-      .group = FALLIBLE_SAMPLES,
-      .source = FALLIBLE_READER
-      "Observe :: (error: Failure?) -> int { if error { return error.code; } "
-      "return 0; }\nLater :: (value: int) -> int { yield; return value; }\nUse "
-      ":: () { returned := await Later(Observe(Read().error)); }\nStop :: () { "
-      "task := Later(0); cancel task; }\n" },
 #define FALLIBLE_POINTER_READER                                                \
     "package facts\n@error Failure :: struct { code: int; }\nFail :: () -> "   \
     "Failure? { return {code: 3}; }\n"

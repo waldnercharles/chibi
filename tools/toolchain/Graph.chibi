@@ -10,7 +10,7 @@ import strings "core:strings"
 // CMake build. Run through the build host with `--collection graph=tools/graph`:
 //   Libraries -- --build DIR [--profile sanitizer|debug|release|explicit] [--jobs N]
 //     [--target NAME]... [--commands-only on] [--all-commands on]
-// The profile, the Makefile's sanitizer profile unless named, is found on
+// The profile, the sanitizer profile unless named, is found on
 // this machine (engine.Discover); these options override what they name:
 //   --compiler PATH --cxx-compiler PATH --compiler-id ID --build-type TYPE
 //   --architecture ARCH --sysroot DIR --warnings on|off --sanitizers LIST

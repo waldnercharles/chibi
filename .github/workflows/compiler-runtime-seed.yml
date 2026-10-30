@@ -110,7 +110,7 @@ jobs:
             cmake --build runtime-build --target chibi-compiler-host --parallel 4
           } else {
             if ($env:CC) { $env:NATIVE_TOOLCHAIN_FLAGS = "-DCMAKE_C_COMPILER=$env:CC -DCMAKE_CXX_COMPILER=$env:CXX" }
-            make build-release BUILD_TARGET=chibi-compiler-host
+            sh tools/build.sh build --release --target chibi-compiler-host
           }
           if ($LASTEXITCODE) { throw 'Building the native runtime failed' }
           "seconds=$($timer.Elapsed.TotalSeconds)" >> $env:GITHUB_OUTPUT

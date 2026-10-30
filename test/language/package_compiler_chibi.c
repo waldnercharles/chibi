@@ -8276,7 +8276,7 @@ static bool write_seed_file(const char *folder, const char *name, const void *by
     return written;
 }
 /* With CHIBI_BOOTSTRAP_SEED naming a folder, leaves stage two and Compile's
- * arguments there, the seed make bootstrap-artifact writes the bootstrap
+ * arguments there, the seed tools/build.sh build bootstrap-artifact writes the bootstrap
  * artifact from. */
 static bool write_seed(const unsigned char *stage_two, size_t length, const char *json, size_t json_length)
 {
@@ -12369,19 +12369,12 @@ static bool scalar_results_match(const int64_t values[4], int64_t expected)
            values[2] == expected && values[3] == expected;
 }
 /* Forms the scalar subset cannot express, each with its message and the
- * source its diagnostic covers: a switch on a union call, an `is` that
- * binds, string and record payloads, a text native given a named argument,
+ * source its diagnostic covers: an `is` that binds, map and pointer payloads, a text native given a named argument,
  * a record formatted and a call of another native. */
 static const struct
 {
     const char *source, *message, *excerpt;
 } UNSUPPORTED[] = {
-    { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
-      "Main :: () -> int { switch Make() { case .Dot: return 0; case .Box(w): "
-      "return w; } }\n"
-      "Make :: () -> Shape { return Shape.Dot; }\n",
-      "scalar proof switches only on union variables",
-      "Make()" },
     { "package scalar\nShape :: union { Dot | Box(w: int) }\n"
       "Main :: () -> int { s := Shape.Box(1); if (s is .Box(w)) { return w; } "
       "return 0; }\n",
@@ -12608,7 +12601,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 69
+    SCALAR_ACCEPTED_CASES = 71
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -17372,7 +17365,8 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         const char *named = pin_text(name).bytes;
         if (strncmp(named, "array_", strlen("array_")) &&
             strncmp(named, "union_array", strlen("union_array")) &&
-            strncmp(named, "record_", strlen("record_"))) {
+            strncmp(named, "record_", strlen("record_")) &&
+            strncmp(named, "switch_on", strlen("switch_on"))) {
             arena_free(&detached);
             continue;
         }
@@ -17408,7 +17402,7 @@ TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
         ran++;
         arena_free(&detached);
     }
-    REQUIRE(ran >= 16);
+    REQUIRE(ran >= 18);
     /* Index 3 is past the three elements, as is -1. */
     static const char *const OUTSIDE[] = {
         "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n  "

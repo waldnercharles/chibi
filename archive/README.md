@@ -144,3 +144,12 @@ The prebuilt vendor archives in `third_party/archives.tsv` are published and pin
 ## CMake (2026-10-30)
 
 The graph (`make build`, `chibi build`) builds everything; nothing outside `archive/` configures with CMake. Archived: the root `CMakeLists.txt` and `cmake/*.cmake`; the SDK package (`sdk/CMakeLists.txt`, `sdk/*.cmake`, `sdk/ChibiConfig.cmake.in`, `sdk/README.md`; `sdk/VERSION` stays, the graph reads it); `src/language/CMakeLists.txt`; `tools/reflect/CMakeLists.txt` and `resource.cmake`; `tools/configure.sh`, `configure_native.sh`, `configure_inputs.py`; `tools/package_sdk.py`; `tools/debug_optimization_experiment.py` with its workflow; and the CMake-package tool test `test/tools/package.c` (`--package`). Lost: the Windows build, Windows runtime-seed refresh and web (Emscripten) builds, which only the CMake route supported; the CMake-package packaging checks; and the configure-cache invalidation tests. The graph still writes `lib/cmake/Chibi` for CMake consumers (`tools/graph/sdk/CMake.chibi`); Studio breaks until it moves to the graph. The graph still accepts `CMAKE_*` option names (`tools/graph/engine/Options.chibi`).
+
+## Python build and test helpers (tools, test/language, .github)
+
+Each served CMake, the retired test policy or a manual experiment; none is wired into `chibi build`.
+
+- `tools/language_test_artifact.py`: staged test binaries for the retired `test_policy.py` (it imports it).
+- `tools/publish_third_party.py`: the third-party archive publisher, with its builder above.
+- `tools/debug_optimization_experiment.py`, `.github/workflows/debug-optimization-experiment.yml`, `docs/debug-optimization-experiment.md`, `docs/optimization-instrumentation-experiment.md`: the manual O0/O1 sanitizer comparison over CMake reference builds.
+- `test/language/public_importer/`: a test-only review checkpoint for the importer's large-dependency propagation; no selector ran it.

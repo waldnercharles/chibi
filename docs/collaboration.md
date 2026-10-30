@@ -162,7 +162,7 @@ Room controls explain that connecting requires the web editor.
 
 ## Verification
 
-Run `make test`, `make build`, and `make web`. The focused C protocol/replay
+Run `make test`, `chibi build`, and `make web`. The focused C protocol/replay
 selector is `build/test_suite --collab`. It checks malformed and truncated
 messages, ordering, duplicate acceptance, rejection, sequence gaps, snapshot
 failure and recovery, replay non-recursion, and host departure.

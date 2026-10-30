@@ -103,7 +103,7 @@ Ordinary pull requests and pushes to `main` use **Debug O1 without ASan/UBSan**
 on Linux and macOS. Symbols, assertions, frame pointers and native, material,
 project, language and tooling correctness selections remain enabled. Performance
 benchmarks are opt-in, not part of routine CI or correctness aggregates.
-This is a CI-only choice: local `make build` / `make test-build` retain their
+This is a CI-only choice: local `chibi build` / `make test-build` retain their
 sanitizer defaults. The standalone tooling harness and Release helpers retain
 their existing roles.
 
@@ -134,14 +134,14 @@ a substitute for sanitizer evidence. Explicit holds and required repository chec
 still apply. Both profiles share `.github/native-profile.sh` and the same test
 steps to prevent drift; macOS Graph and CMake use matching explicit O1 and
 frame-pointer settings. Graph frame pointers are a separate Debug-only opt-in
-(`BUILD_DEBUG_FRAME_POINTERS=on`); ordinary developer Debug/O1 behavior is unchanged.
+(`--debug-frame-pointers on`); ordinary developer Debug/O1 behavior is unchanged.
 
 ## Run the checks
 
 The engine build compiles the full test drivers, `test_tools` and
 `test_language`, with every native, compiler and renderer package. CI runs each
 group below on every push to `main` and every pull request into it that changes
-more than documentation, and `make build` links `chibi`, `chibi-compile` and
+more than documentation, and `chibi build` links `chibi`, `chibi-compile` and
 `chibi-player` in the same tree.
 
 ```sh
@@ -151,8 +151,8 @@ make test-materials      # material simulation selectors
 make test-projects       # project, asset import and chibi_ctl selectors
 make test-language-all   # native language group
 make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
-make bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
-make bootstrap-recover   # recover the compiler from that artifact and the sources on disk
+chibi build bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
+chibi build bootstrap-recover   # recover the compiler from that artifact and the sources on disk
 make test-recovery       # recover the compiler from that artifact and HEAD's sources
 make test-tools          # tooling and process integrations, separate build-tools/
 make test-full           # tooling, native, materials, projects and language; no GPU
@@ -894,7 +894,7 @@ ASan/UBSan; these historical measurements do not cover the seven added cases.
 All twenty passed 3,648 assertions in 2.4 seconds with ASan/UBSan on
 2026-10-16.
 
-After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
+After `make test-build` and `chibi build --release --target chibi_ctl`,
 `chibi build test validate-project` runs its cases against
 `build-release/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
@@ -1049,7 +1049,7 @@ for native coverage and retired script coverage.
 package/install and configure preservation, room service, publication,
 process cleanup, explicit deadlines and validation-planner regressions. Packaging,
 publication and room service implementations remain external programs; C tests
-own their assertions. Once `make build` has produced `build/reflect`, the
+own their assertions. Once `chibi build` has produced `build/reflect`, the
 tooling build also runs it against component manifest identity, unchanged and
 failed generation, handle pins and JIT identity; without it those cases are
 absent, not passed. Select this complete group for affected tooling contracts.
@@ -1350,7 +1350,7 @@ make test-list
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors. |
 | `test-language-all` | The native language group; standalone selectors are listed separately by `make test-list`. |
 | `test-bootstrap` | Stage one compiles the compiler, its six target values match the production host, and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; test-only natives stay in their explicit samples. See `docs/package-compiler.md`. |
-| `test-recovery` | The Release compiler host recovers the compiler from the artifact `make bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
+| `test-recovery` | The Release compiler host recovers the compiler from the artifact `chibi build bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
 | `agent-test` | One CPU selector routed by `tools/agent.py`; use `agent-gpu-test` for GPU selectors. |
 | `test-list`, `agent-list` | Command and selector inventory without test execution. |
 | `test-fast` | Build standalone tooling and run `TEST_BINARY` with tokenized `TEST_ARGS`, without shell interpretation. |
@@ -2352,7 +2352,7 @@ configuration and compilation are separate build evidence.
 
 `chibi build test build-graph` runs one C case for the Chibi
 build graph (`tools/graph`, `tools/toolchain/Graph.chibi`) against a
-configured CMake build: on macOS, where `make build` uses the graph, the one
+configured CMake build: on macOS, where `chibi build` uses the graph, the one
 `make graph-reference` configures in `build-cmake`, elsewhere `build`;
 `CHIBI_GRAPH_REFERENCE` names another. Every build-graph route takes it. It reads that build's profile from
 `CMakeCache.txt` and CMake's compiler files. With `--commands-only` and only
@@ -2618,7 +2618,7 @@ the `language-` prefix.
 The new fixture regression also failed under a temporary eager-preparation
 negative control, at the assertion that the unselected owner is absent; its
 default-both case still passed. The clean measured selectors retained exactly
-their instrumented case/assertion counts. `make check-format` passed.
+their instrumented case/assertion counts. `chibi build format --check` passed.
 
 The unchanged scalar selector also passed on the clean baseline with the same
 3 cases and 14,271 assertions. The existing Release imports routes passed on
@@ -2684,7 +2684,7 @@ build and passes 14 assertions in 0.052 seconds, without files, processes or GPU
 a hidden 64 x 64 canvas, opaque and translucent, through Cute's instanced and
 tiled draw paths, and compares every pixel with an analytic reference. It is a
 GPU check that needs the render-enabled tools of the main build: run
-`make build BUILD_TARGET=test_tools`, then
+`chibi build --target test_tools`, then
 `make agent-gpu-test AGENT_SELECTOR=--interior-border`, which runs that build's
 `test/tools/test_tools` after the agent's device preflight. Pass the same
 `BUILD_DIR` to both to check another build. On lavapipe it passes
@@ -2713,7 +2713,7 @@ on macOS with the native Metal renderer. That measurement does not cover
 the current nine-case selector. The combined nine-case run passed in 2.448
 seconds of execution, or 2.668 seconds including the production supervisor. The old presentation path
 failed the new case with red 255 where source-over required 128. Vulkan discovery
-was unavailable on this host and does not describe the Metal execution. Use `make agent-gpu-test BUILD_DIR=<render-build>
+was unavailable on this host and does not describe the Metal execution. Use `make agent-gpu-test --build <render-build>
 AGENT_SELECTOR=--viewport-resize` after building that directory's `test_tools`.
 
 `scene2d` draws 2D scenes through the scene renderer and an engine viewport in a
@@ -3376,10 +3376,3 @@ With matching compiler input it took 2.6 seconds on the Mac validation host. Wit
 changed compiler source and retained older input it took 71 seconds including supported
 in-process recovery. It retains the existing process budget. No second workflow
 invocation or broader suite is added.
-
-## Debug optimization experiment
-
-See [the opt-in O0/O1 sanitizer comparison](debug-optimization-experiment.md) for
-matched build flags, correctness gates and wall-time measurements. CI defaults
-and sanitizer coverage remain unchanged.
-

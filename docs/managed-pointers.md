@@ -253,7 +253,7 @@ which supersedes the macOS artifact figures above:
   forced safe-point collection and writes through it; a rebound borrowing
   callback that fails before it runs; malformed borrowing arguments rejected
   at definition freeze.
-- `make bootstrap-artifact`, the `compiler-bootstrap` checks and
+- `chibi build bootstrap-artifact`, the `compiler-bootstrap` checks and
   `make test-recovery`. Isolated recovery from `git archive HEAD` sources with
   an empty environment reproduced all 14,224,585 artifact bytes and SHA-256
   `faf6bf0a28025ede5782350022ba9c12807697244f6a583813f88d0e405ef4e5`.

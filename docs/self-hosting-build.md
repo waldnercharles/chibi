@@ -167,7 +167,10 @@ build host stores it in `.chibi/compiler-cache` below `--root`, or in the
 directory `CHIBI_COMPILER_CACHE` names; `CHIBI_COMPILER_CACHE=off` disables it.
 An entry is named by the SHA-256 of what decides its bytes: the seed's closure,
 Compile's arguments (every compiler and core source's path and text, and the
-target description), the prepared format and the host executable's own bytes.
+target description) and the prepared format. The host is not part of the key:
+recovery is deterministic and checks its own fixed point, so Debug, Release,
+sanitized and relocated hosts share one entry, as Zig keys its cache by
+compiler version rather than by the binary.
 Each entry is framed with the SHA-256 of its payload, written to a temporary
 file and renamed into place under a publication lock, so a reader sees a whole
 entry or none. A load that finds an entry reads it back, checks its frame and

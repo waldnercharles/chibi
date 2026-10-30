@@ -2360,8 +2360,12 @@ BindNative :: (forest: snapshot.SnapshotNode[], text: string, call: int, sources
         }
         ordinal += 1;
     }
+    // A variadic tail with a default supplies it when omitted, unless the
+    // default is not a value a call can pass, as format_text's optional
+    // untyped tail: then the call passes no tail at all.
     if (called.variadic && called.parameters > 0 && total < called.parameters &&
-        ports[called.first + called.parameters - 1].has_default) {
+        ports[called.first + called.parameters - 1].has_default &&
+        ports[called.first + called.parameters - 1].default_supported) {
         total = called.parameters;
     }
     index: int = 0;

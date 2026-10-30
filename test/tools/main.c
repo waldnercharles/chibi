@@ -132,7 +132,6 @@ void test_tool_scene();
 void test_scene_hierarchy();
 #endif
 #ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
-void test_scene_snapshot_read();
 #endif
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
@@ -166,10 +165,7 @@ void test_compiled_math();
 void test_compiled_integers();
 void test_compiled_conversions();
 void test_compiled_selects();
-void test_compiled_aliases();
 void test_persistent_stores();
-void test_parallel_ticks();
-void test_owned_ticks();
 static bool source_runtime_active;
 bool test_source_runtime_active()
 {
@@ -177,15 +173,9 @@ bool test_source_runtime_active()
 }
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
-void test_source_native_features();
 void test_component_presentation();
-void test_source_reductions();
-void test_source_reduction_benchmark();
-void test_source_execution_benchmark();
 void test_tool_scheduler_benchmark();
 void test_tool_scheduler();
-void test_source_native_numeric_queries();
-void test_source_native_material_features();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_RUNTIME
 void test_material_destruction();
@@ -802,12 +792,11 @@ int main(int argc, char **argv)
     bool types = argc == 2 && !strcmp(argv[1], "--types");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
-    bool scene_hierarchy = false, scene_snapshot_read = false;
+    bool scene_hierarchy = false;
 #ifdef CHIBI_TEST_SCENE_AUTHORING
     scene_hierarchy = argc == 2 && !strcmp(argv[1], "--scene-hierarchy");
 #endif
 #ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
-    scene_snapshot_read = argc == 2 && !strcmp(argv[1], "--scene-snapshot-read");
 #endif
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
@@ -824,14 +813,12 @@ int main(int argc, char **argv)
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
-         whole_select = false, owned_tick = false, parallel_tick = false,
-         whole_alias = false, persistent_store = false;
-    bool source_features = false, source_numeric = false,
-         source_material = false, source_presentation = false,
-         system_schedule = false, scheduler_benchmark = false,
-         source_reductions = false, source_reduction_benchmark = false,
-         source_execution_benchmark = false, source_systems = false,
-         source_query_rows = false, new_asset = false, asset_refactor = false;
+         whole_select = false, persistent_store = false;
+    bool source_presentation = false, system_schedule = false,
+         scheduler_benchmark = false,
+
+         source_systems = false, source_query_rows = false, new_asset = false,
+         asset_refactor = false;
     /* The material selector given, or none. */
     int material = 0;
 #ifdef CHIBI_TEST_MATERIAL_RUNTIME
@@ -848,28 +835,17 @@ int main(int argc, char **argv)
     whole_integer = argc == 2 && !strcmp(argv[1], "--whole-integer");
     whole_conversion = argc == 2 && !strcmp(argv[1], "--whole-conversion");
     persistent_store = argc == 2 && !strcmp(argv[1], "--persistent-store");
-    whole_alias = argc == 2 && !strcmp(argv[1], "--whole-alias");
     whole_select = argc == 2 && !strcmp(argv[1], "--whole-select");
-    owned_tick = argc == 2 && !strcmp(argv[1], "--owned-tick");
-    parallel_tick = argc == 2 && !strcmp(argv[1], "--parallel-tick");
     new_asset = argc == 2 && !strcmp(argv[1], "--new-asset");
     asset_refactor = argc == 2 && !strcmp(argv[1], "--asset-refactor");
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
     shader_parameters = argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared");
-    source_reductions = argc == 2 && !strcmp(argv[1], "--source-reductions");
-    source_reduction_benchmark = argc == 2 &&
-                                 !strcmp(argv[1], "--source-reduction-benchmark");
-    source_execution_benchmark = argc == 2 &&
-                                 !strcmp(argv[1], "--source-execution-benchmark");
     system_schedule = argc == 2 && !strcmp(argv[1], "--system-schedule");
     scheduler_benchmark = argc == 2 && !strcmp(argv[1], "--scheduler-benchmark");
     source_systems = argc == 2 && !strcmp(argv[1], "--source-systems");
     source_query_rows = argc == 2 && !strcmp(argv[1], "--source-query-rows");
     source_presentation = argc == 2 && !strcmp(argv[1], "--source-presentation");
-    source_features = argc == 2 && !strcmp(argv[1], "--source-native-features");
-    source_numeric = argc == 2 && !strcmp(argv[1], "--source-native-numeric-queries");
-    source_material = argc == 2 && !strcmp(argv[1], "--source-native-material");
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
@@ -905,23 +881,20 @@ int main(int argc, char **argv)
         !tilemap && !package && !third_party_publish && !collab && !unit &&
         !test_runner && !validation_plan && !web_storage && !webgpu_staging &&
         !wasm_browser && !query_benchmark && !scene && !scene_prepared &&
-        !scene_hierarchy && !scene_snapshot_read && !native && !native_values &&
-        !native_catalog && !physics && !physics3d && !transforms &&
-        !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
-        !scene2d && !terrain_seams && !texture_transform && !arena && !types &&
-        !render_geometry && !radiance_surface && !radiance_horizons &&
-        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
-        !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
-        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
-        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_alias &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
-        !source_material && !source_presentation && !system_schedule &&
-        !scheduler_benchmark && !source_reductions && !source_reduction_benchmark &&
-        !source_execution_benchmark && !source_systems && !source_query_rows &&
-        !graph_document && !graph_presentation && !graph_functions &&
-        !vector_nodes && !material_render && !material) {
+        !scene_hierarchy && !native && !native_values && !native_catalog &&
+        !physics && !physics3d && !transforms && !render_resources &&
+        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
+        !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
+        !texture_transform && !arena && !types && !render_geometry &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
+        !sky_files && !mesh_files && !model_import && !model_graphs &&
+        !model_catalog && !shader_graphs && !shader_parity && !shader_programs &&
+        !material_cameras && !mesh_materials && !sdf_quality && !scene3d_post &&
+        !scene3d_shapes && !persistent_store && !whole_math && !whole_integer &&
+        !whole_conversion && !whole_select && !source_presentation &&
+        !system_schedule && !scheduler_benchmark && !source_systems &&
+        !source_query_rows && !graph_document && !graph_presentation &&
+        !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --package | "
@@ -942,7 +915,7 @@ int main(int argc, char **argv)
             "--ecs-query-benchmark | --arena | --types | "
             ""
             "--scene | "
-            "--scene-prepared | --scene-hierarchy | --scene-snapshot-read | "
+            "--scene-prepared | --scene-hierarchy | "
             "--native | --native-values "
             "| --native-catalog "
             "| --physics | --physics3d | --transforms "
@@ -965,16 +938,16 @@ int main(int argc, char **argv)
             "--shader-programs | --material-cameras | --mesh-materials | "
             "--sdf-quality | --scene3d-post | --scene3d-shapes | "
             "--persistent-store | "
-            "--whole-alias | "
+            ""
             "--whole-math | --whole-integer | --whole-conversion | "
-            "--whole-select | --owned-tick | "
-            "--parallel-tick | --source-native-features | "
-            "--source-native-numeric-queries | --source-native-material | "
+            "--whole-select | "
+            ""
+            ""
             "--source-presentation | --system-schedule | --scheduler-benchmark "
             "| --source-systems | "
-            "--source-query-rows | --source-reductions | "
-            "--source-reduction-benchmark | "
-            "--source-execution-benchmark | "
+            "--source-query-rows | "
+            ""
+            ""
             "--new-asset | --asset-refactor | "
             "--shader-parameters-prepared | "
             "--graph-document | --graph-presentation | --graph-functions | "
@@ -998,13 +971,9 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = shader_parameters || new_asset || asset_refactor ||
                             system_schedule || scheduler_benchmark ||
-                            source_reductions || source_reduction_benchmark ||
-                            source_execution_benchmark || source_systems ||
-                            source_query_rows || persistent_store ||
-                            source_presentation || whole_alias || whole_math ||
-                            whole_integer || whole_conversion || whole_select ||
-                            owned_tick || parallel_tick || source_features ||
-                            source_numeric || source_material || graph_document ||
+                            source_systems || source_query_rows || persistent_store ||
+                            source_presentation || whole_math || whole_integer ||
+                            whole_conversion || whole_select || graph_document ||
                             graph_presentation || graph_functions || vector_nodes;
     if (source_runtime_active) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES
@@ -1014,32 +983,18 @@ int main(int argc, char **argv)
 #endif
         } else if (system_schedule) {
             test_tool_scheduler();
-        } else if (source_reductions) {
-            test_source_reductions();
-        } else if (source_reduction_benchmark) {
-            test_source_reduction_benchmark();
-        } else if (source_execution_benchmark) {
-            test_source_execution_benchmark();
         } else if (scheduler_benchmark) {
             test_tool_scheduler_benchmark();
         } else if (source_systems) {
         } else if (source_query_rows) {
         } else if (source_presentation) {
             test_component_presentation();
-        } else if (source_features) {
-            test_source_native_features();
-        } else if (source_numeric) {
-            test_source_native_numeric_queries();
-        } else if (source_material) {
-            test_source_native_material_features();
         } else
 #endif
             if (new_asset) {
         } else if (asset_refactor) {
         } else if (persistent_store) {
             test_persistent_stores();
-        } else if (whole_alias) {
-            test_compiled_aliases();
         } else if (whole_math) {
             test_compiled_math();
         } else if (whole_integer) {
@@ -1048,10 +1003,6 @@ int main(int argc, char **argv)
             test_compiled_conversions();
         } else if (whole_select) {
             test_compiled_selects();
-        } else if (owned_tick) {
-            test_owned_ticks();
-        } else {
-            test_parallel_ticks();
         }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
@@ -1155,13 +1106,6 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SCENE_AUTHORING
     if (scene_hierarchy) {
         test_scene_hierarchy();
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-#endif
-#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
-    if (scene_snapshot_read) {
-        test_scene_snapshot_read();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

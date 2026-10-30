@@ -140,3 +140,12 @@ Each called authored compiler packages through `compiler_fixture` (stage-zero pr
 ## Third-party archive builder (third_party/CMakeLists.txt, .github/workflows/third-party.yml, test/tools/third_party_publish.c)
 
 The prebuilt vendor archives in `third_party/archives.tsv` are published and pinned, as Odin ships `vendor/`. The CMake builder, its publishing workflow and the `third-party-publish` tool test (with `test/fixtures/third_party_publish`) are archived and not run. To rebuild an archive from upstream: restore `archive/third_party/CMakeLists.txt` to `third_party/`, configure and build it as `archive/.github/workflows/third-party.yml` does, upload the installed tree with `gh release upload`, and pin the SHA-256 in `archives.tsv`. It checks each library out at the commit named in the file and applies the patch directories left in `third_party/` in order. `compiler-runtime-seed.yml` reads the sljit and tree-sitter source pins from the archived file for the corresponding-source notices.
+
+## Python build and test helpers (tools, test/language, .github)
+
+Each served CMake, the retired test policy or a manual experiment; none is wired into `chibi build`.
+
+- `tools/language_test_artifact.py`: staged test binaries for the retired `test_policy.py` (it imports it).
+- `tools/publish_third_party.py`: the third-party archive publisher, with its builder above.
+- `tools/debug_optimization_experiment.py`, `.github/workflows/debug-optimization-experiment.yml`, `docs/debug-optimization-experiment.md`, `docs/optimization-instrumentation-experiment.md`: the manual O0/O1 sanitizer comparison over CMake reference builds.
+- `test/language/public_importer/`: a test-only review checkpoint for the importer's large-dependency propagation; no selector ran it.

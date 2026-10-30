@@ -1,5 +1,6 @@
 /* The RmlUi C binding (rml.h): type conversions and forwarding only. */
 #include "ui/rml.h"
+
 #include "ui/json_items.h"
 
 #include <RmlUi/Core.h>
@@ -251,7 +252,10 @@ rml_color color(Rml::ColourbPremultiplied c)
 }
 
 /* The stops live in `stops`, which must outlive the parameters. */
-rml_effect_parameters effect_parameters(const Rml::Dictionary &parameters, Rml::Vector<rml_color_stop> &stops)
+rml_effect_parameters effect_parameters(
+    const Rml::Dictionary &parameters,
+    Rml::Vector<rml_color_stop> &stops
+)
 {
     rml_effect_parameters p = {};
     p.value = Rml::Get(parameters, "value", 0.0f);
@@ -522,7 +526,7 @@ rml_event convert(Rml::Event &event)
     rml_event e = {};
     /* A custom event, such as contextmenu, has no rml_event_id. */
     e.id = event.GetId() < Rml::EventId::NumDefinedIds ? (rml_event_id)event.GetId()
-                                                        : RML_EVENT_INVALID;
+                                                       : RML_EVENT_INVALID;
     e.target = wrap(event.GetTargetElement());
     e.current = wrap(event.GetCurrentElement());
     e.drag_element = wrap(
@@ -672,20 +676,15 @@ public:
         yyjson_mut_val *v = json(ptr);
         reads.values++;
         switch (yyjson_mut_get_type(v)) {
-        case YYJSON_TYPE_NULL:
-            variant.Clear();
-            return true;
-        case YYJSON_TYPE_BOOL:
-            variant = yyjson_mut_get_bool(v);
-            return true;
-        case YYJSON_TYPE_NUM:
-            variant = yyjson_mut_get_num(v);
-            return true;
-        case YYJSON_TYPE_STR:
-            variant = Rml::String(yyjson_mut_get_str(v), yyjson_mut_get_len(v));
-            return true;
-        default:
-            return false;
+            case YYJSON_TYPE_NULL: variant.Clear(); return true;
+            case YYJSON_TYPE_BOOL:
+                variant = yyjson_mut_get_bool(v);
+                return true;
+            case YYJSON_TYPE_NUM: variant = yyjson_mut_get_num(v); return true;
+            case YYJSON_TYPE_STR:
+                variant = Rml::String(yyjson_mut_get_str(v), yyjson_mut_get_len(v));
+                return true;
+            default: return false;
         }
     }
 
@@ -694,30 +693,29 @@ public:
         yyjson_mut_val *v = json(ptr);
         bool set = false;
         switch (variant.GetType()) {
-        case Rml::Variant::BOOL:
-            set = yyjson_mut_set_bool(v, variant.Get<bool>());
-            break;
-        case Rml::Variant::STRING: {
-            const Rml::String &s = variant.GetReference<Rml::String>();
-            if (yyjson_mut_is_str(v) && yyjson_mut_get_len(v) == s.size() &&
-                !memcmp(yyjson_mut_get_str(v), s.data(), s.size())) {
-                return true;
+            case Rml::Variant::BOOL:
+                set = yyjson_mut_set_bool(v, variant.Get<bool>());
+                break;
+            case Rml::Variant::STRING: {
+                const Rml::String &s = variant.GetReference<Rml::String>();
+                if (yyjson_mut_is_str(v) && yyjson_mut_get_len(v) == s.size() &&
+                    !memcmp(yyjson_mut_get_str(v), s.data(), s.size())) {
+                    return true;
+                }
+                yyjson_mut_val *copy = yyjson_mut_strncpy(doc, s.data(), s.size());
+                set = yyjson_mut_set_strn(v, yyjson_mut_get_str(copy), s.size());
+                break;
             }
-            yyjson_mut_val *copy = yyjson_mut_strncpy(doc, s.data(), s.size());
-            set = yyjson_mut_set_strn(v, yyjson_mut_get_str(copy), s.size());
-            break;
-        }
-        case Rml::Variant::BYTE:
-        case Rml::Variant::INT:
-        case Rml::Variant::INT64:
-        case Rml::Variant::UINT:
-        case Rml::Variant::UINT64:
-        case Rml::Variant::FLOAT:
-        case Rml::Variant::DOUBLE:
-            set = yyjson_mut_set_real(v, variant.Get<double>());
-            break;
-        default:
-            break;
+            case Rml::Variant::BYTE:
+            case Rml::Variant::INT:
+            case Rml::Variant::INT64:
+            case Rml::Variant::UINT:
+            case Rml::Variant::UINT64:
+            case Rml::Variant::FLOAT:
+            case Rml::Variant::DOUBLE:
+                set = yyjson_mut_set_real(v, variant.Get<double>());
+                break;
+            default: break;
         }
         writes += set;
         if (set && std::find(written.begin(), written.end(), v) == written.end()) {
@@ -747,7 +745,11 @@ public:
         yyjson_mut_val *member = yyjson_mut_obj_get(v, address.name.c_str());
         if (!member) {
             member = yyjson_mut_null(doc);
-            yyjson_mut_obj_add(v, yyjson_mut_strncpy(doc, address.name.data(), address.name.size()), member);
+            yyjson_mut_obj_add(
+                v,
+                yyjson_mut_strncpy(doc, address.name.data(), address.name.size()),
+                member
+            );
         }
         return Rml::DataVariable(this, member);
     }
@@ -981,7 +983,8 @@ void rml_element_move_child(rml_element *parent, rml_element *child, rml_element
     Rml::Element *c = element(child), *p = element(parent);
     Rml::Element *from = c->GetParentNode();
     bool same_model = c->GetDataModel() && c->GetDataModel() == p->GetDataModel();
-    Rml::ElementPtr moved = same_model ? from->RemoveChildToMove(c) : from->RemoveChild(c);
+    Rml::ElementPtr moved = same_model ? from->RemoveChildToMove(c)
+                                       : from->RemoveChild(c);
     p->InsertBefore(std::move(moved), element(before));
 }
 
@@ -1322,7 +1325,10 @@ rml_data_model *rml_data_model_create(
     yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(yyjson_mut_doc_get_root(doc));
     while ((key = yyjson_mut_obj_iter_next(&iter))) {
         value = yyjson_mut_obj_iter_get_val(key);
-        constructor.BindCustomDataVariable(yyjson_mut_get_str(key), Rml::DataVariable(&model->definition, value));
+        constructor.BindCustomDataVariable(
+            yyjson_mut_get_str(key),
+            Rml::DataVariable(&model->definition, value)
+        );
     }
     constructor.BindEventCallback(
         "emit",
@@ -1341,9 +1347,12 @@ rml_data_model *rml_data_model_create(
     );
     /* stop(), as Vue's .stop modifier: the event goes no further, so a
        button in a row keeps its click from the row's handler. */
-    constructor.BindEventCallback("stop", [](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &) {
-        event.StopPropagation();
-    });
+    constructor.BindEventCallback(
+        "stop",
+        [](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &) {
+            event.StopPropagation();
+        }
+    );
     return model;
 }
 
@@ -1356,7 +1365,10 @@ void rml_data_model_destroy(rml_data_model *model)
 void rml_data_model_bind(rml_data_model *model, const char *name, yyjson_mut_val *value)
 {
     Rml::DataModelConstructor constructor = model->context->GetDataModel(model->name);
-    bool bound = constructor && constructor.BindCustomDataVariable(name, Rml::DataVariable(&model->definition, value));
+    bool bound = constructor && constructor.BindCustomDataVariable(
+                                    name,
+                                    Rml::DataVariable(&model->definition, value)
+                                );
     assert(bound);
     (void)bound;
 }
@@ -1574,9 +1586,16 @@ void rml_element_set_pseudo_class(rml_element *e, const char *name, bool on)
     element(e)->SetPseudoClass(name, on);
 }
 
-void rml_element_local_properties(const rml_element *e, rml_element *inherited_by, rml_property_fn fn, void *user)
+void rml_element_local_properties(
+    const rml_element *e,
+    rml_element *inherited_by,
+    rml_property_fn fn,
+    void *user
+)
 {
-    for (auto it = element(e)->IterateLocalProperties(element(inherited_by)); !it.AtEnd(); ++it) {
+    for (auto it = element(e)->IterateLocalProperties(element(inherited_by));
+         !it.AtEnd();
+         ++it) {
         const auto &[name, property] = *it;
         const Rml::String value = property.ToString();
         const Rml::PropertySource *source = property.source.get();
@@ -1627,7 +1646,8 @@ int rml_font_string_width_n(uintptr_t face, const char *text, size_t size)
 {
     static const Rml::String language;
     Rml::TextShapingContext shaping{ language };
-    return Rml::GetFontEngineInterface()->GetStringWidth(face, Rml::StringView(text, text + size), shaping);
+    return Rml::GetFontEngineInterface()
+        ->GetStringWidth(face, Rml::StringView(text, text + size), shaping);
 }
 
 rml_text *rml_text_create(rml_render_manager *manager, uintptr_t face, const char *text, size_t size, rml_color color)
@@ -1681,7 +1701,12 @@ void rml_render_set_scissor(rml_render_manager *manager, const rml_rect *region)
         render->DisableScissorRegion();
         return;
     }
-    render->SetScissorRegion(Rml::Rectanglei::FromPositionSize({ region->x, region->y }, { region->width, region->height }));
+    render->SetScissorRegion(
+        Rml::Rectanglei::FromPositionSize(
+            { region->x, region->y },
+            { region->width, region->height }
+        )
+    );
 }
 
 size_t rml_event_text(const rml_event *event, char *buffer, size_t size)
@@ -1693,7 +1718,8 @@ size_t rml_event_text(const rml_event *event, char *buffer, size_t size)
 rml_vec2 rml_event_wheel(const rml_event *event)
 {
     auto *e = static_cast<Rml::Event *>(event->native);
-    return { e->GetParameter<float>("wheel_delta_x", 0), e->GetParameter<float>("wheel_delta_y", 0) };
+    return { e->GetParameter<float>("wheel_delta_x", 0),
+             e->GetParameter<float>("wheel_delta_y", 0) };
 }
 
 /* ---------- Code intelligence (workstream I) ---------- */
@@ -1779,7 +1805,10 @@ void rml_element_add_text_line(rml_element *e, rml_vec2 offset, const char *text
 
 int rml_element_string_width(rml_element *e, const char *text)
 {
-    return Rml::ElementUtilities::GetStringWidth(element(e), Rml::StringView(text, text + std::strlen(text)));
+    return Rml::ElementUtilities::GetStringWidth(
+        element(e),
+        Rml::StringView(text, text + std::strlen(text))
+    );
 }
 
 struct rml_element_ref
@@ -1821,7 +1850,9 @@ void rml_document_copy_style_sheet(rml_element *d, rml_element *source)
 {
     const Rml::StyleSheetContainer *sheet = document(source)->GetStyleSheetContainer();
     if (sheet) {
-        document(d)->SetStyleSheetContainer(sheet->CombineStyleSheetContainer(Rml::StyleSheetContainer()));
+        document(d)->SetStyleSheetContainer(
+            sheet->CombineStyleSheetContainer(Rml::StyleSheetContainer())
+        );
     }
 }
 

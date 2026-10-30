@@ -47,9 +47,6 @@ int program_service_call_entry(
 bool program_service_has(program_service *, uint64_t handle, const char *name);
 const char *program_service_diagnostic(const program_service *, uint64_t handle);
 bool program_service_close(program_service *, uint64_t handle);
-/* Runs project @tests with this service's catalog and services. Each test owns
- * an isolated runtime; results and source diagnostics are printed in order. */
-int program_service_test(program_service *, const char *path);
 /* Borrowed for an application.arguments callback. An imported scope is found
  * through its root program's stable managed-heap family. */
 const pin_array *program_service_arguments(const program_service *, const execution_program *caller);

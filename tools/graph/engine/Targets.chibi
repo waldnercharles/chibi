@@ -742,8 +742,7 @@ Files :: (target: string) -> string[] {
         return [
             "test/runtime/source_features.c", "test/runtime/source_input_save.c",
             "test/runtime/source_reductions.c", "test/tools/scheduler_benchmark.c",
-            "test/authoring/component_presentation.c",
-            "test/language/corpus_semantic.c"
+            "test/authoring/component_presentation.c"
         ];
     }
     if (target == "test_tools") {

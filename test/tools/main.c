@@ -184,10 +184,6 @@ void test_source_reduction_benchmark();
 void test_source_execution_benchmark();
 void test_tool_scheduler_benchmark();
 void test_tool_scheduler();
-int run_language_semantic_corpora(const char *);
-int run_language_prepare_corpora(const char *);
-int run_language_prepare_corpora_sljit(const char *);
-void test_language_unit_fixtures();
 void test_source_native_numeric_queries();
 void test_source_native_material_features();
 #endif
@@ -842,8 +838,6 @@ int main(int argc, char **argv)
          source_reductions = false, source_reduction_benchmark = false,
          source_execution_benchmark = false, source_systems = false,
          source_query_rows = false, new_asset = false, asset_refactor = false;
-    int corpus = 0;
-    bool unit_fixtures = false;
     /* The material selector given, or none. */
     int material = 0;
 #ifdef CHIBI_TEST_MATERIAL_RUNTIME
@@ -868,14 +862,7 @@ int main(int argc, char **argv)
     asset_refactor = argc == 2 && !strcmp(argv[1], "--asset-refactor");
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
-    unit_fixtures = argc == 2 && !strcmp(argv[1], "--unit-fixtures");
     shader_parameters = argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared");
-    if (argc == 3) {
-        corpus = !strcmp(argv[1], "--semantic-corpora")      ? 1
-               : !strcmp(argv[1], "--prepare-corpora")       ? 2
-               : !strcmp(argv[1], "--prepare-corpora-sljit") ? 3
-                                                             : 0;
-    }
     source_reductions = argc == 2 && !strcmp(argv[1], "--source-reductions");
     source_reduction_benchmark = argc == 2 &&
                                  !strcmp(argv[1], "--source-reduction-benchmark");
@@ -920,13 +907,13 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !shader_parameters && !new_asset &&
-        !asset_refactor && !tilemap && !package && !third_party_publish &&
-        !collab && !unit && !test_runner && !validation_plan && !web_storage &&
-        !webgpu_staging && !wasm_browser && !query_benchmark && !scene &&
-        !scene_prepared && !scene_hierarchy && !scene_snapshot_read &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
+    if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
+        !tilemap && !package && !third_party_publish && !collab && !unit &&
+        !test_runner && !validation_plan && !web_storage && !webgpu_staging &&
+        !wasm_browser && !query_benchmark && !scene && !scene_prepared &&
+        !scene_hierarchy && !scene_snapshot_read && !native && !native_values &&
+        !native_catalog && !physics && !physics3d && !transforms &&
+        !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
         !scene2d && !terrain_seams && !texture_transform && !arena && !types &&
         !render_geometry && !radiance_surface && !radiance_horizons &&
@@ -956,7 +943,6 @@ int main(int argc, char **argv)
             "| "
             "--terrain-playable-render player artifact resources shaders "
             "output | "
-            "--unit-fixtures | "
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | --types | "
@@ -999,9 +985,7 @@ int main(int argc, char **argv)
             "--shader-parameters-prepared | "
             "--graph-document | --graph-presentation | --graph-functions | "
             "--vector-nodes | "
-            "--semantic-corpora "
-            "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
-            "manifest | --asset-values "
+            "--asset-values "
             "| "
             "--ui-document | --text-files | --fmt | --particles | "
             "--player-clock | --audio-analysis | --audio-browser | "
@@ -1018,10 +1002,9 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = corpus || unit_fixtures || shader_parameters ||
-                            new_asset || asset_refactor || system_schedule ||
-                            scheduler_benchmark || source_reductions ||
-                            source_reduction_benchmark ||
+    source_runtime_active = shader_parameters || new_asset || asset_refactor ||
+                            system_schedule || scheduler_benchmark ||
+                            source_reductions || source_reduction_benchmark ||
                             source_execution_benchmark || source_systems ||
                             source_query_rows || persistent_store ||
                             source_presentation || whole_alias || whole_math ||
@@ -1031,16 +1014,6 @@ int main(int argc, char **argv)
                             graph_presentation || graph_functions || vector_nodes;
     if (source_runtime_active) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES
-        if (unit_fixtures) {
-            test_language_unit_fixtures();
-            pu_print_stats();
-            return pu_test_failed() ? 1 : 0;
-        }
-        if (corpus) {
-            return corpus == 1 ? run_language_semantic_corpora(argv[2])
-                 : corpus == 2 ? run_language_prepare_corpora(argv[2])
-                               : run_language_prepare_corpora_sljit(argv[2]);
-        }
         if (shader_parameters) {
 #ifdef CHIBI_TEST_RENDER_RUNTIME
             test_particle_fields();
@@ -1250,10 +1223,6 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_REFLECT
         test_tool_reflect();
-#endif
-#ifdef CHIBI_TEST_SOURCE_FEATURES
-        source_runtime_active = true;
-        test_language_unit_fixtures();
 #endif
     }
     pu_print_stats();

@@ -11129,6 +11129,23 @@ static bool validated(int b, pin_value *rows, const char *message)
             pin_text(error).bytes,
             message
         );
+        const pin_array *dump = rows->ptr;
+        for (int i = 0; i < dump->count && i < 40; i++) {
+            fprintf(
+                stderr,
+                "row %d kind %d type %d value %d count %d literal %lld start %d end %d line %d col %d\n",
+                i,
+                (int)scalar_field(&dump->items[i], "kind").i,
+                (int)scalar_field(&dump->items[i], "type").i,
+                (int)scalar_field(&dump->items[i], "value").i,
+                (int)scalar_field(&dump->items[i], "count").i,
+                (long long)scalar_field(&dump->items[i], "literal").i,
+                (int)scalar_field(&dump->items[i], "start").i,
+                (int)scalar_field(&dump->items[i], "end").i,
+                (int)scalar_field(&dump->items[i], "line").i,
+                (int)scalar_field(&dump->items[i], "column").i
+            );
+        }
     }
     REQUIRE(valid && !((const pin_array *)emitted.ptr)->count == !!*message);
     return true;
@@ -12028,7 +12045,7 @@ static bool native_libraries_export_words(int b)
         "i32 1, ptr @chibi_scalar.export.1 }"
     ));
     REQUIRE(
-        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 3, i32 2, ptr @chibi_scalar.exports }")
+        contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 4, i32 2, ptr @chibi_scalar.exports }")
     );
     static const char malformed[] = "native library needs an identifier and a "
                                     "name and ID for each function";
@@ -12241,7 +12258,7 @@ static bool native_strings_emit(int b)
     REQUIRE(!contains(kept, "@chibi_scalar.export.0"));
     REQUIRE(contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
     REQUIRE(
-        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 3, i32 0, ptr @chibi_scalar.exports }")
+        contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 4, i32 0, ptr @chibi_scalar.exports }")
     );
     static const native_code published[] = {
         { .op = NATIVE_CHECK },
@@ -12618,7 +12635,7 @@ TEST_CASE(package_compiler_scalar_results_require_the_fixture_value)
 /* The corpus's accepted cases. */
 enum
 {
-    SCALAR_ACCEPTED_CASES = 53
+    SCALAR_ACCEPTED_CASES = 60
 };
 /* Cases whose 64-deep operand nesting takes CollectScalar past the stage-zero
  * fixture's call depth limit (SCRIPT_CALL_DEPTH_LIMIT). Run.ps1 runs them on
@@ -17352,7 +17369,158 @@ TEST_CASE(package_compiler_native_arithmetic_is_total)
     REQUIRE(remove_native_files(directory) && agreed);
     return true;
 }
+/* The corpus's array cases run natively at O0 and O2 and give the value each
+ * case expects. A probe adapter passes no context, which arrays need to
+ * allocate, so each is checked through its entry. An index outside an array
+ * ends the program with its message. */
+TEST_CASE(package_compiler_native_arrays_run_and_check_indexes)
+{
+    REQUIRE(prepare());
+    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    char directory[PATH_MAX];
+    REQUIRE(native_directory(directory));
+    pin_value count;
+    REQUIRE(compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count));
+    int ran = 0;
+    for (int index = 0; index < count.i; index++) {
+        int b = index % 2;
+        pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, expected;
+        REQUIRE(
+            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
+        );
+        if (strncmp(pin_text(name).bytes, "array_", strlen("array_"))) {
+            arena_free(&detached);
+            continue;
+        }
+        REQUIRE(
+            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
+        );
+        REQUIRE(collected_rows(b, pin_text(name).bytes, source, &rows));
+        if (row_int(&rows, 1, "kind") == SCALAR_REJECTION_ROW) {
+            arena_free(&detached);
+            continue;
+        }
+        REQUIRE(
+            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "ExpectedValue", &ordinal, 1, COMPILE_BUDGET, &detached, &expected)
+        );
+        char *ir;
+        REQUIRE(emitted_ir(b, &rows, &ir));
+        REQUIRE(ir);
+        scalar_call entry = { .symbol = "chibi_scalar" };
+        REQUIRE(native_values(directory, pin_text(name).bytes, &rows, ir, &entry, 1));
+        if (entry.values[2] != expected.i || entry.values[3] != expected.i) {
+            fprintf(
+                stderr,
+                "native %s gave %" PRId64 " at O0 and %" PRId64 " at O2, expected %d\n",
+                pin_text(name).bytes,
+                entry.values[2],
+                entry.values[3],
+                expected.i
+            );
+        }
+        REQUIRE(entry.values[2] == expected.i && entry.values[3] == expected.i);
+        free(ir);
+        ran++;
+        arena_free(&detached);
+    }
+    REQUIRE(ran >= 7);
+    /* Index 3 is past the three elements, as is -1. */
+    static const char *const OUTSIDE[] = {
+        "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n    return items[Where()];\n}\n"
+        "Where :: () -> int { return 3; }\n",
+        "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n    items[Where()] = 4;\n    return 0;\n}\n"
+        "Where :: () -> int { return -1; }\n",
+    };
+    static const char *const MESSAGES[] = { "native array index 3 is out of range for length 3",
+                                            "native array index -1 is out of range for length 3" };
+    for (int i = 0; i < 2; i++) {
+        pin_value rows;
+        REQUIRE(collected_rows(i, "outside", text(OUTSIDE[i]), &rows));
+        char *ir;
+        REQUIRE(emitted_ir(i, &rows, &ir));
+        REQUIRE(ir);
+        for (int level = 0; level < 2; level++) {
+            char library[PATH_MAX];
+            REQUIRE(native_library(directory, "outside", ir, "", level * 2, library));
+            scalar_call entry = { .symbol = "chibi_scalar", .context = true };
+            chibi_process_capture_result ended =
+                library_calls(directory, library, &entry, 1, 2, CALLS_SECONDS);
+            REQUIRE(ended.error == CHIBI_PROCESS_OK && ended.status == -SIGABRT);
+            REQUIRE(strstr(native_errors, MESSAGES[i]));
+        }
+        free(ir);
+        arena_free(&detached);
+    }
+    REQUIRE(remove_native_files(directory));
+    return true;
+}
 #endif
+/* On every host: each corpus case's producer rows are what the case expects,
+ * and an accepted module's rows validate and emit Linux x86-64 IR, which the
+ * native lane runs only on Linux x86-64. */
+TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit)
+{
+    REQUIRE(prepare());
+    const source_package_input cases[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, cases, (int)(sizeof cases / sizeof *cases)));
+    const source_package_input consumers[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
+    REQUIRE(
+        compiler_fixture_prepare(&consumer, consumers, (int)(sizeof consumers / sizeof *consumers))
+    );
+    pin_value count;
+    REQUIRE(compiler_fixture_call(&corpus, 0, CASES_PACKAGE, "Count", NULL, 0, COMPILE_BUDGET, &detached, &count));
+    for (int index = 0; index < count.i; index++) {
+        int b = index % 2;
+        pin_value ordinal = { .type = PIN_I32, .i = index }, name, source, rows, checked;
+        REQUIRE(
+            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "CaseName", &ordinal, 1, COMPILE_BUDGET, &detached, &name)
+        );
+        // The 64-deep nesting passes the stage-zero fixture's call depth.
+        if (pin_text_equal(pin_text(name), (pin_string){ .bytes = "deep_operands", .length = 13 })) {
+            arena_free(&detached);
+            continue;
+        }
+        REQUIRE(
+            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Source", &ordinal, 1, COMPILE_BUDGET, &detached, &source)
+        );
+        pin_value args[SCALAR_ARGUMENTS];
+        REQUIRE(scalar_arguments(b, "Scalar.chibi", source, args));
+        REQUIRE(compiler_fixture_call(
+            &fixture, b, PACKAGE, "CollectScalar", args, SCALAR_ARGUMENTS, COMPILE_BUDGET, &detached, &rows
+        ));
+        REQUIRE(
+            compiler_fixture_call(&corpus, b, CASES_PACKAGE, "Check", &rows, 1, COMPILE_BUDGET, &detached, &checked)
+        );
+        const pin_array *produced = rows.ptr;
+        pin_value *second = &produced->items[1];
+        bool rejected = scalar_field(second, "kind").i == SCALAR_REJECTION_ROW;
+        if (checked.i != 1) {
+            fprintf(
+                stderr,
+                "scalar case %s: Check gave %d%s%s\n",
+                pin_text(name).bytes,
+                checked.i,
+                rejected ? ", rejected: " : "",
+                rejected ? pin_text(scalar_field(second, "text")).bytes : ""
+            );
+        }
+        // A rejection's message is the parser's, which this fixture's differs
+        // from the recovered compiler's in places; the corpus's native lane and
+        // Run.ps1 check it.
+        REQUIRE(checked.i == 1 || rejected);
+        if (!rejected && !validated(b, &rows, "")) {
+            fprintf(stderr, "scalar case %s: its rows do not validate and emit\n", pin_text(name).bytes);
+            return false;
+        }
+        arena_free(&detached);
+    }
+    return true;
+}
 /* Query tests use the target's canonical Tick(dt: number), while the older
  * behavior fixtures above exercise an event named DeltaSeconds. */
 static script_catalog query_game_catalog()
@@ -18505,6 +18673,7 @@ void test_language_package_compiler_chibi_scalar()
     RUN_TEST_CASE(package_compiler_native_emitter_checks_calls);
     RUN_TEST_CASE(package_compiler_scalar_results_require_the_fixture_value);
     RUN_TEST_CASE(package_compiler_scalar_rejects_unions_and_reads_libraries);
+    RUN_TEST_CASE(package_compiler_scalar_corpus_rows_validate_and_emit);
     pu_clear_setup();
 }
 #if defined(__linux__) && defined(__x86_64__)
@@ -18536,6 +18705,7 @@ void test_language_package_compiler_chibi_native()
     RUN_TEST_CASE(stack_overflow_leaves_other_faults);
     RUN_TEST_CASE(package_compiler_native_runs_are_bounded);
     RUN_TEST_CASE(package_compiler_native_arithmetic_is_total);
+    RUN_TEST_CASE(package_compiler_native_arrays_run_and_check_indexes);
     pu_clear_setup();
     sigaction(SIGINT, &interrupt, NULL);
     sigaction(SIGTERM, &terminate, NULL);

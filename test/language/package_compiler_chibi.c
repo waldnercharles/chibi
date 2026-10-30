@@ -25,6 +25,7 @@
 #include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
 #include "runtime/text_format.h"
+#include "runtime/vectors_definition.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/file_io.h"
@@ -1086,6 +1087,15 @@ static const sample samples[] = {
       .source = "package facts\nRun :: () -> int { value: int = 65; return "
                 "native.kernel(value); }",
       .calls = { { .function = "Run", .arguments = "[]", .expected = "[1]" } } },
+    { .name = "collection length beside the vector natives",
+      .group = TYPE_SAMPLES,
+      .game = true,
+      .source = "package facts\nRun :: () -> int {\n"
+                "    parts: string[] = [\"a\", \"b\"];\n"
+                "    n: int = 0;\n"
+                "    while (length(parts) < 4 - 1) { parts.append(\"c\"); n += 1; }\n"
+                "    return n + length(parts);\n}",
+      .calls = { { .function = "Run", .arguments = "[]", .expected = "[4]" } } },
     { .name = "core-math-imported-values",
       .group = IMPORT_SAMPLES,
       .math = true,
@@ -5195,12 +5205,16 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
                                                  COMPILER_JSON_DEFINITION_PACK,
                                                  COMPILER_SYNTAX_DEFINITION_PACK };
         char error[256];
-        native_definition_pack selected[7];
+        native_definition_pack selected[8];
         int count = (int)(sizeof packs / sizeof *packs);
         memcpy(selected, packs, sizeof packs);
         if (game) {
             selected[count++] = CORE_DEFINITION_PACK;
             selected[count++] = NATIVE_MATH_DEFINITION_PACK;
+            /* With the arrays', its length overload makes a call of length
+             * ambiguous among natives; a collection argument still takes the
+             * collection's. */
+            selected[count++] = NATIVE_VECTOR_DEFINITION_PACK;
         }
         if (probe) {
             selected[count++] = CSTRING_PACK;
@@ -5835,7 +5849,8 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
                                        COMPILER_SYNTAX_DEFINITION_PACK,
                                        CSTRING_PACK,
                                        CORE_DEFINITION_PACK,
-                                       NATIVE_MATH_DEFINITION_PACK };
+                                       NATIVE_MATH_DEFINITION_PACK,
+                                       NATIVE_VECTOR_DEFINITION_PACK };
     /* Only this bytecode owner is serialized and compared below. Each
      * caller still chooses its original target execution backends. */
     REQUIRE(compiler_fixture_prepare_backends(

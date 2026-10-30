@@ -241,3 +241,97 @@ pub Main :: () -> int {
     CallsCopyValuesAndPreserveExplicitTargets();
     return 0;
 }
+
+Phase :: union {
+    Idle | Charging(power: int) | Done(score: int)
+}
+
+Fighter :: struct {
+    id: int;
+    phase: Phase;
+}
+
+Squad :: struct {
+    leader: Fighter;
+    members: Fighter[];
+}
+
+Score :: (phase: Phase) -> int {
+    result := 0;
+    switch phase {
+        case .Idle:
+            result = -1;
+        case .Charging(power):
+            result = power;
+        case .Done(score):
+            result = 100 + score;
+    }
+    return result;
+}
+
+@test
+UnionFieldsReadAndReplaceTheirAlternative :: () {
+    fighter: Fighter = {id: 1, phase: Phase.Charging(3)};
+    assert(Score(fighter.phase) == 3, "a union field must keep the alternative it was built with");
+    fighter.phase = Phase.Done(9);
+    assert(Score(fighter.phase) == 109, "replacing a union field must install the new alternative");
+    fighter.phase = Phase.Idle;
+    assert(Score(fighter.phase) == -1);
+    assert(fighter.id == 1, "writing a union field must preserve its neighbours");
+}
+
+@test
+UnionFieldCopiesKeepTheirOwnAlternative :: () {
+    original: Fighter = {id: 1, phase: Phase.Charging(3)};
+    copy := original;
+    copy.phase = Phase.Done(5);
+    assert(Score(original.phase) == 3, "replacing a copied union field must preserve the original");
+    assert(Score(copy.phase) == 105);
+}
+
+@test
+NestedAndArrayUnionFieldsCopyAsValues :: () {
+    original: Squad = {
+        leader: {id: 1, phase: Phase.Charging(3)},
+        members: [{id: 2, phase: Phase.Idle}, {id: 3, phase: Phase.Done(4)}]
+    };
+    copy := original;
+    copy.leader.phase = Phase.Idle;
+    copy.members[0].phase = Phase.Charging(8);
+    assert(Score(original.leader.phase) == 3, "a nested union field must copy by value");
+    assert(Score(original.members[0].phase) == -1, "a record array element must keep its own union field");
+    assert(Score(original.members[1].phase) == 104);
+    assert(Score(copy.leader.phase) == -1);
+    assert(Score(copy.members[0].phase) == 8);
+    assert(Score(copy.members[1].phase) == 104);
+}
+
+@test
+NestedMapsReadAndWriteValues :: () {
+    grid: [string: [string: int]] = ["a": ["x": 1], "b": [:]];
+    assert(grid["a"]["x"] == 1);
+    grid["a"]["y"] = 2;
+    assert(grid["a"]["y"] == 2, "a nested map write must update the stored inner map");
+    grid["b"]["z"] += 3;
+    assert(grid["b"]["z"] == 3);
+    copy := grid;
+    copy["a"]["x"] = 9;
+    assert(grid["a"]["x"] == 1, "a copied nested map must not alias the original");
+    assert(copy["a"]["x"] == 9);
+}
+
+
+@test
+CompoundMapAssignmentCountsFromZero :: () {
+    scores: [string: int] = ["a": 1];
+    scores["a"] += 4;
+    scores["b"] += 2;
+    scores["c"] -= 3;
+    assert(scores["a"] == 5, "a compound write must update an existing key");
+    assert(scores["b"] == 2, "a compound write to a missing key must start from zero");
+    assert(scores["c"] == -3);
+    totals: [string: [string: number]] = ["x": [:]];
+    totals["x"]["y"] += 1.5;
+    totals["x"]["y"] *= 2.0;
+    assert(totals["x"]["y"] == 3.0);
+}

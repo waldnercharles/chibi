@@ -9,8 +9,9 @@ import strings "core:strings"
 // adds, numbered from the sizes in `at`.
 
 // Whether an array of this element type may hold its elements inline, with a
-// nonzero stride, as the runtime decides: scalars and records of scalars may,
-// while strings, unions and records with a string field are always boxed.
+// nonzero stride, as the runtime decides: scalars and records of those may,
+// while strings, unions and records with a string, union or array field,
+// however deeply nested, are always boxed.
 Packable :: (storage: int, record: int, types: TypeDecl[], members: TypeMember[]) -> bool {
     if (storage == TextStorage || storage == UnionStorage) {
         return false;
@@ -20,7 +21,8 @@ Packable :: (storage: int, record: int, types: TypeDecl[], members: TypeMember[]
     }
     at := types[record].first;
     while (at < types[record].first + types[record].count) {
-        if (members[at].storage == TextStorage) {
+        if (members[at].container != 0 || members[at].storage == TextStorage || members[at].storage == UnionStorage ||
+            (members[at].storage == StructStorage && !Packable(StructStorage, members[at].record, types, members))) {
             return false;
         }
         at += 1;
@@ -2722,7 +2724,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
         }
         if (qualifier < 0 && found == -1 && MathFunctionName(callee_name) &&
-            (callee_name == "step" || FindNative(natives, callee_name) < 0 ||
+            (callee_name == "step" || FindNative(natives, callee_name) == -1 ||
              MathArguments(forest, text, types, members, callables, natives, ports, names, package, item.node))) {
             positional := true;
             arguments := Members(forest, Field(forest, item.node, "arguments"));

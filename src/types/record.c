@@ -24,7 +24,7 @@ static size_t field_size_at(const type_field *field, int depth)
     }
     if ((type >= PIN_BOOL && type <= PIN_F64) || type == PIN_STR ||
         type == PIN_NAME || type == PIN_ENUM || type == PIN_HANDLE ||
-        type == PIN_POINTER || type == PIN_QUERY) {
+        type == PIN_POINTER || type == PIN_QUERY || type == PIN_UNION) {
         return behavior_scalar_size(type);
     }
     const type_desc *nested = type == PIN_STRUCT
@@ -455,7 +455,8 @@ bool pin_value_layout_same(const pin_value *a, const pin_value *b)
         if (x || y) {
             return pin_record_same(x, y);
         }
-        if (a->type != PIN_STRUCT && a->type != PIN_UNION && a->type != PIN_POINTER &&
+        /* A tagged union carries its own tag and payload, and no layout. */
+        if (a->type != PIN_STRUCT && a->type != PIN_POINTER &&
             a->type != PIN_HANDLE && a->type != PIN_ENUM && a->type != PIN_QUERY) {
             return true;
         }

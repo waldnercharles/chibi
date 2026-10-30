@@ -1,0 +1,5 @@
+package facts
+import lib "project:private_imported_union_payload_type/lib"
+Wrapper :: union { Some(value: lib.Hidden) }
+
+// error: 3:32: 'lib.Hidden' is private: declare it pub to use it from another package

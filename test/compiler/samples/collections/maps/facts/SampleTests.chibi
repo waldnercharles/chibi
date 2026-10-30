@@ -35,3 +35,9 @@ Calls :: () {
     e10: string = "0=v0;1=v1;2=v2;|0=changed;1=v1;";
     assert(r10 == e10, "Copies call 10");
 }
+
+// fails: Map key is absent or invalid
+@test
+MissingKeyFails :: () {
+    Y("b");
+}

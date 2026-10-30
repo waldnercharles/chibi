@@ -3001,9 +3001,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     value_top -= popped;
                     produced = value;
             }
-        } else if ((kind == "state_declaration" || kind == "function_declaration" || kind == "handler") &&
-                   Is(forest, forest[item.node].parent, "system_body")) {
-            // System declarations share the behavior collector; only statements execute per row.
+        } else if (kind == "state_declaration" ||
+                   ((kind == "function_declaration" || kind == "handler") &&
+                    Is(forest, forest[item.node].parent, "system_body"))) {
+            // A system's declarations share the behavior collector, and a retained local is a
+            // state of its module with its initializer; only statements execute per row.
             stepped = false;
         } else if (kind == "callable_body" || kind == "block" || kind == "system_body") {
             stepped = false;

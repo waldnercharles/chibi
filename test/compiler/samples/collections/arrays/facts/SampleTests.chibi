@@ -28,3 +28,25 @@ Calls :: () {
     e7: int = 4;
     assert(r7 == e7, "Counts call 7");
 }
+
+@test
+Records :: () {
+    points := Points(3);
+    assert(length(points) == 3, "Points length");
+    assert(points[0].x == 0 && points[0].y == 0 && points[1].x == 1 && points[1].y == 2, "Points");
+    assert(points[2].x == 2 && points[2].y == 4, "Points last");
+    a: Point = {x: 5, y: 1};
+    b: Point = {x: 0, y: 2};
+    assert(SumY([a, b]) == 8, "SumY");
+    c: Point = {x: 0, y: 1};
+    d: Point = {x: 2, y: 0};
+    e: Point = {x: 3, y: 0};
+    assert(Nested([c, d, e]) == 57, "Nested");
+}
+
+// fails: array index out of range
+@test
+PickPastTheEndFails :: () {
+    xs: int[] = [1, 2];
+    Pick(xs, 2);
+}

@@ -1,0 +1,6 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Use :: () -> int { values: int[] = [0, 1, 2, 3, 4, 5, 6, 7]; selected := values.slice(0..<Read().value); if selected { return selected.length(); } return -1; }
+
+// error: 4:91: Error result is ignored on a reachable path; check, report, store or return it

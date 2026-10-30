@@ -26,3 +26,13 @@ Calls :: () {
     e10: int = 822;
     assert(r10 == e10, "Use call 10");
 }
+
+@test
+Records :: () {
+    direct := Direct(7);
+    assert(direct.x == 7 && direct.y == 2, "Direct");
+    empty := Empty();
+    assert(empty.x == 0 && empty.y == 0, "Empty");
+    mutated := Mutate(7);
+    assert(mutated.x == 7 && mutated.y == 2, "Mutate");
+}

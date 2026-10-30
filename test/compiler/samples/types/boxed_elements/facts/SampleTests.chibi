@@ -21,3 +21,40 @@ Calls :: () {
     e8: int = 17;
     assert(r8 == e8, "BoxedShapes call 8");
 }
+
+@test
+Records :: () {
+    x: Note = {text: "x", count: 1};
+    y: Note = {text: "y", count: 2};
+    assert(BoxedNotes([x, y], 1) == 203, "BoxedNotes");
+    a: Point = {x: 1, y: 2};
+    b: Point = {x: 3, y: 4};
+    assert(PackedPoints([a, b], 1) == 306, "PackedPoints");
+}
+
+// fails: array index out of range
+@test
+BoxedWordPastTheEndFails :: () {
+    words: string[] = ["a"];
+    BoxedWord(words, 1);
+}
+
+// fails: array index out of range
+@test
+BoxedWordBeforeTheStartFails :: () {
+    words: string[] = ["a"];
+    BoxedWord(words, -1);
+}
+
+// fails: array index out of range
+@test
+BoxedNotesPastTheEndFails :: () {
+    note: Note = {text: "x", count: 1};
+    BoxedNotes([note], 1);
+}
+
+// fails: array index out of range
+@test
+BoxedShapesPastTheEndFails :: () {
+    BoxedShapes(3);
+}

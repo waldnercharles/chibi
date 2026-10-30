@@ -1,0 +1,5 @@
+package facts
+import lib "project:private_imported_constant_expression/lib"
+Value :: lib.Hidden + 1;
+
+// error: 3:10: 'lib.Hidden' is private: declare it pub to use it from another package

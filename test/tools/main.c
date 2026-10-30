@@ -42,7 +42,6 @@ int main(int argc, char **argv)
 }
 #else
 void test_tool_execution_policy();
-void test_tool_package();
 void test_tool_chibi_cli(const char *binary, const char *self);
 void test_tool_chibi_cli_process(const char *binary, const char *self);
 void test_tool_chibi_cli_build(const char *binary);
@@ -441,7 +440,6 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool collab = argc == 2 && !strcmp(argv[1], "--collab");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
@@ -486,7 +484,7 @@ int main(int argc, char **argv)
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
 #endif
     if (argc != 1 && !shader_parameters && !new_asset && !asset_refactor &&
-        !package && !collab && !unit && !web_storage &&
+        !collab && !unit && !web_storage &&
         !wasm_browser && !query_benchmark && !scene && !native_values && !arena &&
         !types && !box3d && !mesh_files && !model_import && !model_graphs &&
         !model_catalog && !shader_graphs && !persistent_store && !whole_math &&
@@ -495,8 +493,7 @@ int main(int argc, char **argv)
         !graph_document && !graph_presentation && !graph_functions && !vector_nodes) {
         fprintf(
             stderr,
-            "Usage: %s [--package | "
-            "--collab | "
+            "Usage: %s [--collab | "
             "--unit | "
             "--validation-plan | "
             "--reflect-ranges | "
@@ -609,8 +606,6 @@ int main(int argc, char **argv)
         test_tool_wasm_browser();
     } else if (collab) {
         test_tool_collab();
-    } else if (package) {
-        test_tool_package();
     } else if (scene) {
         test_tool_scene();
     } else if (unit) {
@@ -633,7 +628,6 @@ int main(int argc, char **argv)
         test_tool_ecs_hierarchy();
         test_tool_ecs_world();
         test_tool_ecs_query();
-        test_tool_package();
         test_tool_collab();
 #ifdef CHIBI_TEST_REFLECT
         test_tool_reflect();

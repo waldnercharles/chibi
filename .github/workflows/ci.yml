@@ -434,6 +434,14 @@ jobs:
           echo '/tmp/clang-format/bin' >> "$GITHUB_PATH"
       - name: Check format
         run: sh tools/clang-format.sh --check
+      # Deleting a path from a condition leaves an operator with no operand,
+      # which only the graph build, minutes later, reports. Catch it here.
+      - name: Check Chibi sources for empty operands
+        run: |
+          if git grep -nE '(==|!=|\|\||&&) *(\|\||&&|\))|\( *(\|\||&&)' -- '*.chibi' ':!archive'; then
+            echo 'An operator above has no operand; delete the whole condition with the path.'
+            exit 1
+          fi
 
   graph-sdk-linux:
     name: Graph SDK packaging and relocation (Linux)

@@ -1146,7 +1146,7 @@ pub PublicHeaders :: (target: string) -> string[] {
         return ["platform/cute.h", "support/resources.h"];
     }
     if (target == "chibi_project_compilation") {
-        return ["authoring/renderer_catalog.h"];
+        return ["authoring/project_compile.h", "authoring/renderer_catalog.h"];
     }
     if (target == "chibi_project_preparation") {
         return [

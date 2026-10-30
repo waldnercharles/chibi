@@ -629,6 +629,48 @@ ConstantElement :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
     }
     return true;
 }
+// Native array constants also include folded integer conversions and
+// arithmetic. Named values alone and conversions between element storages
+// still use the constructor, which evaluates and watches their children.
+FoldedIntegerArray :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[],
+                       callables: Callable[], package: int, item: Work) -> bool {
+    if !Is(forest, item.node, "array_expression") || item.record >= 0 ||
+       (item.container != 0 && item.container != ArrayContainer) {
+        return false;
+    }
+    elements := Members(forest, item.node);
+    if length(elements) == 0 {
+        return false;
+    }
+    storage := item.storage;
+    if item.container == 0 {
+        storage = ConstantType(forest, text, constants, names, package, elements[0]);
+    }
+    if !Integer(storage) {
+        return false;
+    }
+    for element in elements {
+        actual := ConstantType(forest, text, constants, names, package, element);
+        if actual == 0 {
+            actual = storage;
+        }
+        if actual != storage || ShadowedConversion(forest, text, callables, package, element) ||
+           (!NumberLiteral(forest, element) && !Folds(forest, text, constants, names, package, element, storage)) {
+            return false;
+        }
+    }
+    return true;
+}
+// All descendants of a constant array are part of its snapshot, rather than
+// independently evaluated expressions.
+InConstantArray :: (forest: snapshot.SnapshotNode[], arrays: int[], node: int) -> bool {
+    for array in arrays {
+        if forest[array].start < forest[node].start && forest[node].end < forest[array].end {
+            return true;
+        }
+    }
+    return false;
+}
 // An identifier's points as stage zero evaluates it: the expression's, then
 // the name's when it names one.
 NamePoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ops: Ops, node: int) -> Code[] {
@@ -868,7 +910,8 @@ DirectiveFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct
     } else if (kind == NativeFact) {
         summary = JoinWrite(summary, NativeWrite(context, target));
     }
-    if (InUpdateItem(forest, recorded, item.node) && !HasSemanticFact(recorded, item.node, kind, target)) {
+    if ((kind == CallFact || InUpdateItem(forest, recorded, item.node)) &&
+        !HasSemanticFact(recorded, item.node, kind, target)) {
         fact: SemanticFact = {node: item.node, kind: kind, target: target};
         recorded.append(fact);
     }
@@ -2137,7 +2180,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
         result := params[callable.first + callable.count + index];
         place := LocalPlace;
         location := length(locals);
-        if (result.storage == StructStorage) {
+        if (Pointer(result.storage, result.container)) {
             // Normalize the typed zero buffer through the constructor, so
             // native record ranges receive the same defaults as stage zero.
             cell: Cell = {storage: result.storage, container: result.container, record: result.record,
@@ -2473,7 +2516,9 @@ DebugPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ty
     code: Code[] = [];
     slots: Slot[] = [];
     points: SourcePoint[] = [];
-    if (Statement(kind)) {
+    // Native task commands are expression statements with the same range.
+    task_statement := kind == "yield_statement" || kind == "cancel_statement";
+    if (Statement(kind) || task_statement) {
         points.append(PointAt(key, solid, StatementRecord, 0, false, node, node));
         code.append(PointCode(ops, point_base + length(points) - 1, node));
         // Stage zero assigns each returned value to a result, a statement
@@ -2490,7 +2535,7 @@ DebugPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ty
             code.append(PointCode(ops, point_base + length(points) - 1, forest[each]));
         }
     }
-    if (Expression(kind) && !negated && !ConstantElement(forest, item.node) &&
+    if ((Expression(kind) || task_statement) && !negated && !ConstantElement(forest, item.node) &&
         !ElidedTarget(forest, text, names, item.node)) {
         points.append(PointIn(document_hash, solid, ExpressionRecord, node));
         code.append(PointCode(ops, point_base + length(points) - 1, node));
@@ -2669,6 +2714,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     retarget_starts: int[] = [];
     direct_write: int = 0;
     facts: SemanticFact[] = [];
+    constant_arrays: int[] = [];
     work_top = length(work);
     while (work_top > 0) {
         work_top -= 1;
@@ -2676,6 +2722,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         types = table^;
         if (item.phase == EffectsPhase) {
             semantic_effects = semantic_effects | item.a;
+            continue;
+        }
+        if (item.phase == SemanticPhase && item.a == CallFact) {
+            if (!HasSemanticFact(facts, item.node, CallFact, item.b)) {
+                fact: SemanticFact = {node: item.node, kind: CallFact, target: item.b};
+                facts.append(fact);
+            }
             continue;
         }
         if (item.phase == SemanticPhase || item.phase == NativeCallPhase) {
@@ -2703,6 +2756,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         node := forest[item.node];
         kind := node.kind;
+        if ops.debug && item.phase == 0 &&
+           FoldedIntegerArray(forest, text, constants, names, callables, callable.package, item) {
+            constant_arrays.append(item.node);
+        }
+        constant_element := ops.debug && InConstantArray(forest, constant_arrays, item.node);
         if (item.phase == GenericReturnPhase) {
             value := values[value_top - 1];
             storage := value.storage;
@@ -2853,13 +2911,16 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         lent_element := false;
         // A record or array to copy into a fresh cell; the copy is produced.
         retained := NoValue();
+        optional_boolean: bool = false;
         operator := Text(forest, text, Field(forest, item.node, "operator"));
         logic := kind == "binary_expression" &&
                  (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
         // Stage zero reads `-1` as one literal.
         negated := kind == "number" && Is(forest, node.parent, "unary_expression") &&
                    Text(forest, text, Field(forest, node.parent, "operator")) == "-";
-        if (ops.debug && item.phase == 0) {
+        if (ops.debug && !constant_element && item.phase == 0 &&
+            (item.capture || kind == "nil" ||
+             !IsBoxedOptional(types, {storage: item.storage, container: item.container, record: item.record}))) {
             switch DebugPoints(forest, text, names, types, constants, callable.package, key, solid,
                                document_hash, length(points), length(slots), item, negated, ops) {
                 case .Read(added_code, added_slots, added_points):
@@ -2898,7 +2959,17 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             case .Ordinary:
                 query_handled = false;
         }
-        if (query_handled) {
+        if (item.phase == OptionalWrapPhase) {
+            step = OptionalWrapStep(forest, document, types, values[value_top - 1], item.record, ops, target, at, node);
+        } else if (item.phase == 0 && !item.capture && kind != "nil" &&
+                   IsBoxedOptional(types, {storage: item.storage, container: item.container, record: item.record})) {
+            payload := OptionalElement(types, Typed(-1, item.storage, item.container, item.record));
+            finish := Resume(item.node, OptionalWrapPhase, 0, 0);
+            finish.record = item.record;
+            step = Step.Emitted([], [], [], [], [], [], [], [],
+                                [Expect(item.node, payload.storage, payload.container, payload.record), finish],
+                                0, NoValue(), NoValue(), []);
+        } else if (query_handled) {
         } else if (item.phase == MathCapturePhase) {
             step = MathCaptureStep(forest, document, types, members, values[value_top - 1], ops, target, at, node);
         } else if ((item.phase >= MathAssignBegin && item.phase <= MathAssignWrite) ||
@@ -3578,10 +3649,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                    OptionalElement(types, values[value_top - 1]).storage != 0) {
             step = OptionalPresentStep(values[value_top - 1], true, 1, ops, target, at, node);
         } else if (kind == "binary_expression" && item.phase == 1 && (operator == "==" || operator == "!=") &&
-                   ((OptionalElement(types, values[value_top - 2]).storage != 0 &&
-                     Is(forest, Unparenthesized(forest, Field(forest, item.node, "right")), "nil")) ||
-                    (OptionalElement(types, values[value_top - 1]).storage != 0 &&
-                     Is(forest, Unparenthesized(forest, Field(forest, item.node, "left")), "nil")))) {
+                   ((Is(forest, Unparenthesized(forest, Field(forest, item.node, "right")), "nil") &&
+                     OptionalElement(types, values[value_top - 2]).storage != 0) ||
+                    (Is(forest, Unparenthesized(forest, Field(forest, item.node, "left")), "nil") &&
+                     OptionalElement(types, values[value_top - 1]).storage != 0))) {
             optional := values[value_top - 2];
             if (OptionalElement(types, optional).storage == 0) {
                 optional = values[value_top - 1];
@@ -3640,7 +3711,34 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     step = QueryCleanReturn(step, loops, ops, target, at, node);
                 }
                 if (pass == 0 && !item.capture && QueryBooleanPosition(forest, text, item.node)) {
-                    step = QueryBooleanStep(types, step, ops, target, at, node);
+                    // An earlier presence guard makes bool? read its bool
+                    // payload, including in another condition. A fresh
+                    // optional still asks about presence below.
+                    if (item.phase != OptionalWrapPhase && item.phase != NarrowedOriginalPhase &&
+                        item.phase != NarrowedReadPhase && item.phase != CopyValuePhase &&
+                        OptionalStepProduced(types, step)) {
+                        switch step {
+                            case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                          popped, value, retained, marks):
+                                element := OptionalElement(types, value);
+                                if (element.storage == BoolStorage && element.container == 0) {
+                                    step = OptionalNarrowStep(forest, text, types, names, item.node, step,
+                                                              ops, target, at, node);
+                                }
+                            case .Failed(diagnostic):
+                                return Body.Failed(diagnostic);
+                        }
+                    }
+                    // Direct conditions keep main's scoped payload-place binding.
+                    optional_boolean = OptionalStepProduced(types, step) && !OptionalConditionPosition(forest, item.node);
+                    if (!OptionalStepProduced(types, step) || optional_boolean) {
+                        step = QueryBooleanStep(types, step, ops, target, at, node);
+                    }
+                } else if (pass == 0 && !item.capture && item.phase != OptionalWrapPhase &&
+                           item.phase != NarrowedOriginalPhase && item.phase != NarrowedReadPhase &&
+                           item.phase != CopyValuePhase &&
+                           (kind == "identifier" || kind == "member_expression")) {
+                    step = OptionalNarrowStep(forest, text, types, names, item.node, step, ops, target, at, node);
                 }
                 switch step {
                     case .Failed(diagnostic):
@@ -3654,7 +3752,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                     facts = recorded;
                             }
                         }
-                        code.extend(added_code);
+                        if constant_element {
+                            // Integer constant evaluation emits no branches.
+                            code.extend(WithoutDebug(ops, added_code));
+                        } else {
+                            code.extend(added_code);
+                        }
                         slots.extend(added_slots);
                         locals.extend(added_locals);
                         cells.extend(added_cells);
@@ -3758,7 +3861,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             pass += 1;
         }
         types = table^;
-        if (ops.debug && item.phase != MathCapturePhase) {
+        if (ops.debug && !constant_element && item.phase != OptionalWrapPhase && !optional_boolean &&
+            item.phase != MathCapturePhase) {
             // A pointer whose member is read next is watched by that read.
             transient := length(next) > 0 && next[length(next) - 1].phase == PointerMemberReadPhase;
             switch DebugWatches(forest, item, produced, negated || transient, callables, params, natives, ports,

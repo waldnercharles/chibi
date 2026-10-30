@@ -182,8 +182,6 @@ TOOLS = {
                                      '--package-graph-chibi'],
     'language-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--syntax-chibi'],
-    'language-source-parser-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
-                                     '--source-parser-chibi'],
     'language-package-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--package-syntax-chibi'],
     'language-package-paths-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -263,7 +261,7 @@ TOOLS = {
                                         '--host-packages-compiler'],
     'language-package-files': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-files'],
-    'chibi-test-compiler-source-tokenizer': [str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi')), 'test', str(ROOT / 'tools/compiler/source_tokenizer')],
+    'chibi-test-compiler': [str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi')), 'test', str(ROOT / 'tools/compiler')],
     'chibi-test-core': [str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi')), 'test', str(ROOT / 'packages/core')],
     'chibi-test-integer-arithmetic': [str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi')), 'test', str(ROOT / 'test/integer_arithmetic')],
     'language-package-math': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--package-math'],
@@ -372,7 +370,7 @@ GROUPS = {
                   'material-simulation', 'material-ecs'],
     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-execution', 'language-program', 'language-ranges', 'language-component-write',
                  
-                 'language-package-math', 'chibi-test-core', 'chibi-test-compiler-source-tokenizer', 'chibi-test-integer-arithmetic', 'language-argument-effects-chibi', 'language-host-packages', 'language-host-packages-compiler', 
+                 'language-package-math', 'chibi-test-core', 'chibi-test-compiler', 'chibi-test-integer-arithmetic', 'language-argument-effects-chibi', 'language-host-packages', 'language-host-packages-compiler', 
                  'field-runtime', 'text-format', 
                  
                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-compositional-records', 'language-package-compiler-chibi-scalar',

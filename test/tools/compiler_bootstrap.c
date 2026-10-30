@@ -99,7 +99,7 @@ static void contract(int version, int minimum)
 {
     char text[128];
     snprintf(text, sizeof text, "version %d\nminimum %d\n", version, minimum);
-    write_file("compiler/bootstrap.kdl", text);
+    write_file("compiler/bootstrap.txt", text);
 }
 
 /* The manifest of artifact folder name, recording format, version, a
@@ -187,12 +187,12 @@ TEST_CASE(bootstrap_usage_rejects_mixed_and_missing_options)
     return true;
 }
 
-/* The sources' bootstrap.kdl must exist and hold a minimum from 1 to its
+/* The sources' bootstrap.txt must exist and hold a minimum from 1 to its
  * version. */
 TEST_CASE(bootstrap_needs_the_sources_contract)
 {
     artifact("plain", 1, 1, "abc", ABC_SHA256, NOTHING);
-    REQUIRE(check("plain") == 1 && log_has("bootstrap.kdl: it cannot be read"));
+    REQUIRE(check("plain") == 1 && log_has("bootstrap.txt: it cannot be read"));
     contract(1, 2);
     REQUIRE(check("plain") == 1 && log_has("needs a version and a minimum"));
     return true;

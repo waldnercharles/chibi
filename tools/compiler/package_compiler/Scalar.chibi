@@ -207,7 +207,7 @@ ScalarValueType :: (types: TypeDecl[], storage: int, container: int, record: int
     return ScalarTypeOf(storage);
 }
 ScalarParam :: (types: TypeDecl[], param: Param) -> bool {
-    return ScalarValueType(types, param.storage, param.container, param.record) != 0 && !param.reference;
+    return ScalarValueType(types, param.storage, param.container, param.record) != 0;
 }
 // The source's functions, records and fields as the facts see them. A
 // function with one named result returns its value, as a call of it gives
@@ -2057,9 +2057,10 @@ ScalarClosing :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // Whether each cell is an argument or result of an authored call, part of a
 // host call's, or a record or union a return or local moves into, the only
 // storage a call of this subset takes.
-ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[]) -> bool {
+ScalarCells :: (cells: Cell[], calls: Invocation[], hosts: Host[], lent: bool) -> bool {
     for (cell in 0..<length(cells)) {
-        owned := ((cells[cell].storage == StructStorage || cells[cell].storage == UnionStorage) &&
+        // A local a scoped argument lends is read, never written, by its callee.
+        owned := (lent && cells[cell].container == 0) || ((cells[cell].storage == StructStorage || cells[cell].storage == UnionStorage) &&
                   cells[cell].container == 0) ||
                  (cells[cell].container == ArrayContainer && ScalarArrayElement(cells[cell].storage));
         for (call in calls) {
@@ -2182,9 +2183,17 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
     // No native writes: the text natives are pure.
     writes := resize([int(0)], length(natives));
     table := types;
+    // The names scoped arguments lend live in cells, as in the ordinary compile.
+    referenced: string[] = [];
+    mutated: string[] = [];
+    if (AnyReference(params)) {
+        body := Field(forest, callables[function].node, "body");
+        referenced = ReferencedNames(forest, text, callables, params, natives, aliases, callables[function].package, body);
+        mutated = MutatedNames(forest, text, body, referenced);
+    }
     switch EmitBody(forest, text, callables[function].document, callables, params, &table, members, constants, natives, ports, identities,
-                    operators, makes, indices, aliases, key, solid, 0, 0, function, empty_names,
-                    empty_names, indices, BodyContext.Known(writes), indices, ops, target, []) {
+                    operators, makes, indices, aliases, key, solid, 0, 0, function, referenced,
+                    mutated, indices, BodyContext.Known(writes), indices, ops, target, []) {
         case .Failed(diagnostic):
             return diagnostic;
         case .Specialize(template, call, arguments, caller_names):
@@ -2195,12 +2204,45 @@ ScalarEmits :: (forest: snapshot.SnapshotNode[], text: string, key: string, call
         case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects,
                       direct_write, facts):
             if (effects != 0 || direct_write != 0 || !ScalarHosts(hosts, roots) ||
-                !ScalarCells(cells, calls, hosts)) {
+                !ScalarCells(cells, calls, hosts, AnyReference(params))) {
                 return Diagnose(forest, Field(forest, callables[function].node, "body"), 0,
                                 "scalar proof requires known effect-free scalar execution");
             }
             return ScalarPassed();
     }
+}
+// The name of a scoped pointer parameter of `callable` that its body changes,
+// as `scoped` spells it, or "". A pointer the body only reads is its target's
+// value; a write would change a copy.
+ScalarWritten :: (scoped: snapshot.SnapshotNode[], text: string, callable: Callable, params: Param[]) -> string {
+    mutated := MutatedNames(scoped, text, Field(scoped, callable.node, "body"), []);
+    for (index in 0..<callable.count) {
+        param := params[callable.first + index];
+        if (!param.reference) {
+            continue;
+        }
+        for (name in mutated) {
+            if (name == param.name) {
+                return name;
+            }
+        }
+    }
+    return "";
+}
+// A copy of `scoped` in which each `&x` argument of a scoped parameter in the
+// body of `callable` is the value of `x`, which the callee only reads.
+ScalarLent :: (scoped: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+               natives: ResolvedNative[], aliases: Name[], callable: Callable) -> snapshot.SnapshotNode[] {
+    lent := scoped;
+    for (argument in ScopedArguments(scoped, text, callables, params, natives, aliases, callable.package,
+                                     Field(scoped, callable.node, "body"))) {
+        named := scoped[Field(scoped, argument, "operand")];
+        named.parent = scoped[argument].parent;
+        named.next_sibling = scoped[argument].next_sibling;
+        named.field = scoped[argument].field;
+        lent[argument] = named;
+    }
+    return lent;
 }
 // The functions of the module, each checked as a whole before the next.
 ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, callables: Callable[],
@@ -2245,6 +2287,11 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         case .Built(record_rows):
             rows = record_rows;
     }
+    // A scoped parameter's `p^` is `p`, as every body sees it.
+    scoped := forest;
+    if (length(documents) > 0 && AnyReference(params)) {
+        scoped = ScopedTargets(forest, documents, callables, params);
+    }
     for (function in 0..<length(callables)) {
         // A set of packages holds each function in its own document, whose
         // import aliases resolve its qualified calls.
@@ -2257,12 +2304,18 @@ ScalarModule :: (forest: snapshot.SnapshotNode[], text: string, key: string, cal
         if (length(generic_bindings) > 0) {
             used = GenericConstants(forest, constants, generic_bindings, function, callables[function], documents);
         }
-        emitted := ScalarEmits(forest, text, key, callables, params, types, members, used, solid, function,
+        emitted := ScalarEmits(scoped, text, key, callables, params, types, members, used, solid, function,
                                ops, target, natives, ports, identities, aliases);
         if (emitted.message != "") {
             return ScalarOperands.Failed(emitted);
         }
-        switch ScalarFunction(forest, text, key, solid, seen, params, records, fields, used,
+        written := ScalarWritten(scoped, text, callables[function], params);
+        if (written != "") {
+            return ScalarOperands.Failed(Diagnose(scoped, Field(scoped, callables[function].node, "body"), 0,
+                                                  format_text("scalar proof does not write through pointer '{}' yet", written)));
+        }
+        lent := ScalarLent(scoped, text, callables, params, natives, aliases, callables[function]);
+        switch ScalarFunction(lent, text, key, solid, seen, params, records, fields, used,
                               function, ops, target, aliases) {
             case .Failed(diagnostic):
                 return ScalarOperands.Failed(diagnostic);

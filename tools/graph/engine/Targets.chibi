@@ -504,7 +504,7 @@ Files :: (target: string) -> string[] {
             "test/language/component_write_ir.c",
             "test/language/field_runtime.c",
             "test/language/text_format.c", "test/language/host_packages.c", "test/language/host_packages_compiler.c",
-            "test/language/packages.c", "test/language/package_syntax.c",
+            "test/language/packages.c",
             "test/language/package_resolution.c",
             "test/language/package_imports.c", "test/language/package_files.c",
             "test/language/package_math.c",
@@ -2256,7 +2256,7 @@ LanguageTestsOverSource :: () -> string[] {
         "test/language/package_compiler_chibi.c",
 
 
-        "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
+        "test/language/package_snapshot_chibi.c",
 
         "test/language/ranges.c",
         "test/language/record_prepared.c",

@@ -35,8 +35,6 @@ void test_language_asset_packaging_chibi();
 #ifdef CHIBI_TEST_ASSET_COMPILER_HOST
 void test_language_asset_compiler_host();
 #endif
-void test_language_package_syntax();
-void test_language_package_syntax_chibi();
 void test_language_package_snapshot_chibi();
 void test_language_unit_algebra_chibi();
 void test_language_package_resolution();
@@ -157,9 +155,6 @@ int main(int argc, char **argv)
                                 !strcmp(argv[1], "--type-relations-chibi");
     bool unit_algebra_chibi = argc == 2 && !strcmp(argv[1], "--unit-algebra-chibi");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
-    bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
-    bool package_syntax_chibi = argc == 2 &&
-                                !strcmp(argv[1], "--package-syntax-chibi");
     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
     bool host_packages = argc == 2 && !strcmp(argv[1], "--host-packages");
@@ -180,10 +175,9 @@ int main(int argc, char **argv)
     if ((!compiler_artifact && !execution && !execution_scope && !record_values &&
          !record_document && !record_services && !record_compatibility &&
          !compositional_records && !program && !program_session && !ranges &&
-         !integer_semantics && !integer_shift_counts &&
-         !integer_shift_counts_authored && !package_graph && !package_graph_chibi &&
-         !asset_compiler_host && !asset_packaging_chibi && !shader_source_chibi &&
-         !package_syntax && !package_syntax_chibi && !package_snapshot_chibi &&
+         !integer_semantics && !integer_shift_counts && !integer_shift_counts_authored &&
+         !package_graph && !package_graph_chibi && !asset_compiler_host &&
+         !asset_packaging_chibi && !shader_source_chibi && !package_snapshot_chibi &&
          !compiler_fixture && !bounded_compiler_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_libraries && !package_compiler_chibi_types &&
          !package_compiler_chibi_fallible && !package_compiler_chibi_imports &&
@@ -260,7 +254,7 @@ int main(int argc, char **argv)
             ""
             ""
             ""
-            "--package-syntax | --package-syntax-chibi | "
+            ""
             "--package-resolution | "
             "--package-imports | --host-packages | --host-packages-compiler | "
             "--package-files | "
@@ -327,10 +321,6 @@ int main(int argc, char **argv)
         test_language_integer_shift_counts_authored();
     } else if (integer_semantics) {
         test_language_integer_semantics();
-    } else if (package_syntax) {
-        test_language_package_syntax();
-    } else if (package_syntax_chibi) {
-        test_language_package_syntax_chibi();
     } else if (package_snapshot_chibi) {
         test_language_package_snapshot_chibi();
     } else if (compiler_fixture) {

@@ -85,7 +85,7 @@ With games archived, the compiler path includes nothing of the game runtime. The
 
 Each called authored compiler packages through `compiler_fixture` (stage-zero prepared) and compared them with stage-zero or Tree-sitter results. Re-author the ones worth keeping as `@test` in `tools/compiler/<package>/tests`:
 
-- `argument_effects_chibi.c` (argument-effect metadata and effect order), `bounded_compiler_chibi.c` (bounded Compile on the bounded corpus), `compiler_artifact_chibi.c` and `test/tools/compiler_artifact.c` (artifact write by `test_language` read back by `test_tools` with the compiler host), `asset_packaging_chibi.c`.
+- `argument_effects_chibi.c` (argument-effect metadata and effect order; a `@test` closure importing `package_compiler` exceeds the 4e9-instruction compile budget), `bounded_compiler_chibi.c` (bounded Compile on the bounded corpus), `compiler_artifact_chibi.c` and `test/tools/compiler_artifact.c` (artifact write by `test_language` read back by `test_tools` with the compiler host).
 - Kept: `package_compiler_chibi.c` (its bootstrap, native, scalar and types selectors drive seed refresh and the native lanes), `native_census.c`, `host_packages.c`.
 
 ## Third-party archive builder (third_party/CMakeLists.txt, .github/workflows/third-party.yml, test/tools/third_party_publish.c)
@@ -102,10 +102,12 @@ outright (git history keeps them):
 - the CMake build, the SDK's CMake package and the player and graph CMake files, replaced by `chibi build`;
 - the Python build and test helpers, replaced by `chibi build` and `chibi test`;
 - the compiler C differentials ported to `@test` (tokenizer, parser, package paths, routes, syntax,
-  syntax diagnostics, package graph, unit algebra, type relations, shader source) and the fixture-run `@test`
-  wrappers. The shader source port dropped the C host's checks: the second backend, call counts, results
-  outliving the fixture and its arenas, and copying lowered rows into the native `shader_graph` to evaluate
-  them (its `@test` asserts the exact node rows instead);
+  syntax diagnostics, package graph, unit algebra, type relations, asset packaging, shader source) and
+  the fixture-run `@test` wrappers. Asset packaging lost its two-backend runs, the formatted-byte work bounds, the
+  private `Join` probes and the asset generator's `Quote`/`Array`/`Join` cases: the generator
+  (`tools/graph/asset_compiler`) uses build-host natives that `chibi test` does not provide. Shader source
+  lost its two-backend runs, call counts, results outliving the fixture and its arenas, and copying lowered
+  rows into the native `shader_graph` to evaluate them (its `@test` asserts the exact node rows instead);
 - the stage-zero dialect and front-end tests (analyzer, records, language features, programs and
   queries, benchmark, wasm and layout, prepared round trip and C export, package execution, numeric and
   readers), which tested a retired dialect against a retired front end;

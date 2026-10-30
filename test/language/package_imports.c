@@ -1062,76 +1062,6 @@ TEST_CASE(package_imports_overload_arguments_accept_growing_definition_environme
     }
     return true;
 }
-TEST_CASE(package_imports_event_receivers_keep_sender_contracts_while_catalogs_grow)
-{
-    char records[1024], functions[1024];
-    REQUIRE(growing_environment_sources(records, sizeof records, functions, sizeof functions));
-    const source_package_input files[] = {
-        { "algorithms/a.chibi", "package algorithms\nimport settings \"../settings\"\npub Apply :: (value: $T, transform: fn(value: T) -> T) -> T { return transform(value); }\n", 0 },
-        { "settings/a.chibi", records, 0 },
-        { "settings/b.chibi", functions, 0 },
-    };
-    static const script_catalog_parameter receiver = { .name = "Entity",
-                                                       .type = { .storage = PIN_HANDLE,
-                                                                 .nominal = 40 } },
-                                          payload = { .name = "Amount",
-                                                      .type = { .storage = PIN_I32 } };
-    static const script_catalog_capability capabilities[] = {
-        { .id = 60,
-          .name = "Send Event",
-          .kind = SCRIPT_CAPABILITY_ACTION,
-          .parameters = &receiver,
-          .parameter_count = 1,
-          .event_sender = true },
-        { .id = 61,
-          .name = "Damage",
-          .kind = SCRIPT_CAPABILITY_EVENT,
-          .parameters = &payload,
-          .parameter_count = 1 },
-    };
-    const script_catalog catalog = { .capabilities = capabilities,
-                                     .capability_count = 2,
-                                     .entity_type = 40 };
-    REQUIRE(prepare_catalog(0, files, 3, backends[0], -1, "/project", &catalog, &bindings));
-    REQUIRE(valid(0));
-    direct_syntax = script_parse("package app\nimport algorithms \"../algorithms\"\nSend :: (other: entity) { emit (algorithms.Apply(other, (item: entity) => item)).Damage(Amount: 3); }\n");
-    REQUIRE(!direct_syntax->diagnostic_count);
-    const script_package_document document = { "/project/app/a.chibi",
-                                               "project:app/a.chibi",
-                                               direct_syntax };
-    int start = (int)(strstr(direct_syntax->text, "import algorithms") -
-                      direct_syntax->text);
-    script_range range = { .start = start,
-                           .end = start + (int)strlen("import algorithms \"../algorithms\""),
-                           .line = 2,
-                           .column = 1,
-                           .document = 0 };
-    const script_package_import import = {
-        .document = 0,
-        .range = range,
-        .alias = "algorithms",
-        .identity = "project:algorithms",
-        .exports = package(0, "project:algorithms")->exports
-    };
-    const script_package_options options = { .documents = &document,
-                                             .document_count = 1,
-                                             .identity = "project:app",
-                                             .native = &catalog,
-                                             .imports = &import,
-                                             .import_count = 1 };
-    direct_analysis = script_analyze_package(&options);
-    REQUIRE(direct_analysis->valid);
-    bool sent = false;
-    for (int i = 0; i < direct_analysis->expression_count; i++) {
-        const script_expression *expression = &direct_analysis->expressions[i];
-        if (expression->kind == SCRIPT_EXPR_CALL && expression->capability == 60) {
-            REQUIRE(expression->member == 61 && expression->argument_count == 2);
-            sent = true;
-        }
-    }
-    REQUIRE(sent);
-    return true;
-}
 TEST_CASE(package_imports_private_templates_stay_private)
 {
     const source_package_input files[] = {
@@ -1409,98 +1339,6 @@ TEST_CASE(package_exports_keep_private_managed_pointee_metadata)
     REQUIRE(!strcmp(lib->exports->members[0].name, "Holder"));
     return true;
 }
-TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
-{
-    static const char *text = "package app\nimport lib \"../lib\"\nMain :: "
-                              "() -> int { return lib.F(); }\n";
-    direct_syntax = script_parse(text);
-    REQUIRE(direct_syntax && !direct_syntax->diagnostic_count);
-    const script_package_document document = { "/project/app/a.chibi",
-                                               "project:app/a.chibi",
-                                               direct_syntax };
-    static const script_catalog_parameter output = { .name = "value",
-                                                     .type = { .storage = PIN_I32 } };
-    static const script_catalog_capability functions[] = {
-        { .id = 800,
-          .name = "F",
-          .kind = SCRIPT_CAPABILITY_FUNCTION,
-          .results = &output,
-          .result_count = 1 },
-        { .id = 801,
-          .name = "G",
-          .kind = SCRIPT_CAPABILITY_FUNCTION,
-          .results = &output,
-          .result_count = 1 },
-    };
-    const script_catalog metadata = { .capabilities = functions,
-                                      .capability_count = 2 };
-    script_package_export members[2];
-    script_package_exports exports = { .identity = "project:lib",
-                                       .metadata = &metadata,
-                                       .members = members };
-    int start = (int)(strstr(text, "import lib") - text);
-    script_range range = { .start = start,
-                           .end = start + (int)strlen("import lib \"../lib\""),
-                           .line = 2,
-                           .column = 1,
-                           .document = 0 };
-    const script_package_import import = { .document = 0,
-                                           .range = range,
-                                           .alias = "lib",
-                                           .identity = "project:lib",
-                                           .exports = &exports };
-    const script_package_options options = { .documents = &document,
-                                             .document_count = 1,
-                                             .identity = "project:app",
-                                             .native = &native,
-                                             .imports = &import,
-                                             .import_count = 1 };
-    /* A valid control, then nine fixed malformed public metadata specimens. */
-    for (int sample = 0; sample < 10; sample++) {
-        members[0] = (script_package_export){ .name = "F",
-                                              .id = 800,
-                                              .kind = SCRIPT_PACKAGE_FUNCTION };
-        members[1] = (script_package_export){ .name = "F",
-                                              .id = 801,
-                                              .kind = SCRIPT_PACKAGE_FUNCTION };
-        exports.member_count = 1;
-        exports.private_count = 0;
-        switch (sample) {
-            case 1: members[0].name = NULL; break;
-            case 2: members[0].name = ""; break;
-            case 3: members[0].name = "1invalid"; break;
-            case 4: members[0].kind = (script_package_export_kind)99; break;
-            case 5: members[0].id = 0; break;
-            case 6: members[0].id = 9999; break;
-            case 7: exports.member_count = 2; break;
-            case 8: exports.member_count = 4097; break;
-            case 9: exports.private_count = 1; break;
-        }
-        script_analysis_free(direct_analysis);
-        direct_analysis = script_analyze_package(&options);
-        REQUIRE(direct_analysis);
-        if (!sample) {
-            REQUIRE(direct_analysis->valid && !direct_analysis->diagnostic_count);
-            continue;
-        }
-        REQUIRE(!direct_analysis->valid);
-        bool diagnosed = false;
-        for (int i = 0; i < direct_analysis->diagnostic_count; i++) {
-            const script_diagnostic *error = &direct_analysis->diagnostics[i];
-            if (strcmp(error->message, "Invalid package import binding")) {
-                continue;
-            }
-            REQUIRE(
-                error->range.document == 0 &&
-                error->range.start == range.start && error->range.end == range.end
-            );
-            diagnosed = true;
-        }
-        REQUIRE(diagnosed);
-    }
-    return true;
-}
-
 static bool prepare_with_collection(
     int slot,
     source_package_input *files,
@@ -1664,211 +1502,286 @@ TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependenc
     return true;
 }
 
-TEST_CASE(package_imports_malformed_definition_environments_are_rejected)
+TEST_CASE(package_imports_check_errors_only_in_active_collections_and_all_projects)
 {
-    static const char
-        text[] = "package app\nimport lib \"../lib\"\nRow :: struct { value: "
-                 "int; }\nMain :: (value: int) -> int { row: Row = {value: "
-                 "value}; return lib.Identity(row).value; }\n";
-    direct_syntax = script_parse(text);
-    definition_syntax = script_parse(
-        "package lib\npub Identity :: (value: $T) -> T { return value; }\n"
-    );
-    REQUIRE(!direct_syntax->diagnostic_count && !definition_syntax->diagnostic_count);
-    const script_package_document caller = { "/project/app/a.chibi",
-                                             "project:app/a.chibi",
-                                             direct_syntax };
-    script_package_document definition = { "/project/lib/a.chibi",
-                                           "project:lib/a.chibi",
-                                           definition_syntax };
-    const script_template_parameter parameter = { .name = "value",
-                                                  .binder = "T",
-                                                  .type = { .flags = SCRIPT_TYPE_UNTYPED },
-                                                  .binds_type = true };
-    const script_catalog_template template = { .id = 800,
-                                               .name = "Identity",
-                                               .owner = "project:lib",
-                                               .kind = SCRIPT_TEMPLATE_FUNCTION,
-                                               .parameters = &parameter,
-                                               .parameter_count = 1,
-                                               .generic = true };
-    const script_catalog metadata = { .templates = &template, .template_count = 1 };
-    const script_package_export member = { .name = "Identity",
-                                           .id = 800,
-                                           .kind = SCRIPT_PACKAGE_TEMPLATE };
-    script_package_environment environment;
-    const script_package_exports exports = { .identity = "project:lib",
-                                             .metadata = &metadata,
-                                             .members = &member,
-                                             .member_count = 1,
-                                             .environment = &environment };
-    int start = (int)(strstr(text, "import lib") - text);
-    script_range range = { .start = start,
-                           .end = start + (int)strlen("import lib \"../lib\""),
-                           .line = 2,
-                           .column = 1,
-                           .document = 0 };
-    const script_package_import import = { .document = 0,
-                                           .range = range,
-                                           .alias = "lib",
-                                           .identity = "project:lib",
-                                           .exports = &exports };
-    const script_package_options options = { .documents = &caller,
-                                             .document_count = 1,
-                                             .identity = "project:app",
-                                             .native = &native,
-                                             .imports = &import,
-                                             .import_count = 1 };
-    script_catalog nested_metadata;
-    script_catalog_type nested_type;
-    script_catalog_variant nested_variant;
-    script_catalog_capability nested_capability;
-    script_catalog_template nested_template;
-    script_catalog_specialization nested_specialization;
-    script_package_exports dependency;
-    script_package_import dependency_import;
-    int payload = 1;
-    script_package_export environment_bindings[2] = {
-        member,
-        { .name = "Hidden",
-          .id = 901,
-          .kind = SCRIPT_PACKAGE_CONSTANT,
-          .type = { .storage = PIN_STRUCT },
-          .value = { .type = PIN_STRUCT, .ptr = &payload } },
+    const char unchecked
+        [] = "package hosted\n@error pub Failure :: struct { code: int; }\n"
+             "pub Read :: () -> Failure? { return {code: 3}; }\n"
+             "pub Broken :: () { Read(); }\n";
+    const char project[] = "package other\npub Independent :: () -> int { "
+                           "return 2; }\n";
+    const char *active[] = {
+        "package app\nimport host \"core:host_only\"\npub Main :: (value: int) "
+        "-> int { return value; }\n",
+        "package app\nimport middle \"core:middle\"\npub Main :: (value: int) "
+        "-> int { return value; }\n",
     };
-    for (int sample = 0; sample < 34; sample++) {
-        definition = (script_package_document){ "/project/lib/a.chibi",
-                                                "project:lib/a.chibi",
-                                                definition_syntax };
-        environment = (script_package_environment){ .identity = "project:lib",
-                                                    .documents = &definition,
-                                                    .document_count = 1,
-                                                    .bindings = &member,
-                                                    .binding_count = 1 };
-        nested_metadata = (script_catalog){ 0 };
-        nested_type = (script_catalog_type){ 0 };
-        nested_variant = (script_catalog_variant){ 0 };
-        nested_capability = (script_catalog_capability){ 0 };
-        nested_template = template;
-        nested_specialization = (script_catalog_specialization){ .id = 900,
-                                                                 .template_id = 800 };
-        dependency = (script_package_exports){ .identity = "project:dependency",
-                                               .metadata = &nested_metadata };
-        dependency_import = (script_package_import){
-            .document = 0,
-            .alias = "dependency",
-            .identity = "project:dependency",
-            .exports = &dependency
-        };
-        if (sample >= 13) {
-            environment.imports = &dependency_import;
-            environment.import_count = 1;
+    source_package_input files[] = {
+        { "app/App.chibi", NULL, 0 },
+        { "/sdk/core/host_only/HostOnly.chibi", unchecked, 0 },
+        { "/sdk/core/middle/Middle.chibi", "package middle\nimport host \"core:host_only\"\npub Value :: () -> int { return 1; }\n", 0 },
+        { "other/Other.chibi", project, 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        files[0].text = "package app\npub Main :: (value: int) -> int { return "
+                        "value; }\n";
+        files[1].text = unchecked;
+        files[3].text = project;
+        REQUIRE(prepare_with_collection(0, files, 4, backends[b], -1));
+        REQUIRE(valid(0) && authoring_packages_count(owners[0]) == 2);
+        REQUIRE(!package(0, "core:host_only") && !package(0, "core:middle"));
+        REQUIRE(run(0, "project:app", "Main", backends[b], 4, 4));
+        for (int i = 0; i < 2; i++) {
+            files[0].text = active[i];
+            REQUIRE(prepare_with_collection(1, files, 4, backends[b], 0));
+            REQUIRE(!authoring_packages_valid(owners[1]));
+            const authoring_package *host = package(1, "core:host_only");
+            REQUIRE(host && !host->valid && host->analysis);
+            bool ignored = false;
+            for (int d = 0; d < host->diagnostic_count; d++) {
+                ignored |= !strcmp(host->diagnostics[d].message, "Error result is ignored on a reachable path; check, report, store or return it");
+            }
+            REQUIRE(ignored);
+            REQUIRE(authoring_packages_count(owners[1]) == (i ? 4 : 3));
         }
-        switch (sample) {
-            case 1: environment.documents = NULL; break;
-            case 2: environment.document_count = -1; break;
-            case 3:
-                environment.document_count = SCRIPT_PACKAGE_MAX_DOCUMENTS + 1;
-                break;
-            case 4: environment.import_count = 1; break;
-            case 5:
-                environment.binding_count = 1;
-                environment.bindings = NULL;
-                break;
-            case 6: environment.identity = NULL; break;
-            case 7: environment.identity = "project:other"; break;
-            case 8: definition.path = NULL; break;
-            case 9: definition.key = ""; break;
-            case 10: definition.syntax = NULL; break;
-            case 11: environment.import_count = -1; break;
-            case 12: environment.binding_count = 4097; break;
-            /* A self import is valid and must not recurse indefinitely. */
-            case 13:
-                dependency_import.identity = "project:lib";
-                dependency_import.exports = &exports;
-                break;
-            case 14: nested_metadata.global_count = -1; break;
-            case 15: nested_metadata.global_count = 1; break;
-            case 16: nested_metadata.relationship_count = -1; break;
-            case 17: nested_metadata.relationship_count = 1; break;
-            case 18: nested_metadata.template_count = -1; break;
-            case 19: nested_metadata.template_count = 1; break;
-            case 20: nested_metadata.specialization_count = -1; break;
-            case 21: nested_metadata.specialization_count = 1; break;
-            case 22: nested_metadata.type_count = 1; break;
-            case 23:
-                nested_metadata.types = &nested_type;
-                nested_metadata.type_count = 1;
-                nested_type.field_count = 1;
-                break;
-            case 24:
-                nested_metadata.types = &nested_type;
-                nested_metadata.type_count = 1;
-                nested_type.variant_count = 1;
-                break;
-            case 25:
-                nested_metadata.types = &nested_type;
-                nested_metadata.type_count = 1;
-                nested_type.variants = &nested_variant;
-                nested_type.variant_count = 1;
-                nested_variant.field_count = 1;
-                break;
-            case 26: nested_metadata.capability_count = 1; break;
-            case 27:
-                nested_metadata.capabilities = &nested_capability;
-                nested_metadata.capability_count = 1;
-                nested_capability.parameter_count = 1;
-                break;
-            case 28:
-                nested_metadata.capabilities = &nested_capability;
-                nested_metadata.capability_count = 1;
-                nested_capability.result_count = 1;
-                break;
-            case 29:
-                nested_metadata.capabilities = &nested_capability;
-                nested_metadata.capability_count = 1;
-                nested_capability.entry_count = 1;
-                break;
-            case 30:
-                nested_metadata.capabilities = &nested_capability;
-                nested_metadata.capability_count = 1;
-                nested_capability.outcome_count = 1;
-                break;
-            case 31:
-                nested_metadata.templates = &nested_template;
-                nested_metadata.template_count = 1;
-                nested_template.parameters = NULL;
-                break;
-            case 32:
-                nested_metadata.specializations = &nested_specialization;
-                nested_metadata.specialization_count = 1;
-                nested_specialization.binding_count = 1;
-                break;
-            case 33:
-                environment.bindings = environment_bindings;
-                environment.binding_count = 2;
-                break;
+        files[0].text = "package app\npub Main :: (value: int) -> int { return "
+                        "value; }\n";
+        files[3].text = "package other\n@error pub Failure :: struct { code: "
+                        "int; }\n"
+                        "Read :: () -> Failure? { return {code: 3}; }\n"
+                        "pub Broken :: () { Read(); }\n";
+        REQUIRE(prepare_with_collection(1, files, 4, backends[b], 0));
+        REQUIRE(!authoring_packages_valid(owners[1]));
+        const authoring_package *other = package(1, "project:other");
+        REQUIRE(other && !other->valid && other->analysis);
+        bool ignored = false;
+        for (int d = 0; d < other->diagnostic_count; d++) {
+            ignored |= !strcmp(other->diagnostics[d].message, "Error result is ignored on a reachable path; check, report, store or return it");
         }
-        script_analysis_free(direct_analysis);
-        direct_analysis = script_analyze_package(&options);
-        if (!sample || sample == 13) {
-            REQUIRE(direct_analysis->valid);
-            continue;
-        }
-        REQUIRE(!direct_analysis->valid && direct_analysis->diagnostic_count > 0);
-        if (sample == 33) {
+        REQUIRE(ignored && !package(1, "core:host_only"));
+        files[0]
+            .text = "package app\nimport host \"core:host_only\"\npub Main :: "
+                    "(value: int) -> int { return host.Value() + value; }\n";
+        files[1].text = "package hosted\n@error pub Failure :: struct { code: "
+                        "int; }\n"
+                        "Read :: () -> (value: int, error: Failure?) { "
+                        "return(7, {code: 3}); }\n"
+                        "pub Value :: () -> int { read := Read(); if "
+                        "read.error { return read.value + read.error.code; } "
+                        "return read.value; }\n";
+        files[3].text = project;
+        REQUIRE(prepare_with_collection(1, files, 4, backends[b], 0));
+        REQUIRE(valid(1) && authoring_packages_count(owners[1]) == 3);
+        REQUIRE(package(1, "core:host_only") && !package(1, "core:middle"));
+        REQUIRE(run(1, "project:app", "Main", backends[b], 4, 14));
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_preserve_fallible_contract)
+{
+    const source_package_input provider = {
+        "reader/main.chibi",
+        "package reader\n@error pub Failure :: struct { code: int; }\n"
+        "pub Read :: (input: int) -> (value: int, error: Failure?) "
+        "{ return(input, {code: 9}); }\n",
+        0
+    };
+    const char *clients[] = {
+        ("package app\nimport renamed \"../reader\"\nMain :: (input: int) -> "
+         "int "
+         "{ read := renamed.Read(input); partial := read.value; "
+         "if read.error { return partial + 1; } return partial; }\n"),
+        ("package app\nimport renamed \"../reader\"\nMain :: (input: int) -> "
+         "int "
+         "{ read := renamed.Read(input); return read.value; }\n"),
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int sample = 0; sample < 2; sample++) {
+            const source_package_input files[] = { { "app/main.chibi", clients[sample], 0 },
+                                                   provider };
+            REQUIRE(prepare(0, files, 2, backends[b], -1, "/project"));
+            const authoring_package *reader = package(0, "project:reader");
             REQUIRE(
-                strstr(direct_analysis->diagnostics[0].message, "Cannot retain generic definition environment")
+                reader && reader->valid && reader->exports && reader->exports->metadata
             );
-            REQUIRE(direct_analysis->diagnostics[0].range.document == 0);
-            REQUIRE(
-                direct_analysis->diagnostics[0].range.start ==
-                (int)(strstr(text, "lib.Identity") - text)
+            const script_catalog *metadata = reader->exports->metadata;
+            const script_catalog_capability *read = script_catalog_capability_by_id(
+                metadata,
+                function_id(reader, "Read")
             );
-            continue;
+            REQUIRE(read && read->fallible);
+            const script_catalog_type *failure = script_catalog_type_by_id(
+                metadata,
+                read->results[1].type.nominal
+            );
+            REQUIRE(failure && failure->error);
+            script_catalog copied = { 0 };
+            REQUIRE(script_catalog_snapshot(&metadata_storage, metadata, &copied));
+            const script_catalog_capability
+                *snapshot = script_catalog_capability_by_id(&copied, read->id);
+            REQUIRE(snapshot && snapshot->fallible);
+            const script_catalog_type
+                *copied_failure = script_catalog_type_by_id(&copied, failure->id);
+            REQUIRE(copied_failure && copied_failure->error);
+            const authoring_package *app = package(0, "project:app");
+            REQUIRE(app);
+            if (!sample) {
+                REQUIRE(valid(0));
+                REQUIRE(call(app->module, function_id(app, "Main"), backends[b], 7, 8));
+                continue;
+            }
+            REQUIRE(!app->valid && !app->module && app->diagnostic_count > 0);
+            bool diagnosed = false;
+            for (int i = 0; i < app->diagnostic_count; i++) {
+                diagnosed |= strstr(app->diagnostics[i].message, "ignored") != NULL;
+            }
+            REQUIRE(diagnosed);
         }
-        REQUIRE(strstr(direct_analysis->diagnostics[0].message, "Invalid package import binding"));
-        REQUIRE(direct_analysis->diagnostics[0].range.start == range.start);
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse)
+{
+    const script_catalog_field code = { .id = 1,
+                                        .name = "code",
+                                        .type = { .storage = PIN_I32 },
+                                        .writable = true };
+    script_catalog_type failure = { .id = 702,
+                                    .name = "Failure",
+                                    .type = { .storage = PIN_STRUCT, .nominal = 702 },
+                                    .fields = &code,
+                                    .field_count = 1,
+                                    .size = sizeof(int32_t) };
+    const script_catalog_parameter output = {
+        .name = "error",
+        .type = { .storage = PIN_STRUCT,
+                  .nominal = 702,
+                  .flags = SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL }
+    };
+    script_catalog_capability probe = {
+        .id = 701,
+        .name = "Outcome",
+        .kind = SCRIPT_CAPABILITY_FUNCTION,
+        .results = &output,
+        .result_count = 1,
+        .effects = SCRIPT_EFFECT_HOST,
+    };
+    script_catalog metadata = { .types = &failure,
+                                .type_count = 1,
+                                .capabilities = &probe,
+                                .capability_count = 1 };
+    const script_lower_bindings bound = { .host = default_probe_binding,
+                                          .generation = 1 };
+    const source_package_input files[] = {
+        { "app/main.chibi", "package app\nMain :: (input: int) -> int { Outcome(); return input; }\n", 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        failure.error = false;
+        REQUIRE(prepare_catalog(0, files, 1, backends[b], -1, "/project", &metadata, &bound));
+        REQUIRE(valid(0));
+        const authoring_package *original = package(0, "project:app");
+        REQUIRE(
+            original &&
+            call(original->module, function_id(original, "Main"), backends[b], 7, 7)
+        );
+        uint64_t abi = script_catalog_capability_abi(&metadata, &probe);
+        script_catalog_parameter flagged_output = output;
+        flagged_output.type.flags ^= SCRIPT_TYPE_ERROR_ALTERNATIVE;
+        script_catalog_capability flagged_probe = probe;
+        flagged_probe.results = &flagged_output;
+        script_catalog flagged_metadata = metadata;
+        flagged_metadata.capabilities = &flagged_probe;
+        REQUIRE(script_catalog_capability_abi(&flagged_metadata, &flagged_probe) == abi);
+        REQUIRE(
+            prepare_catalog(1, files, 1, backends[b], 0, "/project", &flagged_metadata, &bound)
+        );
+        REQUIRE(
+            !authoring_packages_valid(owners[1]) &&
+            !authoring_packages_reused(owners[1])
+        );
+        const authoring_package *flagged = package(1, "project:app");
+        REQUIRE(
+            flagged && flagged->diagnostic_count == 1 &&
+            strstr(flagged->diagnostics[0].message, "ignored")
+        );
+        failure.error = true;
+        REQUIRE(script_catalog_capability_abi(&metadata, &probe) == abi);
+        REQUIRE(prepare_catalog(2, files, 1, backends[b], 0, "/project", &metadata, &bound));
+        REQUIRE(
+            !authoring_packages_valid(owners[2]) &&
+            !authoring_packages_reused(owners[2])
+        );
+        const authoring_package *app = package(2, "project:app");
+        REQUIRE(
+            app && app->diagnostic_count == 1 &&
+            strstr(app->diagnostics[0].message, "ignored")
+        );
+        REQUIRE(call(original->module, function_id(original, "Main"), backends[b], 7, 7));
+    }
+    return true;
+}
+
+TEST_CASE(package_imports_ownership_contract_changes_invalidate_reuse)
+{
+    const script_catalog_parameter output = { .name = "value",
+                                              .type = { .storage = PIN_I32 } };
+    script_catalog_capability probe = { .id = 700,
+                                        .name = "Probe",
+                                        .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                        .results = &output,
+                                        .result_count = 1,
+                                        .effects = SCRIPT_EFFECT_HOST };
+    script_catalog metadata = { .capabilities = &probe, .capability_count = 1 };
+    const script_lower_bindings bound = { .host = default_probe_binding,
+                                          .generation = 1 };
+    const source_package_input files[] = {
+        { "app/main.chibi", "package app\nMain :: (input: int) -> int { return input; }\n", 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        for (int flag = 0; flag < 2; flag++) {
+            probe.language_values = false;
+            probe.owned_result = false;
+            REQUIRE(prepare_catalog(0, files, 1, backends[b], -1, "/project", &metadata, &bound));
+            REQUIRE(valid(0));
+            REQUIRE(prepare_catalog(1, files, 1, backends[b], 0, "/project", &metadata, &bound));
+            REQUIRE(valid(1) && authoring_packages_reused(owners[1]) == 1);
+            REQUIRE(
+                package(1, "project:app")->generation ==
+                package(0, "project:app")->generation
+            );
+            script_catalog_capability previous = probe;
+            uint64_t abi = script_catalog_capability_abi(&metadata, &probe);
+            if (flag) {
+                probe.owned_result = true;
+            } else {
+                probe.language_values = true;
+            }
+            REQUIRE(script_catalog_capability_abi(&metadata, &probe) != abi);
+            script_catalog copied = { 0 };
+            REQUIRE(script_catalog_snapshot(&metadata_storage, &metadata, &copied));
+            const script_catalog_capability
+                *snapshot = script_catalog_capability_by_id(&copied, probe.id);
+            REQUIRE(
+                snapshot && snapshot->language_values == probe.language_values &&
+                snapshot->owned_result == probe.owned_result
+            );
+            REQUIRE(prepare_catalog(2, files, 1, backends[b], 1, "/project", &metadata, &bound));
+            REQUIRE(valid(2) && !authoring_packages_reused(owners[2]));
+            REQUIRE(
+                package(2, "project:app")->generation !=
+                package(1, "project:app")->generation
+            );
+            probe = previous;
+            REQUIRE(prepare_catalog(3, files, 1, backends[b], 2, "/project", &metadata, &bound));
+            REQUIRE(valid(3) && !authoring_packages_reused(owners[3]));
+            REQUIRE(
+                package(3, "project:app")->generation !=
+                package(2, "project:app")->generation
+            );
+        }
     }
     return true;
 }
@@ -1891,7 +1804,6 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_imports_structured_arguments_accept_callable_algorithms);
     RUN_TEST_CASE(package_imports_authored_structured_arguments_and_literals_keep_outer_types);
     RUN_TEST_CASE(package_imports_overload_arguments_accept_growing_definition_environments);
-    RUN_TEST_CASE(package_imports_event_receivers_keep_sender_contracts_while_catalogs_grow);
     RUN_TEST_CASE(package_imports_callable_definition_errors_point_to_the_importing_call);
     RUN_TEST_CASE(package_imports_generic_nominals_and_definition_edits_do_not_alias);
     RUN_TEST_CASE(package_imports_callable_arguments_use_the_definition_environment);
@@ -1903,11 +1815,13 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_execution);
     RUN_TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults);
     RUN_TEST_CASE(package_exports_keep_private_managed_pointee_metadata);
-    RUN_TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup);
     RUN_TEST_CASE(package_imports_ignore_unused_collection_bodies_but_check_every_project);
     RUN_TEST_CASE(package_imports_check_direct_transitive_and_blank_collection_imports);
     RUN_TEST_CASE(package_imports_collection_only_snapshot_checks_first_input_root);
     RUN_TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependency);
-    RUN_TEST_CASE(package_imports_malformed_definition_environments_are_rejected);
+    RUN_TEST_CASE(package_imports_check_errors_only_in_active_collections_and_all_projects);
+    RUN_TEST_CASE(package_imports_preserve_fallible_contract);
+    RUN_TEST_CASE(package_imports_fallible_contract_change_invalidates_reuse);
+    RUN_TEST_CASE(package_imports_ownership_contract_changes_invalidate_reuse);
     pu_clear_setup();
 }

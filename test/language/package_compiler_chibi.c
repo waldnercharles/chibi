@@ -96,6 +96,8 @@ typedef struct
 {
     const char *function, *arguments, *expected;
     const char *diagnostic;
+    /* Instructions the call may run; TARGET_BUDGET when zero. */
+    int budget;
 } sample_call;
 /* Focused selectors group unions, constants, patterns and integer types
  * (TYPE_SAMPLES); imports, core-pack calls, moves, reads in place and array
@@ -107,6 +109,7 @@ typedef enum
     TYPE_SAMPLES,
     IMPORT_SAMPLES,
     COLLECTION_SAMPLES,
+    FALLIBLE_SAMPLES,
     MATH_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
@@ -152,7 +155,7 @@ typedef struct
     bool probe_calls;
     sample_call calls[CALLS];
     const char *message;
-    const char *oracle_message;
+    const char *oracle_message, *oracle_package;
     int line, column, project_modules;
     int oracle_line, oracle_column;
     int specializations;
@@ -930,6 +933,17 @@ static const char HOST_DEPENDENCY_SOURCE[] = "package host_dependency\n"
                                              "pub Probe :: () -> int {\n"
                                              "    return host_only_probe();\n"
                                              "}\n";
+#define UNCHECKED_COLLECTION_ERROR_BODY                                        \
+    "@error pub Failure :: struct { code: int; }\n"                            \
+    "pub Read :: () -> Failure? { return {code: 3}; }\n"                       \
+    "pub Broken :: () { Read(); }\n"
+static const char UNCHECKED_COLLECTION_ERROR_SOURCE
+    [] = "package host_only\n" UNCHECKED_COLLECTION_ERROR_BODY;
+static const char UNCHECKED_DEPENDENCY_ERROR_SOURCE
+    [] = "package host_dependency\n" UNCHECKED_COLLECTION_ERROR_BODY;
+static const char UNCHECKED_PROJECT_ERROR_SOURCE
+    [] = "package lib\n" UNCHECKED_COLLECTION_ERROR_BODY;
+#undef UNCHECKED_COLLECTION_ERROR_BODY
 static const sample samples[] = {
     { .name = "unused collection host capability is not required",
       .group = IMPORT_SAMPLES,
@@ -1005,6 +1019,46 @@ static const sample samples[] = {
       .collection_source = HOST_ONLY_SOURCE,
       .project_modules = 2,
       .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "unused collection unchecked error stays outside closure",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .collection_source = UNCHECKED_COLLECTION_ERROR_SOURCE,
+      .project_modules = 1,
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "direct collection import checks error obligations",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport host \"core:host_only\"\n"
+                "pub Value :: () -> int { return 7; }\n",
+      .collection_source = UNCHECKED_COLLECTION_ERROR_SOURCE,
+      .message = "Error result is ignored on a reachable path; check, report, store or return it",
+      .oracle_package = "core:host_only",
+      .same_rejection = true },
+    { .name = "transitive collection import checks error obligations",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport host \"core:host_only\"\n"
+                "pub Value :: () -> int { return 7; }\n",
+      .collection_source = "package host_only\nimport dep \"core:host_dependency\"\n"
+                           "pub Value :: () -> int { return 2; }\n",
+      .collection_dependency = UNCHECKED_DEPENDENCY_ERROR_SOURCE,
+      .message = "Error result is ignored on a reachable path; check, report, store or return it",
+      .oracle_package = "core:host_dependency",
+      .same_rejection = true },
+    { .name = "independent project package checks error obligations",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\npub Value :: () -> int { return 7; }\n",
+      .library = UNCHECKED_PROJECT_ERROR_SOURCE,
+      .message = "Error result is ignored on a reachable path; check, report, store or return it",
+      .oracle_package = "project:lib",
+      .same_rejection = true },
+    { .name = "active collection executes checked error results",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport host \"core:host_only\"\n"
+                "pub Value :: () -> int { return host.Value(); }\n",
+      .collection_source = "package host_only\n@error pub Failure :: struct { code: int; }\n"
+                           "Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }\n"
+                           "pub Value :: () -> int { read := Read(); if read.error { return read.value + read.error.code; } return read.value; }\n",
+      .calls = { { .function = "Value", .arguments = "[]", .expected = "[10]" } } },
+#include "fallible_chibi_samples.h"
     { .name = "char parameters locals and named results keep their type",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -1399,6 +1453,144 @@ static const sample samples[] = {
                  { .function = "Assigned", .arguments = "[-129]", .expected = "[-128]" },
                  { .function = "Converted", .arguments = "[300]", .expected = "[127]" },
                  { .function = "Converted", .arguments = "[-129]", .expected = "[-128]" } } },
+    { .name = "optional errors beside named struct results",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Instant :: struct { ticks: i64; domain: u64; }\n"
+                "Failure :: union { Denied | Platform(code: int) }\n"
+                "Now :: (fail: bool) -> (instant: Instant, error: Failure?) {\n"
+                "    if fail { return({ticks: 3, domain: 8}, "
+                "Failure.Platform(17)); }\n"
+                "    return({ticks: 12, domain: 8}, nil);\n}\n"
+                "Use :: (fail: bool) -> int {\n"
+                "    result := Now(fail);\n"
+                "    error := result.error;\n"
+                "    if error {\n"
+                "        switch error { case .Denied: return -1; case "
+                ".Platform(code): return int(result.instant.ticks) + code; }\n"
+                "    }\n"
+                "    return int(result.instant.ticks);\n}\n"
+                "Empty :: () -> int { error: Failure? = nil; if error == nil { "
+                "return 1; } return 0; }\n",
+      .calls = { { .function = "Use", .arguments = "[false]", .expected = "[12]" },
+                 { .function = "Use", .arguments = "[true]", .expected = "[20]" },
+                 { .function = "Empty", .arguments = "[]", .expected = "[1]" } } },
+    { .name = "partial text and bytes beside optional record errors",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Failure :: struct { code: int; message: string; }\n"
+                "Read :: (fail: bool) -> (text: string, bytes: u8[], error: "
+                "Failure?) {\n"
+                "    if fail { return(\"partial\", [u8(3), u8(4)], {code: 7, "
+                "message: \"bad input\"}); }\n"
+                "    return(\"done\", [u8(8)], nil);\n}\n"
+                "Use :: (fail: bool) -> int {\n"
+                "    result := Read(fail);\n"
+                "    bytes := result.bytes;\n"
+                "    copy := bytes;\n"
+                "    copy[0] = 9;\n"
+                "    error := result.error;\n"
+                "    if error {\n"
+                "        if error.message != \"bad input\" { return -1; }\n"
+                "        if result.text != \"partial\" { return -2; }\n"
+                "        return int(bytes[0]) * 100 + int(bytes[1]) * 10 + "
+                "error.code;\n"
+                "    }\n"
+                "    if result.text != \"done\" { return -3; }\n"
+                "    return int(bytes[0]);\n}\n"
+                "Defaults :: () -> (text: string, bytes: u8[], error: "
+                "Failure?) { return; }\n"
+                "UseDefaults :: () -> int { result := Defaults(); if "
+                "result.error { return -1; }\n"
+                "    if result.text != \"\" { return -2; } return "
+                "length(result.bytes); }\n"
+                "Code :: (error: Failure?) -> int { if error == nil { return "
+                "0; } return error.code; }\n"
+                "Guarded :: (fail: bool) -> int { result := Read(fail); return "
+                "Code(result.error); }\n",
+      .calls = { { .function = "Use", .arguments = "[false]", .expected = "[8]" },
+                 { .function = "Use", .arguments = "[true]", .expected = "[347]" },
+                 { .function = "UseDefaults", .arguments = "[]", .expected = "[0]" },
+                 { .function = "Guarded", .arguments = "[false]", .expected = "[0]" },
+                 { .function = "Guarded", .arguments = "[true]", .expected = "[7]" } } },
+    { .name = "constant and dynamic byte array debugger origins",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Folded :: () -> u8[] { return [u8(1) + u8(2), u8(4)]; }\n"
+                "Mixed :: (value: u8) -> u8[] { return [u8(3), value]; }\n"
+                "Inferred :: () -> int { values := [u8(3), u8(4)]; "
+                "return int(values[0]) + int(values[1]); }\n",
+      .calls = { { .function = "Folded", .arguments = "[]", .expected = "[[3,4]]" },
+                 { .function = "Mixed", .arguments = "[7]", .expected = "[[3,7]]" },
+                 { .function = "Inferred", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "array conversion names preserve authored calls",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "u8 :: (value: int) -> int { return value + 1; }\n"
+                "Use :: () -> int[] { return [u8(3), u8(4)]; }\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[[4,5]]" } } },
+    { .name = "named syntax fact arrays survive forwarding and copies",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Node :: struct { kind: string; start: int; end: int; }\n"
+                "ReadSyntax :: () -> (nodes: Node[], fields: string[], named: "
+                "bool[], clean: bool) {\n"
+                "    node: Node = {kind: \"word\", start: 3, end: 7};\n"
+                "    return([node], [\"body\"], [true], true);\n}\n"
+                "Forward :: () -> (nodes: Node[], fields: string[], named: "
+                "bool[], clean: bool) {\n"
+                "    result := ReadSyntax();\n"
+                "    return(result.nodes, result.fields, result.named, "
+                "result.clean);\n}\n"
+                "Use :: () -> int {\n"
+                "    original := Forward();\n"
+                "    nodes := original.nodes; fields := original.fields; named "
+                ":= original.named;\n"
+                "    changed := nodes[0]; changed.kind = \"changed\"; "
+                "changed.start = 99;\n"
+                "    nodes[0] = changed; fields[0] = \"changed\"; named[0] = "
+                "false;\n"
+                "    if !original.clean { return -1; }\n"
+                "    if original.nodes[0].kind != \"word\" { return -2; }\n"
+                "    if original.fields[0] != \"body\" { return -3; }\n"
+                "    if !original.named[0] { return -4; }\n"
+                "    if nodes[0].kind != \"changed\" || nodes[0].start != 99 { "
+                "return -5; }\n"
+                "    if fields[0] != \"changed\" || named[0] { return -6; }\n"
+                "    return original.nodes[0].start * 100 + "
+                "original.nodes[0].end * 10 + length(original.fields);\n}\n"
+                "Defaults :: () -> (nodes: Node[], fields: string[], named: "
+                "bool[], clean: bool) { return; }\n"
+                "DefaultSize :: () -> int {\n"
+                "    result := Defaults(); if result.clean { return -1; }\n"
+                "    return length(result.nodes) + length(result.fields) + "
+                "length(result.named);\n}\n",
+      .calls = { { .function = "ReadSyntax", .arguments = "[]", .expected = "[[{\"kind\":\"word\",\"start\":3,\"end\":7}],[\"body\"],[true],true]" },
+                 { .function = "Use", .arguments = "[]", .expected = "[371]" },
+                 { .function = "DefaultSize", .arguments = "[]", .expected = "[0]" } } },
+    { .name = "optional presence preserves false zero and empty text",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Flag :: () -> bool? { return false; }\n"
+                "Count :: () -> int? { return 0; }\n"
+                "Text :: () -> string? { return \"\"; }\n"
+                "Absent :: () -> int? { return nil; }\n"
+                "Use :: () -> int {\n"
+                "    score: int = 0;\n"
+                "    if Flag() { score += 1; }\n"
+                "    if Count() { score += 10; }\n"
+                "    if Text() { score += 100; }\n"
+                "    if Absent() { score += 1000; }\n"
+                "    return score;\n}\n",
+      .calls = { { .function = "Use", .arguments = "[]", .expected = "[111]" } } },
+    { .name = "optional error payload requires a presence guard",
+      .group = TYPE_SAMPLES,
+      .same_rejection = true,
+      .source = "package facts\n"
+                "Failure :: struct { code: int; }\n"
+                "Use :: (error: Failure?) -> int { return error.code; }\n",
+      .message = "Optional component requires a presence guard before member "
+                 "access" },
     { .name = "named struct results",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -3107,6 +3299,17 @@ static const sample samples[] = {
                  { .function = "First", .arguments = "[]", .expected = "[7]" },
                  { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
                  { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "returned structs with array fields survive collections",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Pair :: struct { a: int; b: int; }\n"
+                "Bundle :: struct { codes: int[]; pairs: Pair[]; tail: Pair; }\n"
+                "Make :: (n: int) -> Bundle { p: Pair = {a: n, b: n + 1}; "
+                "return {codes: [n, n + 1, n + 2], pairs: [p, p], tail: p}; }\n"
+                "Main :: () -> int { total := 0; i := 0; while i < 400000 { "
+                "b := Make(i); total += b.codes[2] - b.pairs[1].b + b.tail.a - i; "
+                "i += 1; } return total; }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[400000]", .budget = 200000000 } } },
     { .name = "optional locals start absent and become present",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -5294,10 +5497,6 @@ static uint64_t variant_tag(int b, const char *union_name, const char *variant)
 {
     return fixture_variant_tag(&fixture, b, PACKAGE, union_name, variant);
 }
-static uint64_t tag(int b, const char *variant)
-{
-    return variant_tag(b, "Result", variant);
-}
 static bool prepare_backends(unsigned backends)
 {
     const source_package_input sources[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
@@ -5488,6 +5687,48 @@ static bool arguments(int b, bool game, const source_package_input *inputs, int 
 {
     return arguments_for(b, game, false, inputs, count, args);
 }
+typedef struct
+{
+    pin_value module, bytes, error;
+} compiler_result;
+static bool compiler_succeeded(const compiler_result *result)
+{
+    return !result->error.ptr;
+}
+static const pin_value *compiler_error(const compiler_result *result)
+{
+    const pin_union *error = result->error.ptr;
+    assert(error && error->count == 1);
+    return &error->values[0];
+}
+static bool compiler_call(
+    int b,
+    const char *entry,
+    const pin_value *arguments,
+    int count,
+    uintptr_t budget,
+    compiler_result *out
+)
+{
+    pin_value values[3];
+    REQUIRE(
+        compiler_fixture_call_results(&fixture, b, PACKAGE, entry, arguments, count, budget, &detached, values, 3)
+    );
+    REQUIRE(values[0].type == PIN_U64);
+    REQUIRE(values[1].type == PIN_U8 && values[1].container == PIN_CONTAINER_ARRAY);
+    REQUIRE(values[2].type == PIN_UNION && values[2].container == PIN_CONTAINER_SINGLE);
+    const pin_union *error = values[2].ptr;
+    REQUIRE(!error || (error->count == 1 && error->values[0].type == PIN_STRUCT));
+    if (error) {
+        const pin_array *bytes = values[1].ptr;
+        REQUIRE(values[0].u64 == 0);
+        REQUIRE(!bytes || bytes->count == 0);
+    }
+    *out = (compiler_result){ .module = values[0],
+                              .bytes = values[1],
+                              .error = values[2] };
+    return true;
+}
 static bool compile(
     int b,
     bool game,
@@ -5496,23 +5737,15 @@ static bool compile(
     const source_package_input *inputs,
     int count,
     uintptr_t budget,
-    pin_value *out
+    compiler_result *out
 )
 {
     pin_value args[ARGUMENTS + 1];
     REQUIRE(arguments_for(b, game, probe, inputs, count, args));
     args[ARGUMENTS] = linked_effects[game][probe][b];
-    REQUIRE(compiler_fixture_call(
-        &fixture,
-        b,
-        PACKAGE,
-        effects ? "CompileWithEffects" : "Compile",
-        args,
-        ARGUMENTS + effects,
-        budget,
-        &detached,
-        out
-    ));
+    REQUIRE(
+        compiler_call(b, effects ? "CompileWithEffects" : "Compile", args, ARGUMENTS + effects, budget, out)
+    );
     return true;
 }
 static uint64_t function_id(const char *name)
@@ -5623,7 +5856,7 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
         function_id(call->function),
         call->arguments,
         strlen(call->arguments),
-        TARGET_BUDGET,
+        call->budget ? call->budget : TARGET_BUDGET,
         &result
     );
     bool passed = valid && result.flow_status == FLOW_OK;
@@ -5920,10 +6153,10 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     REQUIRE(valid);
     return true;
 }
-/* The closure of a Compiled result. */
-static unsigned char *closure_bytes(const pin_union *value, size_t *length)
+/* Own the compiler's detached byte output after its result arena is retired. */
+static unsigned char *closure_bytes(const compiler_result *result, size_t *length)
 {
-    const pin_array *array = value->values[1].ptr;
+    const pin_array *array = result->bytes.ptr;
     *length = (size_t)array->count;
     unsigned char *bytes = xmalloc(*length);
     for (size_t i = 0; i < *length; i++) {
@@ -5941,22 +6174,17 @@ bool package_compiler_closure(
     size_t *length
 )
 {
-    assert(compiler_backend >= 0 && compiler_backend < 2);
+    assert(compiler_backend == 0 || compiler_backend == 1);
     *bytes = NULL;
     *length = 0;
-    pin_value output;
+    compiler_result output;
     bool valid = prepare_backends(1u << compiler_backend) &&
                  compile(compiler_backend, true, false, false, sources, count, budget, &output);
-    const pin_union *value = valid && output.type == PIN_UNION ? output.ptr : NULL;
-    if (valid && !value) {
-        fprintf(pu_errors(), "Authored closure compilation returned no Result\n");
-        valid = false;
-    }
-    if (valid && value->tag != tag(compiler_backend, "Compiled")) {
+    if (valid && !compiler_succeeded(&output)) {
         pin_value message, line, column;
-        if (get(&value->values[0], "message", &message) &&
-            get(&value->values[0], "line", &line) &&
-            get(&value->values[0], "column", &column)) {
+        if (get(compiler_error(&output), "message", &message) &&
+            get(compiler_error(&output), "line", &line) &&
+            get(compiler_error(&output), "column", &column)) {
             fprintf(
                 pu_errors(),
                 "Authored closure compilation: %s at %d:%d\n",
@@ -5968,7 +6196,7 @@ bool package_compiler_closure(
         valid = false;
     }
     if (valid) {
-        *bytes = closure_bytes(value, length);
+        *bytes = closure_bytes(&output, length);
     }
     cleanup();
     return valid;
@@ -5986,15 +6214,13 @@ static bool authored_tests(
     bool all_passed = true;
     for (int compiler = 0; compiler < 2; compiler++) {
         REQUIRE(prepare_backends(1u << compiler));
-        pin_value output;
+        compiler_result output;
         REQUIRE(compile(compiler, false, false, true, sources, count, COMPILE_BUDGET, &output));
-        const pin_union *value = output.ptr;
-        REQUIRE(output.type == PIN_UNION && value);
-        if (value->tag != tag(compiler, "Compiled")) {
+        if (!compiler_succeeded(&output)) {
             pin_value message, line, column;
-            REQUIRE(get(&value->values[0], "message", &message));
-            REQUIRE(get(&value->values[0], "line", &line));
-            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(get(compiler_error(&output), "message", &message));
+            REQUIRE(get(compiler_error(&output), "line", &line));
+            REQUIRE(get(compiler_error(&output), "column", &column));
             fprintf(
                 pu_errors(),
                 "Authored test compilation: %s at %d:%d\n",
@@ -6005,7 +6231,7 @@ static bool authored_tests(
             return false;
         }
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
+        unsigned char *bytes = closure_bytes(&output, &length);
         bool passed = true;
         for (int backend = 0; backend < 2; backend++) {
             char error[256];
@@ -7053,14 +7279,17 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length, bool h
 /* Each compiler backend has a focused selector. Bytecode compares source
  * points with stage zero; both compare explicit target effects. */
 /* Stage zero's packages for the sample, linked against the fixture's
- * natives, and its facts package. */
+ * natives, and its selected diagnostic package (facts by default). */
 static authoring_packages *oracle_packages(const sample *s, const authoring_package **root)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
+    source_package_collection collections[] = { { "core", "/sdk/core" } };
     source_package_snapshot_options options = { .project_root = "/compiler",
                                                 .files = inputs,
-                                                .file_count = count };
+                                                .file_count = count,
+                                                .collections = collections,
+                                                .collection_count = 1 };
     source_package_snapshot *snapshot = source_package_snapshot_new(&options);
     assert(snapshot && !source_package_snapshot_error_at(snapshot));
     script_lower_bindings bindings = authoring_native_bindings(fixture.native);
@@ -7072,10 +7301,11 @@ static authoring_packages *oracle_packages(const sample *s, const authoring_pack
         NULL
     );
     assert(packages);
+    const char *identity = s->oracle_package ? s->oracle_package : "project:facts";
     *root = NULL;
     for (int p = 0; p < authoring_packages_count(packages); p++) {
         const authoring_package *candidate = authoring_packages_at(packages, p);
-        if (!strcmp(candidate->identity, "project:facts")) {
+        if (!strcmp(candidate->identity, identity)) {
             *root = candidate;
         }
     }
@@ -7126,22 +7356,12 @@ static bool rejects_malformed_effects()
         args[ARGUMENTS] = (pin_value){ .type = PIN_I32,
                                        .container = PIN_CONTAINER_ARRAY,
                                        .ptr = masks };
-        pin_value out, message, document;
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            0,
-            PACKAGE,
-            "CompileWithEffects",
-            args,
-            ARGUMENTS + 1,
-            COMPILE_BUDGET,
-            &detached,
-            &out
-        ));
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(0, "Rejected"));
-        REQUIRE(get(&value->values[0], "message", &message));
-        REQUIRE(get(&value->values[0], "document", &document));
+        compiler_result out;
+        pin_value message, document;
+        REQUIRE(compiler_call(0, "CompileWithEffects", args, ARGUMENTS + 1, COMPILE_BUDGET, &out));
+        REQUIRE(!compiler_succeeded(&out));
+        REQUIRE(get(compiler_error(&out), "message", &message));
+        REQUIRE(get(compiler_error(&out), "document", &document));
         REQUIRE(
             !strcmp(pin_text(message).bytes, "unsupported compiler input or target") &&
             document.i == -1
@@ -7444,12 +7664,12 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
     }
     for (int i = 0; i < table_count; i++) {
         const sample *s = &table[i];
-        if (group != MATH_SAMPLES && s->group != group) {
+        if ((group != MATH_SAMPLES && s->group != group)) {
             continue;
         }
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
-        pin_value out;
+        compiler_result out;
         bool compiled = compile(b, s->game, s->c_string_probe, s->host_effects, inputs, count, COMPILE_BUDGET, &out);
         if (!compiled) {
             fprintf(
@@ -7466,10 +7686,8 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
             );
         }
         REQUIRE(compiled);
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value);
         if (s->message) {
-            if (value->tag != tag(b, "Rejected")) {
+            if (compiler_succeeded(&out)) {
                 fprintf(stderr, "package compiler %s: accepted\n", s->name);
                 if (s->same_rejection && s->oracle_message && s->line > 0 &&
                     s->column > 0) {
@@ -7483,12 +7701,12 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
                     );
                 }
             }
-            REQUIRE(value->tag == tag(b, "Rejected"));
+            REQUIRE(!compiler_succeeded(&out));
             pin_value message, line, column;
-            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(get(compiler_error(&out), "message", &message));
             REQUIRE(
-                get(&value->values[0], "line", &line) &&
-                get(&value->values[0], "column", &column)
+                get(compiler_error(&out), "line", &line) &&
+                get(compiler_error(&out), "column", &column)
             );
             bool position = s->same_rejection
                               ? rejects_like_oracle(
@@ -7515,11 +7733,11 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
             arena_free(&detached);
             continue;
         }
-        if (value->tag != tag(b, "Compiled")) {
+        if (!compiler_succeeded(&out)) {
             pin_value message, line, column;
-            get(&value->values[0], "message", &message);
-            get(&value->values[0], "line", &line);
-            get(&value->values[0], "column", &column);
+            get(compiler_error(&out), "message", &message);
+            get(compiler_error(&out), "line", &line);
+            get(compiler_error(&out), "column", &column);
             fprintf(
                 stderr,
                 "package compiler %s rejected: %s at %d:%d\n",
@@ -7529,9 +7747,9 @@ static bool run_sample_table(sample_group group, int b, const sample *table, int
                 column.i
             );
         }
-        REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+        REQUIRE(compiler_succeeded(&out));
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
+        unsigned char *bytes = closure_bytes(&out, &length);
         arena_free(&detached);
         if (s->project_modules) {
             REQUIRE(project_closure_only(bytes, length, s->project_modules));
@@ -7622,17 +7840,17 @@ static unsigned char *debug_free_closure(const sample *s, size_t *length)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS], out;
+    pin_value args[ARGUMENTS];
+    compiler_result out;
     if (!arguments(1, false, inputs, count, args)) {
         return NULL;
     }
     args[DEBUG_ARGUMENT].b = false;
-    if (!compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)) {
+    if (!compiler_call(1, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &out)) {
         return NULL;
     }
-    const pin_union *value = out.ptr;
-    bool compiled = out.type == PIN_UNION && value && value->tag == tag(1, "Compiled");
-    unsigned char *bytes = compiled ? closure_bytes(value, length) : NULL;
+    unsigned char *bytes = compiler_succeeded(&out) ? closure_bytes(&out, length)
+                                                    : NULL;
     arena_free(&detached);
     return bytes;
 }
@@ -7727,11 +7945,10 @@ static uint64_t declaring_steps(int records)
     source_package_input input = { "facts/Main.chibi", source, (size_t)used };
     behavior_execution_scope scope = { .remaining = UINT64_MAX };
     behavior_execution_scope_begin(&scope);
-    pin_value out;
+    compiler_result out;
     bool called = compile(0, false, false, false, &input, 1, COMPILE_BUDGET, &out);
     behavior_execution_scope_end(&scope);
-    const pin_union *value = called ? out.ptr : NULL;
-    bool compiled = value && out.type == PIN_UNION && value->tag == tag(0, "Compiled");
+    bool compiled = called && compiler_succeeded(&out);
     arena_free(&detached);
     return compiled ? UINT64_MAX - scope.remaining : 0;
 }
@@ -7779,13 +7996,11 @@ TEST_CASE(package_compiler_asserts_without_native_capability)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(&cases[i], inputs);
         for (int b = 0; b < 2; b++) {
-            pin_value out;
+            compiler_result out;
             REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-            const pin_union *value = out.ptr;
-            REQUIRE(out.type == PIN_UNION && value);
-            REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+            REQUIRE(compiler_succeeded(&out));
             size_t length;
-            unsigned char *bytes = closure_bytes(value, &length);
+            unsigned char *bytes = closure_bytes(&out, &length);
             arena_free(&detached);
             native_capabilities *native;
             package_collection *packages = read_packages(bytes, length, &native, BEHAVIOR_BYTECODE);
@@ -7832,17 +8047,14 @@ static bool approved_float_conversion_admission(int compiler, bool constants)
         source_package_input source = { "facts/Main.chibi",
                                         item->source,
                                         strlen(item->source) };
-        pin_value out;
+        compiler_result out;
         REQUIRE(compile(compiler, false, false, false, &source, 1, COMPILE_BUDGET, &out));
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value);
-        REQUIRE(value->tag == tag(compiler, "Compiled") || value->tag == tag(compiler, "Rejected"));
-        bool accepted = value->tag == tag(compiler, "Compiled");
+        bool accepted = compiler_succeeded(&out);
         if (!accepted) {
             pin_value message, line, column;
-            REQUIRE(get(&value->values[0], "message", &message));
-            REQUIRE(get(&value->values[0], "line", &line));
-            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(get(compiler_error(&out), "message", &message));
+            REQUIRE(get(compiler_error(&out), "line", &line));
+            REQUIRE(get(compiler_error(&out), "column", &column));
             REQUIRE(line.type == PIN_I32 && column.type == PIN_I32);
             fprintf(
                 stderr,
@@ -7890,14 +8102,14 @@ static bool approved_float_conversion_admission(int compiler, bool constants)
             );
             if (!accepted) {
                 pin_value message;
-                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(compiler_error(&out), "message", &message));
                 fprintf(stderr, "  %s\n", pin_text(message).bytes);
             }
             agreed = false;
         }
         if (accepted && item->accepted) {
             size_t length;
-            unsigned char *bytes = closure_bytes(value, &length);
+            unsigned char *bytes = closure_bytes(&out, &length);
             arena_free(&detached);
             sample_call call = { .function = "Fold",
                                  .arguments = item->arguments,
@@ -7961,6 +8173,14 @@ TEST_CASE(package_compiler_builds_runnable_typed_packages)
 TEST_CASE(package_compiler_builds_runnable_typed_packages_compiled)
 {
     return run_samples(TYPE_SAMPLES, 1);
+}
+TEST_CASE(package_compiler_checks_fallible_source_results)
+{
+    return run_samples(FALLIBLE_SAMPLES, 0);
+}
+TEST_CASE(package_compiler_checks_fallible_source_results_compiled)
+{
+    return run_samples(FALLIBLE_SAMPLES, 1);
 }
 TEST_CASE(package_compiler_builds_runnable_collection_packages)
 {
@@ -8088,26 +8308,25 @@ static bool stage_two_literals()
 }
 /* Whether stage two, loaded in `host`, compiles sample `s` as stage one does:
  * to the same closure, or to the same rejection. A closure is compared as
- * bytes, since its Result as JSON outgrows the host's projection limits. */
+ * bytes, since its JSON output outgrows the host's projection limits. */
 static bool stage_two_sample(const sample *s)
 {
     source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
-    pin_value args[ARGUMENTS + 1], out;
+    pin_value args[ARGUMENTS + 1];
+    compiler_result out;
     REQUIRE(arguments_for(1, s->game, s->c_string_probe, inputs, count, args));
     args[ARGUMENTS] = linked_effects[s->game][s->c_string_probe][1];
     int argument_count = ARGUMENTS + s->host_effects;
     const char *entry_name = s->host_effects ? "CompileWithEffects" : "Compile";
-    REQUIRE(
-        compiler_fixture_call(&fixture, 1, PACKAGE, entry_name, args, argument_count, COMPILE_BUDGET, &detached, &out)
-    );
-    const pin_union *value = out.ptr;
+    REQUIRE(compiler_call(1, entry_name, args, argument_count, COMPILE_BUDGET, &out));
     size_t length, expected_length;
     char *json = document_json(args, argument_count, &length);
-    bool compiled = value->tag == tag(1, "Compiled");
+    bool compiled = compiler_succeeded(&out);
+    const pin_value outputs[] = { out.module, out.bytes, out.error };
     unsigned char *expected = compiled
-                                ? closure_bytes(value, &expected_length)
-                                : (unsigned char *)document_json(&out, 1, &expected_length);
+                                ? closure_bytes(&out, &expected_length)
+                                : (unsigned char *)document_json(outputs, 3, &expected_length);
     arena_free(&detached);
     bool same;
     if (compiled) {
@@ -8178,6 +8397,7 @@ static int copying_functions(const execution_module_plan *p)
     const char *const once[] = { "Compile",
                                  "CompileClosure",
                                  "CompileWithEffects",
+                                 "CompileInput",
                                  "CompileClosureWithEffects",
                                  "CompileBehavior",
                                  "CompileBehaviorResolved",
@@ -8252,21 +8472,18 @@ TEST_CASE(package_compiler_compiles_itself)
     REQUIRE(prepare());
     source_package_input inputs[BOOTSTRAP_FILES];
     int count = bootstrap_inputs(inputs);
-    pin_value args[ARGUMENTS], out;
+    pin_value args[ARGUMENTS];
+    compiler_result out;
     REQUIRE(arguments(1, false, inputs, count, args));
     /* The compiler is compiled without debugger points and watches, which
      * no one debugging a game steps through. */
     args[DEBUG_ARGUMENT].b = false;
-    REQUIRE(
-        compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, SELF_BUDGET, &detached, &out)
-    );
-    const pin_union *value = out.ptr;
-    REQUIRE(out.type == PIN_UNION && value);
-    if (value->tag != tag(1, "Compiled")) {
+    REQUIRE(compiler_call(1, "Compile", args, ARGUMENTS, SELF_BUDGET, &out));
+    if (!compiler_succeeded(&out)) {
         pin_value message, line, column;
-        get(&value->values[0], "message", &message);
-        get(&value->values[0], "line", &line);
-        get(&value->values[0], "column", &column);
+        get(compiler_error(&out), "message", &message);
+        get(compiler_error(&out), "line", &line);
+        get(compiler_error(&out), "column", &column);
         fprintf(
             stderr,
             "package compiler stage one rejected: %s at %d:%d\n",
@@ -8275,9 +8492,9 @@ TEST_CASE(package_compiler_compiles_itself)
             column.i
         );
     }
-    REQUIRE(value->tag == tag(1, "Compiled") && value->count == 2);
+    REQUIRE(compiler_succeeded(&out));
     size_t length, json_length;
-    unsigned char *stage_two = closure_bytes(value, &length);
+    unsigned char *stage_two = closure_bytes(&out, &length);
     char *json = document_json(args, ARGUMENTS, &json_length);
     arena_free(&detached);
     char error[256];
@@ -8293,10 +8510,34 @@ TEST_CASE(package_compiler_compiles_itself)
     REQUIRE(target && compiled_arguments);
     bool target_equal = true;
     for (size_t i = 0; i < 6; i++) {
-        target_equal &= yyjson_equals(
-            yyjson_arr_get(yyjson_doc_get_root(target), i),
-            yyjson_arr_get(yyjson_doc_get_root(compiled_arguments), TARGET_ARGUMENT + i)
+        yyjson_val *host_part = yyjson_arr_get(yyjson_doc_get_root(target), i);
+        yyjson_val *argument_part = yyjson_arr_get(
+            yyjson_doc_get_root(compiled_arguments),
+            TARGET_ARGUMENT + i
         );
+        bool same = yyjson_equals(host_part, argument_part);
+        if (!same) {
+            char *host_text = yyjson_val_write(host_part, 0, NULL);
+            char *argument_text = yyjson_val_write(argument_part, 0, NULL);
+            size_t at = 0;
+            while (host_text[at] && argument_text[at] &&
+                   host_text[at] == argument_text[at]) {
+                at++;
+            }
+            size_t from = at > 120 ? at - 120 : 0;
+            fprintf(
+                stderr,
+                "self-hosted target part %zu differs at byte %zu:\n host: "
+                "%.240s\n args: %.240s\n",
+                i,
+                at,
+                host_text + from,
+                argument_text + from
+            );
+            free(host_text);
+            free(argument_text);
+        }
+        target_equal &= same;
     }
     yyjson_doc_free(compiled_arguments);
     yyjson_doc_free(target);
@@ -8365,16 +8606,7 @@ typedef struct
 {
     const char *name, *source;
 } behavior_sample;
-static const char COUNTER[] = "// Behavior state that survives between steps, "
-                              "written to a component.\n"
-                              "Counter :: behavior {\n"
-                              "    steps: int = 0\n"
-                              "\n"
-                              "    on Tick :: () {\n"
-                              "        steps += 1\n"
-                              "        self.Spot.x = steps\n"
-                              "    }\n"
-                              "}\n";
+;
 static const char
     TEXT_STATE[] = "TextState :: behavior {\n"
                    "    label: string = \"seed\"\n"
@@ -8388,185 +8620,7 @@ static const char
                    "            self.Spot.x = 2\n"
                    "        }\n"
                    "    }\n}\n";
-static const behavior_sample behavior_samples[] = {
-    { "Counter", COUNTER },
-    { "BoolState",
-      "BoolState :: behavior {\n"
-      "    active: bool = true\n"
-      "    on Tick :: () {\n"
-      "        if active { self.Spot.x = 1; } else { self.Spot.x = 2; }\n"
-      "        active = !active\n"
-      "    }\n}\n" },
-    { "InferredState",
-      "InferredState :: behavior {\n"
-      "    active := false\n"
-      "    count := 1\n"
-      "    angle := 0.5\n"
-      "    hex := 0x1e\n"
-      "    wide := 4294967297\n"
-      "    on Tick :: () {\n"
-      "        active = !active\n"
-      "        count += 1\n"
-      "        angle += 0.5\n"
-      "        if active { self.Spot.x = count; } else { self.Spot.x = "
-      "number(angle); "
-      "}\n"
-      "    }\n}\n" },
-    { "EntityState",
-      "EntityState :: behavior {\n"
-      "    target: entity\n"
-      "    on Tick :: () {\n"
-      "        target = self\n"
-      "    }\n}\n" },
-    { "EntityNullState",
-      "EntityNullState :: behavior {\n"
-      "    target: entity = null\n"
-      "    on Tick :: () { target = self; }\n"
-      "}\n" },
-    { "EntityZeroState",
-      "EntityZeroState :: behavior {\n"
-      "    target: entity = 0\n"
-      "    on Tick :: () { target = self; }\n"
-      "}\n" },
-    { "EntitySignedZeroState",
-      "EntitySignedZeroState :: behavior {\n"
-      "    negative: entity = -0\n"
-      "    positive: entity = +0.0\n"
-      "    on Tick :: () {\n"
-      "        negative = self\n"
-      "        positive = self\n"
-      "        negative = -0.0\n"
-      "        positive = +0\n"
-      "    }\n}\n" },
-    { "EntityResetState",
-      "EntityResetState :: behavior {\n"
-      "    target: entity\n"
-      "    ticks: int = 0\n"
-      "    on Tick :: () {\n"
-      "        if ticks == 0 { target = self; }\n"
-      "        if ticks == 1 { target = null; }\n"
-      "        if ticks == 2 { target = self; }\n"
-      "        if ticks == 3 { target = 0; }\n"
-      "        ticks += 1\n"
-      "    }\n}\n" },
-    { "EntityEqualState",
-      "EntityEqualState :: behavior {\n"
-      "    target: entity\n"
-      "    on Tick :: () {\n"
-      "        target = self\n"
-      "        if target == self { self.Spot.x += 1; }\n"
-      "        if target != self { self.Spot.y += 1; }\n"
-      "    }\n}\n" },
-    { "NamedSpot",
-      "NamedSpot :: behavior {\n"
-      "    Ready :: () -> (Result: bool = false) { return self.Spot.w > 0; }\n"
-      "    Read :: () -> (Point: Spot) { Point.x = 3; Point.y = 4; return; }\n"
-      "    Bare :: () -> (Point: Spot) { return; }\n"
-      "    Field :: (value: Spot) -> number { return value.x; }\n"
-      "    Has :: (value: Spot) -> bool { return value.resolved == self; }\n"
-      "    on Tick :: () { if Ready() { self.Spot = Read().Point; } }\n"
-      "}\n" },
-    { "TextState", TEXT_STATE },
-    { "InferredTextState",
-      "InferredTextState :: behavior {\n"
-      "    label := \"a\\u0000b\"\n"
-      "    on Tick :: () {\n"
-      "        if label == \"a\\u0000b\" { self.Spot.x += 1; }\n"
-      "    }\n}\n" },
-    { "ScalarNullState",
-      "ScalarNullState :: behavior {\n"
-      "    active: bool = null\n"
-      "    count: int = null\n"
-      "    label: string = null\n"
-      "    on Tick :: () {\n"
-      "        if !active && label == \"\" { self.Spot.x = count; }\n"
-      "    }\n}\n" },
-    { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick :: () {\n        steps = 7\n    }\n}\n" },
-    { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: number) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
-    { "Mark", "Mark :: behavior {\n    on tick :: () {\n        self.Spot.x = 3\n    }\n}\n" },
-    { "Sink", "Sink :: behavior {\n    on Tick :: () {\n        self.Spot.y = -2.5\n    }\n}\n" },
-    { "Copy", "Copy :: behavior {\n    on Tick :: () {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
-    { "Grow", "Grow :: behavior {\n    on Tick :: () {\n        self.Spot.x += 1\n    }\n}\n" },
-    { "Swap", "Swap :: behavior {\n    on Tick :: () {\n        self.Spot = self.Spot\n    }\n}\n" },
-    { "OtherComponent",
-      "OtherComponent :: behavior {\n"
-      "    target: entity\n"
-      "    on Tick :: () {\n"
-      "        moved := self.Spot\n"
-      "        moved.x += 1\n"
-      "        globals.Target.Spot = moved\n"
-      "        globals.Target.Spot.y = moved.x * 2\n"
-      "        target = globals.Target\n"
-      "        target.Spot.x += 0.5\n"
-      "    }\n}\n" },
-    { "LocalComponent",
-      "LocalComponent :: behavior {\n"
-      "    on Tick :: () {\n"
-      "        other := globals.Target\n"
-      "        other.Spot.y -= 1\n"
-      "        other.Spot = other.Spot\n"
-      "    }\n}\n" },
-    { "Turn",
-      "Turn :: behavior {\n    angle: number = 0.5\n    on Tick :: "
-      "(DeltaSeconds: number) {\n        "
-      "angle += DeltaSeconds * 2\n"
-      "        self.Spot.x = angle\n    }\n}\n" },
-    { "Fold",
-      "Fold :: behavior {\n    Wrap :: (value: number, limit: number) -> "
-      "number "
-      "{\n"
-      "        if value > limit {\n            return value - limit * 2\n      "
-      "  }\n        return value\n    }\n"
-      "    Split :: (value: number) -> (whole: int, rest: number) {\n        "
-      "whole = int(value)\n"
-      "        rest = value - whole\n        return (whole, rest)\n    }\n    "
-      "on Tick :: () {\n"
-      "        self.Spot.x = Wrap(self.Spot.x + 7, 20)\n        parts := "
-      "Split(self.Spot.x)\n"
-      "        self.Spot.y = parts.whole * 2 + parts.rest\n    }\n}\n" },
-    { "Halve",
-      "Halve :: behavior {\n    on Tick :: (DeltaSeconds: number) {\n        "
-      "self.Spot.y = "
-      "self.Spot.w / 2 - DeltaSeconds\n"
-      "        if self.Spot.w > 3 {\n            self.Spot.x *= 2.5\n        "
-      "}\n    }\n}\n" },
-    { "Pair",
-      "Pair :: behavior {\n    a: int = 2\n    b: int = 5\n    on Tick :: () "
-      "{\n     "
-      "   a *= 2\n"
-      "        b = a - 1\n        self.Spot.x = b\n        self.Spot.y = a\n   "
-      " }\n}\n" },
-    { "Steer",
-      "Steer :: behavior {\n    on Move :: (y: number, x: number) {\n        "
-      "self.Spot.x = x - y\n        self.Spot.y = y\n    }\n}\n" },
-    { "Lift", "Lift :: behavior {\n    on Move :: (y: number) {\n        self.Spot.y += y\n    }\n}\n" },
-    { "KeyedEntityState",
-      "KeyedEntityState :: behavior {\n"
-      "    target: entity\n"
-      "    ticks: int = 0\n"
-      "    on Tick :: () {\n"
-      "        if ticks == 0 { target = globals.Terrain; }\n"
-      "        if ticks == 1 { target = null; }\n"
-      "        if ticks == 2 { target = globals.Terrain; }\n"
-      "        if ticks == 3 { target = 0; }\n"
-      "        if target == self { self.Spot.x += 1; }\n"
-      "        if target != self { self.Spot.y += 1; }\n"
-      "        ticks += 1\n"
-      "    }\n}\n" },
-    { "FieldEntityState",
-      "FieldEntityState :: behavior {\n"
-      "    target: entity\n"
-      "    ticks: int = 0\n"
-      "    on Tick :: () {\n"
-      "        if ticks == 0 { target = self.Spot.owner; }\n"
-      "        if ticks == 1 { target = self.Spot.resolved; }\n"
-      "        if ticks == 2 { target = null; }\n"
-      "        if ticks == 3 { target = 0; }\n"
-      "        if target == self { self.Spot.x += 1; }\n"
-      "        if target != self { self.Spot.y += 1; }\n"
-      "        ticks += 1\n"
-      "    }\n}\n" },
-};
+;
 /* Sources stage one rejects, with its message. Where stage zero rejects one
  * too, stage one gives its message at its position. */
 typedef struct
@@ -8574,49 +8628,7 @@ typedef struct
     const char *source, *message;
     bool stage_zero;
 } behavior_rejection;
-static const behavior_rejection behavior_rejections[] = {
-    { "Late :: behavior {\n    after Tick {\n    }\n}\n",
-      "only `on Event` handlers are supported yet",
-      false },
-    { "Jump :: behavior {\n    on Jump :: () {\n    }\n}\n", "Unknown event 'Jump'", false },
-    { "Fixed :: behavior {\n    on Tick :: () {\n        self.Spot.w = 1\n    "
-      "}\n}\n",
-      "Assignment requires a writable value",
-      false },
-    { "Missing :: behavior { flag: bool; }", "'flag' requires a default value", true },
-    { "Missing :: behavior { count: int; }", "'count' requires a default value", true },
-    { "Missing :: behavior { label: string; }", "'label' requires a default value", true },
-    { "Nonzero :: behavior { target: entity = 1; }",
-      "entity default requires null or zero",
-      false },
-    { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: number, more: "
-      "number) "
-      "{\n    }\n}\n",
-      "Tick has no payload field 'more'",
-      true },
-    { "Drift :: behavior {\n    on Move :: (z: number, x: number) {\n    "
-      "}\n}\n",
-      "Move has no payload field 'z'",
-      true },
-    { "Twice :: behavior {\n    on Move :: (x: number, X: number) {\n    "
-      "}\n}\n",
-      "Payload field 'x' is listed twice",
-      true },
-    { "Scale :: behavior {\n    on Tick :: () {\n        self.Spot *= 2\n    "
-      "}\n}\n",
-      "operator does not apply to these operands",
-      false },
-    { "Scale :: behavior {\n    on Tick :: () {\n        globals.Terrain.Spot "
-      "*= 2\n    "
-      "}\n}\n",
-      "operator does not apply to these operands",
-      false },
-    { "Pace :: behavior {\n    on Tick :: () {\n        self.Spot.x = pace\n   "
-      " "
-      "}\n}\n",
-      "reading the global 'pace' is not supported yet",
-      false },
-};
+;
 enum
 {
     SPOT = 101,
@@ -8931,25 +8943,6 @@ static bool game_global(void *, uint64_t id, behavior_function_instruction *out)
     return true;
 }
 /* Stage zero's module of `source`. */
-static execution_module *stage_zero_behavior(const char *source)
-{
-    script_catalog catalog = game_catalog();
-    script_syntax *syntax = script_parse(source);
-    script_analysis *analysis = script_analyze(syntax, &catalog);
-    const script_lower_bindings bindings = { .global = game_global, .host = game_host };
-    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
-    char error[256] = { 0 };
-    execution_module *module = analysis->diagnostic_count || plan->diagnostic_count
-                                 ? NULL
-                                 : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
-    if (!module) {
-        fprintf(stderr, "stage zero behavior: %s\n", error);
-    }
-    execution_module_plan_free(plan);
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    return module;
-}
 static pin_value u64(uint64_t value)
 {
     return (pin_value){ .type = PIN_U64, .u64 = value };
@@ -9076,6 +9069,9 @@ static bool game_arguments(int b, int first_native, pin_value *out)
         REQUIRE(put(&type, "count", t->field_count));
         REQUIRE(put_value(&type, "relationship", flag(false)));
         REQUIRE(put(&type, "traits", 0));
+        REQUIRE(
+            put_value(&type, "error", flag(script_catalog_type_contains_error(&catalog, t->type)))
+        );
         apush(types, type);
         for (int j = 0; j < t->field_count; j++) {
             pin_value field = row(b, "GameField");
@@ -9393,141 +9389,8 @@ static bool same_declarations(const execution_module *expected, const execution_
     }
     return true;
 }
-/* A dispatch that ran, or found no handler in a module that handles only
- * other events. */
-static bool handled(int status)
-{
-    return status == FLOW_OK || status == FLOW_ERR_UNKNOWN_EVENT;
 }
-/* Each Tick and Move, both modules' owners and targets hold the same Spots,
- * and the owners the same states. */
-static bool plays_alike(execution_module *expected, execution_module *actual)
-{
-    player e = { 0 }, a = { 0 };
-    bool alike = play(expected, &e) && play(actual, &a);
-    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
-    const pin_value move[] = { { .type = PIN_F32, .f = 1.5f },
-                               { .type = PIN_F32, .f = -4.0f } };
-    for (int tick = 0; alike && tick < TICKS; tick++) {
-        int left = execution_instance_dispatch(e.instance, TICK, &delta, 1, 0, 0, 1000);
-        int right = execution_instance_dispatch(a.instance, TICK, &delta, 1, 0, 0, 1000);
-        int moved = execution_instance_dispatch(e.instance, MOVE, move, 2, 0, 0, 1000);
-        int moving = execution_instance_dispatch(a.instance, MOVE, move, 2, 0, 0, 1000);
-        const spot *x = ecs_component_data_const(e.world, e.owner, SPOT_COMPONENT);
-        const spot *y = ecs_component_data_const(a.world, a.owner, SPOT_COMPONENT);
-        const spot *u = ecs_component_data_const(e.world, e.target, SPOT_COMPONENT);
-        const spot *v = ecs_component_data_const(a.world, a.target, SPOT_COMPONENT);
-        alike = left == right && moved == moving && handled(left) &&
-                handled(moved) && x && y && !memcmp(x, y, sizeof *x) && u &&
-                v && !memcmp(u, v, sizeof *u);
-        for (int i = 0; alike && i < expected->plan.state_count; i++) {
-            const pin_value *kept = execution_instance_state(
-                e.instance,
-                expected->plan.states[i].id
-            );
-            const pin_value *held = execution_instance_state(
-                a.instance,
-                expected->plan.states[i].id
-            );
-            alike = kept && held && pin_value_equal(kept, held);
-        }
-        if (!alike) {
-            fprintf(
-                stderr,
-                "behavior tick %d: flow %d/%d x %g/%g y %g/%g\n",
-                tick,
-                left,
-                right,
-                x ? x->x : -1.0,
-                y ? y->x : -1.0,
-                x ? x->y : -1.0,
-                y ? y->y : -1.0
-            );
-        }
-    }
-    stop(&e);
-    stop(&a);
-    return alike;
 }
-/* Stage one's module of `sample` against stage zero's, on backend `b`. */
-static bool behaves_alike(int b, const behavior_sample *sample)
-{
-    execution_module *expected = stage_zero_behavior(sample->source);
-    execution_module *actual = NULL;
-    bool same = expected &&
-                stage_one_behavior(b, sample->name, sample->source, &actual) &&
-                same_declarations(expected, actual) &&
-                same_points(expected, actual) &&
-                same_watches(expected, actual) && plays_alike(expected, actual);
-    if (!same) {
-        fprintf(stderr, "behavior %s differs on backend %d\n", sample->name, b);
-    }
-    execution_module_free(actual);
-    execution_module_free(expected);
-    return same;
-}
-/* Stage zero's first diagnostic of `source`. */
-static script_diagnostic stage_zero_diagnostic(const char *source)
-{
-    script_catalog catalog = game_catalog();
-    script_syntax *syntax = script_parse(source);
-    script_analysis *analysis = script_analyze(syntax, &catalog);
-    script_diagnostic first = analysis->diagnostic_count
-                                ? analysis->diagnostics[0]
-                                : (script_diagnostic){ 0 };
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    return first;
-}
-/* Stage one rejects the source with exactly the message, and where stage zero
- * rejects it too, with stage zero's message at its position. */
-static bool rejects(int b, const behavior_rejection *rejection)
-{
-    pin_value out;
-    REQUIRE(compile_behavior(b, "Rejected", rejection->source, &out));
-    REQUIRE(
-        out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY &&
-        (!out.ptr || !((const pin_array *)out.ptr)->count)
-    );
-    arena_free(&detached);
-    script_catalog catalog = game_catalog();
-    REQUIRE(
-        catalog_compile(b, &catalog, "Rejected", rejection->source, "BehaviorRejectionWithCatalog", &out)
-    );
-    REQUIRE(out.type == PIN_STR);
-    const char *message = pin_text(out).bytes;
-    int line = 0, column = 0, consumed = 0;
-    bool rejected = sscanf(message, "Rejected:%d:%d: %n", &line, &column, &consumed) == 2 &&
-                    consumed > 0 && !strcmp(message + consumed, rejection->message);
-    if (rejected && rejection->stage_zero) {
-        script_diagnostic expected = stage_zero_diagnostic(rejection->source);
-        rejected = !strcmp(expected.message, rejection->message) &&
-                   expected.range.line == line && expected.range.column == column;
-    }
-    if (!rejected) {
-        fprintf(stderr, "behavior rejection: wanted '%s', got '%s'\n", rejection->message, message);
-    }
-    arena_free(&detached);
-    return rejected;
-}
-/* A project names a behavior by its path, and the IDs follow it. */
-static bool takes_project_identities(int b)
-{
-    const char *identity = "behaviors/Counter.chibi";
-    execution_module *module = NULL;
-    REQUIRE(stage_one_behavior(b, identity, COUNTER, &module));
-    char handler[128];
-    snprintf(handler, sizeof handler, "%s:%d:1", identity, (int)(strstr(COUNTER, "on Tick") - COUNTER));
-    const execution_module_plan *p = &module->plan;
-    bool named = p->id == script_catalog_id("module", identity) &&
-                 p->state_count == 1 &&
-                 p->states[0].id ==
-                     script_catalog_id("symbol", "behaviors/Counter.chibi:1:steps") &&
-                 p->function_count == 1 &&
-                 p->functions[0].id == script_catalog_id("function", handler);
-    execution_module_free(module);
-    REQUIRE(named);
-    return true;
 }
 /* Production catalog export must carry nominal native ports all the way to
  * prepared host banks. SpotAlias shares Spot's layout; OtherSpot does not
@@ -9545,244 +9408,27 @@ enum
     CATALOG_OTHER_RESULT,
     CATALOG_UNSUPPORTED
 };
-static const type_desc catalog_alias_type = { .name = "SpotAlias",
-                                              .size = sizeof(spot),
-                                              .fields = spot_fields,
-                                              .field_count = sizeof spot_fields /
-                                                             sizeof *spot_fields,
-                                              .alias_of = "Spot" };
-static const type_desc catalog_other_type = { .name = "OtherSpot",
-                                              .size = sizeof(spot),
-                                              .fields = spot_fields,
-                                              .field_count = sizeof spot_fields /
-                                                             sizeof *spot_fields };
-static const script_catalog_parameter catalog_spot_port = {
-    .name = "point",
-    .type = { .storage = PIN_STRUCT, .nominal = SPOT }
-};
-static const script_catalog_parameter catalog_entity_port = {
-    .name = "owner",
-    .type = { .storage = PIN_HANDLE, .nominal = ENTITY }
-};
-static const script_catalog_parameter catalog_check_port = { .name = "valid",
-                                                             .type = { .storage = PIN_BOOL } };
-static const script_catalog_parameter catalog_pair_ports[] = {
-    { .name = "point", .type = { .storage = PIN_STRUCT, .nominal = SPOT } },
-    { .name = "owner", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
-};
-static const script_catalog_parameter catalog_alias_port = {
-    .name = "point",
-    .type = { .storage = PIN_STRUCT, .nominal = CATALOG_ALIAS }
-};
-static const script_catalog_parameter catalog_other_port = {
-    .name = "point",
-    .type = { .storage = PIN_STRUCT, .nominal = CATALOG_OTHER }
-};
-static const script_catalog_parameter catalog_unsupported_port = {
-    .name = "points",
-    .type = { .storage = PIN_STRUCT, .container = PIN_CONTAINER_ARRAY, .nominal = SPOT }
-};
-static script_catalog native_game_catalog()
-{
-    static script_catalog_type types[sizeof game_types / sizeof *game_types + 2];
-    static script_catalog_capability
-        capabilities[sizeof game_capabilities / sizeof *game_capabilities + CATALOG_UNSUPPORTED - CATALOG_ECHO + 1];
-    script_catalog catalog = game_catalog();
-    memcpy(types, catalog.types, (size_t)catalog.type_count * sizeof *types);
-    int alias = catalog.type_count, other = alias + 1;
-    int spot_index = type_index(&catalog, SPOT);
-    assert(spot_index >= 0);
-    types[alias] = types[spot_index];
-    types[alias].id = CATALOG_ALIAS;
-    types[alias].name = catalog_alias_type.name;
-    types[alias].type.nominal = CATALOG_ALIAS;
-    types[alias].underlying = SPOT;
-    types[alias].component = false;
-    types[alias].component_id = 0;
-    types[other] = types[alias];
-    types[other].id = CATALOG_OTHER;
-    types[other].name = catalog_other_type.name;
-    types[other].type.nominal = CATALOG_OTHER;
-    types[other].underlying = 0;
-    memcpy(capabilities, catalog.capabilities, (size_t)catalog.capability_count * sizeof *capabilities);
-    const script_catalog_capability natives[] = {
-        { .id = CATALOG_ECHO,
-          .name = "echo_spot",
-          .parameters = &catalog_spot_port,
-          .parameter_count = 1,
-          .results = &catalog_spot_port,
-          .result_count = 1 },
-        { .id = CATALOG_ENTITY,
-          .name = "echo_entity",
-          .parameters = &catalog_entity_port,
-          .parameter_count = 1,
-          .results = &catalog_entity_port,
-          .result_count = 1 },
-        { .id = CATALOG_PAIR,
-          .name = "pair_spot",
-          .parameters = catalog_pair_ports,
-          .parameter_count = 2,
-          .results = catalog_pair_ports,
-          .result_count = 2 },
-        { .id = CATALOG_ALIASED,
-          .name = "alias_spot",
-          .parameters = &catalog_alias_port,
-          .parameter_count = 1,
-          .results = &catalog_alias_port,
-          .result_count = 1 },
-        { .id = CATALOG_SEED,
-          .name = "entity_seed",
-          .results = &catalog_entity_port,
-          .result_count = 1 },
-        { .id = CATALOG_CHECK,
-          .name = "entity_ok",
-          .parameters = &catalog_entity_port,
-          .parameter_count = 1,
-          .results = &catalog_check_port,
-          .result_count = 1 },
-        { .id = CATALOG_OTHER_RESULT,
-          .name = "other_spot",
-          .results = &catalog_other_port,
-          .result_count = 1 },
-        { .id = CATALOG_UNSUPPORTED,
-          .name = "unsupported",
-          .results = &catalog_unsupported_port,
-          .result_count = 1 },
-    };
-    int first = catalog.capability_count;
-    int native_count = sizeof natives / sizeof *natives;
-    for (int i = 0; i < native_count; i++) {
-        capabilities[first + i] = natives[i];
-        capabilities[first + i].kind = SCRIPT_CAPABILITY_FUNCTION;
-        capabilities[first + i].effects = SCRIPT_EFFECT_HOST;
-        capabilities[first + i].completion_outcome = -1;
-    }
-    catalog.types = types;
-    catalog.type_count = other + 1;
-    catalog.capabilities = capabilities;
-    catalog.capability_count = first + native_count;
-    return catalog;
+;
+;
+;
+;
+;
+;
+;
+;
+;
 }
-static int catalog_calls[6];
-/* A native record is named by its catalog type and may carry its exact native
- * layout, never an authored one. */
-static bool catalog_header(const pin_value *value, pin_type type, const char *name)
-{
-    return value->type == type && value->container == PIN_CONTAINER_SINGLE &&
-           value->type_name && !strcmp(value->type_name, name) &&
-           (!value->record || value->record->native) &&
-           (type != PIN_STRUCT || value->ptr);
+;
 }
-static const char *catalog_echo(void *, const pin_value *arguments, pin_value *results)
-{
-    if (!catalog_header(&arguments[0], PIN_STRUCT, "Spot") ||
-        !catalog_header(&results[0], PIN_STRUCT, "Spot")) {
-        return "native Spot singleton header or result backing differs";
-    }
-    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
-    ((spot *)results[0].ptr)->x += 1;
-    catalog_calls[0]++;
-    return NULL;
 }
-static const char *catalog_entity(void *, const pin_value *arguments, pin_value *results)
-{
-    if (!catalog_header(&arguments[0], PIN_HANDLE, "ecs.entity") ||
-        !catalog_header(&results[0], PIN_HANDLE, "ecs.entity")) {
-        return "native entity singleton header differs";
-    }
-    results[0].u64 = arguments[0].u64;
-    catalog_calls[1]++;
-    return NULL;
 }
-static const char *catalog_pair(void *, const pin_value *arguments, pin_value *results)
-{
-    if (!catalog_header(&arguments[0], PIN_STRUCT, "Spot") ||
-        !catalog_header(&arguments[1], PIN_HANDLE, "ecs.entity") ||
-        !catalog_header(&results[0], PIN_STRUCT, "Spot") ||
-        !catalog_header(&results[1], PIN_HANDLE, "ecs.entity")) {
-        return "native multi-result headers or result backing differ";
-    }
-    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
-    ((spot *)results[0].ptr)->x += 3;
-    ((spot *)results[0].ptr)->y += 4;
-    results[1].u64 = arguments[1].u64;
-    catalog_calls[2]++;
-    return NULL;
 }
-static const char *catalog_aliased(void *, const pin_value *arguments, pin_value *results)
-{
-    if (arguments[0].type != PIN_STRUCT || !arguments[0].ptr ||
-        !catalog_header(&results[0], PIN_STRUCT, "SpotAlias")) {
-        return "native alias result header or result backing differs";
-    }
-    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
-    ((spot *)results[0].ptr)->y += 2;
-    catalog_calls[3]++;
-    return NULL;
 }
-static const char *catalog_seed(void *, const pin_value *, pin_value *results)
-{
-    if (!catalog_header(&results[0], PIN_HANDLE, "ecs.entity")) {
-        return "native entity source result header differs";
-    }
-    results[0].u64 = UINT64_C(0x1234567800000042);
-    catalog_calls[4]++;
-    return NULL;
 }
-static const char *catalog_check(void *, const pin_value *arguments, pin_value *results)
-{
-    if (!catalog_header(&arguments[0], PIN_HANDLE, "ecs.entity") ||
-        arguments[0].u64 != UINT64_C(0x1234567800000042) ||
-        results[0].type != PIN_BOOL || results[0].container != PIN_CONTAINER_SINGLE) {
-        return "native entity payload or predicate result differs";
-    }
-    results[0].b = true;
-    catalog_calls[5]++;
-    return NULL;
 }
-static const node_host_call catalog_host_calls[] = {
-    { .invoke = catalog_echo }, { .invoke = catalog_entity },
-    { .invoke = catalog_pair }, { .invoke = catalog_aliased },
-    { .invoke = catalog_seed }, { .invoke = catalog_check },
-};
-static bool catalog_host(void *, uint64_t id, script_lower_host *out)
-{
-    if (game_host(NULL, id, out)) {
-        return true;
-    }
-    if (id < CATALOG_ECHO || id > CATALOG_CHECK) {
-        return false;
-    }
-    *out = (script_lower_host){ .call = &catalog_host_calls[id - CATALOG_ECHO],
-                                .access = &HOST_ACCESS };
-    return true;
+;
 }
-static bool catalog_prepared_host(void *user, uint64_t id, execution_prepared_host *out)
-{
-    const script_catalog *catalog = user;
-    const script_catalog_capability *capability = script_catalog_capability_by_id(catalog, id);
-    script_lower_host binding;
-    if (!capability || !catalog_host(NULL, id, &binding)) {
-        return false;
-    }
-    *out = (execution_prepared_host){
-        .call = binding.call,
-        .access = binding.access,
-        .abi = script_catalog_capability_abi(catalog, capability)
-    };
-    return true;
 }
-static bool catalog_prepared_type(void *user, uint64_t id, execution_prepared_type *out)
-{
-    if (!link_game_type(user, id, out)) {
-        return false;
-    }
-    if (id == CATALOG_ALIAS) {
-        out->type = &catalog_alias_type;
-    } else if (id == CATALOG_OTHER) {
-        out->type = &catalog_other_type;
-    }
-    return true;
 }
 /* Decode the production JSON against the actual authored entry signature.
  * No test-side table reconstructs or repairs its port metadata. */
@@ -9875,37 +9521,11 @@ typedef struct
 {
     float x, y, z;
 } native_math_vector;
-static const type_field native_math_fields[] = {
-    { .name = "x",
-      .type = PIN_F32,
-      .offset = offsetof(native_math_vector, x),
-      .size = sizeof(float) },
-    { .name = "y",
-      .type = PIN_F32,
-      .offset = offsetof(native_math_vector, y),
-      .size = sizeof(float) },
-    { .name = "z",
-      .type = PIN_F32,
-      .offset = offsetof(native_math_vector, z),
-      .size = sizeof(float) },
-};
-static const type_desc native_math_type = { .name = "vec3",
-                                            .size = sizeof(native_math_vector),
-                                            .fields = native_math_fields,
-                                            .field_count = 3 };
-static int native_math_calls;
-static const char *native_math_get(void *, const pin_value *, pin_value *results)
-{
-    if (results[0].type != PIN_STRUCT ||
-        results[0].container != PIN_CONTAINER_SINGLE || !results[0].type_name ||
-        strcmp(results[0].type_name, "vec3") || !results[0].ptr) {
-        return "native math result header or backing differs";
-    }
-    *(native_math_vector *)results[0].ptr = (native_math_vector){ 0, 1.5707963f, -1.5707963f };
-    native_math_calls++;
-    return NULL;
+;
+;
+;
 }
-static const node_host_call native_math_call = { .invoke = native_math_get };
+;
 typedef struct
 {
     native_capabilities *native;
@@ -9917,457 +9537,8 @@ typedef struct
     package_module *modules;
     int module_count;
 } native_math_fixture;
-static bool native_math_play(execution_module *module, int backend, bool pressure)
-{
-    REQUIRE(execution_module_function_count(module) == (pressure ? 2 : 1));
-    const behavior_function *body = execution_module_function_at(module, 0).body;
-    REQUIRE(!pressure || acount(body->calls) > 0);
-    arena storage = { 0 };
-    behavior_function_activation activation = { 0 };
-    behavior_function_activation_init(body, &activation);
-    behavior_managed_heap heap;
-    behavior_managed_heap_init(&heap);
-    if (pressure) {
-        /* The first outlined call must collect real discarded storage. */
-        heap.call_collection_bytes = 1;
-        (void)arena_alloc(&heap.storage, 4096);
-    }
-    pin_value output = { .type = PIN_I32 };
-    behavior_function_prepare_results(body, &output, &storage);
-    behavior_function_context context = { .activation = &activation,
-                                          .managed_heap = &heap,
-                                          .results = &output,
-                                          .budget = TARGET_BUDGET };
-    behavior_function_bind_storage(&context, pressure ? &heap.storage : &storage);
-    native_math_calls = 0;
-    bool bound = behavior_function_bind(body, &context, NULL, 0);
-    behavior_run_scope runs = { 0 };
-    behavior_run_scope_begin(&runs);
-    uint64_t marks = arena_collect_marks();
-    int status = bound ? behavior_function_run(body, &context, backend != 0)
-                       : FLOW_ERR_ARGUMENT;
-    uint64_t marked = arena_collect_marks() - marks;
-    behavior_run_scope_end(&runs);
-    bool valid = status == FLOW_OK && context.returned && output.i == 63 &&
-                 native_math_calls == 3;
-    if (!valid) {
-        fprintf(
-            stderr,
-            "native math result: status%d mask0x%x expected0x3f calls%d\n",
-            status,
-            (unsigned)output.i,
-            native_math_calls
-        );
-    }
-    if (pressure) {
-        fprintf(
-            pu_output(),
-            "native math pressure %s: %" PRIu64
-            " collection marks, mask0x%x, calls%d\n",
-            behavior_backend_name(execution_module_backend(module)),
-            marked,
-            (unsigned)output.i,
-            native_math_calls
-        );
-    }
-    behavior_function_release_host(&context);
-    behavior_function_activation_free(&activation);
-    behavior_managed_heap_free(&heap);
-    arena_free(&storage);
-    REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
-    REQUIRE(backend != 0 || runs.counts.bytecode_entries > 0);
-    if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_SLJIT) {
-        REQUIRE(runs.counts.sljit_entries > 0 && !runs.counts.bytecode_entries);
-    }
-    if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_WASM) {
-        REQUIRE(runs.counts.wasm_entries > 0 && !runs.counts.bytecode_entries);
-    }
-    REQUIRE(!pressure || marked > 0);
-    REQUIRE(valid);
-    return true;
 }
-static bool native_math_results(native_math_fixture *test)
-{
-    static const type_desc *const reflected[] = { &native_math_type };
-    static const type_catalog_pack reflected_pack = { .types = reflected,
-                                                      .type_count = 1 };
-    publish_project(&reflected_pack);
-    uint64_t id = script_catalog_id("type", "vec3");
-    script_catalog_field fields[3];
-    for (int i = 0; i < 3; i++) {
-        char name[16];
-        snprintf(name, sizeof name, "vec3.%s", native_math_fields[i].name);
-        fields[i] = (script_catalog_field){ .id = script_catalog_id("field", name),
-                                            .name = native_math_fields[i].name,
-                                            .type = { .storage = PIN_F32 },
-                                            .offset = native_math_fields[i].offset,
-                                            .writable = true };
-    }
-    uint64_t entity = script_catalog_id("type", "ecs.entity");
-    script_catalog_type types[] = {
-        { .id = id,
-          .name = "vec3",
-          .source_name = "vec3",
-          .type = { .storage = PIN_STRUCT, .nominal = id },
-          .fields = fields,
-          .field_count = 3,
-          .size = sizeof(native_math_vector),
-          .layout = type_layout_hash(&native_math_type) },
-        { .id = entity,
-          .name = "ecs.entity",
-          .source_name = "entity",
-          .type = { .storage = PIN_HANDLE, .nominal = entity },
-          .size = sizeof(uint64_t) },
-    };
-    script_catalog_parameter output = { .name = "value",
-                                        .type = { .storage = PIN_STRUCT,
-                                                  .nominal = id } };
-    script_catalog_capability get = { .id = script_catalog_id("capability", "GetVec3"),
-                                      .name = "GetVec3",
-                                      .kind = SCRIPT_CAPABILITY_FUNCTION,
-                                      .results = &output,
-                                      .result_count = 1,
-                                      .completion_outcome = -1,
-                                      .effects = SCRIPT_EFFECT_HOST };
-    script_catalog catalog = { .types = types,
-                               .type_count = 2,
-                               .capabilities = &get,
-                               .capability_count = 1,
-                               .entity_type = entity };
-    native_capability_binding binding = { .id = get.id,
-                                          .call = &native_math_call,
-                                          .access = &HOST_ACCESS };
-    const type_desc *layouts[] = { &native_math_type };
-    native_capability_pack pack = { .catalog = &catalog,
-                                    .bindings = &binding,
-                                    .binding_count = 1,
-                                    .layouts = layouts,
-                                    .layout_count = 1 };
-    const native_definition_pack definitions[] = { NATIVE_ARRAY_DEFINITION_PACK,
-                                                   NATIVE_MATH_DEFINITION_PACK };
-    char error[256] = { 0 };
-    test->native = native_capabilities_from_definition_packs(&pack, 1, definitions, 2, error, sizeof error);
-    if (!test->native) {
-        fprintf(stderr, "native math catalog: %s\n", error);
-    }
-    REQUIRE(test->native);
-    const script_catalog *native = native_capabilities_catalog(test->native);
-    const char *identity = "NativeMath";
-    /* Quarter turns avoid assuming a new precision contract for the VM's
-     * deterministic trig approximation. */
-    const char *source = "NativeMath :: library {\n"
-                         "    Check :: () -> int {\n"
-                         "        direct := length(GetVec3());\n"
-                         "        selected := length(GetVec3().yx);\n"
-                         "        wave := sin(GetVec3());\n"
-                         "        mask: int = 0;\n"
-                         "        if direct > 2.221440 && direct < 2.221443 { "
-                         "mask |= 1; }\n"
-                         "        if selected > 1.570795 && selected < "
-                         "1.570798 { mask |= 2; }\n"
-                         "        if wave.x == 0.0 { mask |= 4; }\n"
-                         "        if wave.y > 0.999999 && wave.y < 1.000001 { "
-                         "mask |= 8; }\n"
-                         "        if wave.z > -1.000001 && wave.z < -0.999999 "
-                         "{ mask |= 16; }\n"
-                         "        p := &wave; p.yx = p.xy;\n"
-                         "        if wave.x > 0.999999 && wave.x < 1.000001 && "
-                         "wave.y == 0.0 &&\n"
-                         "           wave.z > -1.000001 && wave.z < -0.999999 "
-                         "{ mask |= 32; }\n"
-                         "        return mask;\n"
-                         "    }\n"
-                         "}\n";
-    /* The swizzle location and old components stay live across the outlined
-     * RHS call, which overwrites both selected and untouched components. */
-    const char *pressure_source =
-        "NativeMath :: library {\n"
-        "    Check :: () -> int {\n"
-        "        direct := length(GetVec3());\n"
-        "        selected := length(GetVec3().yx);\n"
-        "        wave := sin(GetVec3());\n"
-        "        mask: int = 0;\n"
-        "        if direct > 2.221440 && direct < 2.221443 { mask |= 1; }\n"
-        "        if selected > 1.570795 && selected < 1.570798 { mask |= 2; }\n"
-        "        if wave.x == 0.0 { mask |= 4; }\n"
-        "        if wave.y > 0.999999 && wave.y < 1.000001 { mask |= 8; }\n"
-        "        if wave.z > -1.000001 && wave.z < -0.999999 { mask |= 16; }\n"
-        "        p := &wave; p.xy += PressureRight(p);\n"
-        "        if wave.x == 5.0 && wave.y == 7.0 && wave.z == 9.0 { mask |= "
-        "32; }\n"
-        "        return mask;\n"
-        "    }\n"
-        "    PressureRight :: (p: ^vec3) -> vec2 {\n"
-        "        p^ = vec3(100, 200, 9); return vec2(5, 6);\n"
-        "    }\n"
-        "}\n";
-    const char *variants[] = { source, pressure_source };
-    REQUIRE(prepare());
-    for (int pressure = 0; pressure < 2; pressure++) {
-        source = variants[pressure];
-        test->syntax = script_parse(source);
-        test->analysis = script_analyze(test->syntax, native);
-        for (int i = 0; i < test->analysis->diagnostic_count; i++) {
-            const script_diagnostic *diagnostic = &test->analysis->diagnostics[i];
-            fprintf(
-                stderr,
-                "native math C analysis %d:%d: %s\n",
-                diagnostic->range.line,
-                diagnostic->range.column,
-                diagnostic->message
-            );
-        }
-        REQUIRE(test->analysis->valid);
-        script_lower_bindings bindings = authoring_native_bindings(test->native);
-        for (int backend = 0; backend < 2; backend++) {
-            test->plan = script_lower(test->analysis, native, &bindings);
-            for (int i = 0; test->plan && i < test->plan->diagnostic_count; i++) {
-                const execution_module_diagnostic *diagnostic = &test->plan->diagnostics[i];
-                fprintf(
-                    stderr,
-                    "native math C lowering %d:%d: %s\n",
-                    diagnostic->range.line,
-                    diagnostic->range.column,
-                    diagnostic->message
-                );
-            }
-            REQUIRE(test->plan && !test->plan->diagnostic_count);
-            test->expected[backend] = execution_module_finish(
-                &test->plan,
-                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-                error,
-                sizeof error
-            );
-            REQUIRE(
-                test->expected[backend] &&
-                native_math_play(test->expected[backend], backend, pressure != 0)
-            );
-        }
-        native_prepared_context context = { .native = test->native };
-        execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-        for (int b = 0; b < 2; b++) {
-            pin_value out;
-            REQUIRE(
-                catalog_compile_sources_native(b, native, test->native, &identity, &source, 1, "CompileBehaviorsWithCatalog", &out)
-            );
-            const pin_array *array = out.ptr;
-            bool compiled = array && array->count;
-            if (!compiled) {
-                arena_free(&detached);
-                REQUIRE(catalog_compile_sources_native(
-                    b,
-                    native,
-                    test->native,
-                    &identity,
-                    &source,
-                    1,
-                    "BehaviorRejectionWithCatalog",
-                    &out
-                ));
-                fprintf(
-                    stderr,
-                    "native math compiler%d rejected: %s\n",
-                    b,
-                    pin_text(out).bytes
-                );
-            }
-            REQUIRE(compiled);
-            size_t length = (size_t)array->count;
-            test->bytes = xmalloc(length);
-            for (size_t i = 0; i < length; i++) {
-                test->bytes[i] = array->items[i].u8;
-            }
-            arena_free(&detached);
-            uint64_t root;
-            test->modules = compiler_artifact_rows(
-                test->bytes,
-                length,
-                &test->module_count,
-                &root,
-                error,
-                sizeof error
-            );
-            REQUIRE(
-                test->modules && test->module_count == 1 &&
-                root == execution_module_id(test->expected[0])
-            );
-            for (int backend = 0; backend < 2; backend++) {
-                test->actual = execution_prepared_read(
-                    test->modules[0].data,
-                    test->modules[0].length,
-                    &linker,
-                    backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-                    error,
-                    sizeof error
-                );
-                REQUIRE(
-                    test->actual &&
-                    same_declarations(test->expected[backend], test->actual) &&
-                    same_points(test->expected[backend], test->actual) &&
-                    same_watches(test->expected[backend], test->actual)
-                );
-                REQUIRE(native_math_play(test->actual, backend, pressure != 0));
-                execution_module_free(test->actual);
-                test->actual = NULL;
-            }
-            compiler_artifact_rows_free(test->modules, test->module_count);
-            test->modules = NULL;
-            test->module_count = 0;
-            free(test->bytes);
-            test->bytes = NULL;
-        }
-        for (int backend = 0; backend < 2; backend++) {
-            execution_module_free(test->expected[backend]);
-            test->expected[backend] = NULL;
-        }
-        script_analysis_free(test->analysis);
-        test->analysis = NULL;
-        script_syntax_free(test->syntax);
-        test->syntax = NULL;
-    }
-    return true;
 }
-TEST_CASE(package_compiler_builtin_math_native_results)
-{
-    native_math_fixture test = { 0 };
-    bool valid = native_math_results(&test);
-    execution_module_free(test.actual);
-    execution_module_free(test.expected[0]);
-    execution_module_free(test.expected[1]);
-    execution_module_plan_free(test.plan);
-    script_analysis_free(test.analysis);
-    script_syntax_free(test.syntax);
-    compiler_artifact_rows_free(test.modules, test.module_count);
-    free(test.bytes);
-    native_capabilities_free(test.native);
-    publish_project(NULL);
-    return valid;
-}
-static bool catalog_export_rejects(const script_catalog *catalog)
-{
-    int alias = type_index(catalog, CATALOG_ALIAS),
-        other = type_index(catalog, CATALOG_OTHER);
-    const script_catalog_capability *echo = script_catalog_capability_by_id(catalog, CATALOG_ECHO);
-    REQUIRE(alias >= 0 && other >= 0 && echo);
-    static const char *const cases[] = { "flagged nominal",
-                                         "missing nominal",
-                                         "nominal array",
-                                         "set",
-                                         "map",
-                                         "alias cycle",
-                                         "missing alias target",
-                                         "alias size",
-                                         "alias layout" };
-    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
-        script_catalog_type *types = xmalloc((size_t)catalog->type_count * sizeof *types);
-        memcpy(types, catalog->types, (size_t)catalog->type_count * sizeof *types);
-        script_catalog_parameter parameter = catalog_spot_port;
-        if (i >= 5) {
-            parameter.type.nominal = CATALOG_ALIAS;
-        }
-        switch (i) {
-            case 0: parameter.type.flags = SCRIPT_TYPE_OPTIONAL; break;
-            case 1: parameter.type.nominal = UINT64_C(99999); break;
-            case 2: parameter.type.container = PIN_CONTAINER_ARRAY; break;
-            case 3:
-            case 4:
-                parameter.type = (script_type){
-                    .storage = PIN_I32,
-                    .container = i == 3 ? PIN_CONTAINER_SET : PIN_CONTAINER_MAP
-                };
-                break;
-            case 5:
-                types[alias].underlying = CATALOG_OTHER;
-                types[other].underlying = CATALOG_ALIAS;
-                break;
-            case 6: types[alias].underlying = UINT64_C(99999); break;
-            case 7: types[alias].size += sizeof(float); break;
-            case 8: types[alias].layout ^= 1; break;
-        }
-        script_catalog_capability native = *echo;
-        native.parameters = &parameter;
-        script_catalog changed = *catalog;
-        changed.types = types;
-        changed.capabilities = &native;
-        changed.capability_count = 1;
-        const char *identity = "NativeProbe",
-                   *source = "NativeProbe :: behavior {}";
-        size_t length;
-        char *json = compiler_behavior_catalog_input_json(&changed, NULL, &identity, &source, 1, &length);
-        yyjson_doc *parsed = yyjson_read(json, length, 0);
-        REQUIRE(parsed);
-        yyjson_val *port = yyjson_arr_get(yyjson_arr_get(yyjson_doc_get_root(parsed), 6), 0);
-        bool rejected = yyjson_get_int(yyjson_obj_get(port, "storage")) == -1 &&
-                        yyjson_get_uint(yyjson_obj_get(port, "nominal")) ==
-                            parameter.type.nominal;
-        if (!rejected) {
-            fprintf(stderr, "catalog exporter accepted unsupported %s port\n", cases[i]);
-        }
-        yyjson_doc_free(parsed);
-        free(json);
-        free(types);
-        REQUIRE(rejected);
-    }
-    return true;
-}
-static bool catalog_export_contract(const script_catalog *catalog)
-{
-    const char *identity = "NativeProbe",
-               *source = "NativeProbe :: behavior {}";
-    size_t length;
-    char *json = compiler_behavior_catalog_input_json(catalog, NULL, &identity, &source, 1, &length);
-    yyjson_doc *current = yyjson_read(json, length, 0);
-    REQUIRE(current);
-    yyjson_val *after = yyjson_doc_get_root(current);
-    REQUIRE(yyjson_arr_size(after) == 18);
-    yyjson_val *ports = yyjson_arr_get(after, 6);
-    yyjson_val *functions = yyjson_arr_get(after, 5),
-               *effects = yyjson_arr_get(after, 17);
-    size_t function_index = 0;
-    for (int i = 0; i < catalog->capability_count; i++) {
-        const script_catalog_capability *native = &catalog->capabilities[i];
-        if (native->kind != SCRIPT_CAPABILITY_FUNCTION ||
-            native->flow.kind != SCRIPT_FLOW_ACCESS_NONE ||
-            native->outcome_count || (native->effects & SCRIPT_EFFECT_SUSPEND)) {
-            continue;
-        }
-        yyjson_val *function = yyjson_arr_get(functions, function_index);
-        REQUIRE(function);
-        REQUIRE(yyjson_is_true(yyjson_obj_get(function, "direct")));
-        REQUIRE(yyjson_get_int(yyjson_obj_get(function, "kind")) == (int)native->kind);
-        REQUIRE(yyjson_get_int(yyjson_obj_get(function, "intrinsic")) == 0);
-        REQUIRE(!strcmp(
-            yyjson_get_str(yyjson_obj_get(function, "qualified_name")),
-            native->qualified_name ? native->qualified_name : native->name
-        ));
-        REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(function, "name")), native->name));
-        REQUIRE(
-            yyjson_get_uint(yyjson_arr_get(effects, function_index)) == native->effects
-        );
-        function_index++;
-        int first = yyjson_get_int(yyjson_obj_get(function, "first"));
-        for (int j = 0; j < native->parameter_count + native->result_count; j++) {
-            const script_catalog_parameter
-                *parameter = j < native->parameter_count
-                               ? &native->parameters[j]
-                               : &native->results[j - native->parameter_count];
-            yyjson_val *port = yyjson_arr_get(ports, (size_t)(first + j));
-            REQUIRE(
-                yyjson_get_uint(yyjson_obj_get(port, "nominal")) ==
-                parameter->type.nominal
-            );
-            REQUIRE(
-                yyjson_get_int(yyjson_obj_get(port, "storage")) ==
-                (native->id == CATALOG_UNSUPPORTED ? -1 : (int)parameter->type.storage)
-            );
-        }
-    }
-    REQUIRE(
-        yyjson_arr_size(functions) == function_index && yyjson_arr_size(effects) == function_index
-    );
-    yyjson_doc_free(current);
-    free(json);
-    return catalog_export_rejects(catalog);
 }
 enum
 {
@@ -10377,571 +9548,17 @@ enum
     CATALOG_INFERRED,
     CATALOG_MAKE
 };
-static int catalog_named_calls[4];
-static const char *catalog_select_spot(void *, const pin_value *arguments, pin_value *results)
-{
-    if (!catalog_header(&arguments[0], PIN_STRUCT, "Spot") ||
-        !catalog_header(&results[0], PIN_STRUCT, "Spot")) {
-        return "native record overload headers differ";
-    }
-    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
-    ((spot *)results[0].ptr)->x += 10;
-    catalog_named_calls[0]++;
-    return NULL;
+;
 }
-static const char *catalog_select_entity(void *, const pin_value *arguments, pin_value *results)
-{
-    if (!catalog_header(&arguments[0], PIN_HANDLE, "ecs.entity") ||
-        arguments[0].u64 != UINT64_C(0x1234567800000042) ||
-        !catalog_header(&results[0], PIN_STRUCT, "Spot")) {
-        return "native entity overload headers or input differ";
-    }
-    *(spot *)results[0].ptr = (spot){ .x = 100, .y = 200, .w = 9 };
-    catalog_named_calls[1]++;
-    return NULL;
 }
-static const char *catalog_collision(void *, const pin_value *arguments, pin_value *results)
-{
-    if (!catalog_header(&arguments[0], PIN_STRUCT, "Spot") ||
-        !catalog_header(&results[0], PIN_STRUCT, "Spot")) {
-        return "native colliding output headers differ";
-    }
-    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
-    ((spot *)results[0].ptr)->x += 20;
-    ((spot *)results[0].ptr)->y += 30;
-    catalog_named_calls[2]++;
-    return NULL;
 }
-static const char *catalog_inferred(void *, const pin_value *arguments, pin_value *results)
-{
-    if (arguments[0].type != PIN_I8 || results[0].type != PIN_I8 ||
-        results[0].container != PIN_CONTAINER_SINGLE || results[0].record) {
-        return "native inferred scalar headers differ";
-    }
-    results[0].i8 = arguments[0].i8 + 1;
-    catalog_named_calls[3]++;
-    return NULL;
 }
-static const node_host_call catalog_named_host_calls[] = {
-    { .invoke = catalog_select_spot },
-    { .invoke = catalog_select_entity },
-    { .invoke = catalog_collision },
-    { .invoke = catalog_inferred },
-};
-static bool catalog_named_host(void *user, uint64_t id, script_lower_host *out)
-{
-    if (catalog_host(user, id, out)) {
-        return true;
-    }
-    if (id < CATALOG_SELECT_SPOT || id > CATALOG_INFERRED) {
-        return false;
-    }
-    *out = (script_lower_host){ .call = &catalog_named_host_calls[id - CATALOG_SELECT_SPOT],
-                                .access = &HOST_ACCESS };
-    return true;
+;
 }
-static bool catalog_named_prepared_host(void *user, uint64_t id, execution_prepared_host *out)
-{
-    const script_catalog *catalog = user;
-    const script_catalog_capability *capability = script_catalog_capability_by_id(catalog, id);
-    script_lower_host binding;
-    if (!capability || !catalog_named_host(user, id, &binding)) {
-        return false;
-    }
-    *out = (execution_prepared_host){
-        .call = binding.call,
-        .access = binding.access,
-        .abi = script_catalog_capability_abi(catalog, capability)
-    };
-    return true;
 }
-static bool catalog_named_plays(execution_module *expected, execution_module *actual)
-{
-    player e = { 0 }, a = { 0 };
-    bool alike = play(expected, &e) && play(actual, &a);
-    spot wanted = { .w = 9 };
-    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
-    for (int tick = 0; alike && tick < TICKS; tick++) {
-        wanted.x = 5 * wanted.x + 253;
-        wanted.y = 3 * wanted.y + 232;
-        int left = execution_instance_dispatch(e.instance, TICK, &delta, 1, 0, 0, 1000);
-        int right = execution_instance_dispatch(a.instance, TICK, &delta, 1, 0, 0, 1000);
-        const spot *x = ecs_component_data_const(e.world, e.owner, SPOT_COMPONENT);
-        const spot *y = ecs_component_data_const(a.world, a.owner, SPOT_COMPONENT);
-        alike = left == FLOW_OK && right == FLOW_OK && x && y &&
-                x->x == wanted.x && x->y == wanted.y && x->w == wanted.w &&
-                y->x == wanted.x && y->y == wanted.y && y->w == wanted.w &&
-                x->owner == ecs_entity_to_u64(e.owner) &&
-                y->owner == ecs_entity_to_u64(a.owner);
-        if (!alike) {
-            fprintf(
-                stderr,
-                "native singleton tick %d: flow %d/%d wanted %g,%g got "
-                "%g,%g/%g,%g\n",
-                tick,
-                left,
-                right,
-                wanted.x,
-                wanted.y,
-                x ? x->x : -1,
-                x ? x->y : -1,
-                y ? y->x : -1,
-                y ? y->y : -1
-            );
-        }
-    }
-    stop(&e);
-    stop(&a);
-    return alike;
 }
 /* Same native result type, different output names and input types. The x
  * output hides a field once; its next x is the ordinary float field. */
-static bool native_catalog_named_results(const script_catalog *base)
-{
-    static const script_catalog_parameter position = {
-        .name = "position",
-        .type = { .storage = PIN_STRUCT, .nominal = SPOT }
-    };
-    static const script_catalog_parameter collision = {
-        .name = "x",
-        .type = { .storage = PIN_STRUCT, .nominal = SPOT }
-    };
-    static const script_catalog_parameter generic_input = {
-        .name = "value",
-        .type = { .storage = PIN_FLOW,
-                  .parameter = 6103,
-                  .flags = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC }
-    };
-    static const script_catalog_parameter generic_output = {
-        .name = "amount",
-        .type = { .storage = PIN_FLOW,
-                  .parameter = 6103,
-                  .flags = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC }
-    };
-    static const script_catalog_parameter make_inputs[] = {
-        { .name = "x", .type = { .storage = PIN_F32 }, .member = 811 },
-        { .name = "y", .type = { .storage = PIN_F32 }, .member = 812 },
-        { .name = "w", .type = { .storage = PIN_F32 }, .member = 813 },
-    };
-    const script_catalog_capability added[] = {
-        { .id = CATALOG_SELECT_SPOT,
-          .name = "select_spot",
-          .qualified_name = "fixture.select_spot_struct",
-          .parameters = &catalog_spot_port,
-          .parameter_count = 1,
-          .results = &catalog_spot_port,
-          .result_count = 1 },
-        { .id = CATALOG_SELECT_ENTITY,
-          .name = "select_spot",
-          .qualified_name = "fixture.select_spot_entity",
-          .parameters = &catalog_entity_port,
-          .parameter_count = 1,
-          .results = &position,
-          .result_count = 1 },
-        { .id = CATALOG_COLLISION,
-          .name = "collision_spot",
-          .parameters = &catalog_spot_port,
-          .parameter_count = 1,
-          .results = &collision,
-          .result_count = 1 },
-        { .id = CATALOG_INFERRED,
-          .name = "inferred_number",
-          .parameters = &generic_input,
-          .parameter_count = 1,
-          .results = &generic_output,
-          .result_count = 1 },
-        { .id = CATALOG_MAKE,
-          .name = "make_spot",
-          .parameters = make_inputs,
-          .parameter_count = 3,
-          .results = &catalog_spot_port,
-          .result_count = 1,
-          .aggregate = SPOT,
-          .struct_access = SCRIPT_STRUCT_ACCESS_MAKE,
-          .pure = true },
-    };
-    script_catalog_capability *capabilities = NULL;
-    for (int i = 0; i < base->capability_count; i++) {
-        apush(capabilities, base->capabilities[i]);
-    }
-    for (int i = 0; i < (int)(sizeof added / sizeof *added); i++) {
-        script_catalog_capability native = added[i];
-        native.kind = SCRIPT_CAPABILITY_FUNCTION;
-        native.completion_outcome = -1;
-        native.effects = native.pure ? 0 : SCRIPT_EFFECT_HOST;
-        apush(capabilities, native);
-    }
-    script_catalog catalog = *base;
-    catalog.capabilities = capabilities;
-    catalog.capability_count = acount(capabilities);
-    static const char source
-        [] = "NativeNames :: behavior {\n"
-             "    on Tick :: () {\n"
-             "        direct := echo_spot(self.Spot).point.x\n"
-             "        local := echo_spot(self.Spot)\n"
-             "        renamed := local\n"
-             "        typed := alias_spot(self.Spot)\n"
-             "        typed_copy := typed\n"
-             "        from_record := select_spot(self.Spot)\n"
-             "        from_entity := select_spot(entity_seed())\n"
-             "        clash := collision_spot(self.Spot)\n"
-             "        small: i8 = 7\n"
-             "        inferred := inferred_number(small)\n"
-             "        inferred_copy := inferred\n"
-             "        p := select_spot(self.Spot)\n"
-             "        shadowed: number = 0\n"
-             "        if true {\n"
-             "            saved := p\n"
-             "            p := select_spot(entity_seed())\n"
-             "            shadowed = saved.point.x + p.position.x\n"
-             "        }\n"
-             "        self.Spot.x = direct + renamed.point.x + "
-             "from_record.point.x +\n"
-             "            from_entity.position.x + clash.x.x + make_spot(w: 5, "
-             "y: 4, "
-             "x: 3).point.x +\n"
-             "            int(inferred_copy.amount) + shadowed\n"
-             "        self.Spot.y = renamed.point.y + typed_copy.point.y +\n"
-             "            from_entity.position.y + "
-             "collision_spot(self.Spot).x.y\n"
-             "    }\n}\n";
-    script_syntax *syntax = script_parse(source);
-    script_analysis *analysis = script_analyze(syntax, &catalog);
-    const script_lower_bindings bindings = { .global = game_global,
-                                             .host = catalog_named_host };
-    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
-    char error[256] = { 0 };
-    for (int i = 0; i < analysis->diagnostic_count; i++) {
-        fprintf(
-            stderr,
-            "native singleton oracle:%d:%d: %s\n",
-            analysis->diagnostics[i].range.line,
-            analysis->diagnostics[i].range.column,
-            analysis->diagnostics[i].message
-        );
-    }
-    for (int i = 0; i < plan->diagnostic_count; i++) {
-        fprintf(
-            stderr,
-            "native singleton oracle lowering:%d:%d: %s\n",
-            plan->diagnostics[i].range.line,
-            plan->diagnostics[i].range.column,
-            plan->diagnostics[i].message
-        );
-    }
-    execution_module *expected = analysis->diagnostic_count || plan->diagnostic_count
-                                   ? NULL
-                                   : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
-    execution_module_plan_free(plan);
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    REQUIRE(expected);
-    for (int b = 0; b < 2; b++) {
-        pin_value out;
-        REQUIRE(
-            catalog_compile(b, &catalog, "NativeNames", source, "CompileBehaviorsWithCatalog", &out)
-        );
-        REQUIRE(out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY);
-        const pin_array *array = out.ptr;
-        bool compiled = array && array->count;
-        if (!compiled) {
-            arena_free(&detached);
-            REQUIRE(
-                catalog_compile(b, &catalog, "NativeNames", source, "BehaviorRejectionWithCatalog", &out)
-            );
-            fprintf(
-                stderr,
-                "native singleton compiler rejected: %s\n",
-                pin_text(out).bytes
-            );
-            arena_free(&detached);
-            REQUIRE(compiled);
-        }
-        size_t length = (size_t)array->count;
-        unsigned char *bytes = xmalloc(length);
-        for (size_t i = 0; i < length; i++) {
-            bytes[i] = array->items[i].u8;
-        }
-        arena_free(&detached);
-        int count;
-        uint64_t root;
-        package_module *modules = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
-        REQUIRE(modules && count == 1 && root == expected->plan.id);
-        execution_prepared_linker linker = { .user = &catalog,
-                                             .host = catalog_named_prepared_host,
-                                             .type = catalog_prepared_type,
-                                             .event = link_game_event };
-        execution_module *actual = execution_prepared_read(
-            modules[0].data,
-            modules[0].length,
-            &linker,
-            b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-            error,
-            sizeof error
-        );
-        compiler_artifact_rows_free(modules, count);
-        free(bytes);
-        if (!actual) {
-            fprintf(stderr, "native singleton prepared module: %s\n", error);
-        }
-        REQUIRE(
-            actual && same_declarations(expected, actual) &&
-            same_points(expected, actual) && same_watches(expected, actual)
-        );
-        int native_roots = 0;
-        for (int f = 0; f < actual->plan.function_count; f++) {
-            const behavior_function *body = actual->plan.functions[f].body;
-            for (int r = 0; r < acount(body->value_roots); r++) {
-                const pin_value *shape = &body->value_roots[r].shape;
-                if (shape->type == PIN_STRUCT && !shape->record) {
-                    REQUIRE(
-                        shape->type_name && !shape->ptr &&
-                        (!strcmp(shape->type_name, "Spot") ||
-                         !strcmp(shape->type_name, "SpotAlias"))
-                    );
-                    native_roots++;
-                }
-            }
-        }
-        REQUIRE(native_roots);
-        memset(catalog_calls, 0, sizeof catalog_calls);
-        memset(catalog_named_calls, 0, sizeof catalog_named_calls);
-        REQUIRE(catalog_named_plays(expected, actual));
-        static const int base_calls[] = { 2, 0, 0, 1, 2, 0 };
-        static const int named_calls[] = { 2, 2, 2, 1 };
-        for (int i = 0; i < 6; i++) {
-            REQUIRE(catalog_calls[i] == 2 * TICKS * base_calls[i]);
-        }
-        for (int i = 0; i < 4; i++) {
-            REQUIRE(catalog_named_calls[i] == 2 * TICKS * named_calls[i]);
-        }
-        execution_module_free(actual);
-    }
-    execution_module_free(expected);
-    static const char wrong_output[] = "NativeWrong :: behavior {\n"
-                                       "    on Tick :: () { self.Spot.x = "
-                                       "select_spot(entity_seed()).point.x; }\n"
-                                       "}\n";
-    syntax = script_parse(wrong_output);
-    analysis = script_analyze(syntax, &catalog);
-    REQUIRE(analysis->diagnostic_count && strstr(analysis->diagnostics[0].message, "point"));
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    pin_value rejected;
-    REQUIRE(
-        catalog_compile(1, &catalog, "NativeWrong", wrong_output, "CompileBehaviorsWithCatalog", &rejected)
-    );
-    REQUIRE(
-        rejected.type == PIN_U8 && rejected.container == PIN_CONTAINER_ARRAY &&
-        (!rejected.ptr || !((const pin_array *)rejected.ptr)->count)
-    );
-    arena_free(&detached);
-    REQUIRE(
-        catalog_compile(1, &catalog, "NativeWrong", wrong_output, "BehaviorRejectionWithCatalog", &rejected)
-    );
-    REQUIRE(
-        rejected.type == PIN_STR && strstr(pin_text(rejected).bytes, "NativeWrong:") &&
-        strstr(pin_text(rejected).bytes, "Unknown field 'point'")
-    );
-    arena_free(&detached);
-    afree(capabilities);
-    return true;
-}
-static bool native_catalog_alike()
-{
-    const type_desc *const reflected[] = { &spot_type,
-                                           &catalog_alias_type,
-                                           &catalog_other_type };
-    const type_catalog_pack pack = { .types = reflected, .type_count = 3 };
-    publish_project(&pack);
-    script_catalog catalog = native_game_catalog();
-    REQUIRE(catalog_export_contract(&catalog));
-    static const char source[] =
-        "NativeProbe :: behavior {\n"
-        "    Plain :: (point: SpotAlias) -> Spot { return point; }\n"
-        "    Named :: (point: Spot) -> (result: SpotAlias) { return point; }\n"
-        "    on Tick :: () {\n"
-        "        first := echo_spot(self.Spot)\n"
-        "        owner := entity_seed()\n"
-        "        paired := pair_spot(first, owner)\n"
-        "        alias := alias_spot(paired.point)\n"
-        "        target := echo_entity(paired.owner)\n"
-        "        if entity_ok(target) { self.Spot = Named(Plain(alias)); }\n"
-        "    }\n}\n";
-    script_syntax *syntax = script_parse(source);
-    script_analysis *analysis = script_analyze(syntax, &catalog);
-    const script_lower_bindings bindings = { .global = game_global,
-                                             .host = catalog_host };
-    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
-    char error[256] = { 0 };
-    for (int i = 0; i < analysis->diagnostic_count; i++) {
-        fprintf(stderr, "native catalog oracle: %s\n", analysis->diagnostics[i].message);
-    }
-    execution_module *expected = analysis->diagnostic_count || plan->diagnostic_count
-                                   ? NULL
-                                   : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
-    execution_module_plan_free(plan);
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    REQUIRE(expected);
-    for (int b = 0; b < 2; b++) {
-        pin_value out;
-        REQUIRE(
-            catalog_compile(b, &catalog, "NativeProbe", source, "CompileBehaviorsWithCatalog", &out)
-        );
-        REQUIRE(out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY);
-        const pin_array *array = out.ptr;
-        REQUIRE(array && array->count);
-        size_t length = (size_t)array->count;
-        unsigned char *bytes = xmalloc(length);
-        for (size_t i = 0; i < length; i++) {
-            bytes[i] = array->items[i].u8;
-        }
-        arena_free(&detached);
-        int count;
-        uint64_t root;
-        package_module *modules = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
-        REQUIRE(modules && count == 1 && root == expected->plan.id);
-        execution_prepared_linker linker = { .user = &catalog,
-                                             .host = catalog_prepared_host,
-                                             .type = catalog_prepared_type,
-                                             .event = link_game_event };
-        execution_module *actual = execution_prepared_read(
-            modules[0].data,
-            modules[0].length,
-            &linker,
-            b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-            error,
-            sizeof error
-        );
-        compiler_artifact_rows_free(modules, count);
-        free(bytes);
-        if (!actual) {
-            fprintf(stderr, "native catalog prepared module: %s\n", error);
-        }
-        REQUIRE(
-            actual && same_declarations(expected, actual) &&
-            same_points(expected, actual) && same_watches(expected, actual)
-        );
-        int native_roots = 0;
-        for (int f = 0; f < actual->plan.function_count; f++) {
-            const behavior_function *body = actual->plan.functions[f].body;
-            for (int r = 0; r < acount(body->value_roots); r++) {
-                const pin_value *shape = &body->value_roots[r].shape;
-                if (shape->type != PIN_STRUCT || shape->record) {
-                    continue;
-                }
-                REQUIRE(
-                    shape->container == PIN_CONTAINER_SINGLE &&
-                    shape->type_name && !shape->ptr
-                );
-                REQUIRE(
-                    !strcmp(shape->type_name, "Spot") ||
-                    !strcmp(shape->type_name, "SpotAlias")
-                );
-                native_roots++;
-            }
-        }
-        REQUIRE(native_roots);
-        memset(catalog_calls, 0, sizeof catalog_calls);
-        REQUIRE(plays_alike(expected, actual));
-        for (int i = 0; i < 6; i++) {
-            REQUIRE(catalog_calls[i] == 2 * TICKS);
-        }
-        /* Each tick, echo adds 1 to x, pair 3 to x and 4 to y, and alias 2 to
-         * y; the aliased returns carry the whole Spot back. */
-        player p = { 0 };
-        REQUIRE(play(actual, &p));
-        pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
-        for (int tick = 0; tick < TICKS; tick++) {
-            REQUIRE(
-                execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000) == FLOW_OK
-            );
-        }
-        const spot *held = ecs_component_data_const(p.world, p.owner, SPOT_COMPONENT);
-        REQUIRE(
-            held && held->x == 4 * TICKS && held->y == 6 * TICKS &&
-            held->w == 9 && held->owner == ecs_entity_to_u64(p.owner)
-        );
-        stop(&p);
-        execution_module_free(actual);
-    }
-    execution_module_free(expected);
-    static const char wrong[] = "Wrong :: behavior { on Tick :: () { value := "
-                                "echo_spot(other_spot()); } }";
-    syntax = script_parse(wrong);
-    analysis = script_analyze(syntax, &catalog);
-    REQUIRE(analysis->diagnostic_count);
-    script_diagnostic diagnostic = analysis->diagnostics[0];
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    const char *const rejected[] = {
-        wrong,
-        "Unsupported :: behavior { on Tick :: () { values := unsupported(); } }"
-    };
-    for (int i = 0; i < 2; i++) {
-        pin_value out;
-        REQUIRE(
-            catalog_compile(1, &catalog, i ? "Unsupported" : "Wrong", rejected[i], "CompileBehaviorsWithCatalog", &out)
-        );
-        REQUIRE(
-            out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY &&
-            (!out.ptr || !((const pin_array *)out.ptr)->count)
-        );
-        arena_free(&detached);
-        REQUIRE(
-            catalog_compile(1, &catalog, i ? "Unsupported" : "Wrong", rejected[i], "BehaviorRejectionWithCatalog", &out)
-        );
-        REQUIRE(out.type == PIN_STR);
-        const char *message = pin_text(out).bytes;
-        if (!i) {
-            REQUIRE(strstr(diagnostic.message, "Incompatible types:"));
-            REQUIRE(
-                diagnostic.range.line == 1 &&
-                diagnostic.range.column == (int)(strstr(wrong, "other_spot") - wrong) + 1
-            );
-            char expected_message[256];
-            snprintf(
-                expected_message,
-                sizeof expected_message,
-                "Wrong:1:%d: argument differs from its parameter type",
-                (int)(strstr(wrong, "echo_spot") - wrong) + 1
-            );
-            if (strcmp(message, expected_message)) {
-                fprintf(stderr, "native catalog rejection: wanted '%s', got '%s'\n", expected_message, message);
-            }
-            REQUIRE(!strcmp(message, expected_message));
-        } else {
-            REQUIRE(strstr(message, "native 'unsupported' is not supported yet"));
-        }
-        arena_free(&detached);
-    }
-    REQUIRE(native_catalog_named_results(&catalog));
-    publish_project(NULL);
-    return true;
-}
-/* Production definition conversion keeps canonical and source names distinct. */
-static const native_capability_definition LIBRARY_ALIAS_DEFINITIONS[] = {
-    { .canonical_name = "Alias.Native",
-      .source_name = "leaf_alias",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = INTEGER_INPUT,
-      .input_count = 1,
-      .outputs = CSTRING_OUTPUT,
-      .output_count = 1,
-      .completion_output = -1,
-      .pure = true },
-    { .canonical_name = "Alias.Source",
-      .source_name = "Alias.Native_",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .inputs = INTEGER_INPUT,
-      .input_count = 1,
-      .outputs = CSTRING_OUTPUT,
-      .output_count = 1,
-      .completion_output = -1,
-      .pure = true },
-};
-static int library_alias_calls[2];
 static const char *library_alias_native(void *, const pin_value *arguments, pin_value *results)
 {
     if (arguments[0].type != PIN_I32 || results[0].type != PIN_I32) {
@@ -11552,94 +10169,6 @@ TEST_CASE(package_compiler_pure_provider_has_no_write)
     native_capabilities_free(native);
     return true;
 }
-static bool append_sample_alike(const sample *s, bool writing)
-{
-    REQUIRE(prepare());
-    script_syntax *syntax = script_parse(s->source);
-    const script_package_document document = { "/facts/Main.chibi",
-                                               "facts/Main.chibi",
-                                               syntax };
-    const script_package_options options = {
-        .documents = &document,
-        .document_count = 1,
-        .identity = "project:facts",
-        .native = native_capabilities_catalog(fixture.native)
-    };
-    script_analysis *analysis = script_analyze_package(&options);
-    REQUIRE(!syntax->diagnostic_count && !analysis->diagnostic_count);
-    int writes = 0, pure = 0, authored = 0;
-    for (int i = 0; i < analysis->expression_count; i++) {
-        const script_expression *call = &analysis->expressions[i];
-        if (call->kind != SCRIPT_EXPR_CALL ||
-            call->capability != script_catalog_id("capability", "Append")) {
-            continue;
-        }
-        for (int a = 0; a < call->argument_count; a++) {
-            if (call->arguments[a].parameter != 1) {
-                continue;
-            }
-            const script_expression
-                *item = &analysis->expressions[call->arguments[a].value];
-            REQUIRE(item->type.storage == PIN_I32 && item->type.container == PIN_CONTAINER_SINGLE);
-            bool write = (item->effects & SCRIPT_EFFECT_WRITE) != 0;
-            writes += write;
-            pure += !write;
-            if (item->kind == SCRIPT_EXPR_CALL && item->right >= 0) {
-                authored++;
-                REQUIRE(write == writing);
-            } else {
-                REQUIRE(!write);
-            }
-            fprintf(
-                stderr,
-                "native selected Append %016llx item effects%u WRITE%d\n",
-                (unsigned long long)call->capability,
-                item->effects,
-                write
-            );
-        }
-    }
-    REQUIRE(writes == writing && pure == 1 && authored == 1);
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    unsigned char *expected = NULL;
-    size_t expected_length;
-    REQUIRE(oracle_closure(s, &expected, &expected_length));
-    REQUIRE(run(expected, expected_length, &s->calls[0], 0));
-    REQUIRE(run(expected, expected_length, &s->calls[0], 1));
-    fprintf(
-        stderr,
-        "native C %s returns %s on both runtime backends\n",
-        s->name,
-        s->calls[0].expected
-    );
-    bool alike = true;
-    for (int b = 0; b < 2; b++) {
-        source_package_input inputs[SAMPLE_INPUTS];
-        int count = sample_inputs(s, inputs);
-        pin_value out;
-        REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Compiled"));
-        size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
-        arena_free(&detached);
-        bool runs = true;
-        for (int backend = 0; backend < 2; backend++) {
-            runs &= run(bytes, length, &s->calls[0], backend);
-        }
-        if (runs) {
-            runs = points_like_oracle(bytes, length, false);
-        }
-        alike &= runs;
-        free(bytes);
-    }
-    free(expected);
-    REQUIRE(alike);
-    return true;
-}
-/* A folded conversion keeps stage zero's points and watches for each
- * argument it converts, innermost first. */
 TEST_CASE(package_compiler_folds_constants_as_stage_zero_does)
 {
     REQUIRE(prepare());
@@ -11653,41 +10182,6 @@ TEST_CASE(package_compiler_folds_constants_as_stage_zero_does)
     REQUIRE(libraries_with_results(&identity, &source, 1, false, false, &result, 1));
     return true;
 }
-TEST_CASE(package_compiler_preserves_receiver_before_writing_item)
-{
-    const sample s = {
-        .name = "ordered Append receiver before WRITE item",
-        .source = "package facts\n"
-                  "Receiver :: () -> int[] { xs: int[] = [1]; "
-                  "xs = append(Array: xs, Item: WriteReceiver(&xs)); return "
-                  "xs; "
-                  "}\n"
-                  "WriteReceiver :: (values: ^(int[])) -> int { "
-                  "values^ = append(values^, int(9)); return 7; }",
-        .calls = { { .function = "Receiver", .arguments = "[]", .expected = "[[1,7]]" } }
-    };
-    REQUIRE(append_sample_alike(&s, true));
-    return true;
-}
-TEST_CASE(package_compiler_preserves_pure_reversed_append_debug)
-{
-    const sample s = {
-        .name = "reversed Append with pure authored Item",
-        .source = "package facts\n"
-                  "Pure :: () -> int[] { xs: int[] = [1]; "
-                  "xs = append(Item: Item(), Array: xs); return xs; }\n"
-                  "Item :: () -> int { return 7; }",
-        .calls = { { .function = "Pure", .arguments = "[]", .expected = "[[1,7]]" } }
-    };
-    REQUIRE(append_sample_alike(&s, false));
-    return true;
-}
-typedef enum
-{
-    LIBRARY_ORACLE_UNCHECKED,
-    LIBRARY_ORACLE_VALID,
-    LIBRARY_ORACLE_INVALID
-} library_oracle_expectation;
 static bool library_rejects_catalog(
     const script_catalog *native,
     const char *const *identities,
@@ -11851,15 +10345,15 @@ TEST_CASE(package_compiler_rejects_invalid_char_conversions)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(&s, inputs);
         for (int b = 0; b < 2; b++) {
-            pin_value out, message;
+            compiler_result out;
+            pin_value message;
             bool probe = strstr(sources[i], "native.kernel") != NULL;
             REQUIRE(compile(b, false, probe, false, inputs, count, COMPILE_BUDGET, &out));
-            const pin_union *value = out.ptr;
-            if (out.type != PIN_UNION || !value || value->tag != tag(b, "Rejected")) {
+            if (compiler_succeeded(&out)) {
                 fprintf(stderr, "stage one accepted invalid char source: %s\n", sources[i]);
             }
-            REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
-            REQUIRE(get(&value->values[0], "message", &message));
+            REQUIRE(!compiler_succeeded(&out));
+            REQUIRE(get(compiler_error(&out), "message", &message));
             if (i < 6) {
                 REQUIRE(strstr(pin_text(message).bytes, "Constant does not fit in char"));
             }
@@ -11958,21 +10452,20 @@ TEST_CASE(package_compiler_rejects_deferred_char_forms)
         source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(&s, inputs);
         for (int b = 0; b < 2; b++) {
-            pin_value out, message;
+            compiler_result out;
+            pin_value message;
             REQUIRE(compile(b, false, false, false, inputs, count, COMPILE_BUDGET, &out));
-            const pin_union *value = out.ptr;
-            if (out.type != PIN_UNION || !value || value->tag != tag(b, "Rejected")) {
+            if (compiler_succeeded(&out)) {
                 fprintf(
                     stderr,
                     "stage one accepted deferred char form: %s\n",
                     cases[i].name
                 );
             }
-            REQUIRE(out.type == PIN_UNION && value);
-            bool rejected = value->tag == tag(b, "Rejected");
+            bool rejected = !compiler_succeeded(&out);
             rejected_all &= rejected;
             if (rejected) {
-                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(compiler_error(&out), "message", &message));
                 REQUIRE(pin_text(message).length > 0);
             }
             arena_free(&detached);
@@ -12070,28 +10563,19 @@ TEST_CASE(package_compiler_defers_generic_char_native_results)
         REQUIRE(native && authoring_packages_valid(native));
         authoring_packages_free(native);
         for (int b = 0; b < 2; b++) {
-            pin_value args[ARGUMENTS + 1], out;
+            pin_value args[ARGUMENTS + 1];
+            compiler_result out;
             REQUIRE(arguments(b, false, &source, 1, args));
             REQUIRE(
                 compiler_fixture_natives(&fixture, b, PACKAGE, catalog, &input, &args[9], &args[ARGUMENTS])
             );
-            REQUIRE(compiler_fixture_call(
-                &fixture,
-                b,
-                PACKAGE,
-                "CompileWithEffects",
-                args,
-                ARGUMENTS + 1,
-                COMPILE_BUDGET,
-                &detached,
-                &out
-            ));
-            const pin_union *value = out.ptr;
-            REQUIRE(out.type == PIN_UNION && value);
-            REQUIRE(value->tag == tag(b, i == 0 ? "Rejected" : "Compiled"));
+            REQUIRE(
+                compiler_call(b, "CompileWithEffects", args, ARGUMENTS + 1, COMPILE_BUDGET, &out)
+            );
+            REQUIRE(compiler_succeeded(&out) == (i != 0));
             if (i == 0) {
                 pin_value message;
-                REQUIRE(get(&value->values[0], "message", &message));
+                REQUIRE(get(compiler_error(&out), "message", &message));
                 REQUIRE(
                     strstr(pin_text(message).bytes, "generic char native results are not supported yet")
                 );
@@ -12235,60 +10719,6 @@ TEST_CASE(package_compiler_shares_its_arguments)
     );
     return true;
 }
-/* The behavior samples from `first` before `last` compile alike on both
- * backends. Stage one compiles slowest on the bytecode backend, so each
- * selector takes half of them. */
-static bool samples_alike(size_t first, size_t last)
-{
-    const type_desc *const reflected[] = { &spot_type };
-    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
-    publish_project(&pack);
-    bool passed = true;
-    for (int b = 0; passed && b < 2; b++) {
-        for (size_t i = first; passed && i < last; i++) {
-            passed = behaves_alike(b, &behavior_samples[i]);
-        }
-    }
-    publish_project(NULL);
-    return passed;
-}
-enum
-{
-    SAMPLE_COUNT = sizeof behavior_samples / sizeof *behavior_samples
-};
-/* One Tick of stage one's `name` sample writes `wanted` into the target, holding the owner's handle when `copied` from the owner, and leaves
- * the owner's Spot as it was. */
-static bool writes_target(const char *name, spot wanted, bool copied)
-{
-    const behavior_sample *sample = behavior_samples;
-    while (strcmp(sample->name, name)) {
-        sample++;
-    }
-    execution_module *module = NULL;
-    player p = { 0 };
-    REQUIRE(stage_one_behavior(1, sample->name, sample->source, &module) && play(module, &p));
-    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
-    REQUIRE(execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 1000) == FLOW_OK);
-    const spot *owner = ecs_component_data_const(p.world, p.owner, SPOT_COMPONENT);
-    const spot *target = ecs_component_data_const(p.world, p.target, SPOT_COMPONENT);
-    REQUIRE(owner && target);
-    REQUIRE(
-        owner->x == 0 && owner->y == 0 && owner->w == 9 &&
-        owner->owner == ecs_entity_to_u64(p.owner)
-    );
-    REQUIRE(
-        target->x == wanted.x && target->y == wanted.y && target->w == wanted.w &&
-        target->owner == ecs_entity_to_u64(copied ? p.owner : p.target)
-    );
-    stop(&p);
-    execution_module_free(module);
-    return true;
-}
-TEST_CASE(package_compiler_compiles_behaviors)
-{
-    REQUIRE(prepare());
-    REQUIRE(samples_alike(0, SAMPLE_COUNT / 2));
-    return true;
 }
 static bool action_table()
 {
@@ -12517,469 +10947,12 @@ TEST_CASE(package_compiler_exports_native_actions)
     free(json);
     return true;
 }
-static execution_module *action_oracle(const char *source, behavior_backend backend)
-{
-    const script_catalog *catalog = native_capabilities_catalog(actions_native);
-    script_syntax *syntax = script_parse(source);
-    script_analysis *analysis = script_analyze(syntax, catalog);
-    script_lower_bindings bindings = authoring_native_bindings(actions_native);
-    execution_module_plan *plan = script_lower(analysis, catalog, &bindings);
-    for (int i = 0; i < syntax->diagnostic_count; i++) {
-        fprintf(stderr, "action oracle syntax: %s\n", syntax->diagnostics[i].message);
-    }
-    for (int i = 0; i < analysis->diagnostic_count; i++) {
-        const script_diagnostic *d = &analysis->diagnostics[i];
-        fprintf(stderr, "action oracle %d:%d: %s\n", d->range.line, d->range.column, d->message);
-    }
-    for (int i = 0; i < plan->diagnostic_count; i++) {
-        fprintf(stderr, "action oracle lowering: %s\n", plan->diagnostics[i].message);
-    }
-    char error[256] = { 0 };
-    execution_module *module = syntax->diagnostic_count ||
-                                       analysis->diagnostic_count || plan->diagnostic_count
-                                 ? NULL
-                                 : execution_module_finish(&plan, backend, error, sizeof error);
-    if (!module && *error) {
-        fprintf(stderr, "action oracle finish: %s\n", error);
-    }
-    execution_module_plan_free(plan);
-    script_analysis_free(analysis);
-    script_syntax_free(syntax);
-    return module;
 }
-static bool action_compiled_module(int b, const char *identity, const char *source, execution_module **out)
-{
-    const script_catalog *catalog = native_capabilities_catalog(actions_native);
-    pin_value compiled;
-    REQUIRE(
-        catalog_compile_native(b, catalog, actions_native, identity, source, "CompileBehaviorsWithCatalog", &compiled)
-    );
-    REQUIRE(compiled.type == PIN_U8 && compiled.container == PIN_CONTAINER_ARRAY);
-    const pin_array *array = compiled.ptr;
-    if (!array || !array->count) {
-        arena_free(&detached);
-        REQUIRE(
-            catalog_compile_native(b, catalog, actions_native, identity, source, "BehaviorRejectionWithCatalog", &compiled)
-        );
-        fprintf(stderr, "action compiler: %s\n", pin_text(compiled).bytes);
-        arena_free(&detached);
-        return false;
-    }
-    size_t length = (size_t)array->count;
-    unsigned char *bytes = xmalloc(length);
-    for (size_t i = 0; i < length; i++) {
-        bytes[i] = array->items[i].u8;
-    }
-    arena_free(&detached);
-    int count;
-    uint64_t root;
-    char error[256] = { 0 };
-    package_module *modules = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
-    REQUIRE(modules && count == 1 && root == modules[0].id);
-    native_prepared_context context = { .native = actions_native };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-    *out = execution_prepared_read(
-        modules[0].data,
-        modules[0].length,
-        &linker,
-        b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
-        error,
-        sizeof error
-    );
-    compiler_artifact_rows_free(modules, count);
-    free(bytes);
-    if (!*out) {
-        fprintf(stderr, "action prepared module: %s\n", error);
-    }
-    REQUIRE(*out);
-    return true;
 }
-static bool action_module(int b, const char *identity, const char *source, execution_module **out)
-{
-    REQUIRE(action_compiled_module(b, identity, source, out));
-    const script_catalog *catalog = native_capabilities_catalog(actions_native);
-    int direct_calls = 0;
-    for (int f = 0; f < (*out)->plan.function_count; f++) {
-        const behavior_function *body = (*out)->plan.functions[f].body;
-        for (int i = 0; i < acount(body->host_calls); i++) {
-            const behavior_function_host_call *call = &body->host_calls[i];
-            const script_catalog_capability
-                *capability = script_catalog_capability_by_id(catalog, call->capability_id);
-            if (capability && capability->kind == SCRIPT_CAPABILITY_ACTION) {
-                REQUIRE(
-                    !call->outcome_count && call->call &&
-                    (!!call->call->invoke + !!call->call->context) == 1
-                );
-                REQUIRE(call->capability_abi == script_catalog_capability_abi(catalog, capability));
-                direct_calls++;
-            }
-        }
-    }
-    REQUIRE(direct_calls);
-    return true;
 }
-static bool action_play(execution_module *module, bool fails)
-{
-    action_record_count = action_trace_count = 0;
-    memset(action_records, 0, sizeof action_records);
-    memset(action_trace, 0, sizeof action_trace);
-    memset(action_kind_calls, 0, sizeof action_kind_calls);
-    player p = { 0 };
-    REQUIRE(play(module, &p));
-    uint64_t owner = ecs_entity_to_u64(p.owner);
-    const script_catalog *catalog = native_capabilities_catalog(actions_native);
-    int status = execution_instance_dispatch(p.instance, catalog->tick_event, NULL, 0, 0, 0, 1000);
-    const execution_program_failure *error = execution_program_error(p.program);
-    bool action_error = error && !strcmp(error->message, "fixture action failed");
-    if (status != (fails ? FLOW_ERR_INVALID_GRAPH : FLOW_OK)) {
-        fprintf(
-            stderr,
-            "action runtime status %d, records %d, trace %d, error %s\n",
-            status,
-            action_record_count,
-            action_trace_count,
-            error ? error->message : "none"
-        );
-    }
-    stop(&p);
-    if (fails) {
-        REQUIRE(
-            status == FLOW_ERR_INVALID_GRAPH && action_error &&
-            action_trace_count == 1 && action_trace[0] == 6000
-        );
-        REQUIRE(!action_record_count);
-        return true;
-    }
-    static const int trace[] = { 2,    1,    1001, 3,   1003, 1004,
-                                 3000, 1005, 1006, 608, 4100, 5007,
-                                 42,   99,   99,   99,  99,   1007 };
-    REQUIRE(status == FLOW_OK && action_record_count == 6);
-    REQUIRE(
-        action_kind_calls[0] == 1 && action_kind_calls[1] == 2 &&
-        action_kind_calls[2] == 1 && action_kind_calls[3] == 1 &&
-        action_kind_calls[4] == 1
-    );
-    REQUIRE(
-        action_trace_count == NATIVE_COUNT(trace) &&
-        !memcmp(action_trace, trace, sizeof trace)
-    );
-    static const int first[] = { 1, 3, 4, 5, 6, 7 },
-                     second[] = { 2, 7, 7, 7, 8, 7 };
-    for (int i = 0; i < action_record_count; i++) {
-        const action_record *r = &action_records[i];
-        REQUIRE(r->first == first[i] && r->second == second[i]);
-        REQUIRE(r->gain == -2.5 && r->enabled && r->count == UINT64_C(0xfedcba9876543210));
-        REQUIRE(r->target == (i == 3 ? 0 : owner));
-        REQUIRE(
-            r->name_length == ACTION_NAME.length &&
-            !memcmp(r->name, ACTION_NAME.bytes, ACTION_NAME.length)
-        );
-        const pin_string *message = i == 4
-                                      ? &(pin_string){ .bytes = "sent", .length = 4 }
-                                      : &ACTION_TEXT;
-        const pin_string *ctext = i == 4 ? message : &ACTION_CTEXT;
-        REQUIRE(
-            r->message_length == message->length &&
-            !memcmp(r->message, message->bytes, message->length)
-        );
-        REQUIRE(
-            r->ctext_length == ctext->length &&
-            !memcmp(r->ctext, ctext->bytes, ctext->length)
-        );
-    }
-    return true;
 }
-TEST_CASE(package_compiler_calls_native_actions)
-{
-    REQUIRE(action_table());
-    static const char source
-        [] = "NativeActions :: behavior {\n"
-             "    on Tick :: () {\n"
-             "        sync_probe(Second: action_mark(value: 2), First: "
-             "action_mark(VALUE: 1))\n"
-             "        sync_probe(first: action_mark(3), Target: 0)\n"
-             "        sync_probe(First: 4, Target: null)\n"
-             "        sync_probe(First: 5, Target: zero_entity())\n"
-             "        p := sync_probe(First: 6, Second: 8, Message: \"sent\", "
-             "CText: \"sent\")\n"
-             "        action_mark(p.value)\n"
-             "        ambiguous_probe(FirstValue: 9, first_value: 10)\n"
-             "        aggregate_probe([3, 4])\n"
-             "        action_mark(kind_probe(2))\n"
-             "        action_mark(fixture.kind_action(\"text\"))\n"
-             "        action_mark(fixture.duplicate_int(3))\n"
-             "        action_mark(fixture.duplicate_text(\"text\"))\n"
-             "        action_mark(fixture.AvailableAction(\"text\"))\n"
-             "        assert(false)\n"
-             "        sync_probe(First: 7)\n"
-             "    }\n}\n";
-    static const char
-        failure[] = "NativeFailure :: behavior { on Tick :: () { fail_probe(); "
-                    "sync_probe(First: action_mark(99)); } }";
-    execution_module *expected[2] = { 0 }, *failed[2] = { 0 };
-    for (int b = 0; b < 2; b++) {
-        behavior_backend backend = b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE;
-        expected[b] = action_oracle(source, backend);
-        failed[b] = action_oracle(failure, backend);
-        REQUIRE(expected[b] && failed[b]);
-        REQUIRE(action_play(expected[b], false) && action_play(failed[b], true));
-    }
-    REQUIRE(prepare());
-    bool alike = true;
-    for (int b = 0; b < 2; b++) {
-        execution_module *actual = NULL;
-        REQUIRE(action_module(b, "NativeActions", source, &actual));
-        REQUIRE(action_play(actual, false));
-        alike &= same_declarations(expected[b], actual) &&
-                 same_points(expected[b], actual) &&
-                 same_watches(expected[b], actual);
-        execution_module_free(actual);
-        REQUIRE(action_module(b, "NativeFailure", failure, &actual));
-        REQUIRE(same_declarations(failed[b], actual));
-        REQUIRE(action_play(actual, true));
-        execution_module_free(actual);
-        execution_module_free(expected[b]);
-        execution_module_free(failed[b]);
-    }
-    REQUIRE(alike);
-    return true;
 }
-static bool action_number_play(execution_module *module)
-{
-    action_record_count = action_trace_count = 0;
-    memset(action_number_calls, 0, sizeof action_number_calls);
-    player p = { 0 };
-    REQUIRE(play(module, &p));
-    uint64_t owner = ecs_entity_to_u64(p.owner);
-    int status = execution_instance_dispatch(
-        p.instance,
-        native_capabilities_catalog(actions_native)->tick_event,
-        NULL,
-        0,
-        0,
-        0,
-        1000
-    );
-    stop(&p);
-    REQUIRE(status == FLOW_OK && action_record_count == 1);
-    REQUIRE(!action_number_calls[0] && action_number_calls[1] == 1);
-    REQUIRE(action_records[0].first == 256 && action_records[0].target == owner);
-    return true;
 }
-TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected)
-{
-    REQUIRE(action_table());
-    const char *source = "NativeNumber :: behavior { on Tick :: () { "
-                         "sync_probe(First: numeric_choice(256)); } }";
-    execution_module *expected[2] = { 0 };
-    for (int b = 0; b < 2; b++) {
-        expected[b] = action_oracle(source, b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
-        REQUIRE(expected[b] && action_number_play(expected[b]));
-    }
-    REQUIRE(prepare());
-    bool alike = true;
-    for (int b = 0; b < 2; b++) {
-        execution_module *actual = NULL;
-        REQUIRE(action_module(b, "NativeNumber", source, &actual));
-        REQUIRE(action_number_play(actual));
-        alike &= same_declarations(expected[b], actual) &&
-                 same_points(expected[b], actual) &&
-                 same_watches(expected[b], actual);
-        execution_module_free(actual);
-        execution_module_free(expected[b]);
-    }
-    REQUIRE(alike);
-    return true;
-}
-/* Whether `actual` delivers `expected`'s watches, and those of each source
- * span in the same order. Stage one watches a native's arguments as the
- * call's inputs after its omitted defaults, where stage zero watches each
- * argument after its value, so the spans interleave differently. */
-static bool same_trace_by_span(const watch_trace *expected, const watch_trace *actual)
-{
-    bool same = expected->count == actual->count;
-    for (int i = 0; same && i < expected->count; i++) {
-        const traced_watch *x = &expected->watches[i];
-        int before = 0, at = -1;
-        for (int j = 0; j < i; j++) {
-            before += expected->watches[j].start == x->start &&
-                      expected->watches[j].end == x->end;
-        }
-        for (int k = 0; at < 0 && k < actual->count; k++) {
-            const traced_watch *y = &actual->watches[k];
-            if (y->start == x->start && y->end == x->end && !before--) {
-                at = k;
-            }
-        }
-        same = at >= 0 && same_traced(x, &actual->watches[at]);
-    }
-    if (!same) {
-        same_trace(expected, actual);
-    }
-    return same;
-}
-/* Runs default_pair(2), whose omitted f64 default is 5, on the backend the
- * module selects with no fallback, and traces its watches in order. The trace
- * has the default as the call's ordinal-1 input and as its own output. */
-static bool action_default_play(execution_module *module, const char *source, bool compiled, watch_trace *trace)
-{
-    const behavior_function *body = module->plan.functions[0].body;
-    arena storage = { 0 };
-    behavior_function_activation activation = { 0 };
-    behavior_function_activation_init(body, &activation);
-    pin_value *variables = xcalloc((size_t)body->variable_count + 1, sizeof *variables);
-    *trace = (watch_trace){ 0 };
-    behavior_function_context context = { .activation = &activation,
-                                          .variables = variables,
-                                          .budget = 1000,
-                                          .source_debug_user = trace,
-                                          .source_capture = trace_watch };
-    behavior_function_bind_storage(&context, &storage);
-    REQUIRE(behavior_function_bind(body, &context, NULL, UINT64_C(0x1234567800000042)));
-    action_record_count = action_trace_count = 0;
-    memset(action_default_calls, 0, sizeof action_default_calls);
-    behavior_run_scope runs = { 0 };
-    behavior_run_scope_begin(&runs);
-    int status = behavior_function_run(body, &context, compiled);
-    behavior_run_scope_end(&runs);
-    behavior_function_release_host(&context);
-    behavior_function_activation_free(&activation);
-    arena_free(&storage);
-    free(variables);
-    REQUIRE(status == FLOW_OK && action_record_count == 1 && action_records[0].first == 1);
-    REQUIRE(action_default_calls[0] == 1 && !action_default_calls[1]);
-    const behavior_run_counts *n = &runs.counts;
-    uint64_t entries = n->sljit_entries + n->wasm_entries;
-    REQUIRE(!n->overflow && !n->inspection_bytecode_fallbacks && !n->size_bytecode_fallbacks);
-    REQUIRE(
-        compiled ? entries > 0 && !n->bytecode_entries &&
-                       n->inspected_sljit_entries + n->inspected_wasm_entries == entries
-                 : n->bytecode_entries > 0 && !entries
-    );
-    double five = 5;
-    uint64_t bits;
-    memcpy(&bits, &five, sizeof bits);
-    int call = (int)(strstr(source, "default_pair") - source), input = 0, output = 0;
-    REQUIRE(!trace->overflow);
-    for (int i = 0; i < trace->count; i++) {
-        const traced_watch *w = &trace->watches[i];
-        if (w->type == PIN_F64 && w->bits == bits) {
-            input += w->start == call && !w->output && w->ordinal == 1;
-            output += w->output;
-        }
-    }
-    REQUIRE(input == 1 && output == 1);
-    return true;
-}
-TEST_CASE(package_compiler_watches_overloaded_native_defaults)
-{
-    REQUIRE(action_table());
-    const char *source = "NativeDefault :: behavior { on Tick :: () { "
-                         "sync_probe(First: default_pair(2)); } }";
-    execution_module *expected[2] = { 0 };
-    watch_trace traces[2];
-    for (int b = 0; b < 2; b++) {
-        expected[b] = action_oracle(source, b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
-        REQUIRE(expected[b] && action_default_play(expected[b], source, b, &traces[b]));
-    }
-    REQUIRE(prepare());
-    bool alike = true;
-    watch_trace backend;
-    for (int b = 0; b < 2; b++) {
-        execution_module *actual = NULL;
-        watch_trace trace;
-        REQUIRE(action_module(b, "NativeDefault", source, &actual));
-        REQUIRE(action_default_play(actual, source, b, &trace));
-        alike &= same_declarations(expected[b], actual) &&
-                 same_points(expected[b], actual) &&
-                 same_watches(expected[b], actual) &&
-                 same_trace_by_span(&traces[b], &trace);
-        /* Both backends deliver stage one's watches in one order. */
-        if (b) {
-            alike &= same_trace(&backend, &trace);
-        }
-        backend = trace;
-        execution_module_free(actual);
-        execution_module_free(expected[b]);
-    }
-    REQUIRE(alike && same_trace(&traces[0], &traces[1]));
-    return true;
-}
-typedef struct
-{
-    const char *call, *oracle, *first, *second;
-} action_rejection;
-static bool action_rejects(int b, const action_rejection *rejection)
-{
-    char source[512];
-    snprintf(
-        source,
-        sizeof source,
-        "NativeReject :: behavior { on Tick :: () { %s; } }",
-        rejection->call
-    );
-    const script_catalog *catalog = native_capabilities_catalog(actions_native);
-    if (rejection->oracle) {
-        script_syntax *syntax = script_parse(source);
-        script_analysis *analysis = script_analyze(syntax, catalog);
-        bool rejected = !syntax->diagnostic_count && analysis->diagnostic_count &&
-                        !strcmp(analysis->diagnostics[0].message, rejection->oracle);
-        if (!rejected) {
-            fprintf(
-                stderr,
-                "action rejection oracle for %s: %s\n",
-                rejection->call,
-                analysis->diagnostic_count ? analysis->diagnostics[0].message : "accepted"
-            );
-        }
-        script_analysis_free(analysis);
-        script_syntax_free(syntax);
-        REQUIRE(rejected);
-    }
-    pin_value out;
-    REQUIRE(
-        catalog_compile_native(b, catalog, actions_native, "NativeReject", source, "CompileBehaviorsWithCatalog", &out)
-    );
-    bool empty = out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY &&
-                 (!out.ptr || !((const pin_array *)out.ptr)->count);
-    if (!empty) {
-        fprintf(
-            stderr,
-            "action rejection compiled an artifact for %s\n",
-            rejection->call
-        );
-    }
-    REQUIRE(empty);
-    arena_free(&detached);
-    REQUIRE(
-        catalog_compile_native(b, catalog, actions_native, "NativeReject", source, "BehaviorRejectionWithCatalog", &out)
-    );
-    REQUIRE(out.type == PIN_STR);
-    const char *message = pin_text(out).bytes;
-    char lower[512];
-    snprintf(lower, sizeof lower, "%s", message);
-    for (char *at = lower; *at; at++) {
-        *at = (char)tolower((unsigned char)*at);
-    }
-    int line = 0, column = 0;
-    bool rejected = sscanf(message, "NativeReject:%d:%d:", &line, &column) == 2 &&
-                    line > 0 && column > 0 &&
-                    (!rejection->first || strstr(lower, rejection->first)) &&
-                    (!rejection->second || strstr(lower, rejection->second));
-    if (!rejected) {
-        fprintf(stderr, "action rejection for %s: %s\n", rejection->call, message);
-    }
-    arena_free(&detached);
-    REQUIRE(rejected);
-    return true;
-}
-typedef struct
-{
-    script_catalog catalog;
-    script_catalog_type types[3];
-    script_catalog_parameter parameters[NATIVE_COUNT(ACTION_INPUT) - 1];
-    script_catalog_capability capabilities[2];
-} action_default_fixture;
 static void action_default_setup(action_default_fixture *out, bool wrong_header)
 {
     const script_catalog *base = native_capabilities_catalog(actions_native);
@@ -13044,433 +11017,11 @@ TEST_CASE(package_compiler_rejects_nonzero_handle_defaults)
     REQUIRE(action_default_unsupported(&values));
     return true;
 }
-static bool action_default_rejected(int b, bool wrong_header)
-{
-    action_default_fixture values;
-    action_default_setup(&values, wrong_header);
-    REQUIRE(action_default_unsupported(&values));
-    const char *identity = "Malformed";
-    const char *const sources[] = {
-        "Malformed :: behavior { on Tick :: () { sync_probe(First: 1); } }",
-        "Malformed :: behavior { on Tick :: () { sync_probe(First: 1, Target: "
-        "0); } }"
-    };
-    for (int supplied = 0; supplied < NATIVE_COUNT(sources); supplied++) {
-        pin_value out;
-        REQUIRE(
-            catalog_compile_native(b, &values.catalog, NULL, identity, sources[supplied], "CompileBehaviorsWithCatalog", &out)
-        );
-        REQUIRE(out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY);
-        const pin_array *array = out.ptr;
-        REQUIRE((array && array->count > 0) == (bool)supplied);
-        arena_free(&detached);
-    }
-    return true;
 }
-TEST_CASE(package_compiler_rejects_native_action_arguments)
-{
-    REQUIRE(action_table());
-    REQUIRE(prepare());
-    static const action_rejection cases[] = {
-        { "ambiguous_probe(FIRSTVALUE: 1, first_value: 2)",
-          "Ambiguous argument 'FIRSTVALUE'",
-          "ambiguous",
-          "argument" },
-        { "sync_probe(First: 1, First: 2)",
-          "Argument supplied more than once",
-          "argument",
-          "more than once" },
-        { "sync_probe(First: 1, first: 2)",
-          "Argument supplied more than once",
-          "argument",
-          "more than once" },
-        { "sync_probe(First: 1, Missing: 2)", "Unknown argument 'Missing'", "unknown", "argument" },
-        { "sync_probe(First: 1, CText: \"x\\u0000y\")",
-          "C-string boundary 'CText' cannot accept NUL at byte 1",
-          "ctext",
-          "nul" },
-        { "sync_probe(First: 1, Target: int(0))",
-          "Incompatible types: expected handle, got int",
-          "argument",
-          "parameter type" },
-        { "aggregate_probe()", NULL, "default", "values" },
-        { "xs: int[] = [3, 4]; xs.aggregate_probe()",
-          "Unknown callable 'xs.aggregate_probe'",
-          "call",
-          NULL },
-        { "unsupported_probe()", NULL, "native", "cannot be called directly" },
-        { "suspending_probe()", NULL, "native", "cannot be called directly" },
-    };
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < NATIVE_COUNT(cases); i++) {
-            REQUIRE(action_rejects(b, &cases[i]));
-        }
-        REQUIRE(action_default_rejected(b, true));
-        REQUIRE(action_default_rejected(b, false));
-    }
-    return true;
 }
-TEST_CASE(package_compiler_rejects_native_name_collisions)
-{
-    REQUIRE(action_table());
-    const char *source = "NativeAssert :: behavior { on Tick :: () { "
-                         "assert(false); } }";
-    execution_module *expected = action_oracle(source, BEHAVIOR_BYTECODE);
-    REQUIRE(expected);
-    player p = { 0 };
-    REQUIRE(play(expected, &p));
-    memset(action_kind_calls, 0, sizeof action_kind_calls);
-    int status = execution_instance_dispatch(
-        p.instance,
-        native_capabilities_catalog(actions_native)->tick_event,
-        NULL,
-        0,
-        0,
-        0,
-        1000
-    );
-    stop(&p);
-    execution_module_free(expected);
-    REQUIRE(status == FLOW_OK && action_kind_calls[2] == 1);
-    REQUIRE(prepare());
-    static const action_rejection cases[] = {
-        { "kind_probe(\"text\")", "Incompatible types: expected int, got string", NULL, NULL },
-        { "held_probe(\"text\")", "Incompatible types: expected int, got string", NULL, NULL },
-        { "duplicate_action(1)", "Ambiguous callable 'duplicate_action'", NULL, NULL },
-    };
-    for (int b = 0; b < 2; b++) {
-        for (int i = 0; i < NATIVE_COUNT(cases); i++) {
-            REQUIRE(action_rejects(b, &cases[i]));
-        }
-    }
-    return true;
 }
-typedef struct
-{
-    int literal[3], call[3], literal_count[3], input_count[3], wrong;
-    uint64_t owner;
-} action_watches;
-static void action_capture(
-    void *user,
-    behavior_function_context *,
-    const behavior_source_watch *watch,
-    const pin_value *value
-)
-{
-    action_watches *watches = user;
-    for (int i = 0; i < NATIVE_COUNT(watches->literal); i++) {
-        bool literal = watch->origin.start == watches->literal[i] &&
-                       (i < 2 || watch->initial.type == PIN_HANDLE),
-             input = watch->origin.start == watches->call[i] &&
-                     !watch->output && watch->ordinal == 7;
-        if (!literal && !input) {
-            continue;
-        }
-        watches->literal_count[i] += literal;
-        watches->input_count[i] += input;
-        const char *type_name = input ? "fixture.owner" : "ecs.entity";
-        if (value->type != PIN_HANDLE || value->container != PIN_CONTAINER_SINGLE ||
-            value->u64 != watches->owner || !value->type_name ||
-            strcmp(value->type_name, type_name)) {
-            fprintf(
-                stderr,
-                "action watched owner at %d: type%d name%s wanted%s value%llx "
-                "wanted%llx\n",
-                watch->origin.start,
-                value->type,
-                value->type_name ? value->type_name : "none",
-                type_name,
-                (unsigned long long)value->u64,
-                (unsigned long long)watches->owner
-            );
-            watches->wrong++;
-        }
-    }
 }
-static bool action_watched(execution_module *module, const char *source, bool compiled)
-{
-    const behavior_function *body = module->plan.functions[0].body;
-    action_watches watched = { .owner = UINT64_C(0x1234567800000042) };
-    watched.call[0] = (int)(strstr(source, "sync_probe") - source);
-    watched.call[1] = (int)(strstr(source + watched.call[0] + 1, "sync_probe") - source);
-    watched.call[2] = (int)(strstr(source + watched.call[1] + 1, "sync_probe") - source);
-    watched.literal[0] = (int)(strstr(source, "Target: 0") - source) +
-                         (int)strlen("Target: ");
-    watched.literal[1] = (int)(strstr(source, "Target: null") - source) +
-                         (int)strlen("Target: ");
-    watched.literal[2] = watched.call[2] + (int)strlen("sync_probe");
-    arena storage = { 0 };
-    behavior_function_activation activation = { 0 };
-    behavior_function_activation_init(body, &activation);
-    pin_value *variables = xcalloc((size_t)body->variable_count + 1, sizeof *variables);
-    behavior_function_context context = { .activation = &activation,
-                                          .variables = variables,
-                                          .budget = 1000,
-                                          .source_debug_user = &watched,
-                                          .source_capture = action_capture };
-    behavior_function_bind_storage(&context, &storage);
-    REQUIRE(behavior_function_bind(body, &context, NULL, watched.owner));
-    action_record_count = action_trace_count = 0;
-    int status = behavior_function_run(body, &context, compiled);
-    behavior_function_release_host(&context);
-    behavior_function_activation_free(&activation);
-    arena_free(&storage);
-    free(variables);
-    REQUIRE(status == FLOW_OK && action_record_count == 3);
-    REQUIRE(!watched.wrong);
-    for (int i = 0; i < NATIVE_COUNT(watched.literal); i++) {
-        REQUIRE(watched.literal_count[i] && watched.input_count[i]);
-    }
-    return true;
 }
-TEST_CASE(package_compiler_watches_native_owner_arguments)
-{
-    REQUIRE(action_table());
-    const char
-        *source = "NativeWatch :: behavior { on Tick :: () { sync_probe(First: "
-                  "1, Target: 0); sync_probe(First: 2, Target: null); "
-                  "sync_probe(First: 3); } }";
-    execution_module *expected[2] = { 0 };
-    for (int b = 0; b < 2; b++) {
-        expected[b] = action_oracle(source, b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
-        REQUIRE(expected[b] && action_watched(expected[b], source, b));
-    }
-    REQUIRE(prepare());
-    for (int b = 0; b < 2; b++) {
-        execution_module *actual = NULL;
-        REQUIRE(action_module(b, "NativeWatch", source, &actual));
-        REQUIRE(action_watched(actual, source, b));
-        execution_module_free(actual);
-        execution_module_free(expected[b]);
-    }
-    return true;
-}
-static int function_assert_calls;
-static const char *function_assert(void *, const pin_value *arguments, pin_value *)
-{
-    if (arguments[0].type != PIN_BOOL ||
-        arguments[0].container != PIN_CONTAINER_SINGLE || arguments[0].b) {
-        return "ordinary assert function did not receive false";
-    }
-    function_assert_calls++;
-    return NULL;
-}
-static bool function_assert_play(execution_module *module, bool guard_fails)
-{
-    function_assert_calls = 0;
-    player p = { 0 };
-    REQUIRE(play(module, &p));
-    int status = execution_instance_dispatch(
-        p.instance,
-        native_capabilities_catalog(actions_native)->tick_event,
-        NULL,
-        0,
-        0,
-        0,
-        1000
-    );
-    const execution_program_failure *failure = execution_program_error(p.program);
-    int wanted_status = guard_fails ? FLOW_ERR_INVALID_GRAPH : FLOW_OK,
-        wanted_calls = guard_fails ? 0 : 1;
-    bool failed_guard = failure &&
-                        !strcmp(failure->message, "Assertion failed: false");
-    if (status != wanted_status || function_assert_calls != wanted_calls) {
-        fprintf(
-            stderr,
-            "ordinary FUNCTION alias assert(false): status%d callbacks%d "
-            "error%s\n",
-            status,
-            function_assert_calls,
-            failure ? failure->message : "none"
-        );
-    }
-    stop(&p);
-    REQUIRE(status == wanted_status && function_assert_calls == wanted_calls);
-    REQUIRE(!guard_fails || failed_guard);
-    return true;
-}
-TEST_CASE(package_compiler_keeps_function_assert_binding_identity)
-{
-    REQUIRE(!actions_native);
-    static const node_host_call call = { .invoke = function_assert };
-    const native_capability_definition definitions[] = {
-        { .canonical_name = "fixture.assert_function",
-          .source_name = "assert",
-          .kind = SCRIPT_CAPABILITY_FUNCTION,
-          .inputs = ACTION_ASSERT_INPUT + 1,
-          .input_count = NATIVE_COUNT(ACTION_ASSERT_INPUT) - 1,
-          .completion_output = -1,
-          .effects = SCRIPT_EFFECT_HOST },
-        ACTION_DEFINITIONS[1],
-        { .canonical_name = "fixture.truth_intrinsic",
-          .source_name = "demand_truth",
-          .kind = SCRIPT_CAPABILITY_FUNCTION,
-          .inputs = ACTION_ASSERT_INPUT + 1,
-          .input_count = NATIVE_COUNT(ACTION_ASSERT_INPUT) - 1,
-          .completion_output = -1 }
-    };
-    const native_definition_binding bindings[] = {
-        { .canonical_name = "fixture.assert_function",
-          .implementation = { .call = &call, .access = &HOST_ACCESS } },
-        { .canonical_name = "fixture.truth_intrinsic",
-          .implementation = { .intrinsic = BF_ASSERT } }
-    };
-    uint64_t entity = script_catalog_id("type", "ecs.entity");
-    const script_catalog_type type = { .id = entity,
-                                       .name = "ecs.entity",
-                                       .type = { .storage = PIN_HANDLE, .nominal = entity },
-                                       .size = sizeof(uint64_t) };
-    const native_definition_pack pack = {
-        .definitions = definitions,
-        .definition_count = NATIVE_COUNT(definitions),
-        .bindings = bindings,
-        .binding_count = NATIVE_COUNT(bindings),
-        .global_definitions = ACTION_GLOBALS,
-        .global_count = NATIVE_COUNT(ACTION_GLOBALS),
-        .global_bindings = ACTION_GLOBAL_BINDINGS,
-        .global_binding_count = NATIVE_COUNT(ACTION_GLOBAL_BINDINGS),
-        .base = { .types = &type,
-                  .type_count = 1,
-                  .entity_type = entity,
-                  .tick_event = native_capability_definition_id(&definitions[1]) }
-    };
-    char error[256];
-    actions_native = native_capabilities_from_definition_packs(NULL, 0, &pack, 1, error, sizeof error);
-    if (!actions_native) {
-        fprintf(stderr, "ordinary assert function definition: %s\n", error);
-    }
-    REQUIRE(actions_native);
-    const script_catalog *catalog = native_capabilities_catalog(actions_native);
-    const script_catalog_capability *capability = script_catalog_capability_by_id(
-        catalog,
-        native_capability_definition_id(&definitions[0])
-    );
-    REQUIRE(capability && capability->kind == SCRIPT_CAPABILITY_FUNCTION);
-    const native_capability_binding *actual_binding = native_capabilities_find(
-        actions_native,
-        capability->id,
-        script_catalog_capability_abi(catalog, capability)
-    );
-    REQUIRE(actual_binding && actual_binding->call == &call && !actual_binding->intrinsic);
-    const char *identity = "FunctionAssert";
-    const char *const sources[] = {
-        "FunctionAssert :: behavior { on Tick :: () { demand_truth(true); "
-        "fixture.truth_intrinsic(true); assert(false); } }",
-        "FunctionAssert :: behavior { on Tick :: () { demand_truth(false); "
-        "assert(false); } }"
-    };
-    size_t length;
-    char *json = compiler_behavior_catalog_input_json(catalog, actions_native, &identity, sources, 1, &length);
-    yyjson_doc *parsed = yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
-    REQUIRE(parsed);
-    yyjson_val *functions = yyjson_arr_get(yyjson_doc_get_root(parsed), 5),
-               *ordinary = action_exported(functions, "assert"),
-               *guard = action_exported(functions, "demand_truth");
-    REQUIRE(
-        ordinary && guard && yyjson_obj_size(ordinary) == 10 &&
-        yyjson_obj_size(guard) == 10
-    );
-    REQUIRE(yyjson_get_int(yyjson_obj_get(ordinary, "intrinsic")) == 0);
-    REQUIRE(yyjson_get_int(yyjson_obj_get(guard, "intrinsic")) == BF_ASSERT);
-    yyjson_doc_free(parsed);
-    free(json);
-    execution_module *expected[2][2] = { 0 };
-    for (int b = 0; b < 2; b++) {
-        for (int fails = 0; fails < 2; fails++) {
-            expected[b][fails] = action_oracle(sources[fails], b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE);
-            REQUIRE(expected[b][fails] && function_assert_play(expected[b][fails], fails));
-        }
-    }
-    REQUIRE(prepare());
-    for (int b = 0; b < 2; b++) {
-        for (int fails = 0; fails < 2; fails++) {
-            execution_module *actual = NULL;
-            REQUIRE(action_compiled_module(b, identity, sources[fails], &actual));
-            REQUIRE(function_assert_play(actual, fails));
-            REQUIRE(same_declarations(expected[b][fails], actual));
-            REQUIRE(
-                same_points(expected[b][fails], actual) &&
-                same_watches(expected[b][fails], actual)
-            );
-            execution_module_free(actual);
-            execution_module_free(expected[b][fails]);
-        }
-    }
-    return true;
-}
-/* The other half of the samples, the rejections and the identities a
- * project's path gives. */
-TEST_CASE(package_compiler_compiles_the_other_behaviors)
-{
-    REQUIRE(prepare());
-    const type_desc *const reflected[] = { &spot_type };
-    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
-    bool passed = samples_alike(SAMPLE_COUNT / 2, SAMPLE_COUNT);
-    publish_project(&pack);
-    for (size_t i = 0;
-         passed && i < sizeof behavior_rejections / sizeof *behavior_rejections;
-         i++) {
-        passed = rejects(1, &behavior_rejections[i]);
-    }
-    const char *const invalid_entity_defaults[] = {
-        "Invalid :: behavior { target: entity = ~0; }",
-        "Invalid :: behavior { target: entity = !0; }",
-    };
-    for (size_t i = 0; passed && i < sizeof invalid_entity_defaults /
-                                         sizeof *invalid_entity_defaults;
-         i++) {
-        REQUIRE(stage_zero_diagnostic(invalid_entity_defaults[i]).message[0]);
-        for (int b = 0; b < 2; b++) {
-            pin_value out;
-            REQUIRE(compile_behavior(b, "Rejected", invalid_entity_defaults[i], &out));
-            REQUIRE(
-                out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY &&
-                (!out.ptr || !((const pin_array *)out.ptr)->count)
-            );
-            arena_free(&detached);
-        }
-    }
-    const behavior_rejection invalid_keyed_handles[] = {
-        { "Invalid :: behavior { target: entity; on Tick :: () { "
-          "target = globals.Other; } }",
-          "assigned value differs from its local",
-          false },
-        { "Invalid :: behavior { on Tick :: () { "
-          "if self == globals.Other { self.Spot.x = 1; } } }",
-          "operator does not apply to these operands",
-          false },
-        { "Wrong :: behavior { on Tick :: () { globals.Other.Spot.x = 1; } }",
-          "field assignment needs a local record",
-          false },
-        { "Wrong :: behavior { on Tick :: () { other := globals.Other; "
-          "other.Spot.x = 1; } }",
-          "field assignment needs a local record",
-          false },
-        { "Wrong :: behavior { on Tick :: () { self.Spot = globals.Other.Spot; "
-          "} }",
-          "Unknown field 'Spot'",
-          false },
-    };
-    for (size_t i = 0;
-         passed && i < sizeof invalid_keyed_handles / sizeof *invalid_keyed_handles;
-         i++) {
-        REQUIRE(stage_zero_diagnostic(invalid_keyed_handles[i].source).message[0]);
-        for (int b = 0; b < 2; b++) {
-            REQUIRE(rejects(b, &invalid_keyed_handles[i]));
-        }
-    }
-    const spot moved = { .x = 1.5f, .y = 2, .w = 9 },
-               lowered = { .x = 4, .y = 5, .w = 5 };
-    passed = passed && writes_target("OtherComponent", moved, true) &&
-             writes_target("LocalComponent", lowered, false);
-    passed = passed && takes_project_identities(1);
-    publish_project(NULL);
-    passed = passed && native_catalog_alike();
-    REQUIRE(passed);
-    return true;
-}
-/* A temporary string returned by a member call becomes instance-owned state.
- * Updating one owner must leave another owner's state and bytes independent. */
 TEST_CASE(package_compiler_keeps_text_state_per_owner)
 {
     REQUIRE(prepare());
@@ -13618,70 +11169,6 @@ TEST_CASE(package_compiler_runs_task_sequencing_and_cancellation)
     return true;
 }
 
-TEST_CASE(package_compiler_rejects_unhandled_task_result_shapes)
-{
-    REQUIRE(prepare());
-    const behavior_rejection rejected[] = {
-        { "B :: behavior { Pair :: () -> (a: int, b: int) { yield; return (1, "
-          "2) } "
-          "on Tick :: () { task := Pair() } }",
-          "task handles with multiple results are not supported yet",
-          false },
-        { "B :: behavior { value: int = 0; F :: () -> int { yield; return 1 } "
-          "Run :: () { t := F(); r := await t; if r is not Cancelled { yield; "
-          "value = r } } "
-          "on Tick :: () { Run() } }",
-          "assigned value differs from its local",
-          false },
-        { "B :: behavior { value: int = 0; F :: () -> int { yield; return 1 } "
-          "Run :: () { t := F(); other := F(); r := await t; if r is not "
-          "Cancelled { "
-          "await other; value = r } } on Tick :: () { Run() } }",
-          "assigned value differs from its local",
-          false },
-        { "B :: behavior { on Tick :: () { cancel 1 } }",
-          "task operation needs a task handle",
-          false },
-        { "B :: behavior { on Tick :: () { n: int = 1; r := await n } }",
-          "await needs a task handle or authored call",
-          false },
-    };
-    for (int b = 0; b < 2; b++) {
-        for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
-            REQUIRE(rejects(b, &rejected[i]));
-        }
-        pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS], out, message;
-        REQUIRE(arguments(b, false, NULL, 0, compile));
-        args[0] = text("MissingTargetFact");
-        args[1] = text("B :: behavior { on Tick :: () { yield } }");
-        memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
-        REQUIRE(put(&args[2], "error_status_offset", 0));
-        int first_native = ((pin_array *)args[5].ptr)->count;
-        REQUIRE(behavior_natives(b, &args[5]));
-        REQUIRE(game_arguments(b, first_native, &args[8]));
-        REQUIRE(compiler_fixture_call(
-            &fixture,
-            b,
-            PACKAGE,
-            "CompileBehavior",
-            args,
-            BEHAVIOR_ARGUMENTS,
-            COMPILE_BUDGET,
-            &detached,
-            &out
-        ));
-        REQUIRE(out.type == PIN_UNION && out.ptr);
-        const pin_union *result = out.ptr;
-        REQUIRE(result->tag == tag(b, "Rejected"));
-        REQUIRE(get(&result->values[0], "message", &message));
-        REQUIRE(!strcmp(pin_text(message).bytes, "task lowering needs the target error-status offset"));
-        arena_free(&detached);
-    }
-    return true;
-}
-
-/* A row field of CollectScalar's retained result, read through the record
- * shape the result owns. */
 static pin_value scalar_field(const pin_value *row, const char *name)
 {
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
@@ -16734,11 +14221,10 @@ static bool vm_closure(int b, pin_string source, unsigned char **bytes, size_t *
     const source_package_input inputs[] = {
         { "scalar/Main.chibi", source.bytes, source.length }
     };
-    pin_value out;
+    compiler_result out;
     REQUIRE(compile(b, false, false, false, inputs, 1, COMPILE_BUDGET, &out));
-    const pin_union *value = out.ptr;
-    REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Compiled"));
-    *bytes = closure_bytes(value, length);
+    REQUIRE(compiler_succeeded(&out));
+    *bytes = closure_bytes(&out, length);
     return true;
 }
 /* The text of `ir` from `start` to the end of the definition it begins. */
@@ -20861,7 +18347,13 @@ static script_catalog query_game_catalog()
     catalog.relationship_count = 1;
     return catalog;
 }
-static bool query_compile_result(int b, const char *identity, const char *source, pin_value *out)
+static bool query_compile_result_category(
+    int b,
+    const char *identity,
+    const char *source,
+    bool error_type,
+    compiler_result *out
+)
 {
     fixture.observe_failures = true;
     pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
@@ -20874,10 +18366,27 @@ static bool query_compile_result(int b, const char *identity, const char *source
     REQUIRE(game_arguments(b, first_native, &args[8]));
     pin_array *events = args[8].ptr, *payloads = args[9].ptr;
     script_catalog catalog = query_game_catalog();
+    script_catalog_type descriptions[sizeof game_types / sizeof *game_types];
+    memcpy(descriptions, catalog.types, sizeof descriptions);
+    for (int i = 0; i < catalog.type_count; i++) {
+        if (descriptions[i].id == SPOT) {
+            descriptions[i].error = error_type;
+        }
+    }
+    catalog.types = descriptions;
     pin_value *types = NULL;
     const pin_array *existing = args[10].ptr;
     for (int i = 0; i < existing->count; i++) {
-        apush(types, existing->items[i]);
+        pin_value type = existing->items[i], id;
+        REQUIRE(get(&type, "id", &id));
+        const script_catalog_type *definition = script_catalog_type_by_id(&catalog, id.u64);
+        REQUIRE(definition);
+        REQUIRE(put_value(
+            &type,
+            "error",
+            flag(script_catalog_type_contains_error(&catalog, definition->type))
+        ));
+        apush(types, type);
     }
     pin_value relationship = row(b, "GameType");
     REQUIRE(put_value(&relationship, "required", flag(false)));
@@ -20892,6 +18401,7 @@ static bool query_compile_result(int b, const char *identity, const char *source
     REQUIRE(put(&relationship, "count", 0));
     REQUIRE(put_value(&relationship, "relationship", flag(true)));
     REQUIRE(put(&relationship, "traits", 0));
+    REQUIRE(put_value(&relationship, "error", flag(false)));
     apush(types, relationship);
     args[10] = rows(types, acount(types), PIN_STRUCT, relationship.record);
     afree(types);
@@ -20902,23 +18412,70 @@ static bool query_compile_result(int b, const char *identity, const char *source
         "abi",
         u64(script_catalog_capability_abi(&catalog, &catalog.capabilities[0]))
     ));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
-    );
-    REQUIRE(out->type == PIN_UNION && out->ptr);
+    REQUIRE(compiler_call(b, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, out));
+    return true;
+}
+static bool query_compile_result(int b, const char *identity, const char *source, compiler_result *out)
+{
+    return query_compile_result_category(b, identity, source, false, out);
+}
+TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        for (int marked = 0; marked < 2; marked++) {
+            const char
+                source[] = "Fixed :: system(point: Spot, if Ready().value) {\n"
+                           "    Ready :: () -> (value: bool, error: Spot?) { "
+                           "return(true, nil); }\n"
+                           "}\n";
+            compiler_result out;
+            REQUIRE(query_compile_result_category(b, "Fixed", source, marked != 0, &out));
+            if (marked) {
+                if (compiler_succeeded(&out)) {
+                    fprintf(pu_errors(), "Marked system query accepted: %s\n", source);
+                }
+                REQUIRE(!compiler_succeeded(&out));
+                pin_value message, document, line, column;
+                REQUIRE(get(compiler_error(&out), "message", &message));
+                REQUIRE(get(compiler_error(&out), "document", &document));
+                REQUIRE(get(compiler_error(&out), "line", &line));
+                REQUIRE(get(compiler_error(&out), "column", &column));
+                REQUIRE(
+                    !strcmp(pin_text(message).bytes, "Error result checking requires an authored function body in stage one")
+                );
+                REQUIRE(document.i == 0 && line.i == 1 && column.i == 33);
+            } else {
+                if (!compiler_succeeded(&out)) {
+                    pin_value message, line, column;
+                    REQUIRE(get(compiler_error(&out), "message", &message));
+                    REQUIRE(get(compiler_error(&out), "line", &line));
+                    REQUIRE(get(compiler_error(&out), "column", &column));
+                    fprintf(
+                        pu_errors(),
+                        "Ordinary system query rejected: %s at %d:%d\n",
+                        pin_text(message).bytes,
+                        line.i,
+                        column.i
+                    );
+                }
+                REQUIRE(compiler_succeeded(&out));
+            }
+            arena_free(&detached);
+        }
+    }
     return true;
 }
 static bool query_stage_one_module(int b, const char *identity, const char *source, execution_module **module)
 {
     *module = NULL;
-    pin_value out;
+    compiler_result out;
     REQUIRE(query_compile_result(b, identity, source, &out));
-    const pin_union *value = out.ptr;
-    if (value->tag != tag(b, "Compiled")) {
+    if (!compiler_succeeded(&out)) {
         pin_value message = { 0 }, line = { 0 }, column = { 0 };
-        get(&value->values[0], "message", &message);
-        get(&value->values[0], "line", &line);
-        get(&value->values[0], "column", &column);
+        get(compiler_error(&out), "message", &message);
+        get(compiler_error(&out), "line", &line);
+        get(compiler_error(&out), "column", &column);
         fprintf(
             stderr,
             "stage one query %s rejected: %s at %d:%d\n",
@@ -20931,7 +18488,7 @@ static bool query_stage_one_module(int b, const char *identity, const char *sour
         return false;
     }
     size_t length = 0;
-    unsigned char *bytes = closure_bytes(value, &length);
+    unsigned char *bytes = closure_bytes(&out, &length);
     arena_free(&detached);
     script_catalog catalog = query_game_catalog();
     const execution_prepared_linker linker = { .user = &catalog,
@@ -21574,11 +19131,10 @@ TEST_CASE(package_compiler_query_rejects_hidden_mutation_and_old_headers)
     bool passed = true;
     for (int b = 0; passed && b < 2; b++) {
         for (size_t i = 0; passed && i < sizeof sources / sizeof *sources; i++) {
-            pin_value out;
+            compiler_result out;
             passed = query_compile_result(b, "Fixed", sources[i], &out);
             if (passed) {
-                const pin_union *value = out.ptr;
-                passed = value->tag == tag(b, "Rejected");
+                passed = !compiler_succeeded(&out);
                 if (!passed) {
                     fprintf(stderr, "stage one accepted invalid query: %s\n", sources[i]);
                 }
@@ -21766,13 +19322,12 @@ TEST_CASE(package_compiler_query_values_are_readonly)
     bool passed = true;
     for (int b = 0; passed && b < 2; b++) {
         for (size_t i = 0; passed && i < sizeof sources / sizeof *sources; i++) {
-            pin_value out;
+            compiler_result out;
             passed = query_compile_result(b, "Fixed", sources[i], &out);
             if (passed) {
-                const pin_union *value = out.ptr;
                 pin_value message = { 0 };
-                passed = value->tag == tag(b, "Rejected") &&
-                         get(&value->values[0], "message", &message) &&
+                passed = !compiler_succeeded(&out) &&
+                         get(compiler_error(&out), "message", &message) &&
                          (strstr(pin_text(message).bytes, "writable") ||
                           strstr(pin_text(message).bytes, "read-only"));
                 if (!passed) {
@@ -21797,7 +19352,6 @@ void test_language_package_compiler_chibi()
 void test_language_package_compiler_chibi_types()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builtin_math_native_results);
     RUN_TEST_CASE(package_compiler_builtin_math_source_contracts);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
     RUN_TEST_CASE(package_compiler_rejects_invalid_char_conversions);
@@ -21811,7 +19365,14 @@ void test_language_package_compiler_chibi_types()
 void test_language_package_compiler_chibi_math_native()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builtin_math_native_results);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_fallible()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_checks_fallible_source_results);
+    RUN_TEST_CASE(package_compiler_checks_fallible_source_results_compiled);
+    RUN_TEST_CASE(package_compiler_fallible_system_query_keeps_unsupported_boundary);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_imports()
@@ -21867,7 +19428,6 @@ void test_language_package_compiler_chibi_literals()
 void test_language_package_compiler_chibi_behaviors()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_compiles_behaviors);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_actions()
@@ -21876,22 +19436,13 @@ void test_language_package_compiler_chibi_actions()
     RUN_TEST_CASE(package_compiler_exports_native_actions);
     RUN_TEST_CASE(package_compiler_keeps_unavailable_native_functions);
     RUN_TEST_CASE(package_compiler_rejects_nonzero_handle_defaults);
-    RUN_TEST_CASE(package_compiler_calls_native_actions);
-    RUN_TEST_CASE(package_compiler_keeps_numeric_native_overloads_untyped_until_selected);
-    RUN_TEST_CASE(package_compiler_watches_overloaded_native_defaults);
-    RUN_TEST_CASE(package_compiler_rejects_native_action_arguments);
-    RUN_TEST_CASE(package_compiler_rejects_native_name_collisions);
-    RUN_TEST_CASE(package_compiler_watches_native_owner_arguments);
-    RUN_TEST_CASE(package_compiler_keeps_function_assert_binding_identity);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_behaviors_rest()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
     RUN_TEST_CASE(package_compiler_keeps_text_state_per_owner);
     RUN_TEST_CASE(package_compiler_runs_task_sequencing_and_cancellation);
-    RUN_TEST_CASE(package_compiler_rejects_unhandled_task_result_shapes);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_queries()
@@ -21986,8 +19537,6 @@ void test_language_package_compiler_chibi_libraries()
     RUN_TEST_CASE(package_compiler_resolves_library_array_updates);
     RUN_TEST_CASE(package_compiler_rejects_invalid_library_closures);
     RUN_TEST_CASE(package_compiler_folds_constants_as_stage_zero_does);
-    RUN_TEST_CASE(package_compiler_preserves_receiver_before_writing_item);
-    RUN_TEST_CASE(package_compiler_preserves_pure_reversed_append_debug);
     pu_clear_setup();
 }
 
@@ -22251,18 +19800,16 @@ TEST_CASE(native_arguments_authored_contract)
             const sample *s = &native_argument_samples[i];
             source_package_input inputs[SAMPLE_INPUTS];
             int count = sample_inputs(s, inputs);
-            pin_value out;
+            compiler_result out;
             REQUIRE(
                 compile(b, false, s->c_string_probe, false, inputs, count, COMPILE_BUDGET, &out)
             );
-            const pin_union *value = out.ptr;
-            REQUIRE(out.type == PIN_UNION && value);
             bool passed = false;
-            if (value->tag == tag(b, "Rejected")) {
+            if (!compiler_succeeded(&out)) {
                 pin_value message, line, column;
-                REQUIRE(get(&value->values[0], "message", &message));
-                REQUIRE(get(&value->values[0], "line", &line));
-                REQUIRE(get(&value->values[0], "column", &column));
+                REQUIRE(get(compiler_error(&out), "message", &message));
+                REQUIRE(get(compiler_error(&out), "line", &line));
+                REQUIRE(get(compiler_error(&out), "column", &column));
                 passed = s->message && !strcmp(s->message, pin_text(message).bytes) &&
                          line.i == s->line && column.i == s->column;
                 fprintf(
@@ -22276,9 +19823,8 @@ TEST_CASE(native_arguments_authored_contract)
                     passed ? "expected" : "MISMATCH"
                 );
             } else {
-                REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
                 size_t length = 0;
-                unsigned char *bytes = closure_bytes(value, &length);
+                unsigned char *bytes = closure_bytes(&out, &length);
                 unsigned char *expected = NULL;
                 size_t expected_length = 0;
                 passed = !s->message &&
@@ -22339,15 +19885,13 @@ TEST_CASE(package_compiler_compositional_records)
     int count = sample_inputs(&s, inputs);
     const sample_call call = { .function = "Main", .arguments = "[]", .expected = "[0]" };
     for (int b = 0; b < 2; b++) {
-        pin_value out;
+        compiler_result out;
         REQUIRE(compile(b, true, false, false, inputs, count, COMPILE_BUDGET, &out));
-        const pin_union *value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value);
-        if (value->tag == tag(b, "Rejected")) {
+        if (!compiler_succeeded(&out)) {
             pin_value message, line, column;
-            REQUIRE(get(&value->values[0], "message", &message));
-            REQUIRE(get(&value->values[0], "line", &line));
-            REQUIRE(get(&value->values[0], "column", &column));
+            REQUIRE(get(compiler_error(&out), "message", &message));
+            REQUIRE(get(compiler_error(&out), "line", &line));
+            REQUIRE(get(compiler_error(&out), "column", &column));
             fprintf(
                 stderr,
                 "compositional stage one: %s at %d:%d\n",
@@ -22356,9 +19900,9 @@ TEST_CASE(package_compiler_compositional_records)
                 column.i
             );
         }
-        REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
+        REQUIRE(compiler_succeeded(&out));
         size_t length;
-        unsigned char *bytes = closure_bytes(value, &length);
+        unsigned char *bytes = closure_bytes(&out, &length);
         arena_free(&detached);
         bool passed = true;
         for (int backend = 0; passed && backend < 2; backend++) {
@@ -22372,10 +19916,9 @@ TEST_CASE(package_compiler_compositional_records)
             strlen(COMPOSITIONAL_RECORD_ALIAS_REJECTION)
         };
         REQUIRE(compile(b, false, false, false, &rejected, 1, COMPILE_BUDGET, &out));
-        value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
+        REQUIRE(!compiler_succeeded(&out));
         pin_value message;
-        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(get(compiler_error(&out), "message", &message));
         if (!strstr(pin_text(message).bytes, "Nullable pointer requires a presence guard")) {
             fprintf(
                 stderr,
@@ -22395,16 +19938,15 @@ TEST_CASE(package_compiler_compositional_records)
                                                      depth_source,
                                                      strlen(depth_source) };
                 REQUIRE(compile(b, false, false, false, &input, 1, COMPILE_BUDGET, &out));
-                value = out.ptr;
-                REQUIRE(out.type == PIN_UNION && value);
-                if (value->tag != tag(b, depth == 16 ? "Compiled" : "Rejected")) {
+                bool expected = depth == 16;
+                if (compiler_succeeded(&out) != expected) {
                     fprintf(stderr, "compositional stage-one depth: backend=%d arrays=%d depth=%d\n", b, arrays, depth);
-                    if (value->tag == tag(b, "Rejected")) {
-                        REQUIRE(get(&value->values[0], "message", &message));
+                    if (!compiler_succeeded(&out)) {
+                        REQUIRE(get(compiler_error(&out), "message", &message));
                         fprintf(stderr, "%s\n", pin_text(message).bytes);
                     }
                 }
-                REQUIRE(value->tag == tag(b, depth == 16 ? "Compiled" : "Rejected"));
+                REQUIRE(compiler_succeeded(&out) == expected);
                 arena_free(&detached);
             }
         }
@@ -22413,9 +19955,8 @@ TEST_CASE(package_compiler_compositional_records)
                                               depth_source,
                                               strlen(depth_source) };
         REQUIRE(compile(b, false, false, false, &fanout, 1, COMPILE_BUDGET, &out));
-        value = out.ptr;
-        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(b, "Rejected"));
-        REQUIRE(get(&value->values[0], "message", &message));
+        REQUIRE(!compiler_succeeded(&out));
+        REQUIRE(get(compiler_error(&out), "message", &message));
         REQUIRE(strstr(pin_text(message).bytes, "metadata work"));
         arena_free(&detached);
     }

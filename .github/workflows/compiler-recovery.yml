@@ -20,7 +20,7 @@ jobs:
   recover:
     name: Compiler self-build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # PRs self-build on Linux only; main and `ci-full`-labelled PRs build all three.

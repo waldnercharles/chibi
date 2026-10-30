@@ -18,6 +18,7 @@ pub Node :: struct {
     has_error: bool;
 }
 
+@error
 pub Diagnostic :: struct {
     start: int;
     end: int;
@@ -48,6 +49,9 @@ pub Diagnose :: (nodes: Node[], root: int) -> Diagnostic[] {
             } else if (!node.error) {
                 // Recovery can hide a missing terminator beneath this node.
                 message = format_text("Missing syntax inside {}", node.kind);
+            } else if (node.kind != "ERROR") {
+                // The authored parser names what it expected in the node's kind.
+                message = node.kind;
             }
             diagnostic: Diagnostic = {
                 start: node.start,

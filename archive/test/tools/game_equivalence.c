@@ -561,6 +561,11 @@ static bool target_matches(yyjson_val *root, const execution_module *module, con
     int required = 0;
     for (size_t i = 0; i < yyjson_arr_size(types); i++) {
         yyjson_val *type = yyjson_arr_get(types, i);
+        yyjson_val *error = yyjson_obj_get(type, "error");
+        REQUIRE(yyjson_is_bool(error));
+        if (yyjson_get_bool(yyjson_obj_get(type, "relationship"))) {
+            REQUIRE(!yyjson_get_bool(error));
+        }
         if (!yyjson_get_bool(yyjson_obj_get(type, "required"))) {
             continue;
         }

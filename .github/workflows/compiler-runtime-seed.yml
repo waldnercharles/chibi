@@ -41,6 +41,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Fetch the pinned bootstrap seed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh tools/bootstrap/seed.sh
       - name: Require the seed's architecture
         run: |
           if ($env:RUNNER_ARCH -ne '${{ matrix.arch }}' -or

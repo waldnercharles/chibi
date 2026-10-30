@@ -634,15 +634,18 @@ static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a,
         );
         return false;
     }
-    if (!a->closure ||
-        yyjson_get_uint(yyjson_obj_get(closure, "bytes")) != a->closure_length ||
+    if (!a->closure) {
+        snprintf(error, size, "%s holds no %s; tools/bootstrap/seed.sh fetches it", b->folder, CLOSURE_FILE);
+        return false;
+    }
+    if (yyjson_get_uint(yyjson_obj_get(closure, "bytes")) != a->closure_length ||
         !yyjson_equals_str(yyjson_obj_get(closure, "sha256"), digest)) {
         snprintf(
             error,
             size,
             "%s, %zu bytes with SHA-256 %s, is not the closure %s records",
             CLOSURE_FILE,
-            a->closure ? a->closure_length : 0,
+            a->closure_length,
             digest,
             MANIFEST_FILE
         );

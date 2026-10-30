@@ -264,6 +264,10 @@ TEST_CASE(reflection_build_outputs_preserve_sdk_source_identity)
     assert(!mkdir(filename, 0700));
     path(filename, source, "tools/quiet.sh");
     tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
+    path(filename, source, "tools/bootstrap");
+    assert(!mkdir(filename, 0700));
+    path(filename, source, "tools/bootstrap/seed.sh");
+    tool_write(filename, "exit 0\n");
     path(filename, source, "tools/configure.sh");
     tool_write(
         filename,
@@ -368,6 +372,10 @@ TEST_CASE(sdk_reflection_recipe_uses_graph_and_recovers_its_host)
     REQUIRE(tool_run(copy, source, log_path) == 0);
     path(filename, source, "tools/quiet.sh");
     tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
+    path(filename, source, "tools/bootstrap");
+    assert(!mkdir(filename, 0700));
+    path(filename, source, "tools/bootstrap/seed.sh");
+    tool_write(filename, "exit 0\n");
     const char
         *host = "#!/bin/sh\nset -eu\n"
                 "if [ \"$1\" = --protocol-version ]; then\n"

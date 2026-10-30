@@ -161,7 +161,7 @@ TEST_CASE(validation_requires_review_and_checks_for_mixed_scope)
 TEST_CASE(validation_routes_gpu_checks_and_refuses_unknown_selectors)
 {
     const char *selectors[] = {
-        "--selector=--scene3d",
+        "--selector=--studio-graph-visibility",
         "--selector=--studio-source-edit",
         "--selector=--not-a-test",
     };
